@@ -19,9 +19,9 @@ on a red branch are hard to separate, and an earlier failure can hide a later on
 
 ## Repository scripts
 
-Follow [Repository scripts](scripts.md) for the source layout, Deno configuration
-and named task entrypoints. CI and package scripts invoke repository tooling
-through `deno task`; keep its execution logic in the root task catalog.
+Follow [Repository scripts](scripts.md) for the source layout, Node.js runtime
+configuration and named task entrypoints. CI invokes repository tooling through
+`pnpm run`; keep its execution logic in the scripts, not in workflow YAML.
 
 ## GitHub workflows
 
@@ -78,7 +78,7 @@ request does not cancel the target branch's push CI. Normal pull request checks
 continue to use `pull_request`.
 
 `ci.yml` checks a pull request only in the parts it changes. Its `Changes` job
-runs `deno task check:changed-parts HEAD^1` on the merge commit and outputs
+runs `pnpm run check:changed-parts HEAD^1` on the merge commit and outputs
 `frontend`, `backend` and `scripts`. The rules are the ordered `CHANGE_RULES`
 table in `scripts/src/ci/changed-parts.ts`: the first rule matching a file
 decides its parts, and a file no rule matches checks every part. Pushes check
@@ -89,7 +89,7 @@ every part.
 | any change | Ubuntu: Prettier                                                           | —                                                  | —                               |
 | `frontend` | Ubuntu: oxlint, Stylelint, TypeScript, frontend boundaries                 | Ubuntu: Vitest                                     | Ubuntu: `pnpm -r build`         |
 | `backend`  | every OS: Clippy, rustfmt; Ubuntu: architecture ledger, backend boundaries | every OS: `cargo test`; Ubuntu: bindings freshness | every OS: release `cargo build` |
-| `scripts`  | Ubuntu: `lint:deno`, frontend and backend boundaries                       | every OS: `test:scripts`                           | —                               |
+| `scripts`  | Ubuntu: `lint:ts:scripts`, frontend and backend boundaries                 | every OS: `test:scripts`                           | —                               |
 
 The ruleset requires every matrix check of Lint, Build Tauri and Unit Test by
 name. A job skipped by a job-level `if` reports once without its matrix, so those
@@ -136,13 +136,13 @@ Native operations include [ReFS block cloning](https://learn.microsoft.com/en-us
 
 ### Reuse policy
 
-| Path (repo-relative)       | Approx size             | Policy                                                                  | Reason                                                                                                                                         |
-| -------------------------- | ----------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/tauri/sidecar/`   | ~213M                   | **Symlink → main**                                                      | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `deno task prepare:check` is slow |
-| `backend/tauri/resources/` | ~21M                    | **Symlink → main**                                                      | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                          |
-| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                            |
-| `backend/target/`          | tens to hundreds of GiB | **Independent CoW clone when supported; otherwise build independently** | Clones share unchanged data blocks while keeping files and Cargo locks independent; never share a writable target directory                    |
-| `backend/tauri/tmp/dist/`  | build output            | **Independent — never symlink**                                         | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                     |
+| Path (repo-relative)       | Approx size             | Policy                                                                  | Reason                                                                                                                                        |
+| -------------------------- | ----------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~213M                   | **Symlink → main**                                                      | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm run prepare:check` is slow |
+| `backend/tauri/resources/` | ~21M                    | **Symlink → main**                                                      | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                         |
+| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                           |
+| `backend/target/`          | tens to hundreds of GiB | **Independent CoW clone when supported; otherwise build independently** | Clones share unchanged data blocks while keeping files and Cargo locks independent; never share a writable target directory                   |
+| `backend/tauri/tmp/dist/`  | build output            | **Independent — never symlink**                                         | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                    |
 
 Only `sidecar/` and `resources/` are symlink candidates.
 
@@ -163,7 +163,7 @@ For changes to worktree preparation tooling, verify clone support and write isol
   - Rust-only worktree → drop a placeholder (cheapest, no vite build).
   - Runnable UI → `pnpm web:build` (workspace packages resolve from source; this clears and refills `tmp/dist`).
 
-`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `deno task generate:git-info` only if accurate commit metadata must be baked in.
+`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `pnpm run generate:git-info` only if accurate commit metadata must be baked in.
 
 ### Create a worktree
 
@@ -177,7 +177,7 @@ cd <worktree-path>
 # Reuse downloads only when existing settings allow directory symlinks
 New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/tauri/sidecar"
 New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
-# Otherwise prepare independent downloads: deno task prepare:check
+# Otherwise prepare independent downloads: pnpm run prepare:check
 
 # Seed backend/target through verified CoW cloning when supported.
 # Otherwise let Cargo create it; never link it back to the main target.

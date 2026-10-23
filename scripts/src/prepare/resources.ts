@@ -1,6 +1,5 @@
 import * as path from "node:path";
-// @ts-types="npm:@types/adm-zip"
-import AdmZip from "npm:adm-zip";
+import AdmZip from "adm-zip";
 import type {
   BinInfo,
   DownloadProgress,

@@ -160,7 +160,7 @@ export async function main(args: string[]): Promise<void> {
     !(actions > 0) || !Number.isInteger(count) || count < 1
   ) {
     throw new Error(
-      "Usage: deno task bench:profile [--actions 1] [--top 25] " +
+      "Usage: pnpm run bench:profile [--actions 1] [--top 25] " +
         "[--callers <function>] <file.cpuprofile>",
     );
   }

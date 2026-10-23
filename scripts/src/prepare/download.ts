@@ -3,8 +3,7 @@ import { open } from "node:fs/promises";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-// @ts-types="npm:@types/adm-zip"
-import AdmZip from "npm:adm-zip";
+import AdmZip from "adm-zip";
 import { runCommand } from "../shared/command.ts";
 import type { DownloadProgress, DownloadResult } from "./types.ts";
 

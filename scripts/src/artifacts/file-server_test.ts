@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   CHUNK_RETRY_ATTEMPTS,
   initUploadSession,
@@ -17,7 +18,7 @@ async function makeTempFile(): Promise<string> {
   return path;
 }
 
-Deno.test("upload batch continues after a file exhausts retries", async () => {
+test("upload batch continues after a file exhausts retries", async () => {
   const files = ["first.dmg", "unavailable.deb", "last.rpm", "next.AppImage"];
   const attempted: string[] = [];
   const outcome = await uploadAllFilesWithResults(
@@ -36,33 +37,33 @@ Deno.test("upload batch continues after a file exhausts retries", async () => {
     },
   );
 
-  assertEquals([...new Set(attempted)].sort(), [...files].sort());
-  assertEquals(
+  assert.deepStrictEqual([...new Set(attempted)].sort(), [...files].sort());
+  assert.deepStrictEqual(
     attempted.filter((file) => file === "unavailable.deb").length,
     CHUNK_RETRY_ATTEMPTS,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     outcome.results.map(({ fileName }) => fileName).sort(),
     ["first.dmg", "last.rpm", "next.AppImage"].sort(),
   );
-  assertEquals(outcome.failures.length, 1);
-  assertEquals(outcome.failures[0].fileName, "unavailable.deb");
-  assertEquals(
+  assert.deepStrictEqual(outcome.failures.length, 1);
+  assert.deepStrictEqual(outcome.failures[0].fileName, "unavailable.deb");
+  assert.deepStrictEqual(
     outcome.failures[0].message.includes("HTTP 503"),
     true,
     outcome.failures[0].message,
   );
 });
 
-Deno.test("archive upload init preserves the release category path", async () => {
+test("archive upload init preserves the release category path", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
-    assertEquals(String(input), "https://archive.nyanpasu.org/upload/init");
-    assertEquals(init?.headers, {
+    assert.deepStrictEqual(String(input), "https://archive.nyanpasu.org/upload/init");
+    assert.deepStrictEqual(init?.headers, {
       "x-authorization": "test-token",
       "Content-Type": "application/json",
     });
-    assertEquals(JSON.parse(String(init?.body)), {
+    assert.deepStrictEqual(JSON.parse(String(init?.body)), {
       filename: "installer.exe",
       fileSize: 1024,
       mimeType: null,
@@ -72,7 +73,7 @@ Deno.test("archive upload init preserves the release category path", async () =>
     return Response.json({ uploadId: "test-session", chunkSize: 52428800 });
   };
   try {
-    assertEquals(
+    assert.deepStrictEqual(
       await initUploadSession(
         "installer.exe",
         1024,
@@ -87,23 +88,19 @@ Deno.test("archive upload init preserves the release category path", async () =>
   }
 });
 
-Deno.test("archive init failure preserves the server status and error detail", async () => {
+test("archive init failure preserves the server status and error detail", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = () =>
     Promise.resolve(Response.json({ error: "Unauthorized" }, { status: 401 }));
   try {
-    await assertRejects(
-      () => initUploadSession("installer.exe", 1024, null, "test-token"),
-      Error,
-      'upload init failed: 401  - {"error":"Unauthorized"}',
-    );
+    await assert.rejects(() => initUploadSession("installer.exe", 1024, null, "test-token"), { message: /upload init failed: 401 {2}- \{"error":"Unauthorized"\}/ });
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
 for (const stage of ["init", "chunk"] as const) {
-  Deno.test(`archive ${stage} quota failure bypasses all retry layers`, async () => {
+  test(`archive ${stage} quota failure bypasses all retry layers`, async () => {
     const originalFetch = globalThis.fetch;
     const filePath = await makeTempFile();
     let attempts = 0;
@@ -146,14 +143,14 @@ for (const stage of ["init", "chunk"] as const) {
           throw new Error("quota response must fail");
         },
       );
-      assertEquals(attempts, 1);
-      assertEquals(outcome.results, []);
-      assertEquals(outcome.failures.length, 1);
-      assertEquals(
+      assert.deepStrictEqual(attempts, 1);
+      assert.deepStrictEqual(outcome.results, []);
+      assert.deepStrictEqual(outcome.failures.length, 1);
+      assert.deepStrictEqual(
         outcome.failures[0].message.includes("quotaLimitReached"),
         true,
       );
-      assertEquals(
+      assert.deepStrictEqual(
         outcome.failures[0].message.includes("Free archive storage"),
         true,
       );
@@ -170,17 +167,17 @@ for (
     { status: 500, body: '{"error":{"code":"quotaLimitReached"}}' },
   ]
 ) {
-  Deno.test(`archive quota classification accepts ${response.status}: ${response.body}`, async () => {
+  test(`archive quota classification accepts ${response.status}: ${response.body}`, async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = () =>
       Promise.resolve(new Response(response.body, { status: response.status }));
     try {
-      const error = await assertRejects(
+      await assert.rejects(
         () => initUploadSession("test.dmg", 1, null, "test-token"),
-        Error,
-        "Free archive storage",
+        (error: Error) =>
+          /Free archive storage/.test(error.message) &&
+          error.name === "ArchiveQuotaError",
       );
-      assertEquals(error.name, "ArchiveQuotaError");
     } finally {
       globalThis.fetch = originalFetch;
     }

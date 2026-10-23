@@ -1,5 +1,5 @@
-import { describe, it } from "jsr:@std/testing/bdd";
-import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { checkFrontendBoundaries, type FrontendPackage } from "./policy.ts";
 
 const root = "/repo";
@@ -38,7 +38,7 @@ describe("frontend package boundaries", () => {
       },
     ];
 
-    assertEquals(checkFrontendBoundaries(inventory, root), []);
+    assert.deepStrictEqual(checkFrontendBoundaries(inventory, root), []);
   });
 
   it("reports a dependency cycle as one concrete path", () => {
@@ -52,10 +52,11 @@ describe("frontend package boundaries", () => {
     ];
 
     const issues = checkFrontendBoundaries(inventory, root);
-    assertEquals(issues.length, 1);
-    assertStringIncludes(
-      issues[0],
-      "workspace dependency cycle: @nyanpasu/hooks -> @nyanpasu/theme -> @nyanpasu/hooks",
+    assert.deepStrictEqual(issues.length, 1);
+    assert.ok(
+      issues[0].includes(
+        "workspace dependency cycle: @nyanpasu/hooks -> @nyanpasu/theme -> @nyanpasu/hooks",
+      ),
     );
   });
 
@@ -135,7 +136,7 @@ describe("frontend package boundaries", () => {
       }),
     ], root);
 
-    assertEquals(issues, []);
+    assert.deepStrictEqual(issues, []);
   });
 
   it("rejects DOM access in shared utilities", () => {
@@ -149,7 +150,7 @@ describe("frontend package boundaries", () => {
       }),
     ], root);
 
-    assertEquals(issues, [
+    assert.deepStrictEqual(issues, [
       "@nyanpasu/constants: DOM access in frontend/constants/src/index.ts",
     ]);
   });

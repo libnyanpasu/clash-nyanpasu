@@ -91,10 +91,6 @@ jobs:
         with:
           run_install: false
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
         with:
@@ -109,20 +105,20 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "x86_64")
-              pnpm prepare:check ;;
+              pnpm run prepare:check ;;
             "aarch64")
-              pnpm prepare:check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
+              pnpm run prepare:check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
           esac
 
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
-          pnpm prepare:nightly --linux ${{ inputs.arch != 'x86_64' && '--disable-updater'}}
+          pnpm run prepare:nightly --linux ${{ inputs.arch != 'x86_64' && '--disable-updater'}}
 
       - name: Release Prepare
         if: ${{ inputs.nightly == false }}
         run: |
-          pnpm prepare:release --linux
+          pnpm run prepare:release --linux
 
       # ===========================
       # GTK 图标修复步骤（适用于所有架构）
@@ -175,7 +171,7 @@ jobs:
         run: |
           pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
           # Nightly and prerelease package versions differ from the app version.
-          deno task sign-nightly-updater
+          pnpm run sign-nightly-updater
 
       - name: Tauri build and upload (cross)
         if: ${{ inputs.arch != 'x86_64' }}
@@ -195,8 +191,8 @@ jobs:
       - name: Finalize release packages
         if: ${{ inputs.nightly == false }}
         run: |
-          deno task test:linux-release
-          deno task finalize-linux-release
+          pnpm run test:linux-release
+          pnpm run finalize-linux-release
 
       - name: Calc the archive signature
         run: |
@@ -255,12 +251,12 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "x86_64")
-              deno task upload-build-artifacts \
+              pnpm run upload-build-artifacts \
                 "backend/target/**/*.deb" \
                 "backend/target/**/*.rpm" \
                 "backend/target/**/*.AppImage" ;;
             *)
-              deno task upload-build-artifacts \
+              pnpm run upload-build-artifacts \
                 "backend/target/**/*.deb" \
                 "backend/target/**/*.rpm" ;;
           esac

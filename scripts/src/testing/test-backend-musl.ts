@@ -6,7 +6,7 @@ export async function main(args: string[]): Promise<void> {
   const architecture = args[0] ?? "arm64";
   if (!["arm64", "amd64"].includes(architecture) || args.length > 2) {
     throw new Error(
-      "Usage: deno task test:backend-musl [arm64|amd64] [router-rootfs-image]",
+      "Usage: pnpm run test:backend-musl [arm64|amd64] [router-rootfs-image]",
     );
   }
   const router = args[1] ??

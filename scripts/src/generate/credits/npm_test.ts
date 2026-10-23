@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { join } from "node:path";
 import { standardLicenseText } from "./license-policy.ts";
 import {
@@ -20,7 +21,7 @@ function pkg(overrides: Partial<NpmPackage> = {}): NpmPackage {
   };
 }
 
-Deno.test("installed packages are read once per version", async () => {
+test("installed packages are read once per version", async () => {
   const dirs: Record<string, Record<string, string>> = {
     [join("store", "a@1")]: {
       "package.json": '{"version":"1.0.0"}',
@@ -48,7 +49,7 @@ Deno.test("installed packages are read once per version", async () => {
       paths: Object.keys(dirs),
     }],
   }, files);
-  assertEquals(packages, [
+  assert.deepStrictEqual(packages, [
     {
       name: "a",
       version: "1.0.0",
@@ -66,7 +67,7 @@ Deno.test("installed packages are read once per version", async () => {
   ]);
 });
 
-Deno.test("overrides correct undeclared licenses", () => {
+test("overrides correct undeclared licenses", () => {
   const { entries, problems } = npmEntries(
     [pkg({ license: "Unknown", texts: ["Unlicense text"] })],
     [{
@@ -77,21 +78,21 @@ Deno.test("overrides correct undeclared licenses", () => {
     }],
     ACCEPTED,
   );
-  assertEquals(problems, []);
-  assertEquals(entries[0].license, "Unlicense");
-  assertEquals(entries[0].notes, "checked");
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(entries[0].license, "Unlicense");
+  assert.deepStrictEqual(entries[0].notes, "checked");
 });
 
-Deno.test("packages without license files use the chosen reference text", () => {
+test("packages without license files use the chosen reference text", () => {
   const { entries } = npmEntries(
     [pkg({ license: "(MPL-2.0 OR Apache-2.0)", texts: [] })],
     [],
     ACCEPTED,
   );
-  assertEquals(entries[0].texts, [standardLicenseText("Apache-2.0")]);
+  assert.deepStrictEqual(entries[0].texts, [standardLicenseText("Apache-2.0")]);
 });
 
-Deno.test("unlicensed, unaccepted and stale entries are reported", () => {
+test("unlicensed, unaccepted and stale entries are reported", () => {
   const { entries, problems } = npmEntries(
     [
       pkg({ name: "unknown", license: "Unknown" }),
@@ -101,8 +102,8 @@ Deno.test("unlicensed, unaccepted and stale entries are reported", () => {
     [{ name: "gone", version: "1.0.0", license: "MIT" }],
     [...ACCEPTED, "LicenseRef-X"],
   );
-  assertEquals(entries, []);
-  assertEquals(problems, [
+  assert.deepStrictEqual(entries, []);
+  assert.deepStrictEqual(problems, [
     "npm: unknown@1.0.0 declares no valid license (Unknown); add an [[npm-override]]",
     "npm: gpl@1.0.0 license GPL-2.0-only is not accepted",
     "npm: custom@1.0.0 ships no license file for MIT AND LicenseRef-X",

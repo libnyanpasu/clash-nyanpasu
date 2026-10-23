@@ -1,12 +1,13 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { isNotFound } from "./errors.ts";
 
-Deno.test("isNotFound recognizes a missing path only", async () => {
+test("isNotFound recognizes a missing path only", async () => {
   const missing = await readFile("/nonexistent/nyanpasu-scripts").catch((e) =>
     e
   );
-  assertEquals(isNotFound(missing), true);
-  assertEquals(isNotFound(new Error("other")), false);
-  assertEquals(isNotFound("ENOENT"), false);
+  assert.deepStrictEqual(isNotFound(missing), true);
+  assert.deepStrictEqual(isNotFound(new Error("other")), false);
+  assert.deepStrictEqual(isNotFound("ENOENT"), false);
 });

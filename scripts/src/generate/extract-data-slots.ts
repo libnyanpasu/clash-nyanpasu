@@ -1,7 +1,7 @@
 // Extract all data-slot attribute values from frontend TSX files.
-// Run: deno task generate:data-slots
+// Run: pnpm run generate:data-slots
 import { dirname, join } from "node:path";
-import { globby } from "npm:globby";
+import { globby } from "globby";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
@@ -27,7 +27,7 @@ const sorted = [...slots].sort();
 await mkdir(dirname(outputPath), { recursive: true });
 await writeFile(
   outputPath,
-  `// AUTO-GENERATED — do not edit manually. Run: deno task generate:data-slots\n` +
+  `// AUTO-GENERATED — do not edit manually. Run: pnpm run generate:data-slots\n` +
     `export const DATA_SLOTS = ${
       JSON.stringify(sorted, null, 2)
     } as const\n\n` +

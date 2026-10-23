@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   attachNightlySourceforgeMirrors,
   attachSourceforgeMirrors,
@@ -41,21 +42,16 @@ function manifest(
   });
 }
 
-Deno.test("SourceForge report parsing requires exact immutable HTTPS asset paths", () => {
+test("SourceForge report parsing requires exact immutable HTTPS asset paths", () => {
   const parsed = manifest();
-  assertEquals(parsed.remotePath, `releases/${tag}`);
-  assertEquals(parsed.assets[binaryName].fileSize, 123);
-  assertThrows(
-    () =>
+  assert.deepStrictEqual(parsed.remotePath, `releases/${tag}`);
+  assert.deepStrictEqual(parsed.assets[binaryName].fileSize, 123);
+  assert.throws(() =>
       parseSourceforgeMirrorManifest({
         ...parsed,
         remotePath: "releases/latest",
-      }),
-    Error,
-    "immutable build identity",
-  );
-  assertThrows(
-    () =>
+      }), { message: /immutable build identity/ });
+  assert.throws(() =>
       parseSourceforgeMirrorManifest({
         ...parsed,
         assets: {
@@ -65,24 +61,17 @@ Deno.test("SourceForge report parsing requires exact immutable HTTPS asset paths
             url: "https://example.com/stolen",
           },
         },
-      }),
-    Error,
-    `Invalid SourceForge asset metadata for ${binaryName}`,
-  );
-  assertThrows(
-    () =>
+      }), { message: /Invalid SourceForge asset metadata for .*/ });
+  assert.throws(() =>
       parseSourceforgeMirrorManifest({
         ...parsed,
         channel: "nightly",
         buildId: "latest",
         remotePath: "nightly/latest",
-      }),
-    Error,
-    "full commit SHA",
-  );
+      }), { message: /full commit SHA/ });
 });
 
-Deno.test("release mirrors require the selected tag, matching assets, sizes, and signatures", () => {
+test("release mirrors require the selected tag, matching assets, sizes, and signatures", () => {
   const mirror = manifest();
   const platforms = {
     win64: {
@@ -99,7 +88,7 @@ Deno.test("release mirrors require the selected tag, matching assets, sizes, and
       size: 20,
     },
   ];
-  assertEquals(
+  assert.deepStrictEqual(
     attachSourceforgeMirrors(platforms, releaseAssets, undefined, tag),
     platforms,
   );
@@ -109,7 +98,7 @@ Deno.test("release mirrors require the selected tag, matching assets, sizes, and
     mirror,
     tag,
   );
-  assertEquals(mapped.win64, {
+  assert.deepStrictEqual(mapped.win64, {
     ...platforms.win64,
     mirrors: { sourceforge: mirror.assets[binaryName].url },
     project,
@@ -119,20 +108,11 @@ Deno.test("release mirrors require the selected tag, matching assets, sizes, and
     mapped,
     (url) => `https://proxy.example/${url}`,
   );
-  assertEquals(proxy.win64.url, `https://proxy.example/${platforms.win64.url}`);
-  assertEquals(proxy.win64.mirrors, mapped.win64.mirrors);
-  assertThrows(
-    () => attachSourceforgeMirrors(platforms, releaseAssets, mirror, "v2.3.0"),
-    Error,
-    "does not match selected release",
-  );
-  assertThrows(
-    () => attachSourceforgeMirrors(platforms, [releaseAssets[0]], mirror, tag),
-    Error,
-    "missing",
-  );
-  assertThrows(
-    () =>
+  assert.deepStrictEqual(proxy.win64.url, `https://proxy.example/${platforms.win64.url}`);
+  assert.deepStrictEqual(proxy.win64.mirrors, mapped.win64.mirrors);
+  assert.throws(() => attachSourceforgeMirrors(platforms, releaseAssets, mirror, "v2.3.0"), { message: /does not match selected release/ });
+  assert.throws(() => attachSourceforgeMirrors(platforms, [releaseAssets[0]], mirror, tag), { message: /missing/ });
+  assert.throws(() =>
       attachSourceforgeMirrors(
         platforms,
         [
@@ -141,13 +121,10 @@ Deno.test("release mirrors require the selected tag, matching assets, sizes, and
         ],
         mirror,
         tag,
-      ),
-    Error,
-    "size differs",
-  );
+      ), { message: /size differs/ });
 });
 
-Deno.test("release mirrors match product-name variants across storage feeds", () => {
+test("release mirrors match product-name variants across storage feeds", () => {
   const names = [
     "Clash Nyanpasu_x64-setup.nsis.zip",
     "Clash Nyanpasu_x64-setup.nsis.zip.sig",
@@ -200,14 +177,14 @@ Deno.test("release mirrors match product-name variants across storage feeds", ()
       : githubName.includes("AppImage")
       ? "linux"
       : "win64";
-    assertEquals(
+    assert.deepStrictEqual(
       mapped[target].mirrors?.sourceforge,
       mirror.assets[mirrorName].url,
     );
   }
 });
 
-Deno.test("nightly mirrors bind the complete commit identity to the announced hash", () => {
+test("nightly mirrors bind the complete commit identity to the announced hash", () => {
   const buildId = `12345-2-${sha}`;
   const mirror = manifest(buildId, "nightly");
   validateNightlySourceforgeIdentity(
@@ -232,7 +209,7 @@ Deno.test("nightly mirrors bind the complete commit identity to the announced ha
       size: 20,
     },
   ];
-  assertEquals(
+  assert.deepStrictEqual(
     attachNightlySourceforgeMirrors(
       platforms,
       releaseAssets,
@@ -244,63 +221,51 @@ Deno.test("nightly mirrors bind the complete commit identity to the announced ha
     ).win64.build_id,
     buildId,
   );
-  assertThrows(
-    () =>
+  assert.throws(() =>
       validateNightlySourceforgeIdentity(
         mirror,
         "b".repeat(40),
         sha.slice(0, 7),
         "12345",
         "2",
-      ),
-    Error,
-    "full commit",
-  );
-  assertThrows(
-    () =>
+      ), { message: /full commit/ });
+  assert.throws(() =>
       validateNightlySourceforgeIdentity(
         mirror,
         sha,
         sha.slice(0, 7),
         "12345",
         "1",
-      ),
-    Error,
-    "run, attempt, and full commit",
-  );
-  assertThrows(
-    () =>
+      ), { message: /run, attempt, and full commit/ });
+  assert.throws(() =>
       validateNightlySourceforgeIdentity(
         mirror,
         sha,
         "b".repeat(7),
         "12345",
         "2",
-      ),
-    Error,
-    "announced version",
-  );
+      ), { message: /announced version/ });
 });
 
-Deno.test("canonical release metadata is stable across asset object order", () => {
+test("canonical release metadata is stable across asset object order", () => {
   const parsed = manifest();
   const reversed = parseSourceforgeMirrorManifest({
     ...parsed,
     assets: Object.fromEntries(Object.entries(parsed.assets).reverse()),
   });
-  assertEquals(
+  assert.deepStrictEqual(
     canonicalSourceforgeMirrorManifest(parsed),
     canonicalSourceforgeMirrorManifest(reversed),
   );
 });
 
-Deno.test("publishedAt accepts canonical UTC timestamps and survives persistence", () => {
+test("publishedAt accepts canonical UTC timestamps and survives persistence", () => {
   const parsed = parseSourceforgeMirrorManifest({
     ...manifest(),
     publishedAt: "2026-10-04T01:02:03.004Z",
   });
-  assertEquals(parsed.publishedAt, "2026-10-04T01:02:03.004Z");
-  assertEquals(
+  assert.deepStrictEqual(parsed.publishedAt, "2026-10-04T01:02:03.004Z");
+  assert.deepStrictEqual(
     JSON.parse(canonicalSourceforgeMirrorManifest(parsed)).publishedAt,
     parsed.publishedAt,
   );
@@ -309,7 +274,7 @@ Deno.test("publishedAt accepts canonical UTC timestamps and survives persistence
     ...parsed,
     publishedAt: "2026-10-04T02:02:03.004Z",
   });
-  assertEquals(sourceforgeMirrorAssetsEqual(parsed, laterBatch), true);
+  assert.deepStrictEqual(sourceforgeMirrorAssetsEqual(parsed, laterBatch), true);
   const changedAsset = parseSourceforgeMirrorManifest({
     ...laterBatch,
     assets: {
@@ -320,7 +285,7 @@ Deno.test("publishedAt accepts canonical UTC timestamps and survives persistence
       },
     },
   });
-  assertEquals(sourceforgeMirrorAssetsEqual(parsed, changedAsset), false);
+  assert.deepStrictEqual(sourceforgeMirrorAssetsEqual(parsed, changedAsset), false);
 
   for (
     const publishedAt of [
@@ -330,15 +295,11 @@ Deno.test("publishedAt accepts canonical UTC timestamps and survives persistence
       "yesterday",
     ]
   ) {
-    assertThrows(
-      () => parseSourceforgeMirrorManifest({ ...manifest(), publishedAt }),
-      Error,
-      "Invalid SourceForge publication timestamp",
-    );
+    assert.throws(() => parseSourceforgeMirrorManifest({ ...manifest(), publishedAt }), { message: /Invalid SourceForge publication timestamp/ });
   }
 
-  assertEquals(manifest().publishedAt, undefined);
-  assertEquals(
+  assert.deepStrictEqual(manifest().publishedAt, undefined);
+  assert.deepStrictEqual(
     JSON.parse(canonicalSourceforgeMirrorManifest(manifest())).publishedAt,
     undefined,
   );

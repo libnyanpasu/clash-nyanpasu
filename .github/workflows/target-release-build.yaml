@@ -23,15 +23,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
 
       - name: Check configured storage before package builds
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         continue-on-error: true
-        run: deno task storage:preflight
+        run: pnpm run storage:preflight
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
@@ -226,11 +234,21 @@ jobs:
       - name: Checkout repository
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/checkout@v7
-      - name: Install Deno
+      - name: Install Node
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
-        uses: denoland/setup-deno@v2
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
       - name: Download target publication reports
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/download-artifact@v8
@@ -242,7 +260,7 @@ jobs:
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         id: verify
         run: >-
-          deno task sourceforge:verify ./publication-reports ./sourceforge-mirrors.json release
+          pnpm run sourceforge:verify ./publication-reports ./sourceforge-mirrors.json release
           windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64
       - name: Preserve verified mirror manifest
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}

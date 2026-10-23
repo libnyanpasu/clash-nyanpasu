@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   callersOf,
   type CpuProfile,
@@ -9,8 +10,8 @@ import {
 const origin = "http://localhost:63315";
 const root = `${origin}/@fs/G:/repo`;
 
-Deno.test("sourceOf names the app, the workspace packages and dependencies", () => {
-  assertEquals(
+test("sourceOf names the app, the workspace packages and dependencies", () => {
+  assert.deepStrictEqual(
     [
       `${origin}/src/pages/logs/index.tsx?t=1`,
       `${origin}/perf/measure.ts`,
@@ -66,8 +67,8 @@ const profile: CpuProfile = {
   timeDeltas: [1000, 2000, 2000, 4000],
 };
 
-Deno.test("summarizeProfile splits the time per action", () => {
-  assertEquals(summarizeProfile(profile, { actions: 2 }), {
+test("summarizeProfile splits the time per action", () => {
+  assert.deepStrictEqual(summarizeProfile(profile, { actions: 2 }), {
     categories: [
       { name: "script", ms: 2.5 },
       { name: "(program)", ms: 2 },
@@ -83,8 +84,8 @@ Deno.test("summarizeProfile splits the time per action", () => {
   });
 });
 
-Deno.test("callersOf lists the stacks under a function's own time", () => {
-  assertEquals(callersOf(profile, "measure"), [
+test("callersOf lists the stacks under a function's own time", () => {
+  assert.deepStrictEqual(callersOf(profile, "measure"), [
     { name: "render page.tsx:10 < (root) (native):0", ms: 4 },
   ]);
 });

@@ -1,8 +1,9 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { pathExists } from "./path-exists.ts";
 
-Deno.test("pathExists reports existing and missing paths", async () => {
-  assertEquals(await pathExists(fileURLToPath(import.meta.url)), true);
-  assertEquals(await pathExists("/nonexistent/nyanpasu-scripts"), false);
+test("pathExists reports existing and missing paths", async () => {
+  assert.deepStrictEqual(await pathExists(fileURLToPath(import.meta.url)), true);
+  assert.deepStrictEqual(await pathExists("/nonexistent/nyanpasu-scripts"), false);
 });

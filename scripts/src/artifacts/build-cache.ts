@@ -192,7 +192,7 @@ function main(): Promise<void> {
 
   if (!subcommand || !["save", "restore"].includes(subcommand)) {
     consola.error(
-      "usage: deno task build-cache <save|restore> --os <os> --arch <arch>",
+      "usage: pnpm run build-cache <save|restore> --os <os> --arch <arch>",
     );
     process.exit(1);
   }

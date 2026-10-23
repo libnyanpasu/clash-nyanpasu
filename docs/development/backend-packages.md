@@ -30,10 +30,10 @@ The migration is incremental. A shared runtime builder does not mean the entire
 Record remaining ownership in the extraction plan and move complete call paths,
 preserving commit/vote/compensation and owner lifecycle semantics.
 
-Run `deno task lint:backend-boundaries` after changing backend package direction.
+Run `pnpm run lint:backend-boundaries` after changing backend package direction.
 It inspects resolved production/build dependencies for all targets, including
 transitive GUI leaks. Its source is in the architecture-ledger script category;
-`deno task test:scripts` covers its policy tests. Run relevant Rust behavior tests
+`pnpm run test:scripts` covers its policy tests. Run relevant Rust behavior tests
 and desktop consumer checks as well: a dependency gate does not prove behavior.
 
 ## Consolidated runtime baseline

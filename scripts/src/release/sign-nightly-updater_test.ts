@@ -1,6 +1,7 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import * as path from "node:path";
 import {
   collectUpdaterPlatforms,
@@ -14,7 +15,7 @@ const tauriCli = createRequire(import.meta.url).resolve(
   "@tauri-apps/cli/tauri.js",
 );
 
-Deno.test("nightly updater signatures bind all installer variants to the release version", async () => {
+test("nightly updater signatures bind all installer variants to the release version", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nyanpasu-sign-test-"));
   try {
     const keyPath = path.join(directory, "test.key");
@@ -32,7 +33,7 @@ Deno.test("nightly updater signatures bind all installer variants to the release
       stdout: "piped",
       stderr: "piped",
     });
-    assertEquals(generated.success, true);
+    assert.deepStrictEqual(generated.success, true);
     const env = {
       TAURI_SIGNING_PRIVATE_KEY: await readFile(keyPath, "utf8"),
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
@@ -61,26 +62,20 @@ Deno.test("nightly updater signatures bind all installer variants to the release
         stdout: "null",
         stderr: "piped",
       });
-      assertEquals(signed.success, true);
+      assert.deepStrictEqual(signed.success, true);
       assets.push(
         { name, browser_download_url: archive },
         { name: `${name}.sig`, browser_download_url: `${archive}.sig` },
       );
     }
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         collectUpdaterPlatforms(
           assets,
           (file: string) => readFile(file, "utf8"),
           version,
-        ),
-      Error,
-      "Signed version mismatch",
-    );
-    const result = await runCommand(Deno.execPath(), {
+        ), { message: /Signed version mismatch/ });
+    const result = await runCommand(process.execPath, {
       args: [
-        "run",
-        "-A",
         fileURLToPath(new URL("sign-nightly-updater.ts", import.meta.url)),
       ],
       cwd: directory,
@@ -88,15 +83,15 @@ Deno.test("nightly updater signatures bind all installer variants to the release
       stdout: "piped",
       stderr: "piped",
     });
-    assertEquals(result.success, true, result.stderr.toString("utf8"));
+    assert.deepStrictEqual(result.success, true, result.stderr.toString("utf8"));
     const platforms = await collectUpdaterPlatforms(
       assets,
       (file: string) => readFile(file, "utf8"),
       `v${version}`,
     );
-    assertEquals(Object.keys(platforms).length, 7);
+    assert.deepStrictEqual(Object.keys(platforms).length, 7);
     for (const { signature } of Object.values(platforms)) {
-      assertEquals(
+      assert.deepStrictEqual(
         atob(signature).split("\n")[2].endsWith(`\tversion:${version}`),
         true,
       );

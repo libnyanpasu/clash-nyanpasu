@@ -1,15 +1,5 @@
 export default {
-  'scripts/**/*.{ts,tsx}': [
-    (filenames) => {
-      const files = filenames
-        .map((file) => `'${file.replaceAll("'", "'\\''")}'`)
-        .join(' ')
-      return [
-        `deno task fmt:scripts-files ${files}`,
-        `deno task check:scripts-files ${files}`,
-      ]
-    },
-  ],
+  'scripts/**/*.ts': ['prettier --write', () => 'pnpm run lint:ts:scripts'],
   '*.{js,cjs,.mjs,jsx}': (filenames) => {
     const configFiles = [
       '.oxlintrc.json',
@@ -31,7 +21,7 @@ export default {
     'prettier --write',
     'oxlint --fix',
     () => 'pnpm typecheck',
-    () => 'deno task lint:frontend-boundaries',
+    () => 'pnpm run lint:frontend-boundaries',
   ],
   'backend/**/*.{rs,toml}': [
     () =>

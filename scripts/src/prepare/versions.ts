@@ -27,7 +27,7 @@ export function extractVersionFromAssetList(
 
 export async function fetchText(
   url: string,
-  options?: { headers?: HeadersInit },
+  options?: { headers?: RequestInit["headers"] },
 ): Promise<string | undefined> {
   const response = await fetch(url, {
     method: "GET",

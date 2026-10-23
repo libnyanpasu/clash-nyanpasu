@@ -1,4 +1,4 @@
-// AUTO-GENERATED — do not edit manually. Run: deno task generate:data-slots
+// AUTO-GENERATED — do not edit manually. Run: pnpm run generate:data-slots
 export const DATA_SLOTS = [
   'about-card-header',
   'about-help-link',
@@ -218,6 +218,14 @@ export const DATA_SLOTS = [
   'hct-color-picker-swatch',
   'hotkey-manager',
   'hotkey-manager-content',
+  'import-url-dialog',
+  'import-url-dialog-detection',
+  'import-url-dialog-error',
+  'import-url-dialog-kind',
+  'import-url-dialog-mode',
+  'import-url-dialog-probing',
+  'import-url-dialog-reason',
+  'import-url-dialog-subscription',
   'ipv6-switch-container',
   'keyboard-settings-container',
   'lan-settings-container',

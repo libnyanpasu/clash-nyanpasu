@@ -68,11 +68,11 @@ async function main() {
     if (!(isNotFound(error))) throw error;
   }
   // Load the network adapter only after local validation; imports never authenticate.
-  const { TelegramClient, Api } = await import("npm:telegram@2.26.22");
+  const { TelegramClient, Api } = await import("telegram");
   const { StringSession } = await import(
-    "npm:telegram@2.26.22/sessions/index.js"
+    "telegram/sessions/index.js"
   );
-  const { CustomFile } = await import("npm:telegram@2.26.22/client/uploads.js");
+  const { CustomFile } = await import("telegram/client/uploads.js");
   const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
     connectionRetries: 3,
     requestRetries: 3,

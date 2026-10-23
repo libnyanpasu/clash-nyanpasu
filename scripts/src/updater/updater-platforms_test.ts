@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   collectUpdaterPlatforms,
   type ReleaseAsset,
@@ -18,23 +19,19 @@ function signature(version?: string, file = "app.zip"): string {
   );
 }
 
-Deno.test("nightly manifest rejects installer versions and different build hashes", async () => {
+test("nightly manifest rejects installer versions and different build hashes", async () => {
   for (const version of ["2.0.0", "2.0.0+alpha.83fbe50", "2.0.0-alpha+old"]) {
     const name = "Clash.Nyanpasu_x64.nsis.zip";
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         collectUpdaterPlatforms(
           [asset(name), asset(`${name}.sig`)],
           () => Promise.resolve(signature(version)),
           "v2.0.0-alpha+83fbe50",
-        ),
-      Error,
-      "Signed version mismatch",
-    );
+        ), { message: /Signed version mismatch/ });
   }
 });
 
-Deno.test("matching signed versions and historical signatures remain usable", async () => {
+test("matching signed versions and historical signatures remain usable", async () => {
   for (const version of ["2.0.0-alpha+83fbe50", undefined]) {
     const name = "Clash.Nyanpasu_x64.nsis.zip";
     const signed = signature(version);
@@ -43,11 +40,11 @@ Deno.test("matching signed versions and historical signatures remain usable", as
       () => Promise.resolve(signed),
       "v2.0.0-alpha+83fbe50",
     );
-    assertEquals(platforms["windows-x86_64"].signature, signed);
+    assert.deepStrictEqual(platforms["windows-x86_64"].signature, signed);
   }
 });
 
-Deno.test("one manifest contains all platforms and both Windows variants with paired signatures", async () => {
+test("one manifest contains all platforms and both Windows variants with paired signatures", async () => {
   const archives = [
     "Clash.Nyanpasu_2.0.0_x64-setup.nsis.zip",
     "Clash.Nyanpasu_2.0.0_fixed-webview-x64-setup.nsis.zip",
@@ -69,7 +66,7 @@ Deno.test("one manifest contains all platforms and both Windows variants with pa
     read.push(url);
     return Promise.resolve(`${signature("2.0.0", url)}\n`);
   }, "2.0.0");
-  assertEquals(Object.keys(platforms).sort(), [...UPDATER_TARGETS].sort());
+  assert.deepStrictEqual(Object.keys(platforms).sort(), [...UPDATER_TARGETS].sort());
   const expected: Record<string, number> = {
     win64: 0,
     "windows-x86_64": 0,
@@ -85,15 +82,15 @@ Deno.test("one manifest contains all platforms and both Windows variants with pa
   };
   for (const [target, index] of Object.entries(expected)) {
     const url = `https://example.com/${archives[index]}`;
-    assertEquals(platforms[target], {
+    assert.deepStrictEqual(platforms[target], {
       url,
       signature: signature("2.0.0", `${url}.sig`),
     });
   }
-  assertEquals(read.length, archives.length);
+  assert.deepStrictEqual(read.length, archives.length);
 });
 
-Deno.test("fixed-only and standard-only assets do not masquerade as the other variant", async () => {
+test("fixed-only and standard-only assets do not masquerade as the other variant", async () => {
   for (
     const [name, targets] of [
       ["Clash.Nyanpasu_fixed-webview-x64.nsis.zip", [
@@ -110,53 +107,37 @@ Deno.test("fixed-only and standard-only assets do not masquerade as the other va
       () => Promise.resolve(signature("2.0.0")),
       "2.0.0",
     );
-    assertEquals(Object.keys(platforms).sort(), [...targets].sort());
+    assert.deepStrictEqual(Object.keys(platforms).sort(), [...targets].sort());
   }
 });
 
-Deno.test("incomplete or ambiguous artifacts fail manifest generation", async () => {
+test("incomplete or ambiguous artifacts fail manifest generation", async () => {
   const name = "Clash.Nyanpasu_x64.nsis.zip";
-  await assertRejects(
-    () =>
+  await assert.rejects(() =>
       collectUpdaterPlatforms(
         [asset(name)],
         () => Promise.resolve("sig"),
         "2.0.0",
-      ),
-    Error,
-    "Missing signature",
-  );
-  await assertRejects(
-    () =>
+      ), { message: /Missing signature/ });
+  await assert.rejects(() =>
       collectUpdaterPlatforms(
         [asset(name), asset(`${name}.sig`)],
         () => Promise.resolve(""),
         "2.0.0",
-      ),
-    Error,
-    "Empty signature",
-  );
-  await assertRejects(
-    () =>
+      ), { message: /Empty signature/ });
+  await assert.rejects(() =>
       collectUpdaterPlatforms(
         [asset(name), asset(`${name}.sig`)],
         () => Promise.reject(new Error("download failed")),
         "2.0.0",
-      ),
-    Error,
-    "download failed",
-  );
+      ), { message: /download failed/ });
   const duplicate = "Clash.Nyanpasu_old_x64.nsis.zip";
-  await assertRejects(
-    () =>
+  await assert.rejects(() =>
       collectUpdaterPlatforms([
         asset(name),
         asset(`${name}.sig`),
         asset(duplicate),
         asset(`${duplicate}.sig`),
       ], () =>
-        Promise.resolve(signature("2.0.0")), "2.0.0"),
-    Error,
-    "Multiple updater archives",
-  );
+        Promise.resolve(signature("2.0.0")), "2.0.0"), { message: /Multiple updater archives/ });
 });

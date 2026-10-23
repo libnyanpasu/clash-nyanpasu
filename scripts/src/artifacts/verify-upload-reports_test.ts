@@ -1,16 +1,17 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { inspectUploadReports } from "./verify-upload-reports.ts";
 
-Deno.test("archive upload verification reports missing platform artifacts", () => {
+test("archive upload verification reports missing platform artifacts", () => {
   const issues = inspectUploadReports({});
-  assertEquals(issues.length, 8);
-  assertEquals(
+  assert.deepStrictEqual(issues.length, 8);
+  assert.deepStrictEqual(
     issues[0],
     "upload-diagnostics-windows-x86_64-standard: report is missing",
   );
 });
 
-Deno.test("archive upload verification reports failed and malformed uploads", () => {
+test("archive upload verification reports failed and malformed uploads", () => {
   const issues = inspectUploadReports({
     "upload-diagnostics-windows-x86_64-standard": {
       status: "failure",
@@ -22,7 +23,7 @@ Deno.test("archive upload verification reports failed and malformed uploads", ()
     },
     "upload-diagnostics-windows-aarch64-standard": null,
   });
-  assertEquals(issues, [
+  assert.deepStrictEqual(issues, [
     "upload-diagnostics-windows-x86_64-standard: status is failure",
     "upload-diagnostics-windows-x86_64-standard: 1 upload failure(s)",
     "upload-diagnostics-windows-x86_64-standard: HTTP 503",
@@ -39,7 +40,7 @@ Deno.test("archive upload verification reports failed and malformed uploads", ()
   ]);
 });
 
-Deno.test("archive upload verification exposes the failed file and quota detail", () => {
+test("archive upload verification exposes the failed file and quota detail", () => {
   const issues = inspectUploadReports({
     "upload-diagnostics-macos-aarch64": {
       status: "failure",
@@ -49,13 +50,13 @@ Deno.test("archive upload verification exposes the failed file and quota detail"
       }],
     },
   });
-  assertEquals(
+  assert.deepStrictEqual(
     issues.at(-1),
     "upload-diagnostics-macos-aarch64: nightly.dmg: upload init failed: 500 - quotaLimitReached",
   );
 });
 
-Deno.test("archive upload verification accepts all successful reports", () => {
+test("archive upload verification accepts all successful reports", () => {
   const reports = Object.fromEntries(
     [
       "upload-diagnostics-windows-x86_64-standard",
@@ -68,5 +69,5 @@ Deno.test("archive upload verification accepts all successful reports", () => {
       "upload-diagnostics-macos-aarch64",
     ].map((name) => [name, { status: "success", failures: [] }]),
   );
-  assertEquals(inspectUploadReports(reports), []);
+  assert.deepStrictEqual(inspectUploadReports(reports), []);
 });

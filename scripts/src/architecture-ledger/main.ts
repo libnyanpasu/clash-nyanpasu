@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   });
 
   if (args.help) {
-    console.log(`Usage: deno task architecture-ledger [options]
+    console.log(`Usage: pnpm run architecture-ledger [options]
 
 Options:
   --mode, -m <report|gate>   report (default) always exits 0 after printing.
@@ -191,7 +191,7 @@ Options:
   if (!loaded.snapshot) {
     consola.error(loaded.error ?? "failed to load snapshot");
     console.log(
-      "Regenerate with: deno task architecture-ledger --write-snapshot",
+      "Regenerate with: pnpm run architecture-ledger --write-snapshot",
     );
     process.exit(1);
   }

@@ -103,7 +103,7 @@ export async function main(args: string[]): Promise<void> {
   const count = Number(parsed.values.tasks);
   const files = parsed.positionals;
   if (files.length === 0 || !Number.isInteger(count) || count < 1) {
-    throw new Error("Usage: deno task bench:trace [--tasks 3] <trace.json>...");
+    throw new Error("Usage: pnpm run bench:trace [--tasks 3] <trace.json>...");
   }
 
   for (const file of files) {

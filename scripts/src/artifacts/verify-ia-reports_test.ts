@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { validateIaReports } from "./verify-ia-reports.ts";
 
 function report(target: string, status = "pending") {
@@ -27,15 +28,15 @@ function report(target: string, status = "pending") {
     }],
   };
 }
-Deno.test("complete uploaded pending ingest is explicit and accepted independently of mirror publication", () => {
+test("complete uploaded pending ingest is explicit and accepted independently of mirror publication", () => {
   const result = validateIaReports([
     report("linux"),
     report("windows", "ready"),
   ], ["linux", "windows"]);
-  assertEquals(result.issues, []);
-  assertEquals(result.pending.length, 1);
+  assert.deepStrictEqual(result.issues, []);
+  assert.deepStrictEqual(result.pending.length, 1);
 });
-Deno.test("missing, failed, duplicate and mixed-build IA reports fail", () => {
+test("missing, failed, duplicate and mixed-build IA reports fail", () => {
   for (
     const reports of [
       [],
@@ -49,13 +50,13 @@ Deno.test("missing, failed, duplicate and mixed-build IA reports fail", () => {
       }],
     ]
   ) {
-    assertEquals(
+    assert.deepStrictEqual(
       validateIaReports(reports, ["linux", "windows"]).issues.length > 0,
       true,
     );
   }
 });
-Deno.test("pending is rejected if inventory, sanitized manifest or verified hashes are missing", () => {
+test("pending is rejected if inventory, sanitized manifest or verified hashes are missing", () => {
   const base = report("linux");
   for (
     const invalid of [
@@ -68,7 +69,7 @@ Deno.test("pending is rejected if inventory, sanitized manifest or verified hash
       { ...base, artifacts: [{ ...base.artifacts[0], status: "failed" }] },
     ]
   ) {
-    assertEquals(
+    assert.deepStrictEqual(
       validateIaReports([invalid], ["linux"]).issues.length > 0,
       true,
     );

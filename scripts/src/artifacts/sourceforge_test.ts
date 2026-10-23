@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   guardReleaseMirrorUpload,
   reserveSourceforgeArtifact,
@@ -11,18 +12,18 @@ import {
   validateSourceforgeUsername,
 } from "./sourceforge.ts";
 
-Deno.test("SourceForge inputs constrain project, account and SFTP filenames", () => {
+test("SourceForge inputs constrain project, account and SFTP filenames", () => {
   validateSourceforgeProject("nyanpasu-project");
   validateSourceforgeUsername("build.bot");
   validateSourceforgeFilename("Clash.Nyanpasu-x64-setup.exe");
-  assertThrows(() => validateSourceforgeProject("bad-project-"), Error);
-  assertThrows(() => validateSourceforgeProject("a".repeat(64)), Error);
-  assertThrows(() => validateSourceforgeUsername("-option-like"), Error);
-  assertThrows(() => validateSourceforgeFilename("file[1].zip"), Error);
+  assert.throws(() => validateSourceforgeProject("bad-project-"), Error);
+  assert.throws(() => validateSourceforgeProject("a".repeat(64)), Error);
+  assert.throws(() => validateSourceforgeUsername("-option-like"), Error);
+  assert.throws(() => validateSourceforgeFilename("file[1].zip"), Error);
 });
 
-Deno.test("canonical binary URL uses immutable FRS path and encodes a basename", () => {
-  assertEquals(
+test("canonical binary URL uses immutable FRS path and encodes a basename", () => {
+  assert.deepStrictEqual(
     sourceforgeDownloadUrl(
       "nyanpasu",
       "nightly/123-1-" + "a".repeat(40),
@@ -32,28 +33,25 @@ Deno.test("canonical binary URL uses immutable FRS path and encodes a basename",
       "a".repeat(40)
     }/Clash%20Nyanpasu.zip`,
   );
-  assertThrows(
-    () => sourceforgeDownloadUrl("nyanpasu", "latest", "thing.zip"),
-    Error,
-  );
+  assert.throws(() => sourceforgeDownloadUrl("nyanpasu", "latest", "thing.zip"), Error);
 });
 
-Deno.test("binary upload batch contains only explicit managed filenames", () => {
+test("binary upload batch contains only explicit managed filenames", () => {
   const batch = sourceforgeUploadBatch(
     "nyanpasu",
     "releases/v1.2.3",
     [{ path: "/tmp/one.zip", fileName: "one.zip" }],
     false,
   );
-  assertEquals(batch.includes('put "/tmp/one.zip"'), true);
-  assertThrows(() =>
+  assert.deepStrictEqual(batch.includes('put "/tmp/one.zip"'), true);
+  assert.throws(() =>
     sourceforgeUploadBatch(
       "nyanpasu",
       "nightly/latest",
       [{ path: "/tmp/a", fileName: "a" }],
       false,
     ), Error);
-  assertThrows(() =>
+  assert.throws(() =>
     sourceforgeUploadBatch(
       "nyanpasu",
       "nightly/123",
@@ -62,7 +60,7 @@ Deno.test("binary upload batch contains only explicit managed filenames", () => 
     ), Error);
 });
 
-Deno.test("web manifest batch stages every selected feed before promoting any", () => {
+test("web manifest batch stages every selected feed before promoting any", () => {
   const batch = sourceforgeWebUploadBatch("nyanpasu", [
     {
       path: "/tmp/update.json",
@@ -77,8 +75,8 @@ Deno.test("web manifest batch stages every selected feed before promoting any", 
   ]);
   const lastPut = batch.lastIndexOf("put ");
   const firstRename = batch.indexOf("rename ");
-  assertEquals(lastPut < firstRename, true);
-  assertEquals(batch.split("rename ").length - 1, 2);
+  assert.deepStrictEqual(lastPut < firstRename, true);
+  assert.deepStrictEqual(batch.split("rename ").length - 1, 2);
 });
 
 const releaseArtifacts = [
@@ -187,7 +185,7 @@ function priorReleaseMirror(artifacts = releaseArtifacts) {
   };
 }
 
-Deno.test("release retry allows the same recorded target inventory", async () => {
+test("release retry allows the same recorded target inventory", async () => {
   let uploads = 0;
   await guardReleaseMirrorUpload(
     "nyanpasu",
@@ -199,10 +197,10 @@ Deno.test("release retry allows the same recorded target inventory", async () =>
     },
     async () => {},
   );
-  assertEquals(uploads, 1);
+  assert.deepStrictEqual(uploads, 1);
 });
 
-Deno.test("release retry rejects changed or extra bytes before SFTP upload", async () => {
+test("release retry rejects changed or extra bytes before SFTP upload", async () => {
   for (
     const artifacts of [
       releaseArtifacts.map((artifact, index) =>
@@ -216,8 +214,7 @@ Deno.test("release retry rejects changed or extra bytes before SFTP upload", asy
     ]
   ) {
     let uploads = 0;
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         guardReleaseMirrorUpload(
           "nyanpasu",
           "v1.2.3",
@@ -227,15 +224,12 @@ Deno.test("release retry rejects changed or extra bytes before SFTP upload", asy
             uploads++;
           },
           async () => {},
-        ),
-      Error,
-      "immutable",
-    );
-    assertEquals(uploads, 0);
+        ), { message: /immutable/ });
+    assert.deepStrictEqual(uploads, 0);
   }
 });
 
-Deno.test("release retry can repair a partial prior upload without replacing omitted bytes", async () => {
+test("release retry can repair a partial prior upload without replacing omitted bytes", async () => {
   let uploads = 0;
   await guardReleaseMirrorUpload(
     "nyanpasu",
@@ -250,10 +244,10 @@ Deno.test("release retry can repair a partial prior upload without replacing omi
     },
     async () => {},
   );
-  assertEquals(uploads, 1);
+  assert.deepStrictEqual(uploads, 1);
 });
 
-Deno.test("release upload proceeds without a sidecar but fails closed on lookup errors", async () => {
+test("release upload proceeds without a sidecar but fails closed on lookup errors", async () => {
   let uploads = 0;
   const candidate = { target: "windows-x86_64", artifacts: releaseArtifacts };
   await guardReleaseMirrorUpload(
@@ -266,10 +260,9 @@ Deno.test("release upload proceeds without a sidecar but fails closed on lookup 
     },
     async () => {},
   );
-  assertEquals(uploads, 1);
+  assert.deepStrictEqual(uploads, 1);
 
-  await assertRejects(
-    () =>
+  await assert.rejects(() =>
       guardReleaseMirrorUpload(
         "nyanpasu",
         "v1.2.3",
@@ -281,14 +274,11 @@ Deno.test("release upload proceeds without a sidecar but fails closed on lookup 
           uploads++;
         },
         async () => {},
-      ),
-    Error,
-    "GitHub API unavailable",
-  );
-  assertEquals(uploads, 1);
+      ), { message: /GitHub API unavailable/ });
+  assert.deepStrictEqual(uploads, 1);
 });
 
-Deno.test("release backfill retries accept the exact complete cross-platform inventory", async () => {
+test("release backfill retries accept the exact complete cross-platform inventory", async () => {
   let uploads = 0;
   const prior = priorReleaseMirror(fullReleaseArtifacts);
   await guardReleaseMirrorUpload(
@@ -301,10 +291,9 @@ Deno.test("release backfill retries accept the exact complete cross-platform inv
     },
     async () => {},
   );
-  assertEquals(uploads, 1);
+  assert.deepStrictEqual(uploads, 1);
 
-  await assertRejects(
-    () =>
+  await assert.rejects(() =>
       guardReleaseMirrorUpload(
         "nyanpasu",
         "v1.2.3",
@@ -317,14 +306,11 @@ Deno.test("release backfill retries accept the exact complete cross-platform inv
           uploads++;
         },
         async () => {},
-      ),
-    Error,
-    "immutable",
-  );
-  assertEquals(uploads, 1);
+      ), { message: /immutable/ });
+  assert.deepStrictEqual(uploads, 1);
 });
 
-Deno.test("release reservations protect partial uploads before a GitHub sidecar exists", async () => {
+test("release reservations protect partial uploads before a GitHub sidecar exists", async () => {
   let inventory: unknown;
   let uploads = 0;
   const publish = (
@@ -354,37 +340,27 @@ Deno.test("release reservations protect partial uploads before a GitHub sidecar 
           async () => inventory,
         ),
     );
-  await assertRejects(
-    () => publish(releaseArtifacts[0], true),
-    Error,
-    "interrupted",
-  );
-  await assertRejects(
-    () => publish({ ...releaseArtifacts[0], sha256: "f".repeat(64) }),
-    Error,
-    "immutable",
-  );
-  assertEquals(uploads, 1);
+  await assert.rejects(() => publish(releaseArtifacts[0], true), { message: /interrupted/ });
+  await assert.rejects(() => publish({ ...releaseArtifacts[0], sha256: "f".repeat(64) }), { message: /immutable/ });
+  assert.deepStrictEqual(uploads, 1);
   await publish(releaseArtifacts[0]);
-  assertEquals(uploads, 2);
+  assert.deepStrictEqual(uploads, 2);
 });
 
-Deno.test("incomplete or unreadable release reservations fail before uploading", async () => {
+test("incomplete or unreadable release reservations fail before uploading", async () => {
   for (
     const inventory of [null, {}, { ...releaseArtifacts[0], fileSize: 99 }]
   ) {
-    await assertRejects(() =>
+    await assert.rejects(() =>
       reserveSourceforgeArtifact(
         releaseArtifacts[0],
         async () => {
           throw new Error("Claim already exists");
         },
         async () => inventory,
-      )
-    );
+      ));
   }
-  await assertRejects(
-    () =>
+  await assert.rejects(() =>
       reserveSourceforgeArtifact(
         releaseArtifacts[0],
         async () => {
@@ -393,13 +369,10 @@ Deno.test("incomplete or unreadable release reservations fail before uploading",
         async () => {
           throw new Error("Inventory unavailable");
         },
-      ),
-    Error,
-    "Inventory unavailable",
-  );
+      ), { message: /Inventory unavailable/ });
 });
 
-Deno.test("release reservations use SF-compatible directories and exclusive artifact claims", () => {
+test("release reservations use SF-compatible directories and exclusive artifact claims", () => {
   const { batch, inventoryPath } = sourceforgeReservationBatch(
     "nyanpasu",
     "releases/v1.2.3",
@@ -415,29 +388,29 @@ Deno.test("release reservations use SF-compatible directories and exclusive arti
       validateSourceforgeFilename(segment);
     }
   }
-  assertEquals(
+  assert.deepStrictEqual(
     inventoryPath,
     "/home/frs/project/nyanpasu/releases/v1.2.3/upload-inventory/Clash Nyanpasu.zip/inventory.json",
   );
-  assertEquals(mkdirs.length, 4);
-  assertEquals(
+  assert.deepStrictEqual(mkdirs.length, 4);
+  assert.deepStrictEqual(
     mkdirs[2],
     '-mkdir "/home/frs/project/nyanpasu/releases/v1.2.3/upload-inventory"',
   );
-  assertEquals(
+  assert.deepStrictEqual(
     mkdirs[3],
     'mkdir "/home/frs/project/nyanpasu/releases/v1.2.3/upload-inventory/Clash Nyanpasu.zip"',
   );
-  assertEquals(
+  assert.deepStrictEqual(
     batch.includes('/upload-inventory/Clash Nyanpasu.zip/inventory.json"'),
     true,
   );
 });
 
-Deno.test("unreadable SF reservations retain creation and read failures", async () => {
+test("unreadable SF reservations retain creation and read failures", async () => {
   const creationError = new Error("SF rejected dot-prefixed directory");
   const readError = new Error("Inventory unavailable");
-  const error = await assertRejects(
+  await assert.rejects(
     () =>
       reserveSourceforgeArtifact(
         releaseArtifacts[0],
@@ -448,12 +421,14 @@ Deno.test("unreadable SF reservations retain creation and read failures", async 
           throw readError;
         },
       ),
-    Error,
-    "SF rejected dot-prefixed directory",
+    (error: Error) => {
+      assert.match(error.message, /SF rejected dot-prefixed directory/);
+      assert.ok(error.message.includes("Inventory unavailable"));
+      assert.deepStrictEqual((error.cause as AggregateError).errors, [
+        creationError,
+        readError,
+      ]);
+      return true;
+    },
   );
-  assertEquals(error.message.includes("Inventory unavailable"), true);
-  assertEquals((error.cause as AggregateError).errors, [
-    creationError,
-    readError,
-  ]);
 });

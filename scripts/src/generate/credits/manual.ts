@@ -1,5 +1,5 @@
-import { parse as parseToml } from "npm:smol-toml@1.9.1";
-import { z } from "npm:zod";
+import { parse as parseToml } from "smol-toml";
+import { z } from "zod";
 import type { CreditEntry } from "./document.ts";
 import {
   licenseIds,

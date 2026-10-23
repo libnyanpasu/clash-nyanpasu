@@ -1,6 +1,6 @@
 import type { SupportedArch } from "./types.ts";
 
-const DENO_ARCH_TO_NODE: Record<string, string> = {
+const ARCH_ALIASES: Record<string, string> = {
   x86_64: "x64",
   aarch64: "arm64",
 };
@@ -10,7 +10,7 @@ export function normalizePlatform(platform: string): string {
 }
 
 export function normalizeArch(arch: string): string {
-  return DENO_ARCH_TO_NODE[arch] ?? arch;
+  return ARCH_ALIASES[arch] ?? arch;
 }
 
 export function mapArch(platform: string, arch: string): SupportedArch {

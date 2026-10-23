@@ -63,12 +63,19 @@ export class ProgressRenderer {
   private lastRenderAt = 0;
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
 
+  private readonly logger: ProgressLogger;
+  private readonly enabled: boolean;
+  private readonly output: (text: string) => void;
+
   constructor(
     names: string[],
-    private readonly logger: ProgressLogger,
-    private readonly enabled: boolean,
-    private readonly output: (text: string) => void,
+    logger: ProgressLogger,
+    enabled: boolean,
+    output: (text: string) => void,
   ) {
+    this.logger = logger;
+    this.enabled = enabled;
+    this.output = output;
     this.width = Math.max(...names.map((name) => name.length), 0);
     for (const name of names) {
       this.status.set(name, { status: "Waiting", detail: {} });

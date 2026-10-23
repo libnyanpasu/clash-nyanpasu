@@ -1,6 +1,6 @@
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import * as path from "node:path";
-import { globby } from "npm:globby";
+import { globby } from "globby";
 import { consola } from "../shared/logger.ts";
 import { rename } from "node:fs/promises";
 

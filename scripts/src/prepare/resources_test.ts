@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import * as path from "node:path";
 import { runCommand } from "../shared/command.ts";
 import {
@@ -11,14 +12,10 @@ import type { BinInfo } from "./types.ts";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-Deno.test("Meow version validation accepts matching stable and alpha output", () => {
+test("Meow version validation accepts matching stable and alpha output", () => {
   assertMeowVersion("Meow Meta 0.22.0", "v0.22.0");
   assertMeowVersion("Meow Meta 0.22.0-alpha+3c27aca", "alpha-3c27aca");
-  assertThrows(
-    () => assertMeowVersion("Meow Meta 0.22.0-alpha+deadbee", "alpha-3c27aca"),
-    Error,
-    "unexpected Meow alpha version",
-  );
+  assert.throws(() => assertMeowVersion("Meow Meta 0.22.0-alpha+deadbee", "alpha-3c27aca"), { message: /unexpected Meow alpha version/ });
 });
 
 async function createMeowTarball(
@@ -87,7 +84,7 @@ function meowInfo(name: string, version: string, assetName: string): BinInfo {
   };
 }
 
-Deno.test("Meow repairs an unstamped legacy sidecar from the archive executable", async () => {
+test("Meow repairs an unstamped legacy sidecar from the archive executable", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const target = foreignExecutableTarget();
   const context = resolverContext(root, target);
@@ -107,18 +104,18 @@ Deno.test("Meow repairs an unstamped legacy sidecar from the archive executable"
       context,
       meowInfo("meow", "v0.22.0", assetName),
     );
-    assertEquals(result.cached, false);
-    assertEquals(
+    assert.deepStrictEqual(result.cached, false);
+    assert.deepStrictEqual(
       Array.from((await readFile(sidecarPath)).slice(0, 4)),
       target.platform === "linux"
         ? [0x7f, 0x45, 0x4c, 0x46]
         : [0xcf, 0xfa, 0xed, 0xfe],
     );
-    assertEquals(
+    assert.deepStrictEqual(
       (await readFile(`${sidecarPath}.version`, "utf8")).trim(),
       "v0.22.0",
     );
-    assertEquals(
+    assert.deepStrictEqual(
       (await resolveSidecar(context, meowInfo("meow", "v0.22.0", assetName)))
         .cached,
       true,
@@ -128,7 +125,7 @@ Deno.test("Meow repairs an unstamped legacy sidecar from the archive executable"
   }
 });
 
-Deno.test("Meow Alpha version mismatch keeps the previous binary and stamp", async () => {
+test("Meow Alpha version mismatch keeps the previous binary and stamp", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const target = nativeExecutableTarget();
   const context = resolverContext(root, target);
@@ -151,13 +148,9 @@ Deno.test("Meow Alpha version mismatch keeps the previous binary and stamp", asy
   context.runMeowVersion = async () => "Meow Meta 0.22.0-alpha+deadbee";
 
   try {
-    await assertRejects(
-      () => resolveSidecar(context, info, { force: true }),
-      Error,
-      "unexpected Meow alpha version",
-    );
-    assertEquals(await readFile(sidecarPath, "utf8"), "previous-good-binary");
-    assertEquals(
+    await assert.rejects(() => resolveSidecar(context, info, { force: true }), { message: /unexpected Meow alpha version/ });
+    assert.deepStrictEqual(await readFile(sidecarPath, "utf8"), "previous-good-binary");
+    assert.deepStrictEqual(
       await readFile(`${sidecarPath}.version`, "utf8"),
       "alpha-3c27aca",
     );
@@ -166,7 +159,7 @@ Deno.test("Meow Alpha version mismatch keeps the previous binary and stamp", asy
   }
 });
 
-Deno.test("Sidecar refreshes a gone alpha asset from the live release", async () => {
+test("Sidecar refreshes a gone alpha asset from the live release", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = resolverContext(root, foreignExecutableTarget());
   const originalFetch = globalThis.fetch;
@@ -206,11 +199,11 @@ Deno.test("Sidecar refreshes a gone alpha asset from the live release", async ()
 
   try {
     const result = await resolveSidecar(context, pinned);
-    assertEquals(refreshCalls, 1);
-    assertEquals(result.cached, false);
-    assertEquals(result.version, "alpha-live");
-    assertEquals(result.size, 3);
-    assertEquals(
+    assert.deepStrictEqual(refreshCalls, 1);
+    assert.deepStrictEqual(result.cached, false);
+    assert.deepStrictEqual(result.version, "alpha-live");
+    assert.deepStrictEqual(result.size, 3);
+    assert.deepStrictEqual(
       new Uint8Array(await readFile(path.join(context.sidecarDir, targetFile))),
       new Uint8Array([0x01, 0x02, 0x03]),
     );
@@ -220,7 +213,7 @@ Deno.test("Sidecar refreshes a gone alpha asset from the live release", async ()
   }
 });
 
-Deno.test("Sidecar keeps the pinned asset while it is still available", async () => {
+test("Sidecar keeps the pinned asset while it is still available", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = resolverContext(root, foreignExecutableTarget());
   const originalFetch = globalThis.fetch;
@@ -243,15 +236,15 @@ Deno.test("Sidecar keeps the pinned asset while it is still available", async ()
 
   try {
     const result = await resolveSidecar(context, pinned);
-    assertEquals(refreshCalls, 0);
-    assertEquals(result.version, "alpha-pinned");
+    assert.deepStrictEqual(refreshCalls, 0);
+    assert.deepStrictEqual(result.version, "alpha-pinned");
   } finally {
     globalThis.fetch = originalFetch;
     await rm(root, { recursive: true });
   }
 });
 
-Deno.test("Sidecar reports the pinned download error when refresh fails", async () => {
+test("Sidecar reports the pinned download error when refresh fails", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = resolverContext(root, foreignExecutableTarget());
   const originalFetch = globalThis.fetch;
@@ -273,12 +266,8 @@ Deno.test("Sidecar reports the pinned download error when refresh fails", async 
   };
 
   try {
-    await assertRejects(
-      () => resolveSidecar(context, pinned),
-      Error,
-      "download failed",
-    );
-    assertEquals(refreshCalls, 1);
+    await assert.rejects(() => resolveSidecar(context, pinned), { message: /download failed/ });
+    assert.deepStrictEqual(refreshCalls, 1);
   } finally {
     globalThis.fetch = originalFetch;
     await rm(root, { recursive: true });

@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-// @ts-types="npm:@types/figlet"
-import figlet from "npm:figlet";
+import figlet from "figlet";
 import { runCommand } from "../shared/command.ts";
 import { colorize, consola } from "../shared/logger.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";

@@ -1,7 +1,8 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import * as path from "node:path";
-import AdmZip from "npm:adm-zip";
+import AdmZip from "adm-zip";
 import { createPortableArchive } from "./portable.ts";
 import {
   copyFile,
@@ -70,7 +71,7 @@ async function addRuntime(directory: string) {
   await writeFile(path.join(runtime, "locales/en-US.pak"), "locale");
 }
 
-Deno.test("fixed packaging changes only WebView2 mode and keeps shared update URLs", async () => {
+test("fixed packaging changes only WebView2 mode and keeps shared update URLs", async () => {
   await withFixture(async (directory) => {
     const read = async (file: string) =>
       JSON.parse(await readFile(path.join(directory, file), "utf8"));
@@ -84,7 +85,7 @@ Deno.test("fixed packaging changes only WebView2 mode and keeps shared update UR
     for (const channel of [{}, nightly]) {
       const compiled = mergeConfig(base, windows, channel);
       const bundled = mergeConfig(compiled, fixed);
-      assertEquals(
+      assert.deepStrictEqual(
         bundled,
         mergeConfig(compiled, {
           $schema: fixed.$schema,
@@ -102,7 +103,7 @@ Deno.test("fixed packaging changes only WebView2 mode and keeps shared update UR
   });
 });
 
-Deno.test("shared release preparation preserves Linux and macOS config without Windows assets", async () => {
+test("shared release preparation preserves Linux and macOS config without Windows assets", async () => {
   await withFixture(async (directory) => {
     const tauriDir = path.join(directory, "backend/tauri");
     await mkdir(tauriDir, { recursive: true });
@@ -120,12 +121,8 @@ Deno.test("shared release preparation preserves Linux and macOS config without W
         path.join(tauriDir, "tauri.conf.json"),
         JSON.stringify(config),
       );
-      const result = await runCommand(Deno.execPath(), {
+      const result = await runCommand(process.execPath, {
         args: [
-          "run",
-          "--config",
-          fileURLToPath(new URL("../../deno.jsonc", import.meta.url)),
-          "-A",
           fileURLToPath(new URL("prepare-release.ts", import.meta.url)),
         ],
         cwd: directory,
@@ -133,17 +130,17 @@ Deno.test("shared release preparation preserves Linux and macOS config without W
         stderr: "piped",
       });
       assert(result.success, result.stderr.toString("utf8"));
-      assertEquals(
+      assert.deepStrictEqual(
         JSON.parse(
           await readFile(path.join(tauriDir, "tauri.conf.json"), "utf8"),
         ),
         config,
       );
-      assertEquals(
+      assert.deepStrictEqual(
         await readFile(path.join(directory, "package.json"), "utf8"),
         manifest,
       );
-      assertEquals(
+      assert.deepStrictEqual(
         await readdir(tauriDir),
         ["tauri.conf.json"],
       );
@@ -151,7 +148,7 @@ Deno.test("shared release preparation preserves Linux and macOS config without W
   });
 });
 
-Deno.test("portable archives reuse the application and differ only by bundled runtime", async () => {
+test("portable archives reuse the application and differ only by bundled runtime", async () => {
   await withFixture(async (directory) => {
     await addRuntime(directory);
     const buildDir = path.join(directory, "target/release");
@@ -186,22 +183,22 @@ Deno.test("portable archives reuse the application and differ only by bundled ru
           "WebView2/locales/en-US.pak",
         );
       }
-      assertEquals(
+      assert.deepStrictEqual(
         zip.getEntries().filter((entry) => !entry.isDirectory).map((entry) =>
           entry.entryName
         ).sort(),
         expectedFiles.sort(),
       );
       assert(zip.getEntry(".config/PORTABLE"));
-      assertEquals(zip.readAsText("resources/geoip.dat"), "geoip");
+      assert.deepStrictEqual(zip.readAsText("resources/geoip.dat"), "geoip");
       for (const name of binaryNames) {
-        assertEquals(zip.readAsText(name), `binary:${name}`);
+        assert.deepStrictEqual(zip.readAsText(name), `binary:${name}`);
       }
       const runtimeFiles = zip.getEntries().filter((entry) =>
         entry.entryName.startsWith(`${FIXED_WEBVIEW_DIR}/`) &&
         !entry.isDirectory
       ).map((entry) => entry.entryName).sort();
-      assertEquals(
+      assert.deepStrictEqual(
         runtimeFiles,
         variant === "fixed-webview"
           ? ["WebView2/locales/en-US.pak", "WebView2/msedgewebview2.exe"]
@@ -211,13 +208,9 @@ Deno.test("portable archives reuse the application and differ only by bundled ru
     await rm(path.join(directory, FIXED_WEBVIEW_DIR), {
       recursive: true,
     });
-    await assertRejects(
-      () => createPortableArchive(buildDir, directory, "fixed-webview"),
-      Error,
-      "WebView2 runtime not found",
-    );
+    await assert.rejects(() => createPortableArchive(buildDir, directory, "fixed-webview"), { message: /WebView2 runtime not found/ });
     await createPortableArchive(buildDir, directory, "standard");
-    assertEquals(
+    assert.deepStrictEqual(
       await readFile(path.join(buildDir, "Clash Nyanpasu.exe"), "utf8"),
       "binary:Clash Nyanpasu.exe",
     );

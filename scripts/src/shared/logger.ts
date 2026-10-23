@@ -1,6 +1,6 @@
-import { createColorize } from "npm:colorize-template";
-import { createConsola } from "npm:consola";
-import pc from "npm:picocolors";
+import { createColorize } from "colorize-template";
+import { createConsola } from "consola";
+import pc from "picocolors";
 
 const logLevelStr = process.env.LOG_LEVEL;
 

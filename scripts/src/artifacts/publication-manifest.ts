@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { globby } from "npm:globby";
+import { globby } from "globby";
 import { hashFile } from "./sourceforge.ts";
 import { stat } from "node:fs/promises";
 

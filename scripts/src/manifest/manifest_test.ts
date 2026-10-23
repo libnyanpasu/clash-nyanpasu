@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { type GitHubRelease, resolveMeowAlphaRelease } from "./manifest.ts";
 
 const alphaRelease: GitHubRelease = {
@@ -14,32 +15,31 @@ const alphaRelease: GitHubRelease = {
   ],
 };
 
-Deno.test("resolve Meow Alpha from all official release assets", () => {
+test("resolve Meow Alpha from all official release assets", () => {
   const result = resolveMeowAlphaRelease(alphaRelease);
-  assertEquals(result.name, "meow_alpha");
-  assertEquals(result.version, "alpha-3c27aca");
-  assertEquals(
+  assert.deepStrictEqual(result.name, "meow_alpha");
+  assert.deepStrictEqual(result.version, "alpha-3c27aca");
+  assert.deepStrictEqual(
     result.archMapping["darwin-arm64"],
     "meow-{}-aarch64-apple-darwin.tar.gz",
   );
-  assertEquals(
+  assert.deepStrictEqual(
     result.archMapping["linux-amd64"],
     "meow-{}-x86_64-unknown-linux-musl.tar.gz",
   );
 });
 
-Deno.test("reject incomplete or mixed-commit Meow Alpha release assets", () => {
-  assertThrows(() =>
+test("reject incomplete or mixed-commit Meow Alpha release assets", () => {
+  assert.throws(() =>
     resolveMeowAlphaRelease({
       ...alphaRelease,
       assets: alphaRelease.assets.slice(1),
-    })
-  );
+    }));
 
   const mixedRelease = structuredClone(alphaRelease);
   mixedRelease.assets[0].name = mixedRelease.assets[0].name.replace(
     "3c27aca",
     "deadbee",
   );
-  assertThrows(() => resolveMeowAlphaRelease(mixedRelease));
+  assert.throws(() => resolveMeowAlphaRelease(mixedRelease));
 });

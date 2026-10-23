@@ -1,11 +1,10 @@
-// @ts-types="npm:@types/d3@7.4.3"
 import {
   geoGraticule10,
   geoNaturalEarth1,
   geoPath,
   type GeoPermissibleObjects,
-} from "npm:d3@7.9.0";
-import { format } from "npm:prettier@3.9.9";
+} from "d3";
+import { format } from "prettier";
 import { dirname, join } from "node:path";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import { mkdir, writeFile } from "node:fs/promises";

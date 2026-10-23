@@ -1,5 +1,6 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { createServer } from "node:http";
-import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   allowedIaUploadUrl,
   digestFile,
@@ -61,7 +62,7 @@ for (
     [200, "<html>application fallback</html>"],
   ] as const
 ) {
-  Deno.test(`registration surfaces permanent response ${status}: ${detail}`, async () => {
+  test(`registration surfaces permanent response ${status}: ${detail}`, async () => {
     const originalFetch = globalThis.fetch;
     let calls = 0;
     try {
@@ -76,8 +77,7 @@ for (
           }),
         );
       };
-      await assertRejects(
-        () =>
+      await assert.rejects(() =>
           registerBuild("https://archive.nyanpasu.org", "test-token", {
             schemaVersion: 1,
             buildId: "test-build",
@@ -87,18 +87,15 @@ for (
             tag: null,
             folderPath: "nightly/test",
             artifacts: [],
-          }),
-        Error,
-        detail,
-      );
-      assertEquals(calls, 1);
+          }), Error);
+      assert.deepStrictEqual(calls, 1);
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 }
 
-Deno.test("registration failure retains HTTP detail and the actual attempt count", async () => {
+test("registration failure retains HTTP detail and the actual attempt count", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
   try {
@@ -111,8 +108,7 @@ Deno.test("registration failure retains HTTP detail and the actual attempt count
         }, { status: 400 }),
       );
     };
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         registerBuild("https://archive.nyanpasu.org", "test-token", {
           schemaVersion: 1,
           buildId: "test-build",
@@ -122,17 +118,14 @@ Deno.test("registration failure retains HTTP detail and the actual attempt count
           tag: null,
           folderPath: "nightly/test",
           artifacts: [],
-        }),
-      Error,
-      'failed after 1 attempt(s): Archive API returned HTTP 400: {"error":"Invalid build manifest","detail":"too many artifacts"}',
-    );
-    assertEquals(calls, 1);
+        }), { message: /failed after 1 attempt\(s\): Archive API returned HTTP 400: \{"error":"Invalid build manifest","detail":"too many artifacts"\}/ });
+    assert.deepStrictEqual(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-Deno.test("register-only validates and registers original bytes without IA credentials or uploads", async () => {
+test("register-only validates and registers original bytes without IA credentials or uploads", async () => {
   const originalFetch = globalThis.fetch;
   const keys = [
     "ARCHIVE_UPLOAD_TOKEN",
@@ -170,7 +163,7 @@ Deno.test("register-only validates and registers original bytes without IA crede
     await writeFile(`${directory}/manifest.json`, JSON.stringify(manifest));
     globalThis.fetch = (input) => {
       calls++;
-      assertEquals(
+      assert.deepStrictEqual(
         String(input),
         "https://archive.nyanpasu.org/archive/builds",
       );
@@ -185,7 +178,7 @@ Deno.test("register-only validates and registers original bytes without IA crede
         })),
       }));
     };
-    assertEquals(
+    assert.deepStrictEqual(
       await runArchivePublish([
         "--register-only",
         "--manifest",
@@ -200,9 +193,9 @@ Deno.test("register-only validates and registers original bytes without IA crede
     const report = JSON.parse(
       await readFile(`${directory}/report.json`, "utf8"),
     );
-    assertEquals(report.registrationOnly, true);
-    assertEquals(report.uploads, []);
-    assertEquals(calls, 1);
+    assert.deepStrictEqual(report.registrationOnly, true);
+    assert.deepStrictEqual(report.uploads, []);
+    assert.deepStrictEqual(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
     keys.forEach((key, index) =>
@@ -214,11 +207,11 @@ Deno.test("register-only validates and registers original bytes without IA crede
   }
 });
 
-Deno.test("digestFile streams bytes and returns stable SHA-256 and MD5", async () => {
+test("digestFile streams bytes and returns stable SHA-256 and MD5", async () => {
   const path = await makeTempFile();
   try {
     await writeFile(path, "hello");
-    assertEquals(await digestFile(path), {
+    assert.deepStrictEqual(await digestFile(path), {
       fileSize: 5,
       sha256:
         "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
@@ -229,20 +222,20 @@ Deno.test("digestFile streams bytes and returns stable SHA-256 and MD5", async (
   }
 });
 
-Deno.test("IA upload host allowlist and redirect guard prevent credential forwarding", async () => {
-  assertEquals(
+test("IA upload host allowlist and redirect guard prevent credential forwarding", async () => {
+  assert.deepStrictEqual(
     allowedIaUploadUrl("https://s3.us.archive.org/item/file.zip"),
     true,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     allowedIaUploadUrl("https://item.s3.us.archive.org/item/file.zip", "item"),
     true,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     allowedIaUploadUrl("https://evil.example/upload", "item"),
     false,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     allowedIaUploadUrl("http://s3.us.archive.org/item/file.zip"),
     false,
   );
@@ -261,11 +254,11 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
         headers,
         body: Readable.toWeb(createReadStream(filePath)) as ReadableStream,
       };
-      assertEquals(
+      assert.deepStrictEqual(
         new Headers(init?.headers).get("authorization"),
         "LOW test-access:test-secret",
       );
-      assertEquals(new Headers(init?.headers).get("content-length"), "14");
+      assert.deepStrictEqual(new Headers(init?.headers).get("content-length"), "14");
       const reader = (init?.body as ReadableStream<Uint8Array>).getReader();
       const chunks: Uint8Array[] = [];
       while (true) {
@@ -281,15 +274,14 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
         uploaded.set(chunk, offset);
         offset += chunk.length;
       }
-      assertEquals(new TextDecoder().decode(uploaded), "stream payload");
+      assert.deepStrictEqual(new TextDecoder().decode(uploaded), "stream payload");
       return new Response(null, {
         status: 302,
         headers: { location: "https://evil.example/upload" },
       });
     };
 
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         streamUpload(
           path,
           new URL("https://s3.us.archive.org/test-item/file.zip"),
@@ -308,11 +300,8 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
             artifacts: [],
           },
           upload,
-        ),
-      Error,
-      "non-IA S3 host",
-    );
-    assertEquals(
+        ), { message: /non-IA S3 host/ });
+    assert.deepStrictEqual(
       fetchCount,
       1,
       "redirect destination must be rejected before a second credentialed request",
@@ -322,14 +311,14 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
   }
 });
 
-Deno.test("registration rejects a shared publication timestamp mismatch before any upload", async () => {
+test("registration rejects a shared publication timestamp mismatch before any upload", async () => {
   const originalFetch = globalThis.fetch;
   let fetchCount = 0;
   let requestBody: Record<string, unknown> | undefined;
   try {
     globalThis.fetch = async (input, init) => {
       fetchCount++;
-      assertEquals(new URL(String(input)).pathname, "/archive/builds");
+      assert.deepStrictEqual(new URL(String(input)).pathname, "/archive/builds");
       requestBody = JSON.parse(String(init?.body));
       return Response.json({
         buildId: "test-build",
@@ -341,8 +330,7 @@ Deno.test("registration rejects a shared publication timestamp mismatch before a
       });
     };
 
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         registerBuild("https://archive.nyanpasu.org", "test-token", {
           schemaVersion: 1,
           buildId: "test-build",
@@ -353,12 +341,9 @@ Deno.test("registration rejects a shared publication timestamp mismatch before a
           tag: null,
           folderPath: "nightly/test",
           artifacts: [],
-        }),
-      Error,
-      "publication timestamp mismatch",
-    );
-    assertEquals(requestBody?.publishedAt, "2026-10-05T01:02:03.000Z");
-    assertEquals(
+        }), { message: /publication timestamp mismatch/ });
+    assert.deepStrictEqual(requestBody?.publishedAt, "2026-10-05T01:02:03.000Z");
+    assert.deepStrictEqual(
       fetchCount,
       1,
       "registration failure must stop before any IA upload request",
@@ -368,7 +353,7 @@ Deno.test("registration rejects a shared publication timestamp mismatch before a
   }
 });
 
-Deno.test("runner reports missing credentials with exit status 1 without external requests", async () => {
+test("runner reports missing credentials with exit status 1 without external requests", async () => {
   const tempDir = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const manifestPath = `${tempDir}/manifest.json`;
@@ -408,17 +393,17 @@ Deno.test("runner reports missing credentials with exit status 1 without externa
       stdout: "piped",
       stderr: "piped",
     });
-    assertEquals(result.code, 1);
+    assert.deepStrictEqual(result.code, 1);
     const report = JSON.parse(await readFile(reportPath, "utf8"));
-    assertEquals(report.status, "failed");
-    assertEquals(report.error, "UPLOAD_TOKEN is required");
-    assertEquals(report.buildId, "missing-token-fixture");
+    assert.deepStrictEqual(report.status, "failed");
+    assert.deepStrictEqual(report.error, "UPLOAD_TOKEN is required");
+    assert.deepStrictEqual(report.buildId, "missing-token-fixture");
   } finally {
     await rm(tempDir, { recursive: true });
   }
 });
 
-Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
+test("IA streaming PUT sends Content-Length on the wire", async () => {
   const path = await makeTempFile();
   const payload = new Uint8Array(2 * 1024 * 1024 + 17).fill(97);
   const controller = new AbortController();
@@ -458,9 +443,9 @@ Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
           signal,
         ),
     );
-    assertEquals(length, String(payload.length));
-    assertEquals(transferEncoding, null);
-    assertEquals(received, payload);
+    assert.deepStrictEqual(length, String(payload.length));
+    assert.deepStrictEqual(transferEncoding, null);
+    assert.deepStrictEqual(received, payload);
   } finally {
     controller.abort();
     await server.close();
@@ -468,7 +453,7 @@ Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
   }
 });
 
-Deno.test("IA redirected PUT reopens the file and retains length and metadata", async () => {
+test("IA redirected PUT reopens the file and retains length and metadata", async () => {
   const path = await makeTempFile();
   const controller = new AbortController();
   const requests: {
@@ -518,7 +503,7 @@ Deno.test("IA redirected PUT reopens the file and retains length and metadata", 
           signal,
         ),
     );
-    assertEquals(
+    assert.deepStrictEqual(
       requests,
       Array(2).fill({ length: "16", payload: "redirect payload", bucket: "1" }),
     );
@@ -529,7 +514,7 @@ Deno.test("IA redirected PUT reopens the file and retains length and metadata", 
   }
 });
 
-Deno.test("IA HTTP transport retains error bodies and sends empty files with length zero", async () => {
+test("IA HTTP transport retains error bodies and sends empty files with length zero", async () => {
   const path = await makeTempFile();
   const controller = new AbortController();
   let length: string | null = null;
@@ -545,9 +530,9 @@ Deno.test("IA HTTP transport retains error bodies and sends empty files with len
       { "content-length": "0" },
       controller.signal,
     );
-    assertEquals(length, "0");
-    assertEquals(response.status, 403);
-    assertEquals(await response.text(), "permission denied");
+    assert.deepStrictEqual(length, "0");
+    assert.deepStrictEqual(response.status, 403);
+    assert.deepStrictEqual(await response.text(), "permission denied");
   } finally {
     controller.abort();
     await server.close();
@@ -555,7 +540,7 @@ Deno.test("IA HTTP transport retains error bodies and sends empty files with len
   }
 });
 
-Deno.test("IA early redirect stops sending a large request body", async () => {
+test("IA early redirect stops sending a large request body", async () => {
   const path = await makeTempFile();
   await writeFile(path, new Uint8Array(32 * 1024 * 1024));
   const server = createServer((_request, response) => {
@@ -573,8 +558,8 @@ Deno.test("IA early redirect stops sending a large request body", async () => {
       { "content-length": String(32 * 1024 * 1024) },
       AbortSignal.timeout(1000),
     );
-    assertEquals(response.status, 307);
-    assertEquals(await response.text(), "redirect");
+    assert.deepStrictEqual(response.status, 307);
+    assert.deepStrictEqual(await response.text(), "redirect");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -584,7 +569,7 @@ Deno.test("IA early redirect stops sending a large request body", async () => {
   }
 });
 
-Deno.test("IA upload abort terminates curl while waiting for a response", async () => {
+test("IA upload abort terminates curl while waiting for a response", async () => {
   const path = await makeTempFile();
   const controller = new AbortController();
   const server = createServer((request, _response) => {
@@ -594,14 +579,13 @@ Deno.test("IA upload abort terminates curl while waiting for a response", async 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const address = server.address() as { port: number };
-    await assertRejects(() =>
+    await assert.rejects(() =>
       uploadFileRequest(
         path,
         new URL(`http://127.0.0.1:${address.port}/file`),
         { "content-length": "0" },
         controller.signal,
-      )
-    );
+      ));
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -611,24 +595,20 @@ Deno.test("IA upload abort terminates curl while waiting for a response", async 
   }
 });
 
-Deno.test("IA low-speed timeout stops a stalled response without the overall deadline", async () => {
+test("IA low-speed timeout stops a stalled response without the overall deadline", async () => {
   const path = await makeTempFile();
   const server = createServer((request, _response) => request.resume());
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const address = server.address() as { port: number };
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         uploadFileRequest(
           path,
           new URL(`http://127.0.0.1:${address.port}/file`),
           { "content-length": "0" },
           AbortSignal.timeout(10_000),
           1000,
-        ),
-      Error,
-      "curl 28",
-    );
+        ), { message: /curl 28/ });
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -638,7 +618,7 @@ Deno.test("IA low-speed timeout stops a stalled response without the overall dea
   }
 });
 
-Deno.test("IA retry skips bytes stored before an upload response timed out", async () => {
+test("IA retry skips bytes stored before an upload response timed out", async () => {
   const originalFetch = globalThis.fetch;
   const uploader = process.env["IA_UPLOADER"];
   let metadataCalls = 0;
@@ -680,9 +660,9 @@ Deno.test("IA retry skips bytes stored before an upload response timed out", asy
         return Promise.reject(new Error("upload response timed out"));
       },
     );
-    assertEquals(result, "skipped");
-    assertEquals(uploads, 1);
-    assertEquals(metadataCalls, 2);
+    assert.deepStrictEqual(result, "skipped");
+    assert.deepStrictEqual(uploads, 1);
+    assert.deepStrictEqual(metadataCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
     if (uploader === undefined) delete process.env["IA_UPLOADER"];

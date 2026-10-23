@@ -143,7 +143,7 @@ export async function main(args: string[]): Promise<void> {
     (cores !== undefined && cores !== "performance" && cores !== "efficiency")
   ) {
     throw new Error(
-      "Usage: deno task bench:ab [--rounds 3] [--base HEAD] " +
+      "Usage: pnpm run bench:ab [--rounds 3] [--base HEAD] " +
         "[--cores performance|efficiency] <benchmark>",
     );
   }

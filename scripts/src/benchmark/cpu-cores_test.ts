@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   affinityMask,
   chooseProcessors,
@@ -17,25 +18,25 @@ const HYBRID: Processor[] = [
   { processor: 5, core: 5, efficiency: 0 },
 ];
 
-Deno.test("chooseProcessors takes one thread per core of the kind", () => {
-  assertEquals(chooseProcessors(HYBRID, "performance"), [0, 2]);
-  assertEquals(chooseProcessors(HYBRID, "efficiency"), [4, 5]);
+test("chooseProcessors takes one thread per core of the kind", () => {
+  assert.deepStrictEqual(chooseProcessors(HYBRID, "performance"), [0, 2]);
+  assert.deepStrictEqual(chooseProcessors(HYBRID, "efficiency"), [4, 5]);
 });
 
-Deno.test("chooseProcessors takes every core of a single class", () => {
+test("chooseProcessors takes every core of a single class", () => {
   const uniform = HYBRID.map((processor) => ({ ...processor, efficiency: 0 }));
 
-  assertEquals(chooseProcessors(uniform, "performance"), [0, 2, 4, 5]);
-  assertEquals(chooseProcessors(uniform, "efficiency"), [0, 2, 4, 5]);
+  assert.deepStrictEqual(chooseProcessors(uniform, "performance"), [0, 2, 4, 5]);
+  assert.deepStrictEqual(chooseProcessors(uniform, "efficiency"), [0, 2, 4, 5]);
 });
 
-Deno.test("affinityMask sets a bit per processor, past 32 as well", () => {
-  assertEquals(affinityMask([0, 2, 4, 6]), "55");
-  assertEquals(affinityMask([16, 31]), "80010000");
-  assertEquals(affinityMask([40]), "10000000000");
+test("affinityMask sets a bit per processor, past 32 as well", () => {
+  assert.deepStrictEqual(affinityMask([0, 2, 4, 6]), "55");
+  assert.deepStrictEqual(affinityMask([16, 31]), "80010000");
+  assert.deepStrictEqual(affinityMask([40]), "10000000000");
 });
 
-Deno.test("parseCpuList expands ranges and single processors", () => {
-  assertEquals(parseCpuList("0-3,8,10-11\n"), [0, 1, 2, 3, 8, 10, 11]);
-  assertEquals(parseCpuList(""), []);
+test("parseCpuList expands ranges and single processors", () => {
+  assert.deepStrictEqual(parseCpuList("0-3,8,10-11\n"), [0, 1, 2, 3, 8, 10, 11]);
+  assert.deepStrictEqual(parseCpuList(""), []);
 });

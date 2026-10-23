@@ -1,6 +1,6 @@
-import { parse as parseToml } from "npm:smol-toml@1.9.1";
-import parseSpdx from "npm:spdx-expression-parse@5.0.0";
-import spdxLicenses from "npm:spdx-license-list@6.12.0/full.js";
+import { parse as parseToml } from "smol-toml";
+import parseSpdx from "spdx-expression-parse";
+import spdxLicenses from "spdx-license-list/full.js";
 
 export type SpdxNode =
   | { license: string; plus?: boolean; exception?: string }

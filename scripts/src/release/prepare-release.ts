@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import semver from "npm:semver";
+import semver from "semver";
 import { consola } from "../shared/logger.ts";
 import { readFile, writeFile } from "node:fs/promises";
 

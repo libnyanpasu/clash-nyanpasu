@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { createHash } from "node:crypto";
 import {
   collectSourceforgeReports,
@@ -35,7 +36,7 @@ function report(
   };
 }
 
-Deno.test("complete same-build reports stream through public SHA-256 verification", async () => {
+test("complete same-build reports stream through public SHA-256 verification", async () => {
   const reports = [
     { ...report("linux"), publishedAt: "2026-10-04T01:02:03.000Z" },
     {
@@ -60,19 +61,19 @@ Deno.test("complete same-build reports stream through public SHA-256 verificatio
       attempts: 1,
     },
   );
-  assertEquals(requests.length, 2);
-  assertEquals(result.publishedAt, "2026-10-04T01:02:03.000Z");
-  assertEquals(
+  assert.deepStrictEqual(requests.length, 2);
+  assert.deepStrictEqual(result.publishedAt, "2026-10-04T01:02:03.000Z");
+  assert.deepStrictEqual(
     result.assets["Clash Nyanpasu+windows.zip"].sha256,
     reports[1].artifacts[0].sha256,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     result.buildId,
     "123-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   );
 });
 
-Deno.test("public mirror verification bounds transfers and drains after a hash failure", async () => {
+test("public mirror verification bounds transfers and drains after a hash failure", async () => {
   const reports = Array.from({ length: 6 }, (_, i) => report(`target-${i}`));
   const release = Promise.withResolvers<void>();
   const started = Promise.withResolvers<void>();
@@ -101,16 +102,16 @@ Deno.test("public mirror verification bounds transfers and drains after a hash f
       attempts: 1,
     },
   );
-  const rejected = assertRejects(() => verification);
+  const rejected = assert.rejects(() => verification);
   await started.promise;
-  assertEquals(requests, 4);
+  assert.deepStrictEqual(requests, 4);
   release.resolve();
   await rejected;
-  assertEquals(maximum, 4);
-  assertEquals(requests, 6);
+  assert.deepStrictEqual(maximum, 4);
+  assert.deepStrictEqual(requests, 6);
 });
 
-Deno.test("reject missing, duplicate, unexpected and empty target reports", () => {
+test("reject missing, duplicate, unexpected and empty target reports", () => {
   for (
     const reports of [
       [],
@@ -120,14 +121,14 @@ Deno.test("reject missing, duplicate, unexpected and empty target reports", () =
       [report("linux"), { ...report("windows"), artifacts: [] }],
     ]
   ) {
-    assertEquals(
+    assert.deepStrictEqual(
       validateSourceforgeReports(reports, ["linux", "windows"]).length > 0,
       true,
     );
   }
 });
 
-Deno.test("reject mismatched builds, traversal and non-canonical public URLs before fetch", async () => {
+test("reject mismatched builds, traversal and non-canonical public URLs before fetch", async () => {
   for (
     const invalid of [
       { ...report("linux"), buildId: "other" },
@@ -158,15 +159,14 @@ Deno.test("reject mismatched builds, traversal and non-canonical public URLs bef
       },
     ]
   ) {
-    await assertRejects(() =>
+    await assert.rejects(() =>
       verifySourceforgeMirror([invalid], ["linux"], "nightly", {
         fetcher: (() => {
           throw new Error("must not perform network IO");
         }) as typeof fetch,
-      })
-    );
+      }));
   }
-  assertEquals(
+  assert.deepStrictEqual(
     validateSourceforgeReports([report("linux"), {
       ...report("windows"),
       buildId: "other",
@@ -174,7 +174,7 @@ Deno.test("reject mismatched builds, traversal and non-canonical public URLs bef
     }], ["linux", "windows"]).length > 0,
     true,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     validateSourceforgeReports([report("linux"), {
       ...report("windows"),
       publishedAt: "2026-10-04T01:02:03.000Z",
@@ -183,7 +183,7 @@ Deno.test("reject mismatched builds, traversal and non-canonical public URLs bef
   );
 });
 
-Deno.test("transient mirror delay retries but HTML and wrong bytes never publish", async () => {
+test("transient mirror delay retries but HTML and wrong bytes never publish", async () => {
   let attempts = 0;
   let waits = 0;
   await verifySourceforgeMirror([report("linux")], ["linux"], "nightly", {
@@ -199,7 +199,7 @@ Deno.test("transient mirror delay retries but HTML and wrong bytes never publish
     },
     attempts: 2,
   });
-  assertEquals([attempts, waits], [2, 1]);
+  assert.deepStrictEqual([attempts, waits], [2, 1]);
   for (
     const response of [
       () =>
@@ -211,19 +211,15 @@ Deno.test("transient mirror delay retries but HTML and wrong bytes never publish
       () => new Response(new Uint8Array(bytes.length + 1)),
     ]
   ) {
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         verifySourceforgeMirror([report("linux")], ["linux"], "nightly", {
           fetcher: (() => Promise.resolve(response())) as typeof fetch,
           attempts: 1,
-        }),
-      Error,
-      "verification failed",
-    );
+        }), { message: /verification failed/ });
   }
 });
 
-Deno.test("collect reports nested under separate platform artifact directories", async () => {
+test("collect reports nested under separate platform artifact directories", async () => {
   const root = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   try {
     await mkdir(`${root}/a/nested`, { recursive: true });
@@ -232,7 +228,7 @@ Deno.test("collect reports nested under separate platform artifact directories",
       JSON.stringify(report("linux")),
     );
     await writeFile(`${root}/irrelevant.json`, "{}");
-    assertEquals(await collectSourceforgeReports(root), [report("linux")]);
+    assert.deepStrictEqual(await collectSourceforgeReports(root), [report("linux")]);
   } finally {
     await rm(root, { recursive: true });
   }

@@ -71,7 +71,10 @@ export async function isArchiveBuildReady(
       },
     );
     if (!response?.ok || response.headers.has("location")) return false;
-    const body = await response.json();
+    const body = (await response.json()) as {
+      status?: string;
+      buildId?: string;
+    } | null;
     return typeof body === "object" && body !== null &&
       body.status === "ready" && body.buildId === buildId;
   } catch {

@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import { globby } from "npm:globby";
+import { globby } from "globby";
 import { readFile } from "node:fs/promises";
 import { runCommand } from "../shared/command.ts";
 

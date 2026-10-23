@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { chromium } from "npm:playwright@1.63.0";
+import { chromium } from "playwright";
 
 const entry = process.argv[2];
 assert.ok(
   entry,
-  "Usage: deno task test:http-ui <running debug HTTP server URL>",
+  "Usage: pnpm run test:http-ui <running debug HTTP server URL>",
 );
 const url = new URL(entry).origin;
 assert.ok(url, "Pass the running debug HTTP server URL");
@@ -55,7 +55,10 @@ try {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ method, params }),
       });
-      return { status: response.status, data: await response.json() };
+      return {
+        status: response.status,
+        data: (await response.json()) as any,
+      };
     };
     await call("set_storage_item", { key: "http-ui-test", value: "browser" });
     const storage = await call("get_storage_item", { key: "http-ui-test" });
@@ -126,7 +129,10 @@ try {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ method, params }),
         });
-        return { status: response.status, data: await response.json() };
+        return {
+        status: response.status,
+        data: (await response.json()) as any,
+      };
       }, { method, params });
       assert.equal(response.status, 200);
       return response.data;

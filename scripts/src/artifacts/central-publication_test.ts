@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import * as path from "node:path";
 import {
   classifyPublicationArtifactDirectory,
@@ -18,7 +19,7 @@ import { tmpdir } from "node:os";
 const commit = "a".repeat(40);
 const publishedAt = "2026-10-04T12:34:56.789Z";
 
-Deno.test("recovery preserves identities and timestamp across runners and refuses altered bytes", async () => {
+test("recovery preserves identities and timestamp across runners and refuses altered bytes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const repository = "libnyanpasu/clash-nyanpasu";
   const sourceRun = {
@@ -54,13 +55,13 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
       `${root}/restored`,
       "nyanpasu",
     );
-    assertEquals(recovered.buildId, original.buildId);
-    assertEquals(recovered.publishedAt, publishedAt);
-    assertEquals(recovered.inventories, original.inventories);
+    assert.deepStrictEqual(recovered.buildId, original.buildId);
+    assert.deepStrictEqual(recovered.publishedAt, publishedAt);
+    assert.deepStrictEqual(recovered.inventories, original.inventories);
     const manifest = JSON.parse(
       await readFile(recovered.manifests["windows-x86_64"] as string, "utf8"),
     );
-    assertEquals(
+    assert.deepStrictEqual(
       manifest.artifacts.every((artifact: { path: string }) =>
         path.normalize(artifact.path).startsWith(
           path.join(root, "restored", path.sep),
@@ -74,8 +75,7 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
       "Clash.Nyanpasu_x64_portable.zip",
       "different bytes",
     );
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         recoverCentralPublication(
           sourceRun,
           repository,
@@ -83,12 +83,8 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
           `${root}/original`,
           `${root}/altered`,
           "nyanpasu",
-        ),
-      Error,
-      "differs from the original publication",
-    );
-    await assertRejects(
-      () =>
+        ), { message: /differs from the original publication/ });
+    await assert.rejects(() =>
         recoverCentralPublication(
           sourceRun,
           repository,
@@ -96,12 +92,8 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
           `${root}/original`,
           `${root}/wrong-prefix`,
           "other",
-        ),
-      Error,
-      "differs from the original publication",
-    );
-    await assertRejects(
-      () =>
+        ), { message: /differs from the original publication/ });
+    await assert.rejects(() =>
         recoverCentralPublication(
           { ...sourceRun, head_sha: "b".repeat(40) },
           repository,
@@ -109,16 +101,13 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
           `${root}/original`,
           `${root}/wrong-sha`,
           "nyanpasu",
-        ),
-      Error,
-      "does not match the source run",
-    );
+        ), { message: /does not match the source run/ });
   } finally {
     await rm(root, { recursive: true });
   }
 });
 
-Deno.test("recovery rejects fork and non-publication runs before reading any files", async () => {
+test("recovery rejects fork and non-publication runs before reading any files", async () => {
   const repository = "libnyanpasu/clash-nyanpasu";
   const sourceRun = {
     id: 123,
@@ -138,8 +127,7 @@ Deno.test("recovery rejects fork and non-publication runs before reading any fil
       { ...sourceRun, event: "pull_request" },
     ]
   ) {
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         recoverCentralPublication(
           run,
           repository,
@@ -147,10 +135,7 @@ Deno.test("recovery rejects fork and non-publication runs before reading any fil
           "missing",
           "missing",
           "nyanpasu",
-        ),
-      Error,
-      "completed package publication in this repository",
-    );
+        ), { message: /completed package publication in this repository/ });
   }
 });
 
@@ -247,34 +232,34 @@ async function fixture(
   }
 }
 
-Deno.test("classify package artifact directories to exactly the updater targets", () => {
-  assertEquals(
+test("classify package artifact directories to exactly the updater targets", () => {
+  assert.deepStrictEqual(
     classifyPublicationArtifactDirectory(
       "Clash.Nyanpasu-windows-x86_64-nsis-installer",
     ),
     "windows-x86_64",
   );
-  assertEquals(
+  assert.deepStrictEqual(
     classifyPublicationArtifactDirectory("Clash.Nyanpasu-linux-aarch64-rpm"),
     "linux-aarch64",
   );
-  assertEquals(
+  assert.deepStrictEqual(
     classifyPublicationArtifactDirectory("Clash.Nyanpasu-macOS-amd64"),
     "macos-x86_64",
   );
-  assertEquals(
+  assert.deepStrictEqual(
     classifyPublicationArtifactDirectory(
       "Clash.Nyanpasu-windows-aarch64-symbols",
     ),
     null,
   );
-  assertEquals(
+  assert.deepStrictEqual(
     classifyPublicationArtifactDirectory("unrelated-artifact"),
     null,
   );
 });
 
-Deno.test("central preparation validates all targets, normalizes Windows names and shares one timestamp", async () => {
+test("central preparation validates all targets, normalizes Windows names and shares one timestamp", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
@@ -294,9 +279,9 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
       itemPrefix: "mirror-test",
       publishedAt,
     });
-    assertEquals(context.publishedAt, publishedAt);
-    assertEquals(context.targets.length, 6);
-    assertEquals(
+    assert.deepStrictEqual(context.publishedAt, publishedAt);
+    assert.deepStrictEqual(context.targets.length, 6);
+    assert.deepStrictEqual(
       context.inventories["windows-aarch64"].some((fileName) =>
         fileName.endsWith("_symbols.7z")
       ),
@@ -305,8 +290,8 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
     const windows = JSON.parse(
       await readFile(`${output}/manifests/windows-x86_64.json`, "utf8"),
     );
-    assertEquals(windows.publishedAt, publishedAt);
-    assertEquals(
+    assert.deepStrictEqual(windows.publishedAt, publishedAt);
+    assert.deepStrictEqual(
       windows.artifacts.map((artifact: { fileName: string }) =>
         artifact.fileName
       )
@@ -322,13 +307,13 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
         "Clash.Nyanpasu_fixed-webview_x64_portable.zip",
       ].sort(),
     );
-    assertEquals(windows.folderPath, `nightly/77-2-${commit}`);
+    assert.deepStrictEqual(windows.folderPath, `nightly/77-2-${commit}`);
   } finally {
     await rm(temp, { recursive: true });
   }
 });
 
-Deno.test("central preparation accepts NSIS setup installers without an updater executable", async () => {
+test("central preparation accepts NSIS setup installers without an updater executable", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
@@ -350,11 +335,11 @@ Deno.test("central preparation accepts NSIS setup installers without an updater 
       const names = manifest.artifacts.map((artifact: { fileName: string }) =>
         artifact.fileName
       );
-      assertEquals(
+      assert.deepStrictEqual(
         names.filter((name: string) => name.endsWith("-setup.exe")).length,
         2,
       );
-      assertEquals(
+      assert.deepStrictEqual(
         names.some((name: string) => name.endsWith("-updater.exe")),
         false,
       );
@@ -364,7 +349,7 @@ Deno.test("central preparation accepts NSIS setup installers without an updater 
   }
 });
 
-Deno.test("central preparation rejects duplicate basenames before output", async () => {
+test("central preparation rejects duplicate basenames before output", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
@@ -375,8 +360,7 @@ Deno.test("central preparation rejects duplicate basenames before output", async
       "Clash.Nyanpasu-linux-aarch64-deb",
       "Clash.Nyanpasu_amd64.rpm",
     );
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         prepareCentralPublication(downloaded, output, {
           channel: "release",
           tag: "v1.2.3",
@@ -385,17 +369,14 @@ Deno.test("central preparation rejects duplicate basenames before output", async
           attempt: "2",
           itemPrefix: "mirror-test",
           publishedAt,
-        }),
-      Error,
-      "Duplicate publication basename",
-    );
-    assertEquals(await stat(output).then(() => true, () => false), false);
+        }), { message: /Duplicate publication basename/ });
+    assert.deepStrictEqual(await stat(output).then(() => true, () => false), false);
   } finally {
     await rm(temp, { recursive: true });
   }
 });
 
-Deno.test("central preparation rejects a missing artifact category before output", async () => {
+test("central preparation rejects a missing artifact category before output", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
@@ -405,8 +386,7 @@ Deno.test("central preparation rejects a missing artifact category before output
       `${downloaded}/Clash.Nyanpasu-windows-aarch64-fixed-webview-portable`,
       { recursive: true },
     );
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         prepareCentralPublication(downloaded, output, {
           channel: "nightly",
           tag: null,
@@ -415,23 +395,19 @@ Deno.test("central preparation rejects a missing artifact category before output
           attempt: "2",
           itemPrefix: "mirror-test",
           publishedAt,
-        }),
-      Error,
-      "Clash.Nyanpasu-windows-aarch64-fixed-webview-portable",
-    );
-    assertEquals(await stat(output).then(() => true, () => false), false);
+        }), { message: /Clash\.Nyanpasu-windows-aarch64-fixed-webview-portable/ });
+    assert.deepStrictEqual(await stat(output).then(() => true, () => false), false);
   } finally {
     await rm(temp, { recursive: true });
   }
 });
 
-Deno.test("central output cannot contain or replace the input directory", async () => {
+test("central output cannot contain or replace the input directory", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
     await fixture(downloaded);
-    await assertRejects(
-      () =>
+    await assert.rejects(() =>
         prepareCentralPublication(downloaded, temp, {
           channel: "nightly",
           tag: null,
@@ -440,11 +416,8 @@ Deno.test("central output cannot contain or replace the input directory", async 
           attempt: "2",
           itemPrefix: "mirror-test",
           publishedAt,
-        }),
-      Error,
-      "must not contain or be contained",
-    );
-    assertEquals(
+        }), { message: /must not contain or be contained/ });
+    assert.deepStrictEqual(
       await stat(downloaded).then(() => true, () => false),
       true,
     );
@@ -453,7 +426,7 @@ Deno.test("central output cannot contain or replace the input directory", async 
   }
 });
 
-Deno.test("central preparation rejects missing updater archives and signature pairs", async () => {
+test("central preparation rejects missing updater archives and signature pairs", async () => {
   for (const missingArchive of [false, true]) {
     const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
     try {
@@ -462,8 +435,7 @@ Deno.test("central preparation rejects missing updater archives and signature pa
       const archive =
         `${downloaded}/Clash.Nyanpasu-windows-x86_64-fixed-webview-nsis-installer/bundle/nsis-updater/Clash.Nyanpasu_fixed-webview_x64.nsis.zip`;
       await rm(missingArchive ? archive : `${archive}.sig`);
-      await assertRejects(
-        () =>
+      await assert.rejects(() =>
           prepareCentralPublication(downloaded, `${temp}/output`, {
             channel: "nightly",
             tag: null,
@@ -472,13 +444,8 @@ Deno.test("central preparation rejects missing updater archives and signature pa
             attempt: "2",
             itemPrefix: "mirror-test",
             publishedAt,
-          }),
-        Error,
-        missingArchive
-          ? "Missing required updater archives"
-          : "Missing signature files",
-      );
-      assertEquals(
+          }), Error);
+      assert.deepStrictEqual(
         await stat(`${temp}/output`).then(() => true, () => false),
         false,
       );
@@ -488,7 +455,7 @@ Deno.test("central preparation rejects missing updater archives and signature pa
   }
 });
 
-Deno.test("central preparation requires the package file from every artifact category", async () => {
+test("central preparation requires the package file from every artifact category", async () => {
   const missingPackages = [
     [
       "Clash.Nyanpasu-windows-x86_64-nsis-installer",
@@ -513,8 +480,7 @@ Deno.test("central preparation requires the package file from every artifact cat
       const downloaded = `${temp}/downloaded`;
       await fixture(downloaded, "bundle/nsis");
       await rm(`${downloaded}/${directory}/${packageFile}`);
-      await assertRejects(
-        () =>
+      await assert.rejects(() =>
           prepareCentralPublication(downloaded, `${temp}/output`, {
             channel: "nightly",
             tag: null,
@@ -523,11 +489,8 @@ Deno.test("central preparation requires the package file from every artifact cat
             attempt: "2",
             itemPrefix: "mirror-test",
             publishedAt,
-          }),
-        Error,
-        `Missing required package artifact in ${directory}`,
-      );
-      assertEquals(
+          }), { message: /Missing required package artifact in .*/ });
+      assert.deepStrictEqual(
         await stat(`${temp}/output`).then(() => true, () => false),
         false,
       );

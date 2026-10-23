@@ -1,17 +1,21 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { changedParts, type Part, partsOf } from "./changed-parts.ts";
 
 const sorted = (parts: Iterable<Part>) => [...parts].sort();
 
-Deno.test("files map to the parts that check them", () => {
+test("files map to the parts that check them", () => {
   const cases: [string, Part[]][] = [
     ["README.md", []],
     ["docs/development/workflow.md", []],
     ["renovate.json", []],
     ["frontend/nyanpasu/src/main.tsx", ["frontend"]],
     ["frontend/README.md", ["frontend"]],
-    ["pnpm-lock.yaml", ["frontend"]],
-    ["tsconfig.test.json", ["frontend"]],
+    ["package.json", ["frontend", "scripts"]],
+    ["pnpm-lock.yaml", ["frontend", "scripts"]],
+    [".oxlintrc.json", ["frontend", "scripts"]],
+    ["tsconfig.test.json", ["frontend", "scripts"]],
+    ["frontend/rpc/package.json", ["frontend"]],
     ["frontend/rpc/src/rpc-bindings.ts", ["backend", "frontend"]],
     ["frontend/query/src/query-bindings.ts", ["backend", "frontend"]],
     ["backend/tauri/src/main.rs", ["backend"]],
@@ -20,16 +24,16 @@ Deno.test("files map to the parts that check them", () => {
     ["backend/README.md", ["backend"]],
     ["rust-toolchain.toml", ["backend"]],
     ["scripts/src/ci/changed-parts.ts", ["scripts"]],
-    ["deno.jsonc", ["scripts"]],
+    ["scripts/package.json", ["scripts"]],
     ["manifest/version.json", ["scripts"]],
     ["credits/components.toml", ["scripts"]],
   ];
   for (const [file, parts] of cases) {
-    assertEquals(sorted(partsOf(file)), sorted(parts), file);
+    assert.deepStrictEqual(sorted(partsOf(file)), sorted(parts), file);
   }
 });
 
-Deno.test("unclassified files check every part", () => {
+test("unclassified files check every part", () => {
   for (
     const file of [
       ".github/workflows/ci.yml",
@@ -37,7 +41,7 @@ Deno.test("unclassified files check every part", () => {
       "tools/log-index-bench/src/main.rs",
     ]
   ) {
-    assertEquals(
+    assert.deepStrictEqual(
       sorted(partsOf(file)),
       ["backend", "frontend", "scripts"],
       file,
@@ -45,9 +49,9 @@ Deno.test("unclassified files check every part", () => {
   }
 });
 
-Deno.test("a change checks the union of its files' parts", () => {
+test("a change checks the union of its files' parts", () => {
   // A grouped Tauri update touches npm manifests and the Cargo lockfile.
-  assertEquals(
+  assert.deepStrictEqual(
     sorted(
       changedParts([
         "package.json",
@@ -56,8 +60,8 @@ Deno.test("a change checks the union of its files' parts", () => {
         "backend/Cargo.lock",
       ]),
     ),
-    ["backend", "frontend"],
+    ["backend", "frontend", "scripts"],
   );
-  assertEquals(sorted(changedParts(["README.md", "docs/a.md"])), []);
-  assertEquals(sorted(changedParts([])), []);
+  assert.deepStrictEqual(sorted(changedParts(["README.md", "docs/a.md"])), []);
+  assert.deepStrictEqual(sorted(changedParts([])), []);
 });

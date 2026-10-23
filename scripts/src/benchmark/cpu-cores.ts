@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import koffi from "npm:koffi@3.3.3";
+import koffi from "koffi";
 
 /** A logical processor, its physical core and its efficiency class. */
 export type Processor = { processor: number; core: number; efficiency: number };

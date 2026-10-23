@@ -49,18 +49,25 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
     parts: ["frontend", "backend"],
   },
   {
+    // The task catalog, dependency locks and lint configuration are shared
+    // with the repository scripts.
     patterns: [
-      "frontend/**",
       "package.json",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
-      ".npmrc",
       "tsconfig*.json",
-      "vitest.config.ts",
-      "knip.config.ts",
       ".oxlintrc.json",
       ".prettierrc.cjs",
       ".prettierignore",
+    ],
+    parts: ["frontend", "scripts"],
+  },
+  {
+    patterns: [
+      "frontend/**",
+      ".npmrc",
+      "vitest.config.ts",
+      "knip.config.ts",
       ".stylelintrc.js",
       ".stylelintignore",
     ],
@@ -77,7 +84,7 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
     parts: ["backend"],
   },
   {
-    patterns: ["scripts/**", "deno.jsonc", "manifest/**", "credits/**"],
+    patterns: ["scripts/**", "manifest/**", "credits/**"],
     parts: ["scripts"],
   },
 ];

@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { merge } from "npm:es-toolkit@1.52.0";
+import { merge } from "es-toolkit";
 import { consola } from "../shared/logger.ts";
 import { readFile, writeFile } from "node:fs/promises";
 import { runCommand } from "../shared/command.ts";

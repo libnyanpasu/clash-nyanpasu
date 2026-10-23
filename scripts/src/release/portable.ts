@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { pathExists } from "../shared/path-exists.ts";
-import AdmZip from "npm:adm-zip";
+import AdmZip from "adm-zip";
 import { consola } from "../shared/logger.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 

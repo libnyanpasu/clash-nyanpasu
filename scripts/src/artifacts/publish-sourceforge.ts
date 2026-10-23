@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { Octokit } from "npm:octokit";
+import { Octokit } from "octokit";
 import {
   guardReleaseMirrorUpload,
   hashFile,

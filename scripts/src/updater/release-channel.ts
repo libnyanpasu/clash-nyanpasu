@@ -1,4 +1,4 @@
-import semver from "npm:semver";
+import semver from "semver";
 
 export type ReleaseChannel = "stable" | "beta";
 

@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { type CargoAboutOutput, cargoEntries } from "./cargo.ts";
 
 function crate(
@@ -21,7 +22,7 @@ function crate(
   };
 }
 
-Deno.test("crates keep their texts and notices; local crates are skipped", () => {
+test("crates keep their texts and notices; local crates are skipped", () => {
   const about: CargoAboutOutput = {
     crates: [
       crate("serde", { license: "MIT  OR  Apache-2.0" }),
@@ -41,8 +42,8 @@ Deno.test("crates keep their texts and notices; local crates are skipped", () =>
     about,
     new Map([["serde-id", ["serde notice"]]]),
   );
-  assertEquals(problems, []);
-  assertEquals(entries, [
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(entries, [
     {
       source: "cargo",
       name: "serde",
@@ -62,12 +63,12 @@ Deno.test("crates keep their texts and notices; local crates are skipped", () =>
   ]);
 });
 
-Deno.test("crates without a license text are reported", () => {
+test("crates without a license text are reported", () => {
   const { problems } = cargoEntries(
     { crates: [crate("bare")], licenses: [] },
     new Map(),
   );
-  assertEquals(problems, [
+  assert.deepStrictEqual(problems, [
     "cargo: bare@1.0.0 has no license text (MIT OR Apache-2.0)",
   ]);
 });

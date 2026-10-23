@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { createBinaryResolvers } from "./binaries.ts";
 import type { ArchMapping, SupportedArch, VersionManifest } from "./types.ts";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -103,7 +104,7 @@ function versionManifest(): VersionManifest {
   };
 }
 
-Deno.test("stable binary resolvers map assets for all supported platforms", () => {
+test("stable binary resolvers map assets for all supported platforms", () => {
   const manifest = versionManifest();
   for (const { platform, arch, label, host, executableSuffix } of platforms) {
     const binary = createBinaryResolvers({
@@ -114,36 +115,36 @@ Deno.test("stable binary resolvers map assets for all supported platforms", () =
       workspaceRoot: "/workspace",
     });
     const clash = binary.clash();
-    assertEquals(clash.targetFile, `clash-${host}${executableSuffix}`);
-    assertEquals(clash.exeFile, `clash-${label}-2026-10-01${executableSuffix}`);
-    assertEquals(
+    assert.deepStrictEqual(clash.targetFile, `clash-${host}${executableSuffix}`);
+    assert.deepStrictEqual(clash.exeFile, `clash-${label}-2026-10-01${executableSuffix}`);
+    assert.deepStrictEqual(
       clash.downloadURL,
       "https://github.com/zhongfly/Clash-premium-backup/releases/download/2026-10-01/clash-" +
         `${label}-2026-10-01`,
     );
 
     const mihomo = binary.mihomo();
-    assertEquals(mihomo.targetFile, `mihomo-${host}${executableSuffix}`);
-    assertEquals(
+    assert.deepStrictEqual(mihomo.targetFile, `mihomo-${host}${executableSuffix}`);
+    assert.deepStrictEqual(
       mihomo.exeFile,
       `mihomo-${label}-mihomo-v1${executableSuffix}`,
     );
-    assertEquals(
+    assert.deepStrictEqual(
       mihomo.downloadURL,
       `https://github.com/MetaCubeX/mihomo/releases/download/mihomo-v1/mihomo-${label}-mihomo-v1`,
     );
 
     const clashRs = binary.clashRs();
-    assertEquals(clashRs.targetFile, `clash-rs-${host}${executableSuffix}`);
-    assertEquals(clashRs.exeFile, `clash-rs-${label}-clash-rs-v1`);
-    assertEquals(
+    assert.deepStrictEqual(clashRs.targetFile, `clash-rs-${host}${executableSuffix}`);
+    assert.deepStrictEqual(clashRs.exeFile, `clash-rs-${label}-clash-rs-v1`);
+    assert.deepStrictEqual(
       clashRs.downloadURL,
       `https://github.com/ibigbug/clash-rs/releases/download/clash-rs-v1/clash-rs-${label}-clash-rs-v1`,
     );
 
     const meow = binary.meow();
-    assertEquals(meow.targetFile, `meow-${host}${executableSuffix}`);
-    assertEquals(
+    assert.deepStrictEqual(meow.targetFile, `meow-${host}${executableSuffix}`);
+    assert.deepStrictEqual(
       meow.exeFile,
       platform === "win32"
         ? "meow.exe"
@@ -152,16 +153,16 @@ Deno.test("stable binary resolvers map assets for all supported platforms", () =
         }/meow`,
     );
     const stableAsset = meowMapping()[label].replace("{}", "v0.22.0");
-    assertEquals(
+    assert.deepStrictEqual(
       meow.downloadURL,
       `https://github.com/meow-rs/meow-rs/releases/download/v0.22.0/${stableAsset}`,
     );
 
     const meowAlpha = binary.meowAlpha();
-    assertEquals(meowAlpha.name, "meow-alpha");
-    assertEquals(meowAlpha.version, "alpha-v1");
-    assertEquals(meowAlpha.targetFile, `meow-alpha-${host}${executableSuffix}`);
-    assertEquals(
+    assert.deepStrictEqual(meowAlpha.name, "meow-alpha");
+    assert.deepStrictEqual(meowAlpha.version, "alpha-v1");
+    assert.deepStrictEqual(meowAlpha.targetFile, `meow-alpha-${host}${executableSuffix}`);
+    assert.deepStrictEqual(
       meowAlpha.exeFile,
       platform === "win32"
         ? "meow.exe"
@@ -170,15 +171,15 @@ Deno.test("stable binary resolvers map assets for all supported platforms", () =
         }/meow`,
     );
     const alphaAsset = meowMapping()[label].replace("{}", "alpha-v1");
-    assertEquals(meowAlpha.tmpFile, alphaAsset);
-    assertEquals(
+    assert.deepStrictEqual(meowAlpha.tmpFile, alphaAsset);
+    assert.deepStrictEqual(
       meowAlpha.downloadURL,
       `https://github.com/meow-rs/meow-rs/releases/download/Prerelease-Alpha/${alphaAsset}`,
     );
   }
 });
 
-Deno.test("nyanpasu-service version and asset derive from its Cargo manifest", async () => {
+test("nyanpasu-service version and asset derive from its Cargo manifest", async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   const manifestPath =
     `${workspaceRoot}/backend/nyanpasu-runtime/nyanpasu_service/Cargo.toml`;
@@ -198,7 +199,7 @@ Deno.test("nyanpasu-service version and asset derive from its Cargo manifest", a
       arch: "x64",
       workspaceRoot,
     });
-    assertEquals(await binary.nyanpasuService(), {
+    assert.deepStrictEqual(await binary.nyanpasuService(), {
       name: "nyanpasu-service",
       version: "v2.3.4-rc.1",
       targetFile: "nyanpasu-service-x86_64-pc-windows-msvc.exe",
@@ -212,7 +213,7 @@ Deno.test("nyanpasu-service version and asset derive from its Cargo manifest", a
   }
 });
 
-Deno.test("Meow Alpha refresh resolves the current rolling tag asset", async () => {
+test("Meow Alpha refresh resolves the current rolling tag asset", async () => {
   const originalFetch = globalThis.fetch;
   const requested: string[] = [];
   globalThis.fetch = (input) => {
@@ -232,19 +233,19 @@ Deno.test("Meow Alpha refresh resolves the current rolling tag asset", async () 
       workspaceRoot: "/workspace",
     });
     const pinned = binary.meowAlpha();
-    assertEquals(pinned.version, "alpha-v1");
-    assertEquals(typeof pinned.refresh, "function");
+    assert.deepStrictEqual(pinned.version, "alpha-v1");
+    assert.deepStrictEqual(typeof pinned.refresh, "function");
 
     const refreshed = await pinned.refresh!();
-    assertEquals(requested, [
+    assert.deepStrictEqual(requested, [
       "https://github.com/meow-rs/meow-rs/releases/expanded_assets/Prerelease-Alpha",
     ]);
-    assertEquals(refreshed.version, "alpha-1fd134a");
-    assertEquals(
+    assert.deepStrictEqual(refreshed.version, "alpha-1fd134a");
+    assert.deepStrictEqual(
       refreshed.tmpFile,
       "meow-alpha-1fd134a-x86_64-apple-darwin.tar.gz",
     );
-    assertEquals(
+    assert.deepStrictEqual(
       refreshed.downloadURL,
       "https://github.com/meow-rs/meow-rs/releases/download/Prerelease-Alpha/" +
         "meow-alpha-1fd134a-x86_64-apple-darwin.tar.gz",
@@ -254,7 +255,7 @@ Deno.test("Meow Alpha refresh resolves the current rolling tag asset", async () 
   }
 });
 
-Deno.test("Mihomo Alpha refresh re-resolves the live version", async () => {
+test("Mihomo Alpha refresh re-resolves the live version", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input) =>
     String(input).endsWith("/version.txt")
@@ -272,13 +273,13 @@ Deno.test("Mihomo Alpha refresh re-resolves the live version", async () => {
       workspaceRoot: "/workspace",
     });
     const pinned = await binary.mihomoAlpha();
-    assertEquals(pinned.version, "alpha-bc76c13");
-    assertEquals(typeof pinned.refresh, "function");
+    assert.deepStrictEqual(pinned.version, "alpha-bc76c13");
+    assert.deepStrictEqual(typeof pinned.refresh, "function");
 
     const refreshed = await pinned.refresh!();
-    assertEquals(refreshed.version, "alpha-bc76c13");
-    assertEquals(refreshed.tmpFile, "mihomo-alpha-linux-amd64-alpha-bc76c13");
-    assertEquals(
+    assert.deepStrictEqual(refreshed.version, "alpha-bc76c13");
+    assert.deepStrictEqual(refreshed.tmpFile, "mihomo-alpha-linux-amd64-alpha-bc76c13");
+    assert.deepStrictEqual(
       refreshed.downloadURL,
       "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/" +
         "mihomo-alpha-linux-amd64-alpha-bc76c13",

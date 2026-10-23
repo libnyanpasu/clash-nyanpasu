@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { globby } from "npm:globby";
+import { globby } from "globby";
 import { linuxPackageVersions } from "./prepare-release.ts";
 import { consola } from "../shared/logger.ts";
 import {

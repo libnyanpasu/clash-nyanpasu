@@ -1,9 +1,9 @@
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { runCommand } from "../shared/command.ts";
-import { Octokit } from "npm:octokit";
-import semver from "npm:semver";
-import { z } from "npm:zod";
+import { Octokit } from "octokit";
+import semver from "semver";
+import { z } from "zod";
 import { colorize, consola } from "../shared/logger.ts";
 import {
   collectUpdaterPlatforms,

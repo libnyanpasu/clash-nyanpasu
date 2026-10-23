@@ -93,6 +93,6 @@ export function printGateResult(
     "To accept intentional residual changes after review, regenerate the committed snapshot:",
   );
   console.log(
-    `  deno task architecture-ledger --write-snapshot --snapshot ${snapshotPath}`,
+    `  pnpm run architecture-ledger --write-snapshot --snapshot ${snapshotPath}`,
   );
 }

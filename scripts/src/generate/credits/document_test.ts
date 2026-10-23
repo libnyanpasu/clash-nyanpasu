@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { buildCreditsDocument, type CreditEntry } from "./document.ts";
 
 const ENTRIES: CreditEntry[] = [
@@ -13,24 +14,24 @@ const ENTRIES: CreditEntry[] = [
   { source: "cargo", name: "Anyhow", version: "1.0.0", texts: ["MIT text"] },
 ];
 
-Deno.test("license texts are normalized and stored once", async () => {
+test("license texts are normalized and stored once", async () => {
   const document = await buildCreditsDocument(ENTRIES);
-  assertEquals(Object.values(document.texts).sort(), ["MIT text", "NOTICE"]);
+  assert.deepStrictEqual(Object.values(document.texts).sort(), ["MIT text", "NOTICE"]);
 
   const [mit] = document.packages.find((pkg) => pkg.name === "zod")!.textIds;
-  assertEquals(
+  assert.deepStrictEqual(
     document.packages.find((pkg) => pkg.name === "serde")!.textIds[0],
     mit,
   );
 });
 
-Deno.test("documents are ordered and identical for the same inputs", async () => {
+test("documents are ordered and identical for the same inputs", async () => {
   const document = await buildCreditsDocument(ENTRIES);
-  assertEquals(
+  assert.deepStrictEqual(
     document.packages.map((pkg) => `${pkg.source}:${pkg.name}`),
     ["bundled:mihomo", "cargo:Anyhow", "cargo:serde", "npm:zod"],
   );
-  assertEquals(
+  assert.deepStrictEqual(
     JSON.stringify(await buildCreditsDocument([...ENTRIES].reverse())),
     JSON.stringify(document),
   );

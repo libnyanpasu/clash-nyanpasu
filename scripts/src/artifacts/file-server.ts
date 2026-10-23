@@ -170,7 +170,7 @@ export async function uploadChunk(
       "Content-Range": `bytes ${start}-${end}/${total}`,
       "Content-Type": "application/octet-stream",
     },
-    body: chunk as unknown as BodyInit,
+    body: chunk as unknown as RequestInit["body"],
   });
 
   if (!resp.ok) {

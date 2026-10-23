@@ -85,10 +85,11 @@ if (import.meta.main) {
       if (args.backend !== "telegram" && args.mode !== "register") {
         try {
           if (args.mode === "upload") {
-            const result = await runCommand("deno", {
+            const result = await runCommand(process.execPath, {
               args: [
-                "task",
+                "--run",
                 "sourceforge:upload",
+                "--",
                 manifestPath,
                 path.join(reports, "sourceforge-report.json"),
               ],
@@ -181,10 +182,11 @@ if (import.meta.main) {
     );
   }
   if (args.backend !== "sourceforge") {
-    const result = await runCommand("deno", {
+    const result = await runCommand(process.execPath, {
       args: [
-        "task",
+        "--run",
         "telegram:publish",
+        "--",
         "--publication-dir",
         publicationDir,
         "--report",

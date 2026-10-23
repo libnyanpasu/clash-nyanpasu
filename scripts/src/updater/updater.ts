@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { Octokit } from "npm:octokit";
+import { Octokit } from "octokit";
 import { colorize, consola } from "../shared/logger.ts";
 import {
   collectUpdaterPlatforms,

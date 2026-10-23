@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { longestTasks, mainThread, type TraceEvent } from "./trace-report.ts";
 
 const slice = (tid: number, name: string, ts: number, dur: number) => ({
@@ -38,8 +39,8 @@ const events: TraceEvent[] = [
   slice(2, "RunTask", 0, 50_000),
 ];
 
-Deno.test("longestTasks splits a main-thread task into its steps", () => {
-  assertEquals(longestTasks(mainThread(events), 1), [
+test("longestTasks splits a main-thread task into its steps", () => {
+  assert.deepStrictEqual(longestTasks(mainThread(events), 1), [
     {
       ms: 10,
       steps: [
@@ -51,8 +52,8 @@ Deno.test("longestTasks splits a main-thread task into its steps", () => {
   ]);
 });
 
-Deno.test("mainThread leaves the other threads out", () => {
-  assertEquals(
+test("mainThread leaves the other threads out", () => {
+  assert.deepStrictEqual(
     longestTasks(mainThread(events), 3).map(({ ms }) => ms),
     [10, 2],
   );

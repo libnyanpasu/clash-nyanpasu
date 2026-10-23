@@ -37,7 +37,7 @@ alternating runs pinned to one kind of core, and read changes smaller than a
 frame with suspicion. From the repository root,
 
 ```sh
-VITE_PERF_THROTTLE=4 deno task bench:ab --rounds 3 --cores performance traffic
+VITE_PERF_THROTTLE=4 pnpm run bench:ab --rounds 3 --cores performance traffic
 ```
 
 runs a benchmark without (A) and with (B) the working tree's frontend changes,
@@ -90,7 +90,7 @@ working tree ends with the changes applied.
   such runs only with each other.
 - `VITE_PERF_PROFILE` records a CPU profile, which opens in Chrome DevTools'
   Performance panel. From the repository root,
-  `deno task bench:profile --actions 6 <file>` prints its time per action by
+  `pnpm run bench:profile --actions 6 <file>` prints its time per action by
   category, source and function, and `--callers <function>` the stacks under
   one function's own time, such as `getBoundingClientRect` for a forced
   layout.
@@ -98,7 +98,7 @@ working tree ends with the changes applied.
   which splits what a profile shows as `(program)` into style, layout, paint
   and compositing. A recording paused in between, such as the traffic
   switches', is written one trace per piece: `<name>-1.json`, ...
-  `deno task bench:trace <files>` prints each trace's longest main-thread
+  `pnpm run bench:trace <files>` prints each trace's longest main-thread
   tasks and the time of each step in them.
 - WebKit has neither; use `VITE_PERF_TRACE_REFLOW` and `avgSyncTime` to split
   its time between JavaScript and style/layout.

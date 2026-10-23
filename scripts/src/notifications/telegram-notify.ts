@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { runCommand } from "../shared/command.ts";
-import { Bot } from "npm:grammy";
+import { Bot } from "grammy";
 import { consola } from "../shared/logger.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import { readFile } from "node:fs/promises";

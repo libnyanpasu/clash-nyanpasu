@@ -1,59 +1,72 @@
-import { type ReactNode } from 'react'
+import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
+import SettingsOutlineRounded from '~icons/material-symbols/settings-outline-rounded'
+import { useId } from 'react'
 import { m } from '@/paraglide/messages'
 import { Link } from '@tanstack/react-router'
+import { sourceLabelOf } from '../../_modules/profile-card-features'
+import {
+  StageLabel,
+  StepGroup,
+  StepRowText,
+  stepRowVariants,
+} from '../../_modules/step-list'
 import { TransformChain } from '../../_modules/transform-chain-list'
 import type { TransformChainDraft } from '../../_modules/use-transform-chain-draft'
 import {
   profileTypeOf,
-  transformLabelOf,
   type ConfigProfile,
   type TransformProfile,
 } from '../../_modules/utils'
 import { BUILTIN_STEP_LABELS } from './builtin-steps'
-import PipelineStage from './pipeline-stage'
-import { RowTitle, rowVariants } from './row'
+import Column, { ColumnHead } from './column'
 
-const configKindLabel = (config: ConfigProfile) =>
-  config.config.type === 'file'
-    ? m.profile_kind_file()
-    : m.profile_kind_composition()
+const chevronClassName = 'text-on-surface-variant size-5 shrink-0'
 
-const linkClassName =
-  'text-primary hover:bg-primary/8 focus-visible:outline-primary inline-flex w-fit rounded-md px-2 py-1 text-sm font-medium focus-visible:outline-2'
-
-/** A row that opens the detail page of the profile it names. */
-function ProfileLinkRow({
-  profile,
-  type,
+/** A dim row that opens the detail page of the config it speaks of. */
+function ConfigRow({
+  active,
+  title,
+  sub,
+  slot = 'profile-global-pipeline-link-row',
 }: {
-  profile: ConfigProfile | TransformProfile
-  type?: string
+  active: ConfigProfile
+  title: string
+  sub?: string
+  slot?: string
 }) {
   return (
     <Link
       to="/main/profiles/$type/detail/$uid"
-      params={{ type: profileTypeOf(profile), uid: profile.uid }}
-      data-slot="profile-global-pipeline-link-row"
-      className={rowVariants({ interactive: true })}
+      params={{ type: profileTypeOf(active), uid: active.uid }}
+      data-slot={slot}
+      className={stepRowVariants({ interactive: true })}
     >
-      <RowTitle name={profile.name} type={type} />
+      <StepRowText dim title={title} sub={sub} />
+
+      <ChevronRightRounded className={chevronClassName} aria-hidden />
     </Link>
   )
 }
 
 function SourceStage({ active }: { active?: ConfigProfile }) {
-  if (!active) {
-    return (
-      <p
-        data-slot="profile-global-pipeline-source-empty"
-        className="text-on-surface-variant px-3 text-sm"
-      >
-        {m.profile_global_context_none()}
-      </p>
-    )
-  }
-
-  return <ProfileLinkRow profile={active} type={configKindLabel(active)} />
+  return (
+    <StepGroup>
+      {active ? (
+        <ConfigRow
+          active={active}
+          title={active.name}
+          sub={m.profile_global_source_sub({ kind: sourceLabelOf(active) })}
+        />
+      ) : (
+        <div
+          data-slot="profile-global-pipeline-source-empty"
+          className={stepRowVariants()}
+        >
+          <StepRowText dim title={m.profile_global_context_none()} />
+        </div>
+      )}
+    </StepGroup>
+  )
 }
 
 function ProfileTransformsStage({
@@ -63,67 +76,65 @@ function ProfileTransformsStage({
   active?: ConfigProfile
   scoped: TransformProfile[]
 }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      {scoped.length === 0 ? (
-        <p
-          data-slot="profile-global-pipeline-scoped-empty"
-          className="text-on-surface-variant px-3 text-sm"
-        >
-          {m.profile_global_profile_transforms_empty()}
-        </p>
-      ) : (
-        <ul
-          data-slot="profile-global-pipeline-scoped"
-          className="flex min-w-0 flex-col gap-2"
-        >
-          {scoped.map((profile, index) => (
-            <li key={`${profile.uid}-${index}`}>
-              <ProfileLinkRow
-                profile={profile}
-                type={transformLabelOf(profile)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+  const empty = scoped.length === 0
 
-      {active && (
-        <Link
-          to="/main/profiles/$type/detail/$uid"
-          params={{ type: profileTypeOf(active), uid: active.uid }}
-          data-slot="profile-global-pipeline-scoped-edit"
-          className={linkClassName}
+  return (
+    <StepGroup>
+      {active ? (
+        <ConfigRow
+          active={active}
+          slot={
+            empty
+              ? 'profile-global-pipeline-scoped-empty'
+              : 'profile-global-pipeline-scoped'
+          }
+          title={
+            empty
+              ? m.profile_global_profile_transforms_empty()
+              : m.profile_global_scoped_title({ count: scoped.length })
+          }
+          sub={
+            empty
+              ? undefined
+              : m.profile_global_scoped_sub({
+                  names: scoped.map((profile) => profile.name).join(', '),
+                })
+          }
+        />
+      ) : (
+        <div
+          data-slot="profile-global-pipeline-scoped-empty"
+          className={stepRowVariants()}
         >
-          {m.profile_global_profile_transforms_edit()}
-        </Link>
+          <StepRowText
+            dim
+            title={m.profile_global_profile_transforms_empty()}
+          />
+        </div>
       )}
-    </div>
+    </StepGroup>
   )
 }
 
 function NyanpasuStage() {
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <ol
-        data-slot="profile-global-pipeline-builtin"
-        className="bg-surface-variant/40 flex min-w-0 flex-col gap-1.5 rounded-3xl px-4 py-3"
-      >
-        {Object.entries(BUILTIN_STEP_LABELS).map(([kind, label]) => (
-          <li key={kind} className="text-sm">
-            {label()}
-          </li>
-        ))}
-      </ol>
+  const labels = Object.values(BUILTIN_STEP_LABELS)
 
+  return (
+    <StepGroup>
       <Link
         to="/main/settings/clash/runtime"
-        data-slot="profile-global-pipeline-runtime-link"
-        className={linkClassName}
+        data-slot="profile-global-pipeline-builtin"
+        className={stepRowVariants({ interactive: true })}
       >
-        {m.settings_label_runtime()}
+        <StepRowText
+          dim
+          title={m.profile_global_builtin_title({ count: labels.length })}
+          sub={labels.map((label) => label()).join(', ')}
+        />
+
+        <SettingsOutlineRounded className={chevronClassName} aria-hidden />
       </Link>
-    </div>
+    </StepGroup>
   )
 }
 
@@ -142,43 +153,50 @@ export default function Pipeline({
   scoped: TransformProfile[]
   chain: TransformChainDraft
   traceStepOf: (uid: string, index: number) => string
-}): ReactNode {
+}) {
+  const headingId = useId()
+
   return (
-    <ol
-      data-slot="profile-global-pipeline"
-      className="flex min-w-0 flex-col gap-5 px-1 pb-2"
+    <Column
+      data-slot="profile-global-pipeline-panel"
+      aria-labelledby={headingId}
     >
-      <PipelineStage
-        index={1}
-        name={m.profile_global_stage_source()}
-        description={m.profile_global_stage_source_description()}
-      >
+      <ColumnHead id={headingId} title={m.profile_global_pipeline_title()}>
+        <span className="text-on-surface-variant truncate text-xs font-medium">
+          {m.profile_global_pipeline_aside()}
+        </span>
+      </ColumnHead>
+
+      <div data-slot="profile-global-pipeline-stage">
+        <StageLabel index={1}>{m.profile_global_stage_source()}</StageLabel>
         <SourceStage active={active} />
-      </PipelineStage>
+      </div>
 
-      <PipelineStage
-        index={2}
-        name={m.profile_global_stage_profile()}
-        description={m.profile_global_stage_profile_description()}
-      >
+      <div data-slot="profile-global-pipeline-stage">
+        <StageLabel index={2}>{m.profile_global_stage_profile()}</StageLabel>
         <ProfileTransformsStage active={active} scoped={scoped} />
-      </PipelineStage>
+      </div>
 
-      <PipelineStage
-        index={3}
-        name={m.profile_global_stage_global()}
-        description={m.profile_global_transform_hint()}
-      >
-        <TransformChain chain={chain} traceStepOf={traceStepOf} />
-      </PipelineStage>
+      <div data-slot="profile-global-pipeline-stage">
+        <StageLabel index={3} aside={m.profile_global_stage_editable()}>
+          {m.profile_global_stage_global()}
+        </StageLabel>
 
-      <PipelineStage
-        index={4}
-        name={m.profile_global_stage_nyanpasu()}
-        description={m.profile_global_stage_nyanpasu_description()}
-      >
+        <TransformChain
+          variant="step"
+          chain={chain}
+          traceStepOf={traceStepOf}
+          empty={{
+            message: m.profile_global_chain_empty(),
+            hint: m.profile_global_chain_empty_hint(),
+          }}
+        />
+      </div>
+
+      <div data-slot="profile-global-pipeline-stage">
+        <StageLabel index={4}>{m.profile_global_stage_nyanpasu()}</StageLabel>
         <NyanpasuStage />
-      </PipelineStage>
-    </ol>
+      </div>
+    </Column>
   )
 }

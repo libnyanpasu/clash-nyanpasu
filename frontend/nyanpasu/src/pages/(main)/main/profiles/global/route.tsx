@@ -1,15 +1,15 @@
-import { useMemo } from 'react'
-import { Button } from '@nyanpasu/ui/button'
+import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
+import { useCallback, useMemo } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { isConfigItem, scopedTransformsOf, useProfile } from '@nyanpasu/query'
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import { CompactButton } from '../_modules/compact-controls'
 import PageToolbar from '../_modules/page-toolbar'
 import { useTransformChainDraft } from '../_modules/use-transform-chain-draft'
 import { isChainProfile } from '../_modules/utils'
 import LeaveDialog from './_modules/leave-dialog'
 import Library from './_modules/library'
-import Panel from './_modules/panel'
 import Pipeline from './_modules/pipeline'
 
 export const Route = createFileRoute('/(main)/main/profiles/global')({
@@ -52,6 +52,23 @@ function RouteComponent() {
     return scopedTransformsOf(active).flatMap((uid) => byUid.get(uid) ?? [])
   }, [active, items])
 
+  // Which configs run each transform, for the library rows.
+  const usedBy = useMemo(() => {
+    const names = new Map<string, string[]>()
+
+    for (const item of items ?? []) {
+      if (!isConfigItem(item)) continue
+
+      for (const uid of new Set(scopedTransformsOf(item))) {
+        names.set(uid, [...(names.get(uid) ?? []), item.name])
+      }
+    }
+
+    return names
+  }, [items])
+
+  const usedByOf = useCallback((uid: string) => usedBy.get(uid) ?? [], [usedBy])
+
   const blocker = useBlocker({
     shouldBlockFn: () => true,
     disabled: !chain.isChanged,
@@ -70,11 +87,25 @@ function RouteComponent() {
         context={
           <p
             data-slot="profile-global-context"
-            className="text-on-surface-variant truncate text-sm"
+            className="text-on-surface-variant flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-3 text-[13px] shadow-[inset_0_0_0_1px_var(--color-outline-variant)] max-md:hidden"
           >
-            {active
-              ? m.profile_global_context_active({ name: active.name })
-              : m.profile_global_context_none()}
+            <DescriptionOutlineRounded
+              className="size-4 shrink-0"
+              aria-hidden
+            />
+
+            {active ? (
+              <span className="truncate">
+                {m.profile_global_applies_to()}{' '}
+                <strong className="text-on-surface font-semibold">
+                  {active.name}
+                </strong>
+              </span>
+            ) : (
+              <span className="truncate">
+                {m.profile_global_context_none()}
+              </span>
+            )}
           </p>
         }
         actions={
@@ -83,50 +114,45 @@ function RouteComponent() {
               <span
                 role="status"
                 data-slot="profile-global-unapplied"
-                className="bg-tertiary-container text-on-tertiary-container rounded-full px-3 py-1 text-xs font-medium"
+                className="bg-tertiary-container text-on-tertiary-container flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap before:size-1.5 before:rounded-full before:bg-current"
               >
                 {m.profile_global_unapplied()}
               </span>
             )}
 
-            <Button
+            <CompactButton
               onClick={chain.handleReset}
               disabled={!chain.isChanged || chain.actionsDisabled}
             >
               {m.common_reset()}
-            </Button>
+            </CompactButton>
 
-            <Button
-              variant="flat"
+            <CompactButton
+              tone="filled"
               onClick={chain.handleApply}
               disabled={!chain.isChanged || chain.actionsDisabled}
             >
               {m.common_apply()}
-            </Button>
+            </CompactButton>
           </>
         }
       />
 
-      {/* One scroll region while the panels are stacked; from the wide layout
-          on, each panel scrolls on its own and this area only clips. */}
+      {/* One scroll region while the columns are stacked; from the wide layout
+          on, each column scrolls on its own and this area only clips. */}
       <ScrollArea
         data-slot="profile-global-body"
         className="min-h-0 flex-1 @[56rem]:[&>[data-slot=scroll-area-viewport]]:overflow-clip!"
       >
-        <div className="grid gap-6 px-4 pb-4 md:px-6 @[56rem]:h-full @[56rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @[56rem]:grid-rows-[minmax(0,1fr)]">
-          <Panel
-            data-slot="profile-global-pipeline-panel"
-            title={m.profile_global_pipeline_title()}
-          >
-            <Pipeline
-              active={active}
-              scoped={scoped}
-              chain={chain}
-              traceStepOf={traceStepOf}
-            />
-          </Panel>
+        <div className="flex flex-col @[56rem]:h-full @[56rem]:flex-row">
+          <Pipeline
+            active={active}
+            scoped={scoped}
+            chain={chain}
+            traceStepOf={traceStepOf}
+          />
 
-          <Library chain={chain} />
+          <Library chain={chain} usedByOf={usedByOf} />
         </div>
       </ScrollArea>
 

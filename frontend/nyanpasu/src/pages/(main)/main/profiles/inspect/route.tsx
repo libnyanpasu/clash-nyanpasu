@@ -30,7 +30,7 @@ import {
 } from './_modules/inspect-steps'
 import InspectToolbar, { type SnapshotView } from './_modules/inspect-toolbar'
 import StepDetail, { defaultTab, type InspectTab } from './_modules/step-detail'
-import StepRail, { type RailView } from './_modules/step-rail'
+import StepRail from './_modules/step-rail'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
@@ -55,7 +55,6 @@ function RouteComponent() {
   const openProfile = useOpenProfile(profiles)
 
   const [view, setView] = useState<SnapshotView>('latest')
-  const [railView, setRailView] = useState<RailView>('list')
   const [onlyChanged, setOnlyChanged] = useState(false)
   const [fieldQuery, setFieldQuery] = useState('')
   const [stepsOpen, setStepsOpen] = useState(false)
@@ -142,16 +141,13 @@ function RouteComponent() {
         className={className}
         steps={visibleSteps}
         allSteps={steps}
-        nodes={snapshot.nodes}
         selectedKey={selected?.key}
         onSelect={(key) => {
           selectStep(key)
           onSelected?.()
         }}
         profiles={profiles}
-        onOpenProfile={openProfile}
-        view={railView}
-        onViewChange={setRailView}
+        targetCore={snapshot.target_core}
         onlyChanged={onlyChanged}
         onOnlyChangedChange={setOnlyChanged}
         matchedKeys={matchedKeys}
@@ -210,6 +206,7 @@ function RouteComponent() {
             step={selected}
             steps={steps}
             profiles={profiles}
+            targetCore={snapshot.target_core}
             onOpenProfile={openProfile}
             tab={tab}
             onTabChange={(next) =>

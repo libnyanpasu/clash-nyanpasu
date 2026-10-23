@@ -243,7 +243,7 @@ async function open({
   const libraryNames = () =>
     Array.from(
       view.container.querySelectorAll(
-        '[data-slot="profile-global-library-row"] p',
+        '[data-slot="profile-global-library-row"] [data-slot="step-row-title"]',
       ),
     ).map((element) => element.textContent)
 
@@ -258,11 +258,11 @@ async function open({
     body: () => viewportOf('profile-global-body'),
     pipeline: () =>
       query<HTMLElement>(
-        '[data-slot="profile-global-pipeline-panel"] [data-slot="profile-global-panel-scroll-area"] > [data-slot="scroll-area-viewport"]',
+        '[data-slot="profile-global-pipeline-panel"] [data-slot="profile-global-column-scroll-area"] > [data-slot="scroll-area-viewport"]',
       )!,
     library: () =>
       query<HTMLElement>(
-        '[data-slot="profile-global-library"] [data-slot="profile-global-panel-scroll-area"] > [data-slot="scroll-area-viewport"]',
+        '[data-slot="profile-global-library"] [data-slot="profile-global-column-scroll-area"] > [data-slot="scroll-area-viewport"]',
       )!,
     apply: () =>
       view.getByRole('button', { name: m.common_apply(), exact: true }),
@@ -536,17 +536,17 @@ test('the library searches, filters by type and explains each empty list', async
     .toBeVisible()
 
   await search.fill('')
-  const filter = page.getByRole('radiogroup', {
+  const filter = page.getByRole('group', {
     name: m.profile_global_library_filter(),
   })
 
-  await filter.getByRole('radio', { name: 'JavaScript' }).click()
+  await filter.getByRole('button', { name: 'JavaScript' }).click()
   await expect.poll(() => ui.libraryNames()).toEqual(['useself', 'warp'])
 
-  await filter.getByRole('radio', { name: 'YAML' }).click()
+  await filter.getByRole('button', { name: 'YAML' }).click()
   await expect.poll(() => ui.libraryNames()).toEqual(['DNS override'])
 
-  await filter.getByRole('radio', { name: 'Lua' }).click()
+  await filter.getByRole('button', { name: 'Lua' }).click()
   await search.fill('warp')
   await expect
     .element(page.getByText(m.profile_global_library_no_match()))
@@ -612,12 +612,7 @@ test('Open in editor window is offered by library rows and chain rows', async ({
   })
 
   await ui.view
-    .getByRole('button', {
-      name: m.profile_chain_editor_row_actions({ name: 'useself' }),
-    })
-    .click()
-  await page
-    .getByRole('menuitem', { name: m.profile_chain_editor_open_editor() })
+    .getByRole('button', { name: m.profile_chain_editor_open_editor() })
     .click()
 
   await expect.poll(() => ui.writes.length).toBe(2)
@@ -633,13 +628,7 @@ test('a chain row traces its global step in Inspect', async ({
   const ui = await open()
   onTestFinished(finish(ui))
 
-  await ui.view
-    .getByRole('button', {
-      name: m.profile_chain_editor_row_actions({ name: 'useself' }),
-    })
-    .click()
-
-  const trace = page.getByRole('menuitem', {
+  const trace = page.getByRole('link', {
     name: m.profile_chain_editor_trace(),
   })
   await expect.element(trace).toBeVisible()
@@ -655,11 +644,7 @@ test('the source and the profile transforms link to their detail pages', async (
   onTestFinished(finish(ui))
 
   await expect
-    .element(
-      page.getByText(
-        m.profile_global_context_active({ name: 'Remote Profile' }),
-      ),
-    )
+    .element(page.getByText(m.profile_global_applies_to(), { exact: false }))
     .toBeVisible()
 
   const hrefOf = (selector: string) =>
@@ -671,11 +656,9 @@ test('the source and the profile transforms link to their detail pages', async (
     ),
   ).map((link) => link.getAttribute('href'))
 
-  expect(links).toEqual([
-    '/main/profiles/profile/detail/cfg',
-    '/main/profiles/merge/detail/dns',
-  ])
-  expect(hrefOf('[data-slot="profile-global-pipeline-scoped-edit"]')).toBe(
+  // The profile's own transforms are one row that opens the config.
+  expect(links).toEqual(['/main/profiles/profile/detail/cfg'])
+  expect(hrefOf('[data-slot="profile-global-pipeline-scoped"]')).toBe(
     '/main/profiles/profile/detail/cfg',
   )
 })
@@ -704,14 +687,12 @@ test('the Nyanpasu stage lists every built-in step and links to Runtime Config',
   const labels = Object.values(BUILTIN_STEP_LABELS).map((label) => label())
   expect(labels).toHaveLength(5)
 
-  const steps = ui.query('[data-slot="profile-global-pipeline-builtin"]')!
-  expect(
-    Array.from(steps.querySelectorAll('li')).map((li) => li.textContent),
-  ).toEqual(labels)
-
   const link = ui.query<HTMLAnchorElement>(
-    '[data-slot="profile-global-pipeline-runtime-link"]',
+    '[data-slot="profile-global-pipeline-builtin"]',
   )!
   expect(link.getAttribute('href')).toBe('/main/settings/clash/runtime')
-  expect(link.textContent).toBe(m.settings_label_runtime())
+  expect(link.textContent).toContain(
+    m.profile_global_builtin_title({ count: labels.length }),
+  )
+  expect(link.textContent).toContain(labels.join(', '))
 })

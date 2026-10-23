@@ -1,58 +1,46 @@
-import EditRounded from '~icons/material-symbols/edit-rounded'
+import CheckSmallRounded from '~icons/material-symbols/check-small-rounded'
+import CircleRounded from '~icons/material-symbols/circle-rounded'
 import ErrorRounded from '~icons/material-symbols/error-rounded'
-import FlagRounded from '~icons/material-symbols/flag-rounded'
-import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
-import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
-import RemoveRounded from '~icons/material-symbols/remove-rounded'
+import InputRounded from '~icons/material-symbols/input-rounded'
+import OutputRounded from '~icons/material-symbols/output-rounded'
+import RadioButtonUncheckedRounded from '~icons/material-symbols/radio-button-unchecked-rounded'
+import StarRounded from '~icons/material-symbols/star-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { useEffect, useRef, type ComponentType, type SVGProps } from 'react'
-import {
-  NavigationList,
-  NavigationListGroup,
-  NavigationListItem,
-  NavigationListItemIcon,
-  NavigationListItemText,
-  type NavigationListItemColor,
-} from '@nyanpasu/ui/navigation-list'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
-import { Switch } from '@nyanpasu/ui/switch'
 import type { ProfileLookup } from '@/components/profile-label'
 import { m } from '@/paraglide/messages'
-import type { RuntimeInspectionNode } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import ChainGraph from './chain-graph'
+import {
+  StageLabel,
+  StepGroup,
+  StepRowText,
+  stepRowVariants,
+} from '../../_modules/step-list'
 import { revealWithin } from './find-bar'
-import { stageLabel, statusLabel, stepHeadline } from './inspect-labels'
+import {
+  stageLabel,
+  statusLabel,
+  stepHeadline,
+  stepMeta,
+  stepSub,
+} from './inspect-labels'
 import { STAGES, type Step, type StepStatus } from './inspect-steps'
 
-export type RailView = 'list' | 'chain'
-
-const STATUS_STYLE: Record<
+const STATUS_ICON: Record<
   StepStatus,
-  {
-    color: NavigationListItemColor
-    icon: ComponentType<SVGProps<SVGSVGElement>>
-  }
+  { icon: ComponentType<SVGProps<SVGSVGElement>>; className: string }
 > = {
-  start: { color: 'green', icon: PlayArrowRounded },
-  changed: { color: 'blue', icon: EditRounded },
-  unchanged: { color: 'neutral', icon: RemoveRounded },
-  warn: { color: 'yellow', icon: WarningRounded },
-  error: { color: 'red', icon: ErrorRounded },
-  final: { color: 'purple', icon: FlagRounded },
-  core: { color: 'cyan', icon: MemoryOutlineRounded },
-}
-
-function stepSupporting(step: Step, matched: boolean) {
-  if (matched) return m.inspect_step_matches()
-  if (step.status === 'start') return m.inspect_step_start()
-  return (step.changedCount ?? 0) > 0
-    ? m.inspect_step_changed({ count: step.changedCount! })
-    : m.inspect_step_unchanged()
+  start: { icon: InputRounded, className: 'text-ok' },
+  changed: { icon: CircleRounded, className: 'text-ok' },
+  unchanged: {
+    icon: RadioButtonUncheckedRounded,
+    className: 'text-on-surface-variant opacity-60',
+  },
+  warn: { icon: WarningRounded, className: 'text-warn' },
+  error: { icon: ErrorRounded, className: 'text-error' },
+  final: { icon: StarRounded, className: 'text-ok' },
+  core: { icon: OutputRounded, className: 'text-ok' },
 }
 
 /**
@@ -62,13 +50,10 @@ function stepSupporting(step: Step, matched: boolean) {
 export default function StepRail({
   steps,
   allSteps,
-  nodes,
   selectedKey,
   onSelect,
   profiles,
-  onOpenProfile,
-  view,
-  onViewChange,
+  targetCore,
   onlyChanged,
   onOnlyChangedChange,
   matchedKeys,
@@ -76,15 +61,12 @@ export default function StepRail({
 }: {
   /** The steps the list shows, after the "only changed" filter. */
   steps: Step[]
-  /** Every step, which the chain keeps so that its edges stay connected. */
+  /** Every step, whatever the filter, for the position inside a chain. */
   allSteps: Step[]
-  nodes: RuntimeInspectionNode[]
   selectedKey?: string
   onSelect: (key: string) => void
   profiles: ProfileLookup
-  onOpenProfile: (id: string) => void
-  view: RailView
-  onViewChange: (view: RailView) => void
+  targetCore: string
   onlyChanged: boolean
   onOnlyChangedChange: (onlyChanged: boolean) => void
   /** The steps that match the field query; absent when there is no query. */
@@ -101,125 +83,117 @@ export default function StepRail({
       '[data-slot=scroll-area-viewport]',
     )
     if (row && viewport) revealWithin(viewport, row)
-  }, [selectedKey, view, steps])
-
-  const selectedId = allSteps.find((step) => step.key === selectedKey)?.node.id
+  }, [selectedKey, steps])
 
   return (
     <aside
       data-slot="inspect-step-rail"
-      className={cn('flex min-h-0 min-w-0 flex-col', className)}
+      aria-label={m.inspect_steps()}
+      className={cn(
+        'bg-pane flex min-h-0 min-w-0 flex-col',
+        'shadow-[inset_-1px_0_0_var(--color-outline-variant)]',
+        className,
+      )}
     >
-      <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-2 pb-1">
-        <div className="min-w-0">
-          <h2 className="text-on-primary-container text-sm font-medium">
-            {m.inspect_steps()}
-          </h2>
-
-          <p className="text-on-surface-variant text-xs">
-            {m.inspect_steps_purpose()}
+      <ScrollArea
+        data-slot="inspect-step-rail-scroll-area"
+        className="min-h-0 flex-1"
+      >
+        <div
+          ref={listRef}
+          className="flex flex-col gap-[18px] px-3 pt-3.5 pb-3"
+        >
+          <p
+            data-slot="inspect-rail-hint"
+            className="bg-surface text-on-surface-variant rounded-2xl px-3.5 py-3 text-[12.5px] leading-[18px]"
+          >
+            {m.inspect_rail_hint()}
           </p>
+
+          {STAGES.map((stage) => {
+            const group = steps.filter((step) => step.stage === stage)
+            if (group.length === 0) return null
+
+            return (
+              <div key={stage} data-stage={stage}>
+                <StageLabel>{stageLabel(stage)}</StageLabel>
+
+                <StepGroup>
+                  {group.map((step) => {
+                    const selected = step.key === selectedKey
+                    const matched = matchedKeys?.has(step.key) ?? false
+                    const { icon: Icon, className: iconClassName } =
+                      STATUS_ICON[step.status]
+                    const meta = stepMeta(step, matched)
+
+                    return (
+                      <button
+                        key={step.key}
+                        type="button"
+                        aria-current={selected ? 'step' : undefined}
+                        data-selected={selected ? '' : undefined}
+                        data-key={step.key}
+                        data-status={step.status}
+                        data-dimmed={matchedKeys && !matched ? '' : undefined}
+                        className={cn(
+                          stepRowVariants({ interactive: true }),
+                          step.depth === 1 && 'ms-6 w-[calc(100%-1.5rem)]',
+                          'data-dimmed:opacity-40',
+                        )}
+                        onClick={() => onSelect(step.key)}
+                      >
+                        <Icon
+                          role="img"
+                          aria-label={statusLabel(step.status)}
+                          className={cn('size-5 shrink-0', iconClassName)}
+                        />
+
+                        <StepRowText
+                          title={stepHeadline(step, profiles)}
+                          sub={stepSub(step, allSteps, profiles, targetCore)}
+                        />
+
+                        {meta && (
+                          <span className="text-on-surface-variant group-data-selected/row:text-on-secondary-container shrink-0 text-xs whitespace-nowrap group-data-selected/row:opacity-80">
+                            {meta}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </StepGroup>
+              </div>
+            )
+          })}
         </div>
+      </ScrollArea>
 
-        <SegmentedButton
-          className="w-40 shrink-0"
-          size="sm"
-          aria-label={m.inspect_view_label()}
-          value={view}
-          onValueChange={(value) => {
-            if (value) onViewChange(value as RailView)
-          }}
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={onlyChanged}
+        data-slot="inspect-only-changed"
+        className={cn(
+          'text-on-surface-variant mx-3 mt-1 mb-4 flex shrink-0 cursor-pointer items-center gap-2.5',
+          'rounded-lg px-2 py-1 text-left text-[13px]',
+          'focus-visible:outline-primary outline-none focus-visible:outline-2',
+        )}
+        onClick={() => onOnlyChangedChange(!onlyChanged)}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            'grid size-[18px] shrink-0 place-items-center rounded-sm',
+            onlyChanged
+              ? 'bg-primary text-on-primary'
+              : 'shadow-[inset_0_0_0_2px_var(--color-outline)]',
+          )}
         >
-          <SegmentedButtonItem value="list">
-            {m.inspect_view_list()}
-          </SegmentedButtonItem>
-          <SegmentedButtonItem value="chain">
-            {m.inspect_view_chain()}
-          </SegmentedButtonItem>
-        </SegmentedButton>
-      </header>
+          {onlyChanged && <CheckSmallRounded className="size-3.5" />}
+        </span>
 
-      {view === 'list' ? (
-        <ScrollArea
-          data-slot="inspect-step-rail-scroll-area"
-          className="min-h-0 flex-1"
-        >
-          <div ref={listRef}>
-            <NavigationList aria-label={m.inspect_steps()}>
-              {STAGES.map((stage) => {
-                const group = steps.filter((step) => step.stage === stage)
-                if (group.length === 0) return null
-
-                return (
-                  <NavigationListGroup
-                    key={stage}
-                    label={stageLabel(stage)}
-                    data-stage={stage}
-                  >
-                    {group.map((step) => {
-                      const selected = step.key === selectedKey
-                      const matched = matchedKeys?.has(step.key) ?? false
-                      const { color, icon: Icon } = STATUS_STYLE[step.status]
-
-                      return (
-                        <NavigationListItem
-                          key={step.key}
-                          active={selected}
-                          aria-current={selected ? 'step' : undefined}
-                          data-key={step.key}
-                          data-status={step.status}
-                          data-dimmed={matchedKeys && !matched ? '' : undefined}
-                          className={cn(
-                            'min-h-12 py-1.5',
-                            step.depth === 1 && 'ms-6 w-[calc(100%-1.5rem)]',
-                            'data-dimmed:opacity-40',
-                          )}
-                          onClick={() => onSelect(step.key)}
-                        >
-                          <NavigationListItemIcon
-                            color={color}
-                            className="size-7"
-                            role="img"
-                            aria-hidden={false}
-                            aria-label={statusLabel(step.status)}
-                          >
-                            <Icon />
-                          </NavigationListItemIcon>
-
-                          <NavigationListItemText
-                            headline={stepHeadline(step, profiles)}
-                            supporting={stepSupporting(step, matched)}
-                          />
-                        </NavigationListItem>
-                      )
-                    })}
-                  </NavigationListGroup>
-                )
-              })}
-            </NavigationList>
-          </div>
-        </ScrollArea>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col px-3 pt-2">
-          <ChainGraph
-            nodes={nodes}
-            profiles={profiles}
-            onOpenProfile={onOpenProfile}
-            selectedId={selectedId}
-            onSelect={(id) => {
-              const step = allSteps.find((step) => step.node.id === id)
-              if (step) onSelect(step.key)
-            }}
-          />
-        </div>
-      )}
-
-      {view === 'list' && (
-        <label className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-sm">
-          {m.inspect_only_changed()}
-          <Switch checked={onlyChanged} onCheckedChange={onOnlyChangedChange} />
-        </label>
-      )}
+        {m.inspect_only_changed()}
+      </button>
     </aside>
   )
 }

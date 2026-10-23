@@ -6,8 +6,9 @@ import type { LinkProps } from '@tanstack/react-router'
 
 /**
  * The header of a full-height tool page: a mobile back link, a one-line title,
- * a free context area and the page actions. It takes the place of `PageTitle`
- * on a page that does not scroll as a whole, so it does not stick or animate.
+ * a context area and the page actions, on a 56px row with a hairline below.
+ * It takes the place of `PageTitle` on a page that does not scroll as a whole,
+ * so it does not stick or animate.
  */
 export default function PageToolbar({
   title,
@@ -28,8 +29,10 @@ export default function PageToolbar({
   return (
     <header
       className={cn(
-        'flex flex-wrap items-center gap-x-3 gap-y-2',
-        'min-h-14 shrink-0 px-4 md:px-6',
+        'flex flex-wrap items-center gap-x-2.5 gap-y-2',
+        // 56px on one row; it only grows when the controls wrap.
+        'min-h-14 shrink-0 py-2 pr-3 pl-4 md:pl-5',
+        'shadow-[inset_0_-1px_0_var(--color-outline-variant)]',
         className,
       )}
       data-slot="page-toolbar"
@@ -38,21 +41,24 @@ export default function PageToolbar({
       <BackButton to={backTo} label={m.profile_back()} />
 
       <h1
-        className="max-w-full min-w-0 truncate text-xl font-medium"
+        className="text-on-surface max-w-full min-w-0 truncate text-base leading-6 font-semibold"
         data-slot="page-toolbar-title"
       >
         {title}
       </h1>
 
       {context && (
-        <div className="min-w-0 flex-1" data-slot="page-toolbar-context">
+        <div
+          className="flex min-w-0 items-center gap-2.5"
+          data-slot="page-toolbar-context"
+        >
           {context}
         </div>
       )}
 
       {actions && (
         <div
-          className="ml-auto flex items-center gap-2"
+          className="ml-auto flex items-center gap-2.5"
           data-slot="page-toolbar-actions"
         >
           {actions}

@@ -143,7 +143,7 @@ test('a wide toolbar keeps the title, context and actions on one row', async ({
     actions.getBoundingClientRect().left,
   )
   expect(actions.getBoundingClientRect().right).toBeCloseTo(
-    toolbar.getBoundingClientRect().right - 24,
+    toolbar.getBoundingClientRect().right - 12,
     0,
   )
 })

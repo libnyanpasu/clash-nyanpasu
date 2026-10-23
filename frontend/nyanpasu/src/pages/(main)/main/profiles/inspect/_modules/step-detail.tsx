@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import AnimatedTabs, { AnimatedTabsItem } from '@nyanpasu/ui/animated-tabs'
-import { Button } from '@nyanpasu/ui/button'
 import { ErrorMessage } from '@/components/error-message'
 import {
   StepLabel,
@@ -12,14 +11,14 @@ import { m } from '@/paraglide/messages'
 import { queries } from '@/services/rpc'
 import { unwrapQueryOptions } from '@nyanpasu/query'
 import type { RuntimeInspectionContent } from '@nyanpasu/rpc/types'
-import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { CompactButton } from '../../_modules/compact-controls'
 import LogLevelBadge from '../../../logs/_modules/log-level-badge'
 import ChangedFields from './changed-fields'
 import DiffViewer from './diff-viewer'
 import { FindBar, isFindShortcut } from './find-bar'
-import { stageLabel, stepHeadline } from './inspect-labels'
+import { stageLabel, stepHeadline, stepSub } from './inspect-labels'
 import { FINAL_KEY, type Step } from './inspect-steps'
 import {
   diffLines,
@@ -45,6 +44,7 @@ export default function StepDetail({
   step,
   steps,
   profiles,
+  targetCore,
   onOpenProfile,
   tab,
   onTabChange,
@@ -55,6 +55,7 @@ export default function StepDetail({
   /** Every step, whatever the page filters, for the position and the baseline. */
   steps: Step[]
   profiles: ProfileLookup
+  targetCore: string
   onOpenProfile: (id: string) => void
   tab: InspectTab
   onTabChange: (tab: InspectTab) => void
@@ -130,16 +131,27 @@ export default function StepDetail({
     openFind()
   }
 
+  const changedCount = step.changedCount ?? 0
+  // The note for a step that has nothing to compare, or nothing that differs.
+  const note =
+    step.key === FINAL_KEY
+      ? m.inspect_note_final()
+      : step.status === 'core'
+        ? m.inspect_note_core()
+        : data?.diff
+          ? m.inspect_note_unchanged()
+          : m.inspect_diff_independent()
+
   return (
     <section
       data-slot="inspect-step-detail"
       data-key={step.key}
-      className="flex min-h-0 min-w-0 flex-col gap-3 px-4 pb-4 md:px-6"
+      className="flex min-h-0 min-w-0 flex-col"
     >
-      <header className="flex shrink-0 flex-col gap-2">
+      <header className="flex shrink-0 flex-col gap-2.5 px-5 pt-4 pb-3 shadow-[inset_0_-1px_0_var(--color-outline-variant)]">
         <p
           data-slot="inspect-step-position"
-          className="text-on-surface-variant text-xs font-medium tracking-wide uppercase"
+          className="text-primary text-xs font-semibold tracking-[0.03em] uppercase"
         >
           {m.inspect_step_position({
             stage: stageLabel(step.stage),
@@ -148,8 +160,8 @@ export default function StepDetail({
           })}
         </p>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 className="min-w-0 text-lg font-medium [overflow-wrap:anywhere]">
+        <div className="flex items-center gap-2.5">
+          <h2 className="text-on-surface min-w-0 flex-1 truncate text-xl leading-7 font-semibold">
             {step.key === FINAL_KEY ? (
               stepHeadline(step, profiles)
             ) : (
@@ -161,68 +173,82 @@ export default function StepDetail({
             )}
           </h2>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {profileId && (
-              <Button type="button" onClick={() => onOpenProfile(profileId)}>
-                {m.inspect_open_profile()}
-              </Button>
-            )}
+          {profileId && (
+            <CompactButton onClick={() => onOpenProfile(profileId)}>
+              {m.inspect_open_profile()}
+            </CompactButton>
+          )}
 
-            {step.stage === 'global' && (
-              <Button asChild>
-                <Link to="/main/profiles/global">
-                  {m.inspect_edit_in_global()}
-                </Link>
-              </Button>
-            )}
-          </div>
+          {step.stage === 'global' && (
+            <CompactButton tone="tonal" type={undefined} asChild>
+              <Link to="/main/profiles/global">
+                {m.inspect_edit_in_global()}
+              </Link>
+            </CompactButton>
+          )}
         </div>
 
-        <ChangedFields
-          key={step.key}
-          fields={step.node.changed_fields}
-          query={fieldQuery}
-          canSelect={(field) => fieldLines.get(field) != null}
-          onSelect={(field) => {
-            const lines = fieldLines.get(field)
-            if (!lines) return
-            setJump({ field, ...lines, nonce: ++jumpCount.current })
-          }}
-        />
-      </header>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <AnimatedTabs
+            variant="segment"
+            size="sm"
+            className="h-8 shrink-0 text-[13px]"
+            activeTab={tab}
+            onChange={(next) => changeTab(next as InspectTab)}
+          >
+            <AnimatedTabsItem value="changes" className="px-3.5">
+              {m.inspect_tab_changes()}
+            </AnimatedTabsItem>
+            <AnimatedTabsItem value="output" className="px-3.5">
+              {m.inspect_tab_output()}
+            </AnimatedTabsItem>
+            <AnimatedTabsItem value="logs" className="px-3.5">
+              {data && data.logs.length > 0
+                ? m.inspect_tab_logs_count({ count: data.logs.length })
+                : m.inspect_tab_logs()}
+            </AnimatedTabsItem>
+          </AnimatedTabs>
 
-      <AnimatedTabs
-        className="shrink-0 self-start"
-        activeTab={tab}
-        onChange={(next) => changeTab(next as InspectTab)}
-      >
-        <AnimatedTabsItem value="changes">
-          {m.inspect_tab_changes()}
-        </AnimatedTabsItem>
-        <AnimatedTabsItem value="output">
-          {m.inspect_tab_output()}
-        </AnimatedTabsItem>
-        <AnimatedTabsItem value="logs">
-          {m.inspect_tab_logs()}
-          {data && data.logs.length > 0 && ` (${data.logs.length})`}
-        </AnimatedTabsItem>
-      </AnimatedTabs>
+          <span
+            data-slot="inspect-step-summary"
+            className="text-on-surface-variant min-w-0 text-[13px]"
+          >
+            {changedCount > 0
+              ? m.inspect_summary_changed({ count: changedCount })
+              : stepSub(step, steps, profiles, targetCore)}
+          </span>
+        </div>
+
+        {tab === 'changes' && (
+          <ChangedFields
+            key={step.key}
+            fields={step.node.changed_fields}
+            query={fieldQuery}
+            canSelect={(field) => fieldLines.get(field) != null}
+            onSelect={(field) => {
+              const lines = fieldLines.get(field)
+              if (!lines) return
+              setJump({ field, ...lines, nonce: ++jumpCount.current })
+            }}
+          />
+        )}
+      </header>
 
       <div
         role="tabpanel"
         data-slot="inspect-step-panel"
         data-tab={tab}
-        className="flex min-h-0 flex-1 flex-col gap-2"
+        className="bg-code flex min-h-0 flex-1 flex-col"
         onKeyDown={handleKeyDown}
       >
         {content.isPending && (
-          <p role="status" className="text-on-surface-variant text-sm">
+          <p role="status" className="text-on-surface-variant p-6 text-[13px]">
             {m.inspect_loading()}
           </p>
         )}
 
         {content.isError && (
-          <p role="alert" className="text-sm">
+          <p role="alert" className="p-6 text-[13px]">
             {m.inspect_content_error()} <ErrorMessage error={content.error} />
           </p>
         )}
@@ -231,7 +257,7 @@ export default function StepDetail({
           <>
             {find.open && searchable && (
               <FindBar
-                className="shrink-0"
+                className="mx-5 mt-3 mb-1 shrink-0"
                 inputRef={findInputRef}
                 query={find.query}
                 onQueryChange={(query) =>
@@ -267,9 +293,9 @@ export default function StepDetail({
             )}
 
             {tab === 'changes' &&
-              (data.diff ? (
+              (data.diff && data.diff.hunks.length > 0 ? (
                 <>
-                  <p className="text-on-surface-variant shrink-0 text-sm">
+                  <p className="text-on-surface-variant shrink-0 px-5 pt-2.5 pb-1.5 text-xs">
                     {m.inspect_diff_description({
                       step: parentStep
                         ? stepHeadline(parentStep, profiles)
@@ -284,32 +310,37 @@ export default function StepDetail({
                   />
                 </>
               ) : (
-                <p role="status" className="text-on-surface-variant text-sm">
-                  {m.inspect_diff_independent()}
+                <p
+                  role="status"
+                  className="text-on-surface-variant p-6 text-[13px]"
+                >
+                  {note}
                 </p>
               ))}
 
             {tab === 'logs' &&
               (data.logs.length === 0 ? (
-                <p role="status" className="text-on-surface-variant text-sm">
+                <p
+                  role="status"
+                  className="text-on-surface-variant p-6 text-[13px]"
+                >
                   {m.inspect_no_logs()}
                 </p>
               ) : (
                 <ol
                   aria-label={m.inspect_logs()}
-                  className={cn(
-                    'bg-surface divide-outline-variant/50 min-h-0 flex-1',
-                    'divide-y overflow-auto rounded-lg',
-                  )}
+                  className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto p-3"
                 >
                   {data.logs.map((log, index) => (
                     <li
                       key={index}
-                      className="flex items-start gap-3 px-3 py-2"
+                      className="bg-surface flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-[13px] leading-[18px]"
                     >
-                      <LogLevelBadge>{log.level}</LogLevelBadge>
+                      <LogLevelBadge className="h-5 rounded-md px-[7px] py-0 font-bold">
+                        {log.level}
+                      </LogLevelBadge>
 
-                      <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+                      <span className="text-on-surface min-w-0 flex-1 [overflow-wrap:anywhere] whitespace-pre-wrap">
                         {log.message}
                       </span>
                     </li>

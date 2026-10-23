@@ -230,3 +230,35 @@ export function matchField(step: Step, query: string): boolean {
     }) ?? false
   )
 }
+
+/** The transforms that run one after the other share a chain. */
+function chainOf(tag: OperatorTag): string | undefined {
+  switch (tag.kind) {
+    case 'scoped_transform':
+      return `scoped:${tag.data.host_profile_id}:${
+        tag.data.role.kind === 'selected'
+          ? ''
+          : tag.data.role.data.composition_id
+      }`
+    case 'global_transform':
+      return 'global'
+    case 'builtin_transform':
+      return 'builtin-transform'
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Where a transform stands in its chain, in display order, for "1 of 2".
+ * Steps that are not transforms have no position.
+ */
+export function chainPosition(
+  steps: Step[],
+  step: Step,
+): { n: number; total: number } | undefined {
+  const chain = chainOf(step.node.tag)
+  if (chain === undefined) return undefined
+  const members = steps.filter((item) => chainOf(item.node.tag) === chain)
+  return { n: members.indexOf(step) + 1, total: members.length }
+}

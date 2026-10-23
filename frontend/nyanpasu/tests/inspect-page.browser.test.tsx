@@ -497,7 +497,7 @@ test('switching the snapshot keeps the selected step', async ({
     )
     .toBe(true)
   await expect
-    .element(page.getByText(m.inspect_applied(), { exact: true }))
+    .element(page.getByText(new RegExp(`^${m.inspect_applied()} · `)))
     .toBeVisible()
   expect(ui.current()).toBe('global:self:0')
   expect(ui.router.state.location.search).toEqual({ step: 'global:self:0' })
@@ -543,7 +543,7 @@ test('the changed-only filter keeps the source, the result and the chosen step',
   await expect.poll(() => ui.detailKey()).toBe('builtin:field_filter')
 
   await userEvent.click(
-    page.getByRole('switch', { name: m.inspect_only_changed() }),
+    page.getByRole('checkbox', { name: m.inspect_only_changed() }),
   )
   // The unchanged step stays while it is chosen.
   expect(ui.row('builtin:field_filter')).not.toBeNull()

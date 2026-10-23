@@ -196,7 +196,11 @@ export default function DiffViewer({
   }, [jump?.nonce])
 
   if (hunks.length === 0) {
-    return <p role="status">{m.inspect_unchanged()}</p>
+    return (
+      <p role="status" className="text-on-surface-variant p-6 text-[13px]">
+        {m.inspect_unchanged()}
+      </p>
+    )
   }
 
   return (
@@ -205,9 +209,9 @@ export default function DiffViewer({
       role="region"
       aria-label={m.inspect_diff()}
       tabIndex={0}
-      className="bg-surface text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto rounded-lg text-xs focus-visible:outline-2"
+      className="bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto font-mono text-[12.5px] leading-5 focus-visible:outline-2 focus-visible:-outline-offset-2"
     >
-      <table className="min-w-full border-collapse font-mono">
+      <table className="min-w-full border-collapse">
         <thead className="sr-only">
           <tr>
             <th>{m.inspect_old_line()}</th>
@@ -223,10 +227,10 @@ export default function DiffViewer({
           let newLine = hunk.new_start
           return (
             <tbody key={`${hunk.old_start}-${hunk.new_start}`}>
-              <tr className="bg-blue-50 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200">
+              <tr className="bg-on-surface/8 text-primary text-[11.5px]">
                 <td
                   colSpan={4}
-                  className="px-3 py-2 whitespace-pre"
+                  className="px-4 py-0.5 whitespace-pre"
                 >{`@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@`}</td>
               </tr>
               {hunk.lines.slice(0, lines).map((line, index) => {
@@ -237,11 +241,13 @@ export default function DiffViewer({
                   sign === '-' || sign === '\\' ? undefined : newLine++
                 const flat = offsets[hunkIndex] + index
                 const color =
+                  sign === '+' ? 'bg-ok/12' : sign === '-' ? 'bg-error/12' : ''
+                const markerColor =
                   sign === '+'
-                    ? 'bg-green-100 text-green-950 dark:bg-green-950/60 dark:text-green-100'
+                    ? 'text-ok'
                     : sign === '-'
-                      ? 'bg-red-100 text-red-950 dark:bg-red-950/60 dark:text-red-100'
-                      : ''
+                      ? 'text-error'
+                      : 'text-on-surface-variant'
                 return (
                   <tr
                     key={index}
@@ -258,13 +264,20 @@ export default function DiffViewer({
                       sign === '+' ? 'add' : sign === '-' ? 'remove' : 'context'
                     }
                   >
-                    <td className="w-1 min-w-10 px-2 text-right opacity-60 select-none">
+                    <td className="text-tc w-11 min-w-11 pr-2.5 text-right select-none">
                       {oldNumber}
                     </td>
-                    <td className="w-1 min-w-10 px-2 text-right opacity-60 select-none">
+                    <td className="text-tc w-11 min-w-11 pr-2.5 text-right select-none">
                       {newNumber}
                     </td>
-                    <td className="w-1 px-2 select-none">{sign}</td>
+                    <td
+                      className={cn(
+                        'w-[22px] min-w-[22px] text-center select-none',
+                        markerColor,
+                      )}
+                    >
+                      {sign}
+                    </td>
                     <td className="pr-4 whitespace-pre dark:[&>span]:text-(--shiki-dark)!">
                       {hunkTokens?.[index]?.map((token, tokenIndex) => (
                         <span

@@ -49,16 +49,9 @@ const middle = (rect: DOMRect) => (rect.top + rect.bottom) / 2
 
 /** The vertical middle of a line of text, measured from the rendered text. */
 function lineMiddle(region: HTMLElement, line: number) {
-  const shiki = region.querySelectorAll('.shiki .line')
-  if (shiki.length > 0) return middle(shiki[line].getBoundingClientRect())
-  const text = region.querySelector('pre code')!.firstChild as Text
-  const code = text.data
-  let offset = 0
-  for (let i = 0; i < line; i++) offset = code.indexOf('\n', offset) + 1
-  const range = document.createRange()
-  range.setStart(text, offset)
-  range.setEnd(text, offset + 1)
-  return middle(range.getBoundingClientRect())
+  return middle(
+    region.querySelectorAll('pre .line')[line].getBoundingClientRect(),
+  )
 }
 
 test('a large document is shown as plain text', async ({ onTestFinished }) => {

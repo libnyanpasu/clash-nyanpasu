@@ -6,8 +6,8 @@ import { cn } from '@nyanpasu/utils'
 const COLLAPSED_COUNT = 8
 
 const fieldClassName = cn(
-  'bg-surface-variant/40 dark:bg-surface-variant/20',
-  'rounded-md px-1.5 py-0.5 font-mono text-xs',
+  'bg-surface-variant text-on-surface-variant dark:bg-surface-variant',
+  'inline-flex h-[26px] items-center rounded-lg px-[9px] font-mono text-[11.5px]',
 )
 
 export default function ChangedFields({
@@ -26,23 +26,18 @@ export default function ChangedFields({
 }) {
   const [expanded, setExpanded] = useState(false)
 
-  if (fields === null || fields.length === 0) {
-    return (
-      <p className="text-on-surface-variant text-sm">
-        {m.inspect_fields()}:{' '}
-        {fields === null ? m.inspect_no_baseline() : m.inspect_unchanged()}
-      </p>
-    )
-  }
+  // The summary and the viewer already say that nothing changed.
+  if (fields === null || fields.length === 0) return null
 
   const collapsible = fields.length > COLLAPSED_COUNT
   const visible =
     collapsible && !expanded ? fields.slice(0, COLLAPSED_COUNT) : fields
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-sm">
-      <span className="text-on-surface-variant mr-1">{m.inspect_fields()}</span>
-
+    <div
+      data-slot="inspect-changed-fields"
+      className="flex flex-wrap items-center gap-2.5"
+    >
       {visible.map((field) =>
         onSelect ? (
           <button
@@ -53,7 +48,8 @@ export default function ChangedFields({
             className={cn(
               fieldClassName,
               'focus-visible:outline-primary cursor-pointer outline-offset-1 focus-visible:outline-2',
-              'enabled:hover:bg-surface-variant/70 disabled:cursor-default disabled:opacity-60',
+              'enabled:hover:brightness-95 dark:enabled:hover:brightness-125',
+              'disabled:cursor-default disabled:opacity-60',
             )}
             onClick={() => onSelect(field)}
           >
@@ -71,7 +67,7 @@ export default function ChangedFields({
           type="button"
           className={cn(
             fieldClassName,
-            'text-primary hover:bg-surface-variant/60 cursor-pointer',
+            'text-primary cursor-pointer hover:brightness-95 dark:hover:brightness-125',
           )}
           onClick={() => setExpanded(!expanded)}
         >

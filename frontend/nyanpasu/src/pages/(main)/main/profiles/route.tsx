@@ -59,6 +59,9 @@ function RouteComponent() {
               // A fill page scrolls in its own regions. Radix sets the viewport's
               // overflow inline, so only an important class overrides it.
               'data-[layout=fill]:[&>[data-slot=scroll-area-viewport]]:overflow-clip!',
+              // The tool pages sit on the darker ground so their grouped rows
+              // read as raised surfaces.
+              'data-[layout=fill]:dark:bg-mixed-background',
             )}
             data-layout={layout}
             data-slot="profiles-content-scroll-area"

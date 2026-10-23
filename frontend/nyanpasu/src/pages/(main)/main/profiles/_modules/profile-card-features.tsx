@@ -30,7 +30,7 @@ export const ProfileCardChip = ({
   />
 )
 
-const sourceLabelOf = (profile: ProfileItem_Serialize) => {
+export const sourceLabelOf = (profile: ProfileItem_Serialize) => {
   const source = getProfileSource(profile)
 
   if (!source) return m.profile_kind_composition()

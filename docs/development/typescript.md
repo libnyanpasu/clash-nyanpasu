@@ -131,6 +131,12 @@ ranking rows to fit the available height and fold hidden rows into the existing
 other total. Clip any remaining overflow rather than creating a scrollable area.
 Apply this rule to compact, expanded, loading, empty, and error states.
 
+Menu items align their content to the start: an icon, then the label, with
+nothing pushed to the far edge. Only a trailing element that the menu component
+itself owns, such as a submenu arrow, sits at the end. Do not add
+`justify-between` or `ml-auto` to a menu item or its label to place text at the
+end.
+
 If a needed component is missing, check Radix UI for a suitable primitive first.
 When one exists, wrap and style it in the UI package, expose the appropriate
 props and slots, and reuse that wrapper. If no primitive fits, implement a focused

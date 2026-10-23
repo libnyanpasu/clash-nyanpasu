@@ -95,19 +95,20 @@ Folders                             [+]   ← new folder
   - Icon: the group's image, or a tonal glyph by type when the group has none.
   - Headline: the group name, one line, ellipsis. The name is never squeezed by
     the delay.
-  - Supporting: `type · current node`, in `TextMarquee`, with the pin icon in
-    front of the node when the choice is pinned (`group.fixed`).
+  - Supporting: the type chip and, when the choice is pinned (`group.fixed`), the
+    pin icon stay fixed in front; the current node follows in `TextMarquee`.
   - Trailing: the delay chip of the current node.
 - **Folder item.**
   - A heading row of the folder's container: a chevron, the neutral folder icon,
     the name, and `N groups`. Clicking it expands or collapses the folder. It
     carries `aria-expanded`.
-  - Its groups are items of the same rounded container, indented, so the folder
-    reads as one block. Only the ends of the block get the large radius.
+  - Its groups are items of the same rounded container, with the same left edge
+    as the heading and no extra indent, so the folder reads as one block. Only
+    the ends of the block get the large radius.
   - A collapsed folder still takes a dropped group.
   - Expanded state is a per-device preference (`useFolderCollapsed` pattern from
     Profiles), not part of the backend arrangement.
-- **Selected item.** A selected group morphs its icon to a cookie, as everywhere
+- **Selected item.** A selected group morphs its glyph to a cookie, as everywhere
   else. If it sits in a collapsed folder, the folder expands so the selection is
   visible.
 - **Mobile.** `/main/proxies` shows this list full width. There is no sidebar
@@ -125,11 +126,15 @@ supporting line scrolls (`TextMarquee`); the chip never shrinks.
 ### 3.2 Shared component changes
 
 `NavigationListItemIcon` takes an image child (the Profiles spec §3 deferred it
-to this work): an `<img>`/`CacheImage` fills the shape, `object-cover`, and the
-selected cookie morph clips it. The tonal color classes apply only to glyph
-children. `NavigationListItem` gains an optional trailing slot for the delay
-chip; the slot sits after `NavigationListItemText`. No other change to the
-component's API.
+to this work): an `<img>`/`CacheImage` is shown whole and as it is, with no
+background color, no clipping and no cropping (`object-contain`). It sits
+outside the tonal shape and does not morph when its item is selected; only
+its loading placeholder is a circle. The tonal
+color classes and the cookie morph apply only to glyph children. `NavigationListItemText` gains `supportingStart`, fixed content in
+front of the scrolling supporting line (the type chip and the pin), and a
+headline that truncates with a `title`. A new `NavigationListItemTrailing` slot
+sits after `NavigationListItemText` and holds the delay chip. No other change to
+the components' API.
 
 ## 4. Interactions
 

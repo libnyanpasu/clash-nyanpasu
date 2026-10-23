@@ -203,6 +203,17 @@ page-specific data selection in its route.
   `h-full` on a child of an auto-height parent is insufficient. Keep long content
   scrollable rather than fixing every page to the viewport height. See the
   component's JSDoc for the layout contract.
+- A tool page may opt in to the fill layout instead of scrolling as a whole, but
+  only when every region of the page scrolls internally. It declares
+  `staticData: { layout: 'fill' }` on its route (the option is typed in
+  `@/components/router/route-layout`), and the layout route that owns the scroll
+  surface reads it with `useLeafRouteLayout()` and, for a fill page, gives the
+  content container `h-full` instead of `min-h-full`, the outlet `min-h-0`, and
+  the scroll viewport `overflow-clip`. Other pages of that layout keep scrolling.
+  The page is a `flex min-h-0 flex-1 flex-col overflow-hidden` column. Its header
+  is a toolbar of fixed height instead of a scrolling `PageTitle`, and every
+  region below it is `min-h-0 flex-1` with its own `ScrollArea`, like `DataPage`.
+  Do not use it for a page whose content only happens to be short.
 - Place a child page in its own directory with `index.tsx`, for example
   `topology/flow/index.tsx`, instead of a flat `topology/flow.tsx`. Place
   modules used only by that page in `topology/flow/_modules/`.

@@ -22,7 +22,7 @@ export function StageLabel({
     <h3
       data-slot="stage-label"
       className={cn(
-        'text-on-surface-variant flex items-center gap-2 px-2 pb-2',
+        'text-on-surface-variant flex items-center gap-2 px-4 pb-2',
         'text-[11px] leading-4 font-bold tracking-[0.06em] uppercase',
         className,
       )}
@@ -70,8 +70,8 @@ export function StepGroup({ className, ...props }: ComponentProps<'div'>) {
 /** A row of a `StepGroup`: a button, a link or a plain element. */
 export const stepRowVariants = cva(
   [
-    'group/row relative flex min-h-13 w-full min-w-0 items-center gap-2.5',
-    'py-1.5 pr-2 pl-2.5 text-left',
+    'group/row relative flex min-h-13 w-full min-w-0 items-center gap-3',
+    'py-1.5 pr-3 pl-4 text-left',
     'bg-surface text-on-surface shadow-sm dark:shadow-none',
     'data-selected:bg-secondary-container data-selected:text-on-secondary-container',
     'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
@@ -89,6 +89,28 @@ export const stepRowVariants = cva(
     defaultVariants: { interactive: false },
   },
 )
+
+/** The round leading icon of a row, a hint of what the row is. */
+export function StepRowIcon({
+  className,
+  children,
+  ...props
+}: Omit<ComponentProps<'span'>, 'children'> & { children: ReactNode }) {
+  return (
+    <span
+      data-slot="step-row-icon"
+      aria-hidden
+      className={cn(
+        'bg-secondary-container text-on-secondary-container grid size-9 shrink-0 place-items-center rounded-full [&_svg]:size-5',
+        'group-data-selected/row:bg-surface group-data-selected/row:text-on-surface',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </span>
+  )
+}
 
 /** The title and the supporting line of a row. */
 export function StepRowText({

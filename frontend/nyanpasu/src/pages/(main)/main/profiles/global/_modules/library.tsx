@@ -17,9 +17,11 @@ import { ProfileType } from '../../_modules/consts'
 import CreateProfileModal from '../../_modules/create-profile-modal'
 import {
   StepGroup,
+  StepRowIcon,
   StepRowText,
   stepRowVariants,
 } from '../../_modules/step-list'
+import TransformTypeIcon from '../../_modules/transform-type-icon'
 import type { TransformChainDraft } from '../../_modules/use-transform-chain-draft'
 import {
   profileTypeOf,
@@ -53,6 +55,10 @@ function LibraryRow({
 }) {
   return (
     <div data-slot="profile-global-library-row" className={stepRowVariants()}>
+      <StepRowIcon>
+        <TransformTypeIcon type={profileTypeOf(profile)} />
+      </StepRowIcon>
+
       <StepRowText
         title={profile.name}
         sub={`${transformLabelOf(profile)} · ${
@@ -143,7 +149,7 @@ export default function Library({
         role="group"
         data-slot="profile-global-library-filters"
         aria-label={m.profile_global_library_filter()}
-        className="flex flex-wrap gap-1.5 px-1"
+        className="flex flex-wrap gap-1.5 px-4"
       >
         {TYPE_FILTERS.map((item) => (
           <button
@@ -211,7 +217,7 @@ export default function Library({
 
       <p
         data-slot="profile-global-library-note"
-        className="text-on-surface-variant px-2 text-xs leading-4"
+        className="text-on-surface-variant px-4 text-xs leading-4"
       >
         {m.profile_global_library_note()}
       </p>

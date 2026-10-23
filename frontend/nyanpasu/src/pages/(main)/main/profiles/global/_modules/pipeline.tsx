@@ -1,4 +1,7 @@
 import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
+import CodeRounded from '~icons/material-symbols/code-rounded'
+import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
+import PetsRounded from '~icons/material-symbols/pets-rounded'
 import SettingsOutlineRounded from '~icons/material-symbols/settings-outline-rounded'
 import { useId } from 'react'
 import { m } from '@/paraglide/messages'
@@ -7,6 +10,7 @@ import { sourceLabelOf } from '../../_modules/profile-card-features'
 import {
   StageLabel,
   StepGroup,
+  StepRowIcon,
   StepRowText,
   stepRowVariants,
 } from '../../_modules/step-list'
@@ -28,11 +32,13 @@ function ConfigRow({
   title,
   sub,
   slot = 'profile-global-pipeline-link-row',
+  icon: Icon,
 }: {
   active: ConfigProfile
   title: string
   sub?: string
   slot?: string
+  icon: typeof CodeRounded
 }) {
   return (
     <Link
@@ -41,6 +47,10 @@ function ConfigRow({
       data-slot={slot}
       className={stepRowVariants({ interactive: true })}
     >
+      <StepRowIcon>
+        <Icon />
+      </StepRowIcon>
+
       <StepRowText dim title={title} sub={sub} />
 
       <ChevronRightRounded className={chevronClassName} aria-hidden />
@@ -54,6 +64,7 @@ function SourceStage({ active }: { active?: ConfigProfile }) {
       {active ? (
         <ConfigRow
           active={active}
+          icon={DescriptionOutlineRounded}
           title={active.name}
           sub={m.profile_global_source_sub({ kind: sourceLabelOf(active) })}
         />
@@ -62,6 +73,10 @@ function SourceStage({ active }: { active?: ConfigProfile }) {
           data-slot="profile-global-pipeline-source-empty"
           className={stepRowVariants()}
         >
+          <StepRowIcon>
+            <DescriptionOutlineRounded />
+          </StepRowIcon>
+
           <StepRowText dim title={m.profile_global_context_none()} />
         </div>
       )}
@@ -83,6 +98,7 @@ function ProfileTransformsStage({
       {active ? (
         <ConfigRow
           active={active}
+          icon={CodeRounded}
           slot={
             empty
               ? 'profile-global-pipeline-scoped-empty'
@@ -106,6 +122,10 @@ function ProfileTransformsStage({
           data-slot="profile-global-pipeline-scoped-empty"
           className={stepRowVariants()}
         >
+          <StepRowIcon>
+            <CodeRounded />
+          </StepRowIcon>
+
           <StepRowText
             dim
             title={m.profile_global_profile_transforms_empty()}
@@ -126,6 +146,10 @@ function NyanpasuStage() {
         data-slot="profile-global-pipeline-builtin"
         className={stepRowVariants({ interactive: true })}
       >
+        <StepRowIcon>
+          <PetsRounded />
+        </StepRowIcon>
+
         <StepRowText
           dim
           title={m.profile_global_builtin_title({ count: labels.length })}

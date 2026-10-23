@@ -40,7 +40,7 @@ export function ColumnHead({
   children?: ReactNode
 }) {
   return (
-    <div className="flex min-h-8 items-center gap-2 pl-2">
+    <div className="flex min-h-8 items-center gap-2 pl-4">
       <h2
         id={id}
         className="text-on-surface min-w-0 flex-1 truncate text-sm font-semibold"

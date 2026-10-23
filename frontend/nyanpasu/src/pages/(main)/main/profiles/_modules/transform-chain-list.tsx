@@ -5,6 +5,7 @@ import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outlin
 import FormatListNumberedRounded from '~icons/material-symbols/format-list-numbered-rounded'
 import ManageSearchRounded from '~icons/material-symbols/manage-search-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
+import PlaylistAddRounded from '~icons/material-symbols/playlist-add-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { AnimatePresence } from 'motion/react'
 import { memo, type ReactNode } from 'react'
@@ -31,7 +32,12 @@ import { Link } from '@tanstack/react-router'
 import { SettingsGroup } from '../../_modules/settings-card'
 import { RowAction } from './compact-controls'
 import { PROFILE_TYPE_NAMES } from './consts'
-import { StepGroup, StepRowText, stepRowVariants } from './step-list'
+import {
+  StepGroup,
+  StepRowIcon,
+  StepRowText,
+  stepRowVariants,
+} from './step-list'
 import { TransformAddMenu } from './transform-add-menu'
 import {
   useTransformChainDraft,
@@ -444,6 +450,10 @@ export function TransformChain({
                 data-slot="profile-chain-editor-empty"
                 className={stepRowVariants()}
               >
+                <StepRowIcon>
+                  <PlaylistAddRounded />
+                </StepRowIcon>
+
                 <StepRowText
                   dim
                   title={empty?.message ?? m.profile_chain_editor_empty()}

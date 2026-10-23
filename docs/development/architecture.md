@@ -114,7 +114,7 @@ Project rules:
 - `NyanpasuClient` and typed actor clients should expose ordinary async Rust methods. Most callers should not use ractor APIs directly.
 - In-process request/reply calls wait for the real result (no timeout). Only adapters that perform network IO define deadlines; IPC deadlines belong to the IPC client layer, not to its callers.
 - Avoid synchronous cross-actor cycles such as `StateActor -> CoreActor -> StateActor`.
-- A panic means the code reached a state it must not reach, so it interrupts execution. Do not write `catch_unwind` in production code, and do not turn a panicking task's `JoinError` into an ordinary error.
+- A panic means the code reached a state it must not reach, so it interrupts execution. Do not write `catch_unwind` in production code, and do not turn a panicking task's `JoinError` into an ordinary error. The only recovery path is `nyanpasu_panics::catch_recoverable`, under the conditions in [Rust code guide](rust.md#73-panic-recovery).
 - Run UI-thread work through the injected `MainThreadExecutor`; clients and actors do not call Tauri's main-thread APIs themselves.
 - Notifications flow downstream only, one domain's slice from that domain's serial owner. An owner never reads or forwards a sibling domain's snapshot, so dependencies form a tree, not a graph.
 - Preserve the source and intent of actor messages, event variants, and notification slices. If two sources share downstream handling, keep their distinct variants and handle them together; do not rename or reuse an existing source's variant to represent a new trigger.

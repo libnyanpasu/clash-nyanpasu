@@ -35,5 +35,28 @@ export function useFolderCollapsed(kvKey: string) {
     [setCollapsed],
   )
 
-  return { isCollapsed: (key: string) => collapsed[key] === true, toggle }
+  /** Collapses (or expands) each of `keys`, whatever it was. */
+  const setAll = useCallback(
+    (keys: readonly string[], isCollapsed: boolean) =>
+      setCollapsed((previous) => {
+        const next = { ...previous }
+
+        for (const key of keys) {
+          if (isCollapsed) {
+            next[key] = true
+          } else {
+            delete next[key]
+          }
+        }
+
+        return next
+      }),
+    [setCollapsed],
+  )
+
+  return {
+    isCollapsed: (key: string) => collapsed[key] === true,
+    toggle,
+    setAll,
+  }
 }

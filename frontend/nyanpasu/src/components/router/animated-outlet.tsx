@@ -192,6 +192,16 @@ export function AnimatedOutlet({
  * overflow into adjacent navigation. Content must still be able to grow and
  * scroll; `h-full` alone is insufficient when an ancestor has an auto height.
  *
+ * Fill exception: a layout may give a tool page the whole height with
+ * `staticData: { layout: 'fill' }` (see `route-layout.ts`). The layout wrapper
+ * outside this outlet flips with the route commit, but a leaving page is
+ * rendered from its own frozen route and keeps the class names it had, and
+ * `popLayout` pins its width and height, so it keeps its size for the whole
+ * slide. One thing does not carry over: a scrolled page that leaves for a fill
+ * page loses its scroll offset, because the clipped viewport is no longer a
+ * scroll container, so it slides out from its top. The layout still has to
+ * give a fill page a resolved height and make every region scroll internally.
+ *
  * @example
  * ```tsx
  * <div className="flex min-h-full flex-col overflow-clip">

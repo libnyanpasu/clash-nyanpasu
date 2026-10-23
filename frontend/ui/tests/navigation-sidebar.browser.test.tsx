@@ -62,31 +62,65 @@ async function mountSidebar() {
   )!
   const toggle = sidebar.querySelectorAll('button')[0]!
 
-  return { view, sidebar, item, capsule, label, toggle, onClick, onNavigate }
+  // Capture transient ripples before a slow provider round trip can outlast
+  // their animation. Keep geometry and hosts from insertion time after removal.
+  const ripples: {
+    parent: HTMLElement | null
+    offsetParent: Element | null
+    left: string
+    top: string
+    width: string
+  }[] = []
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.slot === 'ripple-item'
+        ) {
+          ripples.push({
+            parent: node.parentElement,
+            offsetParent: node.offsetParent,
+            left: node.style.left,
+            top: node.style.top,
+            width: node.style.width,
+          })
+        }
+      }
+    }
+  })
+  observer.observe(item, { childList: true, subtree: true })
+  onTestFinished(() => observer.disconnect())
+
+  return {
+    view,
+    sidebar,
+    item,
+    capsule,
+    label,
+    toggle,
+    onClick,
+    onNavigate,
+    ripples,
+  }
 }
 
 test('collapsed clicks ripple inside the active icon capsule', async () => {
-  const { item, capsule, onClick, onNavigate } = await mountSidebar()
+  const { capsule, onClick, onNavigate, ripples } = await mountSidebar()
   await expect.poll(() => capsule.getBoundingClientRect().width).toBe(56)
   await expect.poll(() => capsule.getBoundingClientRect().height).toBe(32)
   expect(getComputedStyle(capsule).overflow).toBe('hidden')
   expect(getComputedStyle(capsule).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
 
   await userEvent.click(page.getByTestId('sidebar-item'))
-  await expect
-    .poll(() => capsule.querySelector('[data-slot="ripple-item"]'))
-    .not.toBeNull()
-  const ripple = capsule.querySelector<HTMLElement>(
-    '[data-slot="ripple-item"]',
-  )!
-  expect(ripple!.parentElement).toBe(capsule)
-  expect(item.querySelectorAll('[data-slot="ripple-item"]')).toHaveLength(1)
+  await expect.poll(() => ripples).toHaveLength(1)
+  expect(ripples[0].parent).toBe(capsule)
   expect(onClick).toHaveBeenCalledTimes(1)
   expect(onNavigate).toHaveBeenCalledTimes(1)
 })
 
 test('collapsed label area and keyboard activation center the capsule ripple', async () => {
-  const { item, capsule } = await mountSidebar()
+  const { item, capsule, ripples } = await mountSidebar()
   await expect.poll(() => item.getBoundingClientRect().height).toBe(72)
 
   const rect = item.getBoundingClientRect()
@@ -98,14 +132,10 @@ test('collapsed label area and keyboard activation center the capsule ripple', a
       detail: 1,
     }),
   )
-  await expect
-    .poll(() => capsule.querySelectorAll('[data-slot="ripple-item"]'))
-    .toHaveLength(1)
-  const clickRipple = capsule.querySelector<HTMLElement>(
-    '[data-slot="ripple-item"]',
-  )!
-  expect(clickRipple.style.left).toBe('0px')
-  expect(clickRipple.style.top).toBe('-12px')
+  await expect.poll(() => ripples).toHaveLength(1)
+  expect(ripples[0].parent).toBe(capsule)
+  expect(ripples[0].left).toBe('0px')
+  expect(ripples[0].top).toBe('-12px')
 
   // Each ripple expires independently; keyboard input need not overlap the
   // earlier pointer animation to prove it uses the same capsule coordinates.
@@ -115,48 +145,38 @@ test('collapsed label area and keyboard activation center the capsule ripple', a
   await userEvent.tab()
   await expect.element(page.getByTestId('sidebar-item')).toHaveFocus()
   await userEvent.keyboard('{Enter}')
+  // Assert after expiry too, as can happen when CI resumes from keyboard input.
   await expect
     .poll(() => capsule.querySelectorAll('[data-slot="ripple-item"]'))
-    .toHaveLength(1)
-  const keyboardRipple = capsule.querySelector<HTMLElement>(
-    '[data-slot="ripple-item"]',
-  )!
-  expect(keyboardRipple.style.left).toBe('0px')
-  expect(keyboardRipple.style.top).toBe('-12px')
+    .toHaveLength(0)
+  await expect.poll(() => ripples).toHaveLength(2)
+  expect(ripples[1].parent).toBe(capsule)
+  expect(ripples[1].left).toBe('0px')
+  expect(ripples[1].top).toBe('-12px')
 })
 
 test('expanded clicks ripple across the row and expose keyboard focus', async () => {
-  const { sidebar, item, capsule, toggle } = await mountSidebar()
+  const { sidebar, item, capsule, toggle, ripples } = await mountSidebar()
   await userEvent.click(toggle)
   await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(200)
   await expect.poll(() => item.getBoundingClientRect().height).toBe(44)
 
   expect(item.className).toContain('focus-visible:ring-2')
   await userEvent.click(page.getByTestId('sidebar-item'))
-  await expect
-    .poll(() => item.querySelector('[data-slot="ripple-item"]'))
-    .not.toBeNull()
-  const ripple = item.querySelector<HTMLElement>('[data-slot="ripple-item"]')!
+  await expect.poll(() => ripples).toHaveLength(1)
+  const ripple = ripples[0]
   // Button's display: contents wrapper preserves the row as the positioning host.
   expect(ripple.offsetParent).toBe(item)
-  expect(Number.parseFloat(ripple.style.width)).toBe(item.clientWidth)
+  expect(Number.parseFloat(ripple.width)).toBe(item.clientWidth)
   expect(capsule.querySelector('[data-slot="ripple-item"]')).toBeNull()
 
   await userEvent.keyboard('{Enter}')
-  await expect
-    .poll(() => item.querySelectorAll('[data-slot="ripple-item"]'))
-    .toHaveLength(2)
-  const keyboardRipple = item.querySelectorAll<HTMLElement>(
-    '[data-slot="ripple-item"]',
-  )[1]
+  await expect.poll(() => ripples).toHaveLength(2)
+  const keyboardRipple = ripples[1]
   const itemRect = item.getBoundingClientRect()
-  const rippleSize = Number.parseFloat(keyboardRipple.style.width)
-  expect(keyboardRipple.style.left).toBe(
-    `${(itemRect.width - rippleSize) / 2}px`,
-  )
-  expect(keyboardRipple.style.top).toBe(
-    `${(itemRect.height - rippleSize) / 2}px`,
-  )
+  const rippleSize = Number.parseFloat(keyboardRipple.width)
+  expect(keyboardRipple.left).toBe(`${(itemRect.width - rippleSize) / 2}px`)
+  expect(keyboardRipple.top).toBe(`${(itemRect.height - rippleSize) / 2}px`)
 })
 
 test('an item does not render again with the page around the sidebar', async () => {

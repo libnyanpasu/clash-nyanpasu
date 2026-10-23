@@ -1,73 +1,74 @@
-import * as path from "node:path";
-import { CENTRAL_PUBLICATION_TARGETS } from "./central-publication.ts";
-import { hashFile } from "./sourceforge.ts";
-import { readFile } from "node:fs/promises";
+import { readFile } from 'node:fs/promises'
+import * as path from 'node:path'
+import { CENTRAL_PUBLICATION_TARGETS } from './central-publication.ts'
+import { hashFile } from './sourceforge.ts'
 
 export interface TelegramArtifact {
-  fileName: string;
-  fileSize: number;
-  sha256: string;
-  md5: string;
-  path: string;
+  fileName: string
+  fileSize: number
+  sha256: string
+  md5: string
+  path: string
 }
 
 export interface TelegramReceipt {
-  messageId: number;
-  documentId: string;
-  messageUrl: string;
+  messageId: number
+  documentId: string
+  messageUrl: string
 }
 
 export interface TelegramTarget {
-  buildId: string;
-  folderPath: string;
-  channel: "nightly" | "release";
-  commit: string;
-  tag: string | null;
-  target: string;
-  publishedAt: string;
-  artifacts: TelegramArtifact[];
+  buildId: string
+  folderPath: string
+  channel: 'nightly' | 'release'
+  commit: string
+  tag: string | null
+  target: string
+  publishedAt: string
+  artifacts: TelegramArtifact[]
 }
 
 export interface TelegramPublicationRecord extends TelegramArtifact {
-  buildId: string;
-  target: string;
-  status: "uploaded" | "failed";
-  receipt?: TelegramReceipt;
-  error?: string;
+  buildId: string
+  target: string
+  status: 'uploaded' | 'failed'
+  receipt?: TelegramReceipt
+  error?: string
 }
 
 /** Validate the complete inventory before posting any file to the channel. */
 export async function readTelegramInventory(
   root: string,
 ): Promise<TelegramTarget[]> {
-  const targets: TelegramTarget[] = [];
-  const names = new Set<string>();
+  const targets: TelegramTarget[] = []
+  const names = new Set<string>()
   for (const target of CENTRAL_PUBLICATION_TARGETS) {
     const manifest = JSON.parse(
-      await readFile(path.join(root, "manifests", `${target}.json`), "utf8"),
-    ) as TelegramTarget;
+      await readFile(path.join(root, 'manifests', `${target}.json`), 'utf8'),
+    ) as TelegramTarget
     if (manifest.target !== target || !manifest.artifacts.length) {
-      throw new Error(`Incomplete Telegram inventory: ${target}`);
+      throw new Error(`Incomplete Telegram inventory: ${target}`)
     }
     for (const artifact of manifest.artifacts) {
       if (names.has(artifact.fileName)) {
-        throw new Error(`Duplicate Telegram filename: ${artifact.fileName}`);
+        throw new Error(`Duplicate Telegram filename: ${artifact.fileName}`)
       }
-      names.add(artifact.fileName);
-      const digest = await hashFile(artifact.path);
+      names.add(artifact.fileName)
+      const digest = await hashFile(artifact.path)
       if (
         digest.fileSize !== artifact.fileSize ||
-        digest.sha256 !== artifact.sha256 || digest.md5 !== artifact.md5
+        digest.sha256 !== artifact.sha256 ||
+        digest.md5 !== artifact.md5
       ) {
-        throw new Error(`Telegram artifact changed: ${artifact.fileName}`);
+        throw new Error(`Telegram artifact changed: ${artifact.fileName}`)
       }
       if (artifact.fileSize > 2_000_000_000) {
-        throw new Error(`Telegram artifact exceeds 2 GB: ${artifact.fileName}`);
+        throw new Error(`Telegram artifact exceeds 2 GB: ${artifact.fileName}`)
       }
     }
-    targets.push(manifest);
+    targets.push(manifest)
   }
-  return targets;
+  return targets
 }
 
 export async function publishTelegramInventory(
@@ -79,66 +80,71 @@ export async function publishTelegramInventory(
   ) => Promise<TelegramReceipt>,
   checkpoint: (records: TelegramPublicationRecord[]) => Promise<void>,
 ): Promise<TelegramPublicationRecord[]> {
-  const records: TelegramPublicationRecord[] = [];
+  const records: TelegramPublicationRecord[] = []
   for (const target of targets) {
     for (const artifact of target.artifacts) {
-      const prior = previous.find((record) =>
-        record.buildId === target.buildId &&
-        record.fileName === artifact.fileName
-      );
+      const prior = previous.find(
+        (record) =>
+          record.buildId === target.buildId &&
+          record.fileName === artifact.fileName,
+      )
       if (
         prior &&
         (prior.sha256 !== artifact.sha256 ||
-          prior.fileSize !== artifact.fileSize || prior.md5 !== artifact.md5)
+          prior.fileSize !== artifact.fileSize ||
+          prior.md5 !== artifact.md5)
       ) {
-        throw new Error(`Conflicting Telegram receipt: ${artifact.fileName}`);
+        throw new Error(`Conflicting Telegram receipt: ${artifact.fileName}`)
       }
     }
   }
   // One document at a time avoids channel flood limits; the adapter uploads parts concurrently.
   for (const target of targets) {
     for (const artifact of target.artifacts) {
-      const prior = previous.find((record) =>
-        record.buildId === target.buildId &&
-        record.fileName === artifact.fileName
-      );
-      let record: TelegramPublicationRecord;
-      if (prior?.status === "uploaded" && prior.receipt) {
-        record = { ...prior, path: artifact.path };
+      const prior = previous.find(
+        (record) =>
+          record.buildId === target.buildId &&
+          record.fileName === artifact.fileName,
+      )
+      let record: TelegramPublicationRecord
+      if (prior?.status === 'uploaded' && prior.receipt) {
+        record = { ...prior, path: artifact.path }
       } else {
         try {
-          const receipt = await send(artifact, target);
+          const receipt = await send(artifact, target)
           record = {
             ...artifact,
             buildId: target.buildId,
             target: target.target,
-            status: "uploaded",
+            status: 'uploaded',
             receipt,
-          };
+          }
         } catch (error) {
           record = {
             ...artifact,
             buildId: target.buildId,
             target: target.target,
-            status: "failed",
+            status: 'failed',
             error: error instanceof Error ? error.message : String(error),
-          };
+          }
         }
       }
-      records.push(record);
+      records.push(record)
       // Retain successful message ids immediately, even if a later upload fails.
       await checkpoint([
-        ...previous.filter((prior) =>
-          !records.some((record) =>
-            record.buildId === prior.buildId &&
-            record.fileName === prior.fileName
-          )
+        ...previous.filter(
+          (prior) =>
+            !records.some(
+              (record) =>
+                record.buildId === prior.buildId &&
+                record.fileName === prior.fileName,
+            ),
         ),
         ...records,
-      ]);
+      ])
     }
   }
-  return records;
+  return records
 }
 
 export async function registerTelegramInventory(
@@ -147,13 +153,15 @@ export async function registerTelegramInventory(
   token: string,
   fetcher = fetch,
 ): Promise<void> {
-  const errors: string[] = [];
+  const errors: string[] = []
   for (const target of targets) {
     const artifacts = target.artifacts.map((artifact) => {
-      const record = records.find((entry) =>
-        entry.buildId === target.buildId && entry.fileName === artifact.fileName
-      );
-      if (record?.status !== "uploaded" || !record.receipt) return null;
+      const record = records.find(
+        (entry) =>
+          entry.buildId === target.buildId &&
+          entry.fileName === artifact.fileName,
+      )
+      if (record?.status !== 'uploaded' || !record.receipt) return null
       return {
         fileName: artifact.fileName,
         fileSize: artifact.fileSize,
@@ -161,53 +169,54 @@ export async function registerTelegramInventory(
         md5: artifact.md5,
         messageId: record.receipt.messageId,
         documentId: record.receipt.documentId,
-      };
-    });
-    if (artifacts.some((artifact) => artifact === null)) continue;
+      }
+    })
+    if (artifacts.some((artifact) => artifact === null)) continue
     try {
       const response = await fetcher(
-        "https://archive.nyanpasu.org/archive/builds",
+        'https://archive.nyanpasu.org/archive/builds',
         {
-          method: "POST",
+          method: 'POST',
           headers: {
             authorization: `Bearer ${token}`,
-            "content-type": "application/json",
+            'content-type': 'application/json',
           },
           body: JSON.stringify({
             ...target,
             schemaVersion: 2,
-            storageProvider: "telegram",
+            storageProvider: 'telegram',
             buildId: `tg-${target.buildId}`,
-            itemIdentifier: "ClashNyanpasu",
+            itemIdentifier: 'ClashNyanpasu',
             artifacts,
           }),
-          redirect: "error",
+          redirect: 'error',
           signal: AbortSignal.timeout(30_000),
         },
-      );
-      const detail = await response.text();
+      )
+      const detail = await response.text()
       if (!response.ok) {
         throw new Error(
-          `Archive registration HTTP ${response.status}: ${
-            detail.slice(0, 2000)
-          }`,
-        );
+          `Archive registration HTTP ${response.status}: ${detail.slice(
+            0,
+            2000,
+          )}`,
+        )
       }
-      const result = JSON.parse(detail);
+      const result = JSON.parse(detail)
       if (
         result.buildId !== `tg-${target.buildId}` ||
-        result.status !== "ready" ||
+        result.status !== 'ready' ||
         result.artifacts?.length !== artifacts.length
       ) {
-        throw new Error("Archive did not confirm the complete Telegram index");
+        throw new Error('Archive did not confirm the complete Telegram index')
       }
     } catch (error) {
       errors.push(
         `${target.target}: ${
           error instanceof Error ? error.message : String(error)
         }`,
-      );
+      )
     }
   }
-  if (errors.length) throw new Error(errors.join("\n"));
+  if (errors.length) throw new Error(errors.join('\n'))
 }

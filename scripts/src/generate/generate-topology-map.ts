@@ -1,86 +1,89 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import {
   geoGraticule10,
   geoNaturalEarth1,
   geoPath,
   type GeoPermissibleObjects,
-} from "d3";
-import { format } from "prettier";
-import { dirname, join } from "node:path";
-import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
-import { mkdir, writeFile } from "node:fs/promises";
+} from 'd3'
+import { format } from 'prettier'
+import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 
 type CountryCollection = {
-  features: Array<
-    { properties: { ISO_A2_EH: string } } & GeoPermissibleObjects
-  >;
-};
+  features: Array<{ properties: { ISO_A2_EH: string } } & GeoPermissibleObjects>
+}
 
 type LabelCollection = {
-  features: Array<
-    { properties: { ISO_A2_EH: string; LABEL_X: number; LABEL_Y: number } }
-  >;
-};
+  features: Array<{
+    properties: { ISO_A2_EH: string; LABEL_X: number; LABEL_Y: number }
+  }>
+}
 
-const revision = "ca96624a56bd078437bca8184e78163e5039ad19";
-const source =
-  `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/${revision}/geojson`;
+const revision = 'ca96624a56bd078437bca8184e78163e5039ad19'
+const source = `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/${revision}/geojson`
 async function downloadGeoJson<T>(scale: number): Promise<T> {
   const response = await fetch(
     `${source}/ne_${scale}m_admin_0_countries.geojson`,
-  );
+  )
   if (!response.ok) {
-    throw new Error(`Natural Earth download failed: ${response.status}`);
+    throw new Error(`Natural Earth download failed: ${response.status}`)
   }
-  return await response.json() as T;
+  return (await response.json()) as T
 }
 
 const [countries, locations] = await Promise.all([
   downloadGeoJson<CountryCollection>(110),
   downloadGeoJson<LabelCollection>(10),
-]);
-const projection = geoNaturalEarth1().fitExtent([[18, 18], [942, 442]], {
-  type: "Sphere",
-});
-const path = geoPath(projection).digits(1);
-const centers: Record<string, number[]> = {};
+])
+const projection = geoNaturalEarth1().fitExtent(
+  [
+    [18, 18],
+    [942, 442],
+  ],
+  {
+    type: 'Sphere',
+  },
+)
+const path = geoPath(projection).digits(1)
+const centers: Record<string, number[]> = {}
 for (const { properties: p } of locations.features) {
-  const code = p.ISO_A2_EH;
-  if (!/^[A-Z]{2}$/.test(code)) continue;
-  centers[code] = projection([p.LABEL_X, p.LABEL_Y])!.map((value) =>
-    Math.round(value * 10) / 10
-  );
+  const code = p.ISO_A2_EH
+  if (!/^[A-Z]{2}$/.test(code)) continue
+  centers[code] = projection([p.LABEL_X, p.LABEL_Y])!.map(
+    (value) => Math.round(value * 10) / 10,
+  )
 }
 // One path per country, keyed like the label points, so regions can be shaded;
 // features without a two-letter code are only drawn.
-const shapes: Record<string, string> = {};
-const unassigned: string[] = [];
+const shapes: Record<string, string> = {}
+const unassigned: string[] = []
 for (const feature of countries.features) {
-  const shape = path(feature);
-  if (!shape) continue;
-  const code = feature.properties.ISO_A2_EH;
-  if (/^[A-Z]{2}$/.test(code)) shapes[code] = (shapes[code] ?? "") + shape;
-  else unassigned.push(shape);
+  const shape = path(feature)
+  if (!shape) continue
+  const code = feature.properties.ISO_A2_EH
+  if (/^[A-Z]{2}$/.test(code)) shapes[code] = (shapes[code] ?? '') + shape
+  else unassigned.push(shape)
 }
 const output = join(
   WORKSPACE_ROOT,
-  "frontend/nyanpasu/src/assets/maps/world-map.json",
-);
-await mkdir(dirname(output), { recursive: true });
+  'frontend/nyanpasu/src/assets/maps/world-map.json',
+)
+await mkdir(dirname(output), { recursive: true })
 await writeFile(
   output,
   await format(
     JSON.stringify({
-      sphere: path({ type: "Sphere" }),
+      sphere: path({ type: 'Sphere' }),
       graticule: path(geoGraticule10()),
       countries: Object.fromEntries(Object.entries(shapes).sort()),
-      unassigned: unassigned.join(""),
+      unassigned: unassigned.join(''),
       centers: Object.fromEntries(Object.entries(centers).sort()),
     }),
-    { parser: "json" },
+    { parser: 'json' },
   ),
-);
+)
 console.log(
   `Generated offline map with ${
     Object.keys(shapes).length
   } country shapes and ${Object.keys(centers).length} region labels`,
-);
+)

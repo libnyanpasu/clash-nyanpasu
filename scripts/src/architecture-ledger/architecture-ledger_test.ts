@@ -1,9 +1,8 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
-
-function assertFalse(value: unknown, message?: string) {
-  assert.ok(!value, message);
-}
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
 /**
  * Fixture-only tests for the S10 architecture ledger gate.
  * Does not scan the live repository; inputs are in-memory or temporary fixtures.
@@ -16,126 +15,124 @@ import {
   isLikelyFnDefinition,
   isTestCfgAttr,
   matchRealDirDenylist,
-  type StableSnapshot,
   STATIC_ALLOWLIST,
   STATIC_GATE_PREFIXES,
   staticAllowlistKey,
-} from "./policy.ts";
+  type StableSnapshot,
+} from './policy.ts'
 import {
   collectRustFiles,
   createBuckets,
   scanFile,
   staticAllowlistIssues,
   testLineMask,
-} from "./scan.ts";
+} from './scan.ts'
 import {
   evaluateGate,
   metricsFromBuckets,
   parseStableSnapshot,
   reportToStableSnapshot,
   toStableSnapshot,
-} from "./snapshot.ts";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+} from './snapshot.ts'
+
+function assertFalse(value: unknown, message?: string) {
+  assert.ok(!value, message)
+}
 
 function emptyStable(overrides: Partial<StableSnapshot> = {}): StableSnapshot {
-  const baseMetrics: StableSnapshot["metrics"] = {
+  const baseMetrics: StableSnapshot['metrics'] = {
     config_calls: { total: 0, byKey: {} },
     service_globals: { total: 0, byKey: {} },
     migration_markers: { total: 0, byKey: {} },
     legacy_dto_refs: { total: 0, byKey: {} },
     test_real_dirs: { total: 0, byKey: {} },
     mutable_statics: { total: 0, byKey: {} },
-  };
+  }
   return {
-    roots: overrides.roots ?? ["backend"],
+    roots: overrides.roots ?? ['backend'],
     bridgeFiles: overrides.bridgeFiles ?? [],
     metrics: {
       ...baseMetrics,
       ...(overrides.metrics ?? {}),
     },
-  };
+  }
 }
 
-test("evaluateGate: equal pass", () => {
+test('evaluateGate: equal pass', () => {
   const snap = emptyStable({
-    bridgeFiles: ["backend/tauri/src/bridge/mod.rs"],
+    bridgeFiles: ['backend/tauri/src/bridge/mod.rs'],
     metrics: {
-      config_calls: { total: 2, byKey: { "Config::verge()": 2 } },
-      service_globals: { total: 1, byKey: { "CoreManager::global()": 1 } },
-      migration_markers: { total: 1, byKey: { "TODO(actor-migration)": 1 } },
+      config_calls: { total: 2, byKey: { 'Config::verge()': 2 } },
+      service_globals: { total: 1, byKey: { 'CoreManager::global()': 1 } },
+      migration_markers: { total: 1, byKey: { 'TODO(actor-migration)': 1 } },
       legacy_dto_refs: { total: 1, byKey: { IVerge: 1 } },
       test_real_dirs: { total: 0, byKey: {} },
     },
-  });
-  const result = evaluateGate(structuredClone(snap), structuredClone(snap));
-  assert(result.ok);
-  assert.deepStrictEqual(result.issues.length, 0);
-});
+  })
+  const result = evaluateGate(structuredClone(snap), structuredClone(snap))
+  assert(result.ok)
+  assert.deepStrictEqual(result.issues.length, 0)
+})
 
-test("evaluateGate: metric drift fail", () => {
+test('evaluateGate: metric drift fail', () => {
   const expected = emptyStable({
     metrics: {
-      config_calls: { total: 2, byKey: { "Config::verge()": 2 } },
+      config_calls: { total: 2, byKey: { 'Config::verge()': 2 } },
       service_globals: { total: 0, byKey: {} },
       migration_markers: { total: 0, byKey: {} },
       legacy_dto_refs: { total: 0, byKey: {} },
       test_real_dirs: { total: 0, byKey: {} },
     },
-  });
+  })
   const current = emptyStable({
     metrics: {
       config_calls: {
         total: 3,
-        byKey: { "Config::verge()": 2, "Config::clash()": 1 },
+        byKey: { 'Config::verge()': 2, 'Config::clash()': 1 },
       },
       service_globals: { total: 0, byKey: {} },
       migration_markers: { total: 0, byKey: {} },
       legacy_dto_refs: { total: 0, byKey: {} },
       test_real_dirs: { total: 0, byKey: {} },
     },
-  });
-  const result = evaluateGate(current, expected);
-  assertFalse(result.ok);
+  })
+  const result = evaluateGate(current, expected)
+  assertFalse(result.ok)
   assert(
-    result.issues.some((i) =>
-      i.kind === "metric_total" && i.message.includes("config_calls.total")
+    result.issues.some(
+      (i) =>
+        i.kind === 'metric_total' && i.message.includes('config_calls.total'),
     ),
-  );
+  )
   assert(
-    result.issues.some((i) =>
-      i.kind === "metric_key" && i.message.includes("Config::clash()")
+    result.issues.some(
+      (i) => i.kind === 'metric_key' && i.message.includes('Config::clash()'),
     ),
-  );
-});
+  )
+})
 
-test("evaluateGate: bridge drift fail", () => {
+test('evaluateGate: bridge drift fail', () => {
   const expected = emptyStable({
     bridgeFiles: [
-      "backend/tauri/src/bridge/mod.rs",
-      "backend/tauri/src/client/core_bridge.rs",
+      'backend/tauri/src/bridge/mod.rs',
+      'backend/tauri/src/client/core_bridge.rs',
     ],
-  });
+  })
   const current = emptyStable({
     bridgeFiles: [
-      "backend/tauri/src/bridge/mod.rs",
-      "backend/tauri/src/enhance/artifact_bridge.rs",
+      'backend/tauri/src/bridge/mod.rs',
+      'backend/tauri/src/enhance/artifact_bridge.rs',
     ],
-  });
-  const result = evaluateGate(current, expected);
-  assertFalse(result.ok);
-  const bridgeIssues = result.issues.filter((i) => i.kind === "bridge_files");
-  assert(bridgeIssues.length >= 2);
-  assert(
-    bridgeIssues.some((i) => i.message.includes("core_bridge.rs")),
-  );
-  assert(
-    bridgeIssues.some((i) => i.message.includes("artifact_bridge.rs")),
-  );
-});
+  })
+  const result = evaluateGate(current, expected)
+  assertFalse(result.ok)
+  const bridgeIssues = result.issues.filter((i) => i.kind === 'bridge_files')
+  assert(bridgeIssues.length >= 2)
+  assert(bridgeIssues.some((i) => i.message.includes('core_bridge.rs')))
+  assert(bridgeIssues.some((i) => i.message.includes('artifact_bridge.rs')))
+})
 
-test("evaluateGate: hard denylist fail even if snapshot matches non-zero", () => {
+test('evaluateGate: hard denylist fail even if snapshot matches non-zero', () => {
   const bad = emptyStable({
     metrics: {
       config_calls: { total: 0, byKey: {} },
@@ -144,91 +141,105 @@ test("evaluateGate: hard denylist fail even if snapshot matches non-zero", () =>
       legacy_dto_refs: { total: 0, byKey: {} },
       test_real_dirs: {
         total: 1,
-        byKey: { "dirs::app_home_dir()": 1 },
+        byKey: { 'dirs::app_home_dir()': 1 },
       },
     },
-  });
+  })
   // Snapshot also records residual 1 — still hard-fail.
-  const result = evaluateGate(structuredClone(bad), structuredClone(bad));
-  assertFalse(result.ok);
+  const result = evaluateGate(structuredClone(bad), structuredClone(bad))
+  assertFalse(result.ok)
   assert(
-    result.issues.some((i) =>
-      i.kind === "hard_denylist" && i.message.includes("test_real_dirs.total")
+    result.issues.some(
+      (i) =>
+        i.kind === 'hard_denylist' &&
+        i.message.includes('test_real_dirs.total'),
     ),
-  );
-});
+  )
+})
 
-test("evaluateGate: roots drift fail", () => {
-  const expected = emptyStable({ roots: ["backend"] });
-  const current = emptyStable({ roots: ["backend", "frontend"] });
-  const result = evaluateGate(current, expected);
-  assertFalse(result.ok);
-  assert(result.issues.some((i) => i.kind === "roots"));
-});
+test('evaluateGate: roots drift fail', () => {
+  const expected = emptyStable({ roots: ['backend'] })
+  const current = emptyStable({ roots: ['backend', 'frontend'] })
+  const result = evaluateGate(current, expected)
+  assertFalse(result.ok)
+  assert(result.issues.some((i) => i.kind === 'roots'))
+})
 
-test("parseStableSnapshot: missing / invalid fail", () => {
-  assert.throws(() => parseStableSnapshot(null), { message: /snapshot must be a JSON object/ });
-  assert.throws(() => parseStableSnapshot({ roots: "backend" }), { message: /snapshot\.roots/ });
-  assert.throws(() =>
+test('parseStableSnapshot: missing / invalid fail', () => {
+  assert.throws(() => parseStableSnapshot(null), {
+    message: /snapshot must be a JSON object/,
+  })
+  assert.throws(() => parseStableSnapshot({ roots: 'backend' }), {
+    message: /snapshot\.roots/,
+  })
+  assert.throws(
+    () =>
       parseStableSnapshot({
-        roots: ["backend"],
+        roots: ['backend'],
         bridgeFiles: [],
-        metrics: { config_calls: { total: "x", byKey: {} } },
-      }), { message: /total/ });
-  assert.throws(() =>
+        metrics: { config_calls: { total: 'x', byKey: {} } },
+      }),
+    { message: /total/ },
+  )
+  assert.throws(
+    () =>
       parseStableSnapshot({
-        roots: ["backend"],
-        bridgeFiles: "nope",
+        roots: ['backend'],
+        bridgeFiles: 'nope',
         metrics: {},
-      }), { message: /bridgeFiles/ });
-});
+      }),
+    { message: /bridgeFiles/ },
+  )
+})
 
-test("parseStableSnapshot: strips report-only fields and accepts stable contract", () => {
+test('parseStableSnapshot: strips report-only fields and accepts stable contract', () => {
   const parsed = parseStableSnapshot({
-    generatedAt: "2026-01-01T00:00:00.000Z",
-    mode: "report",
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    mode: 'report',
     scannedFiles: 999,
-    notes: ["ignored"],
-    roots: ["backend"],
-    bridgeFiles: ["b.rs", "a.rs"],
+    notes: ['ignored'],
+    roots: ['backend'],
+    bridgeFiles: ['b.rs', 'a.rs'],
     metrics: {
       config_calls: {
         total: 1,
-        byKey: { "Config::verge()": 1 },
-        samples: [{ file: "x.rs", line: 1, text: "ignored" }],
+        byKey: { 'Config::verge()': 1 },
+        samples: [{ file: 'x.rs', line: 1, text: 'ignored' }],
       },
     },
-  });
-  assert.deepStrictEqual(parsed.roots, ["backend"]);
-  assert.deepStrictEqual(parsed.bridgeFiles, ["a.rs", "b.rs"]);
-  assert.deepStrictEqual(parsed.metrics.config_calls.total, 1);
-  assert.deepStrictEqual(parsed.metrics.config_calls.byKey, { "Config::verge()": 1 });
-  assertFalse("samples" in parsed.metrics.config_calls);
-  assertFalse("generatedAt" in parsed);
-});
+  })
+  assert.deepStrictEqual(parsed.roots, ['backend'])
+  assert.deepStrictEqual(parsed.bridgeFiles, ['a.rs', 'b.rs'])
+  assert.deepStrictEqual(parsed.metrics.config_calls.total, 1)
+  assert.deepStrictEqual(parsed.metrics.config_calls.byKey, {
+    'Config::verge()': 1,
+  })
+  assertFalse('samples' in parsed.metrics.config_calls)
+  assertFalse('generatedAt' in parsed)
+})
 
-test("toStableSnapshot / reportToStableSnapshot: exclude volatile fields", () => {
+test('toStableSnapshot / reportToStableSnapshot: exclude volatile fields', () => {
   const stable = toStableSnapshot(
-    ["backend"],
+    ['backend'],
     {
       config_calls: {
         total: 1,
-        byKey: { "Config::verge()": 1 },
-        samples: [{ file: "x.rs", line: 1, text: "Config::verge()" }],
+        byKey: { 'Config::verge()': 1 },
+        samples: [{ file: 'x.rs', line: 1, text: 'Config::verge()' }],
       },
     },
-    ["z.rs", "a.rs"],
-  );
-  assert.deepStrictEqual(stable.bridgeFiles, ["a.rs", "z.rs"]);
-  assert.deepStrictEqual(
-    Object.keys(stable.metrics.config_calls).sort(),
-    ["byKey", "total"],
-  );
+    ['z.rs', 'a.rs'],
+  )
+  assert.deepStrictEqual(stable.bridgeFiles, ['a.rs', 'z.rs'])
+  assert.deepStrictEqual(Object.keys(stable.metrics.config_calls).sort(), [
+    'byKey',
+    'total',
+  ])
 
   const fromReport = reportToStableSnapshot({
-    generatedAt: "t",
-    mode: "gate",
-    roots: ["backend"],
+    generatedAt: 't',
+    mode: 'gate',
+    roots: ['backend'],
     scannedFiles: 1,
     metrics: {
       config_calls: {
@@ -238,126 +249,126 @@ test("toStableSnapshot / reportToStableSnapshot: exclude volatile fields", () =>
       },
     },
     bridgeFiles: [],
-    notes: ["n"],
-  });
-  assert.deepStrictEqual(fromReport.roots, ["backend"]);
-  assert.deepStrictEqual(fromReport.bridgeFiles, []);
-});
+    notes: ['n'],
+  })
+  assert.deepStrictEqual(fromReport.roots, ['backend'])
+  assert.deepStrictEqual(fromReport.bridgeFiles, [])
+})
 
-test("classification: bridge path boundaries", () => {
-  assert(isBridgePath("backend/tauri/src/bridge/mod.rs"));
-  assert(isBridgePath("backend/tauri/src/client/core_bridge.rs"));
-  assert(isBridgePath("backend/tauri/src/enhance/artifact_bridge.rs"));
-  assertFalse(isBridgePath("backend/tauri/src/client/mod.rs"));
-  assertFalse(isBridgePath("backend/tauri/src/core/clash/core.rs"));
-});
+test('classification: bridge path boundaries', () => {
+  assert(isBridgePath('backend/tauri/src/bridge/mod.rs'))
+  assert(isBridgePath('backend/tauri/src/client/core_bridge.rs'))
+  assert(isBridgePath('backend/tauri/src/enhance/artifact_bridge.rs'))
+  assertFalse(isBridgePath('backend/tauri/src/client/mod.rs'))
+  assertFalse(isBridgePath('backend/tauri/src/core/clash/core.rs'))
+})
 
-test("classification: dedicated test path boundaries", () => {
-  assert(isDedicatedTestPath("backend/tauri/tests/foo.rs"));
-  assert(isDedicatedTestPath("backend/tauri/src/foo_test.rs"));
-  assert(isDedicatedTestPath("backend/tauri/src/test.rs"));
-  assert(isDedicatedTestPath("backend/tauri/src/utils/tests.rs"));
-  assertFalse(isDedicatedTestPath("backend/tauri/src/client/mod.rs"));
-  assertFalse(isDedicatedTestPath("backend/tauri/src/testing_helpers.rs"));
-  assertFalse(isDedicatedTestPath("backend/tauri/src/contest.rs"));
-});
+test('classification: dedicated test path boundaries', () => {
+  assert(isDedicatedTestPath('backend/tauri/tests/foo.rs'))
+  assert(isDedicatedTestPath('backend/tauri/src/foo_test.rs'))
+  assert(isDedicatedTestPath('backend/tauri/src/test.rs'))
+  assert(isDedicatedTestPath('backend/tauri/src/utils/tests.rs'))
+  assertFalse(isDedicatedTestPath('backend/tauri/src/client/mod.rs'))
+  assertFalse(isDedicatedTestPath('backend/tauri/src/testing_helpers.rs'))
+  assertFalse(isDedicatedTestPath('backend/tauri/src/contest.rs'))
+})
 
-test("classification: isTestCfgAttr all/any/not(test)", () => {
-  assert(isTestCfgAttr("#[cfg(test)]"));
-  assert(isTestCfgAttr("#[cfg(all(test, unix))]"));
-  assert(isTestCfgAttr("#[cfg(any(windows, test))]"));
-  assert(isTestCfgAttr('#[cfg(all(feature = "x", test))]'));
-  assertFalse(isTestCfgAttr("#[cfg(not(test))]"));
-  assertFalse(isTestCfgAttr("#[cfg(all(not(test), unix))]"));
-  assertFalse(isTestCfgAttr('#[cfg(feature = "test")]'));
-  assertFalse(isTestCfgAttr("#[test]"));
-  assert(cfgInnerEnablesTest("test"));
-  assert(cfgInnerEnablesTest("all(test, unix)"));
-  assertFalse(cfgInnerEnablesTest("not(test)"));
-});
+test('classification: isTestCfgAttr all/any/not(test)', () => {
+  assert(isTestCfgAttr('#[cfg(test)]'))
+  assert(isTestCfgAttr('#[cfg(all(test, unix))]'))
+  assert(isTestCfgAttr('#[cfg(any(windows, test))]'))
+  assert(isTestCfgAttr('#[cfg(all(feature = "x", test))]'))
+  assertFalse(isTestCfgAttr('#[cfg(not(test))]'))
+  assertFalse(isTestCfgAttr('#[cfg(all(not(test), unix))]'))
+  assertFalse(isTestCfgAttr('#[cfg(feature = "test")]'))
+  assertFalse(isTestCfgAttr('#[test]'))
+  assert(cfgInnerEnablesTest('test'))
+  assert(cfgInnerEnablesTest('all(test, unix)'))
+  assertFalse(cfgInnerEnablesTest('not(test)'))
+})
 
-test("classification: testLineMask scopes cfg(test) without whole-file bleed", () => {
+test('classification: testLineMask scopes cfg(test) without whole-file bleed', () => {
   const source = [
-    "use crate::utils::dirs;",
-    "#[cfg(test)]",
-    "pub use super::helpers;",
-    "fn production() {",
-    "    let _ = dirs::app_home_dir();",
-    "}",
-    "#[cfg(test)]",
-    "mod tests {",
-    "    #[test]",
-    "    fn t() {",
-    "        let _ = crate::utils::dirs::profiles_path();",
-    "    }",
-    "}",
-  ];
-  const mask = testLineMask(source, false);
+    'use crate::utils::dirs;',
+    '#[cfg(test)]',
+    'pub use super::helpers;',
+    'fn production() {',
+    '    let _ = dirs::app_home_dir();',
+    '}',
+    '#[cfg(test)]',
+    'mod tests {',
+    '    #[test]',
+    '    fn t() {',
+    '        let _ = crate::utils::dirs::profiles_path();',
+    '    }',
+    '}',
+  ]
+  const mask = testLineMask(source, false)
   // production line with app_home_dir is NOT test
-  assertFalse(mask[4]);
+  assertFalse(mask[4])
   // inside mod tests is test
-  assert(mask[10]);
+  assert(mask[10])
   // cfg(test) pub use item only — not remainder
-  assert(mask[1]);
-  assert(mask[2]);
-  assertFalse(mask[3]);
-});
+  assert(mask[1])
+  assert(mask[2])
+  assertFalse(mask[3])
+})
 
-test("classification: testLineMask honors cfg(all/any test) and ignores not(test)", () => {
+test('classification: testLineMask honors cfg(all/any test) and ignores not(test)', () => {
   const source = [
     '#[cfg(all(test, feature = "x"))]',
-    "mod all_tests {",
-    "    fn a() { let _ = app_home_dir(); }",
-    "}",
-    "#[cfg(any(test, windows))]",
-    "fn any_item() {",
-    "    let _ = cache_dir();",
-    "}",
-    "#[cfg(not(test))]",
-    "fn prod_only() {",
-    "    let _ = app_home_dir();",
-    "}",
-  ];
-  const mask = testLineMask(source, false);
-  assert(mask[0]);
-  assert(mask[2]);
-  assert(mask[4]);
-  assert(mask[6]);
-  assertFalse(mask[8]);
-  assertFalse(mask[10]);
-});
+    'mod all_tests {',
+    '    fn a() { let _ = app_home_dir(); }',
+    '}',
+    '#[cfg(any(test, windows))]',
+    'fn any_item() {',
+    '    let _ = cache_dir();',
+    '}',
+    '#[cfg(not(test))]',
+    'fn prod_only() {',
+    '    let _ = app_home_dir();',
+    '}',
+  ]
+  const mask = testLineMask(source, false)
+  assert(mask[0])
+  assert(mask[2])
+  assert(mask[4])
+  assert(mask[6])
+  assertFalse(mask[8])
+  assertFalse(mask[10])
+})
 
-test("matchRealDirDenylist: bare import, qualified, method exclude, fn def exclude", () => {
-  const bare = matchRealDirDenylist("    let p = app_home_dir();");
-  assert.deepStrictEqual(bare.length, 1);
-  assert(bare[0].key.includes("app_home_dir"));
+test('matchRealDirDenylist: bare import, qualified, method exclude, fn def exclude', () => {
+  const bare = matchRealDirDenylist('    let p = app_home_dir();')
+  assert.deepStrictEqual(bare.length, 1)
+  assert(bare[0].key.includes('app_home_dir'))
 
   const qualified = matchRealDirDenylist(
-    "let p = crate::utils::dirs::profiles_path();",
-  );
-  assert.deepStrictEqual(qualified.length, 1);
+    'let p = crate::utils::dirs::profiles_path();',
+  )
+  assert.deepStrictEqual(qualified.length, 1)
 
-  const dirs = matchRealDirDenylist("let p = dirs::cache_dir();");
-  assert.deepStrictEqual(dirs.length, 1);
+  const dirs = matchRealDirDenylist('let p = dirs::cache_dir();')
+  assert.deepStrictEqual(dirs.length, 1)
 
-  const tray = matchRealDirDenylist('let p = tray_icons_path("sys");');
-  assert.deepStrictEqual(tray.length, 1);
+  const tray = matchRealDirDenylist('let p = tray_icons_path("sys");')
+  assert.deepStrictEqual(tray.length, 1)
 
   const method = matchRealDirDenylist(
-    "let p = paths.app_home_dir(); let q = resolver.cache_dir();",
-  );
-  assert.deepStrictEqual(method.length, 0);
+    'let p = paths.app_home_dir(); let q = resolver.cache_dir();',
+  )
+  assert.deepStrictEqual(method.length, 0)
 
-  const defLine = "pub fn app_home_dir() -> PathBuf {";
-  assert.deepStrictEqual(matchRealDirDenylist(defLine).length, 0);
-  assert(isLikelyFnDefinition(defLine, defLine.indexOf("app_home_dir")));
+  const defLine = 'pub fn app_home_dir() -> PathBuf {'
+  assert.deepStrictEqual(matchRealDirDenylist(defLine).length, 0)
+  assert(isLikelyFnDefinition(defLine, defLine.indexOf('app_home_dir')))
 
-  const asyncDef = "pub async fn cache_dir() -> Result<PathBuf> {";
-  assert.deepStrictEqual(matchRealDirDenylist(asyncDef).length, 0);
-});
+  const asyncDef = 'pub async fn cache_dir() -> Result<PathBuf> {'
+  assert.deepStrictEqual(matchRealDirDenylist(asyncDef).length, 0)
+})
 
-test("scanFile: counts residuals and ignores PathResolver method names", () => {
-  const buckets = createBuckets();
+test('scanFile: counts residuals and ignores PathResolver method names', () => {
+  const buckets = createBuckets()
   const source = `
 use crate::config::Config;
 // TODO(actor-migration): temporary bridge.
@@ -382,30 +393,33 @@ mod tests {
         let _ = paths.profiles_path();
     }
 }
-`;
-  scanFile("backend/tauri/src/example.rs", source, buckets);
+`
+  scanFile('backend/tauri/src/example.rs', source, buckets)
 
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::verge()"), 1);
-  assert.deepStrictEqual(buckets.serviceGlobals.total, 1);
-  assert.deepStrictEqual(buckets.serviceGlobals.byKey.get("CoreManager::global()"), 1);
-  assert.deepStrictEqual(buckets.migrationMarkers.total, 1);
-  assert.deepStrictEqual(buckets.legacyDtos.total, 1);
-  assert.deepStrictEqual(buckets.legacyDtos.byKey.get("IVerge"), 1);
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::verge()'), 1)
+  assert.deepStrictEqual(buckets.serviceGlobals.total, 1)
+  assert.deepStrictEqual(
+    buckets.serviceGlobals.byKey.get('CoreManager::global()'),
+    1,
+  )
+  assert.deepStrictEqual(buckets.migrationMarkers.total, 1)
+  assert.deepStrictEqual(buckets.legacyDtos.total, 1)
+  assert.deepStrictEqual(buckets.legacyDtos.byKey.get('IVerge'), 1)
 
   // denylist: qualified + bare free helpers inside test mask; methods excluded
-  assert.deepStrictEqual(buckets.testRealDirs.total, 2);
+  assert.deepStrictEqual(buckets.testRealDirs.total, 2)
   assert(
     [...buckets.testRealDirs.byKey.keys()].some((k) =>
-      k.includes("app_home_dir")
+      k.includes('app_home_dir'),
     ),
-  );
+  )
   assert(
     [...buckets.testRealDirs.byKey.keys()].some((k) =>
-      k.includes("runtime_config_path")
+      k.includes('runtime_config_path'),
     ),
-  );
-});
+  )
+})
 
 test("scanFile: a path-qualified Config is another crate's type", () => {
   const source = `
@@ -413,71 +427,67 @@ fn build() {
     let _ = meta::Config::new();
     let _ = regex_automata::util::syntax::Config::new();
 }
-`;
-  const buckets = createBuckets();
-  scanFile("backend/nyanpasu-geodata/src/index/site.rs", source, buckets);
+`
+  const buckets = createBuckets()
+  scanFile('backend/nyanpasu-geodata/src/index/site.rs', source, buckets)
 
-  assert.deepStrictEqual(buckets.configCalls.total, 0);
-});
+  assert.deepStrictEqual(buckets.configCalls.total, 0)
+})
 
 test("scanFile: the migration's legacy schema does not count as legacy DTO refs", () => {
   const source = `
 pub struct IVerge {}
 fn guard(_: &IClashTemp) {}
-`;
-  const schema = createBuckets();
+`
+  const schema = createBuckets()
   scanFile(
-    "backend/tauri/src/core/migration/legacy_schema/verge.rs",
+    'backend/tauri/src/core/migration/legacy_schema/verge.rs',
     source,
     schema,
-  );
-  assert.deepStrictEqual(schema.legacyDtos.total, 0);
+  )
+  assert.deepStrictEqual(schema.legacyDtos.total, 0)
 
   // Only that directory: look-alike paths still count.
-  for (
-    const relPath of [
-      "backend/tauri/src/core/migration/legacy_schema.rs",
-      "backend/tauri/src/client/legacy_schema/verge.rs",
-    ]
-  ) {
-    assertFalse(isLegacyDtoAllowlisted(relPath), relPath);
-    const buckets = createBuckets();
-    scanFile(relPath, source, buckets);
-    assert.deepStrictEqual(buckets.legacyDtos.total, 2, relPath);
+  for (const relPath of [
+    'backend/tauri/src/core/migration/legacy_schema.rs',
+    'backend/tauri/src/client/legacy_schema/verge.rs',
+  ]) {
+    assertFalse(isLegacyDtoAllowlisted(relPath), relPath)
+    const buckets = createBuckets()
+    scanFile(relPath, source, buckets)
+    assert.deepStrictEqual(buckets.legacyDtos.total, 2, relPath)
   }
-});
+})
 
-test("scanFile: only the typed config migration module may read the legacy schema", () => {
+test('scanFile: only the typed config migration module may read the legacy schema', () => {
   const source = `
 use super::legacy_schema::{IClashTemp, IVerge};
 fn read(_: &IVerge) {}
-`;
-  const reader = createBuckets();
+`
+  const reader = createBuckets()
   scanFile(
-    "backend/tauri/src/core/migration/modules/typed_config.rs",
+    'backend/tauri/src/core/migration/modules/typed_config.rs',
     source,
     reader,
-  );
-  assert.deepStrictEqual(reader.legacyDtos.total, 0);
+  )
+  assert.deepStrictEqual(reader.legacyDtos.total, 0)
 
   // A file entry covers exactly that file: sibling modules and paths that
   // merely start with its name still count.
-  for (
-    const relPath of [
-      "backend/tauri/src/core/migration/modules/app_config.rs",
-      "backend/tauri/src/core/migration/modules/typed_config.rs.orig",
-      "backend/tauri/src/core/migration/modules/typed_config/mod.rs",
-    ]
-  ) {
-    assertFalse(isLegacyDtoAllowlisted(relPath), relPath);
-    const buckets = createBuckets();
-    scanFile(relPath, source, buckets);
-    assert.deepStrictEqual(buckets.legacyDtos.total, 3, relPath);
+  for (const relPath of [
+    'backend/tauri/src/core/migration/modules/app_config.rs',
+    'backend/tauri/src/core/migration/modules/typed_config.rs.orig',
+    'backend/tauri/src/core/migration/modules/typed_config/mod.rs',
+  ]) {
+    assertFalse(isLegacyDtoAllowlisted(relPath), relPath)
+    const buckets = createBuckets()
+    scanFile(relPath, source, buckets)
+    assert.deepStrictEqual(buckets.legacyDtos.total, 3, relPath)
   }
-});
+})
 
-test("scanFile: bare imported denylist calls in test regions", () => {
-  const buckets = createBuckets();
+test('scanFile: bare imported denylist calls in test regions', () => {
+  const buckets = createBuckets()
   const source = `
 use crate::utils::dirs::app_home_dir;
 use crate::utils::dirs::cache_dir;
@@ -492,24 +502,24 @@ mod tests {
         let _ = paths.app_home_dir();
     }
 }
-`;
-  scanFile("backend/tauri/src/bare.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 3);
+`
+  scanFile('backend/tauri/src/bare.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 3)
   assert(
-    [...buckets.testRealDirs.byKey.keys()].some((k) => k === "app_home_dir()"),
-  );
+    [...buckets.testRealDirs.byKey.keys()].some((k) => k === 'app_home_dir()'),
+  )
   assert(
-    [...buckets.testRealDirs.byKey.keys()].some((k) => k === "cache_dir()"),
-  );
+    [...buckets.testRealDirs.byKey.keys()].some((k) => k === 'cache_dir()'),
+  )
   assert(
     [...buckets.testRealDirs.byKey.keys()].some((k) =>
-      k.startsWith("tray_icons_path(")
+      k.startsWith('tray_icons_path('),
     ),
-  );
-});
+  )
+})
 
-test("scanFile: production real-dir helpers are not denylist hits", () => {
-  const buckets = createBuckets();
+test('scanFile: production real-dir helpers are not denylist hits', () => {
+  const buckets = createBuckets()
   const source = `
 fn boot() {
     let _ = crate::utils::dirs::app_home_dir();
@@ -518,77 +528,77 @@ fn boot() {
     let _ = app_home_dir();
     let _ = cache_dir();
 }
-`;
-  scanFile("backend/tauri/src/boot.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 0);
-});
+`
+  scanFile('backend/tauri/src/boot.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 0)
+})
 
-test("scanFile: dedicated test file marks entire file for denylist", () => {
-  const buckets = createBuckets();
+test('scanFile: dedicated test file marks entire file for denylist', () => {
+  const buckets = createBuckets()
   const source = `
 fn helper() {
     let _ = dirs::app_data_dir();
 }
-`;
-  scanFile("backend/tauri/tests/isolation.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 1);
-});
+`
+  scanFile('backend/tauri/tests/isolation.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 1)
+})
 
-test("scanFile: sibling tests.rs is a dedicated test path", () => {
-  const buckets = createBuckets();
+test('scanFile: sibling tests.rs is a dedicated test path', () => {
+  const buckets = createBuckets()
   const source = `
 fn helper() {
     let _ = app_home_dir();
     let _ = paths.cache_dir();
 }
-`;
-  scanFile("backend/tauri/src/utils/tests.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 1);
-  assert.deepStrictEqual(buckets.testRealDirs.byKey.get("app_home_dir()"), 1);
-});
+`
+  scanFile('backend/tauri/src/utils/tests.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 1)
+  assert.deepStrictEqual(buckets.testRealDirs.byKey.get('app_home_dir()'), 1)
+})
 
-test("scanFile: block comments do not count code metrics; // TODOs still count", () => {
-  const buckets = createBuckets();
+test('scanFile: block comments do not count code metrics; // TODOs still count', () => {
+  const buckets = createBuckets()
   const source = `
 /* Config::verge() CoreManager::global() IVerge */
 // TODO(actor-migration): still counted
 fn x() {}
-`;
-  scanFile("backend/tauri/src/c.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 0);
-  assert.deepStrictEqual(buckets.serviceGlobals.total, 0);
-  assert.deepStrictEqual(buckets.legacyDtos.total, 0);
-  assert.deepStrictEqual(buckets.migrationMarkers.total, 1);
-});
+`
+  scanFile('backend/tauri/src/c.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 0)
+  assert.deepStrictEqual(buckets.serviceGlobals.total, 0)
+  assert.deepStrictEqual(buckets.legacyDtos.total, 0)
+  assert.deepStrictEqual(buckets.migrationMarkers.total, 1)
+})
 
 test("scanFile: a doc comment's literal /core/* does not open a block comment", () => {
-  const buckets = createBuckets();
+  const buckets = createBuckets()
   const source = `
 /// see /core/* here
 fn x() {
     let _ = Config::verge();
 }
-`;
-  scanFile("backend/tauri/src/d.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::verge()"), 1);
-});
+`
+  scanFile('backend/tauri/src/d.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::verge()'), 1)
+})
 
-test("scanFile: // inside a string literal does not strip the rest of the line", () => {
-  const buckets = createBuckets();
+test('scanFile: // inside a string literal does not strip the rest of the line', () => {
+  const buckets = createBuckets()
   const source = `
 fn x() {
     let url = "http://example.com";
     let _ = Config::verge();
 }
-`;
-  scanFile("backend/tauri/src/e.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::verge()"), 1);
-});
+`
+  scanFile('backend/tauri/src/e.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::verge()'), 1)
+})
 
-test("scanFile: a real multi-line block comment still hides code between /* and */", () => {
-  const buckets = createBuckets();
+test('scanFile: a real multi-line block comment still hides code between /* and */', () => {
+  const buckets = createBuckets()
   const source = `
 /* start
    Config::verge() should not count
@@ -596,60 +606,62 @@ test("scanFile: a real multi-line block comment still hides code between /* and 
 fn x() {
     let _ = Config::clash();
 }
-`;
-  scanFile("backend/tauri/src/f.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::clash()"), 1);
-});
+`
+  scanFile('backend/tauri/src/f.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::clash()'), 1)
+})
 
-test("scanFile: even backslash run before a closing quote does not misparse a trailing comment", () => {
-  const buckets = createBuckets();
+test('scanFile: even backslash run before a closing quote does not misparse a trailing comment', () => {
+  const buckets = createBuckets()
   // The string contains two escaped backslashes (an even run of 4 `\`), so
   // the closing `"` is real and `/* Config::verge() */` is a real comment.
   const source = String.raw`let s = "\\\\"; /* Config::verge() */
-`;
-  scanFile("backend/tauri/src/escape.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 0);
-});
+`
+  scanFile('backend/tauri/src/escape.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 0)
+})
 
-test("scanFile: a lone lifetime tick does not corrupt string/comment state for the rest of the line", () => {
-  const buckets = createBuckets();
-  const source = `let x: &'static str = "s"; /* Config::verge() */\n`;
-  scanFile("backend/tauri/src/lifetime.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 0);
-});
+test('scanFile: a lone lifetime tick does not corrupt string/comment state for the rest of the line', () => {
+  const buckets = createBuckets()
+  const source = `let x: &'static str = "s"; /* Config::verge() */\n`
+  scanFile('backend/tauri/src/lifetime.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 0)
+})
 
-test("scanFile: comment-like text inside a raw string is not treated as a real comment", () => {
-  const buckets = createBuckets();
-  const source =
-    `let s = r#"contains "// looks like a comment" text"#; let _ = Config::verge();\n`;
-  scanFile("backend/tauri/src/rawstr.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::verge()"), 1);
-});
+test('scanFile: comment-like text inside a raw string is not treated as a real comment', () => {
+  const buckets = createBuckets()
+  const source = `let s = r#"contains "// looks like a comment" text"#; let _ = Config::verge();\n`
+  scanFile('backend/tauri/src/rawstr.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::verge()'), 1)
+})
 
-test("scanFile: nested block comments only close at the matching outer */", () => {
-  const buckets = createBuckets();
+test('scanFile: nested block comments only close at the matching outer */', () => {
+  const buckets = createBuckets()
   const source = `
 /* outer /* inner */ still outer Config::verge() */
 Config::clash();
-`;
-  scanFile("backend/tauri/src/nested.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::clash()"), 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::verge()"), undefined);
-});
+`
+  scanFile('backend/tauri/src/nested.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::clash()'), 1)
+  assert.deepStrictEqual(
+    buckets.configCalls.byKey.get('Config::verge()'),
+    undefined,
+  )
+})
 
-test("scanFile: fn definitions of denylist helpers are not hits", () => {
-  const buckets = createBuckets();
+test('scanFile: fn definitions of denylist helpers are not hits', () => {
+  const buckets = createBuckets()
   const source = `
 pub fn app_home_dir() -> PathBuf { PathBuf::new() }
 pub async fn cache_dir() -> Result<PathBuf> { todo!() }
 fn tray_icons_path(mode: &str) -> PathBuf { PathBuf::from(mode) }
-`;
-  scanFile("backend/tauri/src/utils/tests.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 0);
-});
+`
+  scanFile('backend/tauri/src/utils/tests.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 0)
+})
 
 // Reviewer finding (Major): a lifetime apostrophe on a `#[cfg(test)]` item's
 // signature line must not make `stripLineComment`'s old quote tracking treat
@@ -658,22 +670,22 @@ fn tray_icons_path(mode: &str) -> PathBuf { PathBuf::from(mode) }
 // denylist. Sharing the literal-aware lexer with brace/item scanning fixes
 // this; the file path is deliberately not a dedicated test path so the bug
 // can't be masked by whole-file test detection.
-test("scanFile: lifetime in a cfg(test) fn signature does not truncate the item mask at a fake `// }`", () => {
-  const buckets = createBuckets();
+test('scanFile: lifetime in a cfg(test) fn signature does not truncate the item mask at a fake `// }`', () => {
+  const buckets = createBuckets()
   const source = `
 #[cfg(test)]
 fn isolated<'a>() { // }
     let _ = app_home_dir();
 }
-`;
-  scanFile("backend/tauri/src/lifetime_mask.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 1);
+`
+  scanFile('backend/tauri/src/lifetime_mask.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 1)
   assert(
     [...buckets.testRealDirs.byKey.keys()].some((k) =>
-      k.includes("app_home_dir")
+      k.includes('app_home_dir'),
     ),
-  );
-});
+  )
+})
 
 // Reviewer finding (Minor): raw C strings (`cr"..."`, `cr#"..."#`) were not
 // recognized as raw-string openers, so the opening `"` was treated as a
@@ -681,79 +693,80 @@ fn isolated<'a>() { // }
 // (fake) normal string unterminated for the rest of the line, swallowing the
 // real `Config::global()` call that follows.
 test('scanFile: cr#"..."# raw C string opener does not swallow real code after it', () => {
-  const buckets = createBuckets();
+  const buckets = createBuckets()
   const source = String.raw`let value = cr#"\"#; Config::global();
-`;
-  scanFile("backend/tauri/src/raw_c_string.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 1);
-  assert.deepStrictEqual(buckets.configCalls.byKey.get("Config::global()"), 1);
-  assert.deepStrictEqual(buckets.serviceGlobals.total, 1);
-  assert.deepStrictEqual(buckets.serviceGlobals.byKey.get("Config::global()"), 1);
-});
+`
+  scanFile('backend/tauri/src/raw_c_string.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 1)
+  assert.deepStrictEqual(buckets.configCalls.byKey.get('Config::global()'), 1)
+  assert.deepStrictEqual(buckets.serviceGlobals.total, 1)
+  assert.deepStrictEqual(
+    buckets.serviceGlobals.byKey.get('Config::global()'),
+    1,
+  )
+})
 
 // Reviewer finding (Minor): string/raw-string/char-literal contents were
 // copied verbatim into `code` before the metric regexes ran, so metric-like
 // text inside a literal produced a false positive.
-test("scanFile: metric-like text inside a raw string literal is not counted", () => {
-  const buckets = createBuckets();
-  const source = `let example = r#"Config::global()"#;\n`;
-  scanFile("backend/tauri/src/literal_text.rs", source, buckets);
-  assert.deepStrictEqual(buckets.configCalls.total, 0);
-  assert.deepStrictEqual(buckets.serviceGlobals.total, 0);
-});
+test('scanFile: metric-like text inside a raw string literal is not counted', () => {
+  const buckets = createBuckets()
+  const source = `let example = r#"Config::global()"#;\n`
+  scanFile('backend/tauri/src/literal_text.rs', source, buckets)
+  assert.deepStrictEqual(buckets.configCalls.total, 0)
+  assert.deepStrictEqual(buckets.serviceGlobals.total, 0)
+})
 
 // Bonus correctness win from sharing the lexer: a `}` inside a string
 // literal must not feed brace/item scanning, or it closes a cfg(test) item
 // early and drops the real code after it out of the test mask — the same
 // undercount shape as the Major finding, triggered by a brace instead of a
 // lifetime.
-test("scanFile: an unmatched brace inside a string literal does not end cfg(test) item scanning early", () => {
-  const buckets = createBuckets();
+test('scanFile: an unmatched brace inside a string literal does not end cfg(test) item scanning early', () => {
+  const buckets = createBuckets()
   const source = `
 #[cfg(test)]
 fn braces_in_string() {
     let _ = "unexpected } inside string";
     let _ = app_home_dir();
 }
-`;
-  scanFile("backend/tauri/src/brace_in_string.rs", source, buckets);
-  assert.deepStrictEqual(buckets.testRealDirs.total, 1);
+`
+  scanFile('backend/tauri/src/brace_in_string.rs', source, buckets)
+  assert.deepStrictEqual(buckets.testRealDirs.total, 1)
   assert(
     [...buckets.testRealDirs.byKey.keys()].some((k) =>
-      k.includes("app_home_dir")
+      k.includes('app_home_dir'),
     ),
-  );
-});
+  )
+})
 
-test("collectRustFiles: a tmp ancestor does not exclude the worktree", async () => {
-  const fixture = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
-  const repo = `${fixture}/tmp/worktree`;
+test('collectRustFiles: a tmp ancestor does not exclude the worktree', async () => {
+  const fixture = await mkdtemp(join(tmpdir(), 'nyanpasu-scripts-'))
+  const repo = `${fixture}/tmp/worktree`
   try {
-    for (
-      const dir of [
-        "src",
-        "tmp",
-        "target",
-        "nyanpasu-runtime",
-        "enable-loopback",
-      ]
-    ) {
-      await mkdir(`${repo}/backend/${dir}`, { recursive: true });
-      await writeFile(`${repo}/backend/${dir}/sample.rs`, "fn sample() {}");
+    for (const dir of [
+      'src',
+      'tmp',
+      'target',
+      'nyanpasu-runtime',
+      'enable-loopback',
+    ]) {
+      await mkdir(`${repo}/backend/${dir}`, { recursive: true })
+      await writeFile(`${repo}/backend/${dir}/sample.rs`, 'fn sample() {}')
     }
-    const files = await collectRustFiles(["backend"], repo);
-    assert.deepStrictEqual(files.length, 1);
+    const files = await collectRustFiles(['backend'], repo)
+    assert.deepStrictEqual(files.length, 1)
     assert.deepStrictEqual(
       await realpath(files[0]),
       await realpath(`${repo}/backend/src/sample.rs`),
-    );
+    )
   } finally {
-    await rm(fixture, { recursive: true });
+    await rm(fixture, { recursive: true })
   }
-});
+})
 
-test("scanFile: every non-const static counts until listed, whatever hides its type", () => {
-  const buckets = createBuckets();
+test('scanFile: every non-const static counts until listed, whatever hides its type', () => {
+  const buckets = createBuckets()
   const source = `
 use std::sync::Mutex as StdMutex;
 use parking_lot::RwLock as RW;
@@ -781,51 +794,51 @@ lazy_static! {
 fn lifetimes(label: &'static str) -> Box<dyn Fn() + 'static> {
     todo!()
 }
-`;
-  scanFile("backend/tauri/src/statics.rs", source, buckets);
+`
+  scanFile('backend/tauri/src/statics.rs', source, buckets)
 
-  const names = [...buckets.mutableStatics.byKey.keys()].map((key) =>
-    key.split("::").pop()
-  ).sort();
+  const names = [...buckets.mutableStatics.byKey.keys()]
+    .map((key) => key.split('::').pop())
+    .sort()
   assert.deepStrictEqual(names, [
-    "ALIASED",
-    "COUNTER",
-    "DEPTH",
-    "ITEMS",
-    "PLAIN",
-    "PREFIXED",
-    "RENAMED",
-    "SLOT",
-    "SPLIT",
-    "TABLE",
-    "WRAPPED",
-  ]);
+    'ALIASED',
+    'COUNTER',
+    'DEPTH',
+    'ITEMS',
+    'PLAIN',
+    'PREFIXED',
+    'RENAMED',
+    'SLOT',
+    'SPLIT',
+    'TABLE',
+    'WRAPPED',
+  ])
   const split = buckets.mutableStatics.hits.find((hit) =>
-    hit.detail?.endsWith("::SPLIT")
-  );
-  assert.deepStrictEqual(split?.line, 16);
-  assert.deepStrictEqual(split?.text, "pub static");
-});
+    hit.detail?.endsWith('::SPLIT'),
+  )
+  assert.deepStrictEqual(split?.line, 16)
+  assert.deepStrictEqual(split?.text, 'pub static')
+})
 
-test("scanFile: a static keyword whose item cannot be read still counts", () => {
-  const buckets = createBuckets();
+test('scanFile: a static keyword whose item cannot be read still counts', () => {
+  const buckets = createBuckets()
   const source = `
 macro_rules! declare {
     ($name:ident, $ty:ty) => {
         static $name: $ty = <$ty>::new();
     };
 }
-`;
-  scanFile("backend/tauri/src/declare.rs", source, buckets);
-  assert.deepStrictEqual(buckets.mutableStatics.total, 1);
+`
+  scanFile('backend/tauri/src/declare.rs', source, buckets)
+  assert.deepStrictEqual(buckets.mutableStatics.total, 1)
   assert.deepStrictEqual(
-    buckets.mutableStatics.byKey.get("backend/tauri/src/declare.rs::static@4"),
+    buckets.mutableStatics.byKey.get('backend/tauri/src/declare.rs::static@4'),
     1,
-  );
-});
+  )
+})
 
-test("scanFile: a comment next to a static keyword hides no static from the metric", () => {
-  const buckets = createBuckets();
+test('scanFile: a comment next to a static keyword hides no static from the metric', () => {
+  const buckets = createBuckets()
   const source = `
 static/* owner */AFTER: Mutex<u8> = Mutex::new(0);
 pub/* visibility */static BETWEEN: Mutex<u8> = Mutex::new(0);
@@ -836,53 +849,50 @@ pub /* spans
     lines */static SPANNING: Mutex<u8> = Mutex::new(0);
 pub // ends the line before the static
 static LINE: Mutex<u8> = Mutex::new(0);
-`;
-  scanFile("backend/tauri/src/commented.rs", source, buckets);
+`
+  scanFile('backend/tauri/src/commented.rs', source, buckets)
 
-  const names = [...buckets.mutableStatics.byKey.keys()].map((key) =>
-    key.split("::").pop()
-  ).sort();
+  const names = [...buckets.mutableStatics.byKey.keys()]
+    .map((key) => key.split('::').pop())
+    .sort()
   assert.deepStrictEqual(names, [
-    "AFTER",
-    "BETWEEN",
-    "COUNTER",
-    "LINE",
-    "NESTED",
-    "SPANNING",
-    "TALLY",
-  ]);
-  const current = toStableSnapshot(
-    ["backend"],
-    metricsFromBuckets(buckets),
-    [],
-  );
-  const result = evaluateGate(current, emptyStable());
-  assertFalse(result.ok);
+    'AFTER',
+    'BETWEEN',
+    'COUNTER',
+    'LINE',
+    'NESTED',
+    'SPANNING',
+    'TALLY',
+  ])
+  const current = toStableSnapshot(['backend'], metricsFromBuckets(buckets), [])
+  const result = evaluateGate(current, emptyStable())
+  assertFalse(result.ok)
   assert(
-    result.issues.some((i) =>
-      i.kind === "metric_key" &&
-      i.message.includes("backend/tauri/src/commented.rs::BETWEEN")
+    result.issues.some(
+      (i) =>
+        i.kind === 'metric_key' &&
+        i.message.includes('backend/tauri/src/commented.rs::BETWEEN'),
     ),
-  );
-});
+  )
+})
 
-test("scanFile: the static allowlist counts statics written around comments", () => {
-  const path = "backend/tauri/src/consts.rs";
-  const key = staticAllowlistKey(path, "BUILD_INFO");
+test('scanFile: the static allowlist counts statics written around comments', () => {
+  const path = 'backend/tauri/src/consts.rs'
+  const key = staticAllowlistKey(path, 'BUILD_INFO')
 
-  const listed = createBuckets();
+  const listed = createBuckets()
   scanFile(
     path,
-    "pub/* visibility */static/* name */BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n",
+    'pub/* visibility */static/* name */BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n',
     listed,
-  );
-  assert.deepStrictEqual(listed.allowlistedStatics.byKey.get(key), 1);
-  assert.deepStrictEqual(listed.mutableStatics.total, 0);
+  )
+  assert.deepStrictEqual(listed.allowlistedStatics.byKey.get(key), 1)
+  assert.deepStrictEqual(listed.mutableStatics.total, 0)
   assertFalse(
     staticAllowlistIssues(listed).some((issue) => issue.startsWith(`${key} `)),
-  );
+  )
 
-  const doubled = createBuckets();
+  const doubled = createBuckets()
   scanFile(
     path,
     `
@@ -892,67 +902,63 @@ fn shadow() {
 }
 `,
     doubled,
-  );
-  assert.deepStrictEqual(doubled.allowlistedStatics.byKey.get(key), undefined);
-  assert.deepStrictEqual(doubled.mutableStatics.byKey.get(key), 2);
-  assert(staticAllowlistIssues(doubled).includes(`${key} matches 2 statics`));
-});
+  )
+  assert.deepStrictEqual(doubled.allowlistedStatics.byKey.get(key), undefined)
+  assert.deepStrictEqual(doubled.mutableStatics.byKey.get(key), 2)
+  assert(staticAllowlistIssues(doubled).includes(`${key} matches 2 statics`))
+})
 
-test("scanFile: the static allowlist matches path and name exactly, and other libraries do not count", () => {
+test('scanFile: the static allowlist matches path and name exactly, and other libraries do not count', () => {
   const source =
-    "pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n";
+    'pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n'
 
-  const allowed = createBuckets();
-  scanFile("backend/tauri/src/consts.rs", source, allowed);
-  assert.deepStrictEqual(allowed.mutableStatics.total, 0);
+  const allowed = createBuckets()
+  scanFile('backend/tauri/src/consts.rs', source, allowed)
+  assert.deepStrictEqual(allowed.mutableStatics.total, 0)
   assert.deepStrictEqual(
     allowed.allowlistedStatics.byKey.get(
-      "backend/tauri/src/consts.rs::BUILD_INFO",
+      'backend/tauri/src/consts.rs::BUILD_INFO',
     ),
     1,
-  );
+  )
 
-  for (
-    const relPath of [
-      "backend/tauri/src/other.rs",
-      "backend/nyanpasu-core/src/consts.rs",
-    ]
-  ) {
-    const elsewhere = createBuckets();
-    scanFile(relPath, source, elsewhere);
-    assert.deepStrictEqual(elsewhere.allowlistedStatics.total, 0, relPath);
+  for (const relPath of [
+    'backend/tauri/src/other.rs',
+    'backend/nyanpasu-core/src/consts.rs',
+  ]) {
+    const elsewhere = createBuckets()
+    scanFile(relPath, source, elsewhere)
+    assert.deepStrictEqual(elsewhere.allowlistedStatics.total, 0, relPath)
     assert.deepStrictEqual(
       elsewhere.mutableStatics.byKey.get(
-        staticAllowlistKey(relPath, "BUILD_INFO"),
+        staticAllowlistKey(relPath, 'BUILD_INFO'),
       ),
       1,
       relPath,
-    );
+    )
   }
 
-  for (
-    const relPath of [
-      "backend/nyanpasu-egui/src/widget/mod.rs",
-      "backend/nyanpasu-config/src/lib.rs",
-      "backend/tauri/src_extra/statics.rs",
-      "backend/tauri-extra/src/statics.rs",
-      "backend/tauri/tests/statics.rs",
-      "backend/nyanpasu-core/src_extra/statics.rs",
-      "backend/nyanpasu-core-extra/src/statics.rs",
-      "backend/nyanpasu-core/tests/statics.rs",
-    ]
-  ) {
-    const library = createBuckets();
-    scanFile(relPath, source, library);
-    assert.deepStrictEqual(library.mutableStatics.total, 0, relPath);
-    assert.deepStrictEqual(library.allowlistedStatics.total, 0, relPath);
+  for (const relPath of [
+    'backend/nyanpasu-egui/src/widget/mod.rs',
+    'backend/nyanpasu-config/src/lib.rs',
+    'backend/tauri/src_extra/statics.rs',
+    'backend/tauri-extra/src/statics.rs',
+    'backend/tauri/tests/statics.rs',
+    'backend/nyanpasu-core/src_extra/statics.rs',
+    'backend/nyanpasu-core-extra/src/statics.rs',
+    'backend/nyanpasu-core/tests/statics.rs',
+  ]) {
+    const library = createBuckets()
+    scanFile(relPath, source, library)
+    assert.deepStrictEqual(library.mutableStatics.total, 0, relPath)
+    assert.deepStrictEqual(library.allowlistedStatics.total, 0, relPath)
   }
-});
+})
 
-test("scanFile: an entry covers no static once its name is declared twice in the file", () => {
-  const path = "backend/tauri/src/core/migration/modules/app_config.rs";
-  const key = staticAllowlistKey(path, "VERSION_2_0_0");
-  const buckets = createBuckets();
+test('scanFile: an entry covers no static once its name is declared twice in the file', () => {
+  const path = 'backend/tauri/src/core/migration/modules/app_config.rs'
+  const key = staticAllowlistKey(path, 'VERSION_2_0_0')
+  const buckets = createBuckets()
   scanFile(
     path,
     `
@@ -962,146 +968,149 @@ fn shadow() {
 }
 `,
     buckets,
-  );
-  assert.deepStrictEqual(buckets.allowlistedStatics.byKey.get(key), undefined);
-  assert.deepStrictEqual(buckets.mutableStatics.byKey.get(key), 2);
-  assert(staticAllowlistIssues(buckets).includes(`${key} matches 2 statics`));
-});
+  )
+  assert.deepStrictEqual(buckets.allowlistedStatics.byKey.get(key), undefined)
+  assert.deepStrictEqual(buckets.mutableStatics.byKey.get(key), 2)
+  assert(staticAllowlistIssues(buckets).includes(`${key} matches 2 statics`))
+})
 
-test("STATIC_ALLOWLIST: each entry is unique, in a gated crate, categorized and gives a reason", () => {
+test('STATIC_ALLOWLIST: each entry is unique, in a gated crate, categorized and gives a reason', () => {
   for (const entry of STATIC_ALLOWLIST) {
     assert(
       STATIC_GATE_PREFIXES.some((prefix) => entry.path.startsWith(prefix)),
       entry.path,
-    );
-    assert(/^[A-Za-z_][A-Za-z0-9_]*$/.test(entry.name), entry.name);
+    )
+    assert(/^[A-Za-z_][A-Za-z0-9_]*$/.test(entry.name), entry.name)
     assert(
-      ["immutable", "external", "test"].includes(entry.category),
+      ['immutable', 'external', 'test'].includes(entry.category),
       `${entry.name}: ${entry.category}`,
-    );
-    assert(entry.reason.trim().length > 0, `${entry.name} has no reason`);
+    )
+    assert(entry.reason.trim().length > 0, `${entry.name} has no reason`)
   }
   const keys = STATIC_ALLOWLIST.map(({ path, name }) =>
-    staticAllowlistKey(path, name)
-  );
-  assert.deepStrictEqual(new Set(keys).size, keys.length);
-});
+    staticAllowlistKey(path, name),
+  )
+  assert.deepStrictEqual(new Set(keys).size, keys.length)
+})
 
-for (const root of ["backend/tauri/src/", "backend/nyanpasu-core/src/"]) {
+for (const root of ['backend/tauri/src/', 'backend/nyanpasu-core/src/']) {
   test(`scanFile / evaluateGate: service statics fail in ${root}`, () => {
-    const relPath = `${root}services/nested.rs`;
+    const relPath = `${root}services/nested.rs`
     const fixtures = [
-      ["MUTABLE", "static mut MUTABLE: Option<Service> = None;"],
-      ["LOCKED", "static LOCKED: Mutex<Option<Service>> = Mutex::new(None);"],
-      ["CELL", "static CELL: OnceCell<Service> = OnceCell::new();"],
-      ["ONCE", "static ONCE: OnceLock<Service> = OnceLock::new();"],
-      ["LAZY", "static LAZY: Lazy<Service> = Lazy::new(Service::new);"],
+      ['MUTABLE', 'static mut MUTABLE: Option<Service> = None;'],
+      ['LOCKED', 'static LOCKED: Mutex<Option<Service>> = Mutex::new(None);'],
+      ['CELL', 'static CELL: OnceCell<Service> = OnceCell::new();'],
+      ['ONCE', 'static ONCE: OnceLock<Service> = OnceLock::new();'],
+      ['LAZY', 'static LAZY: Lazy<Service> = Lazy::new(Service::new);'],
       [
-        "LOCAL",
-        "thread_local! { static LOCAL: RefCell<Option<Service>> = RefCell::new(None); }",
+        'LOCAL',
+        'thread_local! { static LOCAL: RefCell<Option<Service>> = RefCell::new(None); }',
       ],
-      ["REF", "lazy_static! { static ref REF: Service = Service::new(); }"],
-    ];
+      ['REF', 'lazy_static! { static ref REF: Service = Service::new(); }'],
+    ]
     for (const [name, source] of fixtures) {
-      const buckets = createBuckets();
-      scanFile(relPath, source, buckets);
-      const key = staticAllowlistKey(relPath, name);
-      assert.deepStrictEqual(buckets.mutableStatics.byKey.get(key), 1, key);
-      assert.deepStrictEqual(buckets.allowlistedStatics.total, 0, key);
+      const buckets = createBuckets()
+      scanFile(relPath, source, buckets)
+      const key = staticAllowlistKey(relPath, name)
+      assert.deepStrictEqual(buckets.mutableStatics.byKey.get(key), 1, key)
+      assert.deepStrictEqual(buckets.allowlistedStatics.total, 0, key)
       const current = toStableSnapshot(
-        ["backend"],
+        ['backend'],
         metricsFromBuckets(buckets),
         [],
-      );
-      const result = evaluateGate(current, emptyStable());
-      assertFalse(result.ok, key);
+      )
+      const result = evaluateGate(current, emptyStable())
+      assertFalse(result.ok, key)
       assert(
-        result.issues.some((issue) =>
-          issue.kind === "metric_key" && issue.message.includes(key)
+        result.issues.some(
+          (issue) => issue.kind === 'metric_key' && issue.message.includes(key),
         ),
         key,
-      );
+      )
     }
-  });
+  })
 
   test(`scanFile / evaluateGate: service global lookup fails in ${root}`, () => {
-    const buckets = createBuckets();
+    const buckets = createBuckets()
     scanFile(
       `${root}services/nested.rs`,
-      "fn lookup() { Service::global(); }",
+      'fn lookup() { Service::global(); }',
       buckets,
-    );
-    assert.deepStrictEqual(buckets.serviceGlobals.byKey.get("Service::global()"), 1);
+    )
+    assert.deepStrictEqual(
+      buckets.serviceGlobals.byKey.get('Service::global()'),
+      1,
+    )
     const current = toStableSnapshot(
-      ["backend"],
+      ['backend'],
       metricsFromBuckets(buckets),
       [],
-    );
-    const result = evaluateGate(current, emptyStable());
-    assertFalse(result.ok);
+    )
+    const result = evaluateGate(current, emptyStable())
+    assertFalse(result.ok)
     assert(
-      result.issues.some((issue) =>
-        issue.kind === "metric_key" &&
-        issue.message.includes("Service::global()")
+      result.issues.some(
+        (issue) =>
+          issue.kind === 'metric_key' &&
+          issue.message.includes('Service::global()'),
       ),
-    );
-  });
+    )
+  })
 }
 
-test("evaluateGate: a new static fails against a zero snapshot", () => {
-  const buckets = createBuckets();
+test('evaluateGate: a new static fails against a zero snapshot', () => {
+  const buckets = createBuckets()
   scanFile(
-    "backend/tauri/src/server/mod.rs",
-    "pub static SERVER_PORT: Lazy<u16> = Lazy::new(pick_port);\n",
+    'backend/tauri/src/server/mod.rs',
+    'pub static SERVER_PORT: Lazy<u16> = Lazy::new(pick_port);\n',
     buckets,
-  );
-  const current = toStableSnapshot(
-    ["backend"],
-    metricsFromBuckets(buckets),
-    [],
-  );
-  const result = evaluateGate(current, emptyStable());
-  assertFalse(result.ok);
+  )
+  const current = toStableSnapshot(['backend'], metricsFromBuckets(buckets), [])
+  const result = evaluateGate(current, emptyStable())
+  assertFalse(result.ok)
   assert(
-    result.issues.some((i) =>
-      i.kind === "metric_total" && i.message.includes("mutable_statics.total")
+    result.issues.some(
+      (i) =>
+        i.kind === 'metric_total' &&
+        i.message.includes('mutable_statics.total'),
     ),
-  );
+  )
   assert(
-    result.issues.some((i) =>
-      i.kind === "metric_key" &&
-      i.message.includes("backend/tauri/src/server/mod.rs::SERVER_PORT")
+    result.issues.some(
+      (i) =>
+        i.kind === 'metric_key' &&
+        i.message.includes('backend/tauri/src/server/mod.rs::SERVER_PORT'),
     ),
-  );
-});
+  )
+})
 
-test("evaluateGate: an allowlist entry whose static is gone fails the gate", () => {
-  const buckets = createBuckets();
+test('evaluateGate: an allowlist entry whose static is gone fails the gate', () => {
+  const buckets = createBuckets()
   scanFile(
-    "backend/tauri/src/consts.rs",
-    "pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n",
+    'backend/tauri/src/consts.rs',
+    'pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n',
     buckets,
-  );
-  const issues = staticAllowlistIssues(buckets);
-  assertFalse(issues.some((issue) => issue.includes("::BUILD_INFO ")));
+  )
+  const issues = staticAllowlistIssues(buckets)
+  assertFalse(issues.some((issue) => issue.includes('::BUILD_INFO ')))
   assert(
     issues.includes(
-      "backend/tauri/src/consts.rs::IS_APPIMAGE matches no static",
+      'backend/tauri/src/consts.rs::IS_APPIMAGE matches no static',
     ),
-  );
-  assert.deepStrictEqual(issues.length, STATIC_ALLOWLIST.length - 1);
+  )
+  assert.deepStrictEqual(issues.length, STATIC_ALLOWLIST.length - 1)
 
-  const snap = emptyStable();
-  assert(evaluateGate(structuredClone(snap), structuredClone(snap)).ok);
+  const snap = emptyStable()
+  assert(evaluateGate(structuredClone(snap), structuredClone(snap)).ok)
   const result = evaluateGate(
     structuredClone(snap),
     structuredClone(snap),
     issues,
-  );
-  assertFalse(result.ok);
+  )
+  assertFalse(result.ok)
   assert(
-    result.issues.some((i) =>
-      i.kind === "static_allowlist" && i.message.includes("IS_APPIMAGE")
+    result.issues.some(
+      (i) => i.kind === 'static_allowlist' && i.message.includes('IS_APPIMAGE'),
     ),
-  );
-});
+  )
+})

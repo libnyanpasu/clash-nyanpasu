@@ -1,78 +1,81 @@
-import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createHash } from 'node:crypto'
+import { createReadStream } from 'node:fs'
 
 export interface SourceforgeArtifact {
-  fileName: string;
-  fileSize: number;
-  sha256: string;
-  path: string;
+  fileName: string
+  fileSize: number
+  sha256: string
+  path: string
 }
 
 export interface SourceforgeReleaseMirrorManifest {
-  schemaVersion: 1;
-  project: string;
-  channel: "release";
-  buildId: string;
-  remotePath: string;
-  assets: Record<string, { fileSize: number; sha256: string; url: string }>;
+  schemaVersion: 1
+  project: string
+  channel: 'release'
+  buildId: string
+  remotePath: string
+  assets: Record<string, { fileSize: number; sha256: string; url: string }>
 }
 
 export interface SourceforgeReleaseCandidate {
-  target: string;
+  target: string
   artifacts: Array<
-    Pick<SourceforgeArtifact, "fileName" | "fileSize" | "sha256">
-  >;
+    Pick<SourceforgeArtifact, 'fileName' | 'fileSize' | 'sha256'>
+  >
 }
 
 function validateReleaseMirrorManifest(
   value: unknown,
 ): SourceforgeReleaseMirrorManifest {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Existing SourceForge release mirror manifest is invalid");
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Existing SourceForge release mirror manifest is invalid')
   }
-  const manifest = value as Record<string, unknown>;
+  const manifest = value as Record<string, unknown>
   if (
-    manifest.schemaVersion !== 1 || manifest.channel !== "release" ||
-    typeof manifest.project !== "string" ||
-    typeof manifest.buildId !== "string" ||
-    typeof manifest.remotePath !== "string" ||
-    typeof manifest.assets !== "object" || manifest.assets === null ||
+    manifest.schemaVersion !== 1 ||
+    manifest.channel !== 'release' ||
+    typeof manifest.project !== 'string' ||
+    typeof manifest.buildId !== 'string' ||
+    typeof manifest.remotePath !== 'string' ||
+    typeof manifest.assets !== 'object' ||
+    manifest.assets === null ||
     Array.isArray(manifest.assets)
   ) {
-    throw new Error("Existing SourceForge release mirror manifest is invalid");
+    throw new Error('Existing SourceForge release mirror manifest is invalid')
   }
-  const assets: SourceforgeReleaseMirrorManifest["assets"] = {};
+  const assets: SourceforgeReleaseMirrorManifest['assets'] = {}
   for (const [fileName, raw] of Object.entries(manifest.assets)) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
       throw new Error(
         `Existing SourceForge metadata is invalid for ${fileName}`,
-      );
+      )
     }
-    const asset = raw as Record<string, unknown>;
+    const asset = raw as Record<string, unknown>
     if (
-      !Number.isSafeInteger(asset.fileSize) || Number(asset.fileSize) <= 0 ||
-      typeof asset.sha256 !== "string" ||
+      !Number.isSafeInteger(asset.fileSize) ||
+      Number(asset.fileSize) <= 0 ||
+      typeof asset.sha256 !== 'string' ||
       !/^[a-f0-9]{64}$/.test(asset.sha256) ||
-      typeof asset.url !== "string"
+      typeof asset.url !== 'string'
     ) {
       throw new Error(
         `Existing SourceForge metadata is invalid for ${fileName}`,
-      );
+      )
     }
     assets[fileName] = {
       fileSize: Number(asset.fileSize),
       sha256: asset.sha256,
       url: asset.url,
-    };
+    }
   }
   return {
     schemaVersion: 1,
     project: manifest.project,
-    channel: "release",
+    channel: 'release',
     buildId: manifest.buildId,
     remotePath: manifest.remotePath,
     assets,
-  };
+  }
 }
 
 export function assertReleaseMirrorMatchesPrior(
@@ -81,35 +84,35 @@ export function assertReleaseMirrorMatchesPrior(
   candidate: SourceforgeReleaseCandidate,
   previousValue: unknown,
 ): void {
-  const previous = validateReleaseMirrorManifest(previousValue);
+  const previous = validateReleaseMirrorManifest(previousValue)
   if (
-    previous.project !== project || previous.buildId !== releaseTag ||
+    previous.project !== project ||
+    previous.buildId !== releaseTag ||
     previous.remotePath !== `releases/${releaseTag}`
   ) {
-    throw new Error("Existing SourceForge metadata belongs to another release");
+    throw new Error('Existing SourceForge metadata belongs to another release')
   }
-  const candidateAssets = new Map(candidate.artifacts.map((artifact) => [
-    artifact.fileName,
-    artifact,
-  ]));
+  const candidateAssets = new Map(
+    candidate.artifacts.map((artifact) => [artifact.fileName, artifact]),
+  )
   if (
     candidateAssets.size !== candidate.artifacts.length ||
-    (candidate.target === "release-backfill" &&
+    (candidate.target === 'release-backfill' &&
       candidateAssets.size !== Object.keys(previous.assets).length) ||
     [...candidateAssets].some(([name, current]) => {
-      const prior = previous.assets[name];
-      return !prior || current.fileSize !== prior.fileSize ||
+      const prior = previous.assets[name]
+      return (
+        !prior ||
+        current.fileSize !== prior.fileSize ||
         current.sha256 !== prior.sha256 ||
-        prior.url !== sourceforgeDownloadUrl(
-            project,
-            `releases/${releaseTag}`,
-            name,
-          );
+        prior.url !==
+          sourceforgeDownloadUrl(project, `releases/${releaseTag}`, name)
+      )
     })
   ) {
     throw new Error(
       `SourceForge release inventory is immutable for ${releaseTag} (${candidate.target})`,
-    );
+    )
   }
 }
 
@@ -121,43 +124,43 @@ export async function guardReleaseMirrorUpload(
   upload: () => Promise<void>,
   reserveArtifacts: () => Promise<void>,
 ): Promise<void> {
-  const previous = await loadPrevious();
+  const previous = await loadPrevious()
   if (previous !== null) {
-    assertReleaseMirrorMatchesPrior(project, releaseTag, candidate, previous);
+    assertReleaseMirrorMatchesPrior(project, releaseTag, candidate, previous)
   }
-  await reserveArtifacts();
-  await upload();
+  await reserveArtifacts()
+  await upload()
 }
 
 /** An exclusive remote directory reserves the intended bytes before any upload. */
 export async function reserveSourceforgeArtifact(
-  artifact: Pick<SourceforgeArtifact, "fileName" | "fileSize" | "sha256">,
+  artifact: Pick<SourceforgeArtifact, 'fileName' | 'fileSize' | 'sha256'>,
   createInventory: () => Promise<void>,
   loadInventory: () => Promise<unknown>,
 ): Promise<void> {
   try {
-    await createInventory();
+    await createInventory()
   } catch (creationError) {
     // A failed claim may already exist; absent or unreadable inventories fail closed.
-    let value: unknown;
+    let value: unknown
     try {
-      value = await loadInventory();
+      value = await loadInventory()
     } catch (readError) {
       const message = (error: unknown) =>
-        error instanceof Error ? error.message : String(error);
+        error instanceof Error ? error.message : String(error)
       throw new Error(
-        `Could not reserve SourceForge artifact ${artifact.fileName}: creation failed: ${
-          message(creationError)
-        }; existing inventory read failed: ${message(readError)}`,
+        `Could not reserve SourceForge artifact ${artifact.fileName}: creation failed: ${message(
+          creationError,
+        )}; existing inventory read failed: ${message(readError)}`,
         { cause: new AggregateError([creationError, readError]) },
-      );
+      )
     }
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new Error(
         `Invalid SourceForge upload inventory for ${artifact.fileName}`,
-      );
+      )
     }
-    const previous = value as Record<string, unknown>;
+    const previous = value as Record<string, unknown>
     if (
       previous.fileName !== artifact.fileName ||
       previous.fileSize !== artifact.fileSize ||
@@ -165,7 +168,7 @@ export async function reserveSourceforgeArtifact(
     ) {
       throw new Error(
         `SourceForge file inventory is immutable for ${artifact.fileName}`,
-      );
+      )
     }
   }
 }
@@ -173,33 +176,34 @@ export async function reserveSourceforgeArtifact(
 export function validateSourceforgeProject(project: string): void {
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(project)) {
     throw new Error(
-      "SOURCEFORGE_PROJECT must be a valid lowercase project slug",
-    );
+      'SOURCEFORGE_PROJECT must be a valid lowercase project slug',
+    )
   }
 }
 
 export function validateSourceforgeUsername(username: string): void {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(username)) {
-    throw new Error("SOURCEFORGE_USERNAME must be a valid account username");
+    throw new Error('SOURCEFORGE_USERNAME must be a valid account username')
   }
 }
 
 export function validateSourceforgeFilename(fileName: string): void {
   if (
     !/^[A-Za-z0-9][A-Za-z0-9 _.,=+#@()-]*$/.test(fileName) ||
-    fileName.endsWith(" ")
+    fileName.endsWith(' ')
   ) {
-    throw new Error(`Unsupported SourceForge filename: ${fileName}`);
+    throw new Error(`Unsupported SourceForge filename: ${fileName}`)
   }
 }
 
 export function validateSourceforgeRemotePath(remotePath: string): void {
-  const nightly = /^nightly\/[0-9]+-[0-9]+-[a-f0-9]{40}$/.test(remotePath);
+  const nightly = /^nightly\/[0-9]+-[0-9]+-[a-f0-9]{40}$/.test(remotePath)
   const release =
-    /^releases\/(?!latest$|current$|stable$)[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/
-      .test(remotePath);
+    /^releases\/(?!latest$|current$|stable$)[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/.test(
+      remotePath,
+    )
   if (!nightly && !release) {
-    throw new Error(`Invalid immutable SourceForge path: ${remotePath}`);
+    throw new Error(`Invalid immutable SourceForge path: ${remotePath}`)
   }
 }
 
@@ -208,43 +212,43 @@ export function sourceforgeDownloadUrl(
   remotePath: string,
   fileName: string,
 ): string {
-  validateSourceforgeProject(project);
-  validateSourceforgeRemotePath(remotePath);
-  validateSourceforgeFilename(fileName);
-  return `https://downloads.sourceforge.net/project/${project}/${remotePath}/${
-    encodeURIComponent(fileName)
-  }`;
+  validateSourceforgeProject(project)
+  validateSourceforgeRemotePath(remotePath)
+  validateSourceforgeFilename(fileName)
+  return `https://downloads.sourceforge.net/project/${project}/${remotePath}/${encodeURIComponent(
+    fileName,
+  )}`
 }
 
 export function sftpQuote(value: string): string {
   if (/[\r\n\0]/.test(value)) {
-    throw new Error("SFTP path contains an unsupported control character");
+    throw new Error('SFTP path contains an unsupported control character')
   }
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
 export function sourceforgeUploadBatch(
   project: string,
   remotePath: string,
-  artifacts: Array<Pick<SourceforgeArtifact, "path" | "fileName">>,
+  artifacts: Array<Pick<SourceforgeArtifact, 'path' | 'fileName'>>,
   windows: boolean,
 ): string {
-  validateSourceforgeProject(project);
-  validateSourceforgeRemotePath(remotePath);
-  const remoteDir = `/home/frs/project/${project}/${remotePath}`;
-  const category = remotePath.split("/")[0];
+  validateSourceforgeProject(project)
+  validateSourceforgeRemotePath(remotePath)
+  const remoteDir = `/home/frs/project/${project}/${remotePath}`
+  const category = remotePath.split('/')[0]
   return [
     `-mkdir ${sftpQuote(`/home/frs/project/${project}/${category}`)}`,
     `-mkdir ${sftpQuote(remoteDir)}`,
     ...artifacts.map(({ path, fileName }) => {
-      validateSourceforgeFilename(fileName);
-      const localPath = windows ? path.replaceAll("\\", "/") : path;
-      return `put ${sftpQuote(localPath)} ${
-        sftpQuote(`${remoteDir}/${fileName}`)
-      }`;
+      validateSourceforgeFilename(fileName)
+      const localPath = windows ? path.replaceAll('\\', '/') : path
+      return `put ${sftpQuote(localPath)} ${sftpQuote(
+        `${remoteDir}/${fileName}`,
+      )}`
     }),
-    "",
-  ].join("\n");
+    '',
+  ].join('\n')
 }
 
 export function sourceforgeReservationBatch(
@@ -253,91 +257,91 @@ export function sourceforgeReservationBatch(
   fileName: string,
   localInventory: string,
 ): { batch: string; inventoryPath: string } {
-  validateSourceforgeProject(project);
-  validateSourceforgeRemotePath(remotePath);
-  validateSourceforgeFilename(fileName);
-  const remoteDir = `/home/frs/project/${project}/${remotePath}`;
-  const inventoryRoot = `${remoteDir}/upload-inventory`;
-  const inventoryDir = `${inventoryRoot}/${fileName}`;
+  validateSourceforgeProject(project)
+  validateSourceforgeRemotePath(remotePath)
+  validateSourceforgeFilename(fileName)
+  const remoteDir = `/home/frs/project/${project}/${remotePath}`
+  const inventoryRoot = `${remoteDir}/upload-inventory`
+  const inventoryDir = `${inventoryRoot}/${fileName}`
   const batch = [
-    `-mkdir ${
-      sftpQuote(`/home/frs/project/${project}/${remotePath.split("/")[0]}`)
-    }`,
+    `-mkdir ${sftpQuote(
+      `/home/frs/project/${project}/${remotePath.split('/')[0]}`,
+    )}`,
     `-mkdir ${sftpQuote(remoteDir)}`,
     `-mkdir ${sftpQuote(inventoryRoot)}`,
     // The artifact directory is an exclusive claim, unlike shared parent directories.
     `mkdir ${sftpQuote(inventoryDir)}`,
-    `put ${sftpQuote(localInventory)} ${
-      sftpQuote(`${inventoryDir}/inventory.json`)
-    }`,
-    "",
-  ].join("\n");
-  return { batch, inventoryPath: `${inventoryDir}/inventory.json` };
+    `put ${sftpQuote(localInventory)} ${sftpQuote(
+      `${inventoryDir}/inventory.json`,
+    )}`,
+    '',
+  ].join('\n')
+  return { batch, inventoryPath: `${inventoryDir}/inventory.json` }
 }
 
 export function sourceforgeWebUploadBatch(
   project: string,
   artifacts: Array<{ path: string; fileName: string; stagedName: string }>,
 ): string {
-  validateSourceforgeProject(project);
-  const directory = `/home/project-web/${project}/htdocs/updater`;
+  validateSourceforgeProject(project)
+  const directory = `/home/project-web/${project}/htdocs/updater`
   return [
     `-mkdir ${sftpQuote(`/home/project-web/${project}/htdocs`)}`,
     `-mkdir ${sftpQuote(directory)}`,
     ...artifacts.map(({ path, fileName, stagedName }) => {
-      validateSourceforgeFilename(fileName);
-      validateSourceforgeFilename(stagedName);
-      const localPath = process.platform === "win32"
-        ? path.replaceAll("\\", "/")
-        : path;
-      const stagedPath = `${directory}/${stagedName}`;
-      return `put ${sftpQuote(localPath)} ${sftpQuote(stagedPath)}`;
+      validateSourceforgeFilename(fileName)
+      validateSourceforgeFilename(stagedName)
+      const localPath =
+        process.platform === 'win32' ? path.replaceAll('\\', '/') : path
+      const stagedPath = `${directory}/${stagedName}`
+      return `put ${sftpQuote(localPath)} ${sftpQuote(stagedPath)}`
     }),
-    ...artifacts.map(({ fileName, stagedName }) =>
-      `rename ${sftpQuote(`${directory}/${stagedName}`)} ${
-        sftpQuote(`${directory}/${fileName}`)
-      }`
+    ...artifacts.map(
+      ({ fileName, stagedName }) =>
+        `rename ${sftpQuote(`${directory}/${stagedName}`)} ${sftpQuote(
+          `${directory}/${fileName}`,
+        )}`,
     ),
-    "",
-  ].join("\n");
+    '',
+  ].join('\n')
 }
 
 export async function hashFile(
   filePath: string,
 ): Promise<{ fileSize: number; sha256: string; md5: string }> {
-  const sha256 = createHash("sha256");
-  const md5 = createHash("md5");
-  let fileSize = 0;
+  const sha256 = createHash('sha256')
+  const md5 = createHash('md5')
+  let fileSize = 0
   for await (const chunk of createReadStream(filePath)) {
-    fileSize += chunk.length;
-    sha256.update(chunk);
-    md5.update(chunk);
+    fileSize += chunk.length
+    sha256.update(chunk)
+    md5.update(chunk)
   }
-  return { fileSize, sha256: sha256.digest("hex"), md5: md5.digest("hex") };
+  return { fileSize, sha256: sha256.digest('hex'), md5: md5.digest('hex') }
 }
 
 export function validateSourceforgeReportTargets(
   reports: Array<{ target?: string; status?: string }>,
   expectedTargets: readonly string[],
 ): string[] {
-  const issues: string[] = [];
-  const seen = new Set<string>();
+  const issues: string[] = []
+  const seen = new Set<string>()
   for (const report of reports) {
     if (!report.target || seen.has(report.target)) {
-      issues.push(`missing or duplicate target: ${report.target ?? "(unset)"}`);
+      issues.push(`missing or duplicate target: ${report.target ?? '(unset)'}`)
     } else {
-      seen.add(report.target);
+      seen.add(report.target)
     }
-    if (report.status !== "uploaded") {
+    if (report.status !== 'uploaded') {
       issues.push(
-        `${report.target ?? "unknown"}: status is ${
-          report.status ?? "missing"
+        `${report.target ?? 'unknown'}: status is ${
+          report.status ?? 'missing'
         }`,
-      );
+      )
     }
   }
   for (const target of expectedTargets) {
-    if (!seen.has(target)) issues.push(`${target}: upload report is missing`);
+    if (!seen.has(target)) issues.push(`${target}: upload report is missing`)
   }
-  return issues;
+  return issues
 }

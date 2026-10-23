@@ -1,16 +1,16 @@
-import * as path from "node:path";
-import { appendFile, readdir, readFile } from "node:fs/promises";
+import { appendFile, readdir, readFile } from 'node:fs/promises'
+import * as path from 'node:path'
 
 function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function validPublicationTime(value: unknown): value is string {
-  if (typeof value !== "string") return false;
+  if (typeof value !== 'string') return false
   try {
-    return new Date(value).toISOString() === value;
+    return new Date(value).toISOString() === value
   } catch {
-    return false;
+    return false
   }
 }
 
@@ -19,163 +19,164 @@ export function validateIaReports(
   reports: unknown[],
   expectedTargets: readonly string[],
 ): { issues: string[]; pending: string[] } {
-  const issues: string[] = [];
-  const pending: string[] = [];
-  const targets = new Set<string>();
-  const items = new Set<string>();
-  let identity: string | undefined;
+  const issues: string[] = []
+  const pending: string[] = []
+  const targets = new Set<string>()
+  const items = new Set<string>()
+  let identity: string | undefined
   if (
     !expectedTargets.length ||
     new Set(expectedTargets).size !== expectedTargets.length
-  ) issues.push("Expected targets must be non-empty and unique");
+  )
+    issues.push('Expected targets must be non-empty and unique')
   for (const value of reports) {
     if (!record(value)) {
-      issues.push("IA report must be an object");
-      continue;
+      issues.push('IA report must be an object')
+      continue
     }
-    const target = typeof value.target === "string"
-      ? value.target
-      : "(missing)";
+    const target = typeof value.target === 'string' ? value.target : '(missing)'
     if (!expectedTargets.includes(target) || targets.has(target)) {
-      issues.push(`Unexpected or duplicate IA target: ${target}`);
+      issues.push(`Unexpected or duplicate IA target: ${target}`)
     }
-    targets.add(target);
+    targets.add(target)
     if (
       value.schemaVersion !== 1 ||
-      !["pending", "ready"].includes(String(value.status))
+      !['pending', 'ready'].includes(String(value.status))
     ) {
       issues.push(
         `${target}: IA upload failed: ${String(value.error ?? value.status)}`,
-      );
-      continue;
+      )
+      continue
     }
     if (
-      typeof value.buildId !== "string" ||
+      typeof value.buildId !== 'string' ||
       !value.buildId.endsWith(`-${target}`) ||
-      typeof value.itemIdentifier !== "string" ||
+      typeof value.itemIdentifier !== 'string' ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(value.itemIdentifier) ||
-      typeof value.commit !== "string" ||
+      typeof value.commit !== 'string' ||
       !/^[a-f0-9]{40}$/.test(value.commit) ||
-      !["nightly", "release"].includes(String(value.channel)) ||
-      typeof value.folderPath !== "string" ||
+      !['nightly', 'release'].includes(String(value.channel)) ||
+      typeof value.folderPath !== 'string' ||
       !value.folderPath.startsWith(`${value.channel}/`) ||
       !validPublicationTime(value.publishedAt)
     ) {
-      issues.push(`${target}: Invalid IA build identity`);
-      continue;
+      issues.push(`${target}: Invalid IA build identity`)
+      continue
     }
     if (items.has(value.itemIdentifier)) {
-      issues.push(`${target}: IA item reused across targets`);
+      issues.push(`${target}: IA item reused across targets`)
     }
-    items.add(value.itemIdentifier);
+    items.add(value.itemIdentifier)
     const currentIdentity = JSON.stringify([
       value.buildId.slice(0, -(target.length + 1)),
       value.commit,
       value.channel,
       value.folderPath,
       value.publishedAt,
-    ]);
-    identity ??= currentIdentity;
+    ])
+    identity ??= currentIdentity
     if (identity !== currentIdentity) {
-      issues.push(`${target}: IA reports belong to different builds`);
+      issues.push(`${target}: IA reports belong to different builds`)
     }
     if (
-      !Array.isArray(value.artifacts) || !value.artifacts.length ||
+      !Array.isArray(value.artifacts) ||
+      !value.artifacts.length ||
       !Array.isArray(value.uploads)
     ) {
-      issues.push(
-        `${target}: Missing registered artifacts or upload inventory`,
-      );
-      continue;
+      issues.push(`${target}: Missing registered artifacts or upload inventory`)
+      continue
     }
-    const names = new Set<string>();
+    const names = new Set<string>()
     for (const artifact of value.artifacts) {
       if (
-        !record(artifact) || typeof artifact.fileName !== "string" ||
+        !record(artifact) ||
+        typeof artifact.fileName !== 'string' ||
         !artifact.fileName ||
         /[\\/\r\n\0]/.test(artifact.fileName) ||
-        artifact.fileName === "artifact-manifest.json" ||
-        names.has(artifact.fileName) || typeof artifact.fileId !== "string" ||
+        artifact.fileName === 'artifact-manifest.json' ||
+        names.has(artifact.fileName) ||
+        typeof artifact.fileId !== 'string' ||
         !Number.isSafeInteger(artifact.fileSize) ||
         Number(artifact.fileSize) <= 0 ||
-        typeof artifact.sha256 !== "string" ||
+        typeof artifact.sha256 !== 'string' ||
         !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
-        typeof artifact.md5 !== "string" ||
+        typeof artifact.md5 !== 'string' ||
         !/^[a-f0-9]{32}$/.test(artifact.md5) ||
         artifact.storageKey !== artifact.fileName ||
         artifact.status !== value.status
       ) {
-        issues.push(`${target}: Invalid registered artifact`);
-        continue;
+        issues.push(`${target}: Invalid registered artifact`)
+        continue
       }
-      names.add(artifact.fileName);
+      names.add(artifact.fileName)
     }
-    const uploaded = new Set<string>();
+    const uploaded = new Set<string>()
     for (const upload of value.uploads) {
       if (
-        !record(upload) || typeof upload.fileName !== "string" ||
+        !record(upload) ||
+        typeof upload.fileName !== 'string' ||
         uploaded.has(upload.fileName) ||
-        !["uploaded", "skipped"].includes(String(upload.status)) ||
+        !['uploaded', 'skipped'].includes(String(upload.status)) ||
         (!names.has(upload.fileName) &&
-          upload.fileName !== "artifact-manifest.json")
+          upload.fileName !== 'artifact-manifest.json')
       ) {
-        issues.push(`${target}: Invalid upload inventory`);
-        continue;
+        issues.push(`${target}: Invalid upload inventory`)
+        continue
       }
-      uploaded.add(upload.fileName);
+      uploaded.add(upload.fileName)
     }
     if (
       uploaded.size !== names.size + 1 ||
-      !uploaded.has("artifact-manifest.json") || [...names].some((name) =>
-        !uploaded.has(name)
-      )
-    ) issues.push(`${target}: Registered artifacts were not all uploaded`);
-    if (value.status === "pending") {
-      pending.push(`${target}: ${value.buildId} / ${value.itemIdentifier}`);
+      !uploaded.has('artifact-manifest.json') ||
+      [...names].some((name) => !uploaded.has(name))
+    )
+      issues.push(`${target}: Registered artifacts were not all uploaded`)
+    if (value.status === 'pending') {
+      pending.push(`${target}: ${value.buildId} / ${value.itemIdentifier}`)
     }
   }
   for (const target of expectedTargets) {
-    if (!targets.has(target)) issues.push(`${target}: IA report is missing`);
+    if (!targets.has(target)) issues.push(`${target}: IA report is missing`)
   }
-  return { issues, pending };
+  return { issues, pending }
 }
 
 export async function collectIaReports(root: string): Promise<unknown[]> {
-  const reports: unknown[] = [];
+  const reports: unknown[] = []
   for (const entry of await readdir(root, { withFileTypes: true })) {
-    const file = path.join(root, entry.name);
-    if (entry.isDirectory()) reports.push(...await collectIaReports(file));
-    else if (entry.isFile() && entry.name === "ia-report.json") {
-      reports.push(JSON.parse(await readFile(file, "utf8")));
+    const file = path.join(root, entry.name)
+    if (entry.isDirectory()) reports.push(...(await collectIaReports(file)))
+    else if (entry.isFile() && entry.name === 'ia-report.json') {
+      reports.push(JSON.parse(await readFile(file, 'utf8')))
     }
   }
-  return reports;
+  return reports
 }
 
 if (import.meta.main) {
-  const [root, targetList] = process.argv.slice(2);
+  const [root, targetList] = process.argv.slice(2)
   if (!root || !targetList) {
     throw new Error(
-      "Usage: archive:verify-reports <reports-dir> <comma-separated-targets>",
-    );
+      'Usage: archive:verify-reports <reports-dir> <comma-separated-targets>',
+    )
   }
   const result = validateIaReports(
     await collectIaReports(root),
-    targetList.split(","),
-  );
+    targetList.split(','),
+  )
   const summary = result.issues.length
-    ? `IA archive incomplete:\n${result.issues.join("\n")}`
+    ? `IA archive incomplete:\n${result.issues.join('\n')}`
     : result.pending.length
-    ? `IA bytes uploaded; ingest pending (rerun archive verification):\n${
-      result.pending.join("\n")
-    }`
-    : "All target IA archives are ready";
-  console.log(summary);
-  const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
+      ? `IA bytes uploaded; ingest pending (rerun archive verification):\n${result.pending.join(
+          '\n',
+        )}`
+      : 'All target IA archives are ready'
+  console.log(summary)
+  const summaryPath = process.env['GITHUB_STEP_SUMMARY']
   if (summaryPath) {
-    await appendFile(summaryPath, `\n${summary}\n`);
+    await appendFile(summaryPath, `\n${summary}\n`)
   }
   if (result.issues.length) {
-    throw new Error("Incomplete or failed IA archive uploads");
+    throw new Error('Incomplete or failed IA archive uploads')
   }
 }

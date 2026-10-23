@@ -1,106 +1,102 @@
-import type { ChildProcess } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { runPublicationTasks } from "./publication-concurrency.ts";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import {
-  type ExitStatus,
-  exitStatus,
-  spawnCommand,
-} from "../shared/command.ts";
-import { text } from "node:stream/consumers";
+import type { ChildProcess } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
+import { text } from 'node:stream/consumers'
+import { exitStatus, spawnCommand, type ExitStatus } from '../shared/command.ts'
+import { runPublicationTasks } from './publication-concurrency.ts'
 
 interface PublishArtifact {
-  path: string;
-  fileName: string;
-  fileSize: number;
-  sha256: string;
-  md5: string;
+  path: string
+  fileName: string
+  fileSize: number
+  sha256: string
+  md5: string
 }
 
 interface PublishManifest {
-  schemaVersion: 1;
-  buildId: string;
-  itemIdentifier: string;
-  channel: "release" | "nightly";
-  commit: string;
-  publishedAt?: string;
-  tag: string | null;
-  target?: string | null;
-  folderPath: string;
-  artifacts: PublishArtifact[];
+  schemaVersion: 1
+  buildId: string
+  itemIdentifier: string
+  channel: 'release' | 'nightly'
+  commit: string
+  publishedAt?: string
+  tag: string | null
+  target?: string | null
+  folderPath: string
+  artifacts: PublishArtifact[]
 }
 
 interface RegisteredArtifact {
-  fileId: string;
-  fileName: string;
-  fileSize: number;
-  storageKey: string;
-  downloadUrl: string;
-  status: "pending" | "ready" | "failed";
+  fileId: string
+  fileName: string
+  fileSize: number
+  storageKey: string
+  downloadUrl: string
+  status: 'pending' | 'ready' | 'failed'
 }
 
 interface BuildResponse {
-  buildId: string;
-  itemIdentifier: string;
-  schemaVersion?: 1;
-  target?: string | null;
-  publishedAt?: string;
-  channel?: "release" | "nightly";
-  commit?: string;
-  folderPath?: string;
-  status: "pending" | "ready" | "failed";
-  diagnostics: string[];
-  artifacts: RegisteredArtifact[];
+  buildId: string
+  itemIdentifier: string
+  schemaVersion?: 1
+  target?: string | null
+  publishedAt?: string
+  channel?: 'release' | 'nightly'
+  commit?: string
+  folderPath?: string
+  status: 'pending' | 'ready' | 'failed'
+  diagnostics: string[]
+  artifacts: RegisteredArtifact[]
 }
 
-const RETRY_COUNT = 5;
-const IA_S3_ORIGIN = "https://s3.us.archive.org";
-const IA_METADATA_ORIGIN = "https://archive.org";
-const IA_SOURCE = "https://github.com/libnyanpasu/clash-nyanpasu";
-const IA_HOMEPAGE = "https://nyanpasu.org";
-const IA_LICENSE_URL = "https://www.gnu.org/licenses/gpl-3.0.html";
+const RETRY_COUNT = 5
+const IA_S3_ORIGIN = 'https://s3.us.archive.org'
+const IA_METADATA_ORIGIN = 'https://archive.org'
+const IA_SOURCE = 'https://github.com/libnyanpasu/clash-nyanpasu'
+const IA_HOMEPAGE = 'https://nyanpasu.org'
+const IA_LICENSE_URL = 'https://www.gnu.org/licenses/gpl-3.0.html'
 
 const parseOptions = (args: string[]) => {
-  const options = new Map<string, string>();
+  const options = new Map<string, string>()
   for (let i = 0; i < args.length; i++) {
-    const key = args[i];
-    if (key === "--verify-only" || key === "--register-only") {
-      options.set(key, "true");
-      continue;
+    const key = args[i]
+    if (key === '--verify-only' || key === '--register-only') {
+      options.set(key, 'true')
+      continue
     }
-    if (!key.startsWith("--") || !args[i + 1] || args[i + 1].startsWith("--")) {
-      throw new Error(`Expected --option value, got ${key}`);
+    if (!key.startsWith('--') || !args[i + 1] || args[i + 1].startsWith('--')) {
+      throw new Error(`Expected --option value, got ${key}`)
     }
-    options.set(key, args[++i]);
+    options.set(key, args[++i])
   }
-  const manifest = options.get("--manifest");
-  const server = options.get("--server");
-  const verifyOnly = options.get("--verify-only") === "true";
-  const registerOnly = options.get("--register-only") === "true";
+  const manifest = options.get('--manifest')
+  const server = options.get('--server')
+  const verifyOnly = options.get('--verify-only') === 'true'
+  const registerOnly = options.get('--register-only') === 'true'
   if (verifyOnly && registerOnly) {
-    throw new Error("--verify-only and --register-only are mutually exclusive");
+    throw new Error('--verify-only and --register-only are mutually exclusive')
   }
-  const buildId = options.get("--build-id");
+  const buildId = options.get('--build-id')
   if (!server || (verifyOnly ? !buildId : !manifest)) {
     throw new Error(
-      "usage: archive:publish --manifest <json> --server <https-url> [--report <json>] | archive:verify --build-id <id> --server <https-url> [--report <json>]",
-    );
+      'usage: archive:publish --manifest <json> --server <https-url> [--report <json>] | archive:verify --build-id <id> --server <https-url> [--report <json>]',
+    )
   }
-  const serverUrl = new URL(server);
-  if (serverUrl.protocol !== "https:") {
-    throw new Error("--server must use HTTPS");
+  const serverUrl = new URL(server)
+  if (serverUrl.protocol !== 'https:') {
+    throw new Error('--server must use HTTPS')
   }
   if (
-    serverUrl.hostname !== "archive.nyanpasu.org" &&
-    serverUrl.hostname !== "localhost" &&
-    serverUrl.hostname !== "127.0.0.1"
+    serverUrl.hostname !== 'archive.nyanpasu.org' &&
+    serverUrl.hostname !== 'localhost' &&
+    serverUrl.hostname !== '127.0.0.1'
   ) {
     throw new Error(
-      "--server must be archive.nyanpasu.org or a local test server",
-    );
+      '--server must be archive.nyanpasu.org or a local test server',
+    )
   }
   return {
     manifestPath: manifest ? resolve(manifest) : undefined,
@@ -108,47 +104,52 @@ const parseOptions = (args: string[]) => {
     verifyOnly,
     registerOnly,
     serverUrl: serverUrl.origin,
-    reportPath: options.get("--report"),
-  };
-};
+    reportPath: options.get('--report'),
+  }
+}
 
 const requiredEnv = (name: string) => {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-};
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required`)
+  return value
+}
 
 const delay = (milliseconds: number) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
+  new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 const retry = async <T>(
   operation: () => Promise<T>,
   label: string,
   maxAttempts = RETRY_COUNT,
 ): Promise<T> => {
-  let lastError: unknown;
-  let attempts = 0;
+  let lastError: unknown
+  let attempts = 0
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    attempts++;
+    attempts++
     try {
-      return await operation();
+      return await operation()
     } catch (error) {
-      lastError = error;
+      lastError = error
       if (
-        typeof error === "object" && error !== null && "permanent" in error &&
+        typeof error === 'object' &&
+        error !== null &&
+        'permanent' in error &&
         error.permanent === true
-      ) break;
+      )
+        break
       if (
-        error instanceof Error && /HTTP 4\d\d/.test(error.message) &&
+        error instanceof Error &&
+        /HTTP 4\d\d/.test(error.message) &&
         !/HTTP (408|429)/.test(error.message)
-      ) break;
-      if (attempt + 1 === maxAttempts) break;
+      )
+        break
+      if (attempt + 1 === maxAttempts) break
       console.warn(
         `[archive] ${label}: attempt ${attempts}/${maxAttempts} failed: ${
           error instanceof Error ? error.message : String(error)
         }; retrying`,
-      );
-      await delay(Math.min(1_000 * 2 ** attempt, 16_000));
+      )
+      await delay(Math.min(1_000 * 2 ** attempt, 16_000))
     }
   }
   throw new Error(
@@ -158,68 +159,70 @@ const retry = async <T>(
     {
       cause: lastError,
     },
-  );
-};
+  )
+}
 
 export const digestFile = async (filePath: string) => {
-  const info = await stat(filePath);
-  const sha256 = createHash("sha256");
-  const md5 = createHash("md5");
+  const info = await stat(filePath)
+  const sha256 = createHash('sha256')
+  const md5 = createHash('md5')
   for await (const chunk of createReadStream(filePath)) {
-    sha256.update(chunk);
-    md5.update(chunk);
+    sha256.update(chunk)
+    md5.update(chunk)
   }
   return {
     fileSize: info.size,
-    sha256: sha256.digest("hex"),
-    md5: md5.digest("hex"),
-  };
-};
+    sha256: sha256.digest('hex'),
+    md5: md5.digest('hex'),
+  }
+}
 
 const validateManifest = async (
   manifestPath: string,
   manifest: PublishManifest,
 ) => {
   if (
-    manifest.schemaVersion !== 1 || !manifest.buildId ||
+    manifest.schemaVersion !== 1 ||
+    !manifest.buildId ||
     !manifest.itemIdentifier
   ) {
     throw new Error(
-      "Manifest must have schemaVersion 1, buildId, and itemIdentifier",
-    );
+      'Manifest must have schemaVersion 1, buildId, and itemIdentifier',
+    )
   }
   if (
     !manifest.artifacts.length ||
     manifest.artifacts.some((artifact) => !artifact.path)
   ) {
-    throw new Error("Manifest must include local paths for every artifact");
+    throw new Error('Manifest must include local paths for every artifact')
   }
   if (
-    manifest.artifacts.some((artifact) =>
-      artifact.fileName === "artifact-manifest.json"
+    manifest.artifacts.some(
+      (artifact) => artifact.fileName === 'artifact-manifest.json',
     )
   ) {
     throw new Error(
-      "artifact-manifest.json is reserved for the sanitized IA build manifest",
-    );
+      'artifact-manifest.json is reserved for the sanitized IA build manifest',
+    )
   }
-  const names = new Set<string>();
-  const baseDirectory = dirname(manifestPath);
+  const names = new Set<string>()
+  const baseDirectory = dirname(manifestPath)
   for (const artifact of manifest.artifacts) {
     if (names.has(artifact.fileName)) {
-      throw new Error(`Duplicate artifact name: ${artifact.fileName}`);
+      throw new Error(`Duplicate artifact name: ${artifact.fileName}`)
     }
     if (
       basename(artifact.path) !== artifact.fileName ||
-      !Number.isSafeInteger(artifact.fileSize) || artifact.fileSize <= 0 ||
+      !Number.isSafeInteger(artifact.fileSize) ||
+      artifact.fileSize <= 0 ||
       !/^[a-fA-F0-9]{64}$/.test(artifact.sha256) ||
       !/^[a-fA-F0-9]{32}$/.test(artifact.md5)
     ) {
-      throw new Error(`Invalid local artifact entry: ${artifact.fileName}`);
+      throw new Error(`Invalid local artifact entry: ${artifact.fileName}`)
     }
-    names.add(artifact.fileName);
-    const fullPath = resolve(baseDirectory, artifact.path);
-    const actual = await digestFile(fullPath);
+    names.add(artifact.fileName)
+    const fullPath = resolve(baseDirectory, artifact.path)
+    const actual = await digestFile(fullPath)
     if (
       actual.fileSize !== artifact.fileSize ||
       actual.sha256 !== artifact.sha256.toLowerCase() ||
@@ -227,14 +230,14 @@ const validateManifest = async (
     ) {
       throw new Error(
         `Local file does not match manifest: ${artifact.fileName}`,
-      );
+      )
     }
-    artifact.path = fullPath;
-    artifact.sha256 = actual.sha256;
-    artifact.md5 = actual.md5;
+    artifact.path = fullPath
+    artifact.sha256 = actual.sha256
+    artifact.md5 = actual.md5
   }
-  return manifest;
-};
+  return manifest
+}
 
 const apiRequest = async (
   url: URL,
@@ -243,96 +246,98 @@ const apiRequest = async (
 ): Promise<Response> => {
   const response = await fetch(url, {
     ...init,
-    redirect: "error",
+    redirect: 'error',
     headers: {
       Authorization: `Bearer ${token}`,
       ...(init.headers ?? {}),
     },
     signal: AbortSignal.timeout(60_000),
-  });
+  })
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await response.text()
     const error = new Error(
       `Archive API returned HTTP ${response.status}: ${detail}`,
-    );
+    )
     if (
       /no such (table|column)|must be configured|Server misconfigured/i.test(
         detail,
       )
     ) {
-      throw Object.assign(error, { permanent: true });
+      throw Object.assign(error, { permanent: true })
     }
-    throw error;
+    throw error
   }
-  if (!response.headers.get("content-type")?.includes("application/json")) {
-    const detail = (await response.text()).slice(0, 2000);
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    const detail = (await response.text()).slice(0, 2000)
     throw Object.assign(
       new Error(
         `Archive API returned non-JSON HTTP ${response.status}: ${detail}`,
       ),
       { permanent: true },
-    );
+    )
   }
-  return response;
-};
+  return response
+}
 
 export const registerBuild = async (
   serverUrl: string,
   token: string,
   manifest: PublishManifest,
 ): Promise<BuildResponse> => {
-  const { artifacts, ...buildFields } = manifest;
+  const { artifacts, ...buildFields } = manifest
   const body = {
     ...buildFields,
     artifacts: artifacts.map(({ path: _path, ...artifact }) => artifact),
-  };
+  }
   const response = await retry(async () => {
     const result = await apiRequest(
-      new URL("/archive/builds", serverUrl),
+      new URL('/archive/builds', serverUrl),
       token,
       {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       },
-    );
-    return await result.json() as BuildResponse;
-  }, "build registration");
+    )
+    return (await result.json()) as BuildResponse
+  }, 'build registration')
   if (
     response.buildId !== manifest.buildId ||
     response.itemIdentifier !== manifest.itemIdentifier
   ) {
-    throw new Error("Archive API returned an unexpected build identity");
+    throw new Error('Archive API returned an unexpected build identity')
   }
   if (
     manifest.publishedAt !== undefined &&
     response.publishedAt !== manifest.publishedAt
   ) {
-    throw new Error("Archive API server publication timestamp mismatch");
+    throw new Error('Archive API server publication timestamp mismatch')
   }
   for (const artifact of manifest.artifacts) {
-    const registered = response.artifacts.find((item) =>
-      item.fileName === artifact.fileName
-    );
+    const registered = response.artifacts.find(
+      (item) => item.fileName === artifact.fileName,
+    )
     if (
-      !registered || registered.storageKey !== artifact.fileName ||
+      !registered ||
+      registered.storageKey !== artifact.fileName ||
       registered.fileSize !== artifact.fileSize
     ) {
       throw new Error(
         `Archive API returned an unexpected artifact mapping for ${artifact.fileName}`,
-      );
+      )
     }
-    const download = new URL(registered.downloadUrl);
+    const download = new URL(registered.downloadUrl)
     if (
-      download.origin !== serverUrl || !download.pathname.startsWith("/bin/")
+      download.origin !== serverUrl ||
+      !download.pathname.startsWith('/bin/')
     ) {
       throw new Error(
         `Archive API returned a non-canonical download URL for ${artifact.fileName}`,
-      );
+      )
     }
   }
-  return response;
-};
+  return response
+}
 
 const verifyRemoteBuild = async (
   serverUrl: string,
@@ -341,16 +346,16 @@ const verifyRemoteBuild = async (
 ) => {
   const verifyAttempts = Math.max(
     1,
-    Math.min(24, Number(process.env["ARCHIVE_VERIFY_ATTEMPTS"] ?? "4") || 4),
-  );
+    Math.min(24, Number(process.env['ARCHIVE_VERIFY_ATTEMPTS'] ?? '4') || 4),
+  )
   const verifyDelay = Math.max(
     0,
     Math.min(
       60_000,
-      Number(process.env["ARCHIVE_VERIFY_DELAY_MS"] ?? "15000") || 0,
+      Number(process.env['ARCHIVE_VERIFY_DELAY_MS'] ?? '15000') || 0,
     ),
-  );
-  let verification: BuildResponse | undefined;
+  )
+  let verification: BuildResponse | undefined
   for (let attempt = 0; attempt < verifyAttempts; attempt++) {
     verification = await retry(async () => {
       const result = await apiRequest(
@@ -359,24 +364,25 @@ const verifyRemoteBuild = async (
           serverUrl,
         ),
         token,
-        { method: "POST" },
-      );
-      return await result.json() as BuildResponse;
-    }, "archive verification");
-    if (verification.status === "ready" || verification.status === "failed") {
-      break;
+        { method: 'POST' },
+      )
+      return (await result.json()) as BuildResponse
+    }, 'archive verification')
+    if (verification.status === 'ready' || verification.status === 'failed') {
+      break
     }
-    if (attempt + 1 < verifyAttempts) await delay(verifyDelay);
+    if (attempt + 1 < verifyAttempts) await delay(verifyDelay)
   }
-  return verification!;
-};
+  return verification!
+}
 
 const reconcile = async (serverUrl: string, buildId: string) => {
-  const token = process.env["ARCHIVE_UPLOAD_TOKEN"]?.trim() ||
-    process.env["FILE_SERVER_TOKEN"]?.trim() ||
-    requiredEnv("UPLOAD_TOKEN");
-  console.log(`[archive] Verifying ${buildId}`);
-  const verification = await verifyRemoteBuild(serverUrl, token, buildId);
+  const token =
+    process.env['ARCHIVE_UPLOAD_TOKEN']?.trim() ||
+    process.env['FILE_SERVER_TOKEN']?.trim() ||
+    requiredEnv('UPLOAD_TOKEN')
+  console.log(`[archive] Verifying ${buildId}`)
+  const verification = await verifyRemoteBuild(serverUrl, token, buildId)
   return {
     schemaVersion: 1 as const,
     buildId: verification.buildId,
@@ -389,13 +395,13 @@ const reconcile = async (serverUrl: string, buildId: string) => {
     status: verification.status,
     diagnostics: verification.diagnostics,
     artifacts: verification.artifacts,
-  };
-};
+  }
+}
 
 interface RemoteFile {
-  name: string;
-  size?: string | number;
-  md5?: string;
+  name: string
+  size?: string | number
+  md5?: string
 }
 
 export const readRemoteFile = async (
@@ -410,76 +416,82 @@ export const readRemoteFile = async (
     {
       signal: AbortSignal.timeout(15_000),
     },
-  );
+  )
   if (response.status === 404) {
-    await response.body?.cancel();
-    return undefined;
+    await response.body?.cancel()
+    return undefined
   }
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`IA metadata returned HTTP ${response.status}: ${detail}`);
+    const detail = await response.text()
+    throw new Error(`IA metadata returned HTTP ${response.status}: ${detail}`)
   }
-  const metadata = await response.json() as {
-    metadata?: { identifier?: string; uploader?: string };
-    files?: RemoteFile[];
-  };
+  const metadata = (await response.json()) as {
+    metadata?: { identifier?: string; uploader?: string }
+    files?: RemoteFile[]
+  }
   if (
     !metadata.metadata?.identifier &&
     (!metadata.files || metadata.files.length === 0)
   ) {
-    return undefined;
+    return undefined
   }
   if (metadata.metadata?.identifier !== itemIdentifier) {
-    throw Object.assign(new Error("IA metadata identifier mismatch"), {
+    throw Object.assign(new Error('IA metadata identifier mismatch'), {
       permanent: true,
-    });
+    })
   }
   if (!Array.isArray(metadata.files)) {
-    throw new Error("IA item metadata did not include a file inventory");
+    throw new Error('IA item metadata did not include a file inventory')
   }
-  const uploader = requiredEnv("IA_UPLOADER");
+  const uploader = requiredEnv('IA_UPLOADER')
   if (metadata.metadata.uploader !== uploader) {
-    throw Object.assign(new Error("IA item belongs to a different uploader"), {
+    throw Object.assign(new Error('IA item belongs to a different uploader'), {
       permanent: true,
-    });
+    })
   }
-  return metadata.files?.find((file) => file.name === fileName);
-};
+  return metadata.files?.find((file) => file.name === fileName)
+}
 
 export const skipIfAlreadyUploaded = async (
   itemIdentifier: string,
   fileName: string,
   expected: { fileSize: number; md5: string },
 ) => {
-  const remote = await readRemoteFile(itemIdentifier, fileName);
-  if (!remote) return false;
+  const remote = await readRemoteFile(itemIdentifier, fileName)
+  if (!remote) return false
   if (remote.size === undefined || !remote.md5) {
     throw new Error(
       `IA has not indexed size and MD5 for existing file ${fileName}`,
-    );
+    )
   }
   if (
     Number(remote.size) === expected.fileSize &&
     remote.md5.toLowerCase() === expected.md5
   ) {
-    return true;
+    return true
   }
   throw Object.assign(
     new Error(
       `IA already has different bytes for immutable build file ${fileName}`,
     ),
     { permanent: true },
-  );
-};
+  )
+}
 
 export const allowedIaUploadUrl = (value: string, itemIdentifier?: string) => {
-  const url = new URL(value);
-  const allowedHost = url.hostname === "s3.us.archive.org" ||
+  const url = new URL(value)
+  const allowedHost =
+    url.hostname === 's3.us.archive.org' ||
     (itemIdentifier !== undefined &&
-      url.hostname === `${itemIdentifier}.s3.us.archive.org`);
-  return url.protocol === "https:" && !url.username && !url.password &&
-    url.port === "" && allowedHost;
-};
+      url.hostname === `${itemIdentifier}.s3.us.archive.org`)
+  return (
+    url.protocol === 'https:' &&
+    !url.username &&
+    !url.password &&
+    url.port === '' &&
+    allowedHost
+  )
+}
 
 // IA S3 requires fixed-length streaming and may redirect before consuming the
 // body. curl handles both without buffering package bytes in JavaScript.
@@ -490,129 +502,132 @@ export const uploadFileRequest = async (
   signal: AbortSignal,
   idleTimeoutMs = 90_000,
 ): Promise<Response> => {
-  const directory = await mkdtemp(join(tmpdir(), "ia-upload-"));
-  const headerPath = `${directory}/headers`;
-  const bodyPath = `${directory}/body`;
+  const directory = await mkdtemp(join(tmpdir(), 'ia-upload-'))
+  const headerPath = `${directory}/headers`
+  const bodyPath = `${directory}/body`
   // Keep credentials out of command arguments and temporary files.
   const quote = (value: string) => {
-    if (/[\r\n\0]/.test(value)) throw new Error("Invalid IA upload header");
-    return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-  };
-  let progress: ReturnType<typeof setInterval> | undefined;
-  let child: ChildProcess | undefined;
-  let exited: Promise<ExitStatus> | undefined;
+    if (/[\r\n\0]/.test(value)) throw new Error('Invalid IA upload header')
+    return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+  }
+  let progress: ReturnType<typeof setInterval> | undefined
+  let child: ChildProcess | undefined
+  let exited: Promise<ExitStatus> | undefined
   try {
-    const configuration = Object.entries(headers).map(([name, value]) =>
-      `header = ${quote(`${name}: ${value}`)}`
-    ).join("\n");
-    child = spawnCommand("curl", {
+    const configuration = Object.entries(headers)
+      .map(([name, value]) => `header = ${quote(`${name}: ${value}`)}`)
+      .join('\n')
+    child = spawnCommand('curl', {
       args: [
-        "--disable",
-        "--config",
-        "-",
-        "--http1.1",
-        "--request",
-        "PUT",
-        "--upload-file",
+        '--disable',
+        '--config',
+        '-',
+        '--http1.1',
+        '--request',
+        'PUT',
+        '--upload-file',
         filePath,
-        "--connect-timeout",
-        "15",
-        "--speed-limit",
-        "1024",
-        "--speed-time",
+        '--connect-timeout',
+        '15',
+        '--speed-limit',
+        '1024',
+        '--speed-time',
         String(Math.max(1, Math.ceil(idleTimeoutMs / 1000))),
-        "--max-time",
-        "1800",
-        "--dump-header",
+        '--max-time',
+        '1800',
+        '--dump-header',
         headerPath,
-        "--output",
+        '--output',
         bodyPath,
-        "--write-out",
-        "%{http_code}",
+        '--write-out',
+        '%{http_code}',
         url.href,
       ],
       signal,
-      stdin: "piped",
-      stdout: "piped",
-      stderr: "piped",
-    });
-    exited = exitStatus(child);
-    const started = Date.now();
-    let lastProgress = "connecting";
-    let stderr = "";
+      stdin: 'piped',
+      stdout: 'piped',
+      stderr: 'piped',
+    })
+    exited = exitStatus(child)
+    const started = Date.now()
+    let lastProgress = 'connecting'
+    let stderr = ''
     const readStderr = (async () => {
-      child!.stderr!.setEncoding("utf8");
+      child!.stderr!.setEncoding('utf8')
       for await (const chunk of child!.stderr! as AsyncIterable<string>) {
-        stderr = (stderr + chunk).slice(-16_384);
-        const lines = chunk.split(/[\r\n]/).map((line) => line.trim()).filter(
-          Boolean,
-        );
-        lastProgress = lines.at(-1) ?? lastProgress;
+        stderr = (stderr + chunk).slice(-16_384)
+        const lines = chunk
+          .split(/[\r\n]/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+        lastProgress = lines.at(-1) ?? lastProgress
       }
-    })();
+    })()
     progress = setInterval(() => {
       console.log(
-        `[archive] ${basename(filePath)}: ${
-          Math.round((Date.now() - started) / 1000)
-        }s elapsed; curl: ${lastProgress}`,
-      );
-    }, 30_000);
+        `[archive] ${basename(filePath)}: ${Math.round(
+          (Date.now() - started) / 1000,
+        )}s elapsed; curl: ${lastProgress}`,
+      )
+    }, 30_000)
     console.log(
       `[archive] PUT ${url.hostname}${url.pathname}, ${
-        headers["content-length"]
+        headers['content-length']
       } bytes`,
-    );
+    )
     // curl may exit without reading its configuration; its status reports that.
-    child.stdin!.on("error", () => {});
-    child.stdin!.end(configuration + "\n");
+    child.stdin!.on('error', () => {})
+    child.stdin!.end(configuration + '\n')
     const [status, statusText] = await Promise.all([
       exited,
       text(child.stdout!),
       readStderr,
-    ]);
+    ])
     if (!status.success) {
       throw new Error(
         `IA upload transport failed (curl ${status.code}): ${stderr.trim()}`,
-      );
+      )
     }
     // curl does not follow redirects; streamUpload validates each destination.
-    const responseHeaders = new Headers();
-    const blocks = (await readFile(headerPath, "utf8")).trim().split(
-      /\r?\n\r?\n/,
-    );
+    const responseHeaders = new Headers()
+    const blocks = (await readFile(headerPath, 'utf8'))
+      .trim()
+      .split(/\r?\n\r?\n/)
     for (const line of blocks.at(-1)!.split(/\r?\n/).slice(1)) {
-      const colon = line.indexOf(":");
+      const colon = line.indexOf(':')
       if (colon > 0) {
         responseHeaders.append(
           line.slice(0, colon),
           line.slice(colon + 1).trim(),
-        );
+        )
       }
     }
-    const responseStatus = Number(statusText);
+    const responseStatus = Number(statusText)
     console.log(
-      `[archive] PUT response HTTP ${responseStatus}, ${
-        Math.round((Date.now() - started) / 1000)
-      }s elapsed`,
-    );
+      `[archive] PUT response HTTP ${responseStatus}, ${Math.round(
+        (Date.now() - started) / 1000,
+      )}s elapsed`,
+    )
     return new Response(
       responseStatus === 204 ? null : new Uint8Array(await readFile(bodyPath)),
       {
         status: responseStatus,
         headers: responseHeaders,
       },
-    );
+    )
   } finally {
-    if (progress !== undefined) clearInterval(progress);
+    if (progress !== undefined) clearInterval(progress)
     if (child) {
       try {
-        child.kill("SIGTERM");
-      } catch { /* The process may already have exited. */ }
-      await exited?.catch(() => {});
+        child.kill('SIGTERM')
+      } catch {
+        /* The process may already have exited. */
+      }
+      await exited?.catch(() => {})
     }
-    await rm(directory, { recursive: true });
+    await rm(directory, { recursive: true })
   }
-};
+}
 
 export const streamUpload = async (
   filePath: string,
@@ -624,54 +639,61 @@ export const streamUpload = async (
   manifest: PublishManifest,
   upload = uploadFileRequest,
 ) => {
-  let url = destination;
+  let url = destination
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!allowedIaUploadUrl(url.href, manifest.itemIdentifier)) {
-      throw new Error("IA upload redirected to a non-IA S3 host");
+      throw new Error('IA upload redirected to a non-IA S3 host')
     }
-    const response = await upload(filePath, url, {
-      Authorization: `LOW ${accessKey}:${secret}`,
-      "content-type": "application/octet-stream",
-      "content-length": String(fileSize),
-      "x-archive-queue-derive": "0",
-      ...(firstFile
-        ? {
-          "x-archive-auto-make-bucket": "1",
-          "x-archive-meta-mediatype": "software",
-          "x-archive-meta-title": `Clash Nyanpasu ${manifest.channel} ${
-            manifest.tag ?? manifest.commit
-          }`,
-          "x-archive-meta-source": IA_SOURCE,
-          "x-archive-meta-homepage": IA_HOMEPAGE,
-          "x-archive-meta-licenseurl": IA_LICENSE_URL,
-        }
-        : {}),
-    }, AbortSignal.timeout(30 * 60_000));
+    const response = await upload(
+      filePath,
+      url,
+      {
+        Authorization: `LOW ${accessKey}:${secret}`,
+        'content-type': 'application/octet-stream',
+        'content-length': String(fileSize),
+        'x-archive-queue-derive': '0',
+        ...(firstFile
+          ? {
+              'x-archive-auto-make-bucket': '1',
+              'x-archive-meta-mediatype': 'software',
+              'x-archive-meta-title': `Clash Nyanpasu ${manifest.channel} ${
+                manifest.tag ?? manifest.commit
+              }`,
+              'x-archive-meta-source': IA_SOURCE,
+              'x-archive-meta-homepage': IA_HOMEPAGE,
+              'x-archive-meta-licenseurl': IA_LICENSE_URL,
+            }
+          : {}),
+      },
+      AbortSignal.timeout(30 * 60_000),
+    )
     if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get("location");
-      await response.body?.cancel();
+      const location = response.headers.get('location')
+      await response.body?.cancel()
       if (!location || redirects === 3) {
-        throw new Error("IA returned an invalid upload redirect");
+        throw new Error('IA returned an invalid upload redirect')
       }
-      url = new URL(location, url);
-      continue;
+      url = new URL(location, url)
+      continue
     }
     if ([200, 201, 204].includes(response.status)) {
-      await response.body?.cancel();
-      return;
+      await response.body?.cancel()
+      return
     }
-    const body = await response.text();
+    const body = await response.text()
     const error = new Error(
       `IA upload returned HTTP ${response.status}: ${body}`,
-    );
+    )
     if (
-      response.status === 503 || response.status === 429 ||
+      response.status === 503 ||
+      response.status === 429 ||
       response.status >= 500
-    ) throw error;
-    throw Object.assign(error, { permanent: true });
+    )
+      throw error
+    throw Object.assign(error, { permanent: true })
   }
-  throw new Error("Too many IA upload redirects");
-};
+  throw new Error('Too many IA upload redirects')
+}
 
 export const uploadOne = async (
   itemIdentifier: string,
@@ -683,11 +705,11 @@ export const uploadOne = async (
   upload = streamUpload,
 ) => {
   const destination = new URL(
-    `${encodeURIComponent(itemIdentifier)}/${
-      encodeURIComponent(file.fileName)
-    }`,
+    `${encodeURIComponent(itemIdentifier)}/${encodeURIComponent(
+      file.fileName,
+    )}`,
     `${IA_S3_ORIGIN}/`,
-  );
+  )
   return await retry(
     async () => {
       // A timed-out response can still mean IA stored the entire file. Recheck
@@ -696,10 +718,10 @@ export const uploadOne = async (
         `[archive] Checking ${
           manifest.target ?? manifest.buildId
         }/${file.fileName} (${file.fileSize} bytes)`,
-      );
+      )
       if (await skipIfAlreadyUploaded(itemIdentifier, file.fileName, file)) {
-        console.log(`[archive] Skipped matching file ${file.fileName}`);
-        return "skipped" as const;
+        console.log(`[archive] Skipped matching file ${file.fileName}`)
+        return 'skipped' as const
       }
       await upload(
         file.path,
@@ -709,14 +731,14 @@ export const uploadOne = async (
         secret,
         firstFile,
         manifest,
-      );
-      console.log(`[archive] Uploaded ${file.fileName}`);
-      return "uploaded" as const;
+      )
+      console.log(`[archive] Uploaded ${file.fileName}`)
+      return 'uploaded' as const
     },
     `IA upload for ${file.fileName}`,
     3,
-  );
-};
+  )
+}
 
 const createSanitizedManifestFile = async (manifest: PublishManifest) => {
   const contents = JSON.stringify(
@@ -730,49 +752,50 @@ const createSanitizedManifestFile = async (manifest: PublishManifest) => {
       tag: manifest.tag,
       target: manifest.target ?? null,
       folderPath: manifest.folderPath,
-      artifacts: manifest.artifacts.map(({ path: _path, ...artifact }) =>
-        artifact
+      artifacts: manifest.artifacts.map(
+        ({ path: _path, ...artifact }) => artifact,
       ),
     },
     null,
     2,
-  );
-  const path = join(tmpdir(), `nyanpasu-archive-manifest-${randomUUID()}.json`);
-  await writeFile(path, contents, { flag: "wx", mode: 0o600 });
-  const digest = await digestFile(path);
-  return { path, fileName: "artifact-manifest.json", ...digest };
-};
+  )
+  const path = join(tmpdir(), `nyanpasu-archive-manifest-${randomUUID()}.json`)
+  await writeFile(path, contents, { flag: 'wx', mode: 0o600 })
+  const digest = await digestFile(path)
+  return { path, fileName: 'artifact-manifest.json', ...digest }
+}
 
 const publish = async (
   manifestPath: string,
   serverUrl: string,
   registerOnly = false,
 ) => {
-  const token = process.env["ARCHIVE_UPLOAD_TOKEN"]?.trim() ||
-    process.env["FILE_SERVER_TOKEN"]?.trim() ||
-    requiredEnv("UPLOAD_TOKEN");
-  const accessKey = registerOnly ? "" : requiredEnv("IA_ACCESS_KEY");
-  const secret = registerOnly ? "" : requiredEnv("IA_SECRET_KEY");
-  const itemPrefix = requiredEnv("IA_ITEM_PREFIX");
+  const token =
+    process.env['ARCHIVE_UPLOAD_TOKEN']?.trim() ||
+    process.env['FILE_SERVER_TOKEN']?.trim() ||
+    requiredEnv('UPLOAD_TOKEN')
+  const accessKey = registerOnly ? '' : requiredEnv('IA_ACCESS_KEY')
+  const secret = registerOnly ? '' : requiredEnv('IA_SECRET_KEY')
+  const itemPrefix = requiredEnv('IA_ITEM_PREFIX')
   const manifest = await validateManifest(
     manifestPath,
-    JSON.parse(await readFile(manifestPath, "utf8")) as PublishManifest,
-  );
+    JSON.parse(await readFile(manifestPath, 'utf8')) as PublishManifest,
+  )
   if (!manifest.itemIdentifier.startsWith(`${itemPrefix}-`)) {
-    throw new Error("itemIdentifier is outside IA_ITEM_PREFIX");
+    throw new Error('itemIdentifier is outside IA_ITEM_PREFIX')
   }
-  console.log(`[archive] Registering ${manifest.target ?? manifest.buildId}`);
-  const registered = await registerBuild(serverUrl, token, manifest);
-  console.log(`[archive] Registration complete: ${registered.status}`);
-  if (registered.status === "failed") {
+  console.log(`[archive] Registering ${manifest.target ?? manifest.buildId}`)
+  const registered = await registerBuild(serverUrl, token, manifest)
+  console.log(`[archive] Registration complete: ${registered.status}`)
+  if (registered.status === 'failed') {
     throw new Error(
-      `Build registration is failed: ${registered.diagnostics.join("; ")}`,
-    );
+      `Build registration is failed: ${registered.diagnostics.join('; ')}`,
+    )
   }
   const registeredManifest = {
     ...manifest,
     publishedAt: registered.publishedAt ?? manifest.publishedAt,
-  };
+  }
   if (registerOnly) {
     return {
       schemaVersion: 1 as const,
@@ -783,12 +806,12 @@ const publish = async (
       folderPath: manifest.folderPath,
       registrationOnly: true,
       uploads: [],
-    };
+    }
   }
 
-  const sanitized = await createSanitizedManifestFile(registeredManifest);
-  const uploads: Array<{ fileName: string; status: "uploaded" | "skipped" }> =
-    [];
+  const sanitized = await createSanitizedManifestFile(registeredManifest)
+  const uploads: Array<{ fileName: string; status: 'uploaded' | 'skipped' }> =
+    []
   try {
     uploads.push({
       fileName: sanitized.fileName,
@@ -800,7 +823,7 @@ const publish = async (
         true,
         registeredManifest,
       ),
-    });
+    })
     const results = await runPublicationTasks(
       manifest.artifacts,
       2,
@@ -815,10 +838,10 @@ const publish = async (
           registeredManifest,
         ),
       }),
-    );
-    const errors: string[] = [];
+    )
+    const errors: string[] = []
     for (const [index, result] of results.entries()) {
-      if (result.status === "fulfilled") uploads.push(result.value);
+      if (result.status === 'fulfilled') uploads.push(result.value)
       else {
         errors.push(
           `${manifest.artifacts[index].fileName}: ${
@@ -826,25 +849,25 @@ const publish = async (
               ? result.reason.message
               : String(result.reason)
           }`,
-        );
+        )
       }
     }
-    if (errors.length) throw new Error(errors.join("; "));
+    if (errors.length) throw new Error(errors.join('; '))
   } finally {
-    await rm(sanitized.path).catch(() => undefined);
+    await rm(sanitized.path).catch(() => undefined)
   }
 
-  console.log(`[archive] Verifying ${registeredManifest.buildId}`);
+  console.log(`[archive] Verifying ${registeredManifest.buildId}`)
   const verification = await verifyRemoteBuild(
     serverUrl,
     token,
     registeredManifest.buildId,
-  );
+  )
   if (
     registeredManifest.publishedAt !== undefined &&
     verification.publishedAt !== registeredManifest.publishedAt
   ) {
-    throw new Error("Archive API server publication timestamp mismatch");
+    throw new Error('Archive API server publication timestamp mismatch')
   }
 
   return {
@@ -860,20 +883,20 @@ const publish = async (
     diagnostics: verification.diagnostics,
     artifacts: verification.artifacts,
     uploads,
-  };
-};
+  }
+}
 
 export const runArchivePublish = async (args: string[]): Promise<number> => {
-  let reportPath: string | undefined;
-  let reportIdentity: Record<string, unknown> = {};
+  let reportPath: string | undefined
+  let reportIdentity: Record<string, unknown> = {}
   try {
-    const options = parseOptions(args);
-    reportPath = options.reportPath;
+    const options = parseOptions(args)
+    reportPath = options.reportPath
     if (options.manifestPath) {
       try {
         const manifest = JSON.parse(
-          await readFile(options.manifestPath, "utf8"),
-        ) as PublishManifest;
+          await readFile(options.manifestPath, 'utf8'),
+        ) as PublishManifest
         reportIdentity = {
           schemaVersion: 1,
           buildId: manifest.buildId,
@@ -883,41 +906,41 @@ export const runArchivePublish = async (args: string[]): Promise<number> => {
           channel: manifest.channel,
           commit: manifest.commit,
           folderPath: manifest.folderPath,
-        };
+        }
       } catch {
         // Keep a minimal failure report when the supplied manifest cannot be read.
       }
     } else if (options.buildId) {
-      reportIdentity = { schemaVersion: 1, buildId: options.buildId };
+      reportIdentity = { schemaVersion: 1, buildId: options.buildId }
     }
     const report = options.verifyOnly
       ? await reconcile(options.serverUrl, options.buildId!)
       : await publish(
-        options.manifestPath!,
-        options.serverUrl,
-        options.registerOnly,
-      );
+          options.manifestPath!,
+          options.serverUrl,
+          options.registerOnly,
+        )
     if (reportPath) {
-      await writeFile(reportPath, JSON.stringify(report, null, 2));
+      await writeFile(reportPath, JSON.stringify(report, null, 2))
     }
-    console.log(JSON.stringify(report, null, 2));
-    if (report.status === "failed") return 1;
-    if (options.registerOnly) return 0;
-    return report.status === "ready" ? 0 : 2;
+    console.log(JSON.stringify(report, null, 2))
+    if (report.status === 'failed') return 1
+    if (options.registerOnly) return 0
+    return report.status === 'ready' ? 0 : 2
   } catch (error) {
     const failure = {
       ...reportIdentity,
-      status: "failed",
+      status: 'failed',
       error: error instanceof Error ? error.message : String(error),
-    };
-    if (reportPath) {
-      await writeFile(reportPath, JSON.stringify(failure, null, 2));
     }
-    console.error(JSON.stringify(failure, null, 2));
-    return 1;
+    if (reportPath) {
+      await writeFile(reportPath, JSON.stringify(failure, null, 2))
+    }
+    console.error(JSON.stringify(failure, null, 2))
+    return 1
   }
-};
+}
 
 if (import.meta.main) {
-  process.exitCode = await runArchivePublish(process.argv.slice(2));
+  process.exitCode = await runArchivePublish(process.argv.slice(2))
 }

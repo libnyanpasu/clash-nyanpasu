@@ -1,41 +1,44 @@
-import * as path from "node:path";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
+import { runCommand } from '../shared/command.ts'
 import {
   sftpQuote,
   validateSourceforgeProject,
   validateSourceforgeUsername,
-} from "./sourceforge.ts";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { runCommand } from "../shared/command.ts";
+} from './sourceforge.ts'
 
-const MANAGED_BUILD = /^([0-9]+)-([0-9]+)-([a-f0-9]{40})$/;
-const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9 _.,=+#@()-]*$/;
+const MANAGED_BUILD = /^([0-9]+)-([0-9]+)-([a-f0-9]{40})$/
+const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9 _.,=+#@()-]*$/
 const EXPECTED_TARGETS = [
-  "windows-x86_64",
-  "windows-aarch64",
-  "linux-x86_64",
-  "linux-aarch64",
-  "macos-x86_64",
-  "macos-aarch64",
-] as const;
+  'windows-x86_64',
+  'windows-aarch64',
+  'linux-x86_64',
+  'linux-aarch64',
+  'macos-x86_64',
+  'macos-aarch64',
+] as const
 
 export function parseManagedNightlyDirectories(listing: string): string[] {
-  return listing.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  return listing
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
     .filter((name) => {
       if (!MANAGED_BUILD.test(name)) {
-        throw new Error(`Unexpected entry under managed nightly root: ${name}`);
+        throw new Error(`Unexpected entry under managed nightly root: ${name}`)
       }
-      return true;
-    });
+      return true
+    })
 }
 
 function compareRunIdentity(a: string, b: string): number {
-  const left = a.match(MANAGED_BUILD)!;
-  const right = b.match(MANAGED_BUILD)!;
-  const runDelta = BigInt(left[1]) - BigInt(right[1]);
-  if (runDelta !== 0n) return runDelta < 0n ? -1 : 1;
-  const attemptDelta = BigInt(left[2]) - BigInt(right[2]);
-  return attemptDelta < 0n ? -1 : attemptDelta > 0n ? 1 : 0;
+  const left = a.match(MANAGED_BUILD)!
+  const right = b.match(MANAGED_BUILD)!
+  const runDelta = BigInt(left[1]) - BigInt(right[1])
+  if (runDelta !== 0n) return runDelta < 0n ? -1 : 1
+  const attemptDelta = BigInt(left[2]) - BigInt(right[2])
+  return attemptDelta < 0n ? -1 : attemptDelta > 0n ? 1 : 0
 }
 
 export function selectNightlyCleanupTargets(
@@ -43,14 +46,14 @@ export function selectNightlyCleanupTargets(
   promotedBuildId: string,
 ): string[] | null {
   if (!MANAGED_BUILD.test(promotedBuildId)) {
-    throw new Error("Invalid promoted nightly build id");
+    throw new Error('Invalid promoted nightly build id')
   }
   if (!directories.includes(promotedBuildId)) {
-    throw new Error("Promoted nightly directory is missing");
+    throw new Error('Promoted nightly directory is missing')
   }
-  const newest = directories.toSorted(compareRunIdentity).at(-1);
-  if (newest !== promotedBuildId) return null;
-  return directories.filter((directory) => directory !== promotedBuildId);
+  const newest = directories.toSorted(compareRunIdentity).at(-1)
+  if (newest !== promotedBuildId) return null
+  return directories.filter((directory) => directory !== promotedBuildId)
 }
 
 export async function isArchiveBuildReady(
@@ -58,29 +61,33 @@ export async function isArchiveBuildReady(
   token: string,
   fetcher: typeof fetch = fetch,
 ): Promise<boolean> {
-  let response: Response | undefined;
+  let response: Response | undefined
   try {
     response = await fetcher(
-      `https://archive.nyanpasu.org/archive/builds/${
-        encodeURIComponent(buildId)
-      }`,
+      `https://archive.nyanpasu.org/archive/builds/${encodeURIComponent(
+        buildId,
+      )}`,
       {
         headers: { authorization: `Bearer ${token}` },
-        redirect: "manual",
+        redirect: 'manual',
         signal: AbortSignal.timeout(8_000),
       },
-    );
-    if (!response?.ok || response.headers.has("location")) return false;
+    )
+    if (!response?.ok || response.headers.has('location')) return false
     const body = (await response.json()) as {
-      status?: string;
-      buildId?: string;
-    } | null;
-    return typeof body === "object" && body !== null &&
-      body.status === "ready" && body.buildId === buildId;
+      status?: string
+      buildId?: string
+    } | null
+    return (
+      typeof body === 'object' &&
+      body !== null &&
+      body.status === 'ready' &&
+      body.buildId === buildId
+    )
   } catch {
-    return false;
+    return false
   } finally {
-    await response?.body?.cancel().catch(() => {});
+    await response?.body?.cancel().catch(() => {})
   }
 }
 
@@ -89,29 +96,29 @@ export async function archiveReadyTargets(
   token: string,
   fetcher: typeof fetch = fetch,
 ): Promise<{ ready: boolean; missing: string[] }> {
-  const match = globalBuildId.match(MANAGED_BUILD);
-  if (!match) throw new Error("Invalid global nightly build id");
-  const missing: string[] = [];
+  const match = globalBuildId.match(MANAGED_BUILD)
+  if (!match) throw new Error('Invalid global nightly build id')
+  const missing: string[] = []
   for (const target of EXPECTED_TARGETS) {
-    const targetBuildId = `${globalBuildId}-${target}`;
+    const targetBuildId = `${globalBuildId}-${target}`
     if (
-      !await isArchiveBuildReady(`tg-${targetBuildId}`, token, fetcher) &&
-      !await isArchiveBuildReady(targetBuildId, token, fetcher)
+      !(await isArchiveBuildReady(`tg-${targetBuildId}`, token, fetcher)) &&
+      !(await isArchiveBuildReady(targetBuildId, token, fetcher))
     ) {
-      missing.push(target);
+      missing.push(target)
     }
   }
-  return { ready: missing.length === 0, missing };
+  return { ready: missing.length === 0, missing }
 }
 
 function requiredEnv(name: string): string {
-  const value = process.env[name];
+  const value = process.env[name]
   if (!value) {
     throw new Error(
       `${name} is required when SourceForge nightly cleanup is enabled`,
-    );
+    )
   }
-  return value;
+  return value
 }
 
 async function runSftp(
@@ -120,129 +127,131 @@ async function runSftp(
   username: string,
   batch: string,
 ): Promise<{ success: boolean; stdout: string; stderr: string }> {
-  const command = await runCommand("sftp", {
+  const command = await runCommand('sftp', {
     args: [
-      "-i",
+      '-i',
       key,
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "IdentitiesOnly=yes",
-      "-o",
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'IdentitiesOnly=yes',
+      '-o',
       `UserKnownHostsFile=${knownHosts}`,
-      "-o",
-      "StrictHostKeyChecking=yes",
-      "-o",
-      "ConnectTimeout=30",
-      "-b",
-      "-",
+      '-o',
+      'StrictHostKeyChecking=yes',
+      '-o',
+      'ConnectTimeout=30',
+      '-b',
+      '-',
       `${username}@frs.sourceforge.net`,
     ],
     input: batch,
-  });
-  const status = command;
-  const stdout = command.stdout.toString("utf8");
-  const stderr = command.stderr.toString("utf8");
-  return { success: status.success, stdout, stderr };
+  })
+  const status = command
+  const stdout = command.stdout.toString('utf8')
+  const stderr = command.stderr.toString('utf8')
+  return { success: status.success, stdout, stderr }
 }
 
 async function main(): Promise<void> {
   const reportPath = path.resolve(
-    process.argv.slice(2)[0] ?? "sourceforge-cleanup-report.json",
-  );
-  const project = requiredEnv("SOURCEFORGE_PROJECT");
-  const username = requiredEnv("SOURCEFORGE_USERNAME");
-  const buildId = requiredEnv("SOURCEFORGE_BUILD_ID");
-  validateSourceforgeProject(project);
-  validateSourceforgeUsername(username);
+    process.argv.slice(2)[0] ?? 'sourceforge-cleanup-report.json',
+  )
+  const project = requiredEnv('SOURCEFORGE_PROJECT')
+  const username = requiredEnv('SOURCEFORGE_USERNAME')
+  const buildId = requiredEnv('SOURCEFORGE_BUILD_ID')
+  validateSourceforgeProject(project)
+  validateSourceforgeUsername(username)
   if (!MANAGED_BUILD.test(buildId)) {
     throw new Error(
-      "SOURCEFORGE_BUILD_ID is not a full managed nightly identity",
-    );
+      'SOURCEFORGE_BUILD_ID is not a full managed nightly identity',
+    )
   }
-  const root = `/home/frs/project/${project}/nightly`;
+  const root = `/home/frs/project/${project}/nightly`
   const report: {
-    schemaVersion: 1;
-    status: "success" | "skipped-stale" | "failure";
-    project: string;
-    buildId: string;
-    deleted: string[];
-    retained: Array<{ buildId: string; reason: string }>;
-    error: string | null;
+    schemaVersion: 1
+    status: 'success' | 'skipped-stale' | 'failure'
+    project: string
+    buildId: string
+    deleted: string[]
+    retained: Array<{ buildId: string; reason: string }>
+    error: string | null
   } = {
     schemaVersion: 1,
-    status: "failure",
+    status: 'failure',
     project,
     buildId,
     deleted: [],
     retained: [],
     error: null,
-  };
-  const temp = await mkdtemp(path.join(tmpdir(), "sourceforge-cleanup-"));
+  }
+  const temp = await mkdtemp(path.join(tmpdir(), 'sourceforge-cleanup-'))
   try {
-    const key = path.join(temp, "id_sourceforge");
-    const knownHosts = path.join(temp, "known_hosts");
-    await writeFile(key, requiredEnv("SOURCEFORGE_SSH_KEY"), {
+    const key = path.join(temp, 'id_sourceforge')
+    const knownHosts = path.join(temp, 'known_hosts')
+    await writeFile(key, requiredEnv('SOURCEFORGE_SSH_KEY'), {
       mode: 0o600,
-    });
-    await writeFile(knownHosts, requiredEnv("SOURCEFORGE_KNOWN_HOSTS"));
-    if (process.platform === "win32") {
-      const user = requiredEnv("USERNAME");
+    })
+    await writeFile(knownHosts, requiredEnv('SOURCEFORGE_KNOWN_HOSTS'))
+    if (process.platform === 'win32') {
+      const user = requiredEnv('USERNAME')
       if (!/^[A-Za-z0-9._-]+$/.test(user)) {
-        throw new Error("Invalid Windows runner username");
+        throw new Error('Invalid Windows runner username')
       }
-      const acl = await runCommand("icacls", {
-        args: [key, "/inheritance:r", "/grant:r", `${user}:(R)`],
-        stdout: "piped",
-        stderr: "piped",
-      });
+      const acl = await runCommand('icacls', {
+        args: [key, '/inheritance:r', '/grant:r', `${user}:(R)`],
+        stdout: 'piped',
+        stderr: 'piped',
+      })
       if (!acl.success) {
         throw new Error(
-          `Could not secure Windows SSH key ACL: ${
-            acl.stderr.toString("utf8")
-          }`,
-        );
+          `Could not secure Windows SSH key ACL: ${acl.stderr.toString(
+            'utf8',
+          )}`,
+        )
       }
-    } else await chmod(key, 0o600);
+    } else await chmod(key, 0o600)
 
     const listing = await runSftp(
       key,
       knownHosts,
       username,
       `@cd ${sftpQuote(root)}\n@ls -1\n`,
-    );
+    )
     if (!listing.success) {
       throw new Error(
         `Could not list managed SourceForge nightly directories: ${
           listing.stderr || listing.stdout
         }`,
-      );
+      )
     }
-    const directories = parseManagedNightlyDirectories(listing.stdout);
-    const cleanupTargets = selectNightlyCleanupTargets(directories, buildId);
+    const directories = parseManagedNightlyDirectories(listing.stdout)
+    const cleanupTargets = selectNightlyCleanupTargets(directories, buildId)
     if (cleanupTargets === null) {
-      report.status = "skipped-stale";
+      report.status = 'skipped-stale'
     } else {
       for (const directory of cleanupTargets) {
         {
-          const token = process.env["ARCHIVE_UPLOAD_TOKEN"] ||
-            process.env["FILE_SERVER_TOKEN"] || process.env["UPLOAD_TOKEN"];
+          const token =
+            process.env['ARCHIVE_UPLOAD_TOKEN'] ||
+            process.env['FILE_SERVER_TOKEN'] ||
+            process.env['UPLOAD_TOKEN']
           if (!token) {
             report.retained.push({
               buildId: directory,
-              reason: "Archive verification token is not configured",
-            });
-            continue;
+              reason: 'Archive verification token is not configured',
+            })
+            continue
           }
-          const archive = await archiveReadyTargets(directory, token);
+          const archive = await archiveReadyTargets(directory, token)
           if (!archive.ready) {
             report.retained.push({
               buildId: directory,
-              reason: `Archive targets are not ready: ${
-                archive.missing.join(", ")
-              }`,
-            });
-            continue;
+              reason: `Archive targets are not ready: ${archive.missing.join(
+                ', ',
+              )}`,
+            })
+            continue
           }
         }
         const filesResult = await runSftp(
@@ -250,63 +259,64 @@ async function main(): Promise<void> {
           knownHosts,
           username,
           `@cd ${sftpQuote(`${root}/${directory}`)}\n@ls -1\n`,
-        );
+        )
         if (!filesResult.success) {
           throw new Error(
             `Could not inspect managed nightly directory ${directory}: ${
               filesResult.stderr || filesResult.stdout
             }`,
-          );
+          )
         }
-        const files = filesResult.stdout.split(/\r?\n/).map((line) =>
-          line.trim()
-        ).filter(Boolean);
+        const files = filesResult.stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
         if (
-          files.some((file) =>
-            !SAFE_FILE.test(file) || file === "." || file === ".."
+          files.some(
+            (file) => !SAFE_FILE.test(file) || file === '.' || file === '..',
           )
         ) {
           throw new Error(
             `Unexpected file in managed nightly directory ${directory}`,
-          );
+          )
         }
-        const commands = files.map((file) =>
-          `@rm ${sftpQuote(`${root}/${directory}/${file}`)}`
-        );
+        const commands = files.map(
+          (file) => `@rm ${sftpQuote(`${root}/${directory}/${file}`)}`,
+        )
         commands.push(
           `@cd ${sftpQuote(root)}`,
           `@rmdir ${sftpQuote(directory)}`,
-        );
+        )
         const removal = await runSftp(
           key,
           knownHosts,
           username,
-          `${commands.join("\n")}\n`,
-        );
+          `${commands.join('\n')}\n`,
+        )
         if (!removal.success) {
           throw new Error(
             `Could not remove managed nightly build ${directory}: ${
               removal.stderr || removal.stdout
             }`,
-          );
+          )
         }
-        report.deleted.push(directory);
+        report.deleted.push(directory)
       }
-      report.status = "success";
+      report.status = 'success'
     }
   } catch (error) {
-    report.error = error instanceof Error ? error.message : String(error);
+    report.error = error instanceof Error ? error.message : String(error)
   } finally {
-    await rm(temp, { recursive: true });
-    await mkdir(path.dirname(reportPath), { recursive: true });
-    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+    await rm(temp, { recursive: true })
+    await mkdir(path.dirname(reportPath), { recursive: true })
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`)
   }
-  if (report.status === "failure") {
-    throw new Error(report.error ?? "SourceForge cleanup failed");
+  if (report.status === 'failure') {
+    throw new Error(report.error ?? 'SourceForge cleanup failed')
   }
   console.log(
     `SourceForge nightly cleanup ${report.status}; removed ${report.deleted.length} old build(s)`,
-  );
+  )
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) await main()

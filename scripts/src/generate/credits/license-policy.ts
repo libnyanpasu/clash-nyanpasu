@@ -1,30 +1,30 @@
-import { parse as parseToml } from "smol-toml";
-import parseSpdx from "spdx-expression-parse";
-import spdxLicenses from "spdx-license-list/full.js";
+import { parse as parseToml } from 'smol-toml'
+import parseSpdx from 'spdx-expression-parse'
+import spdxLicenses from 'spdx-license-list/full.js'
 
 export type SpdxNode =
   | { license: string; plus?: boolean; exception?: string }
-  | { left: SpdxNode; conjunction: "and" | "or"; right: SpdxNode };
+  | { left: SpdxNode; conjunction: 'and' | 'or'; right: SpdxNode }
 
 /** Parses an SPDX expression, returning null when it is not valid SPDX. */
 export function parseLicense(expression: string): SpdxNode | null {
   try {
-    return parseSpdx(expression) as SpdxNode;
+    return parseSpdx(expression) as SpdxNode
   } catch {
-    return null;
+    return null
   }
 }
 
 /** The priority-ordered license list that `cargo-about` also enforces. */
 export function readAcceptedLicenses(aboutToml: string): string[] {
-  const { accepted } = parseToml(aboutToml);
+  const { accepted } = parseToml(aboutToml)
   if (
     !Array.isArray(accepted) ||
-    !accepted.every((id) => typeof id === "string")
+    !accepted.every((id) => typeof id === 'string')
   ) {
-    throw new Error("about.toml must list `accepted` license identifiers");
+    throw new Error('about.toml must list `accepted` license identifiers')
   }
-  return accepted;
+  return accepted
 }
 
 /**
@@ -36,34 +36,34 @@ export function chooseLicenses(
   node: SpdxNode,
   accepted: string[],
 ): string[] | null {
-  if ("license" in node) {
+  if ('license' in node) {
     const id = node.exception
       ? `${node.license} WITH ${node.exception}`
-      : node.license;
-    return accepted.includes(id) ? [id] : null;
+      : node.license
+    return accepted.includes(id) ? [id] : null
   }
 
-  const left = chooseLicenses(node.left, accepted);
-  const right = chooseLicenses(node.right, accepted);
-  if (node.conjunction === "and") {
-    return left && right ? [...left, ...right] : null;
+  const left = chooseLicenses(node.left, accepted)
+  const right = chooseLicenses(node.right, accepted)
+  if (node.conjunction === 'and') {
+    return left && right ? [...left, ...right] : null
   }
-  if (!left || !right) return left ?? right;
+  if (!left || !right) return left ?? right
 
   const rank = (ids: string[]) =>
-    Math.max(...ids.map((id) => accepted.indexOf(id)));
-  return rank(left) <= rank(right) ? left : right;
+    Math.max(...ids.map((id) => accepted.indexOf(id)))
+  return rank(left) <= rank(right) ? left : right
 }
 
 /** Every license identifier an expression names, without exceptions. */
 export function licenseIds(node: SpdxNode): string[] {
-  if ("license" in node) return [node.license];
-  return [...licenseIds(node.left), ...licenseIds(node.right)];
+  if ('license' in node) return [node.license]
+  return [...licenseIds(node.left), ...licenseIds(node.right)]
 }
 
 /** The SPDX reference text of a license, ignoring any `WITH` exception. */
 export function standardLicenseText(id: string): string | undefined {
-  const [license] = id.split(" WITH ");
+  const [license] = id.split(' WITH ')
   return (spdxLicenses as Record<string, { licenseText?: string }>)[license]
-    ?.licenseText;
+    ?.licenseText
 }

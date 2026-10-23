@@ -1,100 +1,101 @@
-import { parseArgs } from "node:util";
-import * as path from "node:path";
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import * as path from 'node:path'
+import { parseArgs } from 'node:util'
+import { isNotFound } from '../shared/errors.ts'
 import {
   publishTelegramInventory,
   readTelegramInventory,
   registerTelegramInventory,
   type TelegramPublicationRecord,
-} from "./telegram-publication.ts";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { isNotFound } from "../shared/errors.ts";
+} from './telegram-publication.ts'
 
 async function main() {
   const args = parseArgs({
     options: {
-      "publication-dir": { type: "string" },
-      report: { type: "string" },
-      target: { type: "string" },
-      "register-only": { type: "boolean" },
-      "verify-only": { type: "boolean" },
+      'publication-dir': { type: 'string' },
+      report: { type: 'string' },
+      target: { type: 'string' },
+      'register-only': { type: 'boolean' },
+      'verify-only': { type: 'boolean' },
     },
     allowPositionals: true,
     strict: false,
   }).values as {
-    "publication-dir"?: string;
-    report?: string;
-    target?: string;
-    "register-only"?: boolean;
-    "verify-only"?: boolean;
-  };
-  if (!args["publication-dir"] || !args.report) {
-    throw new Error("Expected --publication-dir <dir> --report <json>");
+    'publication-dir'?: string
+    report?: string
+    target?: string
+    'register-only'?: boolean
+    'verify-only'?: boolean
+  }
+  if (!args['publication-dir'] || !args.report) {
+    throw new Error('Expected --publication-dir <dir> --report <json>')
   }
   const required = (name: string) => {
-    const value = process.env[name]?.trim();
-    if (!value) throw new Error(`${name} is required`);
-    return value;
-  };
-  const apiId = Number(required("TELEGRAM_API_ID"));
-  if (!Number.isSafeInteger(apiId) || apiId <= 0) {
-    throw new Error("Invalid TELEGRAM_API_ID");
+    const value = process.env[name]?.trim()
+    if (!value) throw new Error(`${name} is required`)
+    return value
   }
-  const apiHash = required("TELEGRAM_API_HASH");
-  const token = required("TELEGRAM_TOKEN");
-  const archiveToken = process.env["ARCHIVE_UPLOAD_TOKEN"]?.trim() ||
-    process.env["FILE_SERVER_TOKEN"]?.trim() || required("UPLOAD_TOKEN");
-  const chat = required("TELEGRAM_ARCHIVE_CHANNEL");
-  const inventory = await readTelegramInventory(args["publication-dir"]);
-  const targets = args.target && args.target !== "all"
-    ? inventory.filter((target) => target.target === args.target)
-    : inventory;
-  if (!targets.length) throw new Error("Unknown Telegram target");
-  let previous: TelegramPublicationRecord[] = [];
+  const apiId = Number(required('TELEGRAM_API_ID'))
+  if (!Number.isSafeInteger(apiId) || apiId <= 0) {
+    throw new Error('Invalid TELEGRAM_API_ID')
+  }
+  const apiHash = required('TELEGRAM_API_HASH')
+  const token = required('TELEGRAM_TOKEN')
+  const archiveToken =
+    process.env['ARCHIVE_UPLOAD_TOKEN']?.trim() ||
+    process.env['FILE_SERVER_TOKEN']?.trim() ||
+    required('UPLOAD_TOKEN')
+  const chat = required('TELEGRAM_ARCHIVE_CHANNEL')
+  const inventory = await readTelegramInventory(args['publication-dir'])
+  const targets =
+    args.target && args.target !== 'all'
+      ? inventory.filter((target) => target.target === args.target)
+      : inventory
+  if (!targets.length) throw new Error('Unknown Telegram target')
+  let previous: TelegramPublicationRecord[] = []
   try {
-    const report = JSON.parse(await readFile(args.report, "utf8"));
+    const report = JSON.parse(await readFile(args.report, 'utf8'))
     if (report.chat !== chat || report.schemaVersion !== 1) {
-      throw new Error("Incompatible Telegram report");
+      throw new Error('Incompatible Telegram report')
     }
-    previous = report.artifacts;
+    previous = report.artifacts
     if (
       !Array.isArray(previous) ||
-      previous.some((record) =>
-        !inventory.some((target) => target.buildId === record.buildId)
+      previous.some(
+        (record) =>
+          !inventory.some((target) => target.buildId === record.buildId),
       )
     ) {
-      throw new Error("Saved Telegram receipts belong to another publication");
+      throw new Error('Saved Telegram receipts belong to another publication')
     }
   } catch (error) {
-    if (!(isNotFound(error))) throw error;
+    if (!isNotFound(error)) throw error
   }
   // Load the network adapter only after local validation; imports never authenticate.
-  const { TelegramClient, Api } = await import("telegram");
-  const { StringSession } = await import(
-    "telegram/sessions/index.js"
-  );
-  const { CustomFile } = await import("telegram/client/uploads.js");
-  const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
+  const { TelegramClient, Api } = await import('telegram')
+  const { StringSession } = await import('telegram/sessions/index.js')
+  const { CustomFile } = await import('telegram/client/uploads.js')
+  const client = new TelegramClient(new StringSession(''), apiId, apiHash, {
     connectionRetries: 3,
     requestRetries: 3,
     floodSleepThreshold: 60,
-  });
+  })
   await mkdir(path.dirname(path.resolve(args.report)), {
     recursive: true,
-  });
+  })
   try {
-    await client.start({ botAuthToken: token });
-    const entity = await client.getInputEntity(chat);
-    for (
-      const record of previous.filter((record) =>
-        record.status === "uploaded" && record.receipt
-      )
-    ) {
+    await client.start({ botAuthToken: token })
+    const entity = await client.getInputEntity(chat)
+    for (const record of previous.filter(
+      (record) => record.status === 'uploaded' && record.receipt,
+    )) {
       const [message] = await client.getMessages(entity, {
         ids: [record.receipt!.messageId],
-      });
-      const document = message?.media instanceof Api.MessageMediaDocument
-        ? message.media.document
-        : undefined;
+      })
+      const document =
+        message?.media instanceof Api.MessageMediaDocument
+          ? message.media.document
+          : undefined
       if (
         !(document instanceof Api.Document) ||
         document.id.toString() !== record.receipt!.documentId ||
@@ -102,7 +103,7 @@ async function main() {
       ) {
         throw new Error(
           `Telegram receipt is unavailable or changed: ${record.fileName}`,
-        );
+        )
       }
     }
     const records = await publishTelegramInventory(
@@ -111,13 +112,13 @@ async function main() {
       async (artifact, target) => {
         console.log(
           `[telegram] ${target.target}: ${artifact.fileName} (${artifact.fileSize} bytes)`,
-        );
-        if (args["register-only"] || args["verify-only"]) {
+        )
+        if (args['register-only'] || args['verify-only']) {
           throw new Error(
-            "Saved Telegram receipt is required; upload mode repairs missing documents",
-          );
+            'Saved Telegram receipt is required; upload mode repairs missing documents',
+          )
         }
-        let lastProgress = 0;
+        let lastProgress = 0
         const message = await client.sendFile(entity, {
           file: new CustomFile(
             artifact.fileName,
@@ -127,7 +128,7 @@ async function main() {
           forceDocument: true,
           workers: 8,
           caption: `Clash Nyanpasu ${
-            target.channel === "release"
+            target.channel === 'release'
               ? target.tag
               : `Nightly ${target.commit.slice(0, 8)}`
           }\n${target.target}\nSHA-256: ${artifact.sha256}`,
@@ -135,30 +136,31 @@ async function main() {
           progressCallback: (progress: number) => {
             if (Date.now() - lastProgress >= 30_000 || progress === 1) {
               console.log(
-                `[telegram] ${artifact.fileName}: ${
-                  Math.round(progress * 100)
-                }%`,
-              );
-              lastProgress = Date.now();
+                `[telegram] ${artifact.fileName}: ${Math.round(
+                  progress * 100,
+                )}%`,
+              )
+              lastProgress = Date.now()
             }
           },
-        });
-        const document = message.media instanceof Api.MessageMediaDocument
-          ? message.media.document
-          : undefined;
+        })
+        const document =
+          message.media instanceof Api.MessageMediaDocument
+            ? message.media.document
+            : undefined
         if (
           !(document instanceof Api.Document) ||
           document.size.toJSNumber() !== artifact.fileSize
         ) {
           throw new Error(
             `Telegram did not confirm document size: ${artifact.fileName}`,
-          );
+          )
         }
         return {
           messageId: message.id,
           documentId: document.id.toString(),
-          messageUrl: `https://t.me/${chat.replace(/^@/, "")}/${message.id}`,
-        };
+          messageUrl: `https://t.me/${chat.replace(/^@/, '')}/${message.id}`,
+        }
       },
       async (artifacts) => {
         await writeFile(
@@ -167,35 +169,35 @@ async function main() {
             {
               schemaVersion: 1,
               chat,
-              targets: targets.map(({ artifacts: _artifacts, ...metadata }) =>
-                metadata
+              targets: targets.map(
+                ({ artifacts: _artifacts, ...metadata }) => metadata,
               ),
               artifacts,
             },
             null,
             2,
           ),
-        );
+        )
       },
-    );
-    if (!args["verify-only"]) {
-      await registerTelegramInventory(targets, records, archiveToken);
+    )
+    if (!args['verify-only']) {
+      await registerTelegramInventory(targets, records, archiveToken)
     }
-    const failed = records.filter((record) => record.status === "failed");
+    const failed = records.filter((record) => record.status === 'failed')
     if (failed.length) {
       throw new Error(
         `${failed.length} Telegram upload(s) failed; inspect ${args.report}`,
-      );
+      )
     }
-    console.log(`[telegram] ${records.length} documents published`);
+    console.log(`[telegram] ${records.length} documents published`)
   } finally {
-    await client.destroy();
+    await client.destroy()
   }
 }
 
 if (import.meta.main) {
   main().catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+    console.error(error)
+    process.exit(1)
+  })
 }

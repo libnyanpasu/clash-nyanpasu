@@ -21,63 +21,63 @@ pnpm run test:scripts
 
 ## Tasks
 
-| Task | What it does |
-| --- | --- |
-| `test:scripts` | Run all script tests |
-| `test:release` | Test release preparation, publishing, finalization, and channel selection |
-| `test:manifest` | Test core version manifest resolution and Meow asset integrity metadata |
-| `test:updater` | Test updater platform manifests, SourceForge mirrors, and release channels |
-| `test:windows-bundle` | Test Windows portable bundle generation |
-| `test:linux-release` | Test Linux release package finalization |
-| `finalize:macos-dmg` | Keep the hidden DMG background inside the Finder scroll bounds |
-| `test:architecture-ledger` | Test architecture ledger analysis and reporting |
-| `architecture-ledger` | Print the architecture migration report |
-| `lint:architecture-ledger` | Check the architecture migration gate against its snapshot |
-| `lint:backend-boundaries` | Reject GUI, Tauri and reverse platform dependencies in neutral backend crates |
-| `test:backend-musl` | Build neutral backend tests with musl in Docker and run them in ImmortalWrt or a supplied OpenWrt rootfs |
-| `bench:ab` | Run a frontend page benchmark alternately without and with the working tree's frontend changes and compare the rounds |
-| `bench:profile` | Summarize a frontend page benchmark's CPU profile by category, source and function, or one function's callers |
-| `bench:trace` | Break the longest main-thread tasks of frontend page benchmark traces into their steps |
-| `upload-macos-updater` | Upload the macOS updater to GitHub Releases |
-| `telegram:publish` | Upload finalized six-target artifacts to the Telegram channel using MTProto |
-| `telegram-notify` | Send a Telegram notification for releases or nightly builds |
-| `build-cache` | Save or restore the build cache through the file server |
-| `upload-build-artifacts` | Upload build artifacts to the file server |
-| `verify:archive-uploads` | Verify all release or nightly archive upload reports |
-| `prepare:publication-manifest` | Hash finalized target artifacts into an archive and mirror manifest |
-| `prepare:central-publication` | Validate all six downloaded build targets and hash centralized publication inventories |
-| `archive:publish` | Register and upload a target build directly to Internet Archive |
-| `archive:verify` | Reconcile delayed Internet Archive ingest through the archive API |
-| `sourceforge:upload` | Upload a target's finalized artifacts to SourceForge FRS |
-| `sourceforge:web-publish` | Publish and verify SourceForge Project Web updater manifests |
-| `sourceforge:cleanup` | Retain the promoted nightly SourceForge build and remove older managed builds |
-| `sourceforge:verify` | Verify all SourceForge target reports and public asset hashes |
-| `archive:verify-reports` | Verify Internet Archive target upload and ingest reports |
-| `generate:manifest:latest-version` | Resolve and write the latest core versions to the manifest |
-| `generate:manifest` | Generate the core version manifest |
-| `generate:git-info` | Generate Git summary information for the Tauri build |
-| `generate:data-slots` | Generate the frontend data-slot registry |
-| `generate:topology-map` | Generate the frontend topology map data |
-| `generate:credits` | Generate the open source credits the about page lists |
-| `lint:credits` | Check that every shipped dependency and component is credited under an accepted license |
-| `publish` | Bump monorepo versions for a release |
-| `updater` | Generate and upload stable or beta updater metadata |
-| `updater:nightly` | Generate and upload nightly updater metadata |
-| `check:nightly-changes` | Check whether build inputs changed since the previous nightly tag |
-| `check:changed-parts` | Report which of frontend, backend and scripts changed since the given base; every part without one |
-| `prepare:nightly` | Prepare the Tauri configuration for a nightly build |
-| `prepare:release` | Prepare the Tauri configuration for a release build |
-| `prepare:preview` | Prepare the Tauri configuration for a preview build |
-| `prepare:check` | Check and download required sidecar binaries and resources |
-| `portable` | Create a Windows portable ZIP and upload it to the release |
-| `sign-nightly-updater` | Sign updater artifacts for a nightly build |
-| `finalize-linux-release` | Finalize Linux release package metadata |
-| `test:http-ui` | Run the browser HTTP UI integration test |
-| `lint:frontend-boundaries` | Check frontend workspace package exports and dependency boundaries |
-| `storage:preflight` | Check mirror configuration, archive authentication/database and SFTP connectivity without uploading |
-| `recover:central-publication` | Restore original publication identity and validate retained build bytes |
-| `storage:recover` | Register, upload or verify selected retained storage targets without rebuilding |
-| `archive:register` | Register a retained IA manifest without uploading bytes |
+| Task                               | What it does                                                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `test:scripts`                     | Run all script tests                                                                                                  |
+| `test:release`                     | Test release preparation, publishing, finalization, and channel selection                                             |
+| `test:manifest`                    | Test core version manifest resolution and Meow asset integrity metadata                                               |
+| `test:updater`                     | Test updater platform manifests, SourceForge mirrors, and release channels                                            |
+| `test:windows-bundle`              | Test Windows portable bundle generation                                                                               |
+| `test:linux-release`               | Test Linux release package finalization                                                                               |
+| `finalize:macos-dmg`               | Keep the hidden DMG background inside the Finder scroll bounds                                                        |
+| `test:architecture-ledger`         | Test architecture ledger analysis and reporting                                                                       |
+| `architecture-ledger`              | Print the architecture migration report                                                                               |
+| `lint:architecture-ledger`         | Check the architecture migration gate against its snapshot                                                            |
+| `lint:backend-boundaries`          | Reject GUI, Tauri and reverse platform dependencies in neutral backend crates                                         |
+| `test:backend-musl`                | Build neutral backend tests with musl in Docker and run them in ImmortalWrt or a supplied OpenWrt rootfs              |
+| `bench:ab`                         | Run a frontend page benchmark alternately without and with the working tree's frontend changes and compare the rounds |
+| `bench:profile`                    | Summarize a frontend page benchmark's CPU profile by category, source and function, or one function's callers         |
+| `bench:trace`                      | Break the longest main-thread tasks of frontend page benchmark traces into their steps                                |
+| `upload-macos-updater`             | Upload the macOS updater to GitHub Releases                                                                           |
+| `telegram:publish`                 | Upload finalized six-target artifacts to the Telegram channel using MTProto                                           |
+| `telegram-notify`                  | Send a Telegram notification for releases or nightly builds                                                           |
+| `build-cache`                      | Save or restore the build cache through the file server                                                               |
+| `upload-build-artifacts`           | Upload build artifacts to the file server                                                                             |
+| `verify:archive-uploads`           | Verify all release or nightly archive upload reports                                                                  |
+| `prepare:publication-manifest`     | Hash finalized target artifacts into an archive and mirror manifest                                                   |
+| `prepare:central-publication`      | Validate all six downloaded build targets and hash centralized publication inventories                                |
+| `archive:publish`                  | Register and upload a target build directly to Internet Archive                                                       |
+| `archive:verify`                   | Reconcile delayed Internet Archive ingest through the archive API                                                     |
+| `sourceforge:upload`               | Upload a target's finalized artifacts to SourceForge FRS                                                              |
+| `sourceforge:web-publish`          | Publish and verify SourceForge Project Web updater manifests                                                          |
+| `sourceforge:cleanup`              | Retain the promoted nightly SourceForge build and remove older managed builds                                         |
+| `sourceforge:verify`               | Verify all SourceForge target reports and public asset hashes                                                         |
+| `archive:verify-reports`           | Verify Internet Archive target upload and ingest reports                                                              |
+| `generate:manifest:latest-version` | Resolve and write the latest core versions to the manifest                                                            |
+| `generate:manifest`                | Generate the core version manifest                                                                                    |
+| `generate:git-info`                | Generate Git summary information for the Tauri build                                                                  |
+| `generate:data-slots`              | Generate the frontend data-slot registry                                                                              |
+| `generate:topology-map`            | Generate the frontend topology map data                                                                               |
+| `generate:credits`                 | Generate the open source credits the about page lists                                                                 |
+| `lint:credits`                     | Check that every shipped dependency and component is credited under an accepted license                               |
+| `publish`                          | Bump monorepo versions for a release                                                                                  |
+| `updater`                          | Generate and upload stable or beta updater metadata                                                                   |
+| `updater:nightly`                  | Generate and upload nightly updater metadata                                                                          |
+| `check:nightly-changes`            | Check whether build inputs changed since the previous nightly tag                                                     |
+| `check:changed-parts`              | Report which of frontend, backend and scripts changed since the given base; every part without one                    |
+| `prepare:nightly`                  | Prepare the Tauri configuration for a nightly build                                                                   |
+| `prepare:release`                  | Prepare the Tauri configuration for a release build                                                                   |
+| `prepare:preview`                  | Prepare the Tauri configuration for a preview build                                                                   |
+| `prepare:check`                    | Check and download required sidecar binaries and resources                                                            |
+| `portable`                         | Create a Windows portable ZIP and upload it to the release                                                            |
+| `sign-nightly-updater`             | Sign updater artifacts for a nightly build                                                                            |
+| `finalize-linux-release`           | Finalize Linux release package metadata                                                                               |
+| `test:http-ui`                     | Run the browser HTTP UI integration test                                                                              |
+| `lint:frontend-boundaries`         | Check frontend workspace package exports and dependency boundaries                                                    |
+| `storage:preflight`                | Check mirror configuration, archive authentication/database and SFTP connectivity without uploading                   |
+| `recover:central-publication`      | Restore original publication identity and validate retained build bytes                                               |
+| `storage:recover`                  | Register, upload or verify selected retained storage targets without rebuilding                                       |
+| `archive:register`                 | Register a retained IA manifest without uploading bytes                                                               |
 
 ## Nightly build eligibility
 

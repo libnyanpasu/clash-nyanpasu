@@ -1,97 +1,98 @@
-import * as path from "node:path";
-import { appendFile, readFile } from "node:fs/promises";
-import { isNotFound } from "../shared/errors.ts";
+import { appendFile, readFile } from 'node:fs/promises'
+import * as path from 'node:path'
+import { isNotFound } from '../shared/errors.ts'
 
 interface UploadReport {
-  status?: unknown;
-  failures?: unknown;
+  status?: unknown
+  failures?: unknown
 }
 
 const EXPECTED_REPORTS = [
-  "upload-diagnostics-windows-x86_64-standard",
-  "upload-diagnostics-windows-x86_64-fixed-webview",
-  "upload-diagnostics-windows-aarch64-standard",
-  "upload-diagnostics-windows-aarch64-fixed-webview",
-  "upload-diagnostics-linux-x86_64",
-  "upload-diagnostics-linux-aarch64",
-  "upload-diagnostics-macos-amd64",
-  "upload-diagnostics-macos-aarch64",
-];
+  'upload-diagnostics-windows-x86_64-standard',
+  'upload-diagnostics-windows-x86_64-fixed-webview',
+  'upload-diagnostics-windows-aarch64-standard',
+  'upload-diagnostics-windows-aarch64-fixed-webview',
+  'upload-diagnostics-linux-x86_64',
+  'upload-diagnostics-linux-aarch64',
+  'upload-diagnostics-macos-amd64',
+  'upload-diagnostics-macos-aarch64',
+]
 
 export function inspectUploadReports(
   reports: Record<string, unknown>,
 ): string[] {
-  const issues: string[] = [];
+  const issues: string[] = []
   for (const name of EXPECTED_REPORTS) {
-    const report = reports[name];
-    if (!report || typeof report !== "object" || Array.isArray(report)) {
-      issues.push(`${name}: report is missing`);
-      continue;
+    const report = reports[name]
+    if (!report || typeof report !== 'object' || Array.isArray(report)) {
+      issues.push(`${name}: report is missing`)
+      continue
     }
-    const uploadReport = report as UploadReport;
-    if (uploadReport.status !== "success") {
+    const uploadReport = report as UploadReport
+    if (uploadReport.status !== 'success') {
       issues.push(
-        `${name}: status is ${String(uploadReport.status ?? "missing")}`,
-      );
+        `${name}: status is ${String(uploadReport.status ?? 'missing')}`,
+      )
     }
     if (!Array.isArray(uploadReport.failures)) {
-      issues.push(`${name}: failures field is missing or invalid`);
+      issues.push(`${name}: failures field is missing or invalid`)
     } else if (uploadReport.failures.length > 0) {
-      issues.push(`${name}: ${uploadReport.failures.length} upload failure(s)`);
+      issues.push(`${name}: ${uploadReport.failures.length} upload failure(s)`)
       for (const failure of uploadReport.failures) {
-        if (typeof failure === "string") {
-          issues.push(`${name}: ${failure}`);
+        if (typeof failure === 'string') {
+          issues.push(`${name}: ${failure}`)
         } else if (
-          failure && typeof failure === "object" &&
-          typeof failure.message === "string"
+          failure &&
+          typeof failure === 'object' &&
+          typeof failure.message === 'string'
         ) {
-          const fileName = typeof failure.fileName === "string"
-            ? `${failure.fileName}: `
-            : "";
-          issues.push(`${name}: ${fileName}${failure.message}`);
+          const fileName =
+            typeof failure.fileName === 'string' ? `${failure.fileName}: ` : ''
+          issues.push(`${name}: ${fileName}${failure.message}`)
         }
       }
     }
   }
-  return issues;
+  return issues
 }
 
 if (import.meta.main) {
   const reportsDir = path.resolve(
-    process.argv.slice(2)[0] ?? "upload-diagnostics",
-  );
-  const reports: Record<string, unknown> = {};
+    process.argv.slice(2)[0] ?? 'upload-diagnostics',
+  )
+  const reports: Record<string, unknown> = {}
 
   for (const name of EXPECTED_REPORTS) {
-    const reportPath = path.join(reportsDir, name, "upload-report.json");
+    const reportPath = path.join(reportsDir, name, 'upload-report.json')
     try {
-      reports[name] = JSON.parse(await readFile(reportPath, "utf8"));
+      reports[name] = JSON.parse(await readFile(reportPath, 'utf8'))
     } catch (error) {
-      if (!(isNotFound(error))) {
-        reports[name] = { status: "invalid", failures: [String(error)] };
+      if (!isNotFound(error)) {
+        reports[name] = { status: 'invalid', failures: [String(error)] }
       }
     }
   }
 
-  const issues = inspectUploadReports(reports);
-  const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
+  const issues = inspectUploadReports(reports)
+  const summaryPath = process.env['GITHUB_STEP_SUMMARY']
   if (summaryPath) {
-    const lines = issues.length === 0
-      ? [
-        "## Archive upload verification: passed",
-        "All expected platform uploads succeeded.",
-      ]
-      : [
-        "## Archive upload verification: failed",
-        ...issues.map((issue) => `- ${issue}`),
-      ];
-    await appendFile(summaryPath, `${lines.join("\n")}\n\n`);
+    const lines =
+      issues.length === 0
+        ? [
+            '## Archive upload verification: passed',
+            'All expected platform uploads succeeded.',
+          ]
+        : [
+            '## Archive upload verification: failed',
+            ...issues.map((issue) => `- ${issue}`),
+          ]
+    await appendFile(summaryPath, `${lines.join('\n')}\n\n`)
   }
 
   if (issues.length > 0) {
-    for (const issue of issues) console.error(issue);
-    process.exit(1);
+    for (const issue of issues) console.error(issue)
+    process.exit(1)
   }
 
-  console.log("All expected archive uploads succeeded.");
+  console.log('All expected archive uploads succeeded.')
 }

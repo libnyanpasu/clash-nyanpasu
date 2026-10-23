@@ -1,112 +1,112 @@
-import { open, stat } from "node:fs/promises";
-import { retry } from "../shared/retry.ts";
-import { formatBytes } from "../shared/format-bytes.ts";
-import * as path from "node:path";
-import { consola } from "../shared/logger.ts";
+import { open, stat } from 'node:fs/promises'
+import * as path from 'node:path'
+import { formatBytes } from '../shared/format-bytes.ts'
+import { consola } from '../shared/logger.ts'
+import { retry } from '../shared/retry.ts'
 
 // --- constants ---
 
-export const FILE_SERVER_UPLOAD_URL = "https://archive.nyanpasu.org/upload";
-export const FILE_SERVER_BIN_URL = "https://archive.nyanpasu.org/bin";
+export const FILE_SERVER_UPLOAD_URL = 'https://archive.nyanpasu.org/upload'
+export const FILE_SERVER_BIN_URL = 'https://archive.nyanpasu.org/bin'
 
-export const UPLOAD_CONCURRENCY = 3;
-export const CHUNK_RETRY_ATTEMPTS = 5;
+export const UPLOAD_CONCURRENCY = 3
+export const CHUNK_RETRY_ATTEMPTS = 5
 // 160 × 320 KiB = 50 MiB, below OneDrive's strict 60 MiB request limit
 // and the Workers 100 MB limit. Both file and cache uploads use this value.
-export const CHUNK_MULTIPLIER = 160;
+export const CHUNK_MULTIPLIER = 160
 
 // --- types ---
 
 export interface UploadResult {
-  fileName: string;
-  downloadUrl: string;
+  fileName: string
+  downloadUrl: string
 }
 
 export interface UploadFailure {
-  fileName: string;
-  message: string;
-  stack?: string;
+  fileName: string
+  message: string
+  stack?: string
 }
 
 export interface UploadBatchResult {
-  results: UploadResult[];
-  failures: UploadFailure[];
+  results: UploadResult[]
+  failures: UploadFailure[]
 }
 
 function getErrorDetails(
   error: unknown,
-): Pick<UploadFailure, "message" | "stack"> {
-  const messages: string[] = [];
-  const stacks: string[] = [];
-  const seen = new Set<unknown>();
-  let current: unknown = error;
+): Pick<UploadFailure, 'message' | 'stack'> {
+  const messages: string[] = []
+  const stacks: string[] = []
+  const seen = new Set<unknown>()
+  let current: unknown = error
 
   while (current instanceof Error && !seen.has(current)) {
-    seen.add(current);
-    messages.push(`${current.name}: ${current.message}`);
-    if (current.stack) stacks.push(current.stack);
-    current = current.cause;
+    seen.add(current)
+    messages.push(`${current.name}: ${current.message}`)
+    if (current.stack) stacks.push(current.stack)
+    current = current.cause
   }
   if (current !== undefined && !(current instanceof Error)) {
-    messages.push(String(current));
+    messages.push(String(current))
   }
 
   return {
-    message: messages.join("\nCaused by: "),
-    ...(stacks.length > 0 ? { stack: stacks.join("\nCaused by:\n") } : {}),
-  };
+    message: messages.join('\nCaused by: '),
+    ...(stacks.length > 0 ? { stack: stacks.join('\nCaused by:\n') } : {}),
+  }
 }
 
 export interface InitResponse {
-  uploadId: string;
-  chunkSize: number;
+  uploadId: string
+  chunkSize: number
 }
 
 export interface ChunkResponse {
-  done: boolean;
-  file?: { id: string };
+  done: boolean
+  file?: { id: string }
 }
 
 export interface ChunkedUploadOptions<T> {
-  filePath: string;
-  fileSize: number;
-  uploadId: string;
-  chunkSize: number;
-  label: string;
+  filePath: string
+  fileSize: number
+  uploadId: string
+  chunkSize: number
+  label: string
   uploadChunkFn: (
     chunk: Uint8Array,
     start: number,
     end: number,
     total: number,
-  ) => Promise<T & { done: boolean }>;
+  ) => Promise<T & { done: boolean }>
 }
 
 // --- upload functions ---
 
 class ArchiveQuotaError extends Error {
-  override name = "ArchiveQuotaError";
+  override name = 'ArchiveQuotaError'
 }
 
 async function uploadResponseError(
   operation: string,
   response: Response,
 ): Promise<Error> {
-  const body = await response.text();
-  const message =
-    `${operation} failed: ${response.status} ${response.statusText} - ${body}`;
+  const body = await response.text()
+  const message = `${operation} failed: ${response.status} ${response.statusText} - ${body}`
   // The archive can wrap upstream Graph JSON in an escaped detail string and
   // return HTTP 500 instead of 507. Inspect the error code in either form.
-  const quotaExceeded = response.status === 507 ||
-    /"code"\s*:\s*"quotaLimitReached"/.test(body.replaceAll('\\"', '"'));
+  const quotaExceeded =
+    response.status === 507 ||
+    /"code"\s*:\s*"quotaLimitReached"/.test(body.replaceAll('\\"', '"'))
   return quotaExceeded
     ? new ArchiveQuotaError(
-      `${message}\nFree archive storage or increase its quota before retrying; immediate retries cannot resolve quotaLimitReached.`,
-    )
-    : new Error(message);
+        `${message}\nFree archive storage or increase its quota before retrying; immediate retries cannot resolve quotaLimitReached.`,
+      )
+    : new Error(message)
 }
 
 function isRetriableUploadError(error: unknown): boolean {
-  return !(error instanceof ArchiveQuotaError);
+  return !(error instanceof ArchiveQuotaError)
 }
 
 export async function initUploadSession(
@@ -121,37 +121,38 @@ export async function initUploadSession(
     fileSize,
     mimeType,
     chunkMultiplier: CHUNK_MULTIPLIER,
-  };
+  }
   if (folderPath) {
-    body.folderPath = folderPath;
+    body.folderPath = folderPath
   }
 
   const resp = await fetch(`${FILE_SERVER_UPLOAD_URL}/init`, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "x-authorization": token,
-      "Content-Type": "application/json",
+      'x-authorization': token,
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  });
+  })
 
   if (!resp.ok) {
-    throw await uploadResponseError("upload init", resp);
+    throw await uploadResponseError('upload init', resp)
   }
 
-  const data = await resp.json() as Partial<InitResponse>;
+  const data = (await resp.json()) as Partial<InitResponse>
   if (
-    typeof data.uploadId !== "string" || !data.uploadId ||
-    typeof data.chunkSize !== "number" ||
+    typeof data.uploadId !== 'string' ||
+    !data.uploadId ||
+    typeof data.chunkSize !== 'number' ||
     !Number.isSafeInteger(data.chunkSize) ||
     data.chunkSize <= 0
   ) {
     throw new Error(
       `upload init returned an invalid response: ${JSON.stringify(data)}`,
-    );
+    )
   }
 
-  return data as InitResponse;
+  return data as InitResponse
 }
 
 export async function uploadChunk(
@@ -163,80 +164,80 @@ export async function uploadChunk(
   token: string,
 ): Promise<ChunkResponse> {
   const resp = await fetch(`${FILE_SERVER_UPLOAD_URL}/chunk`, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "x-authorization": token,
-      "x-upload-id": uploadId,
-      "Content-Range": `bytes ${start}-${end}/${total}`,
-      "Content-Type": "application/octet-stream",
+      'x-authorization': token,
+      'x-upload-id': uploadId,
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+      'Content-Type': 'application/octet-stream',
     },
-    body: chunk as unknown as RequestInit["body"],
-  });
+    body: chunk as unknown as RequestInit['body'],
+  })
 
   if (!resp.ok) {
-    throw await uploadResponseError("chunk upload", resp);
+    throw await uploadResponseError('chunk upload', resp)
   }
 
-  const data = await resp.json() as Partial<ChunkResponse>;
-  if (typeof data.done !== "boolean") {
+  const data = (await resp.json()) as Partial<ChunkResponse>
+  if (typeof data.done !== 'boolean') {
     throw new Error(
       `chunk upload returned an invalid response: ${JSON.stringify(data)}`,
-    );
+    )
   }
-  if (data.done && (typeof data.file?.id !== "string" || !data.file.id)) {
+  if (data.done && (typeof data.file?.id !== 'string' || !data.file.id)) {
     throw new Error(
-      `completed chunk upload did not return a file id: ${
-        JSON.stringify(data)
-      }`,
-    );
+      `completed chunk upload did not return a file id: ${JSON.stringify(
+        data,
+      )}`,
+    )
   }
 
-  return data as ChunkResponse;
+  return data as ChunkResponse
 }
 
 export async function performChunkedUpload<T>(
   options: ChunkedUploadOptions<T>,
 ): Promise<T & { done: boolean }> {
   const { filePath, fileSize, uploadId, chunkSize, label, uploadChunkFn } =
-    options;
+    options
 
   consola.debug(
-    `upload session created: uploadId=${uploadId}, chunkSize=${
-      formatBytes(chunkSize)
-    }`,
-  );
+    `upload session created: uploadId=${uploadId}, chunkSize=${formatBytes(
+      chunkSize,
+    )}`,
+  )
 
-  const file = await open(filePath, "r");
+  const file = await open(filePath, 'r')
   try {
-    let start = 0;
-    let chunkIndex = 0;
-    const totalChunks = Math.ceil(fileSize / chunkSize);
-    let lastLogTime = Date.now();
-    let lastLogUploaded = 0;
+    let start = 0
+    let chunkIndex = 0
+    const totalChunks = Math.ceil(fileSize / chunkSize)
+    let lastLogTime = Date.now()
+    let lastLogUploaded = 0
 
     while (start < fileSize) {
-      const endExclusive = Math.min(start + chunkSize, fileSize);
-      const size = endExclusive - start;
-      const buf = new Uint8Array(size);
-      let bytesRead = 0;
+      const endExclusive = Math.min(start + chunkSize, fileSize)
+      const size = endExclusive - start
+      const buf = new Uint8Array(size)
+      let bytesRead = 0
       while (bytesRead < size) {
         const { bytesRead: n } = await file.read(
           buf,
           bytesRead,
           size - bytesRead,
           start + bytesRead,
-        );
-        if (n === 0) break;
-        bytesRead += n;
+        )
+        if (n === 0) break
+        bytesRead += n
       }
       if (bytesRead !== size) {
         throw new Error(
           `Unexpected end of file while reading ${label}: expected ${size} bytes, got ${bytesRead}`,
-        );
+        )
       }
 
-      const end = endExclusive - 1;
-      chunkIndex++;
+      const end = endExclusive - 1
+      chunkIndex++
 
       const data = await retry(
         () => uploadChunkFn(buf.subarray(0, bytesRead), start, end, fileSize),
@@ -244,33 +245,33 @@ export async function performChunkedUpload<T>(
           maxAttempts: CHUNK_RETRY_ATTEMPTS,
           isRetriable: isRetriableUploadError,
         },
-      );
+      )
 
-      const now = Date.now();
-      const elapsed = now - lastLogTime;
+      const now = Date.now()
+      const elapsed = now - lastLogTime
       if (elapsed >= 1000 || data.done) {
-        const speed = ((endExclusive - lastLogUploaded) / elapsed) * 1000;
-        lastLogTime = now;
-        lastLogUploaded = endExclusive;
-        const pct = Math.floor((endExclusive / fileSize) * 100);
+        const speed = ((endExclusive - lastLogUploaded) / elapsed) * 1000
+        lastLogTime = now
+        lastLogUploaded = endExclusive
+        const pct = Math.floor((endExclusive / fileSize) * 100)
         consola.info(
-          `  ${label} ${chunkIndex}/${totalChunks}: ${
-            formatBytes(endExclusive)
-          }/${formatBytes(fileSize)} (${pct}%) ${formatBytes(speed)}/s`,
-        );
+          `  ${label} ${chunkIndex}/${totalChunks}: ${formatBytes(
+            endExclusive,
+          )}/${formatBytes(fileSize)} (${pct}%) ${formatBytes(speed)}/s`,
+        )
       }
 
       if (data.done) {
-        return data;
+        return data
       }
 
-      start = endExclusive;
+      start = endExclusive
     }
   } finally {
-    await file.close();
+    await file.close()
   }
 
-  throw new Error(`Upload of ${label} ended unexpectedly without done=true`);
+  throw new Error(`Upload of ${label} ended unexpectedly without done=true`)
 }
 
 export async function uploadToFileServer(
@@ -278,15 +279,15 @@ export async function uploadToFileServer(
   token: string,
   folderPath?: string,
 ): Promise<UploadResult> {
-  const fileName = path.basename(filePath);
-  const info = await stat(filePath);
-  const fileSize = info.size;
+  const fileName = path.basename(filePath)
+  const info = await stat(filePath)
+  const fileSize = info.size
 
   consola.info(
     `uploading ${fileName} (${formatBytes(fileSize)}) to file server${
-      folderPath ? ` [folder: ${folderPath}]` : ""
+      folderPath ? ` [folder: ${folderPath}]` : ''
     }...`,
-  );
+  )
 
   const { uploadId, chunkSize } = await initUploadSession(
     fileName,
@@ -294,7 +295,7 @@ export async function uploadToFileServer(
     null,
     token,
     folderPath,
-  );
+  )
 
   const data = await performChunkedUpload({
     filePath,
@@ -304,16 +305,16 @@ export async function uploadToFileServer(
     label: fileName,
     uploadChunkFn: (chunk, start, end, total) =>
       uploadChunk(uploadId, chunk, start, end, total, token),
-  });
+  })
 
-  const fileId = data.file?.id;
+  const fileId = data.file?.id
   if (!fileId) {
-    throw new Error(`Upload of ${fileName} completed without a file id`);
+    throw new Error(`Upload of ${fileName} completed without a file id`)
   }
 
-  const downloadUrl = `${FILE_SERVER_BIN_URL}/${fileId}`;
-  consola.success(`uploaded ${fileName} -> ${downloadUrl}`);
-  return { fileName, downloadUrl };
+  const downloadUrl = `${FILE_SERVER_BIN_URL}/${fileId}`
+  consola.success(`uploaded ${fileName} -> ${downloadUrl}`)
+  return { fileName, downloadUrl }
 }
 
 export async function uploadAllFilesWithResults(
@@ -322,14 +323,14 @@ export async function uploadAllFilesWithResults(
   folderPath?: string,
   uploadFile: typeof uploadToFileServer = uploadToFileServer,
 ): Promise<UploadBatchResult> {
-  const results: UploadResult[] = [];
-  const failures: UploadFailure[] = [];
-  const queue = [...filePaths];
-  const inFlight: Promise<void>[] = [];
+  const results: UploadResult[] = []
+  const failures: UploadFailure[] = []
+  const queue = [...filePaths]
+  const inFlight: Promise<void>[] = []
 
   async function processNext(): Promise<void> {
     while (queue.length > 0) {
-      const filePath = queue.shift()!;
+      const filePath = queue.shift()!
       try {
         const result = await retry(
           () => uploadFile(filePath, token, folderPath),
@@ -337,24 +338,24 @@ export async function uploadAllFilesWithResults(
             maxAttempts: CHUNK_RETRY_ATTEMPTS,
             isRetriable: isRetriableUploadError,
           },
-        );
-        results.push(result);
+        )
+        results.push(result)
       } catch (error) {
         failures.push({
           fileName: path.basename(filePath),
           ...getErrorDetails(error),
-        });
+        })
       }
     }
   }
 
-  const workers = Math.min(UPLOAD_CONCURRENCY, filePaths.length);
+  const workers = Math.min(UPLOAD_CONCURRENCY, filePaths.length)
   for (let i = 0; i < workers; i++) {
-    inFlight.push(processNext());
+    inFlight.push(processNext())
   }
-  await Promise.all(inFlight);
+  await Promise.all(inFlight)
 
-  return { results, failures };
+  return { results, failures }
 }
 
 export async function uploadAllFiles(
@@ -366,14 +367,14 @@ export async function uploadAllFiles(
     filePaths,
     token,
     folderPath,
-  );
+  )
   if (failures.length > 0) {
     throw new AggregateError(
-      failures.map(({ fileName, message }) =>
-        new Error(`${fileName}: ${message}`)
+      failures.map(
+        ({ fileName, message }) => new Error(`${fileName}: ${message}`),
       ),
       `Failed to upload ${failures.length} of ${filePaths.length} files`,
-    );
+    )
   }
-  return results;
+  return results
 }

@@ -1,10 +1,10 @@
 /** Rust source discovery and architecture metric scanning. */
-import { readdir, stat } from "node:fs/promises";
-import * as path from "node:path";
-import { consola } from "../shared/logger.ts";
+import { readdir, stat } from 'node:fs/promises'
+import * as path from 'node:path'
+import { consola } from '../shared/logger.ts'
+import { createLexState, stripCommentsAndLiterals } from './lexer.ts'
 import {
   CONFIG_CALL_RE,
-  type Hit,
   isDedicatedTestPath,
   isLegacyDtoAllowlisted,
   isRustSource,
@@ -12,8 +12,6 @@ import {
   isTestCfgAttr,
   LEGACY_DTO_RE,
   matchRealDirDenylist,
-  type MetricBucket,
-  type MetricBuckets,
   MIGRATION_MARKER_RE,
   SERVICE_GLOBAL_RE,
   STATIC_ALLOWLIST,
@@ -21,54 +19,56 @@ import {
   STATIC_ITEM_RE,
   STATIC_KEYWORD_RE,
   staticAllowlistKey,
-} from "./policy.ts";
-import { createLexState, stripCommentsAndLiterals } from "./lexer.ts";
+  type Hit,
+  type MetricBucket,
+  type MetricBuckets,
+} from './policy.ts'
 
 const SKIP_DIR_NAMES = new Set([
-  ".git",
-  "node_modules",
-  "target",
-  "dist",
-  "tmp",
-  ".candidates",
+  '.git',
+  'node_modules',
+  'target',
+  'dist',
+  'tmp',
+  '.candidates',
   // Upstream submodule under `backend/`. The ledger measures this repo's own
   // migration residual; vendored upstream sources are not ours to migrate.
-  "nyanpasu-runtime",
-  "enable-loopback",
-]);
+  'nyanpasu-runtime',
+  'enable-loopback',
+])
 
 export function emptyBucket(id: string, label: string): MetricBucket {
-  return { id, label, total: 0, byKey: new Map(), hits: [] };
+  return { id, label, total: 0, byKey: new Map(), hits: [] }
 }
 
 export function createBuckets(): MetricBuckets {
   return {
-    configCalls: emptyBucket("config_calls", "Config::*() call sites"),
+    configCalls: emptyBucket('config_calls', 'Config::*() call sites'),
     serviceGlobals: emptyBucket(
-      "service_globals",
-      "service ::global() call sites",
+      'service_globals',
+      'service ::global() call sites',
     ),
     migrationMarkers: emptyBucket(
-      "migration_markers",
-      "TODO/FIXME(actor-migration)",
+      'migration_markers',
+      'TODO/FIXME(actor-migration)',
     ),
     legacyDtos: emptyBucket(
-      "legacy_dto_refs",
-      "bridge / legacy DTO references",
+      'legacy_dto_refs',
+      'bridge / legacy DTO references',
     ),
     testRealDirs: emptyBucket(
-      "test_real_dirs",
-      "test real-dir / runtime-path hits",
+      'test_real_dirs',
+      'test real-dir / runtime-path hits',
     ),
     mutableStatics: emptyBucket(
-      "mutable_statics",
-      "statics outside the allowlist",
+      'mutable_statics',
+      'statics outside the allowlist',
     ),
     allowlistedStatics: emptyBucket(
-      "allowlisted_statics",
-      "allowlisted statics",
+      'allowlisted_statics',
+      'allowlisted statics',
     ),
-  };
+  }
 }
 
 function record(
@@ -77,10 +77,10 @@ function record(
   hit: Hit,
   sampleLimit = 20,
 ): void {
-  bucket.total += 1;
-  bucket.byKey.set(key, (bucket.byKey.get(key) ?? 0) + 1);
+  bucket.total += 1
+  bucket.byKey.set(key, (bucket.byKey.get(key) ?? 0) + 1)
   if (bucket.hits.length < sampleLimit) {
-    bucket.hits.push({ ...hit, detail: key });
+    bucket.hits.push({ ...hit, detail: key })
   }
 }
 
@@ -88,59 +88,59 @@ function matchAll(
   re: RegExp,
   text: string,
 ): Array<{ index: number; match: string; groups: string[] }> {
-  const out: Array<{ index: number; match: string; groups: string[] }> = [];
-  re.lastIndex = 0;
-  let m: RegExpExecArray | null;
+  const out: Array<{ index: number; match: string; groups: string[] }> = []
+  re.lastIndex = 0
+  let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
     out.push({
       index: m.index,
       match: m[0],
       groups: m.slice(1),
-    });
-    if (m[0].length === 0) re.lastIndex += 1;
+    })
+    if (m[0].length === 0) re.lastIndex += 1
   }
-  return out;
+  return out
 }
 
 /** Rust files under a directory, without descending into build or dependency directories. */
 async function walkRustFiles(directory: string): Promise<string[]> {
-  const files: string[] = [];
+  const files: string[] = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const entryPath = path.join(directory, entry.name);
+    const entryPath = path.join(directory, entry.name)
     if (entry.isDirectory()) {
-      if (entry.name === "target" || entry.name === "node_modules") continue;
-      files.push(...await walkRustFiles(entryPath));
-    } else if (entry.isFile() && entry.name.endsWith(".rs")) {
-      files.push(entryPath);
+      if (entry.name === 'target' || entry.name === 'node_modules') continue
+      files.push(...(await walkRustFiles(entryPath)))
+    } else if (entry.isFile() && entry.name.endsWith('.rs')) {
+      files.push(entryPath)
     }
   }
-  return files;
+  return files
 }
 
 export async function collectRustFiles(
   roots: string[],
   repoRoot: string,
 ): Promise<string[]> {
-  const files: string[] = [];
+  const files: string[] = []
   for (const root of roots) {
-    const abs = path.isAbsolute(root) ? root : path.join(repoRoot, root);
+    const abs = path.isAbsolute(root) ? root : path.join(repoRoot, root)
     try {
-      const st = await stat(abs);
-      if (!st.isDirectory()) continue;
+      const st = await stat(abs)
+      if (!st.isDirectory()) continue
     } catch {
-      consola.warn(`skip missing root: ${root}`);
-      continue;
+      consola.warn(`skip missing root: ${root}`)
+      continue
     }
 
     for (const file of await walkRustFiles(abs)) {
-      const parts = path.relative(repoRoot, file).split(path.sep);
-      if (parts.some((p) => SKIP_DIR_NAMES.has(p))) continue;
-      if (!isRustSource(file)) continue;
-      files.push(file);
+      const parts = path.relative(repoRoot, file).split(path.sep)
+      if (parts.some((p) => SKIP_DIR_NAMES.has(p))) continue
+      if (!isRustSource(file)) continue
+      files.push(file)
     }
   }
-  files.sort();
-  return files;
+  files.sort()
+  return files
 }
 
 /**
@@ -155,99 +155,99 @@ export function testLineMask(
   lines: string[],
   dedicatedTestFile: boolean,
 ): boolean[] {
-  const mask = Array.from({ length: lines.length }, () => dedicatedTestFile);
-  if (dedicatedTestFile) return mask;
+  const mask = Array.from({ length: lines.length }, () => dedicatedTestFile)
+  if (dedicatedTestFile) return mask
 
-  const isAttr = (trimmed: string) => trimmed.startsWith("#[");
-  const isTestCfg = (trimmed: string) => isTestCfgAttr(trimmed);
+  const isAttr = (trimmed: string) => trimmed.startsWith('#[')
+  const isTestCfg = (trimmed: string) => isTestCfgAttr(trimmed)
   const isTestFnAttr = (trimmed: string) =>
-    /^#\[(?:tokio::)?test(?:\s*\(.*\))?\]/.test(trimmed);
+    /^#\[(?:tokio::)?test(?:\s*\(.*\))?\]/.test(trimmed)
 
-  let i = 0;
+  let i = 0
   while (i < lines.length) {
-    const trimmed = lines[i].trim();
+    const trimmed = lines[i].trim()
     if (!isTestCfg(trimmed) && !isTestFnAttr(trimmed)) {
-      i += 1;
-      continue;
+      i += 1
+      continue
     }
 
     // Consume contiguous attributes belonging to the same item.
-    let j = i;
-    let sawTestFn = false;
-    let sawCfgTest = false;
+    let j = i
+    let sawTestFn = false
+    let sawCfgTest = false
     while (j < lines.length) {
-      const t = lines[j].trim();
-      if (!isAttr(t)) break;
-      if (isTestCfg(t)) sawCfgTest = true;
-      if (isTestFnAttr(t)) sawTestFn = true;
-      j += 1;
+      const t = lines[j].trim()
+      if (!isAttr(t)) break
+      if (isTestCfg(t)) sawCfgTest = true
+      if (isTestFnAttr(t)) sawTestFn = true
+      j += 1
     }
-    if (j >= lines.length) break;
+    if (j >= lines.length) break
 
-    const item = lines[j].trim();
+    const item = lines[j].trim()
     // `mod tests {` / `mod foo {` under cfg(test) — mark the whole module.
     if (sawCfgTest && /^mod\s+[A-Za-z_][A-Za-z0-9_]*\s*\{/.test(item)) {
-      const end = findMatchingBraceLine(lines, j);
-      for (let k = i; k <= end; k++) mask[k] = true;
-      i = end + 1;
-      continue;
+      const end = findMatchingBraceLine(lines, j)
+      for (let k = i; k <= end; k++) mask[k] = true
+      i = end + 1
+      continue
     }
 
     // `#[test] fn ...` or `#[cfg(test)] fn/use/const/...` — mark one item.
     if (sawTestFn || sawCfgTest) {
-      const end = findItemEndLine(lines, j);
-      for (let k = i; k <= end; k++) mask[k] = true;
-      i = end + 1;
-      continue;
+      const end = findItemEndLine(lines, j)
+      for (let k = i; k <= end; k++) mask[k] = true
+      i = end + 1
+      continue
     }
 
-    i = j + 1;
+    i = j + 1
   }
 
-  return mask;
+  return mask
 }
 
 function findMatchingBraceLine(lines: string[], startLine: number): number {
-  let depth = 0;
-  let seen = false;
-  const state = createLexState();
+  let depth = 0
+  let seen = false
+  const state = createLexState()
   for (let i = startLine; i < lines.length; i++) {
-    const line = stripCommentsAndLiterals(lines[i], state);
+    const line = stripCommentsAndLiterals(lines[i], state)
     for (const ch of line) {
-      if (ch === "{") {
-        depth += 1;
-        seen = true;
-      } else if (ch === "}") {
-        depth -= 1;
-        if (seen && depth === 0) return i;
+      if (ch === '{') {
+        depth += 1
+        seen = true
+      } else if (ch === '}') {
+        depth -= 1
+        if (seen && depth === 0) return i
       }
     }
   }
-  return lines.length - 1;
+  return lines.length - 1
 }
 
 /** End line of a single Rust item starting at `startLine` (brace-aware). */
 function findItemEndLine(lines: string[], startLine: number): number {
   // Items without a body end at the first `;`.
   // Items with `{ ... }` end at the matching brace.
-  let depth = 0;
-  let seenBrace = false;
-  const state = createLexState();
+  let depth = 0
+  let seenBrace = false
+  const state = createLexState()
   for (let i = startLine; i < lines.length; i++) {
-    const line = stripCommentsAndLiterals(lines[i], state);
+    const line = stripCommentsAndLiterals(lines[i], state)
     for (const ch of line) {
-      if (ch === "{") {
-        depth += 1;
-        seenBrace = true;
-      } else if (ch === "}") {
-        depth -= 1;
-        if (seenBrace && depth === 0) return i;
-      } else if (ch === ";" && !seenBrace && depth === 0) {
-        return i;
+      if (ch === '{') {
+        depth += 1
+        seenBrace = true
+      } else if (ch === '}') {
+        depth -= 1
+        if (seenBrace && depth === 0) return i
+      } else if (ch === ';' && !seenBrace && depth === 0) {
+        return i
       }
     }
   }
-  return lines.length - 1;
+  return lines.length - 1
 }
 
 /**
@@ -260,13 +260,13 @@ function findItemEndLine(lines: string[], startLine: number): number {
 export function findStatics(
   codeLines: string[],
 ): Array<{ name: string; line: number }> {
-  const code = codeLines.join("\n");
+  const code = codeLines.join('\n')
   return matchAll(STATIC_KEYWORD_RE, code).map((m) => {
-    const line = code.slice(0, m.index).split("\n").length;
-    STATIC_ITEM_RE.lastIndex = m.index;
-    const item = STATIC_ITEM_RE.exec(code);
-    return { name: item ? item[1] : `static@${line}`, line };
-  });
+    const line = code.slice(0, m.index).split('\n').length
+    STATIC_ITEM_RE.lastIndex = m.index
+    const item = STATIC_ITEM_RE.exec(code)
+    return { name: item ? item[1] : `static@${line}`, line }
+  })
 }
 
 export function scanFile(
@@ -274,24 +274,24 @@ export function scanFile(
   source: string,
   buckets: MetricBuckets,
 ): void {
-  const lines = source.split(/\r?\n/);
-  const testMask = testLineMask(lines, isDedicatedTestPath(relPath));
-  const countLegacyDtos = !isLegacyDtoAllowlisted(relPath);
-  const lexState = createLexState();
-  const codeLines: string[] = [];
+  const lines = source.split(/\r?\n/)
+  const testMask = testLineMask(lines, isDedicatedTestPath(relPath))
+  const countLegacyDtos = !isLegacyDtoAllowlisted(relPath)
+  const lexState = createLexState()
+  const codeLines: string[] = []
 
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const lineNo = i + 1;
-    const code = stripCommentsAndLiterals(raw, lexState);
-    codeLines.push(code);
+    const raw = lines[i]
+    const lineNo = i + 1
+    const code = stripCommentsAndLiterals(raw, lexState)
+    codeLines.push(code)
 
     for (const m of matchAll(CONFIG_CALL_RE, code)) {
       record(buckets.configCalls, `Config::${m.groups[0]}()`, {
         file: relPath,
         line: lineNo,
         text: raw.trim(),
-      });
+      })
     }
 
     for (const m of matchAll(SERVICE_GLOBAL_RE, code)) {
@@ -301,16 +301,16 @@ export function scanFile(
         file: relPath,
         line: lineNo,
         text: raw.trim(),
-      });
+      })
     }
 
     for (const m of matchAll(MIGRATION_MARKER_RE, raw)) {
-      const kind = m.match.startsWith("FIXME") ? "FIXME" : "TODO";
+      const kind = m.match.startsWith('FIXME') ? 'FIXME' : 'TODO'
       record(buckets.migrationMarkers, `${kind}(actor-migration)`, {
         file: relPath,
         line: lineNo,
         text: raw.trim(),
-      });
+      })
     }
 
     if (countLegacyDtos) {
@@ -319,7 +319,7 @@ export function scanFile(
           file: relPath,
           line: lineNo,
           text: raw.trim(),
-        });
+        })
       }
     }
 
@@ -329,27 +329,27 @@ export function scanFile(
           file: relPath,
           line: lineNo,
           text: raw.trim(),
-        });
+        })
       }
     }
   }
 
   if (STATIC_GATE_PREFIXES.some((prefix) => relPath.startsWith(prefix))) {
-    const statics = findStatics(codeLines);
-    const sameName = new Map<string, number>();
+    const statics = findStatics(codeLines)
+    const sameName = new Map<string, number>()
     for (const { name } of statics) {
-      sameName.set(name, (sameName.get(name) ?? 0) + 1);
+      sameName.set(name, (sameName.get(name) ?? 0) + 1)
     }
     for (const { name, line } of statics) {
       // An entry names one static. When the file declares that name twice it
       // cannot say which one it vouches for, so it covers neither.
-      const listed = sameName.get(name) === 1 &&
-        isStaticAllowlisted(relPath, name);
+      const listed =
+        sameName.get(name) === 1 && isStaticAllowlisted(relPath, name)
       record(
         listed ? buckets.allowlistedStatics : buckets.mutableStatics,
         staticAllowlistKey(relPath, name),
         { file: relPath, line, text: lines[line - 1].trim() },
-      );
+      )
     }
   }
 }
@@ -360,9 +360,9 @@ export function scanFile(
  */
 export function staticAllowlistIssues(buckets: MetricBuckets): string[] {
   return STATIC_ALLOWLIST.flatMap(({ path, name }) => {
-    const key = staticAllowlistKey(path, name);
-    if (buckets.allowlistedStatics.byKey.get(key) === 1) return [];
-    const found = buckets.mutableStatics.byKey.get(key) ?? 0;
-    return [`${key} matches ${found === 0 ? "no static" : `${found} statics`}`];
-  });
+    const key = staticAllowlistKey(path, name)
+    if (buckets.allowlistedStatics.byKey.get(key) === 1) return []
+    const found = buckets.mutableStatics.byKey.get(key) ?? 0
+    return [`${key} matches ${found === 0 ? 'no static' : `${found} statics`}`]
+  })
 }

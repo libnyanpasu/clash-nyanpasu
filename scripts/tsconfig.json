@@ -7,7 +7,7 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
 }

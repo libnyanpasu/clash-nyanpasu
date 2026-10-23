@@ -1,5 +1,8 @@
-import * as path from "node:path";
-import { Octokit } from "octokit";
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
+import { Octokit } from 'octokit'
+import { runCommand } from '../shared/command.ts'
 import {
   guardReleaseMirrorUpload,
   hashFile,
@@ -11,44 +14,45 @@ import {
   validateSourceforgeFilename,
   validateSourceforgeProject,
   validateSourceforgeUsername,
-} from "./sourceforge.ts";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { runCommand } from "../shared/command.ts";
+} from './sourceforge.ts'
 
 interface PublishManifest {
-  channel: "release" | "nightly";
-  target: string;
-  buildId: string;
-  publishedAt?: string;
-  artifacts: Array<
-    { fileName: string; fileSize: number; sha256: string; path: string }
-  >;
+  channel: 'release' | 'nightly'
+  target: string
+  buildId: string
+  publishedAt?: string
+  artifacts: Array<{
+    fileName: string
+    fileSize: number
+    sha256: string
+    path: string
+  }>
 }
 
 interface SourceforgeReport {
-  schemaVersion: number;
-  status: "failure" | "uploaded";
-  project: string | null;
-  channel: string | null;
-  target: string | null;
-  buildId: string | null;
-  publishedAt?: string;
-  remotePath: string | null;
-  artifacts: Array<
-    { fileName: string; fileSize: number; sha256: string; url: string }
-  >;
-  error: string | null;
+  schemaVersion: number
+  status: 'failure' | 'uploaded'
+  project: string | null
+  channel: string | null
+  target: string | null
+  buildId: string | null
+  publishedAt?: string
+  remotePath: string | null
+  artifacts: Array<{
+    fileName: string
+    fileSize: number
+    sha256: string
+    url: string
+  }>
+  error: string | null
 }
 
 function env(name: string): string {
-  const value = process.env[name];
+  const value = process.env[name]
   if (!value) {
-    throw new Error(
-      `${name} is required when SourceForge mirroring is enabled`,
-    );
+    throw new Error(`${name} is required when SourceForge mirroring is enabled`)
   }
-  return value;
+  return value
 }
 
 async function runSftp(
@@ -56,164 +60,162 @@ async function runSftp(
   knownHostsPath: string,
   batch: string,
 ): Promise<void> {
-  const username = env("SOURCEFORGE_USERNAME").trim();
-  validateSourceforgeUsername(username);
-  const command = await runCommand("sftp", {
+  const username = env('SOURCEFORGE_USERNAME').trim()
+  validateSourceforgeUsername(username)
+  const command = await runCommand('sftp', {
     args: [
-      "-i",
+      '-i',
       keyPath,
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "IdentitiesOnly=yes",
-      "-o",
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'IdentitiesOnly=yes',
+      '-o',
       `UserKnownHostsFile=${knownHostsPath}`,
-      "-o",
-      "StrictHostKeyChecking=yes",
-      "-o",
-      "ServerAliveInterval=30",
-      "-o",
-      "ConnectTimeout=30",
-      "-b",
-      "-",
+      '-o',
+      'StrictHostKeyChecking=yes',
+      '-o',
+      'ServerAliveInterval=30',
+      '-o',
+      'ConnectTimeout=30',
+      '-b',
+      '-',
       `${username}@frs.sourceforge.net`,
     ],
     input: batch,
-  });
-  const status = command;
-  const stdout = command.stdout.toString("utf8");
-  const stderr = command.stderr.toString("utf8");
+  })
+  const status = command
+  const stdout = command.stdout.toString('utf8')
+  const stderr = command.stderr.toString('utf8')
   if (!status.success) {
     throw new Error(
-      `sftp failed (${status.code}): ${
-        [stderr, stdout].filter(Boolean).join("\n")
-      }`,
-    );
+      `sftp failed (${status.code}): ${[stderr, stdout]
+        .filter(Boolean)
+        .join('\n')}`,
+    )
   }
 }
 
 async function loadPreviousReleaseMirror(
   releaseTag: string,
 ): Promise<unknown | null> {
-  const token = env("GITHUB_TOKEN");
-  const repository = env("GITHUB_REPOSITORY");
-  const [owner, repo, extra] = repository.split("/");
+  const token = env('GITHUB_TOKEN')
+  const repository = env('GITHUB_REPOSITORY')
+  const [owner, repo, extra] = repository.split('/')
   if (!owner || !repo || extra) {
-    throw new Error("GITHUB_REPOSITORY must be owner/repo");
+    throw new Error('GITHUB_REPOSITORY must be owner/repo')
   }
-  const github = new Octokit({ auth: token });
+  const github = new Octokit({ auth: token })
   const { data: release } = await github.rest.repos.getReleaseByTag({
     owner,
     repo,
     tag: releaseTag,
-  });
+  })
   if (release.tag_name !== releaseTag) {
-    throw new Error("GitHub release tag does not match SourceForge release");
+    throw new Error('GitHub release tag does not match SourceForge release')
   }
   const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
     owner,
     repo,
     release_id: release.id,
     per_page: 100,
-  });
-  const mirrors = assets.filter((asset) =>
-    asset.name === "sourceforge-mirrors.json"
-  );
+  })
+  const mirrors = assets.filter(
+    (asset) => asset.name === 'sourceforge-mirrors.json',
+  )
   if (mirrors.length > 1) {
-    throw new Error("GitHub release has multiple SourceForge mirror manifests");
+    throw new Error('GitHub release has multiple SourceForge mirror manifests')
   }
-  const asset = mirrors[0];
-  if (!asset) return null;
+  const asset = mirrors[0]
+  if (!asset) return null
   const response = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/releases/assets/${asset.id}`,
     {
       headers: {
-        accept: "application/octet-stream",
+        accept: 'application/octet-stream',
         authorization: `Bearer ${token}`,
-        "x-github-api-version": "2022-11-28",
+        'x-github-api-version': '2022-11-28',
       },
       signal: AbortSignal.timeout(30_000),
     },
-  );
+  )
   if (!response.ok) {
-    await response.body?.cancel();
+    await response.body?.cancel()
     throw new Error(
       `Could not read existing SourceForge metadata: HTTP ${response.status}`,
-    );
+    )
   }
   try {
-    return JSON.parse(await response.text()) as unknown;
+    return JSON.parse(await response.text()) as unknown
   } catch (error) {
-    throw new Error("Existing SourceForge release metadata is not valid JSON", {
+    throw new Error('Existing SourceForge release metadata is not valid JSON', {
       cause: error,
-    });
+    })
   }
 }
 
 async function main(): Promise<void> {
-  const manifestPath = process.argv.slice(2)[0];
-  const reportPath = process.argv.slice(2)[1];
+  const manifestPath = process.argv.slice(2)[0]
+  const reportPath = process.argv.slice(2)[1]
   if (!manifestPath || !reportPath) {
-    throw new Error("Usage: sourceforge:upload <manifest.json> <report.json>");
+    throw new Error('Usage: sourceforge:upload <manifest.json> <report.json>')
   }
   let report: SourceforgeReport = {
     schemaVersion: 1,
-    status: "failure",
+    status: 'failure',
     project: null,
     channel: null,
     target: null,
     buildId: null,
     remotePath: null,
     artifacts: [],
-    error: "SourceForge upload did not complete",
-  };
+    error: 'SourceForge upload did not complete',
+  }
   try {
     const manifest = JSON.parse(
-      await readFile(manifestPath, "utf8"),
-    ) as PublishManifest;
-    const project = env("SOURCEFORGE_PROJECT");
-    const buildId = env("SOURCEFORGE_BUILD_ID");
-    const channel = env("SOURCEFORGE_CHANNEL");
-    const releaseTag = process.env["SOURCEFORGE_RELEASE_TAG"] ?? "";
-    validateSourceforgeProject(project);
+      await readFile(manifestPath, 'utf8'),
+    ) as PublishManifest
+    const project = env('SOURCEFORGE_PROJECT')
+    const buildId = env('SOURCEFORGE_BUILD_ID')
+    const channel = env('SOURCEFORGE_CHANNEL')
+    const releaseTag = process.env['SOURCEFORGE_RELEASE_TAG'] ?? ''
+    validateSourceforgeProject(project)
     // Configuration failures must occur before the transport retry loop.
-    validateSourceforgeUsername(env("SOURCEFORGE_USERNAME").trim());
+    validateSourceforgeUsername(env('SOURCEFORGE_USERNAME').trim())
     if (
       channel !== manifest.channel ||
-      (channel !== "release" && channel !== "nightly")
+      (channel !== 'release' && channel !== 'nightly')
     ) {
       throw new Error(
-        "SourceForge channel does not match the prepared manifest",
-      );
+        'SourceForge channel does not match the prepared manifest',
+      )
     }
     if (!/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/.test(buildId)) {
-      throw new Error("Invalid SourceForge build id");
+      throw new Error('Invalid SourceForge build id')
     }
-    if (channel === "release" && (!releaseTag || buildId !== releaseTag)) {
-      throw new Error(
-        "Release SourceForge build id must equal the release tag",
-      );
+    if (channel === 'release' && (!releaseTag || buildId !== releaseTag)) {
+      throw new Error('Release SourceForge build id must equal the release tag')
     }
     if (!manifest.target || manifest.artifacts.length === 0) {
-      throw new Error("SourceForge manifest has no target or artifacts");
+      throw new Error('SourceForge manifest has no target or artifacts')
     }
-    const remotePath = channel === "nightly"
-      ? `nightly/${buildId}`
-      : `releases/${releaseTag}`;
+    const remotePath =
+      channel === 'nightly' ? `nightly/${buildId}` : `releases/${releaseTag}`
     const artifacts = manifest.artifacts.map((artifact) => {
       if (
-        !Number.isSafeInteger(artifact.fileSize) || artifact.fileSize <= 0 ||
+        !Number.isSafeInteger(artifact.fileSize) ||
+        artifact.fileSize <= 0 ||
         !/^[a-f0-9]{64}$/.test(artifact.sha256)
       ) {
-        throw new Error(`Invalid size or SHA-256 for ${artifact.fileName}`);
+        throw new Error(`Invalid size or SHA-256 for ${artifact.fileName}`)
       }
       return {
         fileName: artifact.fileName,
         fileSize: artifact.fileSize,
         sha256: artifact.sha256,
         url: sourceforgeDownloadUrl(project, remotePath, artifact.fileName),
-      };
-    });
+      }
+    })
     report = {
       ...report,
       project,
@@ -225,35 +227,35 @@ async function main(): Promise<void> {
         ? {}
         : { publishedAt: manifest.publishedAt }),
       artifacts,
-    };
+    }
 
-    const tempDir = await mkdtemp(path.join(tmpdir(), "sourceforge-upload-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'sourceforge-upload-'))
     try {
-      const keyPath = path.join(tempDir, "id_sourceforge");
-      const knownHostsPath = path.join(tempDir, "known_hosts");
-      await writeFile(keyPath, env("SOURCEFORGE_SSH_KEY"), {
+      const keyPath = path.join(tempDir, 'id_sourceforge')
+      const knownHostsPath = path.join(tempDir, 'known_hosts')
+      await writeFile(keyPath, env('SOURCEFORGE_SSH_KEY'), {
         mode: 0o600,
-      });
-      await writeFile(knownHostsPath, env("SOURCEFORGE_KNOWN_HOSTS"));
-      if (process.platform === "win32") {
-        const runnerUser = env("USERNAME");
+      })
+      await writeFile(knownHostsPath, env('SOURCEFORGE_KNOWN_HOSTS'))
+      if (process.platform === 'win32') {
+        const runnerUser = env('USERNAME')
         if (!/^[A-Za-z0-9._-]+$/.test(runnerUser)) {
-          throw new Error("Invalid Windows runner username");
+          throw new Error('Invalid Windows runner username')
         }
-        const acl = await runCommand("icacls", {
-          args: [keyPath, "/inheritance:r", "/grant:r", `${runnerUser}:(R)`],
-          stdout: "piped",
-          stderr: "piped",
-        });
+        const acl = await runCommand('icacls', {
+          args: [keyPath, '/inheritance:r', '/grant:r', `${runnerUser}:(R)`],
+          stdout: 'piped',
+          stderr: 'piped',
+        })
         if (!acl.success) {
           throw new Error(
-            `Could not secure Windows SSH key ACL: ${
-              acl.stderr.toString("utf8")
-            }`,
-          );
+            `Could not secure Windows SSH key ACL: ${acl.stderr.toString(
+              'utf8',
+            )}`,
+          )
         }
       } else {
-        await chmod(keyPath, 0o600);
+        await chmod(keyPath, 0o600)
       }
 
       const upload = async () => {
@@ -261,26 +263,26 @@ async function main(): Promise<void> {
           project,
           remotePath,
           manifest.artifacts,
-          process.platform === "win32",
-        );
-        let lastError: unknown;
+          process.platform === 'win32',
+        )
+        let lastError: unknown
         for (let attempt = 1; attempt <= 4; attempt++) {
           try {
-            await runSftp(keyPath, knownHostsPath, batch);
-            lastError = undefined;
-            break;
+            await runSftp(keyPath, knownHostsPath, batch)
+            lastError = undefined
+            break
           } catch (error) {
-            lastError = error;
+            lastError = error
             if (attempt < 4) {
               await new Promise((resolve) =>
-                setTimeout(resolve, attempt * 5_000)
-              );
+                setTimeout(resolve, attempt * 5_000),
+              )
             }
           }
         }
-        if (lastError) throw lastError;
-      };
-      if (channel === "release") {
+        if (lastError) throw lastError
+      }
+      if (channel === 'release') {
         await guardReleaseMirrorUpload(
           project,
           releaseTag,
@@ -289,24 +291,24 @@ async function main(): Promise<void> {
           upload,
           async () => {
             for (const artifact of manifest.artifacts) {
-              const actual = await hashFile(artifact.path);
+              const actual = await hashFile(artifact.path)
               if (
                 actual.fileSize !== artifact.fileSize ||
                 actual.sha256 !== artifact.sha256
               ) {
                 throw new Error(
                   `Local bytes do not match SourceForge inventory for ${artifact.fileName}`,
-                );
+                )
               }
             }
             for (const artifact of manifest.artifacts) {
-              validateSourceforgeFilename(artifact.fileName);
-              const localInventory = path.join(tempDir, "inventory.json")
-                .replaceAll("\\", "/");
-              const existingInventory = path.join(
-                tempDir,
-                "existing-inventory.json",
-              ).replaceAll("\\", "/");
+              validateSourceforgeFilename(artifact.fileName)
+              const localInventory = path
+                .join(tempDir, 'inventory.json')
+                .replaceAll('\\', '/')
+              const existingInventory = path
+                .join(tempDir, 'existing-inventory.json')
+                .replaceAll('\\', '/')
               await writeFile(
                 localInventory,
                 JSON.stringify({
@@ -314,54 +316,49 @@ async function main(): Promise<void> {
                   fileSize: artifact.fileSize,
                   sha256: artifact.sha256,
                 }),
-              );
+              )
               const reservation = sourceforgeReservationBatch(
                 project,
                 remotePath,
                 artifact.fileName,
                 localInventory,
-              );
+              )
               await reserveSourceforgeArtifact(
                 artifact,
-                () =>
-                  runSftp(
-                    keyPath,
-                    knownHostsPath,
-                    reservation.batch,
-                  ),
+                () => runSftp(keyPath, knownHostsPath, reservation.batch),
                 async () => {
                   await runSftp(
                     keyPath,
                     knownHostsPath,
-                    `get ${sftpQuote(reservation.inventoryPath)} ${
-                      sftpQuote(existingInventory)
-                    }\n`,
-                  );
+                    `get ${sftpQuote(reservation.inventoryPath)} ${sftpQuote(
+                      existingInventory,
+                    )}\n`,
+                  )
                   return JSON.parse(
-                    await readFile(existingInventory, "utf8"),
-                  ) as unknown;
+                    await readFile(existingInventory, 'utf8'),
+                  ) as unknown
                 },
-              );
+              )
             }
           },
-        );
+        )
       } else {
-        await upload();
+        await upload()
       }
     } finally {
-      await rm(tempDir, { recursive: true });
+      await rm(tempDir, { recursive: true })
     }
-    report.status = "uploaded";
-    report.error = null;
+    report.status = 'uploaded'
+    report.error = null
   } catch (error) {
-    report.error = error instanceof Error ? error.message : String(error);
-    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-    throw error;
+    report.error = error instanceof Error ? error.message : String(error)
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+    throw error
   }
-  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`)
   console.log(
     `Uploaded ${report.artifacts.length} SourceForge assets to ${report.remotePath}`,
-  );
+  )
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) await main()

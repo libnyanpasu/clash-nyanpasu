@@ -3,6 +3,10 @@ import {
   checkNightlyChanges,
   isNightlyBuildInput,
 } from "./check-nightly-changes.ts";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runCommand } from "../shared/command.ts";
 
 Deno.test("nightly inputs exclude documentation and dedicated tests", () => {
   for (
@@ -38,28 +42,28 @@ async function withRepository(
     git: (...args: string[]) => Promise<void>,
   ) => Promise<void>,
 ) {
-  const cwd = await Deno.makeTempDir();
+  const cwd = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   const git = async (...args: string[]) => {
-    const result = await new Deno.Command("git", {
+    const result = await runCommand("git", {
       cwd,
       args,
       stdout: "piped",
       stderr: "piped",
-    }).output();
+    });
     if (!result.success) {
-      throw new Error(new TextDecoder().decode(result.stderr));
+      throw new Error(result.stderr.toString("utf8"));
     }
   };
   try {
     await git("init");
     await git("config", "user.email", "nightly@example.invalid");
     await git("config", "user.name", "Nightly Test");
-    await Deno.writeTextFile(`${cwd}/app.ts`, "original\n");
+    await writeFile(`${cwd}/app.ts`, "original\n");
     await git("add", "app.ts");
     await git("-c", "commit.gpgsign=false", "commit", "-m", "Initial input");
     await test(cwd, git);
   } finally {
-    await Deno.remove(cwd, { recursive: true });
+    await rm(cwd, { recursive: true });
   }
 }
 
@@ -69,18 +73,18 @@ Deno.test("first nightly builds; identical and documentation-only trees skip", a
     await git("tag", "pre-release");
     assertEquals((await checkNightlyChanges(cwd)).shouldBuild, false);
 
-    await Deno.writeTextFile(`${cwd}/README.md`, "Documentation\n");
-    await Deno.writeTextFile(`${cwd}/app_test.ts`, "Test\n");
+    await writeFile(`${cwd}/README.md`, "Documentation\n");
+    await writeFile(`${cwd}/app_test.ts`, "Test\n");
     await git("add", "README.md", "app_test.ts");
     await git("-c", "commit.gpgsign=false", "commit", "-m", "Docs and tests");
     assertEquals((await checkNightlyChanges(cwd)).shouldBuild, false);
 
-    await Deno.writeTextFile(`${cwd}/app.ts`, "changed\n");
+    await writeFile(`${cwd}/app.ts`, "changed\n");
     await git("add", "app.ts");
     await git("-c", "commit.gpgsign=false", "commit", "-m", "Change app");
     assertEquals((await checkNightlyChanges(cwd)).shouldBuild, true);
 
-    await Deno.writeTextFile(`${cwd}/app.ts`, "original\n");
+    await writeFile(`${cwd}/app.ts`, "original\n");
     await git("add", "app.ts");
     await git("-c", "commit.gpgsign=false", "commit", "-m", "Revert app");
     assertEquals((await checkNightlyChanges(cwd)).shouldBuild, false);
@@ -115,10 +119,10 @@ Deno.test("deleting a build input triggers a nightly", async () => {
 });
 
 Deno.test("Git errors fail the check rather than reporting no changes", async () => {
-  const cwd = await Deno.makeTempDir();
+  const cwd = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   try {
     await assertRejects(() => checkNightlyChanges(cwd));
   } finally {
-    await Deno.remove(cwd, { recursive: true });
+    await rm(cwd, { recursive: true });
   }
 });

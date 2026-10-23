@@ -1,11 +1,13 @@
 import { createRequire } from "node:module";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { globby } from "npm:globby";
+import { readFile } from "node:fs/promises";
+import { runCommand } from "../shared/command.ts";
 
 async function main() {
-  const workspaceRoot = Deno.cwd();
+  const workspaceRoot = process.cwd();
   const { version } = JSON.parse(
-    await Deno.readTextFile(path.join(workspaceRoot, "package.json")),
+    await readFile(path.join(workspaceRoot, "package.json"), "utf8"),
   );
   const archives = await globby([
     "backend/target/**/bundle/**/*.nsis.zip",
@@ -21,12 +23,12 @@ async function main() {
     "@tauri-apps/cli/tauri.js",
   );
   for (const archive of archives) {
-    const result = await new Deno.Command("node", {
+    const result = await runCommand("node", {
       args: [tauriCli, "signer", "sign", "--app-version", version, archive],
       cwd: workspaceRoot,
       stdout: "null",
       stderr: "inherit",
-    }).output();
+    });
     if (!result.success) throw new Error(`Failed to sign ${archive}`);
   }
 }
@@ -34,6 +36,6 @@ async function main() {
 if (import.meta.main) {
   main().catch((err) => {
     console.error(err);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

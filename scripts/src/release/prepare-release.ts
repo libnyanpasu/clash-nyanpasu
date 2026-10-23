@@ -1,12 +1,13 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import semver from "npm:semver";
 import { consola } from "../shared/logger.ts";
+import { readFile, writeFile } from "node:fs/promises";
 
-const cwd = Deno.cwd();
+const cwd = process.cwd();
 const TAURI_APP_DIR = path.join(cwd, "backend/tauri");
 const TAURI_APP_CONF = path.join(TAURI_APP_DIR, "tauri.conf.json");
 
-const isLinux = Deno.args.includes("--linux");
+const isLinux = process.argv.slice(2).includes("--linux");
 
 /**
  * System package versions for a release. RPM forbids `-` in Version (#3850)
@@ -36,7 +37,7 @@ export function linuxPackageVersions(version: string) {
 
 async function main() {
   consola.debug("Read config...");
-  const tauriConf = JSON.parse(await Deno.readTextFile(TAURI_APP_CONF));
+  const tauriConf = JSON.parse(await readFile(TAURI_APP_CONF, "utf8"));
 
   if (isLinux) {
     const { tauriVersion, rpmRelease } = linuxPackageVersions(
@@ -50,7 +51,7 @@ async function main() {
   }
 
   consola.debug("Write release config to tauri.conf.json");
-  await Deno.writeTextFile(TAURI_APP_CONF, JSON.stringify(tauriConf, null, 2));
+  await writeFile(TAURI_APP_CONF, JSON.stringify(tauriConf, null, 2));
   consola.debug("tauri.conf.json updated");
 }
 

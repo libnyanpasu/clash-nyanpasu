@@ -1,7 +1,17 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { globby } from "npm:globby";
 import { linuxPackageVersions } from "./prepare-release.ts";
 import { consola } from "../shared/logger.ts";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { runCommand } from "../shared/command.ts";
 
 // Release builds bundle Linux packages as `X.Y.Z` (see prepare-release.ts).
 // This sets the deb Version to its prerelease form and puts the release
@@ -11,12 +21,12 @@ import { consola } from "../shared/logger.ts";
 const decoder = new TextDecoder();
 
 async function run(command: string, args: string[], cwd?: string) {
-  const output = await new Deno.Command(command, {
+  const output = await runCommand(command, {
     args,
     cwd,
     stdout: "piped",
     stderr: "piped",
-  }).output();
+  });
   if (!output.success) {
     throw new Error(
       `${command} ${args.join(" ")} failed: ${decoder.decode(output.stderr)}`,
@@ -64,18 +74,18 @@ export async function setDebVersion(deb: string, version: string) {
     .find((member) => member.startsWith("control.tar"));
   if (!control) throw new Error(`${deb} has no control member`);
 
-  const work = await Deno.makeTempDir({ prefix: "nyanpasu-deb-" });
+  const work = await mkdtemp(path.join(tmpdir(), "nyanpasu-deb-"));
   try {
     const dir = path.join(work, "control");
-    await Deno.mkdir(dir);
+    await mkdir(dir);
     await run("ar", ["x", deb, control], work);
     await run("tar", ["-xf", control, "-C", dir], work);
     const controlFile = path.join(dir, "control");
-    await Deno.writeTextFile(
+    await writeFile(
       controlFile,
-      setControlVersion(await Deno.readTextFile(controlFile), version),
+      setControlVersion(await readFile(controlFile, "utf8"), version),
     );
-    await Deno.remove(path.join(work, control));
+    await rm(path.join(work, control));
     await run("tar", [
       "-c",
       ...tarCompression(control),
@@ -90,7 +100,7 @@ export async function setDebVersion(deb: string, version: string) {
     ], work);
     await run("ar", ["r", deb, control], work);
   } finally {
-    await Deno.remove(work, { recursive: true });
+    await rm(work, { recursive: true });
   }
 
   const written = await debVersion(deb);
@@ -100,9 +110,9 @@ export async function setDebVersion(deb: string, version: string) {
 }
 
 async function main() {
-  const root = Deno.cwd();
+  const root = process.cwd();
   const { version } = JSON.parse(
-    await Deno.readTextFile(path.join(root, "package.json")),
+    await readFile(path.join(root, "package.json"), "utf8"),
   );
   const { tauriVersion, debVersion: expected } = linuxPackageVersions(version);
 
@@ -130,7 +140,7 @@ async function main() {
       path.dirname(file),
       releaseFileName(path.basename(file), tauriVersion, version),
     );
-    await Deno.rename(file, renamed);
+    await rename(file, renamed);
     consola.success(
       `Renamed ${path.basename(file)} to ${path.basename(renamed)}`,
     );
@@ -140,6 +150,6 @@ async function main() {
 if (import.meta.main) {
   main().catch((err) => {
     consola.error(err);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

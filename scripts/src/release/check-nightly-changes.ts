@@ -1,4 +1,6 @@
+import { appendFile } from "node:fs/promises";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
+import { runCommand } from "../shared/command.ts";
 
 export function isNightlyBuildInput(file: string): boolean {
   return !(
@@ -10,16 +12,16 @@ export function isNightlyBuildInput(file: string): boolean {
 }
 
 async function git(cwd: string, args: string[]) {
-  const result = await new Deno.Command("git", {
+  const result = await runCommand("git", {
     cwd,
     args,
     stdout: "piped",
     stderr: "piped",
-  }).output();
+  });
   return {
     code: result.code,
-    stdout: new TextDecoder().decode(result.stdout),
-    stderr: new TextDecoder().decode(result.stderr),
+    stdout: result.stdout.toString("utf8"),
+    stderr: result.stderr.toString("utf8"),
   };
 }
 
@@ -59,21 +61,18 @@ if (import.meta.main) {
   const result = await checkNightlyChanges(WORKSPACE_ROOT);
   console.log(result.reason);
 
-  const output = Deno.env.get("GITHUB_OUTPUT");
+  const output = process.env["GITHUB_OUTPUT"];
   if (output) {
-    await Deno.writeTextFile(output, `should_build=${result.shouldBuild}\n`, {
-      append: true,
-    });
+    await appendFile(output, `should_build=${result.shouldBuild}\n`);
   }
 
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
+  const summary = process.env["GITHUB_STEP_SUMMARY"];
   if (summary) {
-    await Deno.writeTextFile(
+    await appendFile(
       summary,
       `## Nightly build check\n\n${
         result.shouldBuild ? "Build" : "Skip"
       }: ${result.reason}\n`,
-      { append: true },
     );
   }
 }

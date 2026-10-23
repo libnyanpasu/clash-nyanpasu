@@ -1,8 +1,10 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { merge } from "npm:es-toolkit@1.52.0";
 import { consola } from "../shared/logger.ts";
+import { readFile, writeFile } from "node:fs/promises";
+import { runCommand } from "../shared/command.ts";
 
-const cwd = Deno.cwd();
+const cwd = process.cwd();
 const TAURI_APP_DIR = path.join(cwd, "backend/tauri");
 const TAURI_DEV_APP_CONF_PATH = path.join(
   TAURI_APP_DIR,
@@ -19,23 +21,23 @@ const NYANPASU_PACKAGE_JSON_PATH = path.join(
 );
 const ROOT_PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 
-const isNSIS = Deno.args.includes("--nsis");
-const isMSI = Deno.args.includes("--msi");
-const isLinux = Deno.args.includes("--linux");
-const disableUpdater = Deno.args.includes("--disable-updater");
+const isNSIS = process.argv.slice(2).includes("--nsis");
+const isMSI = process.argv.slice(2).includes("--msi");
+const isLinux = process.argv.slice(2).includes("--linux");
+const disableUpdater = process.argv.slice(2).includes("--disable-updater");
 
 async function main() {
   consola.debug("Read config...");
-  const tauriAppConf = JSON.parse(await Deno.readTextFile(TAURI_APP_CONF));
+  const tauriAppConf = JSON.parse(await readFile(TAURI_APP_CONF, "utf8"));
   const tauriAppOverrides = JSON.parse(
-    await Deno.readTextFile(TAURI_DEV_APP_OVERRIDES_PATH),
+    await readFile(TAURI_DEV_APP_OVERRIDES_PATH, "utf8"),
   );
   const tauriConf = merge(tauriAppConf, tauriAppOverrides);
   const packageJson = JSON.parse(
-    await Deno.readTextFile(NYANPASU_PACKAGE_JSON_PATH),
+    await readFile(NYANPASU_PACKAGE_JSON_PATH, "utf8"),
   );
   const rootPackageJson = JSON.parse(
-    await Deno.readTextFile(ROOT_PACKAGE_JSON_PATH),
+    await readFile(ROOT_PACKAGE_JSON_PATH, "utf8"),
   );
 
   if (isNSIS) {
@@ -47,14 +49,13 @@ async function main() {
   }
 
   consola.debug("Get current git short hash");
-  const gitResult = await new Deno.Command("git", {
+  const gitResult = await runCommand("git", {
     args: ["rev-parse", "HEAD"],
     stdout: "piped",
-  }).output();
+  });
   // `--short` scales with the clone's object count, so shallow build jobs and
   // the full-history updater job disagree; the signed version must match both.
-  const GIT_SHORT_HASH = new TextDecoder()
-    .decode(gitResult.stdout)
+  const GIT_SHORT_HASH = gitResult.stdout.toString("utf8")
     .trim()
     .slice(0, 7);
   consola.debug(`Current git short hash: ${GIT_SHORT_HASH}`);
@@ -71,20 +72,17 @@ async function main() {
   } else if (!isNSIS && !isMSI) {
     tauriConf.version = version;
   }
-  await Deno.writeTextFile(
-    TAURI_DEV_APP_CONF_PATH,
-    JSON.stringify(tauriConf, null, 2),
-  );
+  await writeFile(TAURI_DEV_APP_CONF_PATH, JSON.stringify(tauriConf, null, 2));
   consola.debug("tauri.nightly.conf.json updated");
 
   consola.debug("Write tauri version to package.json");
   packageJson.version = version;
-  await Deno.writeTextFile(
+  await writeFile(
     NYANPASU_PACKAGE_JSON_PATH,
     JSON.stringify(packageJson, null, 2),
   );
   rootPackageJson.version = version;
-  await Deno.writeTextFile(
+  await writeFile(
     ROOT_PACKAGE_JSON_PATH,
     JSON.stringify(rootPackageJson, null, 2),
   );

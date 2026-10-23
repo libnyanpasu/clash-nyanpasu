@@ -1,8 +1,19 @@
+import { fileURLToPath } from "node:url";
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
-import * as path from "jsr:@std/path";
-import { ensureDir } from "jsr:@std/fs";
+import * as path from "node:path";
 import AdmZip from "npm:adm-zip";
 import { createPortableArchive } from "./portable.ts";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { runCommand } from "../shared/command.ts";
 const FIXED_WEBVIEW_DIR = "WebView2";
 
 const tauriSource = new URL("../../../backend/tauri/", import.meta.url);
@@ -33,9 +44,9 @@ function mergeConfig(...configs: Record<string, unknown>[]) {
 async function withFixture(
   run: (directory: string) => Promise<void>,
 ) {
-  const directory = await Deno.makeTempDir({ prefix: "nyanpasu-bundle-test-" });
+  const directory = await mkdtemp(path.join(tmpdir(), "nyanpasu-bundle-test-"));
   try {
-    await ensureDir(path.join(directory, "overrides"));
+    await mkdir(path.join(directory, "overrides"), { recursive: true });
     for (
       const file of [
         "tauri.conf.json",
@@ -44,28 +55,25 @@ async function withFixture(
         "overrides/nightly.conf.json",
       ]
     ) {
-      await Deno.copyFile(
-        new URL(file, tauriSource),
-        path.join(directory, file),
-      );
+      await copyFile(new URL(file, tauriSource), path.join(directory, file));
     }
     await run(directory);
   } finally {
-    await Deno.remove(directory, { recursive: true });
+    await rm(directory, { recursive: true });
   }
 }
 
 async function addRuntime(directory: string) {
   const runtime = path.join(directory, FIXED_WEBVIEW_DIR);
-  await ensureDir(path.join(runtime, "locales"));
-  await Deno.writeTextFile(path.join(runtime, "msedgewebview2.exe"), "runtime");
-  await Deno.writeTextFile(path.join(runtime, "locales/en-US.pak"), "locale");
+  await mkdir(path.join(runtime, "locales"), { recursive: true });
+  await writeFile(path.join(runtime, "msedgewebview2.exe"), "runtime");
+  await writeFile(path.join(runtime, "locales/en-US.pak"), "locale");
 }
 
 Deno.test("fixed packaging changes only WebView2 mode and keeps shared update URLs", async () => {
   await withFixture(async (directory) => {
     const read = async (file: string) =>
-      JSON.parse(await Deno.readTextFile(path.join(directory, file)));
+      JSON.parse(await readFile(path.join(directory, file), "utf8"));
     const base = await read("tauri.conf.json");
     const windows = await read("tauri.windows.conf.json");
     const fixed = await read("overrides/fixed-webview2.conf.json");
@@ -97,9 +105,9 @@ Deno.test("fixed packaging changes only WebView2 mode and keeps shared update UR
 Deno.test("shared release preparation preserves Linux and macOS config without Windows assets", async () => {
   await withFixture(async (directory) => {
     const tauriDir = path.join(directory, "backend/tauri");
-    await ensureDir(tauriDir);
+    await mkdir(tauriDir, { recursive: true });
     const manifest = '{"name":"release-fixture","version":"1.2.3"}\n';
-    await Deno.writeTextFile(path.join(directory, "package.json"), manifest);
+    await writeFile(path.join(directory, "package.json"), manifest);
     for (const targets of [["deb", "appimage", "rpm"], ["app", "dmg"]]) {
       const config = {
         version: "1.2.3",
@@ -108,35 +116,35 @@ Deno.test("shared release preparation preserves Linux and macOS config without W
           updater: { endpoints: ["https://example.com/update.json"] },
         },
       };
-      await Deno.writeTextFile(
+      await writeFile(
         path.join(tauriDir, "tauri.conf.json"),
         JSON.stringify(config),
       );
-      const result = await new Deno.Command(Deno.execPath(), {
+      const result = await runCommand(Deno.execPath(), {
         args: [
           "run",
           "--config",
-          path.fromFileUrl(new URL("../../deno.jsonc", import.meta.url)),
+          fileURLToPath(new URL("../../deno.jsonc", import.meta.url)),
           "-A",
-          path.fromFileUrl(new URL("prepare-release.ts", import.meta.url)),
+          fileURLToPath(new URL("prepare-release.ts", import.meta.url)),
         ],
         cwd: directory,
         stdout: "piped",
         stderr: "piped",
-      }).output();
-      assert(result.success, new TextDecoder().decode(result.stderr));
+      });
+      assert(result.success, result.stderr.toString("utf8"));
       assertEquals(
         JSON.parse(
-          await Deno.readTextFile(path.join(tauriDir, "tauri.conf.json")),
+          await readFile(path.join(tauriDir, "tauri.conf.json"), "utf8"),
         ),
         config,
       );
       assertEquals(
-        await Deno.readTextFile(path.join(directory, "package.json")),
+        await readFile(path.join(directory, "package.json"), "utf8"),
         manifest,
       );
       assertEquals(
-        Array.from(Deno.readDirSync(tauriDir)).map((entry) => entry.name),
+        await readdir(tauriDir),
         ["tauri.conf.json"],
       );
     }
@@ -147,7 +155,7 @@ Deno.test("portable archives reuse the application and differ only by bundled ru
   await withFixture(async (directory) => {
     await addRuntime(directory);
     const buildDir = path.join(directory, "target/release");
-    await ensureDir(path.join(buildDir, "resources"));
+    await mkdir(path.join(buildDir, "resources"), { recursive: true });
     const binaryNames = [
       "Clash Nyanpasu.exe",
       "clash.exe",
@@ -158,12 +166,9 @@ Deno.test("portable archives reuse the application and differ only by bundled ru
       "clash-rs-alpha.exe",
     ];
     for (const name of binaryNames) {
-      await Deno.writeTextFile(path.join(buildDir, name), `binary:${name}`);
+      await writeFile(path.join(buildDir, name), `binary:${name}`);
     }
-    await Deno.writeTextFile(
-      path.join(buildDir, "resources/geoip.dat"),
-      "geoip",
-    );
+    await writeFile(path.join(buildDir, "resources/geoip.dat"), "geoip");
     for (
       const variant of ["fixed-webview", "standard", "fixed-webview"] as const
     ) {
@@ -203,7 +208,7 @@ Deno.test("portable archives reuse the application and differ only by bundled ru
           : [],
       );
     }
-    await Deno.remove(path.join(directory, FIXED_WEBVIEW_DIR), {
+    await rm(path.join(directory, FIXED_WEBVIEW_DIR), {
       recursive: true,
     });
     await assertRejects(
@@ -213,7 +218,7 @@ Deno.test("portable archives reuse the application and differ only by bundled ru
     );
     await createPortableArchive(buildDir, directory, "standard");
     assertEquals(
-      await Deno.readTextFile(path.join(buildDir, "Clash Nyanpasu.exe")),
+      await readFile(path.join(buildDir, "Clash Nyanpasu.exe"), "utf8"),
       "binary:Clash Nyanpasu.exe",
     );
   });

@@ -1,7 +1,8 @@
-import * as path from "jsr:@std/path";
-import { ensureDir, exists } from "jsr:@std/fs";
+import * as path from "node:path";
+import { pathExists } from "../shared/path-exists.ts";
 import AdmZip from "npm:adm-zip";
 import { consola } from "../shared/logger.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const FIXED_WEBVIEW_DIR = "WebView2";
 type WindowsBundleVariant = "standard" | "fixed-webview";
@@ -13,16 +14,16 @@ export async function createPortableArchive(
 ): Promise<AdmZip> {
   const configDir = path.join(buildDir, ".config");
 
-  if (!(await exists(buildDir))) {
+  if (!(await pathExists(buildDir))) {
     throw new Error("could not found the release dir");
   }
 
-  await ensureDir(configDir);
-  await Deno.writeTextFile(path.join(configDir, "PORTABLE"), "");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(path.join(configDir, "PORTABLE"), "");
 
   const zip = new AdmZip();
   let mainEntryPath = path.join(buildDir, "Clash Nyanpasu.exe");
-  if (!(await exists(mainEntryPath))) {
+  if (!(await pathExists(mainEntryPath))) {
     mainEntryPath = path.join(buildDir, "clash-nyanpasu.exe");
   }
   zip.addLocalFile(mainEntryPath);
@@ -36,7 +37,7 @@ export async function createPortableArchive(
 
   if (variant === "fixed-webview") {
     const webviewPath = path.join(tauriDir, FIXED_WEBVIEW_DIR);
-    if (!(await exists(path.join(webviewPath, "msedgewebview2.exe")))) {
+    if (!(await pathExists(path.join(webviewPath, "msedgewebview2.exe")))) {
       throw new Error("WebView2 runtime not found");
     }
     zip.addLocalFolder(
@@ -50,11 +51,11 @@ export async function createPortableArchive(
 }
 
 async function resolvePortable() {
-  if (Deno.build.os !== "windows") return;
+  if (process.platform !== "win32") return;
 
-  const cwd = Deno.cwd();
-  const rustArch = Deno.env.get("RUST_ARCH") ?? "x86_64";
-  const variant = Deno.args.includes("--fixed-webview")
+  const cwd = process.cwd();
+  const rustArch = process.env["RUST_ARCH"] ?? "x86_64";
+  const variant = process.argv.slice(2).includes("--fixed-webview")
     ? "fixed-webview"
     : "standard";
   const buildDir = rustArch === "x86_64"
@@ -67,7 +68,7 @@ async function resolvePortable() {
   );
 
   const packageJson = JSON.parse(
-    await Deno.readTextFile(path.join(cwd, "package.json")),
+    await readFile(path.join(cwd, "package.json"), "utf8"),
   );
   const version = packageJson.version;
 
@@ -82,6 +83,6 @@ async function resolvePortable() {
 if (import.meta.main) {
   resolvePortable().catch((err) => {
     consola.error(err);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

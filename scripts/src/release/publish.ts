@@ -1,7 +1,8 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import semver from "npm:semver";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 
-const cwd = Deno.cwd();
+const cwd = process.cwd();
 const TAURI_APP_DIR = path.join(cwd, "backend/tauri");
 const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");
 const TAURI_NIGHTLY_APP_CONF_PATH = path.join(
@@ -49,12 +50,12 @@ export function resolveNextVersions(
 }
 
 async function resolvePublish() {
-  const releaseType = (Deno.args[0] ?? "patch") as ReleaseType;
-  const preid = (Deno.args[1] ?? "beta") as PrereleaseId;
-  const packageJson = JSON.parse(await Deno.readTextFile(PACKAGE_JSON_PATH));
-  const tauriJson = JSON.parse(await Deno.readTextFile(TAURI_APP_CONF_PATH));
+  const releaseType = (process.argv.slice(2)[0] ?? "patch") as ReleaseType;
+  const preid = (process.argv.slice(2)[1] ?? "beta") as PrereleaseId;
+  const packageJson = JSON.parse(await readFile(PACKAGE_JSON_PATH, "utf8"));
+  const tauriJson = JSON.parse(await readFile(TAURI_APP_CONF_PATH, "utf8"));
   const tauriNightlyJson = JSON.parse(
-    await Deno.readTextFile(TAURI_NIGHTLY_APP_CONF_PATH),
+    await readFile(TAURI_NIGHTLY_APP_CONF_PATH, "utf8"),
   );
 
   const { version: nextVersion, nightlyVersion: nextNightlyVersion } =
@@ -64,21 +65,19 @@ async function resolvePublish() {
   tauriJson.version = nextVersion;
   tauriNightlyJson.version = nextNightlyVersion;
 
-  await Deno.writeTextFile(
-    PACKAGE_JSON_PATH,
-    JSON.stringify(packageJson, null, 2),
-  );
-  await Deno.writeTextFile(
-    TAURI_APP_CONF_PATH,
-    JSON.stringify(tauriJson, null, 2),
-  );
-  await Deno.writeTextFile(
+  await writeFile(PACKAGE_JSON_PATH, JSON.stringify(packageJson, null, 2));
+  await writeFile(TAURI_APP_CONF_PATH, JSON.stringify(tauriJson, null, 2));
+  await writeFile(
     TAURI_NIGHTLY_APP_CONF_PATH,
     JSON.stringify(tauriNightlyJson, null, 2),
   );
 
-  for await (const entry of Deno.readDir(path.join(cwd, "frontend"))) {
-    if (!entry.isDirectory) continue;
+  for (
+    const entry of await readdir(path.join(cwd, "frontend"), {
+      withFileTypes: true,
+    })
+  ) {
+    if (!entry.isDirectory()) continue;
     const monoRepoPackageJsonPath = path.join(
       cwd,
       "frontend",
@@ -87,10 +86,10 @@ async function resolvePublish() {
     );
     try {
       const monoRepoPackageJson = JSON.parse(
-        await Deno.readTextFile(monoRepoPackageJsonPath),
+        await readFile(monoRepoPackageJsonPath, "utf8"),
       );
       monoRepoPackageJson.version = nextVersion;
-      await Deno.writeTextFile(
+      await writeFile(
         monoRepoPackageJsonPath,
         JSON.stringify(monoRepoPackageJson, null, 2),
       );

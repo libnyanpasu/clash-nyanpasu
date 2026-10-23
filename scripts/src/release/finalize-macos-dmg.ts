@@ -1,6 +1,15 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { globby } from "npm:globby";
 import { consola } from "../shared/logger.ts";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { runCommand } from "../shared/command.ts";
 
 // create-dmg puts .background beyond the window's right edge. Finder includes
 // that hidden item's saved location when calculating its horizontal scroll range.
@@ -33,27 +42,24 @@ export function containBackgroundIcon(bytes: Uint8Array): Uint8Array {
 }
 
 async function run(args: string[]) {
-  const result = await new Deno.Command("hdiutil", {
+  const result = await runCommand("hdiutil", {
     args,
     stdout: "piped",
     stderr: "piped",
-  }).output();
+  });
   if (!result.success) {
-    throw new Error(new TextDecoder().decode(result.stderr));
+    throw new Error(result.stderr.toString("utf8"));
   }
 }
 
 export async function finalizeDmg(file: string) {
-  const work = await Deno.makeTempDir({
-    dir: path.dirname(file),
-    prefix: ".nyanpasu-dmg-",
-  });
+  const work = await mkdtemp(path.join(path.dirname(file), ".nyanpasu-dmg-"));
   const mount = path.join(work, "mount");
   const writable = path.join(work, "writable.dmg");
   const finished = path.join(work, "finished.dmg");
   let attached = false;
   try {
-    await Deno.mkdir(mount);
+    await mkdir(mount);
     await run(["convert", file, "-format", "UDRW", "-o", writable]);
     await run([
       "attach",
@@ -66,31 +72,28 @@ export async function finalizeDmg(file: string) {
     ]);
     attached = true;
     const store = path.join(mount, ".DS_Store");
-    await Deno.writeFile(
-      store,
-      containBackgroundIcon(await Deno.readFile(store)),
-    );
+    await writeFile(store, containBackgroundIcon(await readFile(store)));
     await run(["detach", mount]);
     attached = false;
     await run(["convert", writable, "-format", "UDZO", "-o", finished]);
     await run(["verify", finished]);
     // Never replace the original until conversion and verification succeed.
-    await Deno.rename(finished, file);
+    await rename(finished, file);
     consola.success(
       `Contained hidden background icon in ${path.basename(file)}`,
     );
   } finally {
     if (attached) await run(["detach", mount]);
-    await Deno.remove(work, { recursive: true });
+    await rm(work, { recursive: true });
   }
 }
 
 if (import.meta.main) {
-  if (Deno.build.os !== "darwin") {
+  if (process.platform !== "darwin") {
     throw new Error("DMG finalization requires macOS");
   }
-  const files = Deno.args.length
-    ? Deno.args.map((file) => path.resolve(file))
+  const files = process.argv.slice(2).length
+    ? process.argv.slice(2).map((file) => path.resolve(file))
     : await globby("backend/target/**/bundle/dmg/*.dmg", { absolute: true });
   if (files.length === 0) throw new Error("No DMG packages found");
   for (const file of files) await finalizeDmg(file);

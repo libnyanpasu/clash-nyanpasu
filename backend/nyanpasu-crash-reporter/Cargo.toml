@@ -22,7 +22,7 @@ i-slint-backend-winit = { version = '=1.18.1', default-features = false, feature
 # The version and features Slint's winit backend already links.
 arboard = { version = '3.6', default-features = false }
 # The version Slint resolves system fonts with, to pick the monospace family.
-fontique = '0.11.1'
+fontique = '0.12.0'
 serde = { version = '1', features = ['derive'] }
 open = '5'
 # Selects the archive in the file manager, the way Tauri's opener plugin does,

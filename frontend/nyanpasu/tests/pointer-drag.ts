@@ -38,6 +38,15 @@ export const drag = async (source: Element, target: Element) => {
   const from = centerOf(source)
   const to = centerOf(target)
 
+  // Synthetic events do not scroll off-screen elements into view. Starting
+  // outside the viewport makes dnd-kit's auto-scroll change the drop geometry.
+  for (const point of [from, to]) {
+    expect(point.x).toBeGreaterThanOrEqual(0)
+    expect(point.x).toBeLessThan(window.innerWidth)
+    expect(point.y).toBeGreaterThanOrEqual(0)
+    expect(point.y).toBeLessThan(window.innerHeight)
+  }
+
   send('pointerdown', source, from)
 
   const steps = 12

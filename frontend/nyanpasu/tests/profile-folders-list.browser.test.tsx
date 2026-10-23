@@ -84,7 +84,9 @@ const renderPage = async ({
   initialFolders?: ProfileFolder[]
   storage?: Record<string, unknown>
 } = {}) => {
-  await page.viewport(1400, 1000)
+  // Keep every section in view: the pointer helper must not start a drag
+  // below the viewport or race the auto-scroller on its way to the sidebar.
+  await page.viewport(1400, 1800)
 
   const ungrouped = ['d', 'e']
   let document = {
@@ -171,7 +173,7 @@ const renderPage = async ({
                   <div>
                     <ProfilesLayoutProvider>
                       <ProfilesDndProvider>
-                        <div className="flex h-[900px]">
+                        <div className="flex h-[1700px]">
                           <aside
                             className="w-72 shrink-0"
                             data-testid="sidebar"

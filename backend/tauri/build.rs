@@ -18,7 +18,31 @@ struct GitInfo {
     time: String,
 }
 
+#[derive(Deserialize)]
+struct CargoLock {
+    package: Vec<LockedPackage>,
+}
+
+#[derive(Deserialize)]
+struct LockedPackage {
+    name: String,
+    version: String,
+}
+
 fn main() {
+    println!("cargo:rerun-if-changed=../Cargo.lock");
+    let wry_version = std::fs::read_to_string("../Cargo.lock")
+        .ok()
+        .and_then(|source| toml::from_str::<CargoLock>(&source).ok())
+        .and_then(|lock| {
+            lock.package
+                .into_iter()
+                .find(|package| package.name == "wry")
+        })
+        .map(|package| package.version)
+        .unwrap_or_else(|| "unknown".to_owned());
+    println!("cargo:rustc-env=WRY_VERSION={wry_version}");
+
     let version: String = if let Ok(true) = exists("../../package.json") {
         let raw = read("../../package.json").unwrap();
         let pkg_json: PackageJson = serde_json::from_slice(&raw).unwrap();

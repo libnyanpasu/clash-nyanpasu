@@ -203,8 +203,6 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
-    collectEnvs: () =>
-      typedError<EnvInfo, IpcError>(__RPC_INVOKE('collect_envs')),
     getCachedIcon: (url: string) =>
       typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
     getTrayIcon: (mode: TrayIcon) =>
@@ -477,6 +475,8 @@ export function createRpcClient(
     updateCore: (coreType: ClashCore_Deserialize) =>
       typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
     collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+    reportIssue: (page: PageCapabilities) =>
+      typedError<null, IpcError>(__RPC_INVOKE('report_issue', { page })),
     setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
@@ -791,6 +791,11 @@ export type AppUpdateSnapshot = {
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
 
+export type BrandVersion = {
+  brand: string
+  version: string
+}
+
 export type BreakConnectionStrategy = {
   /**  切换代理时中断连接 */
   on_proxy_change: ProxyChangeBreakMode
@@ -814,20 +819,6 @@ export type BreakConnectionStrategyPatch_Serialize = {
   on_proxy_change?: ProxyChangeBreakMode | null
   on_profile_change?: boolean | null
   on_mode_change?: boolean | null
-}
-
-export type BuildInfo = {
-  app_name: string
-  app_version: string
-  pkg_version: string
-  commit_hash: string
-  commit_author: string
-  commit_date: string
-  build_date: string
-  build_profile: string
-  build_platform: string
-  rustc_version: string
-  llvm_version: string
 }
 
 /**  Built-in post-processing steps applied to the selected config. */
@@ -1963,16 +1954,6 @@ export type DelayHistory = {
   delay: number
 }
 
-export type DeviceInfo = {
-  /**  Device name, such as "Intel Core i5-8250U CPU @ 1.60GHz x 8" */
-  cpu: string[]
-  /**
-   *  GPU name, such as "Intel UHD Graphics 620 (Kabylake GT2)"
-   *  Memory size in bytes
-   */
-  memory: string
-}
-
 /**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
 export type Dimension =
   /**  Derived: the process when known, else the source. */
@@ -2121,26 +2102,6 @@ export type EndpointConnectivity =
    *  router never falls back on its own.
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
-
-export type EnvInfo = {
-  os: string
-  arch: string
-  core: { [key in string]: string }
-  device: DeviceInfo
-  build_info: {
-    app_name: string
-    app_version: string
-    pkg_version: string
-    commit_hash: string
-    commit_author: string
-    commit_date: string
-    build_date: string
-    build_profile: string
-    build_platform: string
-    rustc_version: string
-    llvm_version: string
-  }
-}
 
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
@@ -3219,6 +3180,15 @@ export type OverlayTransform_Deserialize = {
 
 export type OverlayTransform_Serialize = {
   source: ProfileSource_Serialize
+}
+
+export type PageCapabilities = {
+  userAgent?: string | null
+  fullVersionList?: BrandVersion[] | null
+  platformVersion?: string | null
+  webgl?: WebGl | null
+  webgpu?: WebGpu | null
+  devicePixelRatio?: number | null
 }
 
 export type PickPortError =
@@ -5268,6 +5238,23 @@ export type UsagePage = {
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
+
+export type WebGl = {
+  vendor?: string | null
+  renderer?: string | null
+}
+
+export type WebGpu = {
+  available: boolean
+  adapter?: WebGpuAdapter | null
+}
+
+export type WebGpuAdapter = {
+  vendor?: string | null
+  architecture?: string | null
+  device?: string | null
+  description?: string | null
+}
 
 /**  What closing a window does. */
 export type WindowCloseBehavior =

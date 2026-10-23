@@ -95,6 +95,7 @@ backtrace:
             consts::BUILD_INFO.commit_hash,
         );
         let details = nyanpasu_crash_reporter::PanicDetails {
+            parent_pid: std::process::id(),
             payload: payload.map(str::to_owned),
             location: location.clone(),
             backtrace: backtrace.to_string(),

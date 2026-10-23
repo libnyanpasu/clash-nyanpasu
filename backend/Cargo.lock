@@ -1821,7 +1821,6 @@ dependencies = [
  "glob",
  "hex",
  "http-body-util",
- "humansize",
  "image",
  "indexmap 2.14.2",
  "inventory",
@@ -1839,6 +1838,7 @@ dependencies = [
  "nyanpasu-core",
  "nyanpasu-core-manager",
  "nyanpasu-crash-reporter",
+ "nyanpasu-diagnose",
  "nyanpasu-geodata",
  "nyanpasu-ipc",
  "nyanpasu-jobs",
@@ -1913,6 +1913,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "tokio-util",
+ "toml 1.1.6+spec-1.1.0",
  "tower",
  "tracing",
  "tracing-appender",
@@ -6863,7 +6864,10 @@ dependencies = [
  "arboard",
  "fontique",
  "i-slint-backend-winit",
+ "nyanpasu-diagnose",
  "open",
+ "opener",
+ "png",
  "serde",
  "serde_json",
  "slint",
@@ -7722,6 +7726,18 @@ dependencies = [
  "dunce",
  "is-wsl",
  "libc",
+]
+
+[[package]]
+name = "opener"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c826edd923022c3907477383fc77708fa68807170754fe7be1fd3496c57a1f1c"
+dependencies = [
+ "normpath",
+ "url",
+ "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]
@@ -14811,6 +14827,7 @@ dependencies = [
  "endi",
  "enumflags2",
  "serde",
+ "url",
  "winnow 1.0.4",
  "zcheapstr",
  "zvariant_derive",

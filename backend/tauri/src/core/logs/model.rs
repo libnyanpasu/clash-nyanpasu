@@ -173,3 +173,10 @@ pub(super) fn truncate_preview(value: &mut String) -> bool {
     value.shrink_to_fit();
     true
 }
+
+/// Bounded, already redacted lines, each ending in a newline, in chronological order.
+#[derive(Debug, Default)]
+pub struct CoreLogExport {
+    pub lines: Vec<String>,
+    pub truncated: bool,
+}

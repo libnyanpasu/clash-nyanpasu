@@ -81,6 +81,13 @@ impl ServiceLogsPort for IpcServiceLogs {
     }
 }
 impl NyanpasuClient {
+    pub async fn export_core_logs(
+        &self,
+        home: Option<String>,
+    ) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogExport> {
+        self.inner.core_logs.export(home).await
+    }
+
     pub async fn list_log_files(&self, source: LogSource) -> LogResult<Vec<LogFileInfo>> {
         match source {
             LogSource::App => self.inner.app_logs.catalog().await,

@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 use super::{
     codec::{LogDecoder, LogEncoder, original_size},
@@ -49,6 +49,16 @@ fn map_error(error: anyhow::Error) -> CoreLogError {
 
 impl RedbCoreLogStore {
     pub fn open(directory: PathBuf) -> Result<Self> {
+        Self::open_mode(directory, false)
+    }
+
+    /// Opens prior-session shards without removing them. The caller waits for the
+    /// parent before taking the same exclusive owner lock as the capture actor.
+    pub fn open_for_export(directory: PathBuf) -> Result<Self> {
+        Self::open_mode(directory, true)
+    }
+
+    fn open_mode(directory: PathBuf, preserve: bool) -> Result<Self> {
         fs::create_dir_all(&directory)?;
         let lock = OpenOptions::new()
             .read(true)
@@ -70,11 +80,13 @@ impl RedbCoreLogStore {
                 .is_some_and(|(generation, sequence)| {
                     uuid::Uuid::parse_str(generation).is_ok() && sequence.parse::<u64>().is_ok()
                 });
-            if matches!(name, "current.redb" | "control.json" | "control.tmp") || old_shard {
+            if !preserve
+                && (matches!(name, "current.redb" | "control.json" | "control.tmp") || old_shard)
+            {
                 fs::remove_file(entry.path())?;
             }
         }
-        Ok(Self {
+        let mut store = Self {
             directory,
             database: None,
             _lock: lock,
@@ -83,7 +95,31 @@ impl RedbCoreLogStore {
             settings: CoreLogSettings::default(),
             shards: VecDeque::new(),
             encoder: LogEncoder::new(CoreLogSettings::default().compression)?,
-        })
+        };
+        if preserve {
+            let mut shards = Vec::new();
+            for entry in fs::read_dir(&store.directory)? {
+                let path = entry?.path();
+                if path.extension().is_none_or(|ext| ext != "redb") {
+                    continue;
+                }
+                let database = Self::database_builder().open(&path)?;
+                let transaction = database.begin_read()?;
+                let logs = transaction.open_table(LOGS)?;
+                if let (Some(first), Some(head)) = (logs.first()?, logs.last()?) {
+                    shards.push(Shard {
+                        first: first.0.value(),
+                        head: head.0.value(),
+                        bytes: fs::metadata(&path)?.len(),
+                        path,
+                    });
+                }
+            }
+            shards.sort_by_key(|shard| shard.first);
+            store.head = shards.last().map_or(0, |shard| shard.head);
+            store.shards = shards.into();
+        }
+        Ok(store)
     }
 
     fn cursor(&self, sequence: u64) -> CoreLogCursor {
@@ -188,6 +224,62 @@ impl RedbCoreLogStore {
             self.rotate()?;
         }
         Ok(())
+    }
+
+    fn export_logs(&self, home: Option<String>) -> Result<CoreLogExport> {
+        use nyanpasu_config::redact::redact_text;
+        use nyanpasu_diagnose::archive::{LOG_AGE, LOG_CAP};
+        let cutoff = chrono::Utc::now().timestamp_millis() - LOG_AGE.as_millis() as i64;
+        let mut lines = Vec::new();
+        let mut bytes = 0;
+        let mut truncated = false;
+        'shards: for shard in self.shards.iter().rev() {
+            let opened;
+            let database = if let Some(database) = self
+                .database
+                .as_ref()
+                .filter(|_| shard.path == self.directory.join("current.redb"))
+            {
+                database
+            } else {
+                opened = Self::database_builder().open(&shard.path)?;
+                &opened
+            };
+            let transaction = database.begin_read()?;
+            let dictionary = transaction.open_table(DICTIONARY)?;
+            let dictionary = dictionary.get(0)?.context("Core log dictionary missing")?;
+            let mut decoder = LogDecoder::new(dictionary.value())?;
+            let logs = transaction.open_table(LOGS)?;
+            for item in logs.iter()?.rev() {
+                let (_, value) = item?;
+                let record: CoreLogRecord =
+                    serde_json::from_slice(&decoder.decode(value.value())?)?;
+                if record.received_at < cutoff {
+                    break 'shards;
+                }
+                let time = record.time.unwrap_or_else(|| {
+                    chrono::DateTime::from_timestamp_millis(record.received_at)
+                        .map(|time| time.to_rfc3339())
+                        .unwrap_or_else(|| record.received_at.to_string())
+                });
+                // A stored payload may contain newlines; each exported record is one line.
+                let payload = record.payload.replace(['\r', '\n'], " ");
+                let line = format!(
+                    "{} {} {}\n",
+                    time,
+                    record.log_type,
+                    redact_text(&payload, home.as_deref())
+                );
+                if bytes + line.len() as u64 > LOG_CAP {
+                    truncated = true;
+                    break 'shards;
+                }
+                bytes += line.len() as u64;
+                lines.push(line);
+            }
+        }
+        lines.reverse();
+        Ok(CoreLogExport { lines, truncated })
     }
 
     fn validate_cursor(&self, cursor: &CoreLogCursor) -> Result<()> {
@@ -409,6 +501,9 @@ impl RedbCoreLogStore {
 }
 
 impl CoreLogStore for RedbCoreLogStore {
+    fn export(&mut self, home: Option<String>) -> CoreLogResult<CoreLogExport> {
+        self.export_logs(home).map_err(map_error)
+    }
     fn configure(&mut self, settings: CoreLogSettings) -> CoreLogResult<()> {
         settings
             .validate()

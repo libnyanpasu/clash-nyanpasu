@@ -8,6 +8,11 @@ pub trait CoreLogStore: Send + 'static {
     fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()>;
     fn query(&mut self, query: CoreLogQuery) -> CoreLogResult<CoreLogPage>;
     fn detail(&mut self, cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord>;
+    fn export(&mut self, _home: Option<String>) -> CoreLogResult<CoreLogExport> {
+        Err(CoreLogError::Unavailable(
+            "Core log export unavailable".into(),
+        ))
+    }
     fn clear(&mut self) -> CoreLogResult<()>;
     fn status(&mut self) -> CoreLogResult<CoreLogStatus>;
 }

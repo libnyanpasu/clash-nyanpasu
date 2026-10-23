@@ -1,6 +1,6 @@
 //! Renders the window with the software renderer, without an OS window.
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 use slint::{
     ComponentHandle as _, PhysicalSize, PlatformError,
@@ -10,11 +10,16 @@ use slint::{
     },
 };
 
-use crate::{CrashReport, PanicDetails, ReporterText, fill_window, ui};
+use crate::{CrashReport, PanicDetails, ReporterInput, ReporterText, fill_window, ui};
 
-struct HeadlessPlatform;
+struct HeadlessPlatform {
+    clock: Rc<Cell<Duration>>,
+}
 
 impl Platform for HeadlessPlatform {
+    fn duration_since_start(&self) -> Duration {
+        self.clock.get()
+    }
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
         Ok(MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer))
     }
@@ -25,6 +30,7 @@ fn sample() -> CrashReport {
         app: "2.0.0-alpha+autobuild.1023 (e8fe65e31)".into(),
         os: "Windows 11 Pro 26300 (x86_64)".into(),
         panic: PanicDetails {
+            parent_pid: 123,
             payload: Some("index out of bounds: the len is 269 but the index is 269".into()),
             location: Some("nyanpasu-tsdb\\src\\catalog\\paged.rs:505:9".into()),
             backtrace: (0..60_u32)
@@ -49,15 +55,32 @@ fn text(locale: &str) -> ReporterText {
     let strings = &json["dialog"]["crash_reporter"];
     let get = |key: &str| strings[key].as_str().unwrap().to_owned();
     ReporterText {
+        manual_heading: get("manual_heading"),
+        manual_description: get("manual_description"),
+        collecting: get("collecting"),
+        steps: [
+            get("step_host"),
+            get("step_webview"),
+            get("step_core"),
+            get("step_app_logs"),
+            get("step_core_logs"),
+        ],
+        ready: get("ready"),
+        failed: get("failed"),
+        interrupted: get("interrupted"),
+        show_in_folder: get("show_in_folder"),
         heading: get("heading"),
         description: get("description"),
         version: get("version"),
         system: get("system"),
         error: get("error"),
         location: get("location"),
-        report: get("report"),
+        backtrace: get("backtrace"),
+        environment: get("environment"),
         copy: get("copy"),
         copied: get("copied"),
+        copy_section: get("copy_section"),
+        section_copied: get("section_copied"),
         copy_failed: get("copy_failed"),
         close: get("close"),
         report_issue: get("report_issue"),
@@ -70,10 +93,14 @@ fn text(locale: &str) -> ReporterText {
 /// One test: Slint's platform is per process and components stay on their thread.
 #[test]
 fn window_renders_in_both_schemes_and_scales() {
-    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let clock = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(HeadlessPlatform {
+        clock: clock.clone(),
+    }))
+    .unwrap();
     let window = ui::ReporterWindow::new().unwrap();
     for locale in ["en", "zh-cn"] {
-        fill_window(&window, &sample(), &text(locale));
+        fill_window(&window, &ReporterInput::Crash(sample()), &text(locale));
         for dark in [false, true] {
             window.global::<ui::Palette>().set_color_scheme(if dark {
                 slint::language::ColorScheme::Dark
@@ -97,15 +124,131 @@ fn window_renders_in_both_schemes_and_scales() {
         }
     }
 
+    // Crash/manual progress, finished, and partial-failure states. Preview output
+    // is opt-in so ordinary tests leave the checkout and user directories alone.
+    let preview = std::env::var_os("NYANPASU_DIAGNOSE_PREVIEW_DIR").map(std::path::PathBuf::from);
+    if let Some(path) = &preview {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    let order = [
+        crate::Step::Host,
+        crate::Step::Webview,
+        crate::Step::Core,
+        crate::Step::AppLogs,
+        crate::Step::CoreLogs,
+    ];
+    for locale in ["en", "zh-cn"] {
+        for dark in [false, true] {
+            if locale == "zh-cn" && dark {
+                continue;
+            }
+            for manual in [false, true] {
+                let input = if manual {
+                    ReporterInput::Manual {
+                        app: sample().app,
+                        os: sample().os,
+                    }
+                } else {
+                    ReporterInput::Crash(sample())
+                };
+                for state in ["progress", "finished", "failed"] {
+                    let window = ui::ReporterWindow::new().unwrap();
+                    let labels = text(locale);
+                    fill_window(&window, &input, &labels);
+                    window.global::<ui::Palette>().set_color_scheme(if dark {
+                        slint::language::ColorScheme::Dark
+                    } else {
+                        slint::language::ColorScheme::Light
+                    });
+                    window
+                        .window()
+                        .dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1. });
+                    window.window().set_size(PhysicalSize::new(720, 620));
+                    window.window().take_snapshot().unwrap();
+                    let event = if state == "progress" {
+                        crate::Event::Progress {
+                            step: crate::Step::Core,
+                            fraction: 0.,
+                        }
+                    } else {
+                        let environment = "----------- System -----------\nOS: Windows 11 Pro 26300\nArch: x86_64\n----------- Device -----------\nCPU: Test CPU @ 3.20GHz x 8\nMemory: 16 GiB\n";
+                        crate::Event::Finished {
+                            report: format!("{}{environment}{}", input.head(), input.tail()),
+                            environment: environment.into(),
+                            archive: Some("diagnostics.zip".into()),
+                            problems: if state == "failed" {
+                                vec![nyanpasu_diagnose::Problem {
+                                    step: crate::Step::CoreLogs,
+                                    message: "Store locked".into(),
+                                }]
+                            } else {
+                                vec![]
+                            },
+                        }
+                    };
+                    crate::apply_event(&window, event, &order, &crate::EventText::from(&labels));
+                    if state == "progress" {
+                        assert!((window.get_progress() - 0.4).abs() < 0.001);
+                        assert!(!window.get_finished());
+                    } else {
+                        assert!(window.get_finished());
+                        assert!(window.get_environment_text().starts_with("-----------"));
+                        // The finished crash previews show the environment pane.
+                        if !manual {
+                            window.set_pane(1);
+                        }
+                        assert_eq!(window.get_has_problems(), state == "failed");
+                        if state == "finished" {
+                            window.set_progress_label(format!("{} · 1.2 MiB", labels.ready).into());
+                        }
+                    }
+                    // Evaluate changed states, then advance beyond Fluent's 150ms
+                    // transitions. Preview pixels show the final enabled/disabled state.
+                    window.window().take_snapshot().unwrap();
+                    clock.set(clock.get() + Duration::from_secs(1));
+                    slint::platform::update_timers_and_animations();
+                    let pixels = window.window().take_snapshot().unwrap();
+                    assert_eq!(pixels.width(), 720);
+                    assert_eq!(pixels.height(), 620);
+                    if let Some(path) = &preview {
+                        let name = format!(
+                            "{locale}-{}-{}-{state}.png",
+                            if dark { "dark" } else { "light" },
+                            if manual { "manual" } else { "crash" }
+                        );
+                        let file = std::fs::File::create(path.join(name)).unwrap();
+                        let mut encoder = png::Encoder::new(file, pixels.width(), pixels.height());
+                        encoder.set_color(png::ColorType::Rgba);
+                        encoder.set_depth(png::BitDepth::Eight);
+                        encoder
+                            .write_header()
+                            .unwrap()
+                            .write_image_data(pixels.as_bytes())
+                            .unwrap();
+                    }
+                }
+            }
+        }
+    }
+    // A crash opens on its backtrace; the whole report is what gets copied.
+    fill_window(&window, &ReporterInput::Crash(sample()), &text("en"));
+    assert_eq!(window.get_pane(), 0);
+    assert_eq!(window.get_backtrace_text(), sample().text());
+    assert_eq!(window.get_report_text(), sample().text());
+
     // Every locale lays out at the smallest supported size, with a three-line error.
     let mut report = sample();
     report.panic.payload = Some("index out of bounds: ".repeat(40));
     for locale in ["en", "zh-cn", "zh-tw", "ja", "ko", "ru"] {
-        fill_window(&window, &report, &text(locale));
+        fill_window(
+            &window,
+            &ReporterInput::Crash(report.clone()),
+            &text(locale),
+        );
         window
             .window()
             .dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
-        window.window().set_size(PhysicalSize::new(520, 400));
+        window.window().set_size(PhysicalSize::new(520, 480));
         window.window().take_snapshot().unwrap();
     }
     window.set_monospace_font("Nyanpasu Missing Test Font".into());

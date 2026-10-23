@@ -217,9 +217,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         geo_index,
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-        core_versions: Arc::new(crate::utils::core_version::TauriCoreVersionReader::new(
-            app_handle.clone(),
-        )),
+        core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),
         accelerators: Arc::new(PlatformAcceleratorValidator),

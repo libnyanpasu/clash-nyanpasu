@@ -7,6 +7,7 @@ fn report(backtrace: &str) -> CrashReport {
         app: "2.0.0-alpha (e8fe65e31)".into(),
         os: "Windows 11 Pro (x86_64)".into(),
         panic: PanicDetails {
+            parent_pid: 123,
             payload: Some("index out of bounds\nsecond line & more".into()),
             location: Some("src/catalog.rs:505:9".into()),
             backtrace: backtrace.into(),
@@ -107,6 +108,7 @@ fn issue_title_is_cut_on_a_multibyte_character_boundary() {
 fn panic_details_json_round_trip() {
     for sample_payload in [None, Some("panic\n中文 & 🦀".into())] {
         let details = PanicDetails {
+            parent_pid: 123,
             payload: sample_payload,
             location: None,
             backtrace: "frame 0\r\nframe 1".into(),
@@ -125,4 +127,45 @@ fn oversized_metadata_makes_the_issue_url_unavailable() {
     report.panic.payload = Some("崩溃".repeat(1000));
     assert!(report.issue_url("bug_report.yaml").is_none());
     assert!(report.text().contains(report.payload()));
+}
+
+#[test]
+fn manual_issue_has_environment_without_crash_fields() {
+    let input = crate::ReporterInput::Manual {
+        app: "test".into(),
+        os: "test".into(),
+    };
+    let fields = fields(
+        &input
+            .issue_url(
+                "bug_report.yaml",
+                "----------- System -----------\nOS: Test",
+            )
+            .unwrap(),
+    );
+    assert_eq!(fields["title"], "");
+    assert!(!fields.contains_key("actual"));
+    assert!(!fields.contains_key("log"));
+    assert_eq!(
+        fields["env_infos"],
+        "> ----------- System -----------\n> OS: Test"
+    );
+}
+
+#[test]
+fn crash_issue_puts_the_environment_in_its_own_field() {
+    let input = crate::ReporterInput::Crash(report("  0: app.exe+0x123\n"));
+    let fields = fields(
+        &input
+            .issue_url(
+                "bug_report.yaml",
+                "----------- System -----------\nOS: Test\n",
+            )
+            .unwrap(),
+    );
+    assert_eq!(
+        fields["env_infos"],
+        "> ----------- System -----------\n> OS: Test"
+    );
+    assert!(fields["log"].contains("0: app.exe+0x123"));
 }

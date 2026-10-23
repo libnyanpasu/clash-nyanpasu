@@ -1,4 +1,5 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import { readFile } from "node:fs/promises";
+import { parseArgs } from "node:util";
 
 /** A Chromium trace event, as Playwright's `stopTracing` writes them. */
 export type TraceEvent = {
@@ -93,18 +94,20 @@ export function longestTasks(slices: Slice[], count = 3) {
  * with `PERF_TRACE=1`, and what each spent its time on.
  */
 export async function main(args: string[]): Promise<void> {
-  const parsed = parseArgs(args, {
-    string: ["tasks"],
-    default: { tasks: "3" },
+  const parsed = parseArgs({
+    args,
+    options: { tasks: { type: "string", default: "3" } },
+    allowPositionals: true,
+    strict: false,
   });
-  const count = Number(parsed.tasks);
-  const files = parsed._.map(String);
+  const count = Number(parsed.values.tasks);
+  const files = parsed.positionals;
   if (files.length === 0 || !Number.isInteger(count) || count < 1) {
     throw new Error("Usage: deno task bench:trace [--tasks 3] <trace.json>...");
   }
 
   for (const file of files) {
-    const trace = JSON.parse(await Deno.readTextFile(file));
+    const trace = JSON.parse(await readFile(file, "utf8"));
     const events =
       (Array.isArray(trace) ? trace : trace.traceEvents) as TraceEvent[];
     console.log(file);
@@ -118,8 +121,8 @@ export async function main(args: string[]): Promise<void> {
 }
 
 if (import.meta.main) {
-  main(Deno.args).catch((error) => {
+  main(process.argv.slice(2)).catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

@@ -1,4 +1,5 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import { parseArgs } from "node:util";
+import { exitStatus, runCommand, spawnCommand } from "../shared/command.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import { type CoreKind, pinCores } from "./cpu-cores.ts";
 
@@ -63,56 +64,49 @@ export function compare(runs: { variant: Variant; reports: Report[] }[]) {
 }
 
 async function git(args: string[]): Promise<string> {
-  const result = await new Deno.Command("git", {
+  const result = await runCommand("git", {
     args,
     cwd: WORKSPACE_ROOT,
-    stdout: "piped",
     stderr: "inherit",
-  }).output();
+  });
   if (!result.success) {
     throw new Error(`git ${args[0]} failed (${result.code})`);
   }
 
-  return new TextDecoder().decode(result.stdout);
+  return result.stdout.toString("utf8");
 }
 
 /** Applies the change (B) or reverses it (A) in the working tree. */
-function apply(patch: string, variant: Variant) {
-  const child = new Deno.Command("git", {
+async function apply(patch: string, variant: Variant) {
+  const child = spawnCommand("git", {
     args: ["apply", ...(variant === "A" ? ["-R"] : []), "-"],
     cwd: WORKSPACE_ROOT,
     stdin: "piped",
-    stderr: "inherit",
-  }).spawn();
-  const writer = child.stdin.getWriter();
+  });
+  child.stdin!.end(patch);
 
-  return writer.write(new TextEncoder().encode(patch))
-    .then(() => writer.close())
-    .then(() => child.status)
-    .then((status) => {
-      if (!status.success) {
-        throw new Error(`git apply failed for variant ${variant}`);
-      }
-    });
+  const status = await exitStatus(child);
+  if (!status.success) {
+    throw new Error(`git apply failed for variant ${variant}`);
+  }
 }
 
 /** The command that runs a page benchmark, pinned to `cores` if given. */
 function benchCommand(filter: string, cores?: CoreKind) {
   const args = ["pnpm", "-F", "@nyanpasu/nyanpasu", "bench", filter];
   // pnpm is a `.cmd` or an `.exe` on Windows, which only the shell resolves alike.
-  const command = Deno.build.os === "windows" ? ["cmd", "/c", ...args] : args;
+  const command = process.platform === "win32" ? ["cmd", "/c", ...args] : args;
 
   return cores ? [...pinCores(cores), ...command] : command;
 }
 
 async function bench([command, ...args]: string[], filter: string) {
-  const result = await new Deno.Command(command, {
+  const result = await runCommand(command, {
     args,
     cwd: WORKSPACE_ROOT,
-    stdout: "piped",
     stderr: "inherit",
-  }).output();
-  const output = new TextDecoder().decode(result.stdout);
+  });
+  const output = result.stdout.toString("utf8");
   if (!result.success) {
     console.error(output);
     throw new Error(`benchmark ${filter} failed (${result.code})`);
@@ -129,15 +123,22 @@ async function bench([command, ...args]: string[], filter: string) {
  * the scheduler cannot move the browser between them mid-run.
  */
 export async function main(args: string[]): Promise<void> {
-  const parsed = parseArgs(args, {
-    string: ["rounds", "base", "cores"],
-    default: { rounds: "3", base: "HEAD" },
+  const parsed = parseArgs({
+    args,
+    options: {
+      rounds: { type: "string", default: "3" },
+      base: { type: "string", default: "HEAD" },
+      cores: { type: "string" },
+    },
+    allowPositionals: true,
+    strict: false,
   });
-  const filter = parsed._[0];
-  const rounds = Number(parsed.rounds);
-  const cores = parsed.cores;
+  const [filter] = parsed.positionals;
+  const rounds = Number(parsed.values.rounds);
+  const base = String(parsed.values.base);
+  const cores = parsed.values.cores;
   if (
-    typeof filter !== "string" || parsed._.length !== 1 ||
+    typeof filter !== "string" || parsed.positionals.length !== 1 ||
     !Number.isInteger(rounds) || rounds < 1 ||
     (cores !== undefined && cores !== "performance" && cores !== "efficiency")
   ) {
@@ -148,9 +149,9 @@ export async function main(args: string[]): Promise<void> {
   }
   const command = benchCommand(filter, cores);
 
-  const patch = await git(["diff", "--binary", parsed.base, "--", "frontend"]);
+  const patch = await git(["diff", "--binary", base, "--", "frontend"]);
   if (patch === "") {
-    throw new Error(`the frontend has no changes against ${parsed.base}`);
+    throw new Error(`the frontend has no changes against ${base}`);
   }
 
   const runs: { variant: Variant; reports: Report[] }[] = [];
@@ -174,15 +175,15 @@ export async function main(args: string[]): Promise<void> {
   }
 
   console.log(
-    `\n${rounds} rounds, A = ${parsed.base}, B = working tree` +
+    `\n${rounds} rounds, A = ${base}, B = working tree` +
       (cores ? `, on the ${cores} cores` : ""),
   );
   compare(runs).forEach((line) => console.log(line));
 }
 
 if (import.meta.main) {
-  main(Deno.args).catch((error) => {
+  main(process.argv.slice(2)).catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

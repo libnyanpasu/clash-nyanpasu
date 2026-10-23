@@ -1,4 +1,5 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import { readFile } from "node:fs/promises";
+import { parseArgs } from "node:util";
 
 /** A V8 CPU profile, as Chromium's profiler writes it. */
 export type CpuProfile = {
@@ -140,15 +141,22 @@ const table = (rows: { name: string; ms: number }[]) =>
  * function did with `--callers`.
  */
 export async function main(args: string[]): Promise<void> {
-  const parsed = parseArgs(args, {
-    string: ["actions", "top", "callers"],
-    default: { actions: "1", top: "25" },
+  const parsed = parseArgs({
+    args,
+    options: {
+      actions: { type: "string", default: "1" },
+      top: { type: "string", default: "25" },
+      callers: { type: "string" },
+    },
+    allowPositionals: true,
+    strict: false,
   });
-  const actions = Number(parsed.actions);
-  const count = Number(parsed.top);
-  const [file] = parsed._;
+  const actions = Number(parsed.values.actions);
+  const count = Number(parsed.values.top);
+  const [file] = parsed.positionals;
+  const callers = parsed.values.callers;
   if (
-    typeof file !== "string" || parsed._.length !== 1 ||
+    typeof file !== "string" || parsed.positionals.length !== 1 ||
     !(actions > 0) || !Number.isInteger(count) || count < 1
   ) {
     throw new Error(
@@ -156,12 +164,12 @@ export async function main(args: string[]): Promise<void> {
         "[--callers <function>] <file.cpuprofile>",
     );
   }
-  const profile = JSON.parse(await Deno.readTextFile(file)) as CpuProfile;
+  const profile = JSON.parse(await readFile(file, "utf8")) as CpuProfile;
   const unit = actions === 1 ? "ms" : "ms per action";
 
-  if (parsed.callers) {
-    console.log(`${parsed.callers}'s own time by caller (${unit}):`);
-    callersOf(profile, parsed.callers, { actions, count }).forEach((row) =>
+  if (typeof callers === "string" && callers) {
+    console.log(`${callers}'s own time by caller (${unit}):`);
+    callersOf(profile, callers, { actions, count }).forEach((row) =>
       console.log(`${row.ms.toFixed(2).padStart(9)}  ${row.name}\n`)
     );
     return;
@@ -182,8 +190,8 @@ export async function main(args: string[]): Promise<void> {
 }
 
 if (import.meta.main) {
-  main(Deno.args).catch((error) => {
+  main(process.argv.slice(2)).catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

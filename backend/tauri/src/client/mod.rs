@@ -2100,7 +2100,7 @@ pub(crate) mod tests {
             if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(nyanpasu_ipc::types::StatusInfo {
                     name: "test-service".into(),
-                    version: "2.0.0".into(),
+                    version: "2.0.1".into(),
                     status: nyanpasu_ipc::types::ServiceStatus::Stopped,
                     server: None,
                 });
@@ -2108,11 +2108,11 @@ pub(crate) mod tests {
             self.calls.lock().unwrap().push("ensure_ready");
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
-                version: std::borrow::Cow::Borrowed("2.0.0"),
+                version: std::borrow::Cow::Borrowed("2.0.1"),
                 status: nyanpasu_ipc::types::ServiceStatus::Running,
                 server: Some(nyanpasu_ipc::api::status::StatusResBody {
                     log_query_version: None,
-                    version: std::borrow::Cow::Borrowed("2.0.0"),
+                    version: std::borrow::Cow::Borrowed("2.0.1"),
                     core_infos: nyanpasu_ipc::api::status::CoreInfos {
                         instance_id: None,
                         r#type: None,

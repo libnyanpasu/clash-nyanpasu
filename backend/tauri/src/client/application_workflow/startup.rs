@@ -1068,11 +1068,11 @@ mod tests {
     ) -> Result<ServiceHostStatus, CoreError> {
         Ok(ServiceHostStatus {
             name: Cow::Borrowed("nyanpasu-service"),
-            version: Cow::Borrowed("2.0.0"),
+            version: Cow::Borrowed("2.0.1"),
             status,
             server: detail.map(|detail| StatusResBody {
                 log_query_version: None,
-                version: Cow::Borrowed("2.0.0"),
+                version: Cow::Borrowed("2.0.1"),
                 core_infos: CoreInfos {
                     instance_id: Some("instance".into()),
                     r#type: None,

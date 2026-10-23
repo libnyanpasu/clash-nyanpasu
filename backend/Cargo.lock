@@ -1838,6 +1838,7 @@ dependencies = [
  "nyanpasu-config",
  "nyanpasu-core",
  "nyanpasu-core-manager",
+ "nyanpasu-crash-reporter",
  "nyanpasu-geodata",
  "nyanpasu-ipc",
  "nyanpasu-jobs",
@@ -6835,6 +6836,22 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "specta",
+]
+
+[[package]]
+name = "nyanpasu-crash-reporter"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "fontique",
+ "i-slint-backend-winit",
+ "open",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "snafu 0.9.2",
+ "url",
 ]
 
 [[package]]

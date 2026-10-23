@@ -35,6 +35,22 @@
     "tun_mode": "TUN 모드"
   },
   "dialog": {
+    "crash_reporter": {
+      "heading": "Clash Nyanpasu에 문제가 발생하여 종료되었습니다",
+      "description": "문제를 해결할 수 있도록 이 보고서를 GitHub에 보내 주세요.",
+      "version": "버전",
+      "system": "시스템",
+      "error": "오류",
+      "location": "위치",
+      "report": "충돌 보고서",
+      "copy": "보고서 복사",
+      "copied": "보고서가 복사되었습니다",
+      "copy_failed": "보고서를 복사할 수 없습니다. 직접 선택하여 복사하세요",
+      "close": "닫기",
+      "report_issue": "문제 보고",
+      "issue_opened": "GitHub를 열었습니다. 전체 보고서가 클립보드에 있습니다",
+      "open_failed": "이슈 페이지를 열 수 없습니다"
+    },
     "panic": "이 문제를 Github 이슈 트래커에 신고해 주세요.",
     "migration_failed": {
       "open_backups": "백업 폴더 열기",

@@ -35,6 +35,22 @@
     "tun_mode": "TUN 模式"
   },
   "dialog": {
+    "crash_reporter": {
+      "heading": "Clash Nyanpasu 發生問題並已關閉",
+      "description": "請在 GitHub 上提交此報告，協助我們修復問題。",
+      "version": "版本",
+      "system": "系統",
+      "error": "錯誤",
+      "location": "位置",
+      "report": "當機報告",
+      "copy": "複製報告",
+      "copied": "報告已複製",
+      "copy_failed": "無法複製報告，請手動選取並複製",
+      "close": "關閉",
+      "report_issue": "回報問題",
+      "issue_opened": "已開啟 GitHub；完整報告已複製到剪貼簿",
+      "open_failed": "無法開啟 issue 頁面"
+    },
     "panic": "請將此問題回報至 Nyanpasu 的 GitHub Issues。",
     "migration_failed": {
       "open_backups": "開啟備份資料夾",

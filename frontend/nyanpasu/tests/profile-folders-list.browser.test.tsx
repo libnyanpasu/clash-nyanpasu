@@ -370,12 +370,16 @@ test('an empty folder takes a card dropped on its zone', async () => {
   expect(layouts[0].ungrouped).toEqual(['d'])
 })
 
-test('the active card is not dragged and takes no drop', async () => {
+test('the active card cannot be dragged', async () => {
   const { layouts, body, card, uidsIn } = await renderPage()
 
   await drag(body('a'), card('d'))
   expect(layouts).toEqual([])
   expect(uidsIn(null)).toEqual(['d', 'e'])
+})
+
+test('the active card cannot receive a drop', async () => {
+  const { layouts, body, card, uidsIn } = await renderPage()
 
   await drag(body('d'), card('a'))
   await expect.poll(() => uidsIn(null)).toEqual(['d', 'e'])

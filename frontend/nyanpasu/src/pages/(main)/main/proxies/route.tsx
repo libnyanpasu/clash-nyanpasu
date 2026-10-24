@@ -98,7 +98,7 @@ function RouteComponent() {
         <Sidebar data-slot="proxies-container">
           {!isNoProxies && (proxyMode.rule || proxyMode.script) && (
             <SidebarContent
-              className="bg-surface-variant/10"
+              className="bg-surface-variant/50 dark:bg-transparent"
               data-slot="proxies-sidebar-scroll-area"
             >
               <ProxiesNavigate />

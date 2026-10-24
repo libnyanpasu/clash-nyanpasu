@@ -370,12 +370,16 @@ test('an empty folder takes a card dropped on its zone', async () => {
   expect(layouts[0].ungrouped).toEqual(['d'])
 })
 
-test('the active card is not dragged and takes no drop', async () => {
+test('the active card cannot be dragged', async () => {
   const { layouts, body, card, uidsIn } = await renderPage()
 
   await drag(body('a'), card('d'))
   expect(layouts).toEqual([])
   expect(uidsIn(null)).toEqual(['d', 'e'])
+})
+
+test('the active card cannot receive a drop', async () => {
+  const { layouts, body, card, uidsIn } = await renderPage()
 
   await drag(body('d'), card('a'))
   await expect.poll(() => uidsIn(null)).toEqual(['d', 'e'])
@@ -451,6 +455,8 @@ const announcement = () =>
 test('a card moves with the keyboard and the move is announced', async () => {
   const { layouts, card } = await renderPage()
 
+  // dnd-kit makes the card focusable in a scheduled accessibility update.
+  await expect.element(card('d')).toHaveAttribute('tabindex', '0')
   card('d').focus()
   await userEvent.keyboard(' ')
 
@@ -475,16 +481,20 @@ test('a card moves with the keyboard and the move is announced', async () => {
 })
 
 test('Escape cancels a keyboard move without a commit', async () => {
-  const { layouts, card } = await renderPage()
+  const { layouts, card, uidsIn } = await renderPage()
 
+  await expect.element(card('d')).toHaveAttribute('tabindex', '0')
   card('d').focus()
   await userEvent.keyboard(' ')
+  await expect.element(card('d')).toHaveAttribute('aria-grabbed', 'true')
   await userEvent.keyboard('{ArrowUp}')
+  await expect.poll(() => uidsIn(null)).not.toContain('d')
   await userEvent.keyboard('{Escape}')
 
   await expect
     .poll(announcement)
     .toContain(m.profile_folder_announce_cancel({ name: 'd' }))
+  await expect.poll(() => uidsIn(null)).toEqual(['d', 'e'])
   expect(layouts).toEqual([])
 })
 

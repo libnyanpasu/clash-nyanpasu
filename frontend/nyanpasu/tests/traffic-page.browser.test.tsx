@@ -518,13 +518,12 @@ test('the route stores category selection and filters in search state', async ({
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/process')
-  // The page transition settles on one ranking before the switch is used.
+  // The exiting overview has its own source row until its animation finishes.
   await expect
-    .poll(
-      () =>
-        document.querySelectorAll('[data-slot="traffic-ranking-list"]').length,
+    .poll(() =>
+      document.querySelector('[data-slot="traffic-overview-masonry"]'),
     )
-    .toBe(1)
+    .toBeNull()
   await sidebarItem(view, dimensionName('source')).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))

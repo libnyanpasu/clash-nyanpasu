@@ -47,7 +47,7 @@ windows-sys = { version = '0.61', features = ['Win32_UI_Input_Ime'] }
 
 [dev-dependencies]
 # The version Slint renders SVGs with, to rasterize reference images.
-resvg = { version = '0.48.1', default-features = false }
+resvg = { version = '0.49.0', default-features = false }
 
 [build-dependencies]
 slint-build = { version = '=1.18.1', default-features = false, features = [

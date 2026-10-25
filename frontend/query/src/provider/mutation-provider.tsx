@@ -52,9 +52,16 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       api.events.serviceStatusChangedEvent.listen(() =>
         refetchQueries([api.queries.statusService().queryKey]),
       ),
-      api.events.stateChangedEvent.listen(({ payload }) =>
-        refetchQueries(mutationKeys[payload.kind]),
-      ),
+      api.events.stateChangedEvent.listen(({ payload }) => {
+        refetchQueries(mutationKeys[payload.kind])
+        if (payload.kind === 'profiles') {
+          refetchQueries(
+            payload.files.map(
+              (uid) => api.queries.readProfileFile(uid).queryKey,
+            ),
+          )
+        }
+      }),
     ]
     return () => {
       unlisteners.forEach((unlisten) =>

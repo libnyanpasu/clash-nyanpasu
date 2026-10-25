@@ -700,8 +700,13 @@ export type SourceVersions = {
 
 export type StateChanged =
   | { kind: 'nyanpasu_config' }
+  /**  The clash config, or the runtime it is applied to. */
   | { kind: 'clash_config' }
-  | { kind: 'profiles' }
+  /**
+   *  The profiles document. `files` names the profiles whose file content
+   *  may have changed or is gone, so a reader of a file refetches only those.
+   */
+  | { kind: 'profiles'; files: ProfileId[] }
   | { kind: 'proxies' }
 
 /**

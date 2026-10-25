@@ -1,6 +1,6 @@
 import { isEqual } from 'es-toolkit'
 import { editor } from 'monaco-editor'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef } from 'react'
 import z from 'zod'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
@@ -17,7 +17,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import ActionButton from '../_modules/action-button'
 import Chip from '../_modules/chip'
 import Header from '../_modules/header'
-import { useCurrentProfile } from '../_modules/hooks'
+import { useCurrentProfile, useDraft } from '../_modules/hooks'
 import LoadingSkeleton from '../_modules/loading-skeleton'
 import { beforeEditorMount, MONACO_FONT_FAMILY } from '../_modules/utils'
 
@@ -43,14 +43,7 @@ function RouteComponent() {
 
   const content = useProfileContent(uid)
 
-  const [editorValue, setEditorValue] = useState<string>()
-
-  // sync editor value with content
-  useEffect(() => {
-    if (content.query.data) {
-      setEditorValue(content.query.data)
-    }
-  }, [content.query.data])
+  const [editorValue, setEditorValue] = useDraft(content.query.data)
 
   const blockTask = useBlockTask(`save-profile-content-${uid}`, async () => {
     if (!editorValue) {
@@ -183,7 +176,7 @@ function RouteComponent() {
           <div className="min-h-0 flex-1" data-slot="editor-content">
             <MonacoEditor
               className="h-full w-full"
-              value={content.query.data}
+              value={editorValue}
               language={currentProfile.data?.language}
               path={currentProfile.data?.virtualPath}
               theme={themeMode === 'light' ? 'vs' : 'vs-dark'}

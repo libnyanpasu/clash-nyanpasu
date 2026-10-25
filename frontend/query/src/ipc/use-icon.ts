@@ -10,6 +10,9 @@ export const useCachedIcon = (url: string | null) => {
   return useQuery({
     ...unwrapQueryOptions(options, options.queryFn!),
     enabled: url !== null,
+    // An icon's URL names its image for good. Each fetch is an IPC call on
+    // the main thread, and a list of groups mounts dozens of icons at once.
+    staleTime: Infinity,
   })
 }
 

@@ -13,7 +13,6 @@ use nyanpasu_config::{
 };
 use std::ops::ControlFlow;
 use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
-use tauri_specta::Event as _;
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -200,8 +199,6 @@ pub async fn proxies_updated_receiver(
 ) {
     let mut rx = client.subscribe_proxy_changes();
     while rx.changed().await.is_ok() {
-        let _ = crate::client::StateChangedEvent(crate::client::StateChanged::Proxies)
-            .emit(&app_handle);
         log_err!(Tray::request(&app_handle, TrayWork::PROXIES));
     }
 }

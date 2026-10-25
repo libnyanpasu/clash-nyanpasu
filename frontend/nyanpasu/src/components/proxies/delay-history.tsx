@@ -1,6 +1,9 @@
-import { ReactElement } from 'react'
+import { ReactElement, ReactNode } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import {
+  SharedTooltip,
+  SharedTooltipTrigger,
+} from '@nyanpasu/ui/shared-tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import type { DelayHistory as DelayHistorySample } from '@nyanpasu/rpc/types'
@@ -34,8 +37,8 @@ export function DelayHistoryBar({
   )
 }
 
-// Rendered only while the tooltip is open, so closed tooltips on a node grid
-// do no history formatting when their node re-renders.
+// Rendered only while the tooltip is open, so the nodes of a grid do no
+// history formatting when they re-render.
 function DelayHistoryContent({ history }: { history: DelayHistorySample[] }) {
   const recent = history.slice(-HISTORY_LIMIT).reverse()
   const formatTime = (time: string) => {
@@ -46,7 +49,7 @@ function DelayHistoryContent({ history }: { history: DelayHistorySample[] }) {
   }
 
   return (
-    <div className="space-y-2 py-1">
+    <div className="space-y-2 py-1" data-slot="proxy-delay-history">
       <div className="font-medium">{m.proxies_delay_history_title()}</div>
       {recent.length === 0 ? (
         <EmptyState
@@ -82,6 +85,22 @@ function DelayHistoryContent({ history }: { history: DelayHistorySample[] }) {
   )
 }
 
+/**
+ * The one tooltip that shows the delay history of the node under the pointer,
+ * for every `DelayHistory` inside it. A tooltip per node mounted a popper
+ * with each card of a group.
+ */
+export function DelayHistoryTooltip({ children }: { children: ReactNode }) {
+  return (
+    <SharedTooltip
+      openDelay={300}
+      className="bg-surface text-on-surface max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
+    >
+      {children}
+    </SharedTooltip>
+  )
+}
+
 export default function DelayHistory({
   history = [],
   children,
@@ -90,16 +109,8 @@ export default function DelayHistory({
   children: ReactElement
 }) {
   return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-
-      <TooltipContent
-        sideOffset={8}
-        className="bg-surface text-on-surface z-50 max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
-        data-slot="proxy-delay-history"
-      >
-        <DelayHistoryContent history={history} />
-      </TooltipContent>
-    </Tooltip>
+    <SharedTooltipTrigger content={<DelayHistoryContent history={history} />}>
+      {children}
+    </SharedTooltipTrigger>
   )
 }

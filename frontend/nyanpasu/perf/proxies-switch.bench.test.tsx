@@ -140,6 +140,12 @@ function createProxiesRouter() {
     path: '/group/$name',
     getParentRoute: () => proxiesRoute,
   } as never)
+  // Another section of the app, to open the proxies page from.
+  const otherRoute = createRoute({
+    path: '/main/other',
+    getParentRoute: () => mainRoute,
+    component: () => null,
+  })
 
   return createRouter({
     routeTree: rootRoute.addChildren([
@@ -148,6 +154,7 @@ function createProxiesRouter() {
           indexRoute as never,
           groupRoute as never,
         ]),
+        otherRoute,
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: ['/main/proxies'] }),
@@ -204,6 +211,18 @@ test(`switch between ${GROUPS} groups of ${NODES} nodes`, async ({
     )
   }
 
+  // The page, sidebar included, opened on a group from another section.
+  const opens = []
+  for (let i = 1; i <= SWITCHES; i++) {
+    await router.navigate({ to: '/main/other' as never })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    opens.push(
+      await measureFrames(() => {
+        openGroup(i)
+      }, 1200),
+    )
+  }
+
   if (env.VITE_PERF_PRINT_GAPS) {
     for (const sample of samples) {
       console.log(`GAPS ${sample.gaps.map((gap) => gap.toFixed(0)).join(',')}`)
@@ -233,5 +252,15 @@ test(`switch between ${GROUPS} groups of ${NODES} nodes`, async ({
     ...summarize(samples.slice(WARMUP)),
   }
 
-  console.log(`PERF_REPORT ${JSON.stringify(report)}`)
+  console.log(`PERF_REPORT ${JSON.stringify({ action: 'switch', ...report })}`)
+  console.log(
+    `PERF_REPORT ${JSON.stringify({
+      action: 'open',
+      browser: server.browser,
+      groups: GROUPS,
+      nodes: NODES,
+      throttle: THROTTLE,
+      ...summarize(opens.slice(WARMUP)),
+    })}`,
+  )
 })

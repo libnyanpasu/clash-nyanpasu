@@ -1,7 +1,7 @@
 import { Profiler, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import { server } from 'vitest/browser'
+import { commands, server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -22,18 +22,32 @@ import {
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider as QueryClientProvider } from '../tests/query-provider'
 import { createRuntimeYaml } from './fixtures/runtime-yaml'
-import { measureFrames, onProfilerRender, summarize } from './measure'
+import {
+  measureFrames,
+  onProfilerRender,
+  summarize,
+  type FrameSample,
+} from './measure'
 
-// Moves between the profiles list and a profile's detail page, then refetches
-// the profiles list with unchanged data, and reports the IPC calls and React
-// render time each action causes, and the WebGL draws of the idle list. The
-// pages run on the real React Query hooks against mocked IPC, so query caching
-// is part of what is measured. See `perf/README.md`.
+// Opens the profiles list from another section, moves between it and a
+// profile's detail page, then refetches the profiles list with unchanged data,
+// and reports the IPC calls and React render time each action causes, and the
+// WebGL draws of the idle list. The pages run on the real React Query hooks
+// against mocked IPC, so query caching is part of what is measured. See
+// `perf/README.md`.
 
 const env = import.meta.env
 const PROFILES = Number(env.VITE_PERF_PROFILES ?? 30)
 const SWITCHES = Number(env.VITE_PERF_SWITCHES ?? 12)
 const WARMUP = 2
+
+declare module 'vitest/browser' {
+  interface BrowserCommands {
+    startCpuProfile: () => Promise<void>
+    pauseCpuProfile: () => Promise<void>
+    stopCpuProfile: (file: string) => Promise<void>
+  }
+}
 
 vi.mock('@/components/providers/theme-provider', async () => {
   const { argbFromHex, themeFromSourceColor } =
@@ -179,6 +193,12 @@ function createProfilesRouter(queries: QueryClient) {
     path: '/$type/detail/$uid',
     getParentRoute: () => profilesRoute,
   } as never)
+  // Another section of the app, to open the profiles pages from.
+  const otherRoute = createRoute({
+    path: '/main/other',
+    getParentRoute: () => mainRoute,
+    component: () => null,
+  })
 
   return createRouter({
     routeTree: rootRoute.addChildren([
@@ -187,6 +207,7 @@ function createProfilesRouter(queries: QueryClient) {
           typeIndexRoute as never,
           detailRoute as never,
         ]),
+        otherRoute,
       ]),
     ]),
     history: createMemoryHistory({
@@ -208,6 +229,7 @@ test(`navigate the profiles pages with ${PROFILES} profiles`, async ({
     router.navigate({ to: '/main/profiles/profile' as never })
   const openDetail = () =>
     router.navigate({ to: '/main/profiles/profile/detail/p1' as never })
+  const leave = () => router.navigate({ to: '/main/other' as never })
 
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -233,16 +255,25 @@ test(`navigate the profiles pages with ${PROFILES} profiles`, async ({
     return { sample, getProfiles: ipcCalls.get('get_profiles') ?? 0 }
   }
 
-  const navigations = []
+  const opens = []
+  const details = []
+  const lists = []
   const refetches = []
 
   for (let i = 1; i <= SWITCHES; i++) {
-    navigations.push(
+    await leave()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    opens.push(
+      await measure(() => {
+        openList()
+      }, 900),
+    )
+    details.push(
       await measure(() => {
         openDetail()
       }, 900),
     )
-    navigations.push(
+    lists.push(
       await measure(() => {
         openList()
       }, 900),
@@ -253,6 +284,23 @@ test(`navigate the profiles pages with ${PROFILES} profiles`, async ({
         queries.refetchQueries({ queryKey: ['getProfiles'] })
       }, 300),
     )
+  }
+
+  // Opening the list from another section, as `open` measures it. Leaving
+  // happens between the recorded pieces.
+  if (env.VITE_PERF_PROFILE) {
+    for (let i = 1; i <= 6; i++) {
+      await leave()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      await commands.startCpuProfile()
+      await measureFrames(() => {
+        openList()
+      }, 900)
+      if (i < 6) await commands.pauseCpuProfile()
+    }
+    await commands.stopCpuProfile(env.VITE_PERF_PROFILE)
+    await openList()
+    await expect.poll(() => cardCount(container)).toBe(PROFILES)
   }
 
   // WebGL draws while the list sits idle: an animated shader draws every
@@ -268,22 +316,31 @@ test(`navigate the profiles pages with ${PROFILES} profiles`, async ({
   await new Promise((resolve) => setTimeout(resolve, 2000))
   const idleDrawsPerSecond = draws / 2
 
-  const sum = (list: { getProfiles: number }[]) =>
-    list.reduce((total, item) => total + item.getProfiles, 0)
-  const measured = navigations.slice(WARMUP * 2)
-  const measuredRefetches = refetches.slice(WARMUP)
+  const summarizeActions = (
+    list: { sample: FrameSample; getProfiles: number }[],
+  ) => {
+    const measured = list.slice(WARMUP)
+    const getProfiles = measured.reduce(
+      (total, item) => total + item.getProfiles,
+      0,
+    )
+
+    return {
+      getProfilesPerAction: Number((getProfiles / measured.length).toFixed(2)),
+      ...summarize(measured.map((item) => item.sample)),
+    }
+  }
 
   const report = {
     browser: server.browser,
     profiles: PROFILES,
     idleDrawsPerSecond,
-    navigation: {
-      getProfilesPerNavigation: Number(
-        (sum(measured) / measured.length).toFixed(2),
-      ),
-      ...summarize(measured.map((item) => item.sample)),
-    },
-    unchangedRefetch: summarize(measuredRefetches.map((item) => item.sample)),
+    // The list, sidebar included, opened from another section.
+    open: summarizeActions(opens),
+    detail: summarizeActions(details),
+    // Back to the list from a detail page; the sidebar stays.
+    list: summarizeActions(lists),
+    unchangedRefetch: summarizeActions(refetches),
   }
 
   console.log(`PERF_REPORT ${JSON.stringify(report)}`)

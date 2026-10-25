@@ -10,10 +10,16 @@ pnpm -F @nyanpasu/nyanpasu bench
 Each test prints one `PERF_REPORT {...}` line, averaged over the measured
 actions after a warm-up (the connections benchmark reports page openings under
 `open`, search keystrokes under `keystroke` and streamed frames under `frame`;
-the traffic benchmark prints a line per action: `open:<page>`, `poll:<page>`
-for a polled report arriving, `switch:<page>` for switching to the page from
-the overview, `append:rankings` for the next page of the listing and
-`filter:overview` for a ranking row toggling its filter):
+the profiles benchmark reports the list opened from another section under
+`open`, moves to and from a detail page under `detail` and `list`, and
+`unchangedRefetch`; the proxies benchmark prints a line for group switches,
+`switch`, and one for the page opened on a group from another section, `open`;
+the settings benchmark prints a line per page and `open:<page>` for the
+settings opened on their first page from another section; the traffic
+benchmark prints a line per action: `open:<page>`, `poll:<page>` for a polled
+report arriving, `switch:<page>` for switching to the page from the overview,
+`append:rankings` for the next page of the listing and `filter:overview` for a
+ranking row toggling its filter):
 
 | Field             | Meaning                                                                       |
 | ----------------- | ----------------------------------------------------------------------------- |

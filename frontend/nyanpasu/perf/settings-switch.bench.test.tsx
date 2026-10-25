@@ -183,6 +183,12 @@ function createSettingsRouter() {
             component: () => <div data-slot="blank-page" />,
           }) as never,
         ]),
+        // Another section of the app, to open the settings from.
+        createRoute({
+          path: '/main/other',
+          getParentRoute: () => mainRoute,
+          component: () => null,
+        }),
       ]),
     ]),
     history: createMemoryHistory({
@@ -243,4 +249,25 @@ test(`switch settings pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
       })}`,
     )
   }
+
+  // The settings, sidebar included, opened on the first page from another
+  // section.
+  const opens = []
+  for (let i = 1; i <= SWITCHES; i++) {
+    await router.navigate({ to: '/main/other' as never })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    opens.push(
+      await measureFrames(() => {
+        go(PAGES[0])
+      }, 900),
+    )
+  }
+  console.log(
+    `PERF_REPORT ${JSON.stringify({
+      browser: server.browser,
+      page: `open:${PAGES[0]}`,
+      throttle: THROTTLE,
+      ...summarize(opens.slice(WARMUP)),
+    })}`,
+  )
 })

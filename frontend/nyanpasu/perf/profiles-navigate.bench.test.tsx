@@ -1,9 +1,10 @@
-import { Profiler } from 'react'
+import { Profiler, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { Route as DetailRoute } from '@/pages/(main)/main/profiles/$type/detail/$uid'
@@ -20,6 +21,7 @@ import {
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider as QueryClientProvider } from '../tests/query-provider'
+import { createRuntimeYaml } from './fixtures/runtime-yaml'
 import { measureFrames, onProfilerRender, summarize } from './measure'
 
 // Moves between the profiles list and a profile's detail page, then refetches
@@ -46,6 +48,22 @@ vi.mock('@/components/providers/theme-provider', async () => {
     setThemeMode: async () => {},
   }
   return { useExperimentalThemeContext: () => context }
+})
+
+// The RPC client calls Tauri, which `mockIPC` answers, only inside Tauri.
+vi.hoisted(() => {
+  vi.stubGlobal('isTauri', true)
+})
+
+// The outlet freezes the clash streams of a leaving page; none run here.
+vi.mock('@nyanpasu/query', async (importOriginal) => {
+  const Through = ({ children }: { children: ReactNode }) => children
+
+  return {
+    ...(await importOriginal<object>()),
+    ClashWSFreezeBoundary: Through,
+    ClashConnectionDetailsFreezeBoundary: Through,
+  }
 })
 
 const remote = (i: number) => ({
@@ -77,6 +95,9 @@ const document_ = {
   items: Array.from({ length: PROFILES }, (_, i) => remote(i)),
 }
 
+// What the detail page summarizes: a subscription's nodes, groups and rules.
+const profileFile = createRuntimeYaml(500, 3000)
+
 const ipcCalls = new Map<string, number>()
 
 function mockBackend() {
@@ -90,6 +111,8 @@ function mockBackend() {
       case 'get_profiles':
         // A fresh copy, as IPC deserializes a new object every time.
         return structuredClone(document_)
+      case 'read_profile_file':
+        return profileFile
       case 'get_profile_sync_status':
         return {
           scheduled: false,
@@ -115,16 +138,18 @@ function createProfilesRouter(queries: QueryClient) {
         <BlockTaskProvider>
           <TooltipProvider>
             <ContextMenuProvider>
-              <div
-                className="flex flex-col"
-                style={{ height: 850, width: 1350 }}
-              >
-                <Profiler id="app" onRender={onProfilerRender}>
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>div]:min-h-0 [&>div]:flex-1">
-                    <Outlet />
-                  </div>
-                </Profiler>
-              </div>
+              <ImportUrlProvider>
+                <div
+                  className="flex flex-col"
+                  style={{ height: 850, width: 1350 }}
+                >
+                  <Profiler id="app" onRender={onProfilerRender}>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>div]:min-h-0 [&>div]:flex-1">
+                      <Outlet />
+                    </div>
+                  </Profiler>
+                </div>
+              </ImportUrlProvider>
             </ContextMenuProvider>
           </TooltipProvider>
         </BlockTaskProvider>

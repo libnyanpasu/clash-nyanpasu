@@ -1,4 +1,4 @@
-import { Profiler } from 'react'
+import { Profiler, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
@@ -119,6 +119,13 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
       value: { rule: true, global: false, direct: false },
     }),
     useClashSetting: (key: string) => clashSettings[key] ?? generic,
+    // The outlet freezes the clash streams of a leaving page; none run here.
+    ClashWSFreezeBoundary: ({ children }: { children: ReactNode }) => children,
+    ClashConnectionDetailsFreezeBoundary: ({
+      children,
+    }: {
+      children: ReactNode
+    }) => children,
   }
 })
 

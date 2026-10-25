@@ -36,7 +36,7 @@ test('an app config change refetches the proxies snapshot, which is trimmed to t
       .length
   expect(fetches()).toBe(1)
 
-  await testRpc.emitMutation('nyanpasuConfig')
+  await testRpc.emitStateChanged({ kind: 'nyanpasu_config' })
 
   await expect.poll(fetches).toBe(2)
 })

@@ -80,7 +80,7 @@ pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{
-    MainThreadHandoff, MainThreadWork, STATE_CHANGED_URI, StateChanged, TauriMainThread,
+    MainThreadHandoff, MainThreadWork, StateChanged, StateChangedEvent, TauriMainThread,
     TauriUiEventSink, UiEventSink,
 };
 pub use main_thread::MainThreadExecutor;

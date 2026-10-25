@@ -106,7 +106,6 @@ function createRpcHarness(legacyStorage: Record<string, StoredItem[]>) {
     listen: async () => () => {},
     once: async () => () => {},
     emit: async () => {},
-    listenMutation: async () => () => {},
     listenResync: () => () => {},
     dispose: () => {},
   }

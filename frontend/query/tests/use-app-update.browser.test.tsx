@@ -59,7 +59,6 @@ function makeRpc(
     }),
     once: vi.fn(async () => () => {}),
     emit: vi.fn(async () => {}),
-    listenMutation: vi.fn(async () => () => {}),
     listenResync: vi.fn((callback: () => void) => {
       listeners.add(callback)
       return () => listeners.delete(callback)

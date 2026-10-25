@@ -95,7 +95,6 @@ function createRpc(storage: string, retention: string | null = '7d') {
     listen: async () => () => {},
     once: async () => () => {},
     emit: async () => {},
-    listenMutation: async () => () => {},
     listenResync: () => () => {},
     dispose: () => {},
   }

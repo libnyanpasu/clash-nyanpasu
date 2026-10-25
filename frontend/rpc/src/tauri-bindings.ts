@@ -32,6 +32,7 @@ export const events = {
   serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent_Deserialize>(
     'service-status-changed-event',
   ),
+  stateChangedEvent: makeEvent<StateChangedEvent>('state-changed-event'),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
   ),
@@ -696,6 +697,18 @@ export type SourceVersions = {
   session: number
   profiles: number
 }
+
+export type StateChanged =
+  | { kind: 'nyanpasu_config' }
+  | { kind: 'clash_config' }
+  | { kind: 'profiles' }
+  | { kind: 'proxies' }
+
+/**
+ *  What changed in the state the frontend reads, so it refetches what depends
+ *  on it.
+ */
+export type StateChangedEvent = StateChanged
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
 

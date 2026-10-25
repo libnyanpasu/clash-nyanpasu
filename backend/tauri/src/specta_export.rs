@@ -22,7 +22,8 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             ipc::SchemeRequestReceivedEvent,
             core::actor_v2::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
-            core::actor_v2::ServiceStatusChangedEvent
+            core::actor_v2::ServiceStatusChangedEvent,
+            crate::client::StateChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -203,7 +204,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ipc::SchemeRequestReceivedEvent,
         core::actor_v2::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
-        core::actor_v2::ServiceStatusChangedEvent
+        core::actor_v2::ServiceStatusChangedEvent,
+        crate::client::StateChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the
@@ -217,7 +219,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     .typ::<nyanpasu_config::profile::ProfileMetadataPatch>()
     .typ::<nyanpasu_config::profile::RemoteProfileOptionsPatch>()
     .typ::<nyanpasu_config::profile::ProfileValidationError>()
-    .typ::<crate::client::StateChanged>()
     .build(TanstackQueryFramework::React);
 
     let (query_bindings, builder) = command_set;
@@ -322,7 +323,7 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
         "const events = {",
     );
     let commands_and_events = format!(
-        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenMutation: (callback: (payload: StateChanged) => void) => transport.events.listenMutation((payload) => callback(payload as StateChanged)), listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
+        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
     );
     let source = format!(
         "{}{}{}",
@@ -558,6 +559,7 @@ mod tests {
             assert!(mutations.contains(name));
         }
         assert!(generated.contains("appUpdateStateChanged:"));
+        assert!(generated.contains("stateChangedEvent:"));
         assert!(!generated.contains("checkUpdate:"));
         assert!(!generated.contains("installUpdate:"));
         assert!(!generated.contains("__TAURI_EVENT"));

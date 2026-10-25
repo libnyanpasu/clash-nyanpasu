@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, type PropsWithChildren } from 'react'
+import type { StateChanged } from '@nyanpasu/rpc'
 import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useQueryApi } from './rpc-provider'
 
@@ -6,30 +7,30 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const mutationKeys = useMemo(
-    () => ({
-      nyanpasuConfig: [
+    (): Record<StateChanged['kind'], QueryKey[]> => ({
+      nyanpasu_config: [
         api.queries.getAppConfig().queryKey,
         api.queries.getSysProxy().queryKey,
         // The proxies snapshot is trimmed to the default latency test URL.
         api.queries.getProxies().queryKey,
-      ] as QueryKey[],
-      clashConfig: [
+      ],
+      clash_config: [
         api.queries.clashApiGetVersion().queryKey,
         api.queries.getClashConfig().queryKey,
         api.queries.getClashInfo().queryKey,
         api.queries.clashApiGetConfigs().queryKey,
         api.queries.getProfiles().queryKey,
-      ] as QueryKey[],
+      ],
       profiles: [
         api.queries.clashApiGetVersion().queryKey,
         api.queries.getClashConfig().queryKey,
         api.queries.getClashInfo().queryKey,
         api.queries.getProfiles().queryKey,
-      ] as QueryKey[],
+      ],
       proxies: [
         api.queries.getProxies().queryKey,
         api.queries.clashApiGetProvidersProxies().queryKey,
-      ] as QueryKey[],
+      ],
     }),
     [api.queries],
   )
@@ -51,39 +52,24 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       api.events.serviceStatusChangedEvent.listen(() =>
         refetchQueries([api.queries.statusService().queryKey]),
       ),
+      api.events.stateChangedEvent.listen(({ payload }) =>
+        refetchQueries(mutationKeys[payload.kind]),
+      ),
     ]
     return () => {
       unlisteners.forEach((unlisten) =>
         unlisten.then((stop) => stop()).catch(console.error),
       )
     }
-  }, [api, queryClient, refetchQueries])
+  }, [api, mutationKeys, refetchQueries])
 
-  useEffect(() => {
-    let disposed = false
-    const stopResync = api.listenResync(() => {
-      queryClient.invalidateQueries().catch(console.error)
-    })
-    let stopMutation: (() => void) | undefined
-    api
-      .listenMutation((payload) => {
-        const keys = mutationKeys[payload as keyof typeof mutationKeys]
-        if (keys) refetchQueries(keys)
-      })
-      .then((stop) => {
-        if (disposed) stop()
-        else {
-          stopMutation = stop
-        }
-      })
-      .catch(console.error)
-
-    return () => {
-      disposed = true
-      stopResync()
-      stopMutation?.()
-    }
-  }, [api, mutationKeys, queryClient, refetchQueries])
+  useEffect(
+    () =>
+      api.listenResync(() => {
+        queryClient.invalidateQueries().catch(console.error)
+      }),
+    [api, queryClient],
+  )
 
   return children
 }

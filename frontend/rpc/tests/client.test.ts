@@ -18,12 +18,11 @@ function fakeTransport() {
     (await invokeMock(method, params)) as T
   const unlisten = vi.fn()
   const dispose = vi.fn()
-  const listenMutation = vi.fn(async () => unlisten)
+  const listen = vi.fn(async () => unlisten)
   const events: RpcEventTransport = {
-    listen: vi.fn(async () => unlisten),
+    listen,
     once: vi.fn(async () => unlisten),
     emit: vi.fn(async () => {}),
-    listenMutation,
     listenResync: vi.fn(() => vi.fn()),
     dispose,
   }
@@ -33,7 +32,7 @@ function fakeTransport() {
     invoke: invokeMock,
     events,
     unlisten,
-    listenMutation,
+    listen,
     dispose,
   }
 }
@@ -47,8 +46,10 @@ describe('RPC client instances', () => {
 
     await firstClient.getProfiles()
     await secondClient.inspectRuntimeNode('snap-2', 4)
-    const firstStop = await firstClient.listenMutation(vi.fn())
-    const secondStop = await secondClient.listenMutation(vi.fn())
+    const firstStop = await firstClient.events.stateChangedEvent.listen(vi.fn())
+    const secondStop = await secondClient.events.stateChangedEvent.listen(
+      vi.fn(),
+    )
     firstStop()
 
     expect(first.invoke).toHaveBeenCalledWith('get_profiles', undefined)
@@ -56,8 +57,8 @@ describe('RPC client instances', () => {
       snapshotId: 'snap-2',
       nodeId: 4,
     })
-    expect(first.listenMutation).toHaveBeenCalledOnce()
-    expect(second.listenMutation).toHaveBeenCalledOnce()
+    expect(first.listen).toHaveBeenCalledOnce()
+    expect(second.listen).toHaveBeenCalledOnce()
     expect(first.unlisten).toHaveBeenCalledOnce()
     expect(second.unlisten).not.toHaveBeenCalled()
 

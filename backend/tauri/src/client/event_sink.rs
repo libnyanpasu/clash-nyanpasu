@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
-use tauri::{Emitter, Manager};
+use tauri_specta::Event as _;
 
 use super::main_thread::{HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor};
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StateChanged {
     NyanpasuConfig,
     ClashConfig,
@@ -13,7 +13,10 @@ pub enum StateChanged {
     Proxies,
 }
 
-pub const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
+/// What changed in the state the frontend reads, so it refetches what depends
+/// on it.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct StateChangedEvent(pub StateChanged);
 
 /// Abstracts the Tauri UI side-effects the client emits.
 #[allow(dead_code)]
@@ -50,12 +53,8 @@ impl<R: tauri::Runtime> TauriUiEventSink<R> {
 
 impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
     fn state_changed(&self, state: StateChanged) {
-        if let Some(window) = self
-            .app_handle
-            .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
-        {
-            crate::log_err!(window.emit(STATE_CHANGED_URI, state));
-        }
+        // Every window: the tray menu and the editor read these queries too.
+        crate::log_err!(StateChangedEvent(state).emit(&self.app_handle));
     }
 }
 

@@ -42,10 +42,10 @@ const isBlank = (line: string) => {
 const escapeRegExp = (text: string) =>
   text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-function isKeyLine(line: string, key: string) {
-  return new RegExp(
-    `^\\s*(?:"${escapeRegExp(key)}"|'${escapeRegExp(key)}'|${escapeRegExp(key)})\\s*:(?:\\s|$)`,
-  ).test(line)
+/** Matches a line that holds `key`, bare or quoted. */
+function keyLinePattern(key: string) {
+  const text = escapeRegExp(key)
+  return new RegExp(`^\\s*(?:"${text}"|'${text}'|${text})\\s*:(?:\\s|$)`)
 }
 
 /** The last line of the block that starts at `start`. */
@@ -78,12 +78,14 @@ export function locateFieldLine(
   let childIndent: number | undefined = 0
   let found: { start: number; end: number } | null = null
   for (const key of field.split('.')) {
+    // Built once per key: a field is looked for in every line of a document.
+    const keyLine = keyLinePattern(key)
     let start = -1
     for (let index = from; index <= to; index++) {
       if (
         !isBlank(lines[index]) &&
         (childIndent === undefined || indentOf(lines[index]) === childIndent) &&
-        isKeyLine(lines[index], key)
+        keyLine.test(lines[index])
       ) {
         start = index
         break

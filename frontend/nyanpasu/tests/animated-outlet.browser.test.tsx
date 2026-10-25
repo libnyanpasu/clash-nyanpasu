@@ -2,7 +2,10 @@ import { useIsPresent } from 'motion/react'
 import { createContext, use, useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
+import {
+  AnimatedOutletPreset,
+  usePageEntered,
+} from '@/components/router/animated-outlet'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -59,6 +62,10 @@ function Presence({ name }: { name: 'a' | 'b' }) {
 }
 
 // Apart from the page, whose renders are counted.
+function Entered({ name }: { name: string }) {
+  return <p data-entered={name}>{String(usePageEntered())}</p>
+}
+
 function Path({ name }: { name: string }) {
   return <p data-path={name}>{useLocation().pathname}</p>
 }
@@ -70,6 +77,7 @@ function Page({ name }: { name: 'a' | 'b' }) {
     <>
       <p data-page={name}>{use(LayoutValue)}</p>
       <Path name={name} />
+      <Entered name={name} />
       <Presence name={name} />
     </>
   )
@@ -117,6 +125,8 @@ function mount(
     page: (name: string) => container.querySelector(`[data-page="${name}"]`),
     path: (name: string) =>
       container.querySelector(`[data-path="${name}"]`)?.textContent,
+    entered: (name: string) =>
+      container.querySelector(`[data-entered="${name}"]`)?.textContent,
   }
 }
 
@@ -185,4 +195,19 @@ test('a page sliding out is told once that it leaves', async ({
   await expect.poll(() => page('b')?.textContent).toBe('1')
   expect(presenceRenders.a).toBe(before)
   await expect.poll(() => page('a')).toBeNull()
+})
+
+test('a page has entered once it slid in, and at once if it did not slide', async ({
+  onTestFinished,
+}) => {
+  const { router, entered } = mount(
+    () => <AnimatedOutletPreset />,
+    onTestFinished,
+  )
+  await expect.poll(() => entered('a')).toBe('true')
+
+  await router.navigate({ to: '/b' as never })
+
+  await expect.poll(() => entered('b')).toBe('false')
+  await expect.poll(() => entered('b')).toBe('true')
 })

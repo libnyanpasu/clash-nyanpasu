@@ -4,6 +4,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -167,35 +168,37 @@ const renderPage = async ({
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <ImportUrlProvider>
-              <SnackbarProvider>
-                <ContextMenuProvider>
-                  <div>
-                    <ProfilesLayoutProvider>
-                      <ProfilesDndProvider>
-                        <div className="flex h-[1700px]">
-                          <aside
-                            className="w-72 shrink-0"
-                            data-testid="sidebar"
-                          >
-                            <ProfilesNavigate />
-                          </aside>
+            <SharedTooltip>
+              <ImportUrlProvider>
+                <SnackbarProvider>
+                  <ContextMenuProvider>
+                    <div>
+                      <ProfilesLayoutProvider>
+                        <ProfilesDndProvider>
+                          <div className="flex h-[1700px]">
+                            <aside
+                              className="w-72 shrink-0"
+                              data-testid="sidebar"
+                            >
+                              <ProfilesNavigate />
+                            </aside>
 
-                          <main
-                            className="min-w-0 flex-1"
-                            data-testid="content"
-                          >
-                            <ScrollArea>
-                              <ProfilesList className="p-4 pt-0" />
-                            </ScrollArea>
-                          </main>
-                        </div>
-                      </ProfilesDndProvider>
-                    </ProfilesLayoutProvider>
-                  </div>
-                </ContextMenuProvider>
-              </SnackbarProvider>
-            </ImportUrlProvider>
+                            <main
+                              className="min-w-0 flex-1"
+                              data-testid="content"
+                            >
+                              <ScrollArea>
+                                <ProfilesList className="p-4 pt-0" />
+                              </ScrollArea>
+                            </main>
+                          </div>
+                        </ProfilesDndProvider>
+                      </ProfilesLayoutProvider>
+                    </div>
+                  </ContextMenuProvider>
+                </SnackbarProvider>
+              </ImportUrlProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

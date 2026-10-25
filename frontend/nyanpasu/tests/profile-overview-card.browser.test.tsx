@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -104,15 +105,17 @@ const mount = async (
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <SnackbarProvider>
-              <ProfilesLayoutProvider>
-                <ProfileOverviewCard
-                  profile={profile}
-                  profiles={[profile]}
-                  isGlobal={false}
-                />
-              </ProfilesLayoutProvider>
-            </SnackbarProvider>
+            <SharedTooltip>
+              <SnackbarProvider>
+                <ProfilesLayoutProvider>
+                  <ProfileOverviewCard
+                    profile={profile}
+                    profiles={[profile]}
+                    isGlobal={false}
+                  />
+                </ProfilesLayoutProvider>
+              </SnackbarProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

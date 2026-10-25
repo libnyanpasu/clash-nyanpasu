@@ -4,6 +4,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -153,22 +154,24 @@ test.for(['en', 'zh-cn'] as const)(
         <TestQueryProvider client={queries}>
           <BlockTaskProvider>
             <TooltipProvider>
-              <ImportUrlProvider>
-                <SnackbarProvider>
-                  <ContextMenuProvider>
-                    <div>
-                      <ProfilesLayoutProvider>
-                        <ProfilesDndProvider>
-                          <ScrollArea>
-                            <ProfilesHeader />
-                            <ProfilesList className="p-4 pt-0" />
-                          </ScrollArea>
-                        </ProfilesDndProvider>
-                      </ProfilesLayoutProvider>
-                    </div>
-                  </ContextMenuProvider>
-                </SnackbarProvider>
-              </ImportUrlProvider>
+              <SharedTooltip>
+                <ImportUrlProvider>
+                  <SnackbarProvider>
+                    <ContextMenuProvider>
+                      <div>
+                        <ProfilesLayoutProvider>
+                          <ProfilesDndProvider>
+                            <ScrollArea>
+                              <ProfilesHeader />
+                              <ProfilesList className="p-4 pt-0" />
+                            </ScrollArea>
+                          </ProfilesDndProvider>
+                        </ProfilesLayoutProvider>
+                      </div>
+                    </ContextMenuProvider>
+                  </SnackbarProvider>
+                </ImportUrlProvider>
+              </SharedTooltip>
             </TooltipProvider>
           </BlockTaskProvider>
         </TestQueryProvider>
@@ -434,19 +437,21 @@ test('reorders profiles by dragging the whole card', async ({
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <SnackbarProvider>
-              <ContextMenuProvider>
-                <div>
-                  <ProfilesLayoutProvider>
-                    <ProfilesDndProvider>
-                      <ScrollArea>
-                        <ProfilesList className="p-4 pt-0" />
-                      </ScrollArea>
-                    </ProfilesDndProvider>
-                  </ProfilesLayoutProvider>
-                </div>
-              </ContextMenuProvider>
-            </SnackbarProvider>
+            <SharedTooltip>
+              <SnackbarProvider>
+                <ContextMenuProvider>
+                  <div>
+                    <ProfilesLayoutProvider>
+                      <ProfilesDndProvider>
+                        <ScrollArea>
+                          <ProfilesList className="p-4 pt-0" />
+                        </ScrollArea>
+                      </ProfilesDndProvider>
+                    </ProfilesLayoutProvider>
+                  </div>
+                </ContextMenuProvider>
+              </SnackbarProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

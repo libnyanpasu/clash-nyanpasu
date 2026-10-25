@@ -216,3 +216,31 @@ test('without find or jump nothing is marked', async ({ onTestFinished }) => {
   await expect.poll(() => rowsOf(container).length).toBe(5)
   expect(container.querySelector('[data-find],[data-jump]')).toBeNull()
 })
+
+test('each side of a change is highlighted', async ({ onTestFinished }) => {
+  const { container } = await renderViewer(
+    {
+      hunks: [
+        {
+          old_start: 1,
+          old_lines: 1,
+          new_start: 1,
+          new_lines: 1,
+          lines: ['-mode: rule', '+mode: global'],
+        },
+      ],
+    },
+    onTestFinished,
+  )
+  // The first document highlighted in a run also loads the highlighter.
+  await vi.waitUntil(
+    () => {
+      const rows = [...rowsOf(container)]
+      return (
+        rows.length === 2 &&
+        rows.every((row) => row.querySelector('td > span[style*="color"]'))
+      )
+    },
+    { timeout: 5000 },
+  )
+})

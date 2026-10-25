@@ -60,7 +60,7 @@ async function lineMiddle(region: HTMLElement, line: number) {
 
 test('a large document is shown as plain text', async ({ onTestFinished }) => {
   const { container, region } = await renderViewer(
-    { code: document_(4001) },
+    { code: document_(100_001) },
     onTestFinished,
   )
   await vi.waitUntil(() => region.querySelector('pre code'))
@@ -68,6 +68,18 @@ test('a large document is shown as plain text', async ({ onTestFinished }) => {
   await new Promise((resolve) => setTimeout(resolve, 300))
   expect(container.querySelector('[data-highlighted]')).toBeNull()
   expect(region.querySelector('pre .line')?.textContent).toBe('key-0: value')
+})
+
+test('a document of tens of thousands of lines is highlighted', async ({
+  onTestFinished,
+}) => {
+  const { container } = await renderViewer(
+    { code: document_(30_000) },
+    onTestFinished,
+  )
+  await vi.waitUntil(() => container.querySelector('[data-highlighted]'), {
+    timeout: 10_000,
+  })
 })
 
 test('a small document is highlighted', async ({ onTestFinished }) => {

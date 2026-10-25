@@ -1,53 +1,85 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ThemedToken } from 'shiki'
 import { Button } from '@nyanpasu/ui/button'
 import { useColorScheme, type ColorScheme } from '@/hooks/use-color-scheme'
 import { m } from '@/paraglide/messages'
+import {
+  lineTokens,
+  tokenizeYaml,
+  type DocumentTokens,
+} from '@/utils/yaml-tokens'
 import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { revealWithin, type FindRequest } from './find-bar'
 import { diffLines, findLines, type FieldJump } from './text-find'
 import { tokenStyle } from './token-style'
 
-/** Highlighted tokens for each shown line of a hunk; undefined for markers. */
-type HunkTokens = (ThemedToken[] | undefined)[]
-
 /**
- * Each side of a hunk is tokenized as its own contiguous text, so a line is
- * highlighted in the YAML context it has on its side of the change. Only the
- * first `shown` lines are tokenized.
+ * Where each shown line of a hunk is in the tokens of its side; undefined for
+ * markers.
  */
-async function tokenizeHunk(
-  hunk: SnapshotDiffHunk,
-  shown: number,
-  scheme: ColorScheme,
-): Promise<HunkTokens> {
-  const { tokenizeYaml } = await import('@/utils/shiki')
+type HunkTokens = ({ side: DocumentTokens; line: number } | undefined)[]
+
+/** The two sides of a hunk's first `shown` lines, as contiguous texts. */
+function hunkSides(hunk: SnapshotDiffHunk, shown: number) {
   const lines = hunk.lines.slice(0, shown)
   const side = (sign: string) =>
     lines
       .filter((line) => line[0] === ' ' || line[0] === sign)
       .map((line) => line.slice(1))
       .join('\n')
-  const [oldTokens, newTokens] = await Promise.all([
-    tokenizeYaml(side('-'), scheme),
-    tokenizeYaml(side('+'), scheme),
-  ])
+  return [side('-'), side('+')]
+}
+
+/** Each shown line of a hunk with the tokens of the side it belongs to. */
+function hunkTokens(
+  hunk: SnapshotDiffHunk,
+  shown: number,
+  oldTokens: DocumentTokens,
+  newTokens: DocumentTokens,
+): HunkTokens {
   let oldIndex = 0
   let newIndex = 0
-  return lines.map((line) => {
+  return hunk.lines.slice(0, shown).map((line) => {
     switch (line[0]) {
       case '-':
-        return oldTokens[oldIndex++]
+        return { side: oldTokens, line: oldIndex++ }
       case '+':
-        return newTokens[newIndex++]
+        return { side: newTokens, line: newIndex++ }
       case ' ':
         oldIndex++
-        return newTokens[newIndex++]
+        return { side: newTokens, line: newIndex++ }
       default:
         return undefined
     }
   })
+}
+
+/**
+ * Each side of a hunk is tokenized as its own contiguous text, so a line is
+ * highlighted in the YAML context it has on its side of the change. Only the
+ * first `lines` of each hunk are tokenized, all in one request.
+ */
+async function tokenizeHunks(
+  pending: { hunk: SnapshotDiffHunk; lines: number }[],
+  scheme: ColorScheme,
+): Promise<HunkTokens[]> {
+  const documents = await tokenizeYaml(
+    pending.flatMap(({ hunk, lines }) => hunkSides(hunk, lines)),
+    scheme,
+  )
+  return pending.map(({ hunk, lines }, index) =>
+    hunkTokens(hunk, lines, documents[index * 2], documents[index * 2 + 1]),
+  )
+}
+
+/** A line of a hunk, highlighted once its side has been tokenized. */
+function lineContent(place: HunkTokens[number], text: string) {
+  if (!place) return text
+  return lineTokens(place.side, place.line, text).map((token, index) => (
+    <span key={index} style={tokenStyle(token)}>
+      {token.text}
+    </span>
+  ))
 }
 
 // A transform that touches every proxy yields thousands of hunks; rendering
@@ -160,9 +192,7 @@ export default function DiffViewer({
     )
     if (pending.length === 0) return
     let cancelled = false
-    Promise.all(
-      pending.map(({ hunk, lines }) => tokenizeHunk(hunk, lines, scheme)),
-    )
+    tokenizeHunks(pending, scheme)
       .then((result) => {
         if (cancelled) return
         setHighlighted((previous) => {
@@ -279,11 +309,7 @@ export default function DiffViewer({
                       {sign}
                     </td>
                     <td className="pr-4 whitespace-pre">
-                      {hunkTokens?.[index]?.map((token, tokenIndex) => (
-                        <span key={tokenIndex} style={tokenStyle(token)}>
-                          {token.content}
-                        </span>
-                      )) ?? line.slice(1)}
+                      {lineContent(hunkTokens?.[index], line.slice(1))}
                     </td>
                   </tr>
                 )

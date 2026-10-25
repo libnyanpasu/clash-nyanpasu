@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useColorScheme } from '@/hooks/use-color-scheme'
+import { lineTokens, tokenizeYaml } from '@/utils/yaml-tokens'
 import { cn } from '@nyanpasu/utils'
 import { useQuery, type QueryKey } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -7,10 +8,10 @@ import { revealWithin, type FindRequest } from './find-bar'
 import { findLines, type FieldJump } from './text-find'
 import { tokenStyle } from './token-style'
 
-// Shiki highlights on the main thread in one task that grows with the
-// document (about 0.85 s for 22k lines), and the page shows a step again on
-// every view switch. Larger documents stay plain text.
-const MAX_HIGHLIGHT_LINES = 4000
+// A worker highlights the document, about a second for this many lines, and
+// holds up the documents asked for after it meanwhile. Larger documents stay
+// plain text.
+const MAX_HIGHLIGHT_LINES = 100_000
 
 // Every line has the same height, so the lines and the highlight bars sit at
 // fixed offsets and only the lines in view are mounted. A document of
@@ -74,10 +75,7 @@ export default function YamlViewer({
   const scheme = useColorScheme()
   const { data: tokens } = useQuery({
     queryKey: ['inspect-yaml-tokens', scheme, ...cacheKey],
-    queryFn: async () => {
-      const { tokenizeYaml } = await import('@/utils/shiki')
-      return tokenizeYaml(code, scheme)
-    },
+    queryFn: async () => (await tokenizeYaml([code], scheme))[0],
     enabled: highlight,
     staleTime: Infinity,
     gcTime: 60_000,
@@ -143,11 +141,15 @@ export default function YamlViewer({
                 style={{ top: start }}
                 data-line={index + 1}
               >
-                {tokens?.[index]?.map((token, tokenIndex) => (
-                  <span key={tokenIndex} style={tokenStyle(token)}>
-                    {token.content}
-                  </span>
-                )) ?? lines[index]}
+                {tokens
+                  ? lineTokens(tokens, index, lines[index]).map(
+                      (token, tokenIndex) => (
+                        <span key={tokenIndex} style={tokenStyle(token)}>
+                          {token.text}
+                        </span>
+                      ),
+                    )
+                  : lines[index]}
               </span>
             ))}
           </code>

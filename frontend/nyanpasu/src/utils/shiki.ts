@@ -4,7 +4,6 @@ import { createOnigurumaEngine } from 'shiki/engine/oniguruma'
 import minLight from 'shiki/themes/min-light.mjs'
 import nord from 'shiki/themes/nord.mjs'
 import getWasm from 'shiki/wasm'
-import type { ColorScheme } from '@/hooks/use-color-scheme'
 
 let shiki: Highlighter | null = null
 
@@ -17,21 +16,6 @@ export async function getShikiSingleton() {
     })) as Highlighter
   }
   return shiki
-}
-
-const SCHEME_THEMES = { light: 'min-light', dark: 'nord' } as const
-
-/**
- * Tokenizes YAML line by line in one color scheme, for renderers that lay out
- * lines themselves. Both schemes at once would tokenize the text once each.
- */
-export async function tokenizeYaml(code: string, scheme: ColorScheme) {
-  const instance = await getShikiSingleton()
-  await instance.loadLanguage(import('shiki/langs/yaml.mjs'))
-  return instance.codeToTokens(code, {
-    lang: 'yaml',
-    theme: SCHEME_THEMES[scheme],
-  }).tokens
 }
 
 const shellGrammar = () => import('shiki/langs/shell.mjs')

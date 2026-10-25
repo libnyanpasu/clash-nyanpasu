@@ -1,5 +1,12 @@
 //! Actor-owned proxy cache shared by IPC and tray adapters.
-use std::{hash::Hasher, sync::Arc, time::Duration};
+use std::{
+    hash::Hasher,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use crate::client::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
@@ -79,6 +86,7 @@ struct Args {
     core: CoreClient,
     snapshots: watch::Sender<Option<Arc<Snapshot>>>,
     changes: watch::Sender<()>,
+    refresh_queued: Arc<AtomicBool>,
     shutdown: CancellationToken,
 }
 struct State {
@@ -89,6 +97,9 @@ struct State {
     generation: u64,
     monitor: Option<tokio::task::JoinHandle<()>>,
     timer: Option<tokio::task::JoinHandle<()>>,
+    /// Set while a refresh request waits in the mailbox, so a burst of
+    /// requests (a delay test per node) rereads once rather than once each.
+    refresh_queued: Arc<AtomicBool>,
     shutdown: CancellationToken,
 }
 impl Drop for State {
@@ -284,6 +295,7 @@ impl Actor for ProxiesActor {
             generation: 0,
             monitor: None,
             timer: None,
+            refresh_queued: args.refresh_queued,
             shutdown: args.shutdown,
         })
     }
@@ -405,6 +417,7 @@ impl Actor for ProxiesActor {
                 let _ = reply.send(result);
             }
             Message::Refresh => {
+                state.refresh_queued.store(false, Ordering::Release);
                 if let Err(error) = state.read(&actor, true).await {
                     tracing::debug!(%error, "proxy cache refresh failed");
                 }
@@ -433,6 +446,7 @@ struct ClientInner {
     actor: ActorRef<Message>,
     snapshots: watch::Receiver<Option<Arc<Snapshot>>>,
     changes: watch::Receiver<()>,
+    refresh_queued: Arc<AtomicBool>,
 }
 impl Drop for ClientInner {
     fn drop(&mut self) {
@@ -455,6 +469,7 @@ impl ProxiesClient {
     ) -> Result<Self> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());
+        let refresh_queued = Arc::new(AtomicBool::new(false));
         let (actor, _) = Actor::spawn(
             None,
             ProxiesActor,
@@ -463,6 +478,7 @@ impl ProxiesClient {
                 shutdown: shutdown.clone(),
                 snapshots,
                 changes,
+                refresh_queued: refresh_queued.clone(),
             },
         )
         .await?;
@@ -471,6 +487,7 @@ impl ProxiesClient {
             actor,
             snapshots: snapshot_rx,
             changes: changes_rx,
+            refresh_queued,
         })))
     }
     async fn call<T: Send + 'static>(
@@ -546,7 +563,9 @@ impl ProxiesClient {
         .await
     }
     pub fn request_refresh(&self) {
-        let _ = self.0.actor.cast(Message::Refresh);
+        if !self.0.refresh_queued.swap(true, Ordering::AcqRel) {
+            let _ = self.0.actor.cast(Message::Refresh);
+        }
     }
     /// Wakes the subscribers because the order they show the groups in changed.
     pub fn notify_rearranged(&self) {
@@ -877,6 +896,25 @@ mod tests {
             fixture.reads.load(Ordering::SeqCst),
             2,
             "unchanged refresh must renew freshness"
+        );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_burst_of_refresh_requests_rereads_once() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        for _ in 0..5 {
+            client.request_refresh();
+        }
+        // Answered after the queued refresh, from the snapshot it just read.
+        client.get(false).await.unwrap();
+        assert_eq!(fixture.reads.load(Ordering::SeqCst), 2);
+        client.request_refresh();
+        client.get(false).await.unwrap();
+        assert_eq!(
+            fixture.reads.load(Ordering::SeqCst),
+            3,
+            "a request after the reread queues another"
         );
         server.abort();
     }

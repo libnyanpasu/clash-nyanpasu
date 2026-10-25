@@ -8,6 +8,8 @@ import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { Route as ClashControlRoute } from '@/pages/(main)/main/settings/clash/control/index'
 import { Route as ClashCoreRoute } from '@/pages/(main)/main/settings/clash/core/index'
 import { Route as ClashNetworkRoute } from '@/pages/(main)/main/settings/clash/network/index'
+import { Route as DebugIndexRoute } from '@/pages/(main)/main/settings/debug/index'
+import { Route as DebugRoute } from '@/pages/(main)/main/settings/debug/route'
 import { Route as SettingsRoute } from '@/pages/(main)/main/settings/route'
 import { Route as SystemProxyRoute } from '@/pages/(main)/main/settings/system/proxy/index'
 import { Route as SystemServiceRoute } from '@/pages/(main)/main/settings/system/service/index'
@@ -168,6 +170,8 @@ function createSettingsRouter() {
       getParentRoute: () => settingsRoute,
     } as never)
 
+  const debugRoute = child(DebugRoute, '/debug') as typeof mainRoute
+
   return createRouter({
     routeTree: rootRoute.addChildren([
       mainRoute.addChildren([
@@ -177,6 +181,13 @@ function createSettingsRouter() {
           child(ClashControlRoute, '/clash/control') as never,
           child(SystemProxyRoute, '/system/proxy') as never,
           child(SystemServiceRoute, '/system/service') as never,
+          debugRoute.addChildren([
+            DebugIndexRoute.update({
+              id: '/debug/',
+              path: '/',
+              getParentRoute: () => debugRoute,
+            } as never) as never,
+          ]) as never,
           createRoute({
             path: '/blank',
             getParentRoute: () => settingsRoute as never,
@@ -199,7 +210,7 @@ function createSettingsRouter() {
 
 const PAGES = (
   env.VITE_PERF_PAGES ??
-  'clash/core,clash/network,clash/control,system/proxy,system/service'
+  'clash/core,clash/network,clash/control,system/proxy,system/service,debug'
 ).split(',')
 
 test(`switch settings pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {

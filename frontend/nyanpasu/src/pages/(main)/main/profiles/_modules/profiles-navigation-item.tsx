@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ForwardedRef, ReactNode } from 'react'
 import {
   NavigationListItem,
   NavigationListItemIcon,
@@ -6,8 +6,7 @@ import {
   type NavigationListItemColor,
 } from '@nyanpasu/ui/navigation-list'
 import {
-  Link,
-  useMatchRoute,
+  useLinkProps,
   type LinkComponentProps,
   type RegisteredRouter,
 } from '@tanstack/react-router'
@@ -22,6 +21,7 @@ export default function ProfilesNavigationItem<
   color,
   label,
   description,
+  ref,
   ...props
 }: LinkComponentProps<'a', RegisteredRouter, TFrom, TTo, TMaskFrom, TMaskTo> & {
   icon: ReactNode
@@ -29,27 +29,27 @@ export default function ProfilesNavigationItem<
   label: string
   description: string
 }) {
-  const matchRoute = useMatchRoute()
-
-  const linkProps = props as LinkComponentProps<
-    'a',
-    RegisteredRouter,
-    TFrom,
-    TTo,
-    TMaskFrom,
-    TMaskTo
-  >
-
-  // An item stays selected on its child pages, such as a profile's detail page.
-  const isActive = !!matchRoute({ ...linkProps, fuzzy: true })
+  // An item stays selected on its child pages, such as a profile's detail
+  // page. The link tells whether it is active from the location being
+  // navigated to; `matchRoute` reads the last resolved one until the
+  // navigation settles, so a page opened from another section would render
+  // its item unselected first and then fade into the selected colors.
+  const linkProps = useLinkProps(
+    {
+      ...props,
+      activeOptions: { includeSearch: false },
+    } as Parameters<typeof useLinkProps>[0],
+    ref as ForwardedRef<Element>,
+  )
+  const isActive = linkProps['aria-current'] === 'page'
 
   return (
     <NavigationListItem active={isActive} asChild>
-      <Link aria-current={isActive ? 'page' : undefined} {...linkProps}>
+      <a {...linkProps}>
         <NavigationListItemIcon color={color}>{icon}</NavigationListItemIcon>
 
         <NavigationListItemText headline={label} supporting={description} />
-      </Link>
+      </a>
     </NavigationListItem>
   )
 }

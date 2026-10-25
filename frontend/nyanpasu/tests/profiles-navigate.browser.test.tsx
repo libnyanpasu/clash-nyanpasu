@@ -11,6 +11,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  Outlet,
   RouterProvider,
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
@@ -74,7 +75,9 @@ const items = [
   overlay('tun'),
 ]
 
-const renderAt = async (path: string) => {
+// Renders the navigation on `path`, starting at `initial`; any other path is
+// an empty page of another section.
+const renderAt = async (path: string, initial = path) => {
   mockIPC((command, args) => {
     const method =
       command === 'call_rpc' ? (args as { method: string }).method : command
@@ -101,9 +104,7 @@ const renderAt = async (path: string) => {
         <BlockTaskProvider>
           <TooltipProvider>
             <SnackbarProvider>
-              <ProfilesLayoutProvider>
-                <ProfilesNavigate />
-              </ProfilesLayoutProvider>
+              <Outlet />
             </SnackbarProvider>
           </TooltipProvider>
         </BlockTaskProvider>
@@ -113,13 +114,24 @@ const renderAt = async (path: string) => {
   const pageRoute = createRoute({
     getParentRoute: () => rootRoute,
     path,
+    component: () => (
+      <ProfilesLayoutProvider>
+        <ProfilesNavigate />
+      </ProfilesLayoutProvider>
+    ),
+  })
+  const otherRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/main/other',
   })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([pageRoute]),
-    history: createMemoryHistory({ initialEntries: [path] }),
+    routeTree: rootRoute.addChildren([pageRoute, otherRoute]),
+    history: createMemoryHistory({ initialEntries: [initial] }),
   })
 
-  return render(<RouterProvider router={router} />)
+  return Object.assign(await render(<RouterProvider router={router} />), {
+    router,
+  })
 }
 
 const item = (
@@ -186,6 +198,29 @@ test('an item stays selected on a detail page under its type', async () => {
     await expect.element(other).toHaveAttribute('data-active', 'false')
     await expect.element(other).not.toHaveAttribute('aria-current')
   }
+})
+
+test('an item is selected from its first render when its page opens', async () => {
+  const view = await renderAt('/main/profiles/profile', '/main/other')
+
+  // An item that rendered unselected first would fade into the selected
+  // colors as the page opens.
+  const changes: (string | null)[] = []
+  const observer = new MutationObserver((records) =>
+    records.forEach((record) => changes.push(record.oldValue)),
+  )
+  observer.observe(view.container, {
+    subtree: true,
+    attributeFilter: ['data-active'],
+    attributeOldValue: true,
+  })
+
+  await view.router.navigate({ to: '/main/profiles/profile' as never })
+
+  const all = item(view, m.profile_nav_all_profiles())
+  await expect.element(all).toHaveAttribute('data-active', 'true')
+  observer.disconnect()
+  expect(changes).toEqual([])
 })
 
 test('the pipeline items are selected on their own pages', async () => {

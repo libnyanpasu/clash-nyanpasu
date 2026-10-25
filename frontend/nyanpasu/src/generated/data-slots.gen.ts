@@ -245,6 +245,7 @@ export const DATA_SLOTS = [
   'inspect-step-detail',
   'inspect-step-graph',
   'inspect-step-panel',
+  'inspect-step-panel-skeleton',
   'inspect-step-position',
   'inspect-step-rail',
   'inspect-step-rail-scroll-area',

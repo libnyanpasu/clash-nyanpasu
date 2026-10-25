@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { useColorScheme } from '@/hooks/use-color-scheme'
 import { cn } from '@nyanpasu/utils'
 import { useQuery, type QueryKey } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -29,7 +30,6 @@ const MAX_BARS = 1000
 const viewerClassName = cn(
   'bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto',
   'font-mono text-[12.5px] leading-5 focus-visible:-outline-offset-2 focus-visible:outline-2',
-  'dark:[&_.shiki_span]:!text-[var(--shiki-dark)]',
   '[&_.line]:before:content-[attr(data-line)]',
   '[&_.line]:before:text-tc [&_.line]:before:inline-block [&_.line]:before:w-[52px]',
   '[&_.line]:before:pr-[18px] [&_.line]:before:text-right [&_.line]:before:select-none',
@@ -71,11 +71,12 @@ export default function YamlViewer({
     [lines],
   )
 
+  const scheme = useColorScheme()
   const { data: tokens } = useQuery({
-    queryKey: ['inspect-yaml-tokens', ...cacheKey],
+    queryKey: ['inspect-yaml-tokens', scheme, ...cacheKey],
     queryFn: async () => {
       const { tokenizeYaml } = await import('@/utils/shiki')
-      return tokenizeYaml(code)
+      return tokenizeYaml(code, scheme)
     },
     enabled: highlight,
     staleTime: Infinity,
@@ -133,7 +134,7 @@ export default function YamlViewer({
         )}
         {jump && <Bar line={jump.start} jump />}
 
-        <pre className={cn('m-0', tokens && 'shiki')}>
+        <pre className="m-0" data-highlighted={tokens ? '' : undefined}>
           <code>
             {virtualizer.getVirtualItems().map(({ index, start }) => (
               <span
@@ -143,7 +144,7 @@ export default function YamlViewer({
                 data-line={index + 1}
               >
                 {tokens?.[index]?.map((token, tokenIndex) => (
-                  <span key={tokenIndex} style={tokenStyle(token.htmlStyle)}>
+                  <span key={tokenIndex} style={tokenStyle(token)}>
                     {token.content}
                   </span>
                 )) ?? lines[index]}

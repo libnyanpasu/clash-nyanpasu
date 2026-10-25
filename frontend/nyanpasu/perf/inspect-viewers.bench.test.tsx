@@ -52,9 +52,11 @@ test(`switch the inspector views over ${yaml.split('\n').length} lines`, async (
         </div>
       </QueryClientProvider>,
     )
-  // Highlighted output carries inline token colors.
+  // The YAML view marks its highlighted text; the diff draws its highlighted
+  // tokens as colored spans.
   const highlighted = () =>
-    container.querySelector('[style*="--shiki-dark"]') !== null
+    container.querySelector('[data-highlighted], td > span[style*="color"]') !==
+    null
 
   const samples = { yaml: [] as number[], diff: [] as number[] }
   const frames = { yaml: [], diff: [] } as Record<

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThemedToken } from 'shiki'
 import { Button } from '@nyanpasu/ui/button'
+import { useColorScheme, type ColorScheme } from '@/hooks/use-color-scheme'
 import { m } from '@/paraglide/messages'
 import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
@@ -19,6 +20,7 @@ type HunkTokens = (ThemedToken[] | undefined)[]
 async function tokenizeHunk(
   hunk: SnapshotDiffHunk,
   shown: number,
+  scheme: ColorScheme,
 ): Promise<HunkTokens> {
   const { tokenizeYaml } = await import('@/utils/shiki')
   const lines = hunk.lines.slice(0, shown)
@@ -28,8 +30,8 @@ async function tokenizeHunk(
       .map((line) => line.slice(1))
       .join('\n')
   const [oldTokens, newTokens] = await Promise.all([
-    tokenizeYaml(side('-')),
-    tokenizeYaml(side('+')),
+    tokenizeYaml(side('-'), scheme),
+    tokenizeYaml(side('+'), scheme),
   ])
   let oldIndex = 0
   let newIndex = 0
@@ -137,12 +139,18 @@ export default function DiffViewer({
     hunks.reduce((total, hunk) => total + hunk.lines.length, 0) -
     shown.reduce((total, lines) => total + lines, 0)
 
-  // Tokens per hunk with the line count they cover, kept while `hunks` stays.
+  // Tokens per hunk with the line count they cover, kept while `hunks` and
+  // the color scheme stay.
+  const scheme = useColorScheme()
   const [highlighted, setHighlighted] = useState<{
     hunks: SnapshotDiffHunk[]
+    scheme: ColorScheme
     tokens: Map<SnapshotDiffHunk, { shown: number; tokens: HunkTokens }>
   }>()
-  const tokens = highlighted?.hunks === hunks ? highlighted.tokens : undefined
+  const tokens =
+    highlighted?.hunks === hunks && highlighted.scheme === scheme
+      ? highlighted.tokens
+      : undefined
 
   useEffect(() => {
     const pending = shown.flatMap((lines, index) =>
@@ -152,24 +160,28 @@ export default function DiffViewer({
     )
     if (pending.length === 0) return
     let cancelled = false
-    Promise.all(pending.map(({ hunk, lines }) => tokenizeHunk(hunk, lines)))
+    Promise.all(
+      pending.map(({ hunk, lines }) => tokenizeHunk(hunk, lines, scheme)),
+    )
       .then((result) => {
         if (cancelled) return
         setHighlighted((previous) => {
           const next = new Map(
-            previous?.hunks === hunks ? previous.tokens : undefined,
+            previous?.hunks === hunks && previous.scheme === scheme
+              ? previous.tokens
+              : undefined,
           )
           pending.forEach(({ hunk, lines }, index) =>
             next.set(hunk, { shown: lines, tokens: result[index] }),
           )
-          return { hunks, tokens: next }
+          return { hunks, scheme, tokens: next }
         })
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [hunks, shown, tokens])
+  }, [hunks, scheme, shown, tokens])
 
   useEffect(() => {
     const row = regionRef.current?.querySelector<HTMLElement>(
@@ -266,12 +278,9 @@ export default function DiffViewer({
                     >
                       {sign}
                     </td>
-                    <td className="pr-4 whitespace-pre dark:[&>span]:text-(--shiki-dark)!">
+                    <td className="pr-4 whitespace-pre">
                       {hunkTokens?.[index]?.map((token, tokenIndex) => (
-                        <span
-                          key={tokenIndex}
-                          style={tokenStyle(token.htmlStyle)}
-                        >
+                        <span key={tokenIndex} style={tokenStyle(token)}>
                           {token.content}
                         </span>
                       )) ?? line.slice(1)}

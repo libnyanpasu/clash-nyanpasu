@@ -66,7 +66,7 @@ test('a large document is shown as plain text', async ({ onTestFinished }) => {
   await vi.waitUntil(() => region.querySelector('pre code'))
   // Highlighting is not even attempted past the cap.
   await new Promise((resolve) => setTimeout(resolve, 300))
-  expect(container.querySelector('.shiki')).toBeNull()
+  expect(container.querySelector('[data-highlighted]')).toBeNull()
   expect(region.querySelector('pre .line')?.textContent).toBe('key-0: value')
 })
 
@@ -75,7 +75,25 @@ test('a small document is highlighted', async ({ onTestFinished }) => {
     { code: document_(50) },
     onTestFinished,
   )
-  await vi.waitUntil(() => container.querySelector('.shiki'))
+  // The first document highlighted in a run also loads the highlighter.
+  await vi.waitUntil(() => container.querySelector('[data-highlighted]'), {
+    timeout: 5000,
+  })
+})
+
+test('a document is highlighted again in the colors of a new color scheme', async ({
+  onTestFinished,
+}) => {
+  const { region } = await renderViewer({ code: document_(50) }, onTestFinished)
+  onTestFinished(() => document.documentElement.classList.remove('dark'))
+  const keyColor = () =>
+    region.querySelector<HTMLElement>('[data-highlighted] .line span')?.style
+      .color
+  const light = await vi.waitUntil(keyColor, { timeout: 5000 })
+
+  document.documentElement.classList.add('dark')
+
+  await vi.waitUntil(() => keyColor() && keyColor() !== light)
 })
 
 test('find marks the matching lines at the lines they are on', async ({
@@ -85,7 +103,7 @@ test('find marks the matching lines at the lines they are on', async ({
     { code: document_(60), find: { query: 'key-4', active: 3 } },
     onTestFinished,
   )
-  await vi.waitUntil(() => region.querySelector('.shiki'))
+  await vi.waitUntil(() => region.querySelector('[data-highlighted]'))
 
   // key-4 and key-40 .. key-49.
   expect(region.querySelectorAll('[data-find]')).toHaveLength(11)
@@ -176,7 +194,7 @@ test('each line of a highlighted document shows its own number', async ({
   onTestFinished,
 }) => {
   const { region } = await renderViewer({ code: document_(50) }, onTestFinished)
-  await vi.waitUntil(() => region.querySelector('.shiki'))
+  await vi.waitUntil(() => region.querySelector('[data-highlighted]'))
   const lines = [...region.querySelectorAll('pre .line')]
 
   expect(lines.slice(0, 3).map(shownNumber)).toEqual(['1', '2', '3'])

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThemedToken } from 'shiki'
 import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
@@ -6,6 +6,7 @@ import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { revealWithin, type FindRequest } from './find-bar'
 import { diffLines, findLines, type FieldJump } from './text-find'
+import { tokenStyle } from './token-style'
 
 /** Highlighted tokens for each shown line of a hunk; undefined for markers. */
 type HunkTokens = (ThemedToken[] | undefined)[]
@@ -62,19 +63,6 @@ function shownLines(hunks: SnapshotDiffHunk[], budget: number) {
     budget -= lines
   }
   return shown
-}
-
-/** Shiki's HTML style keys are CSS property names; React wants camelCase. */
-function tokenStyle(style: Record<string, string> | undefined) {
-  if (!style) return undefined
-  return Object.fromEntries(
-    Object.entries(style).map(([key, value]) => [
-      key.startsWith('--')
-        ? key
-        : key.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase()),
-      value,
-    ]),
-  ) as CSSProperties
 }
 
 /**

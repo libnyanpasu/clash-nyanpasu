@@ -47,11 +47,15 @@ const bar = (region: HTMLElement, selector: string) =>
 
 const middle = (rect: DOMRect) => (rect.top + rect.bottom) / 2
 
-/** The vertical middle of a line of text, measured from the rendered text. */
-function lineMiddle(region: HTMLElement, line: number) {
-  return middle(
-    region.querySelectorAll('pre .line')[line].getBoundingClientRect(),
+/**
+ * The vertical middle of a line of text, measured from the rendered text once
+ * the line is mounted.
+ */
+async function lineMiddle(region: HTMLElement, line: number) {
+  const text = await vi.waitUntil(() =>
+    region.querySelector(`pre .line[data-line="${line + 1}"]`),
   )
+  return middle(text.getBoundingClientRect())
 }
 
 test('a large document is shown as plain text', async ({ onTestFinished }) => {
@@ -63,7 +67,7 @@ test('a large document is shown as plain text', async ({ onTestFinished }) => {
   // Highlighting is not even attempted past the cap.
   await new Promise((resolve) => setTimeout(resolve, 300))
   expect(container.querySelector('.shiki')).toBeNull()
-  expect(region.querySelector('pre code')?.textContent).toContain('key-4000')
+  expect(region.querySelector('pre .line')?.textContent).toBe('key-0: value')
 })
 
 test('a small document is highlighted', async ({ onTestFinished }) => {
@@ -89,7 +93,9 @@ test('find marks the matching lines at the lines they are on', async ({
   // The fourth match is key-42, on the 43rd line.
   expect(active.dataset.line).toBe('42')
   expect(
-    Math.abs(middle(active.getBoundingClientRect()) - lineMiddle(region, 42)),
+    Math.abs(
+      middle(active.getBoundingClientRect()) - (await lineMiddle(region, 42)),
+    ),
   ).toBeLessThan(1)
 })
 
@@ -105,7 +111,9 @@ test('the bars line up with the plain text of a large document', async ({
   )) as HTMLElement
   await expect.poll(() => region.scrollTop).toBeGreaterThan(0)
   expect(
-    Math.abs(middle(active.getBoundingClientRect()) - lineMiddle(region, 4100)),
+    Math.abs(
+      middle(active.getBoundingClientRect()) - (await lineMiddle(region, 4100)),
+    ),
   ).toBeLessThan(1)
 })
 
@@ -155,4 +163,42 @@ test('nothing is marked without find or jump, or when nothing matches', async ({
   update({ find: { query: 'nothing', active: 0 } })
   await new Promise((resolve) => setTimeout(resolve, 50))
   expect(region.querySelector('[data-find],[data-jump]')).toBeNull()
+})
+
+// The number a line shows: its marker's content, resolved from the line.
+const shownNumber = (line: Element) => {
+  const content = getComputedStyle(line, '::before').content
+  const attribute = /^attr\(([\w-]+)\)$/.exec(content)?.[1]
+  return attribute ? line.getAttribute(attribute) : content.replaceAll('"', '')
+}
+
+test('each line of a highlighted document shows its own number', async ({
+  onTestFinished,
+}) => {
+  const { region } = await renderViewer({ code: document_(50) }, onTestFinished)
+  await vi.waitUntil(() => region.querySelector('.shiki'))
+  const lines = [...region.querySelectorAll('pre .line')]
+
+  expect(lines.slice(0, 3).map(shownNumber)).toEqual(['1', '2', '3'])
+  expect(lines.map((line) => line.textContent)).toEqual(
+    lines.map((_, index) => `key-${index}: value`),
+  )
+})
+
+test('a long document mounts only the lines in view, numbered as they are', async ({
+  onTestFinished,
+}) => {
+  const { region } = await renderViewer(
+    { code: document_(4001) },
+    onTestFinished,
+  )
+  await vi.waitUntil(() => region.querySelector('pre .line'))
+  expect(region.querySelectorAll('pre .line').length).toBeLessThan(100)
+
+  region.scrollTop = region.scrollHeight
+  const last = await vi.waitUntil(() =>
+    region.querySelector('pre .line[data-line="4001"]'),
+  )
+  expect(shownNumber(last)).toBe('4001')
+  expect(last.textContent).toBe('key-4000: value')
 })

@@ -11,6 +11,7 @@ import { NoMoreProfiles, useListOverflows } from './profiles-list-footer'
 import { sectionId } from './resolve-profile-drop'
 import { useProfileLayout } from './use-profile-layout'
 import { useProfilesDnd } from './use-profiles-dnd'
+import { useProgressiveCount } from './use-progressive-count'
 
 const COLLAPSED_KV_KEY = 'profiles-folder-collapsed'
 
@@ -45,6 +46,16 @@ export default function ProfileSections({
   const listRef = useRef<HTMLDivElement>(null)
 
   const overflows = useListOverflows(listRef, configs.size)
+
+  // The cards render a batch at a time from the top: the active one, then
+  // each section's in turn. A section whose cards wait shows its heading.
+  let budget = useProgressiveCount(configs.size)
+  const take = <T,>(list: T[]) => {
+    const taken = list.slice(0, budget)
+    budget -= taken.length
+    return taken
+  }
+  const shownActive = active && take([active])[0]
 
   if (configs.size === 0) {
     return (
@@ -86,7 +97,7 @@ export default function ProfileSections({
               }
         }
       >
-        {sectionProfiles.map((profile, index) => (
+        {take(sectionProfiles).map((profile, index) => (
           <GridViewProfile
             key={profile.uid}
             profile={profile}
@@ -116,16 +127,16 @@ export default function ProfileSections({
           )}
           data-slot="profiles-sections"
         >
-          {active && (
+          {shownActive && (
             <div
               className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
               data-slot="profiles-active"
             >
               <GridViewProfile
-                profile={active}
+                profile={shownActive}
                 profiles={profiles?.items ?? []}
                 index={0}
-                isGlobal={globalTransforms.has(active.uid)}
+                isGlobal={globalTransforms.has(shownActive.uid)}
               />
             </div>
           )}

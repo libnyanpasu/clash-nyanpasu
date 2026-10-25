@@ -14,6 +14,7 @@ import {
   NoMoreProfiles,
   useListOverflows,
 } from '../../_modules/profiles-list-footer'
+import { useProgressiveCount } from '../../_modules/use-progressive-count'
 import { categoryProfiles } from '../../_modules/utils'
 import { Route as IndexRoute } from '../index'
 
@@ -49,6 +50,9 @@ function TransformList({
   const gridRef = useRef<HTMLDivElement>(null)
 
   const overflows = useListOverflows(gridRef, filteredProfiles.length)
+
+  // The cards render a batch at a time from the top.
+  const shown = useProgressiveCount(filteredProfiles.length)
 
   if (filteredProfiles.length === 0) {
     return (
@@ -97,7 +101,7 @@ function TransformList({
             )}
             data-slot="profiles-grid"
           >
-            {filteredProfiles.map((profile, index) => (
+            {filteredProfiles.slice(0, shown).map((profile, index) => (
               <GridViewProfile
                 key={profile.uid}
                 profile={profile}

@@ -16,6 +16,13 @@ pub(super) fn get_arch() -> anyhow::Result<&'static str> {
     }
 }
 
+/// Whether `version` names a rolling build as `alpha-<commit>`.
+pub(super) fn is_alpha_version(version: &str) -> bool {
+    version.strip_prefix("alpha-").is_some_and(|commit| {
+        (7..=40).contains(&commit.len()) && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
 pub(crate) enum CoreTypeMeta {
     ClashPremium(String),
     Mihomo(String),

@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Context as _;
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use specta::Type;
 #[cfg(target_family = "unix")]
@@ -17,7 +17,7 @@ use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    ManifestVersion,
+    ManifestVersion, ManifestVersionLatest,
     ports::{UpdaterBackend, UpdaterProgress},
     shared::{self, CoreTypeMeta},
 };
@@ -117,13 +117,14 @@ impl UpdaterBackend for HttpUpdaterBackend {
             &mirror.0,
             "/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
         )?;
-        let manifest = client
+        let mut manifest: ManifestVersion = client
             .get(url)
             .send()
             .await?
             .error_for_status()?
             .json()
             .await?;
+        resolve_rolling_versions(&client, &mirror.0, &mut manifest).await;
         Ok((manifest, mirror))
     }
 
@@ -269,6 +270,182 @@ impl UpdaterBackend for HttpUpdaterBackend {
             companion,
         })
     }
+}
+
+const MIHOMO_ALPHA_VERSION_URL: &str =
+    "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
+const MEOW_ALPHA_RELEASE_API: &str =
+    "https://api.github.com/repos/meow-rs/meow-rs/releases/tags/Prerelease-Alpha";
+const CLASH_RS_ALPHA_TAG_API: &str =
+    "https://api.github.com/repos/ibigbug/clash-rs/git/ref/tags/latest";
+const CLASH_RS_RELEASE_API: &str = "https://api.github.com/repos/ibigbug/clash-rs/releases/latest";
+/// A rolling release that does not answer by then leaves its core at the
+/// manifest's version instead of holding up the whole check.
+const ROLLING_VERSION_TIMEOUT: Duration = Duration::from_secs(15);
+
+#[derive(Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    assets: Vec<GithubAsset>,
+}
+
+#[derive(Deserialize)]
+struct GithubAsset {
+    name: String,
+}
+
+/// A tag reference, or the annotated tag object it points to.
+#[derive(Deserialize)]
+struct GitTag {
+    object: GitObject,
+}
+
+#[derive(Deserialize)]
+struct GitObject {
+    #[serde(rename = "type")]
+    kind: String,
+    sha: String,
+    url: String,
+}
+
+// TODO(#1112): resource manifest v2 should state how each rolling core finds
+// its current build, so these per-core probes and the daily manifest snapshot
+// of the alpha versions can go.
+/// Rolling releases keep only their newest build, so once upstream publishes
+/// again, the daily manifest names alpha archives that no longer exist
+/// (#5992). Each alpha core takes the version its release serves now.
+async fn resolve_rolling_versions(
+    client: &reqwest::Client,
+    mirror: &str,
+    manifest: &mut ManifestVersion,
+) {
+    let meow_template = shared::get_arch()
+        .ok()
+        .and_then(|arch| manifest.arch_template.meow_alpha.get(arch).cloned());
+    let (mihomo, meow, clash_rs) = tokio::join!(
+        fetch_mihomo_alpha_version(client, mirror),
+        fetch_meow_alpha_version(client, meow_template.as_deref()),
+        fetch_clash_rs_alpha_version(client),
+    );
+    apply_rolling_versions(&mut manifest.latest, mihomo, meow, clash_rs);
+}
+
+/// A core whose release could not be read keeps the manifest's version.
+fn apply_rolling_versions(
+    latest: &mut ManifestVersionLatest,
+    mihomo: anyhow::Result<String>,
+    meow: anyhow::Result<String>,
+    clash_rs: anyhow::Result<String>,
+) {
+    for (core, version, resolved) in [
+        (ClashCore::MihomoAlpha, &mut latest.mihomo_alpha, mihomo),
+        (ClashCore::MeowAlpha, &mut latest.meow_alpha, meow),
+        (
+            ClashCore::ClashRsAlpha,
+            &mut latest.clash_rs_alpha,
+            clash_rs,
+        ),
+    ] {
+        match resolved {
+            Ok(resolved) => *version = resolved,
+            Err(error) => tracing::warn!(
+                error = format!("{error:#}"),
+                core = %core,
+                manifest_version = %version,
+                "could not read the core's rolling release; keeping the manifest's version"
+            ),
+        }
+    }
+}
+
+async fn fetch_mihomo_alpha_version(
+    client: &reqwest::Client,
+    mirror: &str,
+) -> anyhow::Result<String> {
+    let text = client
+        .get(parse_gh_url(mirror, MIHOMO_ALPHA_VERSION_URL)?)
+        .timeout(ROLLING_VERSION_TIMEOUT)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let version = text.trim();
+    anyhow::ensure!(
+        shared::is_alpha_version(version),
+        "unexpected Mihomo Alpha version {version:?}"
+    );
+    Ok(version.to_owned())
+}
+
+async fn fetch_meow_alpha_version(
+    client: &reqwest::Client,
+    template: Option<&str>,
+) -> anyhow::Result<String> {
+    let template = template.context("the manifest has no Meow Alpha archive for this platform")?;
+    let release: GithubRelease = fetch_github_api(client, MEOW_ALPHA_RELEASE_API).await?;
+    alpha_version_from_assets(
+        template,
+        release.assets.iter().map(|asset| asset.name.as_str()),
+    )
+    .context("the Meow Alpha release has no archive for this platform")
+}
+
+async fn fetch_clash_rs_alpha_version(client: &reqwest::Client) -> anyhow::Result<String> {
+    let (tag, release) = tokio::try_join!(
+        fetch_github_api::<GitTag>(client, CLASH_RS_ALPHA_TAG_API),
+        fetch_github_api::<GithubRelease>(client, CLASH_RS_RELEASE_API),
+    )?;
+    let commit = match tag.object.kind.as_str() {
+        "tag" => {
+            fetch_github_api::<GitTag>(client, &tag.object.url)
+                .await?
+                .object
+                .sha
+        }
+        _ => tag.object.sha,
+    };
+    clash_rs_alpha_version(&release.tag_name, &commit)
+        .with_context(|| format!("unexpected clash-rs alpha commit {commit:?}"))
+}
+
+async fn fetch_github_api<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    url: &str,
+) -> anyhow::Result<T> {
+    Ok(client
+        .get(url)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .timeout(ROLLING_VERSION_TIMEOUT)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+/// Finds the `alpha-<commit>` version in the name of the release asset that
+/// `template` (an archive name with `{}` for the version) describes.
+fn alpha_version_from_assets<'a>(
+    template: &str,
+    names: impl Iterator<Item = &'a str>,
+) -> Option<String> {
+    let (prefix, suffix) = template.split_once("{}")?;
+    names
+        .filter_map(|name| name.strip_prefix(prefix)?.strip_suffix(suffix))
+        .find(|version| shared::is_alpha_version(version))
+        .map(str::to_owned)
+}
+
+/// Names a clash-rs `latest` build the way the core version manifest does:
+/// the latest stable version, marked alpha, with the build's short commit.
+fn clash_rs_alpha_version(stable_tag: &str, commit: &str) -> Option<String> {
+    let short = commit.get(..7)?;
+    if !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let stable = stable_tag.strip_prefix('v').unwrap_or(stable_tag);
+    Some(format!("{stable}-alpha+sha.{short}"))
 }
 
 async fn fetch_text(client: reqwest::Client, url: url::Url) -> anyhow::Result<String> {
@@ -1013,6 +1190,102 @@ mod tests {
             .is_err()
         );
         assert!(verify_meow_version(ClashCore::Meow, "v0.22.0", "not a version").is_err());
+    }
+
+    #[tokio::test]
+    async fn mihomo_alpha_version_is_read_from_the_rolling_release_through_the_mirror() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mirror = format!("http://{}/", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let mut buffer = [0; 1024];
+                let read = socket.read(&mut buffer).await.unwrap();
+                assert_ne!(read, 0);
+                request.extend_from_slice(&buffer[..read]);
+            }
+            let body = "alpha-6780eee\n";
+            socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            String::from_utf8(request).unwrap()
+        });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+
+        let version = fetch_mihomo_alpha_version(&client, &mirror).await.unwrap();
+
+        assert_eq!(version, "alpha-6780eee");
+        assert!(server.await.unwrap().starts_with(
+            "GET /https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt HTTP/1.1"
+        ));
+    }
+
+    #[test]
+    fn meow_alpha_version_comes_from_this_platform_archive() {
+        let assets = [
+            "meow-alpha-3f485df-x86_64-pc-windows-msvc.zip.sha256",
+            "meow-alpha-3f485df-aarch64-pc-windows-msvc.zip",
+            "meow-alpha-3f485df-x86_64-pc-windows-msvc.zip",
+            "meow_0.26.1-alpha.202610241634.3f485df-1_x86_64.ipk",
+        ];
+
+        assert_eq!(
+            alpha_version_from_assets("meow-{}-x86_64-pc-windows-msvc.zip", assets.into_iter())
+                .as_deref(),
+            Some("alpha-3f485df")
+        );
+        assert_eq!(
+            alpha_version_from_assets("meow-{}-x86_64-apple-darwin.tar.gz", assets.into_iter()),
+            None
+        );
+        assert_eq!(
+            alpha_version_from_assets(
+                "meow-{}-x86_64-pc-windows-msvc.zip",
+                ["meow-alpha-nothex-x86_64-pc-windows-msvc.zip"].into_iter()
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn clash_rs_alpha_version_names_the_build_like_the_manifest() {
+        assert_eq!(
+            clash_rs_alpha_version("v0.10.10", "02b7ee8d6f4c1b2a3e5f60718293a4b5c6d7e8f9")
+                .as_deref(),
+            Some("0.10.10-alpha+sha.02b7ee8")
+        );
+        assert_eq!(clash_rs_alpha_version("v0.10.10", "02b7ee"), None);
+        assert_eq!(clash_rs_alpha_version("v0.10.10", "not-a-commit"), None);
+    }
+
+    #[test]
+    fn an_unreadable_rolling_release_keeps_the_manifest_version() {
+        let mut latest = ManifestVersionLatest {
+            mihomo_alpha: "alpha-91e85ee".into(),
+            meow_alpha: "alpha-1111111".into(),
+            clash_rs_alpha: "0.10.10-alpha+sha.2222222".into(),
+            ..Default::default()
+        };
+
+        apply_rolling_versions(
+            &mut latest,
+            Ok("alpha-6780eee".into()),
+            Err(anyhow::anyhow!("rate limited")),
+            Ok("0.10.10-alpha+sha.3333333".into()),
+        );
+
+        assert_eq!(latest.mihomo_alpha, "alpha-6780eee");
+        assert_eq!(latest.meow_alpha, "alpha-1111111");
+        assert_eq!(latest.clash_rs_alpha, "0.10.10-alpha+sha.3333333");
     }
 
     #[test]

@@ -129,10 +129,7 @@ impl ManifestVersion {
                 CoreTypeMeta::Meow(self.latest.meow.clone()),
             )),
             ClashCore::MeowAlpha => {
-                let sha = self.latest.meow_alpha.strip_prefix("alpha-")?;
-                if !(7..=40).contains(&sha.len())
-                    || !sha.bytes().all(|byte| byte.is_ascii_hexdigit())
-                {
+                if !shared::is_alpha_version(&self.latest.meow_alpha) {
                     return None;
                 }
                 Some((

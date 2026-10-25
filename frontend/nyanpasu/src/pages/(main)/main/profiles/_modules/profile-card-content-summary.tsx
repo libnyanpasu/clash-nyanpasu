@@ -1,18 +1,14 @@
 import AccountTreeOutlineRounded from '~icons/material-symbols/account-tree-outline-rounded'
 import LayersOutlineRounded from '~icons/material-symbols/layers-outline-rounded'
 import RuleRounded from '~icons/material-symbols/rule-rounded'
-import { useMemo } from 'react'
 import { SharedTooltipTrigger } from '@nyanpasu/ui/shared-tooltip'
 import { m } from '@/paraglide/messages'
 import { useProfileContent } from '@nyanpasu/query'
-import { profileContentSummary } from './profile-content-summary'
+import { useProfileContentSummary } from './use-profile-content-summary'
 
 export default function ProfileCardContentSummary({ uid }: { uid: string }) {
   const { query } = useProfileContent(uid)
-  const summary = useMemo(
-    () => (query.data === undefined ? null : profileContentSummary(query.data)),
-    [query.data],
-  )
+  const summary = useProfileContentSummary(uid, query.data)
   const items = [
     {
       label: m.profile_card_nodes(),

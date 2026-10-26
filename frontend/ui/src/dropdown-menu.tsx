@@ -2,59 +2,12 @@ import ArrowRight from '~icons/material-symbols/arrow-right-rounded'
 import Check from '~icons/material-symbols/check-rounded'
 import RadioChecked from '~icons/material-symbols/radio-button-checked'
 import Radio from '~icons/material-symbols/radio-button-unchecked'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence } from 'motion/react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { ComponentProps, createContext, useContext } from 'react'
 import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
-
-const MotionContent = ({
-  children,
-  className,
-  style,
-  ...props
-}: ComponentProps<typeof motion.div>) => {
-  return (
-    <motion.div
-      className={cn(
-        'relative z-50 w-full overflow-auto rounded',
-        'dark:text-on-surface',
-        'bg-inverse-on-surface dark:bg-surface',
-        'shadow-background shadow-sm',
-        'border-outline-variant/50 dark:border-outline-variant/15 border',
-        className,
-      )}
-      style={{
-        ...style,
-        maxHeight: 'var(--radix-popper-available-height)',
-        transformOrigin:
-          'var(--radix-dropdown-menu-content-transform-origin, ' +
-          'var(--radix-dropdown-menu-sub-content-transform-origin, ' +
-          'var(--radix-popper-transform-origin, top)))',
-      }}
-      initial={{
-        opacity: 0,
-        scaleY: 0.9,
-      }}
-      animate={{
-        opacity: 1,
-        scaleY: 1,
-      }}
-      exit={{
-        opacity: 0,
-        scaleY: 0.9,
-      }}
-      transition={{
-        type: 'spring',
-        bounce: 0,
-        duration: 0.35,
-      }}
-      {...props}
-    >
-      {children}
-    </motion.div>
-  )
-}
+import { MenuSurface } from './menu-surface'
 
 type WidthType = 'auto' | 'full'
 
@@ -207,7 +160,7 @@ export function DropdownMenuSubContent({
       {open && (
         <DropdownMenuPortal forceMount>
           <DropdownMenuPrimitive.SubContent {...props} asChild>
-            <MotionContent className={className}>{children}</MotionContent>
+            <MenuSurface className={className}>{children}</MenuSurface>
           </DropdownMenuPrimitive.SubContent>
         </DropdownMenuPortal>
       )}
@@ -271,7 +224,7 @@ export const DropdownMenuContent = ({
             {...props}
             asChild
           >
-            <MotionContent
+            <MenuSurface
               className={className}
               style={{
                 width:
@@ -281,7 +234,7 @@ export const DropdownMenuContent = ({
               }}
             >
               {children}
-            </MotionContent>
+            </MenuSurface>
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPrimitive.Portal>
       )}

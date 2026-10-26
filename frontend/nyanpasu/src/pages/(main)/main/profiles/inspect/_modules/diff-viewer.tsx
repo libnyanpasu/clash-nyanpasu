@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useColorScheme, type ColorScheme } from '@/hooks/use-color-scheme'
 import { m } from '@/paraglide/messages'
 import {
@@ -20,14 +20,16 @@ import { tokenStyle } from './token-style'
 const ROW_HEIGHT = 20
 // Rows mounted beyond each edge of the view, so scrolling shows no gap.
 const OVERSCAN = 20
-// The two line number columns and the change sign, and the room after the
-// longest line.
-const GUTTER_WIDTH = 44 + 44 + 22
+// Each line number column fits the longest number, `--number` wide, with this
+// much room around it; then come the change sign and, after the longest line,
+// some room.
+const NUMBER_PADDING = 16 + 12
+const SIGN_WIDTH = 22
 const END_PADDING = 16
 
 const rowClassName =
-  'absolute inset-x-0 grid h-5 grid-cols-[44px_44px_22px_1fr]'
-const numberClassName = 'text-tc pr-2.5 text-right select-none'
+  'absolute inset-x-0 grid h-5 grid-cols-[var(--number)_var(--number)_22px_1fr]'
+const numberClassName = 'text-tc pr-3 pl-4 text-right select-none'
 
 /**
  * Where a line of a hunk is in the tokens of its side; undefined for markers.
@@ -174,6 +176,19 @@ export default function DiffViewer({
 
   const texts = useMemo(() => diffLines(hunks), [hunks])
   const { rows, lineRows } = useMemo(() => diffRows(hunks), [hunks])
+  const lastNumber = useMemo(
+    () =>
+      hunks.reduce(
+        (last, hunk) =>
+          Math.max(
+            last,
+            hunk.old_start + hunk.old_lines,
+            hunk.new_start + hunk.new_lines,
+          ),
+        0,
+      ),
+    [hunks],
+  )
   // The rows are absolutely placed, so the longest line sets the width.
   const width = useMemo(
     () => texts.reduce((widest, text) => Math.max(widest, columns(text)), 0),
@@ -249,6 +264,11 @@ export default function DiffViewer({
       aria-label={m.inspect_diff()}
       tabIndex={0}
       className="bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto font-mono text-[12.5px] leading-5 focus-visible:outline-2 focus-visible:-outline-offset-2"
+      style={
+        {
+          '--number': `calc(${String(lastNumber).length}ch + ${NUMBER_PADDING}px)`,
+        } as CSSProperties
+      }
     >
       <div
         role="table"
@@ -257,7 +277,7 @@ export default function DiffViewer({
         className="relative"
         style={{
           height: virtualizer.getTotalSize(),
-          minWidth: `calc(${GUTTER_WIDTH + END_PADDING}px + ${width}ch)`,
+          minWidth: `calc(var(--number) * 2 + ${SIGN_WIDTH + END_PADDING}px + ${width}ch)`,
         }}
       >
         <div role="row" aria-rowindex={1} className="sr-only">

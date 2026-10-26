@@ -32,6 +32,15 @@ export function diffLines(hunks: readonly SnapshotDiffHunk[]): string[] {
   return hunks.flatMap((hunk) => hunk.lines.map((line) => line.slice(1)))
 }
 
+/** The columns a line takes in a monospace font; a wide character takes two. */
+export function columns(line: string) {
+  let count = 0
+  for (const char of line) {
+    count += char.codePointAt(0)! >= 0x1100 ? 2 : 1
+  }
+  return count
+}
+
 const indentOf = (line: string) => line.length - line.trimStart().length
 
 const isBlank = (line: string) => {

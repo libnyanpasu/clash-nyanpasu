@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useColorScheme } from '@/hooks/use-color-scheme'
-import { lineTokens, tokenizeYaml } from '@/utils/yaml-tokens'
+import {
+  lineTokens,
+  MAX_HIGHLIGHT_LINES,
+  tokenizeYaml,
+} from '@/utils/yaml-tokens'
 import { cn } from '@nyanpasu/utils'
 import { useQuery, type QueryKey } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { revealWithin, type FindRequest } from './find-bar'
-import { findLines, type FieldJump } from './text-find'
+import { columns, findLines, type FieldJump } from './text-find'
 import { tokenStyle } from './token-style'
-
-// A worker highlights the document, about a second for this many lines, and
-// holds up the documents asked for after it meanwhile. Larger documents stay
-// plain text.
-const MAX_HIGHLIGHT_LINES = 100_000
 
 // Every line has the same height, so the lines and the highlight bars sit at
 // fixed offsets and only the lines in view are mounted. A document of
@@ -37,15 +36,6 @@ const viewerClassName = cn(
 )
 
 const barTop = (line: number) => PADDING + line * LINE_HEIGHT
-
-/** The columns a line takes in a monospace font; a wide character takes two. */
-function columns(line: string) {
-  let count = 0
-  for (const char of line) {
-    count += char.codePointAt(0)! >= 0x1100 ? 2 : 1
-  }
-  return count
-}
 
 export default function YamlViewer({
   code,

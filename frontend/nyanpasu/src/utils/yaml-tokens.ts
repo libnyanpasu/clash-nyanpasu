@@ -1,6 +1,10 @@
 import type { ColorScheme } from '@/hooks/use-color-scheme'
 import TokensWorker from './yaml-tokens.worker?worker'
 
+// The worker highlights this many lines in about a second, and holds up the
+// documents asked for after them meanwhile. Larger documents stay plain text.
+export const MAX_HIGHLIGHT_LINES = 100_000
+
 /**
  * A document's tokens, packed so they cross from the worker without a copy.
  * The text stays with the caller, who sent it: a token is its length and

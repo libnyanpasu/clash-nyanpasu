@@ -27,8 +27,13 @@ startup-error dialogs and a short rfd fallback if Slint fails.
 
 The backend is selected directly to avoid the muda 0.19/0.20 Objective-C class
 collision described in `nyanpasu-widget/Cargo.toml`. The opaque window needs no GL
-driver. Slint takes one font family; fontique resolves the frontend's monospace
-stack against installed fonts. The Fluent palette follows the system theme.
+driver. Slint's shared font collection is configured before creating the window:
+installed CJK families extend its Han, Hiragana, Katakana and Hangul fallback
+chains. This preserves the system's first choice while covering characters that
+its chosen family lacks, including mixed-language report text. Monospace-family
+resolution uses the same Fontique version through Slint's public versioned API;
+the exact Slint pin must be updated together with that API when upgrading.
+The Fluent palette follows the system theme.
 
 Collection policy lives in `nyanpasu-diagnose`; the reporter never opens the app's
 core store or discovers its application paths. The host owns the parent-PID wait,

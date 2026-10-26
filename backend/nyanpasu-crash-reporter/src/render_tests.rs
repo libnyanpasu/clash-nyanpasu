@@ -12,6 +12,70 @@ use slint::{
 
 use crate::{CrashReport, PanicDetails, ReporterInput, ReporterText, fill_window, ui};
 
+slint::slint! {
+    export component GlyphProbe inherits Window {
+        width: 48px;
+        height: 48px;
+        background: white;
+        in property <string> glyph;
+        Text {
+            text: root.glyph;
+            font-family: "Nyanpasu Test Sparse";
+            font-size: 24px;
+            color: black;
+        }
+    }
+}
+
+fn cjk_glyphs_survive_a_sparse_system_fallback() {
+    use slint::fontique_011::fontique::{Blob, FallbackKey, GenericFamily, Script};
+
+    let mut collection = slint::fontique_011::shared_collection();
+    let sparse = collection.register_fonts(
+        Blob::new(std::sync::Arc::new(
+            include_bytes!("../tests/fonts/sparse.ttf").as_slice(),
+        )),
+        None,
+    )[0]
+    .0;
+    collection.register_fonts(
+        Blob::new(std::sync::Arc::new(
+            include_bytes!("../tests/fonts/cjk.ttf").as_slice(),
+        )),
+        None,
+    );
+    collection.set_fallbacks(
+        FallbackKey::new(Script::from_bytes(*b"Hani"), None),
+        std::iter::once(sparse),
+    );
+    // Neither the explicit primary nor Slint's generic families may borrow
+    // glyphs from installed fonts and hide an incomplete script fallback.
+    for generic in [GenericFamily::SansSerif, GenericFamily::SystemUi] {
+        collection.set_generic_families(generic, std::iter::once(sparse));
+    }
+    crate::platform::extend_cjk_fallbacks(
+        &mut collection,
+        &["Nyanpasu Missing Font", "Nyanpasu Test CJK"],
+    );
+
+    // These characters disappeared with the Japanese system fallback. Check
+    // actual ink, not only the existence or dimensions of the snapshot.
+    for ch in "报告问题系统环境请在描述帮助我们修复诊断信息已就绪文件夹中显示复制关闭".chars()
+    {
+        let probe = GlyphProbe::new().unwrap();
+        probe.window().set_size(PhysicalSize::new(48, 48));
+        probe.set_glyph(ch.to_string().into());
+        let pixels = probe.window().take_snapshot().unwrap();
+        assert!(
+            pixels
+                .as_slice()
+                .iter()
+                .any(|p| p.r < 128 && p.g < 128 && p.b < 128),
+            "missing rendered glyph for {ch}"
+        );
+    }
+}
+
 struct HeadlessPlatform {
     clock: Rc<Cell<Duration>>,
 }
@@ -98,8 +162,9 @@ fn window_renders_in_both_schemes_and_scales() {
         clock: clock.clone(),
     }))
     .unwrap();
+    crate::platform::configure_fonts();
     let window = ui::ReporterWindow::new().unwrap();
-    for locale in ["en", "zh-cn"] {
+    for locale in ["en", "zh-cn", "zh-tw", "ja", "ko", "ru"] {
         fill_window(&window, &ReporterInput::Crash(sample()), &text(locale));
         for dark in [false, true] {
             window.global::<ui::Palette>().set_color_scheme(if dark {
@@ -137,11 +202,8 @@ fn window_renders_in_both_schemes_and_scales() {
         crate::Step::AppLogs,
         crate::Step::CoreLogs,
     ];
-    for locale in ["en", "zh-cn"] {
+    for locale in ["en", "zh-cn", "zh-tw", "ja", "ko", "ru"] {
         for dark in [false, true] {
-            if locale == "zh-cn" && dark {
-                continue;
-            }
             for manual in [false, true] {
                 let input = if manual {
                     ReporterInput::Manual {
@@ -253,4 +315,5 @@ fn window_renders_in_both_schemes_and_scales() {
     }
     window.set_monospace_font("Nyanpasu Missing Test Font".into());
     window.window().take_snapshot().unwrap();
+    cjk_glyphs_survive_a_sparse_system_fallback();
 }

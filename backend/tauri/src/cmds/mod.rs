@@ -4,8 +4,10 @@ use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
+use nyanpasu_config::application::I18nLanguage;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
+use serde::Deserialize as _;
 use tauri::utils::platform::current_exe;
 
 mod migrate;
@@ -39,11 +41,22 @@ enum Commands {
         args: Vec<String>,
     },
     /// Show a panic dialog while the application is enter panic handler.
-    PanicDialog,
+    PanicDialog(ReporterOptions),
     /// Open the manual diagnostics reporter; progress arrives as JSON lines on stdin.
-    ReportIssue,
+    ReportIssue(ReporterOptions),
     /// Launch the Widget with the specified name.
     StatisticWidget { variant: StatisticWidgetVariant },
+}
+
+#[derive(clap::Args, Debug)]
+struct ReporterOptions {
+    /// Use the parent's application language instead of the OS UI language.
+    #[arg(long, value_parser = parse_reporter_language)]
+    language: Option<I18nLanguage>,
+}
+
+fn parse_reporter_language(value: &str) -> Result<I18nLanguage, serde::de::value::Error> {
+    I18nLanguage::deserialize(serde::de::value::StrDeserializer::new(value))
 }
 
 pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
@@ -97,11 +110,11 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                     },
                 );
             }
-            Commands::PanicDialog => {
-                panic_dialog::show(paths, false)?;
+            Commands::PanicDialog(options) => {
+                panic_dialog::show(paths, false, options.language)?;
             }
-            Commands::ReportIssue => {
-                panic_dialog::show(paths, true)?;
+            Commands::ReportIssue(options) => {
+                panic_dialog::show(paths, true, options.language)?;
             }
             Commands::StatisticWidget { variant } => {
                 nyanpasu_widget::start_statistic_widget(*variant)
@@ -111,6 +124,59 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
         std::process::exit(0);
     }
     Ok(()) // bypass
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser as _;
+    use nyanpasu_config::application::I18nLanguage;
+
+    use super::{Cli, Commands};
+
+    #[test]
+    fn reporters_accept_the_application_languages() {
+        for command in ["report-issue", "panic-dialog"] {
+            for (locale, expected) in [
+                ("en", I18nLanguage::English),
+                ("ja", I18nLanguage::Japanese),
+                ("ko", I18nLanguage::Korean),
+                ("ru", I18nLanguage::Russian),
+                ("zh-cn", I18nLanguage::SimplifiedChinese),
+                ("zh-tw", I18nLanguage::TraditionalChinese),
+                ("zh-CN", I18nLanguage::SimplifiedChinese),
+            ] {
+                let cli =
+                    Cli::try_parse_from(["clash-nyanpasu", command, "--language", locale]).unwrap();
+                let Some(Commands::ReportIssue(options) | Commands::PanicDialog(options)) =
+                    cli.command
+                else {
+                    panic!("expected a reporter command");
+                };
+                assert_eq!(options.language, Some(expected));
+            }
+        }
+    }
+
+    #[test]
+    fn standalone_reporters_leave_the_language_unspecified() {
+        for command in ["report-issue", "panic-dialog"] {
+            let cli = Cli::try_parse_from(["clash-nyanpasu", command]).unwrap();
+            let Some(Commands::ReportIssue(options) | Commands::PanicDialog(options)) = cli.command
+            else {
+                panic!("expected a reporter command");
+            };
+            assert_eq!(options.language, None);
+        }
+    }
+
+    #[test]
+    fn reporters_reject_unsupported_languages() {
+        for command in ["report-issue", "panic-dialog"] {
+            assert!(
+                Cli::try_parse_from(["clash-nyanpasu", command, "--language", "invalid"]).is_err()
+            );
+        }
+    }
 }
 
 fn print_version_info() {

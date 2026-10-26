@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page } from 'vitest/browser'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -143,11 +144,13 @@ const mountDetail = async ({
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <SnackbarProvider>
-              <ProfilesLayoutProvider>
-                <RouterOutlet />
-              </ProfilesLayoutProvider>
-            </SnackbarProvider>
+            <SharedTooltip>
+              <SnackbarProvider>
+                <ProfilesLayoutProvider>
+                  <RouterOutlet />
+                </ProfilesLayoutProvider>
+              </SnackbarProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

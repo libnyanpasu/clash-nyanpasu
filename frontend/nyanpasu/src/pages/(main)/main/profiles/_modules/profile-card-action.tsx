@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import { SharedTooltipTrigger } from '@nyanpasu/ui/shared-tooltip'
 
+/** A card action whose label shows in the profiles pages' shared tooltip. */
 export default function ProfileCardAction({
   label,
   children,
@@ -8,10 +9,5 @@ export default function ProfileCardAction({
   label: string
   children: ReactElement
 }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
+  return <SharedTooltipTrigger content={label}>{children}</SharedTooltipTrigger>
 }

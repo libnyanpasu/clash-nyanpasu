@@ -3,7 +3,7 @@ import { filesize } from 'filesize'
 import type { ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { LinearProgress } from '@nyanpasu/ui/progress'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import { SharedTooltipTrigger } from '@nyanpasu/ui/shared-tooltip'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import {
   calculateSubscriptionQuota,
@@ -180,21 +180,18 @@ function ProfileCardMetric({
       )}
       {children}
       {percent !== undefined && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div data-slot="profile-card-quota" className="w-full">
-              <LinearProgress
-                className="h-1.5 motion-reduce:[&>div]:transition-none"
-                value={percent}
-                role="meter"
-                aria-label={percentLabel}
-              />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            {percentLabel} {Math.round(percent)}%{hint ? ` · ${hint}` : ''}
-          </TooltipContent>
-        </Tooltip>
+        <SharedTooltipTrigger
+          content={`${percentLabel} ${Math.round(percent)}%${hint ? ` · ${hint}` : ''}`}
+        >
+          <div data-slot="profile-card-quota" className="w-full">
+            <LinearProgress
+              className="h-1.5 motion-reduce:[&>div]:transition-none"
+              value={percent}
+              role="meter"
+              aria-label={percentLabel}
+            />
+          </div>
+        </SharedTooltipTrigger>
       )}
     </>
   )

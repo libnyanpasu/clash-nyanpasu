@@ -12,6 +12,7 @@ import {
 import { sectionId } from '../../_modules/resolve-profile-drop'
 import { useProfileLayout } from '../../_modules/use-profile-layout'
 import { useProfilesDnd } from '../../_modules/use-profiles-dnd'
+import { useProgressiveCount } from '../../_modules/use-progressive-count'
 import FolderEmptyState from './_modules/folder-empty-state'
 import FolderHeader from './_modules/folder-header'
 import FolderNotFound from './_modules/folder-not-found'
@@ -58,6 +59,13 @@ function RouteComponent() {
     sectionProfiles.length + (active ? 1 : 0),
   )
 
+  // The cards render a batch at a time from the top, the active one first.
+  const shown = useProgressiveCount(sectionProfiles.length + (active ? 1 : 0))
+  const shownProfiles = sectionProfiles.slice(
+    0,
+    Math.max(0, shown - (active ? 1 : 0)),
+  )
+
   // While the profiles load there is no layout, and no way to tell a folder
   // that is missing from one not yet known.
   if (!layout) {
@@ -84,7 +92,7 @@ function RouteComponent() {
           className="flex min-h-0 flex-1 flex-col gap-3 p-4 pt-0"
           data-slot="profiles-list"
         >
-          {active && (
+          {active && shown > 0 && (
             <div
               className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
               data-slot="profiles-active"
@@ -100,7 +108,7 @@ function RouteComponent() {
 
           {sectionProfiles.length > 0 && (
             <ProfileSection folder={folderId} empty={false}>
-              {sectionProfiles.map((profile, index) => (
+              {shownProfiles.map((profile, index) => (
                 <GridViewProfile
                   key={profile.uid}
                   profile={profile}

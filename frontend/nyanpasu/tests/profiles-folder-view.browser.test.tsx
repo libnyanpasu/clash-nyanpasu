@@ -4,6 +4,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -128,23 +129,25 @@ const renderFolder = async (folderId: string) => {
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <ImportUrlProvider>
-              <SnackbarProvider>
-                <ContextMenuProvider>
-                  <div>
-                    <ProfilesLayoutProvider>
-                      <ProfilesDndProvider>
-                        <div className="relative h-[800px]">
-                          <ScrollArea>
-                            <RouterOutlet />
-                          </ScrollArea>
-                        </div>
-                      </ProfilesDndProvider>
-                    </ProfilesLayoutProvider>
-                  </div>
-                </ContextMenuProvider>
-              </SnackbarProvider>
-            </ImportUrlProvider>
+            <SharedTooltip>
+              <ImportUrlProvider>
+                <SnackbarProvider>
+                  <ContextMenuProvider>
+                    <div>
+                      <ProfilesLayoutProvider>
+                        <ProfilesDndProvider>
+                          <div className="relative h-[800px]">
+                            <ScrollArea>
+                              <RouterOutlet />
+                            </ScrollArea>
+                          </div>
+                        </ProfilesDndProvider>
+                      </ProfilesLayoutProvider>
+                    </div>
+                  </ContextMenuProvider>
+                </SnackbarProvider>
+              </ImportUrlProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>

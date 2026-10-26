@@ -325,6 +325,7 @@ export const DATA_SLOTS = [
   'port-strategy-selector-trigger',
   'profile-card',
   'profile-card-content-summary',
+  'profile-card-gradient',
   'profile-card-mask',
   'profile-card-quota',
   'profile-card-remaining',

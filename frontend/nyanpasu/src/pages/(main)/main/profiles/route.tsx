@@ -1,5 +1,6 @@
 import { cva } from 'class-variance-authority'
 import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { Sidebar, SidebarContent } from '@nyanpasu/ui/sidebar'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { useLeafRouteLayout } from '@/components/router/route-layout'
@@ -70,9 +71,13 @@ function RouteComponent() {
               className={profilesContentVariants({ layout })}
               data-slot="profiles-content"
             >
-              <AnimatedOutletPreset
-                className={profilesOutletVariants({ layout })}
-              />
+              {/* One tooltip for the labels of every card and its actions;
+                  a tooltip per trigger mounts a popper with each. */}
+              <SharedTooltip>
+                <AnimatedOutletPreset
+                  className={profilesOutletVariants({ layout })}
+                />
+              </SharedTooltip>
             </div>
           </AppContentScrollArea>
         </Sidebar>

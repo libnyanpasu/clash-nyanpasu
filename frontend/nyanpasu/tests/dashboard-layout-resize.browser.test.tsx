@@ -142,13 +142,7 @@ function EnableDashboardEditing({ children }: PropsWithChildren) {
   return children
 }
 
-function layoutWidgetIds(container: HTMLElement) {
-  return [...container.querySelectorAll<HTMLElement>('[data-layout-widget]')]
-    .map((widget) => widget.dataset.layoutWidget)
-    .sort()
-}
-
-test('dashboard keeps its selected source through resize and saves effective bounds after an edit', async () => {
+test('dashboard picks its source again once a resize settles and saves effective bounds after an edit', async () => {
   localStorage.clear()
   const legacyStorage = { '4x5': smallLayout, '8x6': largerLayout }
   const harness = createRpcHarness(legacyStorage)
@@ -209,18 +203,17 @@ test('dashboard keeps its selected source through resize and saves effective bou
   }
   await expectGridSize(320, 400)
 
-  // This size also fits the distinct 8x6 preset. The source selected at 4x5
-  // must remain pinned while the browser reports real ResizeObserver changes.
+  // This size fits the larger 8x6 preset, which the page would pick if it
+  // opened at this size. Once the resize settles, the dashboard picks it too.
   await act(async () => {
     container.style.width = '656px'
     container.style.height = '512px'
   })
   await expectGridSize(624, 480)
-  await expect
-    .poll(widgetIds)
-    .toEqual(['small-down', 'small-memory', 'small-up'])
-  const wideLayout = layoutWidgetIds(container)
+  await expect.poll(widgetIds).toEqual(['large-connections', 'large-proxy'])
 
+  // A grid too small for either preset keeps the closest one, 4x5, and hides
+  // what does not fit; the hidden widget comes back as the grid grows.
   await act(async () => {
     container.style.width = '352px'
     container.style.height = '192px'
@@ -229,14 +222,13 @@ test('dashboard keeps its selected source through resize and saves effective bou
   await expect.poll(widgetIds).toEqual(['small-down', 'small-up'])
 
   await act(async () => {
-    container.style.width = '656px'
-    container.style.height = '512px'
+    container.style.width = '352px'
+    container.style.height = '432px'
   })
-  await expectGridSize(624, 480)
+  await expectGridSize(320, 400)
   await expect
     .poll(widgetIds)
     .toEqual(['small-down', 'small-memory', 'small-up'])
-  expect(layoutWidgetIds(container)).toEqual(wideLayout)
   expect(harness.writes).toEqual([])
 
   const item = container.querySelector<HTMLElement>(

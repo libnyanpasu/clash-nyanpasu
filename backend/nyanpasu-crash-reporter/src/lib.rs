@@ -85,6 +85,7 @@ pub fn show_report(
         }
     })
     .context(SelectBackendSnafu)?;
+    platform::configure_fonts();
     let window = ui::ReporterWindow::new().context(CreateWindowSnafu)?;
     opening.set(Some(window.as_weak()));
     fill_window(&window, &input, text);

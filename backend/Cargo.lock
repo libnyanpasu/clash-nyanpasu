@@ -3539,28 +3539,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fontique"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbf1df16263783918b7da396077521f92b729ef7c429444dfcf03581f1448b77"
-dependencies = [
- "hashbrown 0.17.1",
- "linebender_resource_handle",
- "memmap2",
- "objc2 0.6.5",
- "objc2-core-foundation",
- "objc2-core-text",
- "objc2-foundation 0.3.2",
- "parlance",
- "read-fonts",
- "roxmltree",
- "smallvec",
- "windows 0.62.2",
- "windows-core 0.62.2",
- "yeslogic-fontconfig-sys",
-]
-
-[[package]]
 name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4710,7 +4688,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68a578f3e4b681b2b9cbd326d3be19716e2fac51d00a8a5b00c0ef4ae923b5e6"
 dependencies = [
  "derive_more",
- "fontique 0.11.1",
+ "fontique",
  "htmlparser",
  "icu_decimal",
  "icu_locale_core",
@@ -6876,7 +6854,6 @@ name = "nyanpasu-crash-reporter"
 version = "0.1.0"
 dependencies = [
  "arboard",
- "fontique 0.12.0",
  "i-slint-backend-winit",
  "nyanpasu-diagnose",
  "open",
@@ -8151,7 +8128,7 @@ version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22d2ff88bd3f7d68d1d9b09c7e6209f9a8e8c05088295140a2bcf2e9b17038c5"
 dependencies = [
- "fontique 0.11.1",
+ "fontique",
  "harfrust",
  "hashbrown 0.17.1",
  "icu_normalizer",

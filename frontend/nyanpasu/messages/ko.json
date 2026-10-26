@@ -1474,6 +1474,5 @@
   "inspect_diff_independent": "여기가 빌드의 시작이라 비교할 대상이 없습니다. 출력 탭에서 내려받은 그대로의 프로필을 볼 수 있습니다.",
   "inspect_old_line": "이전 줄",
   "inspect_new_line": "새 줄",
-  "inspect_change": "변경",
-  "inspect_diff_show_more": "{count}줄 더 보기"
+  "inspect_change": "변경"
 }

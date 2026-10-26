@@ -73,6 +73,7 @@ working tree ends with the changes applied.
 | `VITE_PERF_PAGE`           | `connections` | Page the connection stream feeds: `connections` or `rules`                        |
 | `VITE_PERF_CONNECTIONS`    | `2000`        | Connections in each streamed frame; 1% are replaced per frame                     |
 | `VITE_PERF_RULES`          | `3000`        | Rules in the rules fixture (`10000` in the inspector benchmark)                   |
+| `VITE_PERF_FRESH`          | unset         | `1` shows the inspector's YAML as a new document each switch, never cached        |
 | `VITE_PERF_FRAMES`         | `12`          | Measured connection frames, one a second, including 2 warm-ups                    |
 | `VITE_PERF_PAGES`          | all           | Pages to measure: settings `clash,system`, traffic `overview,flow,map,rankings`   |
 | `VITE_PERF_TRAFFIC_GROUPS` | `1000`        | Hosts the traffic rankings page lists, 50 per loaded page                         |

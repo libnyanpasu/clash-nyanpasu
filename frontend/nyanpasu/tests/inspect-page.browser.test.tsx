@@ -582,15 +582,13 @@ test('a changed field scrolls the diff to its line', async ({
     ui.query<HTMLElement>('[role="region"]'),
   ))!
   await expect
-    .poll(() => region.querySelectorAll('tr[data-change]').length)
+    .poll(() => region.querySelectorAll('[data-change]').length)
     .toBeGreaterThan(0)
   expect(region.scrollTop).toBe(0)
 
   await userEvent.click(chip)
 
-  const row = (await vi.waitUntil(() =>
-    ui.query<HTMLElement>('tr[data-jump]'),
-  ))!
+  const row = (await vi.waitUntil(() => ui.query<HTMLElement>('[data-jump]')))!
   expect(row.textContent).toContain('tun:')
   await expect.poll(() => region.scrollTop).toBeGreaterThan(0)
   const box = region.getBoundingClientRect()

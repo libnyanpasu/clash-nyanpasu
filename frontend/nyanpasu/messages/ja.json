@@ -1182,7 +1182,6 @@
   "inspect_old_line": "変更前の行",
   "inspect_new_line": "変更後の行",
   "inspect_change": "変更",
-  "inspect_diff_show_more": "残り {count} 行を表示",
   "settings_clash_control_channel_label": "制御チャネル",
   "settings_clash_control_channel_prefer_ipc": "IPC 優先",
   "settings_clash_control_channel_http_only": "HTTP のみ",

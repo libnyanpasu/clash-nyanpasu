@@ -1,4 +1,11 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import AnimatedTabs, { AnimatedTabsItem } from '@nyanpasu/ui/animated-tabs'
 import { ErrorMessage } from '@/components/error-message'
 import {
@@ -7,6 +14,7 @@ import {
   stepSubject,
   type ProfileLookup,
 } from '@/components/profile-label'
+import { usePageEntered } from '@/components/router/animated-outlet'
 import { m } from '@/paraglide/messages'
 import { queries } from '@/services/rpc'
 import { unwrapQueryOptions } from '@nyanpasu/query'
@@ -20,12 +28,8 @@ import DiffViewer from './diff-viewer'
 import { FindBar, isFindShortcut } from './find-bar'
 import { stageLabel, stepHeadline, stepSub } from './inspect-labels'
 import { FINAL_KEY, type Step } from './inspect-steps'
-import {
-  diffLines,
-  findLines,
-  locateFieldLine,
-  type FieldJump,
-} from './text-find'
+import StepPanelSkeleton from './step-panel-skeleton'
+import { diffLines, fieldLocator, findLines, type FieldJump } from './text-find'
 import YamlViewer from './yaml-viewer'
 
 export type InspectTab = 'changes' | 'output' | 'logs'
@@ -83,16 +87,12 @@ export default function StepDetail({
     [data?.diff],
   )
   // Where each changed field sits in the output; a removed field is not there.
-  const fieldLines = useMemo(
-    () =>
-      new Map(
-        (step.node.changed_fields ?? []).map((field) => [
-          field,
-          locateFieldLine(yamlLines, field),
-        ]),
-      ),
-    [step.node.changed_fields, yamlLines],
-  )
+  const fieldLines = useMemo(() => {
+    const locate = fieldLocator(yamlLines)
+    return new Map(
+      (step.node.changed_fields ?? []).map((field) => [field, locate(field)]),
+    )
+  }, [step.node.changed_fields, yamlLines])
 
   const searchable = tab !== 'logs'
   const total = !find.query
@@ -241,11 +241,7 @@ export default function StepDetail({
         className="bg-code flex min-h-0 flex-1 flex-col"
         onKeyDown={handleKeyDown}
       >
-        {content.isPending && (
-          <p role="status" className="text-on-surface-variant p-6 text-[13px]">
-            {m.inspect_loading()}
-          </p>
-        )}
+        {content.isPending && <StepPanelSkeleton />}
 
         {content.isError && (
           <p role="alert" className="p-6 text-[13px]">
@@ -254,7 +250,7 @@ export default function StepDetail({
         )}
 
         {data && (
-          <>
+          <DeferredPanel tab={tab}>
             {find.open && searchable && (
               <FindBar
                 className="mx-5 mt-3 mb-1 shrink-0"
@@ -347,9 +343,28 @@ export default function StepDetail({
                   ))}
                 </ol>
               ))}
-          </>
+          </DeferredPanel>
         )}
       </div>
     </section>
   )
+}
+
+/**
+ * The document of the panel's tab, once the page has slid in and a render
+ * after the tab changed; a skeleton until then. The tabs' indicator measures
+ * the page as it moves, and a document of thousands of lines that mounts in
+ * the same commit is laid out in full for it.
+ */
+function DeferredPanel({
+  tab,
+  children,
+}: {
+  tab: InspectTab
+  children: ReactNode
+}) {
+  const entered = usePageEntered()
+  const shownTab = useDeferredValue(tab)
+
+  return entered && shownTab === tab ? children : <StepPanelSkeleton />
 }

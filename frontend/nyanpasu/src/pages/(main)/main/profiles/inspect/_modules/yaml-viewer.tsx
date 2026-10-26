@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 import {
   lineTokens,
@@ -19,20 +19,21 @@ const LINE_HEIGHT = 20
 const PADDING = 12
 // Lines mounted beyond each edge of the view, so scrolling shows no gap.
 const OVERSCAN = 20
-// The line number gutter, and the room after the longest line.
-const GUTTER_WIDTH = 52
+// The room on each side of a line number, and after the longest line.
+const GUTTER_PADDING = 16
 const END_PADDING = 16
 // A search that matches nearly every line of a huge document draws this many.
 const MAX_BARS = 1000
 
 // The line numbers are drawn from each line's `data-line`, so they are not part
-// of the text that is selected, copied or searched.
+// of the text that is selected, copied or searched. The gutter fits the
+// longest number, `--gutter` wide.
 const viewerClassName = cn(
   'bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto',
   'font-mono text-[12.5px] leading-5 focus-visible:-outline-offset-2 focus-visible:outline-2',
   '[&_.line]:before:content-[attr(data-line)]',
-  '[&_.line]:before:text-tc [&_.line]:before:inline-block [&_.line]:before:w-[52px]',
-  '[&_.line]:before:pr-[18px] [&_.line]:before:text-right [&_.line]:before:select-none',
+  '[&_.line]:before:text-tc [&_.line]:before:inline-block [&_.line]:before:w-(--gutter)',
+  '[&_.line]:before:px-4 [&_.line]:before:text-right [&_.line]:before:select-none',
 )
 
 const barTop = (line: number) => PADDING + line * LINE_HEIGHT
@@ -106,12 +107,17 @@ export default function YamlViewer({
       aria-label={label}
       tabIndex={0}
       className={viewerClassName}
+      style={
+        {
+          '--gutter': `calc(${String(lines.length).length}ch + ${GUTTER_PADDING * 2}px)`,
+        } as CSSProperties
+      }
     >
       <div
         className="relative"
         style={{
           height: virtualizer.getTotalSize(),
-          minWidth: `calc(${GUTTER_WIDTH + END_PADDING}px + ${width}ch)`,
+          minWidth: `calc(var(--gutter) + ${END_PADDING}px + ${width}ch)`,
         }}
       >
         {matches.slice(0, MAX_BARS).map((line) => (

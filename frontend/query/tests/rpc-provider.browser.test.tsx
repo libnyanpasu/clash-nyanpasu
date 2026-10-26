@@ -25,7 +25,6 @@ function makeRpc(owner: string) {
     listen: vi.fn(async () => () => {}),
     once: vi.fn(async () => () => {}),
     emit: vi.fn(async () => {}),
-    listenMutation: vi.fn(async () => () => {}),
     listenResync: vi.fn(() => () => {}),
     dispose: vi.fn(),
   }

@@ -10,12 +10,9 @@ export interface RpcEventTransport {
   listen<T>(name: string, callback: RpcEventCallback<T>): Promise<() => void>
   once<T>(name: string, callback: RpcEventCallback<T>): Promise<() => void>
   emit<T>(name: string, payload: T): Promise<void>
-  listenMutation(callback: (payload: unknown) => void): Promise<() => void>
   listenResync(callback: () => void): () => void
   dispose(): void
 }
-
-const MUTATION_EVENT_NAME = 'nyanpasu://mutation'
 
 /** Each client owns one shared SSE connection, released after its last listener. */
 export function createHttpEventTransport(): RpcEventTransport {
@@ -93,8 +90,6 @@ export function createHttpEventTransport(): RpcEventTransport {
     },
     emit: (name: string) =>
       Promise.reject(new Error(`Emitting ${name} is not available over HTTP`)),
-    listenMutation: (callback) =>
-      listen(MUTATION_EVENT_NAME, ({ payload }) => callback(payload)),
     listenResync: (callback) => {
       if (disposed) return () => {}
       resyncListeners.add(callback)

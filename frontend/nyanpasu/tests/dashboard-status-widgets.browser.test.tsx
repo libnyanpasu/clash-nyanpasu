@@ -91,7 +91,6 @@ function createRpcHarness() {
     listen: async () => () => {},
     once: async () => () => {},
     emit: async () => {},
-    listenMutation: async () => () => {},
     listenResync: () => () => {},
     dispose: () => {},
   }

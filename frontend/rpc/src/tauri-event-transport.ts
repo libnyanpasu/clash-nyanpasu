@@ -47,12 +47,6 @@ export function createTauriEventTransport(): RpcEventTransport {
     listen: (name, callback) => listenEvent(name, callback, false),
     once: (name, callback) => listenEvent(name, callback, true),
     emit: (name, payload) => emit(name, payload),
-    listenMutation: (callback) =>
-      listenEvent(
-        'nyanpasu://mutation',
-        ({ payload }) => callback(payload),
-        false,
-      ),
     listenResync: () => () => {},
     dispose: () => {
       if (disposed) return

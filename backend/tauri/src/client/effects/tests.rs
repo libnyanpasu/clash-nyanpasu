@@ -9,7 +9,7 @@ use super::{
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
-    NyanpasuClient, UiEventSink,
+    NyanpasuClient,
     tests::{TestControlEndpoint, test_client_args_with_endpoint},
 };
 use nyanpasu_config::{
@@ -27,12 +27,6 @@ use std::{
 use struct_patch::Patch;
 use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-
-#[derive(Default)]
-struct Ui;
-impl UiEventSink for Ui {
-    fn state_changed(&self, _: crate::client::StateChanged) {}
-}
 
 #[derive(Default)]
 struct Port {
@@ -112,7 +106,6 @@ async fn graph(port: Arc<dyn ApplicationEffectsPort>) -> (EffectsClient, Shutdow
     let client = EffectsClient::spawn(
         EffectsArgs {
             port,
-            ui: Arc::new(Ui),
             initial: inputs(),
             shutdown: shutdown.token.clone(),
         },

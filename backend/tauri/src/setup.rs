@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::{
     client::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
-        OsSystemDnsCache, RuntimePaths, TauriMainThread, TauriUiEventSink,
+        OsSystemDnsCache, RuntimePaths, StateChanged, TauriMainThread, TauriUiEventSink,
+        UiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -163,6 +164,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
     let span = tracing::info_span!("build_client").entered();
+    let ui_sink: Arc<dyn UiEventSink> =
+        Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
@@ -195,7 +198,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths: paths.clone(),
         storage,
         runtime_paths: runtime_paths.clone(),
-        ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
+        ui_sink: ui_sink.clone(),
         app_update_backend_factory: Some(Arc::new({
             let app_handle = app_handle.clone();
             move |proxy_port| {
@@ -237,7 +240,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowManager::new(app_handle.clone()));
     app.manage(crate::window::kinds::TrayMenuWindowController::default());
-    forward_actor_events(app_handle.clone(), client.clone(), &shutdown, &tasks);
+    forward_actor_events(
+        app_handle.clone(),
+        client.clone(),
+        ui_sink,
+        &shutdown,
+        &tasks,
+    );
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
@@ -398,6 +407,7 @@ fn build_application_effects(
 fn forward_actor_events(
     app_handle: tauri::AppHandle,
     client: NyanpasuClient,
+    ui_sink: Arc<dyn UiEventSink>,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
 ) {
@@ -431,6 +441,13 @@ fn forward_actor_events(
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
+        }
+    }));
+
+    let mut proxy_changes = client.subscribe_proxy_changes();
+    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
+        while proxy_changes.changed().await.is_ok() {
+            ui_sink.state_changed(StateChanged::Proxies);
         }
     }));
 

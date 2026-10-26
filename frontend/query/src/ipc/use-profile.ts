@@ -96,12 +96,6 @@ export type CreateParams =
       data: { request: NewProfileRequest_Deserialize; fileData: string | null }
     }
 
-// Mutations and the `clash_config` state event refetch the profiles, but a
-// change that does not touch the runtime (a scheduled sync of an inactive
-// subscription) emits nothing. A finite stale time still picks that up on the
-// next mount or window focus, without refetching on every route switch.
-const PROFILES_STALE_TIME = 30_000
-
 const profilesQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
   const profilesOptions = queries.getProfiles()
   return {
@@ -115,7 +109,6 @@ const profilesQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
         folders: result.folders ?? [],
       }
     },
-    staleTime: PROFILES_STALE_TIME,
   }
 }
 

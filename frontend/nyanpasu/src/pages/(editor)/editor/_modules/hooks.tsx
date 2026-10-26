@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   isConfigItem,
   isRemoteItem,
@@ -65,4 +65,25 @@ export function useCurrentProfile(uid: string): {
     ...profiles.query,
     data: currentProfile,
   }
+}
+
+/**
+ * The editor's draft of `saved`. It follows the saved content, which another
+ * window or a sync can change, until the user edits it.
+ */
+export function useDraft(saved: string | undefined) {
+  const [draft, setDraft] = useState<string>()
+  // The content last shown, which an untouched draft still equals.
+  const shown = useRef<string>(undefined)
+
+  useEffect(() => {
+    if (saved === undefined) return
+    const previous = shown.current
+    shown.current = saved
+    setDraft((draft) =>
+      draft === undefined || draft === previous ? saved : draft,
+    )
+  }, [saved])
+
+  return [draft, setDraft] as const
 }

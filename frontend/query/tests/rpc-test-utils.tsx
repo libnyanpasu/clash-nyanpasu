@@ -4,6 +4,7 @@ import {
   createRpcClient,
   type RpcClient,
   type RpcEventTransport,
+  type StateChanged,
 } from '@nyanpasu/rpc'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RpcProvider } from '../src/provider/rpc-provider'
@@ -71,8 +72,6 @@ export function createTestRpc(handlers: Record<string, RpcHandler>) {
         callback({ event: name, id: sequence++, payload })
       }
     },
-    listenMutation: (callback) =>
-      listen('nyanpasu://mutation', ({ payload }) => callback(payload)),
     listenResync: (callback) => {
       resyncListeners.add(callback)
       return () => resyncListeners.delete(callback)
@@ -86,8 +85,8 @@ export function createTestRpc(handlers: Record<string, RpcHandler>) {
   return {
     rpc,
     invoke: invokeMock,
-    emitMutation: (payload: unknown) =>
-      events.emit('nyanpasu://mutation', payload),
+    emitStateChanged: (payload: StateChanged) =>
+      rpc.events.stateChangedEvent.emit(payload),
     emitResync: () => [...resyncListeners].forEach((callback) => callback()),
   }
 }

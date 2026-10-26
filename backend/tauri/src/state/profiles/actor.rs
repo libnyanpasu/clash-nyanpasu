@@ -500,7 +500,10 @@ impl ProfilesActor {
             };
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
-                state.mutations.effects().profiles_committed();
+                state
+                    .mutations
+                    .effects()
+                    .profiles_committed(Self::changed_files(&subject, before, &next));
                 let completion = state.mutations.committed(
                     operation,
                     "profiles",
@@ -569,6 +572,20 @@ impl ProfilesActor {
             .and_then(|item| item.definition.source())
             .map(|source| source.materialized().file.clone());
         (uid.cloned(), path)
+    }
+
+    /// The profiles whose file content a commit may have changed or removed:
+    /// the one it is about, and every one it removed.
+    fn changed_files(
+        subject: &CommitSubject,
+        before: &Profiles,
+        next: &Profiles,
+    ) -> Vec<ProfileId> {
+        let removed = before
+            .items
+            .keys()
+            .filter(|uid| !next.items.contains_key(*uid));
+        subject.0.iter().chain(removed).cloned().collect()
     }
 
     async fn reconcile_committed(
@@ -1344,7 +1361,10 @@ impl ProfilesActor {
                 });
             }
         }
-        state.mutations.effects().profiles_committed();
+        state
+            .mutations
+            .effects()
+            .profiles_committed(Self::changed_files(&subject, &before, &candidate));
         let (receipt, runtime_degradations) = state.mutations.committed(
             admission.map(|(operation, _)| operation),
             "profiles",

@@ -35,7 +35,7 @@ const EVENT_NAMES: &[&str] = &[
     <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    "nyanpasu://mutation",
+    <crate::client::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
 
 #[derive(Clone)]
@@ -752,17 +752,14 @@ mod tests {
                 .unwrap();
             let mut stream = response.into_body().into_data_stream();
             stream.next().await.unwrap().unwrap();
+            let name = <crate::client::StateChangedEvent as tauri_specta::Event>::NAME;
             for sequence in 0..300 {
-                events.publish("nyanpasu://mutation", serde_json::json!(sequence));
+                events.publish(name, serde_json::json!(sequence));
             }
             let gap = stream.next().await.unwrap().unwrap();
             assert!(std::str::from_utf8(&gap).unwrap().contains("event: resync"));
             let event = stream.next().await.unwrap().unwrap();
-            assert!(
-                std::str::from_utf8(&event)
-                    .unwrap()
-                    .contains("nyanpasu://mutation")
-            );
+            assert!(std::str::from_utf8(&event).unwrap().contains(name));
             let response = app
                 .clone()
                 .oneshot(

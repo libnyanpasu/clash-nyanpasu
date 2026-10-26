@@ -18,10 +18,7 @@ use super::{
     ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
-use crate::client::{
-    UiEventSink,
-    convergence::{ConvergenceHealth, RetryBudget},
-};
+use crate::client::convergence::{ConvergenceHealth, RetryBudget};
 
 #[derive(Clone, Debug, Default)]
 pub struct EffectsSnapshot {
@@ -71,7 +68,6 @@ pub(crate) struct EffectsClient {
 
 pub(crate) struct EffectsArgs {
     pub port: Arc<dyn ApplicationEffectsPort>,
-    pub ui: Arc<dyn UiEventSink>,
     pub initial: ApplicationEffectInputs,
     /// Once cancelled, nothing new is queued, retried or started; the groups
     /// already running are awaited before the actor stops.
@@ -87,7 +83,6 @@ type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>
 
 struct State {
     port: Arc<dyn ApplicationEffectsPort>,
-    ui: Arc<dyn UiEventSink>,
     /// The latest slice of each owner, side by side.
     desired: ApplicationEffectInputs,
     revision: u64,
@@ -306,12 +301,8 @@ impl State {
                 entry.health = ConvergenceHealth::Pending;
             }
             let port = self.port.clone();
-            let ui = self.ui.clone();
             let actor = myself.clone();
             self.active[index] = Some(tokio::spawn(async move {
-                if index == 2 {
-                    ui.refresh_clash();
-                }
                 let statuses = port
                     .apply(revision, ApplicationEffectPlan::from_effects(effects))
                     .await;
@@ -339,7 +330,6 @@ impl Actor for EffectsActor {
     ) -> Result<State, ActorProcessingErr> {
         Ok(State {
             port: args.dependencies.port,
-            ui: args.dependencies.ui,
             desired: args.dependencies.initial,
             revision: 0,
             pending: BTreeMap::new(),
@@ -621,7 +611,7 @@ impl CommitNotifications for EffectsClient {
         self.publish(Slice::Clash(fields), false, false, Vec::new());
     }
 
-    fn profiles_committed(&self) {
+    fn profiles_committed(&self, _: Vec<nyanpasu_config::profile::ProfileId>) {
         self.publish(Slice::Profiles, true, false, Vec::new());
     }
 

@@ -12,7 +12,7 @@ use nyanpasu_config::{
     application::ProxiesSelectorMode, clash::config::overrides::Mode, profile::ProxyGroupLayout,
 };
 use std::ops::ControlFlow;
-use tauri::{AppHandle, Emitter, Manager, Runtime, menu::MenuBuilder};
+use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -199,10 +199,6 @@ pub async fn proxies_updated_receiver(
 ) {
     let mut rx = client.subscribe_proxy_changes();
     while rx.changed().await.is_ok() {
-        let _ = app_handle.emit(
-            crate::client::STATE_CHANGED_URI,
-            crate::client::StateChanged::Proxies,
-        );
         log_err!(Tray::request(&app_handle, TrayWork::PROXIES));
     }
 }

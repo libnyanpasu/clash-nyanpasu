@@ -145,7 +145,6 @@ test.for([3, 2, 4])(
       },
       once: async () => () => {},
       emit: async () => {},
-      listenMutation: async () => () => {},
       listenResync: () => () => {},
       dispose: () => {},
     }

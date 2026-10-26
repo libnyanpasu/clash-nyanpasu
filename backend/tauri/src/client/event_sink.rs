@@ -1,39 +1,65 @@
+use std::sync::Arc;
+
+use nyanpasu_config::{profile::ProfileId, runtime::executor::ResolvedPortBindings};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
-use tauri::{Emitter, Manager};
+use tauri_specta::Event as _;
 
-use super::main_thread::{HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor};
+use super::{
+    effects::{
+        plan::{ApplicationEffectFields, ClashEffectFields, EffectKind},
+        ports::CommitNotifications,
+    },
+    main_thread::{HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StateChanged {
     NyanpasuConfig,
+    /// The clash config, or the runtime it is applied to.
     ClashConfig,
-    Profiles,
+    /// The profiles document. `files` names the profiles whose file content
+    /// may have changed or is gone, so a reader of a file refetches only those.
+    Profiles {
+        files: Vec<ProfileId>,
+    },
     Proxies,
 }
 
-pub const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
+/// What changed in the state the frontend reads, so it refetches what depends
+/// on it.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct StateChangedEvent(pub StateChanged);
 
 /// Abstracts the Tauri UI side-effects the client emits.
-#[allow(dead_code)]
 pub trait UiEventSink: Send + Sync + 'static {
     fn state_changed(&self, state: StateChanged);
+}
 
-    fn refresh_clash(&self) {
-        self.state_changed(StateChanged::ClashConfig);
+/// Every committed configuration becomes a state change for the frontend,
+/// whichever caller committed it.
+pub(crate) struct UiCommitNotifications(pub Arc<dyn UiEventSink>);
+
+impl CommitNotifications for UiCommitNotifications {
+    fn application_committed(&self, _: ApplicationEffectFields, _: Vec<EffectKind>) {
+        self.0.state_changed(StateChanged::NyanpasuConfig);
     }
 
-    fn refresh_verge(&self) {
-        self.state_changed(StateChanged::NyanpasuConfig);
+    fn clash_committed(&self, _: ClashEffectFields) {
+        self.0.state_changed(StateChanged::ClashConfig);
     }
 
-    fn refresh_profiles(&self) {
-        self.state_changed(StateChanged::Profiles);
+    fn profiles_committed(&self, files: Vec<ProfileId>) {
+        self.0.state_changed(StateChanged::Profiles { files });
     }
 
-    fn mutate_proxies(&self) {
-        self.state_changed(StateChanged::Proxies);
+    fn runtime_bound(&self, _: Option<ResolvedPortBindings>, _: bool) {
+        self.0.state_changed(StateChanged::ClashConfig);
+    }
+
+    fn publish_full(&self, _: Option<ResolvedPortBindings>) {
+        self.0.state_changed(StateChanged::ClashConfig);
     }
 }
 
@@ -50,12 +76,8 @@ impl<R: tauri::Runtime> TauriUiEventSink<R> {
 
 impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
     fn state_changed(&self, state: StateChanged) {
-        if let Some(window) = self
-            .app_handle
-            .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
-        {
-            crate::log_err!(window.emit(STATE_CHANGED_URI, state));
-        }
+        // Every window: the tray menu and the editor read these queries too.
+        crate::log_err!(StateChangedEvent(state).emit(&self.app_handle));
     }
 }
 
@@ -169,7 +191,55 @@ mod tests {
         atomic::{AtomicBool, Ordering},
     };
 
-    use super::{MainThreadHandoff, MainThreadWork};
+    use super::{
+        CommitNotifications, MainThreadHandoff, MainThreadWork, StateChanged,
+        UiCommitNotifications, UiEventSink,
+    };
+
+    #[derive(Default)]
+    struct Recorded(std::sync::Mutex<Vec<StateChanged>>);
+    impl UiEventSink for Recorded {
+        fn state_changed(&self, state: StateChanged) {
+            self.0.lock().unwrap().push(state);
+        }
+    }
+
+    /// Both receivers of a fan-out hear every commit.
+    #[test]
+    fn a_fan_out_tells_both_receivers() {
+        let (first, second) = (Arc::new(Recorded::default()), Arc::new(Recorded::default()));
+        let notifications = (
+            UiCommitNotifications(first.clone()),
+            UiCommitNotifications(second.clone()),
+        );
+        notifications.profiles_committed(vec![nyanpasu_config::profile::ProfileId("a".into())]);
+        notifications.runtime_bound(None, false);
+        for ui in [first, second] {
+            let events = std::mem::take(&mut *ui.0.lock().unwrap());
+            assert!(matches!(
+                events.as_slice(),
+                [
+                    StateChanged::Profiles { files },
+                    StateChanged::ClashConfig,
+                ] if files.len() == 1
+            ));
+        }
+    }
+
+    /// The runtime the clash config is applied to changes with every bind,
+    /// so the frontend hears of it as a clash config change.
+    #[test]
+    fn a_runtime_bind_is_a_clash_config_change() {
+        let ui = Arc::new(Recorded::default());
+        let notifications = UiCommitNotifications(ui.clone());
+        notifications.runtime_bound(None, false);
+        notifications.publish_full(None);
+        let events = std::mem::take(&mut *ui.0.lock().unwrap());
+        assert!(matches!(
+            events.as_slice(),
+            [StateChanged::ClashConfig, StateChanged::ClashConfig]
+        ));
+    }
 
     #[test]
     fn work_goes_to_the_taker_only_once_it_has_taken_over() {

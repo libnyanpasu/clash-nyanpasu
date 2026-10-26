@@ -735,6 +735,10 @@ export function createRpcClient(
       transport.events,
       'service-status-changed-event',
     ),
+    stateChangedEvent: makeEvent<StateChangedEvent>(
+      transport.events,
+      'state-changed-event',
+    ),
     storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
       transport.events,
       'storage-value-changed-event',
@@ -748,10 +752,6 @@ export function createRpcClient(
   return {
     ...commands,
     events,
-    listenMutation: (callback: (payload: StateChanged) => void) =>
-      transport.events.listenMutation((payload) =>
-        callback(payload as StateChanged),
-      ),
     listenResync: transport.events.listenResync.bind(transport.events),
     dispose: () => transport.events.dispose(),
   }
@@ -5210,7 +5210,21 @@ export type SourceVersions = {
 }
 
 export type StateChanged =
-  'nyanpasu_config' | 'clash_config' | 'profiles' | 'proxies'
+  | { kind: 'nyanpasu_config' }
+  /**  The clash config, or the runtime it is applied to. */
+  | { kind: 'clash_config' }
+  /**
+   *  The profiles document. `files` names the profiles whose file content
+   *  may have changed or is gone, so a reader of a file refetches only those.
+   */
+  | { kind: 'profiles'; files: ProfileId[] }
+  | { kind: 'proxies' }
+
+/**
+ *  What changed in the state the frontend reads, so it refetches what depends
+ *  on it.
+ */
+export type StateChangedEvent = StateChanged
 
 export type StatisticWidgetVariant = 'large' | 'small'
 

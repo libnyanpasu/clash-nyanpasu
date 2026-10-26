@@ -8,6 +8,9 @@
     "bench": "vitest run --config perf/vitest.perf.config.ts --silent=false",
     "bundle:visualize": "vite-bundle-visualizer",
     "dev": "vite",
+    "dev:prod": "vite build && run-p dev:prod:*",
+    "dev:prod:build": "vite build --watch --emptyOutDir false",
+    "dev:prod:serve": "vite preview --port 3000 --strictPort",
     "serve": "vite preview",
     "typecheck": "tsc --noEmit"
   },

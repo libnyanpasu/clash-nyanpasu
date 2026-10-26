@@ -127,7 +127,18 @@ pnpm dev
 > [!TIP]
 > Behaves similarly to the official release; useful to test overall functionality
 
-### 3. Build application
+### 3. Development Instance with a Production Frontend
+
+```
+pnpm dev:prod
+```
+
+> [!TIP]
+>
+> - Serves a production build of the frontend instead of the Vite dev server, so rendering performance matches a release; useful to test jank and animations
+> - The frontend rebuilds when a file changes; reload the window to see it. `pnpm web:prod` serves the same frontend alone
+
+### 4. Build application
 
 ```shell
 pnpm build

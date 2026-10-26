@@ -124,6 +124,30 @@ suffix and call them at the use site. Do not extract class strings into
 `*_CLASS` or `*_CLASSES` constants. Keep one-use layout classes inline; use `cn()`
 to merge generated classes with caller overrides, not to define reusable styles.
 
+Split long Tailwind class lists into readable lines, grouped by responsibility
+(layout, colors, interaction states, and motion). Do not leave an oversized string
+on one line or rely on Prettier to split it. In JSX, use multiple string arguments
+to `cn()`; in `cva()`, pass an array as the first argument. Long class lists inside
+variants also use arrays. Keep short class lists inline, and do not introduce
+`*_CLASS` or `*_CLASSES` constants just to break lines.
+
+```tsx
+const menuItemVariants = cva([
+  'flex min-h-10 items-center gap-2 rounded-lg px-3 py-2',
+  'text-on-surface text-sm outline-none',
+  'data-highlighted:bg-surface-variant',
+  'data-disabled:pointer-events-none data-disabled:opacity-38',
+])
+
+<div
+  className={cn(
+    'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden',
+    'bg-surface text-on-surface rounded-xl border p-4',
+    className,
+  )}
+/>
+```
+
 Dashboard widgets must not contain internal scrollbars. Keep content within the
 widget's allocated size with `min-h-0` and `overflow-hidden`; do not use
 `overflow-auto` or `overflow-scroll` to accommodate widget content. Reduce visible
@@ -263,14 +287,14 @@ page-specific data selection in its route.
 
 ## What is enforced
 
-| Requirement                                                                                          | Enforcement                         |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Mechanical formatting, imports, Tailwind class ordering                                              | Prettier                            |
-| Existing correctness, hooks, props, and import rules                                                 | Oxlint                              |
-| Radix boundary                                                                                       | Oxlint error outside `frontend/ui/` |
-| Types                                                                                                | Package TypeScript checks           |
-| CSS declarations and selectors                                                                       | Existing Stylelint configuration    |
-| Meaningful slots, reusable constants, logical blank lines, component reuse, design and i18n grouping | Mandatory code review               |
+| Requirement                                                                                                                | Enforcement                         |
+| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Mechanical formatting, imports, Tailwind class ordering                                                                    | Prettier                            |
+| Existing correctness, hooks, props, and import rules                                                                       | Oxlint                              |
+| Radix boundary                                                                                                             | Oxlint error outside `frontend/ui/` |
+| Types                                                                                                                      | Package TypeScript checks           |
+| CSS declarations and selectors                                                                                             | Existing Stylelint configuration    |
+| Meaningful slots, reusable constants, logical blank lines, readable class lists, component reuse, design and i18n grouping | Mandatory code review               |
 
 Run `pnpm lint:oxlint`, `pnpm lint:prettier`, and `pnpm typecheck` as appropriate.
 The [Oxlint import rule](https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-restricted-imports)

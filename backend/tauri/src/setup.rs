@@ -173,6 +173,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     value: change
                         .value
                         .map(|value| String::from_utf8_lossy(&value).into_owned()),
+                    revision: change.revision,
                 }
                 .emit(&storage_handle),
                 StorageNotification::Resync => StorageResyncEvent {}.emit(&storage_handle),

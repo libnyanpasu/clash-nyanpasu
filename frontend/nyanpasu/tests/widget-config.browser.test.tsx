@@ -30,13 +30,16 @@ vi.mock('@/services/rpc', async (importOriginal) => {
     ...original,
     rpc: {
       ...original.rpc,
-      getStorageItem: async () => ({ status: 'ok', data: backend.value }),
+      getStorageItem: async () => ({
+        status: 'ok',
+        data: { value: backend.value, revision: backend.writes.length },
+      }),
       setStorageItem: async (_key: string, value: string) => {
         backend.writes.push(value)
         await backend.wait
         if (backend.fail) return { status: 'error', error: 'disk full' }
         backend.value = value
-        return { status: 'ok', data: null }
+        return { status: 'ok', data: backend.writes.length }
       },
       listenResync: () => () => {},
       events: {

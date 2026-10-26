@@ -138,12 +138,15 @@ const renderAt = async (
         return { default_latency_test: 'https://www.gstatic.com/generate_204' }
       }
       if (method === 'get_storage_item') {
-        return options.collapsed ? JSON.stringify(options.collapsed) : null
+        return {
+          value: options.collapsed ? JSON.stringify(options.collapsed) : null,
+          revision: writes.length,
+        }
       }
       if (method === 'set_storage_item') {
         writes.push(JSON.parse(String(wire.params.value)))
 
-        return committed()
+        return writes.length
       }
       if (method === 'set_proxy_group_layout') {
         if (options.failLayout) throw new Error('disk full')

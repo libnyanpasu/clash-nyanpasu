@@ -61,12 +61,15 @@ function createRpc() {
     invoke: async <T,>(method: string, params?: Record<string, unknown>) => {
       switch (method) {
         case 'get_storage_item':
-          return backend.storage as T
+          return {
+            value: backend.storage,
+            revision: backend.writes.length,
+          } as T
         case 'set_storage_item': {
           const value = params?.value as string
           backend.storage = value
           backend.writes.push(value)
-          return null as T
+          return backend.writes.length as T
         }
         case 'get_profiles':
           return { items: backend.profiles, valid: [], current: null } as T

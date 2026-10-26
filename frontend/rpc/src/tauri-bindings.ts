@@ -756,6 +756,12 @@ export type StatusResBody_Serialize = {
 export type StorageResyncEvent = Record<string, never>
 
 /**
+ *  Orders the commits of one open store, every key alike. It is kept in
+ *  memory and starts at 0 each time the store opens.
+ */
+export type StorageRevision = number
+
+/**
  *  Event emitted to all windows when a storage value changes.
  *  Event name: `storage-value-changed-event`
  */
@@ -763,6 +769,7 @@ export type StorageValueChangedEvent = {
   key: string
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
+  revision: StorageRevision
 }
 
 export type TrafficRate = {

@@ -212,6 +212,7 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
         let storage = open_storage(ctx)?.expect("storage was readable a moment ago");
         storage
             .remove_item(HOTKEYS_KEY)
+            .map(|_| ())
             .map_err(|e| anyhow::anyhow!("failed to drop the migrated hotkeys: {e}"))
     }
 }
@@ -224,6 +225,7 @@ fn read_kv_hotkeys(ctx: &Ctx) -> Result<Option<Vec<String>>, MigrationCheckError
     };
     storage
         .get_item::<Vec<String>>(HOTKEYS_KEY)
+        .map(|item| item.value)
         .map_err(|source| MigrationCheckError::Storage {
             path: ctx.storage_path(),
             source,

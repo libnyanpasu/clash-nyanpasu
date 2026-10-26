@@ -6,6 +6,7 @@ import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
 const backend = vi.hoisted(() => ({
   value: null as string | null,
+  revision: 0,
   failRead: false,
   failWrite: false,
   writes: [] as string[],
@@ -18,14 +19,14 @@ async function mountStorageHook<T>(
 ) {
   const testRpc = createTestRpc({
     get_storage_item: async () => {
-      const value = backend.value
+      const item = { value: backend.value, revision: backend.revision }
       await backend.readGate
       if (backend.failRead) {
         // Simulate the backend's string error payload so the generated Result wrapper is exercised.
         // oxlint-disable-next-line no-throw-literal
         throw 'read failed'
       }
-      return value
+      return item
     },
     set_storage_item: async (params) => {
       const value = params?.value as string
@@ -38,7 +39,8 @@ async function mountStorageHook<T>(
         throw 'write failed'
       }
       backend.value = value
-      return null
+      backend.revision += 1
+      return backend.revision
     },
   })
   const client = new QueryClient({
@@ -96,6 +98,7 @@ test('a backend value that differs from the cache replaces it', async ({
 beforeEach(() => {
   localStorage.clear()
   backend.value = null
+  backend.revision = 0
   backend.failRead = false
   backend.failWrite = false
   backend.writes = []

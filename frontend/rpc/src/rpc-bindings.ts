@@ -228,7 +228,7 @@ export function createRpcClient(
     getServiceInstallPrompt: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_service_install_prompt')),
     getStorageItem: (key: string) =>
-      typedError<string | null, IpcError>(
+      typedError<StorageItem<string>, IpcError>(
         __RPC_INVOKE('get_storage_item', { key }),
       ),
     /**
@@ -653,11 +653,13 @@ export function createRpcClient(
     openThat: (path: string) =>
       typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
     setStorageItem: (key: string, value: string) =>
-      typedError<null, IpcError>(
+      typedError<StorageRevision, IpcError>(
         __RPC_INVOKE('set_storage_item', { key, value }),
       ),
     removeStorageItem: (key: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('remove_storage_item', { key })),
+      typedError<StorageRevision, IpcError>(
+        __RPC_INVOKE('remove_storage_item', { key }),
+      ),
     /**
      *  Debug: clears all frontend KV entries (keys with the `web:` prefix).
      *  Internal storage entries used by other subsystems are left intact.
@@ -5282,6 +5284,12 @@ export type StorageEntry = {
   value: string
 }
 
+/**  A stored value, or `None` if the key is absent, as of `revision`. */
+export type StorageItem<T> = {
+  value: T | null
+  revision: StorageRevision
+}
+
 /**
  *  What a storage operation failed with. Library causes stay in `source`
  *  (skipped on the wire); they reach the user only through the copied detail.
@@ -5307,6 +5315,12 @@ export type StorageOperationError =
 export type StorageResyncEvent = Record<string, never>
 
 /**
+ *  Orders the commits of one open store, every key alike. It is kept in
+ *  memory and starts at 0 each time the store opens.
+ */
+export type StorageRevision = number
+
+/**
  *  Event emitted to all windows when a storage value changes.
  *  Event name: `storage-value-changed-event`
  */
@@ -5314,6 +5328,7 @@ export type StorageValueChangedEvent = {
   key: string
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
+  revision: StorageRevision
 }
 
 /**

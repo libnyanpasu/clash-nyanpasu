@@ -39,7 +39,10 @@ const hooks = vi.hoisted(() => ({
   useCoreStatus: vi.fn(),
 }))
 
-const backend = vi.hoisted(() => ({ value: new Map<string, string>() }))
+const backend = vi.hoisted(() => ({
+  value: new Map<string, string>(),
+  revision: 0,
+}))
 const cacheWidgetConfig = (config: unknown) => {
   const serialized = JSON.stringify({
     version: 1,
@@ -73,11 +76,15 @@ vi.mock('@/services/rpc', async (importOriginal) => {
       ...original.rpc,
       getStorageItem: async (key: string) => ({
         status: 'ok',
-        data: backend.value.get(key) ?? null,
+        data: {
+          value: backend.value.get(key) ?? null,
+          revision: backend.revision,
+        },
       }),
       setStorageItem: async (key: string, value: string) => {
         backend.value.set(key, value)
-        return { status: 'ok', data: null }
+        backend.revision += 1
+        return { status: 'ok', data: backend.revision }
       },
       listenResync: () => () => {},
       events: {
@@ -229,6 +236,7 @@ function setupHooks() {
 beforeEach(() => {
   localStorage.clear()
   backend.value.clear()
+  backend.revision = 0
   Object.values(hooks).forEach((hook) => hook.mockReset())
   setupHooks()
 })

@@ -190,6 +190,7 @@ const rpc = vi.hoisted(() => ({
   basisKeys: ['dialed', 'resolved'],
   // The KV store, by key.
   storage: new Map<string, string>(),
+  storageRevision: 0,
 }))
 
 function mockBackend(pages: Record<string, UsagePage> = {}) {
@@ -239,12 +240,16 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
     }
 
     if (method === 'get_storage_item') {
-      return rpc.storage.get(params.key as string) ?? null
+      return {
+        value: rpc.storage.get(params.key as string) ?? null,
+        revision: rpc.storageRevision,
+      }
     }
 
     if (method === 'set_storage_item') {
       rpc.storage.set(params.key as string, params.value as string)
-      return null
+      rpc.storageRevision += 1
+      return rpc.storageRevision
     }
 
     throw new Error(`unexpected rpc ${method}`)

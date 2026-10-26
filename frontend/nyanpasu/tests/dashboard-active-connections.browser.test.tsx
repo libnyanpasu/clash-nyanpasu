@@ -117,9 +117,10 @@ test.for([3, 2, 4])(
       invoke: async <T,>(method: string, params?: Record<string, unknown>) => {
         invoked.push(method)
         if (method === 'get_storage_item')
-          return (
-            params?.key === 'dashboard-widget-configs' ? storage : null
-          ) as T
+          return {
+            value: params?.key === 'dashboard-widget-configs' ? storage : null,
+            revision: 0,
+          } as T
         if (method === 'get_clash_ws_snapshot')
           return {
             sequence: 0,

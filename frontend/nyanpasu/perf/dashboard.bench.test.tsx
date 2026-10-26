@@ -97,9 +97,9 @@ vi.mock('@/services/rpc', async (importOriginal) => {
       ...original.rpc,
       getStorageItem: async () => {
         await new Promise((resolve) => setTimeout(resolve, 20))
-        return ok(savedLayouts)
+        return ok({ value: savedLayouts, revision: 0 })
       },
-      setStorageItem: async () => ok(null),
+      setStorageItem: async () => ok(1),
       listenResync: () => () => {},
       events: {
         ...original.rpc.events,

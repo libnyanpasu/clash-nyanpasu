@@ -143,12 +143,12 @@ export function useKvStorage<T>(
           throw result.error
         }
 
-        if (result.data === null) {
+        if (result.data.value === null) {
           valueRef.current = defaultValueRef.current
           setValueState(defaultValueRef.current)
           removeLocalCache(key)
         } else {
-          const migrated = applyMigrate(JSON.parse(result.data))
+          const migrated = applyMigrate(JSON.parse(result.data.value))
           // Usually the backend confirms the cached value; keeping the state
           // object then spares every reader a render.
           if (JSON.stringify(migrated) !== JSON.stringify(valueRef.current)) {

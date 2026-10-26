@@ -135,9 +135,10 @@ impl Deref for Storage {
 
 pub struct StorageInner {
     instance: redb::Database,
-    /// Held from each commit until its change is published, so subscribers
-    /// see changes in commit order.
-    write_order: Mutex<()>,
+    /// The revision of the last commit. Held from each commit until its change
+    /// is published, so subscribers see changes in commit order, and across
+    /// each read, so a value comes with the revision it was read at.
+    revision: Mutex<StorageRevision>,
     tx: Sender<StorageChange>,
     #[cfg(test)]
     before_publish: Option<PublishHook>,
@@ -147,11 +148,35 @@ pub struct StorageInner {
 #[cfg(test)]
 type PublishHook = Box<dyn Fn(&str) + Send + Sync>;
 
+/// Orders the commits of one open store, every key alike. It is kept in
+/// memory and starts at 0 each time the store opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
+#[serde(transparent)]
+pub struct StorageRevision(u64);
+
+impl StorageRevision {
+    fn next(self) -> Self {
+        Self(
+            self.0
+                .checked_add(1)
+                .expect("an open store never commits u64::MAX times"),
+        )
+    }
+}
+
+/// A stored value, or `None` if the key is absent, as of `revision`.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct StorageItem<T> {
+    pub value: Option<T>,
+    pub revision: StorageRevision,
+}
+
 /// A committed change: the stored bytes, or `None` once the key is removed.
 #[derive(Debug, Clone)]
 pub struct StorageChange {
     pub key: String,
     pub value: Option<Vec<u8>>,
+    pub revision: StorageRevision,
 }
 
 #[derive(Debug)]
@@ -174,12 +199,15 @@ pub struct StorageValueChangedEvent {
     pub key: String,
     /// The new JSON-encoded value, or `None` if the key was removed.
     pub value: Option<String>,
+    pub revision: StorageRevision,
 }
 
 pub trait WebStorage {
-    fn get_item<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<Option<T>>;
-    fn set_item<T: Serialize>(&self, key: impl AsRef<str>, value: &T) -> Result<()>;
-    fn remove_item(&self, key: impl AsRef<str>) -> Result<()>;
+    fn get_item<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<StorageItem<T>>;
+    /// Returns the revision the value was committed at.
+    fn set_item<T: Serialize>(&self, key: impl AsRef<str>, value: &T) -> Result<StorageRevision>;
+    /// Returns the revision the removal was committed at.
+    fn remove_item(&self, key: impl AsRef<str>) -> Result<StorageRevision>;
     /// Returns all key-value pairs as raw JSON strings (for debug use).
     fn get_all(&self) -> Result<Vec<(String, String)>>;
 }
@@ -226,7 +254,7 @@ impl StorageInner {
         };
         Ok(Self {
             instance,
-            write_order: Mutex::new(()),
+            revision: Mutex::new(StorageRevision(0)),
             tx: broadcast::channel(16).0,
             #[cfg(test)]
             before_publish: None,
@@ -243,8 +271,8 @@ impl StorageInner {
 
     /// Stores `value` under `key`, or removes the key for `None`, and
     /// publishes the change once it commits. A failed write publishes nothing.
-    fn commit(&self, key: &str, value: Option<Vec<u8>>) -> Result<()> {
-        let _write_order = self.write_order.lock();
+    fn commit(&self, key: &str, value: Option<Vec<u8>>) -> Result<StorageRevision> {
+        let mut revision = self.revision.lock();
         let write_txn = self.instance.begin_write().context(BeginTransactionSnafu)?;
         {
             let mut table = write_txn
@@ -264,6 +292,7 @@ impl StorageInner {
             }
         }
         write_txn.commit().context(CommitTransactionSnafu)?;
+        *revision = revision.next();
         #[cfg(test)]
         if let Some(before_publish) = &self.before_publish {
             before_publish(key);
@@ -272,37 +301,40 @@ impl StorageInner {
         let _ = self.tx.send(StorageChange {
             key: key.to_owned(),
             value,
+            revision: *revision,
         });
-        Ok(())
+        Ok(*revision)
     }
 }
 
 impl WebStorage for StorageInner {
-    fn get_item<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<Option<T>> {
+    fn get_item<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<StorageItem<T>> {
         let key = key.as_ref();
+        let revision = self.revision.lock();
         let db = self.get_instance();
         let read_txn = db.begin_read().context(BeginTransactionSnafu)?;
         let table = read_txn
             .open_table(NYANPASU_TABLE)
             .context(OpenTableSnafu)?;
-        let result = table.get(key.as_bytes()).context(ReadItemSnafu { key })?;
-        match result {
+        let value = match table.get(key.as_bytes()).context(ReadItemSnafu { key })? {
             Some(value) => {
-                let value = value.value();
-                let value = serde_json::from_slice(value).context(DecodeValueSnafu { key })?;
-                Ok(Some(value))
+                Some(serde_json::from_slice(value.value()).context(DecodeValueSnafu { key })?)
             }
-            None => Ok(None),
-        }
+            None => None,
+        };
+        Ok(StorageItem {
+            value,
+            revision: *revision,
+        })
     }
 
-    fn set_item<T: Serialize>(&self, key: impl AsRef<str>, value: &T) -> Result<()> {
+    fn set_item<T: Serialize>(&self, key: impl AsRef<str>, value: &T) -> Result<StorageRevision> {
         let key = key.as_ref();
         let value = serde_json::to_vec(value).context(EncodeValueSnafu { key })?;
         self.commit(key, Some(value))
     }
 
-    fn remove_item(&self, key: impl AsRef<str>) -> Result<()> {
+    fn remove_item(&self, key: impl AsRef<str>) -> Result<StorageRevision> {
         self.commit(key.as_ref(), None)
     }
 
@@ -341,7 +373,7 @@ pub async fn forward_storage_changes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{sync::Barrier, thread};
+    use std::{collections::BTreeMap, sync::Barrier, thread};
 
     fn open(dir: &tempfile::TempDir) -> StorageInner {
         StorageInner::try_new(&dir.path().join("storage.redb")).expect("storage should open")
@@ -369,6 +401,7 @@ mod tests {
             tx.send(StorageChange {
                 key: format!("web:{index}"),
                 value: None,
+                revision: StorageRevision(index + 1),
             })
             .unwrap();
         }
@@ -396,13 +429,15 @@ mod tests {
         let storage = open(&dir);
         let mut rx = storage.subscribe();
 
-        storage.set_item("web:key", &"value").unwrap();
+        let written = storage.set_item("web:key", &"value").unwrap();
         let changed = rx.try_recv().unwrap();
+        assert_eq!(changed.revision, written);
         assert_eq!(changed.key, "web:key");
         assert_eq!(changed.value.as_deref(), Some(br#""value""#.as_slice()));
 
-        storage.remove_item("web:key").unwrap();
+        let removal = storage.remove_item("web:key").unwrap();
         let removed = rx.try_recv().unwrap();
+        assert_eq!(removed.revision, removal);
         assert_eq!(removed.key, "web:key");
         assert_eq!(removed.value, None);
     }
@@ -425,22 +460,100 @@ mod tests {
         }));
         let mut rx = storage.subscribe();
 
-        let held = thread::scope(|scope| {
+        let (held, first, second) = thread::scope(|scope| {
             let first = scope.spawn(|| storage.set_item("web:a", &1).unwrap());
             // `web:a` has committed and waits to be published.
             committed.wait();
-            let held = storage.write_order.try_lock().is_none();
+            let held = storage.revision.try_lock().is_none();
             resume.wait();
-            storage.set_item("web:b", &2).unwrap();
-            first.join().unwrap();
-            held
+            let second = storage.set_item("web:b", &2).unwrap();
+            (held, first.join().unwrap(), second)
         });
 
         assert!(
             held,
             "a commit must hold the write order until it is published"
         );
-        assert_eq!(rx.try_recv().unwrap().key, "web:a");
-        assert_eq!(rx.try_recv().unwrap().key, "web:b");
+        let published: Vec<_> = [rx.try_recv().unwrap(), rx.try_recv().unwrap()]
+            .into_iter()
+            .map(|change| (change.key, change.revision))
+            .collect();
+        assert_eq!(
+            published,
+            [("web:a".to_owned(), first), ("web:b".to_owned(), second)]
+        );
+        assert!(first < second);
+    }
+
+    #[test]
+    fn every_commit_advances_the_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = open(&dir);
+        let mut rx = storage.subscribe();
+
+        let revisions = [
+            storage.set_item("web:key", &1).unwrap(),
+            storage.set_item("web:key", &1).unwrap(),
+            storage.remove_item("web:key").unwrap(),
+            storage.remove_item("web:key").unwrap(),
+            storage.set_item("internal", &2).unwrap(),
+        ];
+
+        assert!(revisions.is_sorted_by(|a, b| a < b), "{revisions:?}");
+        for revision in revisions {
+            assert_eq!(rx.try_recv().unwrap().revision, revision);
+        }
+    }
+
+    #[test]
+    fn a_read_returns_the_revision_of_the_last_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = open(&dir);
+
+        let empty = storage.get_item::<String>("web:key").unwrap();
+        assert_eq!(empty.value, None);
+        assert_eq!(empty.revision, StorageRevision(0));
+
+        let written = storage.set_item("web:key", &"kept").unwrap();
+        let item = storage.get_item::<String>("web:key").unwrap();
+        assert_eq!(item.value.as_deref(), Some("kept"));
+        assert_eq!(item.revision, written);
+
+        let removal = storage.remove_item("web:key").unwrap();
+        let removed = storage.get_item::<String>("web:key").unwrap();
+        assert_eq!(removed.value, None);
+        assert_eq!(removed.revision, removal);
+    }
+
+    #[test]
+    fn a_value_that_fails_to_encode_commits_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = open(&dir);
+        let written = storage.set_item("web:key", &"kept").unwrap();
+        let mut rx = storage.subscribe();
+
+        // JSON object keys must be strings.
+        let unencodable = BTreeMap::from([((1_u8, 2_u8), 3_u8)]);
+        let error = storage.set_item("web:key", &unencodable).unwrap_err();
+
+        assert!(
+            matches!(&error, StorageOperationError::EncodeValue { key, .. } if key == "web:key"),
+            "{error:?}"
+        );
+        let item = storage.get_item::<String>("web:key").unwrap();
+        assert_eq!(item.value.as_deref(), Some("kept"));
+        assert_eq!(item.revision, written);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn reopening_keeps_the_values_and_restarts_the_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        open(&dir).set_item("web:key", &"saved").unwrap();
+
+        let item = open(&dir).get_item::<String>("web:key").unwrap();
+
+        assert_eq!(item.value.as_deref(), Some("saved"));
+        assert_eq!(item.revision, StorageRevision(0));
     }
 }

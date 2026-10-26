@@ -303,6 +303,7 @@ async function open({
         JSON.stringify(value),
       ]),
     ),
+    storageRevision: 0,
     latest: snapshot(nodes && { nodes }),
     applied: snapshot({
       ...(nodes && { nodes }),
@@ -345,12 +346,16 @@ async function open({
       }
 
       if (method === 'get_storage_item') {
-        return state.storage.get(String(params.key)) ?? null
+        return {
+          value: state.storage.get(String(params.key)) ?? null,
+          revision: state.storageRevision,
+        }
       }
 
       if (method === 'set_storage_item') {
         state.storage.set(String(params.key), String(params.value))
-        return null
+        state.storageRevision += 1
+        return state.storageRevision
       }
 
       if (method === 'inspect_runtime_node') {

@@ -114,15 +114,19 @@ function createRpcHarness(legacyStorage: Record<string, StoredItem[]>) {
       invoke: async <T,>(method: string, params?: Record<string, unknown>) => {
         if (method === 'get_storage_item') {
           const key = params?.key
-          return (
-            key === 'dashboard-widgets' ? JSON.stringify(legacyStorage) : null
-          ) as T
+          return {
+            value:
+              key === 'dashboard-widgets'
+                ? JSON.stringify(legacyStorage)
+                : null,
+            revision: writes.length,
+          } as T
         }
         if (method === 'set_storage_item') {
           const key = String(params?.key)
           const serialized = String(params?.value)
           writes.push({ key, value: JSON.parse(serialized) as unknown })
-          return null as T
+          return writes.length as T
         }
         throw new Error(`Unexpected RPC method: ${method}`)
       },

@@ -2,6 +2,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import {
   createContext,
   useContext,
+  useDeferredValue,
   useId,
   type ComponentProps,
   type ReactNode,
@@ -171,6 +172,10 @@ export function NavigationListItemIcon({
     | { color?: undefined; image: true }
   )) {
   const { active } = useContext(NavigationListItemContext)
+  // The morph is timed on the JS frame loop. Selecting an item usually
+  // renders a new page in the same update, and the frames that work blocks
+  // would consume most of the morph, so it starts in a deferred render after.
+  const morphActive = useDeferredValue(active)
 
   return (
     <span
@@ -190,7 +195,7 @@ export function NavigationListItemIcon({
         <MaterialShape
           className={navigationListItemIconVariants({ color })}
           // A circle at rest; the selected item morphs it into a cookie.
-          depth={active ? undefined : 0}
+          depth={morphActive ? undefined : 0}
         >
           {children}
         </MaterialShape>

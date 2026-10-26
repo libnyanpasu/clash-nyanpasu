@@ -30,7 +30,10 @@ use crate::{
             ports::LocaleSink,
         },
     },
-    core::traffic::{TrafficFileStorage, TrafficStorage},
+    core::{
+        storage::{StorageNotification, StorageResyncEvent, StorageValueChangedEvent},
+        traffic::{TrafficFileStorage, TrafficStorage},
+    },
     utils::init::logging::ReloadSignal,
 };
 use anyhow::Context;
@@ -158,6 +161,27 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let storage = crate::core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
+    let storage_changes = storage.subscribe();
+    let storage_handle = app_handle.clone();
+    tauri::async_runtime::spawn(track_until_shutdown(
+        &tasks,
+        &shutdown,
+        crate::core::storage::forward_storage_changes(storage_changes, move |notification| {
+            let emitted = match notification {
+                StorageNotification::Changed(change) => StorageValueChangedEvent {
+                    key: change.key,
+                    value: change
+                        .value
+                        .map(|value| String::from_utf8_lossy(&value).into_owned()),
+                }
+                .emit(&storage_handle),
+                StorageNotification::Resync => StorageResyncEvent {}.emit(&storage_handle),
+            };
+            if let Err(error) = emitted {
+                tracing::warn!(%error, "failed to emit a storage notification");
+            }
+        }),
+    ));
     // The core runs with the app data dir as its home, where its geo databases live.
     let geo_index = Arc::new(crate::core::geo::FsCountryIndexSource::new(
         paths.app_data_dir().as_std_path().to_owned(),

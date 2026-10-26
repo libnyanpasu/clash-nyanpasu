@@ -33,6 +33,7 @@ export const events = {
     'service-status-changed-event',
   ),
   stateChangedEvent: makeEvent<StateChangedEvent>('state-changed-event'),
+  storageResyncEvent: makeEvent<StorageResyncEvent>('storage-resync-event'),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
   ),
@@ -746,6 +747,13 @@ export type StatusResBody_Serialize = {
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
 }
+
+/**
+ *  Event emitted to all windows when storage changes were dropped, so every
+ *  storage value must be read again.
+ *  Event name: `storage-resync-event`
+ */
+export type StorageResyncEvent = Record<string, never>
 
 /**
  *  Event emitted to all windows when a storage value changes.

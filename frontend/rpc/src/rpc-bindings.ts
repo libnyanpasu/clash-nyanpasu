@@ -739,6 +739,10 @@ export function createRpcClient(
       transport.events,
       'state-changed-event',
     ),
+    storageResyncEvent: makeEvent<StorageResyncEvent>(
+      transport.events,
+      'storage-resync-event',
+    ),
     storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
       transport.events,
       'storage-value-changed-event',
@@ -5294,6 +5298,13 @@ export type StorageOperationError =
   | { kind: 'commit_transaction' }
   | { kind: 'decode_value'; key: string }
   | { kind: 'encode_value'; key: string }
+
+/**
+ *  Event emitted to all windows when storage changes were dropped, so every
+ *  storage value must be read again.
+ *  Event name: `storage-resync-event`
+ */
+export type StorageResyncEvent = Record<string, never>
 
 /**
  *  Event emitted to all windows when a storage value changes.

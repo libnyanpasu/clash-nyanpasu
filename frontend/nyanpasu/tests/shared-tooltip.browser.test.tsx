@@ -4,6 +4,7 @@ import { userEvent } from 'vitest/browser'
 import { Modal, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import {
   SharedTooltip,
+  SharedTooltipTrigger,
   useSharedTooltipTrigger,
 } from '@nyanpasu/ui/shared-tooltip'
 
@@ -186,4 +187,27 @@ test('a tooltip stays open while the pointer moves onto it', async ({
 
   await userEvent.hover(elsewhere)
   await expect.poll(tooltip).toBeNull()
+})
+
+test('a trigger element keeps its own handlers', async ({ onTestFinished }) => {
+  const { container, root } = mount(onTestFinished)
+  let clicks = 0
+  root.render(
+    <SharedTooltip>
+      <SharedTooltipTrigger content="alpha in full">
+        <button type="button" onClick={() => (clicks += 1)}>
+          alpha
+        </button>
+      </SharedTooltipTrigger>
+    </SharedTooltip>,
+  )
+  await expect.poll(() => container.querySelector('button')).toBeTruthy()
+
+  button(container, 'alpha').focus()
+  await expect.poll(() => tooltip()?.textContent).toBe('alpha in full')
+
+  await userEvent.click(button(container, 'alpha'))
+
+  expect(clicks).toBe(1)
+  await expect.poll(() => tooltip()).toBeNull()
 })

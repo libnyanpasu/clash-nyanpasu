@@ -1,4 +1,5 @@
 import { AnimatePresence } from 'motion/react'
+import { Slot } from 'radix-ui'
 import { DismissableLayer, Popper } from 'radix-ui/internal'
 import {
   createContext,
@@ -11,6 +12,7 @@ import {
   useState,
   type FocusEvent,
   type PointerEvent,
+  type ReactElement,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -352,6 +354,21 @@ export function useSharedTooltipTrigger(content: ReactNode) {
     onBlur: actions.close,
     onClick: actions.close,
   }
+}
+
+/**
+ * Makes its only child a trigger of the enclosing `SharedTooltip`, showing
+ * `content`, as `TooltipTrigger asChild` does for a `Tooltip`. The child's own
+ * handlers run first.
+ */
+export function SharedTooltipTrigger({
+  content,
+  children,
+}: {
+  content: ReactNode
+  children: ReactElement
+}) {
+  return <Slot.Root {...useSharedTooltipTrigger(content)}>{children}</Slot.Root>
 }
 
 // The pointer's way from where it left one element to another, as Radix's

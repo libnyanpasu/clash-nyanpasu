@@ -12,6 +12,7 @@ import {
   useScrollAreaViewport,
   useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
+import { DelayHistoryTooltip } from '@/components/proxies/delay-history'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import { useContainerBreakpointValue, useLockFn } from '@nyanpasu/hooks'
@@ -449,53 +450,55 @@ function RouteComponent() {
       {noMatch ? (
         <NoMatchingNodes />
       ) : (
-        <div
-          className="relative m-2"
-          data-slot="proxies-virtual-list"
-          style={{
-            width: 'calc(100% - 16px)',
-            height: `${virtualizer.getTotalSize()}px`,
-          }}
-        >
-          {showNodes &&
-            virtualItems.map((virtualItem) => {
-              const name = members[virtualItem.index]
-              const proxy = name ? proxies?.nodes[name] : undefined
-              const state = name ? memberStates.get(name) : undefined
+        <DelayHistoryTooltip>
+          <div
+            className="relative m-2"
+            data-slot="proxies-virtual-list"
+            style={{
+              width: 'calc(100% - 16px)',
+              height: `${virtualizer.getTotalSize()}px`,
+            }}
+          >
+            {showNodes &&
+              virtualItems.map((virtualItem) => {
+                const name = members[virtualItem.index]
+                const proxy = name ? proxies?.nodes[name] : undefined
+                const state = name ? memberStates.get(name) : undefined
 
-              if (!proxy || !state) {
-                return null
-              }
+                if (!proxy || !state) {
+                  return null
+                }
 
-              return (
-                <div
-                  key={name}
-                  className="group absolute top-0 left-0 p-1"
-                  style={{
-                    height: `${virtualItem.size}px`,
-                    transform: `translateY(${virtualItem.start}px)`,
-                    width: `${100 / lanes}%`,
-                    left: `${virtualItem.lane * (100 / lanes)}%`,
-                  }}
-                  data-index={virtualItem.index}
-                  data-slot="proxies-virtual-item"
-                  data-active={String(name === currentGroup?.now)}
-                >
-                  <ProxyNodeButton
-                    proxy={proxy}
-                    selectable={selectable}
-                    fixed={name === currentGroup?.fixed}
-                    onSelect={handleSelectProxy}
-                    onDelayTest={handleDelayTest}
-                    history={state.history}
-                    delay={state.delay}
-                    leaf={state.leaf}
-                    searchText={searchText}
-                  />
-                </div>
-              )
-            })}
-        </div>
+                return (
+                  <div
+                    key={name}
+                    className="group absolute top-0 left-0 p-1"
+                    style={{
+                      height: `${virtualItem.size}px`,
+                      transform: `translateY(${virtualItem.start}px)`,
+                      width: `${100 / lanes}%`,
+                      left: `${virtualItem.lane * (100 / lanes)}%`,
+                    }}
+                    data-index={virtualItem.index}
+                    data-slot="proxies-virtual-item"
+                    data-active={String(name === currentGroup?.now)}
+                  >
+                    <ProxyNodeButton
+                      proxy={proxy}
+                      selectable={selectable}
+                      fixed={name === currentGroup?.fixed}
+                      onSelect={handleSelectProxy}
+                      onDelayTest={handleDelayTest}
+                      history={state.history}
+                      delay={state.delay}
+                      leaf={state.leaf}
+                      searchText={searchText}
+                    />
+                  </div>
+                )
+              })}
+          </div>
+        </DelayHistoryTooltip>
       )}
 
       <DelayTestButton delayOptions={delayOptions} />

@@ -15,7 +15,7 @@ import { useOpenProfile, useProfileLookup } from '@/components/profile-label'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { events, queries } from '@/services/rpc'
-import { unwrapQueryOptions } from '@nyanpasu/query'
+import { unwrapQueryOptions, useKvStorage } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import {
   useQuery,
@@ -33,6 +33,12 @@ import InspectToolbar, {
   type SnapshotView,
   type StepLayout,
 } from './_modules/inspect-toolbar'
+import {
+  DEFAULT_INSPECT_VIEW,
+  INSPECT_VIEW_KV_KEY,
+  toInspectView,
+  type InspectView,
+} from './_modules/inspect-view'
 import StepDetail, { defaultTab, type InspectTab } from './_modules/step-detail'
 import StepGraph from './_modules/step-graph'
 import StepRail from './_modules/step-rail'
@@ -61,7 +67,17 @@ function RouteComponent() {
 
   const [view, setView] = useState<SnapshotView>('latest')
   const [layout, setLayout] = useState<StepLayout>('list')
-  const [onlyChanged, setOnlyChanged] = useState(false)
+  const [inspectView, setInspectView] = useKvStorage(
+    INSPECT_VIEW_KV_KEY,
+    DEFAULT_INSPECT_VIEW,
+    { migrate: toInspectView },
+  )
+  // A view that fails to save still applies; it is only not remembered.
+  const updateView = (update: Partial<InspectView>) => {
+    setInspectView((previous) => ({ ...previous, ...update }))
+  }
+  const { onlyChanged } = inspectView
+  const setOnlyChanged = (next: boolean) => updateView({ onlyChanged: next })
   const [fieldQuery, setFieldQuery] = useState('')
   const [stepsOpen, setStepsOpen] = useState(false)
   const [tabOverride, setTabOverride] = useState<{
@@ -139,7 +155,7 @@ function RouteComponent() {
   const tab =
     selected && tabOverride?.key === selected.key
       ? tabOverride.tab
-      : selected && defaultTab(selected)
+      : selected && (inspectView.documentTab ?? defaultTab(selected))
 
   const graph = (className?: string) =>
     snapshot && (
@@ -240,9 +256,10 @@ function RouteComponent() {
             targetCore={snapshot.target_core}
             onOpenProfile={openProfile}
             tab={tab}
-            onTabChange={(next) =>
+            onTabChange={(next) => {
               setTabOverride({ key: selected.key, tab: next })
-            }
+              if (next !== 'logs') updateView({ documentTab: next })
+            }}
             fieldQuery={fieldQuery}
           />
         </div>

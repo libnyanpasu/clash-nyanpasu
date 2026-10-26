@@ -283,14 +283,26 @@ async function open({
   height = 700,
   mode = 'ready',
   nodes,
+  storage = {},
 }: {
   path?: string
   width?: number
   height?: number
   mode?: Mode
   nodes?: RuntimeInspectionNode[]
+  /** The KV store's values, by key, as the backend holds them. */
+  storage?: Record<string, unknown>
 } = {}) {
+  // The KV hook starts from its local cache, which would carry a view from
+  // one test into the next.
+  localStorage.clear()
   const state = {
+    storage: new Map(
+      Object.entries(storage).map(([key, value]) => [
+        key,
+        JSON.stringify(value),
+      ]),
+    ),
     latest: snapshot(nodes && { nodes }),
     applied: snapshot({
       ...(nodes && { nodes }),
@@ -330,6 +342,15 @@ async function open({
         if (mode === 'empty') return null
         if (method === 'inspect_runtime') state.latestFetches++
         return method === 'inspect_runtime' ? state.latest : state.applied
+      }
+
+      if (method === 'get_storage_item') {
+        return state.storage.get(String(params.key)) ?? null
+      }
+
+      if (method === 'set_storage_item') {
+        state.storage.set(String(params.key), String(params.value))
+        return null
       }
 
       if (method === 'inspect_runtime_node') {
@@ -377,6 +398,12 @@ async function open({
 }
 
 type Ui = Awaited<ReturnType<typeof open>>
+
+/** A value the page saved to the KV store. */
+const saved = (ui: Ui, key: string) => {
+  const stored = ui.state.storage.get(key)
+  return stored === undefined ? undefined : (JSON.parse(stored) as unknown)
+}
 
 const finish = (ui: Ui) => async () => {
   await ui.view.unmount()
@@ -670,6 +697,64 @@ test('the logs tab lists the entries with their level', async ({
     .toBeVisible()
   await expect.element(list.getByText('warn', { exact: true })).toBeVisible()
   expect(ui.row('global:self:0')?.getAttribute('data-status')).toBe('warn')
+})
+
+test('the chosen document tab is the one every step opens on', async ({
+  onTestFinished,
+}) => {
+  const ui = await open({ path: '/main/profiles/inspect?step=global:self:0' })
+  onTestFinished(finish(ui))
+  await ready(ui)
+
+  await userEvent.click(ui.tab(m.inspect_tab_output()))
+  await expect
+    .poll(() => saved(ui, 'inspect-view'))
+    .toEqual({ documentTab: 'output', onlyChanged: false })
+
+  await userEvent.click(ui.row('scoped:cfg:dns:0')!)
+  await expect.poll(() => ui.detailKey()).toBe('scoped:cfg:dns:0')
+  await expect
+    .element(ui.tab(m.inspect_tab_output()))
+    .toHaveAttribute('aria-selected', 'true')
+
+  // The logs tab is for one step only.
+  await userEvent.click(ui.tab(/^Logs|日志|ログ/))
+  await userEvent.click(ui.row('final')!)
+  await expect.poll(() => ui.detailKey()).toBe('final')
+  await expect
+    .element(ui.tab(m.inspect_tab_output()))
+    .toHaveAttribute('aria-selected', 'true')
+  expect(saved(ui, 'inspect-view')).toEqual({
+    documentTab: 'output',
+    onlyChanged: false,
+  })
+})
+
+test('the page opens with the view it was left in', async ({
+  onTestFinished,
+}) => {
+  const ui = await open({
+    storage: { 'inspect-view': { documentTab: 'changes', onlyChanged: true } },
+  })
+  onTestFinished(finish(ui))
+  await ready(ui)
+
+  // The final step opens on its changes, as chosen, instead of its output.
+  await expect
+    .element(ui.tab(m.inspect_tab_changes()))
+    .toHaveAttribute('aria-selected', 'true')
+  await expect.poll(() => ui.row('builtin:field_filter')).toBeNull()
+  await expect
+    .element(page.getByRole('switch', { name: m.inspect_only_changed() }))
+    .toBeChecked()
+
+  await userEvent.click(
+    page.getByRole('switch', { name: m.inspect_only_changed() }),
+  )
+  await expect.poll(() => ui.row('builtin:field_filter')).not.toBeNull()
+  await expect
+    .poll(() => saved(ui, 'inspect-view'))
+    .toEqual({ documentTab: 'changes', onlyChanged: false })
 })
 
 test('the page does not scroll and shows the rail beside the details', async ({

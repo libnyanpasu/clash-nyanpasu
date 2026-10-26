@@ -1,11 +1,3 @@
--- compatible with ipv6 decrepation 
-if config["ipv6"] ~= nil then
-    config["ipv6"] = nil
-    if config["dns"] ~= nil and config["dns"]["enabled"] == true then
-        config["dns"]["ipv6"] = true
-    end
-end
-
 -- compatible with proxies strict port type
 if config["proxies"] ~= nil and type(config["proxies"]) == "table" then
     for _, proxy in pairs(config["proxies"]) do

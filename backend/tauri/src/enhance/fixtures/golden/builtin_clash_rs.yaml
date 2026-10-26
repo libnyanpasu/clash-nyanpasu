@@ -4,6 +4,7 @@ socks-port: 7892
 mixed-port: 7890
 allow-lan: false
 log-level: info
+ipv6: false
 secret: golden-secret
 external-controller: 127.0.0.1:9090
 profile:

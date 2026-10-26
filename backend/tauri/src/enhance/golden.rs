@@ -144,6 +144,39 @@ fn golden_builtin_gating_clash_rs() {
     assert_matches_fixture(&yaml, "builtin_clash_rs.yaml");
 }
 
+/// The Lua builtin changes only the port it converts: the keys of the config
+/// and of each proxy keep their order, without sorting them afterwards.
+#[test]
+fn golden_clash_rs_builtin_keeps_key_order() {
+    const PROFILE: &str = "proxies:\n  - type: ss\n    port: '8388'\n    name: zeta\n    \
+                           server: z.example.com\n  - server: a.example.com\n    name: alpha\n    \
+                           port: 443\n    type: trojan\nzz-custom: 1\naa-custom: 2\n";
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("base.yaml"), PROFILE).unwrap();
+
+    let mut profiles = Profiles::default();
+    profiles.append_item(file_config("base", "base.yaml", &[]));
+    profiles.set_current(Some(ProfileId("base".into())));
+    let mut input = golden_input(profiles);
+    input.app.core = ClashCore::ClashRs;
+    let mut render = |enable_builtin_enhanced| {
+        input.app.enable_builtin_enhanced = enable_builtin_enhanced;
+        serde_yaml::to_string(&build_to_yaml(&input, temp.path())).unwrap()
+    };
+
+    let without_builtin = render(false);
+    let with_builtin = render(true);
+
+    assert!(
+        without_builtin.contains("port: '8388'"),
+        "{without_builtin}"
+    );
+    assert_eq!(
+        with_builtin,
+        without_builtin.replace("port: '8388'", "port: 8388")
+    );
+}
+
 /// With the field filter on, every top-level key of the built config is a
 /// known Clash field, after the real builtin scripts of each core family too.
 /// Nothing filters the config again after those scripts run.

@@ -5,7 +5,15 @@ import {
   useIsPresent,
   Variants,
 } from 'motion/react'
-import { ComponentProps, use, useMemo, useRef, type ReactNode } from 'react'
+import {
+  ComponentProps,
+  createContext,
+  use,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashWSFreezeBoundary,
@@ -66,6 +74,22 @@ function getDirectionalVariant(direction: TransitionDirection) {
     : directionalSlideVariants.backward
 }
 
+const PageEnteredContext = createContext(true)
+
+/**
+ * Whether the routed page, and every page it is nested in, has finished
+ * sliding in; true for a page shown without the slide. It turns true once
+ * and stays so.
+ *
+ * A page that mounts a large subtree as it opens makes the slide start late
+ * or stutter, however the subtree is split: committing it and laying it out
+ * holds the main thread. Such a subtree mounts once the page has entered
+ * instead.
+ */
+export function usePageEntered() {
+  return use(PageEnteredContext)
+}
+
 export type AnimatedOutletProps = ComponentProps<typeof motion.div> & {
   /**
    * Wraps the routed page, for example in a provider of the parent layout's
@@ -78,6 +102,7 @@ export type AnimatedOutletProps = ComponentProps<typeof motion.div> & {
 export function AnimatedOutlet({
   ref,
   renderOutlet,
+  onAnimationComplete,
   ...props
 }: AnimatedOutletProps) {
   const isPresent = useIsPresent()
@@ -88,6 +113,10 @@ export function AnimatedOutlet({
   // during the slide.
   const presence = use(PresenceContext)
   const pagePresence = useMemo(() => presence, [presence?.isPresent])
+
+  // The page that the outlet shows with the layout does not slide in.
+  const [slidIn, setSlidIn] = useState(presence?.initial === false)
+  const entered = usePageEntered() && slidIn
 
   const matches = useMatches()
   const prevMatches = useRef(matches)
@@ -165,16 +194,28 @@ export function AnimatedOutlet({
   }
 
   return (
-    <motion.div ref={ref} {...props}>
+    <motion.div
+      ref={ref}
+      onAnimationComplete={(definition) => {
+        if (definition === 'visible') {
+          setSlidIn(true)
+        }
+        onAnimationComplete?.(definition)
+      }}
+      {...props}
+    >
       <RouterContextProvider router={renderedRouter}>
         <PresenceContext value={pagePresence}>
-          {/* The exiting page keeps the stream samples it had when it started
-              leaving, so live updates do not re-render it during the slide. */}
-          <ClashWSFreezeBoundary frozen={!isPresent}>
-            <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
-              {renderOutlet ? renderOutlet(<Outlet />) : <Outlet />}
-            </ClashConnectionDetailsFreezeBoundary>
-          </ClashWSFreezeBoundary>
+          <PageEnteredContext value={entered}>
+            {/* The exiting page keeps the stream samples it had when it
+                started leaving, so live updates do not re-render it during
+                the slide. */}
+            <ClashWSFreezeBoundary frozen={!isPresent}>
+              <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
+                {renderOutlet ? renderOutlet(<Outlet />) : <Outlet />}
+              </ClashConnectionDetailsFreezeBoundary>
+            </ClashWSFreezeBoundary>
+          </PageEnteredContext>
         </PresenceContext>
       </RouterContextProvider>
     </motion.div>

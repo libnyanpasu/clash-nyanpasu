@@ -11,6 +11,10 @@ EOF and collects on a thread. `clash-nyanpasu report-issue` reads event JSON lin
 from the running GUI parent. The reporter uploads nothing. The user attaches the
 revealed archive to the issue manually.
 
+Both reporter commands accept `--language <key>` using the application's language
+keys. The GUI passes its selected language; standalone commands that omit the
+option use the OS UI language.
+
 `cargo test -p nyanpasu-crash-reporter` covers report formatting, issue encoding
 and URL budgets, JSON, and headless crash/manual rendering with progress, finished
 and failed states. A deterministic sparse-font test checks that every regression

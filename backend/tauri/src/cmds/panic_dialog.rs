@@ -1,5 +1,6 @@
 use std::io::{BufRead as _, Read as _};
 
+use nyanpasu_config::application::I18nLanguage;
 use nyanpasu_crash_reporter::{
     CrashReport, PanicDetails, ReporterInput, ReporterText, show_report,
 };
@@ -8,8 +9,14 @@ use sysinfo::System;
 
 use crate::{consts::BUILD_INFO, utils};
 
-pub(super) fn show(paths: &nyanpasu_paths::PathResolver, manual: bool) -> anyhow::Result<()> {
-    let locale = utils::help::detect_system_i18n_key();
+pub(super) fn show(
+    paths: &nyanpasu_paths::PathResolver,
+    manual: bool,
+    language: Option<I18nLanguage>,
+) -> anyhow::Result<()> {
+    let locale = language
+        .map(|language| language.as_str())
+        .unwrap_or_else(utils::help::detect_system_i18n_key);
     rust_i18n::set_locale(locale);
     let (sender, events) = std::sync::mpsc::channel();
     let mut input = Vec::new();

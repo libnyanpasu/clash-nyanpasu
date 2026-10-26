@@ -107,7 +107,7 @@ backtrace:
             // the synchronous write lets it read the entire JSON before UI setup.
             #[allow(clippy::zombie_processes)]
             let mut child = std::process::Command::new(tauri::utils::platform::current_exe()?)
-                .arg("panic-dialog")
+                .args(["panic-dialog", "--language", rust_i18n::locale().as_ref()])
                 .stdin(std::process::Stdio::piped())
                 .spawn()?;
             let mut stdin = child.stdin.take().expect("the child's stdin is piped");

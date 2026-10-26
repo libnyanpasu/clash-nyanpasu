@@ -256,7 +256,13 @@ pub fn report_issue(
     page: PageCapabilities,
 ) -> anyhow::Result<()> {
     let mut command = std::process::Command::new(tauri::utils::platform::current_exe()?);
-    command.arg("report-issue").stdin(Stdio::piped());
+    command
+        .args([
+            "report-issue",
+            "--language",
+            client.app_config_snapshot().language.as_str(),
+        ])
+        .stdin(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

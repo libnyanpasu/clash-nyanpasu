@@ -26,7 +26,7 @@ import { rpc } from '@/services/rpc'
 import { formatDate } from '@/utils/date'
 import { DndContext } from '@dnd-kit/core'
 import { MutationUnconfirmedError } from '@nyanpasu/query'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import type { ProfileItem_Serialize, RunDto } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -90,6 +90,7 @@ vi.mock('@/services/rpc', async (importOriginal) => {
       events: {
         ...original.rpc.events,
         storageValueChangedEvent: { listen: async () => () => {} },
+        storageResyncEvent: { listen: async () => () => {} },
       },
     },
   }
@@ -270,36 +271,38 @@ function mount(
   root.render(
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={client}>
-        <DashboardProvider>
-          <TooltipProvider>
-            <DndContext>
-              <DndGridProvider
-                value={{
-                  displayItems: [item],
-                  getItemRect: () => ({
-                    left: 0,
-                    top: 0,
-                    width: 320,
-                    height: options.pixelHeight ?? 220,
-                  }),
-                  dropInfoMap: {},
-                  activeItemId: null,
-                  resizingItemId: null,
-                  disabled: options.gridDisabled ?? true,
-                  sourceOnly: options.sourceOnly ?? false,
-                  dragIdPrefix: options.sourceOnly ? 'sheet:' : '',
-                  isOverlay: false,
-                  constraintsMapRef: { current: {} },
-                  onResizeStart: () => {},
-                  onResizeMove: () => {},
-                  onResizeEnd: () => {},
-                }}
-              >
-                <Widget id={id} onCloseClick={() => {}} />
-              </DndGridProvider>
-            </DndContext>
-          </TooltipProvider>
-        </DashboardProvider>
+        <KvStorageProvider>
+          <DashboardProvider>
+            <TooltipProvider>
+              <DndContext>
+                <DndGridProvider
+                  value={{
+                    displayItems: [item],
+                    getItemRect: () => ({
+                      left: 0,
+                      top: 0,
+                      width: 320,
+                      height: options.pixelHeight ?? 220,
+                    }),
+                    dropInfoMap: {},
+                    activeItemId: null,
+                    resizingItemId: null,
+                    disabled: options.gridDisabled ?? true,
+                    sourceOnly: options.sourceOnly ?? false,
+                    dragIdPrefix: options.sourceOnly ? 'sheet:' : '',
+                    isOverlay: false,
+                    constraintsMapRef: { current: {} },
+                    onResizeStart: () => {},
+                    onResizeMove: () => {},
+                    onResizeEnd: () => {},
+                  }}
+                >
+                  <Widget id={id} onCloseClick={() => {}} />
+                </DndGridProvider>
+              </DndContext>
+            </TooltipProvider>
+          </DashboardProvider>
+        </KvStorageProvider>
       </QueryClientProvider>
     </RpcProvider>,
   )

@@ -122,7 +122,10 @@ async function mount(
         })
       if (key === 'listenResync') return () => () => {}
       if (key === 'events')
-        return { storageValueChangedEvent: { listen: async () => () => {} } }
+        return {
+          storageValueChangedEvent: { listen: async () => () => {} },
+          storageResyncEvent: { listen: async () => () => {} },
+        }
       return Reflect.get(target, key)
     },
   })

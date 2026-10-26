@@ -17,6 +17,7 @@ import {
   ConfigurationStatusProvider,
   useConfigurationStatus,
 } from './configuration-status-provider'
+import { KvStorageProvider } from './kv-storage-provider'
 import { MutationProvider } from './mutation-provider'
 import { RpcProvider } from './rpc-provider'
 
@@ -26,7 +27,7 @@ export {
   useQueryBindings,
   useRpc,
 } from './rpc-provider'
-export { MutationProvider }
+export { KvStorageProvider, MutationProvider }
 export { ConfigurationStatusProvider, useConfigurationStatus }
 
 export type NyanpasuQueryProviderProps = PropsWithChildren<{
@@ -63,9 +64,11 @@ export const NyanpasuQueryProvider = ({
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={queryClient}>
         <MutationProvider>
-          <ClashWSProvider>
-            <ConnectionDetailsBridge>{children}</ConnectionDetailsBridge>
-          </ClashWSProvider>
+          <KvStorageProvider>
+            <ClashWSProvider>
+              <ConnectionDetailsBridge>{children}</ConnectionDetailsBridge>
+            </ClashWSProvider>
+          </KvStorageProvider>
         </MutationProvider>
       </QueryClientProvider>
     </RpcProvider>

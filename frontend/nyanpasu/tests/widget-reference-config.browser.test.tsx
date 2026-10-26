@@ -12,7 +12,7 @@ import type { WidgetConfigStorage } from '@/components/widgets/widget-config'
 import WidgetItem from '@/components/widgets/widget-item'
 import { m } from '@/paraglide/messages'
 import { DndContext } from '@dnd-kit/core'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
 import type { ProfileDocument_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -178,13 +178,15 @@ function mount(
   root.render(
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={queryClient}>
-        <DashboardProvider>
-          <TooltipProvider>
-            <DndContext>
-              <Scene />
-            </DndContext>
-          </TooltipProvider>
-        </DashboardProvider>
+        <KvStorageProvider>
+          <DashboardProvider>
+            <TooltipProvider>
+              <DndContext>
+                <Scene />
+              </DndContext>
+            </TooltipProvider>
+          </DashboardProvider>
+        </KvStorageProvider>
       </QueryClientProvider>
     </RpcProvider>,
   )

@@ -126,7 +126,7 @@ const renderPage = async ({
           value: JSON.parse(String(wire.params.value)),
         })
 
-        return committed()
+        return writes.length
       }
       if (method === 'get_profiles') return document
       if (method === 'set_profile_layout') {

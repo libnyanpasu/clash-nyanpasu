@@ -191,7 +191,9 @@ test('a filtered closed view asks for the selection and pages past empty pages',
 }) => {
   const cursor: ClosedCursor = { closed_at: 5_000, incarnation: 1, seq: 1 }
   const calls: RpcCall['params'][] = []
-  mockIPC((_, args) => {
+  mockIPC((command, args) => {
+    // The storage provider listens for its events on the same IPC.
+    if (command !== 'call_rpc') return null
     const { params } = args as RpcCall
     calls.push(params)
     return params.before === null

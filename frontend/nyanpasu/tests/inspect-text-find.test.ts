@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   cycleIndex,
   diffLines,
+  fieldLocator,
   findLines,
-  locateFieldLine,
 } from '@/pages/(main)/main/profiles/inspect/_modules/text-find'
 
 describe('findLines', () => {
@@ -61,7 +61,7 @@ describe('diffLines', () => {
   })
 })
 
-describe('locateFieldLine', () => {
+describe('fieldLocator', () => {
   const yaml = [
     '# config',
     'port: 7890',
@@ -77,36 +77,37 @@ describe('locateFieldLine', () => {
     '"quoted": 1',
     'proxies: []',
   ]
+  const locate = fieldLocator(yaml)
 
   it('finds a top-level key and the end of its block', () => {
-    expect(locateFieldLine(yaml, 'port')).toEqual({ start: 1, end: 1 })
-    expect(locateFieldLine(yaml, 'dns')).toEqual({ start: 2, end: 7 })
+    expect(locate('port')).toEqual({ start: 1, end: 1 })
+    expect(locate('dns')).toEqual({ start: 2, end: 7 })
   })
 
   it('counts a sequence at the key indent as part of the block', () => {
-    expect(locateFieldLine(yaml, 'rules')).toEqual({ start: 8, end: 10 })
+    expect(locate('rules')).toEqual({ start: 8, end: 10 })
   })
 
   it('walks a dotted path through the nesting', () => {
-    expect(locateFieldLine(yaml, 'dns.nameserver')).toEqual({
+    expect(locate('dns.nameserver')).toEqual({
       start: 4,
       end: 6,
     })
-    expect(locateFieldLine(yaml, 'dns.fallback')).toEqual({ start: 7, end: 7 })
+    expect(locate('dns.fallback')).toEqual({ start: 7, end: 7 })
   })
 
   it('finds a quoted key', () => {
-    expect(locateFieldLine(yaml, 'quoted')).toEqual({ start: 11, end: 11 })
+    expect(locate('quoted')).toEqual({ start: 11, end: 11 })
   })
 
   it('does not match a nested key at the top level or a longer key', () => {
-    expect(locateFieldLine(yaml, 'enable')).toBeNull()
-    expect(locateFieldLine(yaml, 'prox')).toBeNull()
-    expect(locateFieldLine(yaml, 'dns.missing')).toBeNull()
+    expect(locate('enable')).toBeNull()
+    expect(locate('prox')).toBeNull()
+    expect(locate('dns.missing')).toBeNull()
   })
 
   it('treats regular expression characters in a key literally', () => {
-    expect(locateFieldLine(['a.b: 1', 'axb: 2'], 'a.b')).toBeNull()
-    expect(locateFieldLine(['a+b: 1'], 'a+b')).toEqual({ start: 0, end: 0 })
+    expect(fieldLocator(['a.b: 1', 'axb: 2'])('a.b')).toBeNull()
+    expect(fieldLocator(['a+b: 1'])('a+b')).toEqual({ start: 0, end: 0 })
   })
 })

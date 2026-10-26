@@ -29,12 +29,7 @@ import { FindBar, isFindShortcut } from './find-bar'
 import { stageLabel, stepHeadline, stepSub } from './inspect-labels'
 import { FINAL_KEY, type Step } from './inspect-steps'
 import StepPanelSkeleton from './step-panel-skeleton'
-import {
-  diffLines,
-  findLines,
-  locateFieldLine,
-  type FieldJump,
-} from './text-find'
+import { diffLines, fieldLocator, findLines, type FieldJump } from './text-find'
 import YamlViewer from './yaml-viewer'
 
 export type InspectTab = 'changes' | 'output' | 'logs'
@@ -92,16 +87,12 @@ export default function StepDetail({
     [data?.diff],
   )
   // Where each changed field sits in the output; a removed field is not there.
-  const fieldLines = useMemo(
-    () =>
-      new Map(
-        (step.node.changed_fields ?? []).map((field) => [
-          field,
-          locateFieldLine(yamlLines, field),
-        ]),
-      ),
-    [step.node.changed_fields, yamlLines],
-  )
+  const fieldLines = useMemo(() => {
+    const locate = fieldLocator(yamlLines)
+    return new Map(
+      (step.node.changed_fields ?? []).map((field) => [field, locate(field)]),
+    )
+  }, [step.node.changed_fields, yamlLines])
 
   const searchable = tab !== 'logs'
   const total = !find.query

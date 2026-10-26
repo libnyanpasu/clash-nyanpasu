@@ -71,7 +71,8 @@ try {
   assert.equal(result.unsupported.status, 501);
   assert.equal(result.unsupported.data.kind, "unsupported");
   assert.equal(result.storage.status, 200);
-  assert.equal(result.storage.data, "browser");
+  assert.equal(result.storage.data.value, "browser");
+  assert.equal(typeof result.storage.data.revision, "number");
   assert.equal(result.files.status, 200);
   assert.ok(Array.isArray(result.files.data));
   assert.equal(result.error.data.domain_error, "unsupported");

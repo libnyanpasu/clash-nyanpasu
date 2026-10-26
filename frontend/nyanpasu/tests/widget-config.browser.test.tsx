@@ -16,10 +16,13 @@ import WidgetItem from '@/components/widgets/widget-item'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { DndContext } from '@dnd-kit/core'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const backend = vi.hoisted(() => ({
   value: null as string | null,
+  // Advances only when a write commits.
+  revision: 0,
   fail: false,
   writes: [] as string[],
   wait: null as Promise<void> | null,
@@ -30,18 +33,23 @@ vi.mock('@/services/rpc', async (importOriginal) => {
     ...original,
     rpc: {
       ...original.rpc,
-      getStorageItem: async () => ({ status: 'ok', data: backend.value }),
+      getStorageItem: async () => ({
+        status: 'ok',
+        data: { value: backend.value, revision: backend.revision },
+      }),
       setStorageItem: async (_key: string, value: string) => {
         backend.writes.push(value)
         await backend.wait
         if (backend.fail) return { status: 'error', error: 'disk full' }
         backend.value = value
-        return { status: 'ok', data: null }
+        backend.revision += 1
+        return { status: 'ok', data: backend.revision }
       },
       listenResync: () => () => {},
       events: {
         ...original.rpc.events,
         storageValueChangedEvent: { listen: async () => () => {} },
+        storageResyncEvent: { listen: async () => () => {} },
       },
     },
   }
@@ -50,6 +58,7 @@ vi.mock('@/services/rpc', async (importOriginal) => {
 beforeEach(() => {
   localStorage.clear()
   backend.value = null
+  backend.revision = 0
   backend.fail = false
   backend.writes = []
   backend.wait = null
@@ -145,13 +154,17 @@ function mount(
   }
   root.render(
     <RpcProvider rpc={rpc}>
-      <DashboardProvider>
-        <TooltipProvider>
-          <DndContext onDragStart={() => controls.dragStarts++}>
-            <Scene />
-          </DndContext>
-        </TooltipProvider>
-      </DashboardProvider>
+      <QueryClientProvider client={new QueryClient()}>
+        <KvStorageProvider>
+          <DashboardProvider>
+            <TooltipProvider>
+              <DndContext onDragStart={() => controls.dragStarts++}>
+                <Scene />
+              </DndContext>
+            </TooltipProvider>
+          </DashboardProvider>
+        </KvStorageProvider>
+      </QueryClientProvider>
     </RpcProvider>,
   )
   onTestFinished(() => {

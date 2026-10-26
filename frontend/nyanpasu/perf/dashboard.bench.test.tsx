@@ -3,13 +3,14 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
 import { rpc } from '@/services/rpc'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import '@/assets/styles/tailwind.css'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { Route as DashboardIndexRoute } from '@/pages/(main)/main/dashboard/index'
 import { Route as DashboardRoute } from '@/pages/(main)/main/dashboard/route'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -97,13 +98,14 @@ vi.mock('@/services/rpc', async (importOriginal) => {
       ...original.rpc,
       getStorageItem: async () => {
         await new Promise((resolve) => setTimeout(resolve, 20))
-        return ok(savedLayouts)
+        return ok({ value: savedLayouts, revision: 0 })
       },
-      setStorageItem: async () => ok(null),
+      setStorageItem: async () => ok(1),
       listenResync: () => () => {},
       events: {
         ...original.rpc.events,
         storageValueChangedEvent: { listen: async () => () => {} },
+        storageResyncEvent: { listen: async () => () => {} },
       },
     },
   }
@@ -230,7 +232,11 @@ async function mount(onTestFinished: (fn: () => void) => void) {
   const root = createRoot(container)
   root.render(
     <RpcProvider rpc={rpc}>
-      <RouterProvider router={router as never} />
+      <QueryClientProvider client={new QueryClient()}>
+        <KvStorageProvider>
+          <RouterProvider router={router as never} />
+        </KvStorageProvider>
+      </QueryClientProvider>
     </RpcProvider>,
   )
   onTestFinished(() => root.unmount())

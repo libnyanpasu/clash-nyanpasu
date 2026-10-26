@@ -84,7 +84,7 @@ const renderFolder = async (folderId: string) => {
       const wire = args as { method: string; params: Record<string, unknown> }
       const method = command === 'call_rpc' ? wire.method : command
 
-      if (method === 'get_storage_item') return null
+      if (method === 'get_storage_item') return { value: null, revision: 0 }
       if (method === 'get_profiles') return document
       if (method === 'set_profile_layout') {
         const layout = wire.params.layout as ProfileLayout

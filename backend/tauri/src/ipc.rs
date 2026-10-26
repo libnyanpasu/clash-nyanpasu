@@ -26,7 +26,7 @@ use log::debug;
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
-use storage::{StorageOperationError, WebStorage};
+use storage::{StorageItem, StorageOperationError, StorageRevision, WebStorage};
 use tauri::{AppHandle, State, Webview};
 use tray::icon::TrayIcon;
 
@@ -1661,25 +1661,26 @@ fn web_key(key: &str) -> String {
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<Option<String>> {
-    let value = (storage.get_item(web_key(&key)))?;
-    Ok(value)
+pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageItem<String>> {
+    Ok(storage.get_item(web_key(&key))?)
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn set_storage_item(storage: State<'_, Storage>, key: String, value: String) -> Result {
-    (storage.set_item(web_key(&key), &value))?;
-    Ok(())
+pub fn set_storage_item(
+    storage: State<'_, Storage>,
+    key: String,
+    value: String,
+) -> Result<StorageRevision> {
+    Ok(storage.set_item(web_key(&key), &value)?)
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result {
-    (storage.remove_item(web_key(&key)))?;
-    Ok(())
+pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageRevision> {
+    Ok(storage.remove_item(web_key(&key))?)
 }
 
 #[nyanpasu_macro::rpc(http)]

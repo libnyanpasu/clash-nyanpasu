@@ -99,7 +99,7 @@ test.for(['en', 'zh-cn'] as const)(
           expect(wire.params.uid).toBe('local')
           return 'proxies: [{name: Node}]\nproxy-groups: [{name: Group}]\nrules: [MATCH,DIRECT]'
         }
-        if (method === 'get_storage_item') return null
+        if (method === 'get_storage_item') return { value: null, revision: 0 }
         if (method === 'get_profiles')
           return { current, items, global_transforms: [], valid: [] }
         if (method === 'activate_profile') {
@@ -400,7 +400,7 @@ test('reorders profiles by dragging the whole card', async ({
     (command, args) => {
       const wire = args as { method: string; params: { layout: unknown } }
       const method = command === 'call_rpc' ? wire.method : command
-      if (method === 'get_storage_item') return null
+      if (method === 'get_storage_item') return { value: null, revision: 0 }
       if (method === 'get_profiles')
         return {
           current: 'second',

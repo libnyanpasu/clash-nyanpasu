@@ -34,6 +34,7 @@ const EVENT_NAMES: &[&str] = &[
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
     <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
+    <crate::core::storage::StorageResyncEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
     <crate::client::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
@@ -688,30 +689,33 @@ mod tests {
             .await;
             assert_eq!(malformed.0, StatusCode::BAD_REQUEST);
             assert_eq!(malformed.1["kind"], "invalid_params");
-            let set = app.clone().oneshot(Request::post("/bridge/rpc")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"method":"set_storage_item","params":{"key":"theme","value":"dark"}}"#)).unwrap())
-            .await.unwrap();
-            assert_eq!(set.status(), StatusCode::OK);
-            let get = app
-                .clone()
-                .oneshot(
-                    Request::post("/bridge/rpc")
-                        .header("content-type", "application/json")
-                        .body(Body::from(
-                            r#"{"method":"get_storage_item","params":{"key":"theme"}}"#,
-                        ))
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            assert_eq!(get.status(), StatusCode::OK);
+            let theme = serde_json::json!({"key": "theme"});
+            let (status, written) = rpc_for_test_call(
+                &app,
+                "set_storage_item",
+                serde_json::json!({"key": "theme", "value": "dark"}),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let (status, item) =
+                rpc_for_test_call(&app, "get_storage_item", theme.clone(), None).await;
+            assert_eq!(status, StatusCode::OK);
             assert_eq!(
-                to_bytes(get.into_body(), usize::MAX)
-                    .await
-                    .unwrap()
-                    .as_ref(),
-                br#""dark""#
+                item,
+                serde_json::json!({"value": "dark", "revision": written})
+            );
+            let (status, removal) =
+                rpc_for_test_call(&app, "remove_storage_item", theme.clone(), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(
+                removal.as_u64() > written.as_u64(),
+                "{written} then {removal}"
+            );
+            let (_, item) = rpc_for_test_call(&app, "get_storage_item", theme, None).await;
+            assert_eq!(
+                item,
+                serde_json::json!({"value": null, "revision": removal})
             );
 
             // The HTTP download shares the redacted archive pipeline with the save dialog.
@@ -760,6 +764,17 @@ mod tests {
             assert!(std::str::from_utf8(&gap).unwrap().contains("event: resync"));
             let event = stream.next().await.unwrap().unwrap();
             assert!(std::str::from_utf8(&event).unwrap().contains(name));
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::get("/bridge/events?name=storage-resync-event")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            // An event the bridge does not forward is refused by name.
+            assert_eq!(response.status(), StatusCode::OK);
             let response = app
                 .clone()
                 .oneshot(

@@ -121,10 +121,13 @@ function render(
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
-  onTestFinished(() => {
+  onTestFinished(async () => {
     root.unmount()
     container.remove()
     queries.clear()
+    // The storage provider releases its event listeners once their
+    // registrations settle, and releasing one needs the IPC mocks.
+    await new Promise((resolve) => setTimeout(resolve))
     clearMocks()
     localStorage.clear()
   })

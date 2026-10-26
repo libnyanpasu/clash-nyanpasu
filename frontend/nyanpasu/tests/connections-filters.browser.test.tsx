@@ -63,10 +63,13 @@ function render(
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
-  onTestFinished(() => {
+  onTestFinished(async () => {
     root.unmount()
     container.remove()
     queries.clear()
+    // The storage provider releases its event listeners once their
+    // registrations settle, and releasing one needs the IPC mocks.
+    await new Promise((resolve) => setTimeout(resolve))
     clearMocks()
     localStorage.clear()
   })
@@ -191,7 +194,9 @@ test('a filtered closed view asks for the selection and pages past empty pages',
 }) => {
   const cursor: ClosedCursor = { closed_at: 5_000, incarnation: 1, seq: 1 }
   const calls: RpcCall['params'][] = []
-  mockIPC((_, args) => {
+  mockIPC((command, args) => {
+    // The storage provider listens for its events on the same IPC.
+    if (command !== 'call_rpc') return null
     const { params } = args as RpcCall
     calls.push(params)
     return params.before === null

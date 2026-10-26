@@ -775,7 +775,7 @@ mod tests {
         // Hotkeys left the legacy config file and ended up in the typed
         // application config, with nothing stranded in KV storage.
         let storage = Storage::try_new(&data_dir.join(nyanpasu_paths::STORAGE_DB)).unwrap();
-        let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
+        let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap().value;
         assert_eq!(hotkeys, None);
 
         let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(

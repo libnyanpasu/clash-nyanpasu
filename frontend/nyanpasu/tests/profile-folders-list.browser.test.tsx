@@ -115,7 +115,10 @@ const renderPage = async ({
       if (method === 'get_storage_item') {
         const key = String(wire.params.key)
 
-        return key in storage ? JSON.stringify(storage[key]) : null
+        return {
+          value: key in storage ? JSON.stringify(storage[key]) : null,
+          revision: writes.length,
+        }
       }
       if (method === 'set_storage_item') {
         writes.push({
@@ -123,7 +126,7 @@ const renderPage = async ({
           value: JSON.parse(String(wire.params.value)),
         })
 
-        return committed()
+        return writes.length
       }
       if (method === 'get_profiles') return document
       if (method === 'set_profile_layout') {

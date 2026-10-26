@@ -49,9 +49,9 @@ function createRpcHarness() {
     calls.push(method)
     switch (method) {
       case 'get_storage_item':
-        return null as T
+        return { value: null, revision: 0 } as T
       case 'set_storage_item':
-        return null as T
+        return 1 as T
       case 'clash_api_get_providers_proxies':
         if (failNextProxyRead) {
           failNextProxyRead = false

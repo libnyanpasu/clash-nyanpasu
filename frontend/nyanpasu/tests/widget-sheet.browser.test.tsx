@@ -116,10 +116,16 @@ async function mount(
   const rpc = new Proxy(base, {
     get(target, key) {
       if (key === 'getStorageItem')
-        return async () => ({ status: 'ok', data: null })
+        return async () => ({
+          status: 'ok',
+          data: { value: null, revision: 0 },
+        })
       if (key === 'listenResync') return () => () => {}
       if (key === 'events')
-        return { storageValueChangedEvent: { listen: async () => () => {} } }
+        return {
+          storageValueChangedEvent: { listen: async () => () => {} },
+          storageResyncEvent: { listen: async () => () => {} },
+        }
       return Reflect.get(target, key)
     },
   })

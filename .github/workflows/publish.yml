@@ -103,22 +103,25 @@ jobs:
           git-cliff --config cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog-section.md
           cat /tmp/changelog-section.md ./CHANGELOG.md > temp && mv temp ./CHANGELOG.md
           pnpm exec prettier --write ./CHANGELOG.md
-          cp /tmp/changelog-section.md /tmp/changelog.md
-          # A stable release body lists every change since the previous stable
-          # one, folding in the commits of the prereleases leading up to it.
+          cp /tmp/changelog-section.md /tmp/release-notes.md
+          # Every change since the previous stable release overflows the
+          # 125000-character release body, so a stable body keeps the breaking
+          # changes and new contributors of that range and links CHANGELOG.md.
           if [ '${{ steps.update-version.outputs.prerelease }}' = 'false' ]; then
             LAST_STABLE=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)
-            git-cliff --config cliff.toml --verbose --strip header --ignore-tags 'v.*-.*' --tag v${{ steps.update-version.outputs.version }} "$LAST_STABLE..HEAD" > /tmp/changelog.md
-          fi
-          if [ -s /tmp/changelog.md ]; then
-            CONTENT=$(cat /tmp/changelog.md)
+            git-cliff --config cliff.toml --verbose --strip header --ignore-tags 'v.*-.*' --tag v${{ steps.update-version.outputs.version }} "$LAST_STABLE..HEAD" > /tmp/stable-changelog.md
             {
-              echo 'content<<EOF'
-              echo "$CONTENT"
-              echo EOF
-            } >> $GITHUB_OUTPUT
-            echo "version=${{ steps.update-version.outputs.version }}" >> $GITHUB_OUTPUT
-          else
+              awk '
+                /^### .*Breaking Changes/ { keep = 1 }
+                /^## New Contributors/ { keep = 1 }
+                /^##/ && !/Breaking Changes|New Contributors/ { keep = 0 }
+                keep
+              ' /tmp/stable-changelog.md
+              echo
+              echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/v${{ steps.update-version.outputs.version }}/CHANGELOG.md) for every change since $LAST_STABLE."
+            } > /tmp/release-notes.md
+          fi
+          if [ ! -s /tmp/changelog-section.md ]; then
             echo "Failed to generate changelog"
             exit 1
           fi
@@ -169,7 +172,7 @@ jobs:
         with:
           draft: true
           prerelease: ${{ steps.update-version.outputs.prerelease }}
-          body: ${{steps.build-changelog.outputs.content}}
+          body_path: /tmp/release-notes.md
           name: Clash Nyanpasu v${{steps.update-version.outputs.version}}
           tag_name: 'v${{ steps.update-version.outputs.version }}'
           target_commitish: ${{ steps.commit.outputs.sha }}

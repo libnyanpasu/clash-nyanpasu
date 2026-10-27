@@ -126,13 +126,43 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # GitHub rejects git pushes from the release app with 403 while its API
+      # writes succeed, so the bump commit and its tag are created through the
+      # API. lint-staged stands in for the pre-commit hook a local commit runs.
       - name: Commit changes
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: 'chore: bump version to v${{ steps.update-version.outputs.version }}'
-          commit_user_name: 'github-actions[bot]'
-          commit_user_email: '41898282+github-actions[bot]@users.noreply.github.com'
-          tagging_message: 'v${{ steps.update-version.outputs.version }}'
+        id: commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.update-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git add -A
+          pnpm exec lint-staged
+          git diff --cached --name-only -z | while IFS= read -r -d '' path; do
+            jq -n --arg path "$path" --rawfile contents <(base64 -w0 "$path") \
+              '{path: $path, contents: $contents}'
+          done | jq -s . > /tmp/additions.json
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg head "$(git rev-parse HEAD)" \
+            --arg headline "chore: bump version to v$VERSION" \
+            --slurpfile additions /tmp/additions.json \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                expectedHeadOid: $head,
+                message: {headline: $headline},
+                fileChanges: {additions: $additions[0]}
+              }}
+            }' > /tmp/commit.json
+          COMMIT_SHA=$(gh api graphql --input /tmp/commit.json --jq '.data.createCommitOnBranch.commit.oid')
+          TAG_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="v$VERSION" -f message="v$VERSION" -f object="$COMMIT_SHA" -f type=commit --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$TAG_SHA" --silent
+          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
 
       - name: Release
         uses: softprops/action-gh-release@v3
@@ -142,4 +172,4 @@ jobs:
           body: ${{steps.build-changelog.outputs.content}}
           name: Clash Nyanpasu v${{steps.update-version.outputs.version}}
           tag_name: 'v${{ steps.update-version.outputs.version }}'
-          # target_commitish: ${{ steps.tag.outputs.sha }}
+          target_commitish: ${{ steps.commit.outputs.sha }}

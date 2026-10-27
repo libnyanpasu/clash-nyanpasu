@@ -1,3 +1,71 @@
+## [2.0.0] - 2026-10-27
+
+### ⚡ Performance Improvements
+
+- **profiles:** Open the inspector and switch its views without long frames (#6008) by @greenhat616 in [#6008](https://github.com/libnyanpasu/clash-nyanpasu/pull/6008)
+
+- **profiles:** Open the profiles list with less main-thread work (#6002) by @greenhat616 in [#6002](https://github.com/libnyanpasu/clash-nyanpasu/pull/6002)
+
+- **proxies:** Share one delay history tooltip among the node cards (#6006) by @greenhat616 in [#6006](https://github.com/libnyanpasu/clash-nyanpasu/pull/6006)
+
+- **query:** Keep a cached icon for the session (#6005) by @greenhat616 in [#6005](https://github.com/libnyanpasu/clash-nyanpasu/pull/6005)
+
+### ✅ Testing
+
+- **perf:** Measure opening the profiles, proxies and settings pages (#6000) by @greenhat616 in [#6000](https://github.com/libnyanpasu/clash-nyanpasu/pull/6000)
+
+### ✨ Features
+
+- **events:** Tell the frontend what state changed (#6012) by @greenhat616 in [#6012](https://github.com/libnyanpasu/clash-nyanpasu/pull/6012)
+
+- **profiles:** Remember the inspector's document tab and step filter (#6017) by @greenhat616 in [#6017](https://github.com/libnyanpasu/clash-nyanpasu/pull/6017)
+
+- **router:** Tell a routed page when it has slid in (#6007) by @greenhat616 in [#6007](https://github.com/libnyanpasu/clash-nyanpasu/pull/6007)
+
+- **ui:** Add a shared header menubar (#6020) by @keiko233 in [#6020](https://github.com/libnyanpasu/clash-nyanpasu/pull/6020)
+
+- **ui:** Add a trigger element for the shared tooltip (#6001) by @greenhat616 in [#6001](https://github.com/libnyanpasu/clash-nyanpasu/pull/6001)
+
+### 🐛 Bug Fixes
+
+- **dashboard:** Pick the layout for the new size once a resize settles (#6016) by @greenhat616 in [#6016](https://github.com/libnyanpasu/clash-nyanpasu/pull/6016)
+
+- **l10n:** Review and complete Korean translations (#5995) by @moduvoice in [#5995](https://github.com/libnyanpasu/clash-nyanpasu/pull/5995)
+
+- **profiles:** Select a sidebar item from the location being opened (#6003) by @greenhat616 in [#6003](https://github.com/libnyanpasu/clash-nyanpasu/pull/6003)
+
+- **proxies:** Align sidebar backgrounds with other pages (#5988) by @keiko233 in [#5988](https://github.com/libnyanpasu/clash-nyanpasu/pull/5988)
+
+- **reporter:** Fix CJK fallback and inherit application language (#5999) by @keiko233 in [#5999](https://github.com/libnyanpasu/clash-nyanpasu/pull/5999)
+
+- **storage:** Share kv storage per window and keep its events ordered (#6022) by @greenhat616 in [#6022](https://github.com/libnyanpasu/clash-nyanpasu/pull/6022)
+
+- **ui:** Start the navigation icon morph after the page renders (#6004) by @greenhat616 in [#6004](https://github.com/libnyanpasu/clash-nyanpasu/pull/6004)
+
+- **updater:** Resolve rolling alpha core versions on each check (#5993) by @greenhat616 in [#5993](https://github.com/libnyanpasu/clash-nyanpasu/pull/5993)
+
+### 💅 Styling
+
+- **profiles:** Give the inspector's line numbers room on both sides (#6009) by @greenhat616 in [#6009](https://github.com/libnyanpasu/clash-nyanpasu/pull/6009)
+
+### 📚 Documentation
+
+- Refine issue template [skip ci] (#5984) by @3gf8jv4dv in [#5984](https://github.com/libnyanpasu/clash-nyanpasu/pull/5984)
+
+- Adopt Google's Rust style guide as the code guide [skip ci] (#5978) by @greenhat616 in [#5978](https://github.com/libnyanpasu/clash-nyanpasu/pull/5978)
+
+### 🔨 Refactor
+
+- **enhance:** Drop builtin script steps the managed settings replaced (#6019) by @greenhat616 in [#6019](https://github.com/libnyanpasu/clash-nyanpasu/pull/6019)
+
+### 🧹 Miscellaneous Tasks
+
+- **scripts:** Serve a production build of the frontend in development (#6010) by @greenhat616 in [#6010](https://github.com/libnyanpasu/clash-nyanpasu/pull/6010)
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0-rc.3...v2.0.0
+
 ## [2.0.0-rc.3] - 2026-10-23
 
 ### 💥 Breaking Changes

@@ -91,7 +91,7 @@
     "devUrl": "http://localhost:3000/"
   },
   "productName": "Clash Nyanpasu",
-  "version": "2.0.0-rc.3",
+  "version": "2.0.0",
   "identifier": "moe.elaina.clash.nyanpasu",
   "plugins": {
     "updater": {

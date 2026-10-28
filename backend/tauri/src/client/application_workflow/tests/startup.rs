@@ -283,7 +283,7 @@ impl ServiceHostAdapter for FakeDaemon {
             self.release.notified().await;
         }
         self.updates.fetch_add(1, Ordering::SeqCst);
-        *self.version.lock().unwrap() = "2.0.1";
+        *self.version.lock().unwrap() = "2.0.2";
         Ok(())
     }
     fn endpoint(&self) -> EndpointHandle {
@@ -318,7 +318,7 @@ impl Default for Setup {
             daemon: DaemonState::NotInstalled,
             residual: false,
             clash: crate::client::tests::test_clash_config(),
-            version: "2.0.1",
+            version: "2.0.2",
             hold_update: false,
             command_timeout: Duration::from_secs(100),
             handoff_budget: None,
@@ -1992,7 +1992,7 @@ async fn a_startup_update_still_running_holds_back_submission_and_adoption() {
         })
         .await;
         g.daemon.held.notified().await;
-        *g.daemon.version.lock().unwrap() = "2.0.1";
+        *g.daemon.version.lock().unwrap() = "2.0.2";
 
         let report = g.start().await;
 

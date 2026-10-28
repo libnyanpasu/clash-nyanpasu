@@ -1435,7 +1435,7 @@ mod tests {
                 self.release.notified().await;
             }
             self.updates.fetch_add(1, Ordering::SeqCst);
-            self.state.lock().unwrap().2 = "2.0.1".to_owned();
+            self.state.lock().unwrap().2 = "2.0.2".to_owned();
             Ok(())
         }
         fn endpoint(&self) -> EndpointHandle {
@@ -1486,7 +1486,7 @@ mod tests {
     /// start another elevated command.
     #[tokio::test]
     async fn a_helper_that_outlives_its_bound_blocks_endpoint_handing_until_it_ends() {
-        let daemon = FakeDaemon::new(false, false, "2.0.1");
+        let daemon = FakeDaemon::new(false, false, "2.0.2");
         let client = ServiceClient::spawn_with_bounds(
             daemon.clone(),
             2,
@@ -1503,7 +1503,7 @@ mod tests {
 
         // The elevated install has already taken effect; its helper has not
         // returned. A probe now reads a stable `Ready`.
-        *daemon.state.lock().unwrap() = (true, true, "2.0.1".to_owned());
+        *daemon.state.lock().unwrap() = (true, true, "2.0.2".to_owned());
         assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
         let conflicts = [
             client.adopt_if_ready().await.err().map(|error| error.kind),
@@ -1551,7 +1551,7 @@ mod tests {
         .unwrap();
         daemon.parked.notified().await;
 
-        daemon.state.lock().unwrap().2 = "2.0.1".to_owned();
+        daemon.state.lock().unwrap().2 = "2.0.2".to_owned();
         assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
         assert_eq!(
             client.adopt_if_ready().await.err().map(|error| error.kind),
@@ -1571,7 +1571,7 @@ mod tests {
     /// follows what the helper did.
     #[tokio::test]
     async fn command_settled_waits_out_a_running_helper_and_reaps_it_with_one_probe() {
-        let daemon = FakeDaemon::new(false, false, "2.0.1");
+        let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.fail_start.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn_with_bounds(
             daemon.clone(),
@@ -1608,7 +1608,7 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_ready_converges_from_not_installed_through_the_gate() {
-        let daemon = FakeDaemon::new(false, false, "2.0.1");
+        let daemon = FakeDaemon::new(false, false, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
         let endpoint = client.ensure_ready().await.unwrap();
@@ -1623,7 +1623,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_outdated_daemon_is_upgraded_once_at_startup() {
-        for version in ["1.4.5", "2.0.0"] {
+        for version in ["1.4.5", "2.0.0", "2.0.1"] {
             let daemon = FakeDaemon::new(true, true, version);
             let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
             // pre_start already reconciled: one update, then the gate passes.
@@ -1703,7 +1703,7 @@ mod tests {
 
     #[tokio::test]
     async fn uninstall_refuses_while_the_daemon_owns_a_running_core() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1720,7 +1720,7 @@ mod tests {
 
     #[tokio::test]
     async fn uninstall_stops_the_daemon_before_removing_it() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
         daemon.calls.lock().unwrap().clear();
@@ -1733,7 +1733,7 @@ mod tests {
 
     #[tokio::test]
     async fn uninstall_refuses_when_the_daemon_will_not_stop() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
         daemon.stop_succeeds.store(false, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
@@ -1747,7 +1747,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_start_rearms_an_exhausted_daemon() {
-        let daemon = FakeDaemon::new(true, false, "2.0.1");
+        let daemon = FakeDaemon::new(true, false, "2.0.2");
         let client = ServiceClient::spawn(daemon, 0).await.unwrap();
         assert!(client.recover_endpoint().await.is_err());
         assert_eq!(client.status().phase, ServicePhase::Exhausted);
@@ -1759,7 +1759,7 @@ mod tests {
     #[tokio::test]
     async fn recovery_distinguishes_failed_start_from_an_unconfirmed_timeout() {
         for hangs in [false, true] {
-            let daemon = FakeDaemon::new(true, false, "2.0.1");
+            let daemon = FakeDaemon::new(true, false, "2.0.2");
             daemon.fail_start.store(!hangs, Ordering::SeqCst);
             daemon.hang_start.store(hangs, Ordering::SeqCst);
             let client = ServiceClient::spawn_with_bounds(
@@ -1789,7 +1789,7 @@ mod tests {
 
     #[tokio::test]
     async fn recovery_retries_a_live_daemon_without_a_status_response() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
         daemon.probe_blind.store(true, Ordering::SeqCst);
         let error = client.recover_endpoint().await.err().unwrap();
@@ -1801,7 +1801,7 @@ mod tests {
 
     #[tokio::test]
     async fn endpoint_down_restarts_within_budget_then_latches_exhausted() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 1).await.unwrap();
 
         // Daemon dies; the first report restarts it within budget.
@@ -1838,7 +1838,7 @@ mod tests {
     /// a core that is coming up.
     #[tokio::test]
     async fn uninstall_refuses_on_transitional_detail() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Starting { epoch: 3 }));
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1851,7 +1851,7 @@ mod tests {
     /// nothing is not permission.
     #[tokio::test]
     async fn uninstall_refuses_when_the_running_daemon_cannot_be_probed() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_blind.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1873,7 +1873,7 @@ mod tests {
     /// `StopDaemon` first, which makes the answer knowable.
     #[tokio::test]
     async fn uninstall_refuses_when_detail_is_missing() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(None);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1894,7 +1894,7 @@ mod tests {
     /// whatever its last published detail said.
     #[tokio::test]
     async fn uninstall_proceeds_when_the_daemon_is_stopped() {
-        let daemon = FakeDaemon::new(true, false, "2.0.1");
+        let daemon = FakeDaemon::new(true, false, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1913,7 +1913,7 @@ mod tests {
     /// the next `RecoverEndpoint` restart it.
     #[tokio::test]
     async fn exhausted_survives_probes_until_an_explicit_ensure_ready() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
 
         daemon.state.lock().unwrap().1 = false;
@@ -1951,7 +1951,7 @@ mod tests {
     /// published. `Installing` forever reads as "still working".
     #[tokio::test]
     async fn a_failed_install_leaves_the_probed_phase_not_the_transitional_one() {
-        let daemon = FakeDaemon::new(false, false, "2.0.1");
+        let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.fail_install.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1970,7 +1970,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_start_leaves_the_probed_phase_not_the_transitional_one() {
-        let daemon = FakeDaemon::new(true, false, "2.0.1");
+        let daemon = FakeDaemon::new(true, false, "2.0.2");
         daemon.fail_start.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -1996,7 +1996,7 @@ mod tests {
     /// a "cannot be determined" message.
     #[tokio::test]
     async fn uninstall_refuses_when_the_probe_fails_outright() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -2021,7 +2021,7 @@ mod tests {
     /// loop instead of reporting the true, retryable unknown.
     #[tokio::test]
     async fn ensure_ready_reports_a_retryable_error_when_the_probe_fails() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -2043,7 +2043,7 @@ mod tests {
     /// anything: it does not know there is nothing already running.
     #[tokio::test]
     async fn endpoint_down_does_not_start_when_the_probe_fails() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
@@ -2062,7 +2062,7 @@ mod tests {
     /// test's wall clock.
     #[tokio::test]
     async fn ensure_ready_times_out_a_hung_install_and_the_actor_stays_responsive() {
-        let daemon = FakeDaemon::new(false, false, "2.0.1");
+        let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.hang_install.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn_with_bounds(
             daemon.clone(),
@@ -2212,7 +2212,7 @@ mod tests {
     /// changed, and never converges the daemon it finds stopped.
     #[tokio::test]
     async fn the_health_check_probes_while_on_and_publishes_only_changes() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
         let mut status = client.subscribe();
         status.mark_unchanged();
@@ -2269,7 +2269,7 @@ mod tests {
     /// that failed proves no restart, a daemon seen stopped does.
     #[tokio::test]
     async fn only_a_settled_restart_makes_a_new_ready_generation() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
         let first = client.status();
         assert_eq!(first.phase, ServicePhase::Ready);
@@ -2293,7 +2293,7 @@ mod tests {
     /// that stopped answering.
     #[tokio::test]
     async fn daemon_not_running_answers_from_the_os_state() {
-        let daemon = FakeDaemon::new(true, true, "2.0.1");
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
         assert!(!client.daemon_not_running().await.unwrap());
 

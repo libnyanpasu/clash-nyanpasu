@@ -1756,7 +1756,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clash-api"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "backon",
  "chrono",
@@ -2761,15 +2761,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
 dependencies = [
  "dirs-sys 0.4.1",
-]
-
-[[package]]
-name = "dirs"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
-dependencies = [
- "dirs-sys 0.5.0",
 ]
 
 [[package]]
@@ -6799,7 +6790,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "camino",
  "chrono",
@@ -6826,7 +6817,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "constcat",
  "enumset",
@@ -6898,7 +6889,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -6923,7 +6914,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "futures-util",
  "jiff",
@@ -6969,7 +6960,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-logging"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "chrono",
  "file-id",
@@ -7051,7 +7042,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-serde-derive",
@@ -7060,7 +7051,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde-derive"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -7104,13 +7095,13 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-utils"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "backon",
  "camino",
  "constcat",
  "derive_builder",
- "dirs 6.0.0",
+ "dirs 7.0.0",
  "encoding_rs",
  "kill_tree",
  "libc",
@@ -7170,7 +7161,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-windows-security"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "windows 0.62.2",

@@ -32,6 +32,7 @@ const Title = (props: ComponentProps<typeof motion.p>) => {
   return (
     <motion.p
       layout
+      layoutCrossfade={false}
       transition={{
         layout: {
           duration: 0.5,

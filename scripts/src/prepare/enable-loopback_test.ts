@@ -7,7 +7,10 @@ import {
   parseEnableLoopbackVersion,
   verifyEnableLoopbackChecksum,
 } from "./enable-loopback.ts";
-import { resolveEnableLoopback } from "./resources.ts";
+import {
+  resolveEnableLoopback,
+  resolveEnableLoopbackBootstrapper,
+} from "./resources.ts";
 import type { downloadFile } from "./download.ts";
 
 const BYTES = new TextEncoder().encode("abc");
@@ -57,6 +60,14 @@ Deno.test("enable-loopback release URLs follow both packaging targets", () => {
       `https://github.com/libnyanpasu/enable-loopback/releases/download/v0.1.0/enableLoopback-${target}-pc-windows-msvc.exe`,
     );
     assertEquals(info.checksumURL, `${info.downloadURL}.sha256`);
+    assertEquals(
+      info.bootstrapper.downloadURL,
+      `https://github.com/libnyanpasu/enable-loopback/releases/download/v0.1.0/Microsoft.WindowsAppRuntime.Bootstrap-${target}-pc-windows-msvc.dll`,
+    );
+    assertEquals(
+      info.bootstrapper.checksumURL,
+      `${info.bootstrapper.downloadURL}.sha256`,
+    );
   }
   assertThrows(() => enableLoopbackInfo("0.1.0", "ia32"));
 });
@@ -140,6 +151,75 @@ Deno.test("enable-loopback installs verified bytes, replaces legacy cache and pr
       "SHA-256 mismatch",
     );
     assertEquals(Array.from(Deno.readDirSync(context.tempRoot)), []);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("enable-loopback installs the verified bootstrapper beside the executable", async () => {
+  const root = await Deno.makeTempDir();
+  const context = {
+    resourcesDir: path.join(root, "resources"),
+    sidecarDir: path.join(root, "sidecar"),
+    tempRoot: path.join(root, "temp"),
+    platform: "win32",
+    arch: "arm64",
+  };
+  const info = enableLoopbackInfo("0.1.0", "arm64");
+  const { bootstrapper } = info;
+  let corrupt = false;
+  const download: typeof downloadFile = async (url, destination) => {
+    if (url === bootstrapper.checksumURL) {
+      await Deno.writeTextFile(
+        destination,
+        `${HASH}  ${bootstrapper.assetName}\n`,
+      );
+    } else {
+      assertEquals(url, bootstrapper.downloadURL);
+      await Deno.writeFile(destination, corrupt ? new Uint8Array([0]) : BYTES);
+    }
+    return { size: 3, speed: 1 };
+  };
+  try {
+    const target = path.join(
+      context.resourcesDir,
+      "Microsoft.WindowsAppRuntime.Bootstrap.dll",
+    );
+    const installed = await resolveEnableLoopbackBootstrapper(
+      context,
+      info,
+      undefined,
+      download,
+    );
+    assertEquals(installed.file, "Microsoft.WindowsAppRuntime.Bootstrap.dll");
+    assertEquals(installed.cached, false);
+    assertEquals(await Deno.readFile(target), BYTES);
+    assertEquals(
+      await Deno.readTextFile(`${target}.version`),
+      `0.1.0/${bootstrapper.assetName}`,
+    );
+    assertEquals(
+      (await resolveEnableLoopbackBootstrapper(
+        context,
+        info,
+        undefined,
+        download,
+      )).cached,
+      true,
+    );
+    corrupt = true;
+    await assertRejects(
+      () =>
+        resolveEnableLoopbackBootstrapper(
+          context,
+          info,
+          { force: true },
+          download,
+        ),
+      Error,
+      "SHA-256 mismatch",
+    );
+    assertEquals(await Deno.readFile(target), BYTES);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

@@ -93,6 +93,15 @@ platforms = ['windows']
 notes = 'Provides enableLoopback.exe.'
 
 [[component]]
+name = 'Windows App SDK bootstrapper'
+kind = 'resource'
+homepage = 'https://github.com/microsoft/WindowsAppSDK'
+license = 'LicenseRef-Microsoft-WindowsAppSDK'
+license-files = ['licenses/windows-app-sdk-LICENSE.txt']
+platforms = ['windows']
+notes = 'Microsoft.WindowsAppRuntime.Bootstrap.dll from Microsoft.WindowsAppSDK.Foundation 2.3.12; enableLoopback.exe loads it on Windows builds before Windows 11 24H1.'
+
+[[component]]
 name = 'Natural Earth'
 kind = 'data'
 homepage = 'https://www.naturalearthdata.com'

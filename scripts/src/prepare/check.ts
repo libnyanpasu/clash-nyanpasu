@@ -15,6 +15,7 @@ import {
 } from "./progress.ts";
 import {
   resolveEnableLoopback,
+  resolveEnableLoopbackBootstrapper,
   resolveResource,
   resolveSidecar,
   resolveWintun,
@@ -255,6 +256,17 @@ async function main(args = parseArgs(Deno.args, {
       name: "enableLoopback",
       func: (onProgress) =>
         resolveEnableLoopback(
+          resourceContext,
+          getEnableLoopbackInfo(WORKSPACE_ROOT, arch),
+          { force, onProgress },
+        ),
+      retry: 5,
+      winOnly: true,
+    },
+    {
+      name: "enableLoopbackBootstrapper",
+      func: (onProgress) =>
+        resolveEnableLoopbackBootstrapper(
           resourceContext,
           getEnableLoopbackInfo(WORKSPACE_ROOT, arch),
           { force, onProgress },

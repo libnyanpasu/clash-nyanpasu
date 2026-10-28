@@ -32,6 +32,7 @@ const Title = (props: ComponentProps<typeof motion.p>) => {
   return (
     <motion.p
       layout
+      layoutCrossfade={false}
       transition={{
         layout: {
           duration: 0.5,
@@ -100,7 +101,7 @@ export function PageTitle({
       </div>
 
       <div
-        className="group flex h-24 px-6 pt-10 pb-4"
+        className="group relative z-20 flex h-24 px-6 pt-10 pb-4"
         data-slot="page-title"
         data-show-title={!showTopTitle}
       >

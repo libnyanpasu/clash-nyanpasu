@@ -1,10 +1,15 @@
 import * as path from "jsr:@std/path";
 
-export interface EnableLoopbackInfo {
-  version: string;
+export interface EnableLoopbackAsset {
   assetName: string;
   downloadURL: string;
   checksumURL: string;
+}
+
+export interface EnableLoopbackInfo extends EnableLoopbackAsset {
+  version: string;
+  /** Windows builds before Windows 11 24H1 load it beside the executable. */
+  bootstrapper: EnableLoopbackAsset;
 }
 
 export function parseEnableLoopbackVersion(manifest: string): string {
@@ -29,15 +34,20 @@ export function enableLoopbackInfo(
   if (!target) {
     throw new Error(`unsupported enable-loopback architecture: ${arch}`);
   }
-  const assetName = `enableLoopback-${target}.exe`;
-  const downloadURL =
-    `https://github.com/libnyanpasu/enable-loopback/releases/download/v${version}/${assetName}`;
   return {
     version,
-    assetName,
-    downloadURL,
-    checksumURL: `${downloadURL}.sha256`,
+    ...releaseAsset(version, `enableLoopback-${target}.exe`),
+    bootstrapper: releaseAsset(
+      version,
+      `Microsoft.WindowsAppRuntime.Bootstrap-${target}.dll`,
+    ),
   };
+}
+
+function releaseAsset(version: string, assetName: string): EnableLoopbackAsset {
+  const downloadURL =
+    `https://github.com/libnyanpasu/enable-loopback/releases/download/v${version}/${assetName}`;
+  return { assetName, downloadURL, checksumURL: `${downloadURL}.sha256` };
 }
 
 export async function getEnableLoopbackInfo(

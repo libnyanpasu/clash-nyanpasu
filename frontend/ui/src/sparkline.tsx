@@ -221,12 +221,15 @@ const scrollIn = (
   const toOffset = buf.length - data.length
   const stepWidth = size.width / (data.length - 1)
 
-  // Draw at the new scale, stretched to the scale actually on screen
-  // (possibly mid-transition), so a new peak or a stability change never
-  // rescales the chart in one frame.
+  // Continue an in-flight rescale from the scale currently on screen.
   const toScale = computeScale(data)
+  const previousScale = chart.scale ?? toScale
+  // A new peak cannot be displayed at the old scale without overflowing the
+  // chart, especially when the first nonzero sample follows an empty history.
   const fromStretch =
-    (stretch * yDensity(chart.scale ?? toScale)) / yDensity(toScale)
+    toScale.yMax > previousScale.yMax
+      ? 1
+      : (stretch * yDensity(previousScale)) / yDensity(toScale)
   chart.scale = toScale
   drawPaths(chart, buf, toScale)
 

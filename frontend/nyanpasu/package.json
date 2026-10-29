@@ -76,7 +76,7 @@
     "clsx": "2.1.1",
     "core-js": "3.51.0",
     "filesize": "11.0.29",
-    "meta-json-schema": "1.19.32",
+    "meta-json-schema": "1.19.33",
     "monaco-yaml": "5.5.1",
     "nanoid": "6.0.2",
     "postcss-selector-parser": "7.1.7",

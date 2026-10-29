@@ -8,7 +8,6 @@ use super::{
     clash_config::{self, ClashConfigFormat},
 };
 use crate::utils::help;
-use anyhow::Context as _;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
@@ -17,7 +16,35 @@ use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
+use snafu::ResultExt as _;
 use std::path::Path;
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to serialize YAML"))]
+    SerializeYaml { source: serde_yaml::Error },
+    #[snafu(context(false), display("failed to inspect migration input"))]
+    InspectInput {
+        source: super::super::MigrationCheckError,
+    },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: super::super::fs::Error },
+    #[snafu(context(false), display("failed to convert legacy config"))]
+    ConvertLegacy {
+        source: super::super::legacy_schema::Error,
+    },
+    #[snafu(context(false), display("failed to read legacy overrides"))]
+    ReadLegacyOverrides {
+        source: crate::utils::help::YamlError,
+    },
+    #[snafu(context(false), display("serialized config was not UTF-8"))]
+    DecodeConfig { source: std::string::FromUtf8Error },
+    // Format is an existing erased serialization port; keep its original source chain.
+    #[snafu(display("failed to serialize application config"))]
+    SerializeApplication { source: anyhow::Error },
+    #[snafu(display("failed to serialize clash config"))]
+    SerializeClash { source: anyhow::Error },
+}
 
 pub static MIGRATOR: TypedConfigMigrator = TypedConfigMigrator;
 
@@ -35,33 +62,45 @@ impl ModuleMigrator for TypedConfigMigrator {
         "typed_config"
     }
 
-    fn detect_baseline(&self, ctx: &Ctx) -> anyhow::Result<u64> {
-        match typed_file_state(ctx)? {
-            TypedFileState::All => Ok(current_revision()),
-            TypedFileState::None => Ok(0),
-            TypedFileState::NeedsClashRepair => Ok(1),
-        }
+    fn detect_baseline(&self, ctx: &Ctx) -> Result<u64, super::super::OperationError> {
+        (|| -> Result<u64, Error> {
+            match typed_file_state(ctx)? {
+                TypedFileState::All => Ok(current_revision()),
+                TypedFileState::None => Ok(0),
+                TypedFileState::NeedsClashRepair => Ok(1),
+            }
+        })()
+        .map_err(Into::into)
     }
 
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
         &STEPS
     }
 
-    fn files_behind(&self, ctx: &Ctx, applied: u64) -> anyhow::Result<Option<String>> {
-        Ok(match typed_file_state(ctx)? {
-            TypedFileState::All => None,
-            TypedFileState::None if applied >= SPLIT_LEGACY_CONFIG.revision() => Some(format!(
-                "application.yaml and session-state.yaml are missing from {}",
-                ctx.paths().app_config_dir()
-            )),
-            TypedFileState::NeedsClashRepair if applied >= REPAIR_CLASH_CONFIG_PATH.revision() => {
-                Some(format!(
-                    "{} is not a typed clash config",
-                    ctx.clash_config_path().display()
-                ))
-            }
-            TypedFileState::None | TypedFileState::NeedsClashRepair => None,
-        })
+    fn files_behind(
+        &self,
+        ctx: &Ctx,
+        applied: u64,
+    ) -> Result<Option<String>, super::super::OperationError> {
+        (|| -> Result<Option<String>, Error> {
+            Ok(match typed_file_state(ctx)? {
+                TypedFileState::All => None,
+                TypedFileState::None if applied >= SPLIT_LEGACY_CONFIG.revision() => Some(format!(
+                    "application.yaml and session-state.yaml are missing from {}",
+                    ctx.paths().app_config_dir()
+                )),
+                TypedFileState::NeedsClashRepair
+                    if applied >= REPAIR_CLASH_CONFIG_PATH.revision() =>
+                {
+                    Some(format!(
+                        "{} is not a typed clash config",
+                        ctx.clash_config_path().display()
+                    ))
+                }
+                TypedFileState::None | TypedFileState::NeedsClashRepair => None,
+            })
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -96,27 +135,27 @@ impl MigrationStep for SplitLegacyConfig {
         }))
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let (application, session_state, clash_config) = if has_legacy_inputs(ctx)? {
-            let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
-            let legacy_clash = read_legacy_clash_inputs(ctx)?;
-            typed_config_from_legacy_parts(&legacy, &legacy_clash)?
-        } else {
-            (
-                NyanpasuAppConfig::default(),
-                PersistentState::default(),
-                ClashConfig::default(),
-            )
-        };
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let (application, session_state, clash_config) = if has_legacy_inputs(ctx)? {
+                let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
+                let legacy_clash = read_legacy_clash_inputs(ctx)?;
+                typed_config_from_legacy_parts(&legacy, &legacy_clash)?
+            } else {
+                (
+                    NyanpasuAppConfig::default(),
+                    PersistentState::default(),
+                    ClashConfig::default(),
+                )
+            };
 
-        let application_yaml = serialize_application(&application)
-            .context("failed to serialize migrated application config")?;
-        let session_yaml =
-            serialize_yaml(&session_state).context("failed to serialize migrated session state")?;
-        let clash_yaml =
-            serialize_clash(&clash_config).context("failed to serialize migrated clash config")?;
+            let application_yaml = serialize_application(&application)?;
+            let session_yaml = serialize_yaml(&session_state)?;
+            let clash_yaml = serialize_clash(&clash_config)?;
 
-        write_typed_files(ctx, &application_yaml, &session_yaml, &clash_yaml)
+            write_typed_files(ctx, &application_yaml, &session_yaml, &clash_yaml)
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -155,24 +194,28 @@ impl MigrationStep for RepairClashConfigPath {
         }
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
-        let clash_config = if previous_typed_path.exists() {
-            clash_config::read_typed(previous_typed_path.as_std_path())
-                .context("failed to read previous typed clash config")?
-        } else if has_legacy_inputs(ctx)? {
-            let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
-            let legacy_clash = read_legacy_clash_inputs(ctx)?;
-            let (_, _, clash_config) = typed_config_from_legacy_parts(&legacy, &legacy_clash)?;
-            clash_config
-        } else {
-            ClashConfig::default()
-        };
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
+            let clash_config = if previous_typed_path.exists() {
+                clash_config::read_typed(previous_typed_path.as_std_path())?
+            } else if has_legacy_inputs(ctx)? {
+                let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
+                let legacy_clash = read_legacy_clash_inputs(ctx)?;
+                let (_, _, clash_config) = typed_config_from_legacy_parts(&legacy, &legacy_clash)?;
+                clash_config
+            } else {
+                ClashConfig::default()
+            };
 
-        let clash_yaml =
-            serialize_clash(&clash_config).context("failed to serialize repaired clash config")?;
-        crate::core::migration::fs::atomic_write(&ctx.clash_config_path(), clash_yaml.as_bytes())
-            .context("failed to write repaired clash config")
+            let clash_yaml = serialize_clash(&clash_config)?;
+            crate::core::migration::fs::atomic_write(
+                &ctx.clash_config_path(),
+                clash_yaml.as_bytes(),
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -354,20 +397,19 @@ fn has_legacy_inputs(ctx: &Ctx) -> Result<bool, MigrationCheckError> {
         || classify_shared_clash_file(ctx)? == SharedClashFileState::LegacyRuntime)
 }
 
-fn read_legacy_verge(path: &Path) -> anyhow::Result<IVerge> {
+fn read_legacy_verge(path: &Path) -> Result<IVerge, Error> {
     let mut merged = IVerge::template();
     if !path.exists() {
         return Ok(merged);
     }
 
-    let mut legacy: IVerge = read_yaml(path)
-        .with_context(|| format!("failed to read legacy config {}", path.display()))?;
+    let mut legacy: IVerge = read_yaml(path)?;
     legacy.migrate_auto_close_connection();
     merged.patch_config(legacy);
     Ok(merged)
 }
 
-fn read_legacy_clash_inputs(ctx: &Ctx) -> anyhow::Result<Mapping> {
+fn read_legacy_clash_inputs(ctx: &Ctx) -> Result<Mapping, Error> {
     let mut merged = IClashTemp::template().0;
 
     if classify_shared_clash_file(ctx)? == SharedClashFileState::LegacyRuntime {
@@ -378,13 +420,12 @@ fn read_legacy_clash_inputs(ctx: &Ctx) -> anyhow::Result<Mapping> {
     Ok(merged)
 }
 
-fn merge_legacy_clash_file(merged: &mut Mapping, path: &Path) -> anyhow::Result<()> {
+fn merge_legacy_clash_file(merged: &mut Mapping, path: &Path) -> Result<(), Error> {
     if !path.exists() {
         return Ok(());
     }
 
-    let legacy = help::read_merge_mapping(&path.to_path_buf())
-        .with_context(|| format!("failed to read legacy clash overrides {}", path.display()))?;
+    let legacy = help::read_merge_mapping(&path.to_path_buf())?;
     for (key, value) in legacy {
         if !matches!(value, Value::Null) {
             merged.insert(key, value);
@@ -404,7 +445,7 @@ fn read_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, MigrationCheckError>
     })
 }
 
-fn serialize_yaml<T: Serialize>(value: &T) -> anyhow::Result<String> {
+fn serialize_yaml<T: Serialize>(value: &T) -> Result<String, Error> {
     serde_yaml::to_string(value).map_err(Into::into)
 }
 
@@ -412,17 +453,21 @@ fn serialize_yaml<T: Serialize>(value: &T) -> anyhow::Result<String> {
 /// own module is at: the app refuses an unstamped file, and an unstamped one
 /// at that revision would look like a lost stamp if the run stopped before the
 /// runner adopted it.
-fn serialize_application(application: &NyanpasuAppConfig) -> anyhow::Result<String> {
+fn serialize_application(application: &NyanpasuAppConfig) -> Result<String, Error> {
     let mut content = Vec::new();
-    ApplicationFormat::default().serialize(&mut content, application, None)?;
+    ApplicationFormat::default()
+        .serialize(&mut content, application, None)
+        .context(SerializeApplicationSnafu)?;
     Ok(String::from_utf8(content)?)
 }
 
 /// `clash-config.yaml` is written stamped for the same reason as
 /// `application.yaml`.
-fn serialize_clash(clash: &ClashConfig) -> anyhow::Result<String> {
+fn serialize_clash(clash: &ClashConfig) -> Result<String, Error> {
     let mut content = Vec::new();
-    ClashConfigFormat::default().serialize(&mut content, clash, None)?;
+    ClashConfigFormat::default()
+        .serialize(&mut content, clash, None)
+        .context(SerializeClashSnafu)?;
     Ok(String::from_utf8(content)?)
 }
 
@@ -431,7 +476,7 @@ fn write_typed_files(
     application_yaml: &str,
     session_yaml: &str,
     clash_yaml: &str,
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     let outputs = [
         (
             "application config",
@@ -451,12 +496,12 @@ fn write_typed_files(
     ];
     let mut written = Vec::new();
 
-    for (name, path, contents) in outputs {
+    for (_name, path, contents) in outputs {
         if let Err(error) = crate::core::migration::fs::atomic_write(&path, contents) {
             for created in written.iter().rev() {
                 let _ = std::fs::remove_file(created);
             }
-            return Err(error).with_context(|| format!("failed to write migrated {name}"));
+            return Err(error.into());
         }
         written.push(path);
     }
@@ -702,10 +747,10 @@ mod tests {
 
         let err = MIGRATOR.detect_baseline(&ctx).unwrap_err();
 
+        let report = snafu::Report::from_error(err).to_string();
         assert!(
-            err.to_string()
-                .contains("unrecognized typed config migration state"),
-            "{err:#}"
+            report.contains("unrecognized typed config migration state"),
+            "{report}"
         );
         assert_eq!(
             std::fs::read_to_string(ctx.clash_config_path()).unwrap(),
@@ -825,9 +870,7 @@ mod tests {
             write_typed_files(&ctx, "app: true\n", "session: true\n", "clash: true\n").unwrap_err();
 
         assert!(
-            err.to_string()
-                .contains("failed to write migrated session state"),
-            "{err:#}"
+            matches!(err, Error::WriteOutput { source: crate::core::migration::fs::Error::WriteFile { path, .. } } if path == ctx.session_state_path())
         );
         assert!(
             !ctx.application_config_path().exists(),

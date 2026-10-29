@@ -26,11 +26,7 @@ mod utils;
 mod widget;
 mod window;
 
-use crate::{
-    core::backup::BACKUP_FAILED_EXIT_CODE,
-    utils::{init, resolve},
-};
-use anyhow::Context;
+use crate::utils::{init, resolve};
 use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::Event;
@@ -223,10 +219,11 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
         && let Err(e) = init::run_pending_migrations(&paths)
     {
-        let backup_failed = e
-            .downcast_ref::<init::MigrationChildFailed>()
-            .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
-        let message = format!("Failed to finish migration event: {e}");
+        let backup_failed = matches!(&e, init::Error::ReadChildFailure { source } if source.stage == core::migration::child_result::FailureStage::Backup);
+        let message = format!(
+            "Failed to finish migration event: {}",
+            snafu::Report::from_error(&e)
+        );
         utils::dialog::migration_failed_dialog(&message, &paths, backup_failed);
         std::process::exit(1);
     }
@@ -340,11 +337,9 @@ pub fn run() -> std::io::Result<()> {
         })
         .setup(move |app| {
             transport_builder.mount_events(app);
-            setup::setup(app, metadata, logger_reload, jobs_capture, paths)
-                .context("Failed to setup the app")
-                .inspect_err(|e| {
-                    tracing::error!("Failed to setup the app: {:#?}", e);
-                })?;
+            setup::setup(app, metadata, logger_reload, jobs_capture, paths).inspect_err(|e| {
+                tracing::error!("Failed to setup the app: {:#?}", e);
+            })?;
 
             #[cfg(target_os = "macos")]
             {
@@ -366,7 +361,7 @@ pub fn run() -> std::io::Result<()> {
 
             install_panic_hook(Some(app.handle().clone()));
             resolve::resolve_setup(app);
-            setup::setup_unified_rpc(app).context("Failed to initialize unified RPC")?;
+            setup::setup_unified_rpc(app)?;
 
             // setup custom scheme
             let handle = app.handle().clone();

@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::state::{
     PersistentState, PersistentStatePatch,
     window::{WindowLabel, WindowState},
 };
-use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
+use nyanpasu_core::state::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot, error::LoadError,
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::{
@@ -16,6 +18,22 @@ use crate::state::{
         SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
     },
 };
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to load persistent state from {path}"))]
+    LoadState {
+        path: Utf8PathBuf,
+        source: LoadError<PersistentStateManager<PersistentState>>,
+    },
+    #[snafu(display("failed to initialize persistent state at {path}"))]
+    InitializeState {
+        path: Utf8PathBuf,
+        source: LoadError<PersistentStateManager<PersistentState>>,
+    },
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
 
 #[derive(Clone)]
 pub struct SessionStateClient {
@@ -38,27 +56,27 @@ impl SessionStateClient {
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<PersistentState>::builder()
-            .config_path(config_path)
+            .config_path(config_path.clone())
             .assemble();
         let manager = if should_load {
             setup
                 .load()
                 .await
-                .context("failed to load session persistent state manager")?
+                .context(LoadStateSnafu { path: &config_path })?
         } else {
             setup
                 .from_state(PersistentState::default())
                 .await
-                .context("failed to initialize session persistent state manager")?
+                .context(InitializeStateSnafu { path: &config_path })?
         };
 
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(None, SessionStateActor, SessionStateActorArgs { manager })
             .await
-            .context("failed to spawn session state actor")?
+            .context(SpawnActorSnafu)?
             .0;
         crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 

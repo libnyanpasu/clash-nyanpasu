@@ -20,6 +20,12 @@ pub trait FrontendAssets: Send + Sync + 'static {
     fn get(&self, path: &str) -> Option<(String, Vec<u8>)>;
 }
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Clone)]
 pub enum Frontend {
     Embedded(Arc<dyn FrontendAssets>),
@@ -207,10 +213,14 @@ struct HttpServerClientInner {
     actor: ActorRef<Message>,
 }
 impl HttpServerClient {
-    pub async fn spawn(frontend: Option<Frontend>, routes: Arc<dyn HttpRoutes>) -> Result<Self> {
+    pub async fn spawn(
+        frontend: Option<Frontend>,
+        routes: Arc<dyn HttpRoutes>,
+    ) -> std::result::Result<Self, Error> {
         Ok(Self(Arc::new(HttpServerClientInner {
             actor: Actor::spawn(None, HttpServerActor, HttpServerArgs { frontend, routes })
-                .await?
+                .await
+                .map_err(|source| Error::SpawnActor { source })?
                 .0,
         })))
     }

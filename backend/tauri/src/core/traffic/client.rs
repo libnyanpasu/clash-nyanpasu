@@ -11,6 +11,12 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::actor::{Message, TrafficActor, TrafficArgs};
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn traffic owner"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Clone)]
 pub struct TrafficClient(Arc<Inner>);
 
@@ -29,9 +35,10 @@ impl TrafficClient {
         args: TrafficArgs<S>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> Result<Self> {
-        let (actor, _) =
-            Actor::spawn(None, TrafficActor::<S>(std::marker::PhantomData), args).await?;
+    ) -> std::result::Result<Self, Error> {
+        let (actor, _) = Actor::spawn(None, TrafficActor::<S>(std::marker::PhantomData), args)
+            .await
+            .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor })))
     }

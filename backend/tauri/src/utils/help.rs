@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
@@ -18,36 +18,48 @@ use tauri::{AppHandle, Manager};
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
 
-/// read data from yaml as struct T
-pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
-    let path = path.as_ref();
-    if !path.exists() {
-        bail!("file not found \"{}\"", path.display());
-    }
-
-    let yaml_str = fs::read_to_string(path)
-        .with_context(|| format!("failed to read the file \"{}\"", path.display()))?;
-
-    serde_yaml::from_str::<T>(&yaml_str).with_context(|| {
-        format!(
-            "failed to read the file with yaml format \"{}\"",
-            path.display()
-        )
-    })
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum YamlError {
+    #[snafu(display("file not found {}", path.display()))]
+    FindFile { path: PathBuf },
+    #[snafu(display("failed to read {}", path.display()))]
+    ReadFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to parse {}", path.display()))]
+    ParseFile {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
+    #[snafu(display("failed to apply merge in {}", path.display()))]
+    ApplyMerge {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
+    #[snafu(display("expected a YAML mapping in {}", path.display()))]
+    ReadMapping { path: PathBuf },
 }
 
-/// read mapping from yaml fix #165
-pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
-    let mut val: Value = read_yaml(path)?;
-    val.apply_merge()
-        .with_context(|| format!("failed to apply merge \"{}\"", path.display()))?;
+pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(
+    path: P,
+) -> std::result::Result<T, YamlError> {
+    use snafu::ResultExt as _;
+    let path = path.as_ref();
+    if !path.exists() {
+        return FindFileSnafu { path }.fail();
+    }
+    let yaml_str = fs::read_to_string(path).context(ReadFileSnafu { path })?;
+    serde_yaml::from_str(&yaml_str).context(ParseFileSnafu { path })
+}
 
+pub fn read_merge_mapping(path: &PathBuf) -> std::result::Result<Mapping, YamlError> {
+    use snafu::{OptionExt as _, ResultExt as _};
+    let mut val: Value = read_yaml(path)?;
+    val.apply_merge().context(ApplyMergeSnafu { path })?;
     Ok(val
         .as_mapping()
-        .ok_or(anyhow!(
-            "failed to transform to yaml mapping \"{}\"",
-            path.display()
-        ))?
+        .context(ReadMappingSnafu { path })?
         .to_owned())
 }
 
@@ -168,6 +180,7 @@ pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
     let width = img.width();
     let height = img.height();
     let src_pixels = img.into_rgba8().into_raw();
+    use anyhow::Context as _;
     let src_image = ImageRef::new(width, height, &src_pixels, PixelType::U8x4)
         .context("failed to parse image")?;
 

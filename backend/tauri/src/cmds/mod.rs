@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use crate::utils;
-use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
 use nyanpasu_config::application::I18nLanguage;
@@ -59,7 +58,16 @@ fn parse_reporter_language(value: &str) -> Result<I18nLanguage, serde::de::value
     I18nLanguage::deserialize(serde::de::value::StrDeserializer::new(value))
 }
 
-pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to build collection runtime"))]
+    BuildCollectionRuntime { source: std::io::Error },
+    #[snafu(display("failed to show diagnostics reporter"))]
+    ShowReporter { source: anyhow::Error },
+}
+
+pub fn parse(paths: &PathResolver) -> Result<(), Error> {
+    use snafu::ResultExt as _;
     let cli = Cli::parse();
     if cli.version {
         print_version_info();
@@ -94,7 +102,8 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
             Commands::Collect => {
                 let runtime = tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
-                    .build()?;
+                    .build()
+                    .context(BuildCollectionRuntimeSnafu)?;
                 let _guard = runtime.enter();
                 utils::collect::diagnose(
                     paths,
@@ -111,10 +120,10 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                 );
             }
             Commands::PanicDialog(options) => {
-                panic_dialog::show(paths, false, options.language)?;
+                panic_dialog::show(paths, false, options.language).context(ShowReporterSnafu)?;
             }
             Commands::ReportIssue(options) => {
-                panic_dialog::show(paths, true, options.language)?;
+                panic_dialog::show(paths, true, options.language).context(ShowReporterSnafu)?;
             }
             Commands::StatisticWidget { variant } => {
                 nyanpasu_widget::start_statistic_widget(*variant)

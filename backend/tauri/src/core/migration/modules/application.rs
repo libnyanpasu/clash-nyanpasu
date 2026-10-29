@@ -2,11 +2,27 @@ use super::super::{
     Ctx, DocumentSpec, MigrationStep, ModuleKind, ModuleMigrator,
     fs::{read_document, write_document},
 };
-use anyhow::{Context as _, bail};
 use nyanpasu_core::format::{StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::{Mapping, Value};
+use snafu::OptionExt as _;
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to inspect migration input"))]
+    InspectInput {
+        source: super::super::MigrationCheckError,
+    },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: super::super::fs::Error },
+    #[snafu(display("migration document is missing: {}", path.display()))]
+    FindDocument { path: std::path::PathBuf },
+    #[snafu(display("expected mapping in {field}"))]
+    ReadMapping { field: &'static str },
+    #[snafu(display("invalid tray close behavior: {value:?}"))]
+    ReadCloseBehavior { value: Value },
+}
 
 pub static MIGRATOR: ApplicationMigrator = ApplicationMigrator;
 
@@ -47,7 +63,7 @@ impl ModuleMigrator for ApplicationMigrator {
         })
     }
 
-    fn detect_baseline(&self, _ctx: &Ctx) -> anyhow::Result<u64> {
+    fn detect_baseline(&self, _ctx: &Ctx) -> Result<u64, super::super::OperationError> {
         Ok(UNSTAMPED_CEILING)
     }
 
@@ -86,38 +102,45 @@ impl MigrationStep for MigrateWindowClose {
         "MigrateWindowClose"
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let path = ctx.application_config_path();
-        let file = read_document(&path, ApplicationDocument::DOCUMENT)?
-            .context("application.yaml is gone")?;
-        let mut payload = file.payload;
-        window_close_from_tray_menu(&mut payload)?;
-        write_document(
-            &path,
-            ApplicationDocument::DOCUMENT,
-            self.revision(),
-            payload,
-            None,
-        )
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.application_config_path();
+            let file = read_document(&path, ApplicationDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            window_close_from_tray_menu(&mut payload)?;
+            write_document(
+                &path,
+                ApplicationDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
     }
 }
 
 /// `hide` keeps hiding and `close` becomes `destroy`; every other window kind
 /// follows the global default, which is to destroy.
-fn window_close_from_tray_menu(payload: &mut Mapping) -> anyhow::Result<()> {
+fn window_close_from_tray_menu(payload: &mut Mapping) -> Result<(), Error> {
     let Some(behavior) = payload.remove(TRAY_MENU_CLOSE_BEHAVIOR_KEY) else {
         return Ok(());
     };
     let tray_menu = match behavior.as_str() {
         Some("hide") => "hide",
         Some("close") => "destroy",
-        _ => bail!("`{TRAY_MENU_CLOSE_BEHAVIOR_KEY}` is {behavior:?}, not `hide` or `close`"),
+        _ => return ReadCloseBehaviorSnafu { value: behavior }.fail(),
     };
     let window_close = payload
         .entry(Value::from(WINDOW_CLOSE_KEY))
         .or_insert_with(|| Value::Mapping(Mapping::new()));
     let Some(window_close) = window_close.as_mapping_mut() else {
-        bail!("`{WINDOW_CLOSE_KEY}` is not a mapping");
+        return ReadMappingSnafu {
+            field: WINDOW_CLOSE_KEY,
+        }
+        .fail();
     };
     window_close
         .entry(Value::from("tray_menu"))

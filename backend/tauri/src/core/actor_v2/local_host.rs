@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
@@ -12,7 +11,28 @@ use snafu::{ResultExt, Snafu};
 
 use nyanpasu_paths::PathResolver;
 
-pub async fn build(paths: &PathResolver, shutdown_helper: &std::path::Path) -> Result<CoreControl> {
+#[derive(Debug, Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to inspect {}", path.display()))]
+    InspectConfig {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to read core kind from {}", path.display()))]
+    ReadCoreKind {
+        path: std::path::PathBuf,
+        source: nyanpasu_core_manager::native_store::StoreError,
+    },
+    #[snafu(display("failed to build core manager"))]
+    BuildManager {
+        source: nyanpasu_core_manager::Error,
+    },
+}
+
+pub async fn build(
+    paths: &PathResolver,
+    shutdown_helper: &std::path::Path,
+) -> Result<CoreControl, Error> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
         runtime_dir: Some(runtime_root.join("control")),
@@ -22,7 +42,9 @@ pub async fn build(paths: &PathResolver, shutdown_helper: &std::path::Path) -> R
     };
     let working_dir = paths.app_data_dir().to_owned();
     let config_path = paths.application_config_path();
-    let config_path = if config_path.try_exists()? {
+    let config_path = if config_path.try_exists().context(InspectConfigSnafu {
+        path: config_path.as_std_path(),
+    })? {
         config_path
     } else {
         paths.nyanpasu_config_path()
@@ -30,7 +52,9 @@ pub async fn build(paths: &PathResolver, shutdown_helper: &std::path::Path) -> R
     let native_store = Arc::new(FsNativeStore::new(
         working_dir.clone(),
         StoreOwner::current(),
-        legacy_kind(config_path.as_std_path())?,
+        legacy_kind(config_path.as_std_path()).context(ReadCoreKindSnafu {
+            path: config_path.as_std_path(),
+        })?,
     ));
     let manager = CoreManager::builder(options).native_store(native_store);
 
@@ -41,7 +65,7 @@ pub async fn build(paths: &PathResolver, shutdown_helper: &std::path::Path) -> R
         ),
     ));
 
-    let manager = manager.build().await?;
+    let manager = manager.build().await.context(BuildManagerSnafu)?;
     let source_dir = runtime_root.join("staging");
 
     Ok(CoreControl::spawn(

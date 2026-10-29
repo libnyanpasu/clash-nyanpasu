@@ -19,10 +19,20 @@ use nyanpasu_config::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to convert legacy application"))]
+    BuildApplication { source: application::Error },
+    #[snafu(context(false), display("failed to convert legacy session"))]
+    RestoreSession { source: session_state::Error },
+    #[snafu(context(false), display("failed to convert legacy clash config"))]
+    ConvertClash { source: clash_config::Error },
+}
+
 pub fn typed_config_from_legacy_parts(
     legacy: &IVerge,
     legacy_clash: &serde_yaml::Mapping,
-) -> anyhow::Result<(NyanpasuAppConfig, PersistentState, ClashConfig)> {
+) -> Result<(NyanpasuAppConfig, PersistentState, ClashConfig), Error> {
     Ok((
         application::application_from_legacy(legacy)?,
         session_state::persistent_state_from_legacy(legacy)?,
@@ -30,13 +40,22 @@ pub fn typed_config_from_legacy_parts(
     ))
 }
 
-fn yaml_convert<T, U>(value: T) -> anyhow::Result<U>
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum ConversionError {
+    #[snafu(display("failed to serialize legacy value"))]
+    SerializeValue { source: serde_yaml::Error },
+    #[snafu(display("failed to deserialize legacy value"))]
+    DeserializeValue { source: serde_yaml::Error },
+}
+
+fn yaml_convert<T, U>(value: T) -> Result<U, ConversionError>
 where
     T: Serialize,
     U: DeserializeOwned,
 {
-    let value = serde_yaml::to_value(value)?;
-    Ok(serde_yaml::from_value(value)?)
+    use snafu::ResultExt as _;
+    let value = serde_yaml::to_value(value).context(SerializeValueSnafu)?;
+    serde_yaml::from_value(value).context(DeserializeValueSnafu)
 }
 
 #[cfg(test)]

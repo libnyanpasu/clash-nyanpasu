@@ -2,10 +2,50 @@ use super::super::{
     Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
 };
 use crate::core::storage::{Storage, WebStorage};
-use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::Mapping;
+use snafu::{OptionExt as _, ResultExt as _};
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to read {path:?}"))]
+    ReadFile {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to parse YAML"))]
+    ParseYaml { source: serde_yaml::Error },
+    #[snafu(context(false), display("failed to serialize YAML"))]
+    SerializeYaml { source: serde_yaml::Error },
+    #[snafu(context(false), display("failed to inspect migration input"))]
+    InspectInput {
+        source: super::super::MigrationCheckError,
+    },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: super::super::fs::Error },
+    #[snafu(display("failed to open storage"))]
+    OpenStorage {
+        source: crate::core::storage::StorageOperationError,
+    },
+    #[snafu(display("failed to save hotkeys"))]
+    SaveHotkeys {
+        source: crate::core::storage::StorageOperationError,
+    },
+    #[snafu(display("failed to remove hotkeys"))]
+    RemoveHotkeys {
+        source: crate::core::storage::StorageOperationError,
+    },
+    #[snafu(display("hotkeys is not a list in the legacy config"))]
+    ReadHotkeyList,
+    #[snafu(display("no hotkeys in the key-value storage"))]
+    FindHotkeys,
+    #[snafu(display("failed to create storage parent {path:?}"))]
+    CreateStorageDirectory {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+}
 
 pub static MIGRATOR: StorageMigrator = StorageMigrator;
 
@@ -23,26 +63,29 @@ impl ModuleMigrator for StorageMigrator {
         "storage"
     }
 
-    fn detect_baseline(&self, ctx: &Ctx) -> anyhow::Result<u64> {
-        let config_path = ctx.nyanpasu_config_path();
-        if config_path.exists() {
-            let raw = std::fs::read_to_string(&config_path)?;
-            let config: Mapping = serde_yaml::from_str(&raw)
-                .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
-            if config
-                .get(HOTKEYS_KEY)
-                .is_some_and(|value| value.as_sequence().is_some())
-            {
-                return Ok(0);
+    fn detect_baseline(&self, ctx: &Ctx) -> Result<u64, super::super::OperationError> {
+        (|| -> Result<u64, Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            if config_path.exists() {
+                let raw = std::fs::read_to_string(&config_path)
+                    .context(ReadFileSnafu { path: &config_path })?;
+                let config: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+                if config
+                    .get(HOTKEYS_KEY)
+                    .is_some_and(|value| value.as_sequence().is_some())
+                {
+                    return Ok(0);
+                }
             }
-        }
 
-        // Hotkeys still sitting in the key-value store means only the first
-        // step ever ran on this installation.
-        if read_kv_hotkeys(ctx)?.is_some() {
-            return Ok(1);
-        }
-        Ok(current_revision())
+            // Hotkeys still sitting in the key-value store means only the first
+            // step ever ran on this installation.
+            if read_kv_hotkeys(ctx)?.is_some() {
+                return Ok(1);
+            }
+            Ok(current_revision())
+        })()
+        .map_err(Into::into)
     }
 
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
@@ -84,48 +127,50 @@ impl MigrationStep for MigrateHotkeysToKv {
         }))))
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let config_path = ctx.nyanpasu_config_path();
-        let raw = std::fs::read_to_string(&config_path)?;
-        let mut config: Mapping = serde_yaml::from_str(&raw)
-            .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            let raw = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
 
-        let hotkeys_key = serde_yaml::Value::String(HOTKEYS_KEY.to_string());
-        let hotkeys = config
-            .get(&hotkeys_key)
-            .and_then(serde_yaml::Value::as_sequence)
-            .context("hotkeys is not a list in the legacy config")?;
+            let hotkeys_key = serde_yaml::Value::String(HOTKEYS_KEY.to_string());
+            let hotkeys = config
+                .get(&hotkeys_key)
+                .and_then(serde_yaml::Value::as_sequence)
+                .context(ReadHotkeyListSnafu)?;
 
-        let hotkey_strings: Vec<String> = hotkeys
-            .iter()
-            .filter_map(|value| value.as_str().map(ToString::to_string))
-            .collect();
+            let hotkey_strings: Vec<String> = hotkeys
+                .iter()
+                .filter_map(|value| value.as_str().map(ToString::to_string))
+                .collect();
 
-        if !hotkey_strings.is_empty() {
-            let storage_path = ctx.storage_path();
-            if let Some(parent) = storage_path.parent() {
-                std::fs::create_dir_all(parent)?;
+            if !hotkey_strings.is_empty() {
+                let storage_path = ctx.storage_path();
+                if let Some(parent) = storage_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .context(CreateStorageDirectorySnafu { path: parent })?;
+                }
+                let storage = Storage::try_new(&storage_path).context(OpenStorageSnafu)?;
+
+                storage
+                    .set_item("hotkeys", &hotkey_strings)
+                    .context(SaveHotkeysSnafu)?;
+
+                // Note: registration is intentionally NOT done here. This migration
+                // runs in a separate `migrate` subprocess with no Tauri app handle, so
+                // `Hotkey::update` would fail; `Hotkey::init` reads the migrated value
+                // from KV storage at app startup instead.
+                tracing::info!("migrated {} hotkeys to KV storage", hotkey_strings.len());
             }
-            let storage = Storage::try_new(&storage_path)
-                .map_err(|e| anyhow::anyhow!("failed to open storage: {e}"))?;
 
-            storage
-                .set_item("hotkeys", &hotkey_strings)
-                .map_err(|e| anyhow::anyhow!("failed to save hotkeys: {e}"))?;
+            config.remove(&hotkeys_key);
+            let new_config = serde_yaml::to_string(&config)?;
+            crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
 
-            // Note: registration is intentionally NOT done here. This migration
-            // runs in a separate `migrate` subprocess with no Tauri app handle, so
-            // `Hotkey::update` would fail; `Hotkey::init` reads the migrated value
-            // from KV storage at app startup instead.
-            tracing::info!("migrated {} hotkeys to KV storage", hotkey_strings.len());
-        }
-
-        config.remove(&hotkeys_key);
-        let new_config = serde_yaml::to_string(&config)
-            .map_err(|e| anyhow::anyhow!("failed to serialize config: {e}"))?;
-        crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
-
-        Ok(())
+            Ok(())
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -180,40 +225,43 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
         Ok(Some(StepCheck::Needed))
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let hotkeys = read_kv_hotkeys(ctx)?.context("no hotkeys in the key-value storage")?;
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let hotkeys = read_kv_hotkeys(ctx)?.context(FindHotkeysSnafu)?;
 
-        let application_path = ctx.application_config_path();
-        let raw = std::fs::read_to_string(&application_path)?;
-        let mut application: Mapping = serde_yaml::from_str(&raw)
-            .map_err(|e| anyhow::anyhow!("failed to parse the application config: {e}"))?;
-        // While this key exists the key-value store is the authority: it was
-        // the only place the hotkey editor wrote to and the only place startup
-        // read from, so whatever the typed config holds was never the user's
-        // choice. That includes an empty list, which means every binding was
-        // cleared on purpose and must not be resurrected.
-        application.insert(
-            serde_yaml::Value::String(HOTKEYS_KEY.to_string()),
-            serde_yaml::Value::Sequence(
-                hotkeys
-                    .iter()
-                    .map(|hotkey| serde_yaml::Value::String(hotkey.clone()))
-                    .collect(),
-            ),
-        );
-        let serialized = serde_yaml::to_string(&application)
-            .map_err(|e| anyhow::anyhow!("failed to serialize the application config: {e}"))?;
-        crate::core::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
-        tracing::info!(
-            "moved {} hotkeys from KV storage into the typed application config",
-            hotkeys.len()
-        );
+            let application_path = ctx.application_config_path();
+            let raw = std::fs::read_to_string(&application_path).context(ReadFileSnafu {
+                path: &application_path,
+            })?;
+            let mut application: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+            // While this key exists the key-value store is the authority: it was
+            // the only place the hotkey editor wrote to and the only place startup
+            // read from, so whatever the typed config holds was never the user's
+            // choice. That includes an empty list, which means every binding was
+            // cleared on purpose and must not be resurrected.
+            application.insert(
+                serde_yaml::Value::String(HOTKEYS_KEY.to_string()),
+                serde_yaml::Value::Sequence(
+                    hotkeys
+                        .iter()
+                        .map(|hotkey| serde_yaml::Value::String(hotkey.clone()))
+                        .collect(),
+                ),
+            );
+            let serialized = serde_yaml::to_string(&application)?;
+            crate::core::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
+            tracing::info!(
+                "moved {} hotkeys from KV storage into the typed application config",
+                hotkeys.len()
+            );
 
-        let storage = open_storage(ctx)?.expect("storage was readable a moment ago");
-        storage
-            .remove_item(HOTKEYS_KEY)
-            .map(|_| ())
-            .map_err(|e| anyhow::anyhow!("failed to drop the migrated hotkeys: {e}"))
+            let storage = open_storage(ctx)?.expect("storage was readable a moment ago");
+            storage
+                .remove_item(HOTKEYS_KEY)
+                .map(|_| ())
+                .context(RemoveHotkeysSnafu)
+        })()
+        .map_err(Into::into)
     }
 }
 

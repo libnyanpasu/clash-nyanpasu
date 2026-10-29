@@ -1,8 +1,9 @@
 use clap::Args;
 
-use crate::core::{
-    backup::{BACKUP_FAILED_EXIT_CODE, BackupError},
-    migration::{MigrationAdvice, Runner, current_version, registry},
+use crate::core::migration::{
+    MigrationAdvice, Runner,
+    child_result::{Failure, FailureStage},
+    current_version, registry,
 };
 use colored::Colorize;
 use nyanpasu_paths::PathResolver;
@@ -21,6 +22,9 @@ pub struct MigrateOpts {
     /// List all migrations
     #[arg(long)]
     list: bool,
+    /// Write a structured failure report for the startup parent.
+    #[arg(long, hide = true)]
+    result_file: Option<std::path::PathBuf>,
 }
 
 /// A fresh install instance should have a empty config dir,
@@ -36,41 +40,72 @@ fn is_fresh_install_instance(paths: &PathResolver) -> bool {
         })
 }
 
-/// The exit code the parent process reads to tell a failed backup, after which
-/// nothing was migrated, from a failed migration.
-fn exit_code(error: &anyhow::Error) -> i32 {
-    if error.downcast_ref::<BackupError>().is_some() {
-        BACKUP_FAILED_EXIT_CODE
-    } else {
-        1
-    }
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("specify only one migration or version"))]
+    SelectTarget,
+    #[snafu(display("invalid migration target version"))]
+    ParseVersion { source: semver::Error },
+    #[snafu(display("failed to resolve current migration version"))]
+    ResolveVersion {
+        source: crate::core::migration::VersionError,
+    },
+    #[snafu(display("failed to create migration directories"))]
+    CreateDirectories {
+        source: nyanpasu_paths::CreateDirError,
+    },
+    #[snafu(display("failed to initialize migration runner"))]
+    ConstructRunner {
+        source: crate::core::migration::runner::Error,
+    },
+    #[snafu(display("migration not found: {id}"))]
+    FindMigration { id: String },
+    #[snafu(display("migration failed"))]
+    RunMigration {
+        source: crate::core::migration::runner::Error,
+    },
 }
 
 pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
-    if args.migration.is_some() && args.version.is_some() {
-        eprintln!("Please specify only one of migration or version.");
+    if let Err(failure) = execute(args, paths) {
+        if let Some(path) = &args.result_file
+            && let Err(error) = failure.write(path)
+        {
+            eprintln!(
+                "Failed to write migration result: {}",
+                snafu::Report::from_error(&error)
+            );
+        }
+        eprintln!("{}", snafu::Report::from_error(&failure));
         std::process::exit(1);
     }
+}
 
-    let fresh_install = is_fresh_install_instance(paths);
-    let target = match args.version.as_deref() {
-        Some(version) => semver::Version::parse(version).unwrap_or_else(|error| {
-            eprintln!("Invalid migration target version {version}: {error}");
-            std::process::exit(1);
-        }),
-        None => current_version().unwrap_or_else(|error| {
-            eprintln!("Failed to resolve current version: {error:#}");
-            std::process::exit(1);
-        }),
-    };
-    let mut runner = paths
-        .create_base_dirs()
-        .map_err(anyhow::Error::from)
-        .and_then(|()| Runner::with_target(target, paths.clone(), args.force))
-        .unwrap_or_else(|error| {
-            eprintln!("Failed to initialize migration runner: {error:#}");
-            std::process::exit(1);
-        });
+fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>> {
+    use snafu::ResultExt as _;
+    let construction = (|| -> Result<_, Error> {
+        snafu::ensure!(
+            !(args.migration.is_some() && args.version.is_some()),
+            SelectTargetSnafu
+        );
+        let fresh_install = is_fresh_install_instance(paths);
+        let target = match args.version.as_deref() {
+            Some(version) => semver::Version::parse(version).context(ParseVersionSnafu)?,
+            None => current_version().context(ResolveVersionSnafu)?,
+        };
+        paths.create_base_dirs().context(CreateDirectoriesSnafu)?;
+        let runner =
+            Runner::with_target(target, paths.clone(), args.force).context(ConstructRunnerSnafu)?;
+        Ok((fresh_install, runner))
+    })();
+    let (fresh_install, mut runner) = construction.map_err(|error| {
+        Box::new(Failure::from_error(
+            &error,
+            FailureStage::RunnerConstruction,
+            paths,
+            false,
+        ))
+    })?;
 
     if args.list {
         println!("Available migrations:\n");
@@ -95,19 +130,10 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
         std::process::exit(0);
     }
 
-    if let Some(migration) = args.migration.as_ref() {
-        let migration = registry::find_migration(migration);
-        match migration {
-            Some(migration) => {
-                if let Err(error) = runner.run_migration(migration) {
-                    eprintln!("Migration failed: {error:#}");
-                    std::process::exit(exit_code(&error));
-                }
-            }
-            None => {
-                eprintln!("Migration not found.");
-                std::process::exit(1);
-            }
+    let result = if let Some(id) = args.migration.as_ref() {
+        match registry::find_migration(id) {
+            Some(migration) => runner.run_migration(migration).context(RunMigrationSnafu),
+            None => FindMigrationSnafu { id: id.clone() }.fail(),
         }
     } else {
         if fresh_install {
@@ -117,11 +143,26 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
                 "No migration or version specified. Running migrations up to current version."
             );
         }
-        if let Err(error) = runner.run_pending() {
-            eprintln!("Migration failed: {error:#}");
-            std::process::exit(exit_code(&error));
-        }
-    }
+        runner.run_pending().context(RunMigrationSnafu)
+    };
+    result.map_err(|error| {
+        let stage = if matches!(
+            &error,
+            Error::RunMigration {
+                source: crate::core::migration::runner::Error::CreateBackup { .. }
+            }
+        ) {
+            FailureStage::Backup
+        } else {
+            FailureStage::Migration
+        };
+        Box::new(Failure::from_error(
+            &error,
+            stage,
+            paths,
+            runner.backup_available(),
+        ))
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -211,18 +252,24 @@ pub fn migrate_home_dir_handler(_target_path: &str, _paths: &PathResolver) -> an
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Context as _;
 
     #[test]
-    fn a_failed_backup_is_told_apart_from_a_failed_migration() {
-        let backup = Err::<(), _>(BackupError::Io {
-            path: "backups".into(),
-            source: std::io::Error::other("disk full"),
-        })
-        .context("failed to back up the config before migrating")
-        .unwrap_err();
-
-        assert_eq!(exit_code(&backup), BACKUP_FAILED_EXIT_CODE);
-        assert_eq!(exit_code(&anyhow::anyhow!("boom")), 1);
+    fn migration_child_fixture() {
+        let Some(config) = std::env::var_os("NYANPASU_TEST_MIGRATION_CONFIG") else {
+            return;
+        };
+        let data = std::env::var_os("NYANPASU_TEST_MIGRATION_DATA").unwrap();
+        let result_file = std::env::var_os("NYANPASU_TEST_MIGRATION_RESULT").unwrap();
+        let paths = crate::client::tests::test_paths(config, std::path::PathBuf::from(data));
+        parse(
+            &MigrateOpts {
+                force: false,
+                migration: None,
+                version: None,
+                list: false,
+                result_file: Some(result_file.into()),
+            },
+            &paths,
+        );
     }
 }

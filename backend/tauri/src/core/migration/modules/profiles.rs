@@ -4,7 +4,6 @@ use super::super::{
     Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator, StepCheck,
     fs,
 };
-use anyhow::Context as _;
 use nyanpasu_core::format::{StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
@@ -12,6 +11,36 @@ use serde_yaml::{
     Mapping, Value,
     value::{Tag, TaggedValue},
 };
+use snafu::{OptionExt as _, ResultExt as _};
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to read {path:?}"))]
+    ReadFile {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to parse YAML"))]
+    ParseYaml { source: serde_yaml::Error },
+    #[snafu(context(false), display("failed to serialize YAML"))]
+    SerializeYaml { source: serde_yaml::Error },
+    #[snafu(context(false), display("failed to inspect migration input"))]
+    InspectInput {
+        source: super::super::MigrationCheckError,
+    },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: super::super::fs::Error },
+    #[snafu(display("migration document is missing: {}", path.display()))]
+    FindDocument { path: std::path::PathBuf },
+    #[snafu(context(false), display("failed to convert profile schema"))]
+    ConvertSchema { source: CleanSchemaError },
+    #[snafu(display("profiles validation failed: {errors:?}"))]
+    ValidateProfiles {
+        errors: Vec<nyanpasu_config::profile::ProfileValidationError>,
+    },
+    #[snafu(display("profiles did not serialize to a mapping"))]
+    SerializeMapping,
+}
 
 pub static MIGRATOR: ProfilesMigrator = ProfilesMigrator;
 
@@ -53,40 +82,53 @@ impl ModuleMigrator for ProfilesMigrator {
         })
     }
 
-    fn detect_baseline(&self, ctx: &Ctx) -> anyhow::Result<u64> {
-        let profiles_path = ctx.profiles_path();
-        if !profiles_path.exists() {
-            return Ok(UNSTAMPED_CEILING);
-        }
-
-        let raw = std::fs::read_to_string(&profiles_path)?;
-        let profiles: Mapping = serde_yaml::from_str(&raw)
-            .map_err(|e| anyhow::anyhow!("failed to parse profiles: {e}"))?;
-        if is_clean_schema(&profiles) {
-            return Ok(UNSTAMPED_CEILING);
-        }
-        Ok(0)
+    fn detect_baseline(&self, ctx: &Ctx) -> Result<u64, super::super::OperationError> {
+        detect_unstamped_revision(ctx).map_err(Into::into)
     }
 
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
         &STEPS
     }
 
-    fn files_behind(&self, ctx: &Ctx, applied: u64) -> anyhow::Result<Option<String>> {
-        // A stamped file has already been checked against `applied` by the
-        // runner. Of an unstamped one, only the clean schema is observable on
-        // disk; the earlier revisions leave no marker to check against.
-        let stamped = fs::read_document(&ctx.profiles_path(), ProfilesDocument::DOCUMENT)?
-            .is_some_and(|file| file.schema_revision.is_some());
-        let behind =
-            !stamped && applied >= CLEAN_SCHEMA.revision() && self.detect_baseline(ctx)? < applied;
-        Ok(behind.then(|| {
-            format!(
-                "{} still uses the legacy profile schema",
-                ctx.profiles_path().display()
-            )
-        }))
+    fn files_behind(
+        &self,
+        ctx: &Ctx,
+        applied: u64,
+    ) -> Result<Option<String>, super::super::OperationError> {
+        (|| -> Result<Option<String>, Error> {
+            // A stamped file has already been checked against `applied` by the
+            // runner. Of an unstamped one, only the clean schema is observable on
+            // disk; the earlier revisions leave no marker to check against.
+            let stamped = fs::read_document(&ctx.profiles_path(), ProfilesDocument::DOCUMENT)?
+                .is_some_and(|file| file.schema_revision.is_some());
+            let behind = !stamped
+                && applied >= CLEAN_SCHEMA.revision()
+                && detect_unstamped_revision(ctx)? < applied;
+            Ok(behind.then(|| {
+                format!(
+                    "{} still uses the legacy profile schema",
+                    ctx.profiles_path().display()
+                )
+            }))
+        })()
+        .map_err(Into::into)
     }
+}
+
+fn detect_unstamped_revision(ctx: &Ctx) -> Result<u64, Error> {
+    let profiles_path = ctx.profiles_path();
+    if !profiles_path.exists() {
+        return Ok(UNSTAMPED_CEILING);
+    }
+
+    let raw = std::fs::read_to_string(&profiles_path).context(ReadFileSnafu {
+        path: &profiles_path,
+    })?;
+    let profiles: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+    if is_clean_schema(&profiles) {
+        return Ok(UNSTAMPED_CEILING);
+    }
+    Ok(0)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -117,39 +159,45 @@ impl MigrationStep for MigrateProfilesNullValue {
         check_profiles(ctx, |profiles| profiles.values().any(Value::is_null))
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let profiles_path = ctx.profiles_path();
-        let mut profiles = read_profiles(&profiles_path)?.payload;
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            let mut profiles = read_profiles(&profiles_path)?.payload;
 
-        profiles.iter_mut().for_each(|(key, value)| {
-            if value.is_null() {
-                println!("detected null value in profiles {key:?} should be migrated");
-                *value = serde_yaml::Value::Sequence(Vec::new());
-            }
-        });
-        write_profiles_atomic(&profiles_path, profiles, None, self.revision())?;
-        Ok(())
+            profiles.iter_mut().for_each(|(key, value)| {
+                if value.is_null() {
+                    println!("detected null value in profiles {key:?} should be migrated");
+                    *value = serde_yaml::Value::Sequence(Vec::new());
+                }
+            });
+            write_profiles_atomic(&profiles_path, profiles, None, self.revision())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
     }
 
-    fn rollback(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let profiles_path = ctx.profiles_path();
-        if !profiles_path.exists() {
-            return Ok(());
-        }
-        let mut profiles = read_profiles(&profiles_path)?.payload;
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            if !profiles_path.exists() {
+                return Ok(());
+            }
+            let mut profiles = read_profiles(&profiles_path)?.payload;
 
-        profiles.iter_mut().for_each(|(key, value)| {
-            if key.is_string() && key.as_str().unwrap() == "chain" && value.is_sequence() {
-                println!("detected sequence value in profiles {key:?} should be migrated");
-                *value = serde_yaml::Value::Null;
-            }
-            if key.is_string() && key.as_str().unwrap() == "current" && value.is_sequence() {
-                println!("detected sequence value in profiles {key:?} should be migrated");
-                *value = serde_yaml::Value::Null;
-            }
-        });
-        write_profiles_atomic(&profiles_path, profiles, None, self.revision() - 1)?;
-        Ok(())
+            profiles.iter_mut().for_each(|(key, value)| {
+                if key.is_string() && key.as_str().unwrap() == "chain" && value.is_sequence() {
+                    println!("detected sequence value in profiles {key:?} should be migrated");
+                    *value = serde_yaml::Value::Null;
+                }
+                if key.is_string() && key.as_str().unwrap() == "current" && value.is_sequence() {
+                    println!("detected sequence value in profiles {key:?} should be migrated");
+                    *value = serde_yaml::Value::Null;
+                }
+            });
+            write_profiles_atomic(&profiles_path, profiles, None, self.revision() - 1)?;
+            Ok(())
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -181,40 +229,46 @@ impl MigrationStep for MigrateProfileScriptNewtype {
         check_profiles(ctx, has_script_newtype)
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let profiles_path = ctx.profiles_path();
-        eprintln!("Trying to read profiles files...");
-        let profiles = read_profiles(&profiles_path)?.payload;
-        eprintln!("Trying to migrate profiles files...");
-        let profiles = migrate_profile_data(profiles);
-        eprintln!("Trying to write profiles files...");
-        write_profiles_atomic(
-            &profiles_path,
-            profiles,
-            Some("# Profiles Config for Clash Nyanpasu"),
-            self.revision(),
-        )?;
-        Ok(())
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            eprintln!("Trying to read profiles files...");
+            let profiles = read_profiles(&profiles_path)?.payload;
+            eprintln!("Trying to migrate profiles files...");
+            let profiles = migrate_profile_data(profiles);
+            eprintln!("Trying to write profiles files...");
+            write_profiles_atomic(
+                &profiles_path,
+                profiles,
+                Some("# Profiles Config for Clash Nyanpasu"),
+                self.revision(),
+            )?;
+            Ok(())
+        })()
+        .map_err(Into::into)
     }
 
-    fn rollback(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let profiles_path = ctx.profiles_path();
-        if !profiles_path.exists() {
-            eprintln!("profiles dir not found, skipping discard");
-            return Ok(());
-        }
-        eprintln!("Trying to read profiles files...");
-        let profiles = read_profiles(&profiles_path)?.payload;
-        eprintln!("Trying to discard profiles files...");
-        let profiles = discard_profile_data(profiles);
-        eprintln!("Trying to write profiles files...");
-        write_profiles_atomic(
-            &profiles_path,
-            profiles,
-            Some("# Profiles Config for Clash Nyanpasu"),
-            self.revision() - 1,
-        )?;
-        Ok(())
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            if !profiles_path.exists() {
+                eprintln!("profiles dir not found, skipping discard");
+                return Ok(());
+            }
+            eprintln!("Trying to read profiles files...");
+            let profiles = read_profiles(&profiles_path)?.payload;
+            eprintln!("Trying to discard profiles files...");
+            let profiles = discard_profile_data(profiles);
+            eprintln!("Trying to write profiles files...");
+            write_profiles_atomic(
+                &profiles_path,
+                profiles,
+                Some("# Profiles Config for Clash Nyanpasu"),
+                self.revision() - 1,
+            )?;
+            Ok(())
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -246,12 +300,12 @@ impl MigrationStep for MigrateProfilesCleanSchema {
         check_profiles(ctx, |profiles| !is_clean_schema(profiles))
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        run_clean_schema(ctx)
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        run_clean_schema(ctx).map_err(Into::into)
     }
 
-    fn rollback(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        rollback_clean_schema(ctx)
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        rollback_clean_schema(ctx).map_err(Into::into)
     }
 }
 
@@ -283,35 +337,38 @@ impl MigrationStep for MigrateProfilesRepairSchema {
         check_profiles(ctx, |profiles| !is_clean_schema(profiles))
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let path = ctx.profiles_path();
-        let fs::DocumentFile { raw, payload, .. } = read_profiles(&path)?;
-        // Stamped at `clean_schema`'s revision, the file is already clean and
-        // only its stamp has to advance.
-        if is_clean_schema(&payload) {
-            return write_profiles_atomic(
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.profiles_path();
+            let fs::DocumentFile { raw, payload, .. } = read_profiles(&path)?;
+            // Stamped at `clean_schema`'s revision, the file is already clean and
+            // only its stamp has to advance.
+            if is_clean_schema(&payload) {
+                return write_profiles_atomic(
+                    &path,
+                    payload,
+                    Some("# Profiles Config for Clash Nyanpasu"),
+                    self.revision(),
+                );
+            }
+            let repaired = migrate_clean_schema(payload)?;
+            let profiles: nyanpasu_config::profile::Profiles =
+                serde_yaml::from_value(Value::Mapping(repaired)).context(ParseYamlSnafu)?;
+            profiles
+                .validate()
+                .map_err(|errors| Error::ValidateProfiles { errors })?;
+            let backup = path.with_extension("yaml.recovery.bak");
+            if !backup.exists() {
+                fs::atomic_write(&backup, raw.as_bytes())?;
+            }
+            write_profiles_atomic(
                 &path,
-                payload,
+                profiles_mapping(&profiles)?,
                 Some("# Profiles Config for Clash Nyanpasu"),
                 self.revision(),
-            );
-        }
-        let repaired = migrate_clean_schema(payload)?;
-        let profiles: nyanpasu_config::profile::Profiles =
-            serde_yaml::from_value(Value::Mapping(repaired))?;
-        profiles
-            .validate()
-            .map_err(|errors| anyhow::anyhow!("profiles.yaml failed validation: {errors:?}"))?;
-        let backup = path.with_extension("yaml.recovery.bak");
-        if !backup.exists() {
-            fs::atomic_write(&backup, raw.as_bytes())?;
-        }
-        write_profiles_atomic(
-            &path,
-            profiles_mapping(&profiles)?,
-            Some("# Profiles Config for Clash Nyanpasu"),
-            self.revision(),
-        )
+            )
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -333,7 +390,7 @@ fn is_clean_schema(doc: &Mapping) -> bool {
     }
 }
 
-fn run_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
+fn run_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
     let path = ctx.profiles_path();
     let fs::DocumentFile {
         raw, payload: doc, ..
@@ -349,11 +406,10 @@ fn run_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
     // model can load AND validate (design §14.4). Duplicate uids are rejected
     // here by the items deserializer (R13).
     let profiles: nyanpasu_config::profile::Profiles =
-        serde_yaml::from_value(Value::Mapping(migrated))
-            .map_err(|e| anyhow::anyhow!("clean-schema output rejected by domain model: {e}"))?;
+        serde_yaml::from_value(Value::Mapping(migrated)).context(ParseYamlSnafu)?;
     profiles
         .validate()
-        .map_err(|errors| anyhow::anyhow!("clean-schema output failed validation: {errors:?}"))?;
+        .map_err(|errors| Error::ValidateProfiles { errors })?;
 
     write_profiles_atomic(
         &path,
@@ -363,15 +419,15 @@ fn run_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
     )
 }
 
-fn rollback_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
+fn rollback_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
     let path = ctx.profiles_path();
     let bak = path.with_extension("yaml.bak");
     if !bak.exists() {
         eprintln!("profiles.yaml.bak not found, nothing to roll back");
         return Ok(());
     }
-    let raw = std::fs::read(&bak)?;
-    fs::atomic_write(&path, &raw)
+    let raw = std::fs::read(&bak).context(ReadFileSnafu { path: &bak })?;
+    fs::atomic_write(&path, &raw).map_err(Into::into)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -908,9 +964,8 @@ fn migrate_clean_schema(doc: Mapping) -> Result<Mapping, CleanSchemaError> {
 }
 
 /// The profiles file with its stamp, if any, taken out of the content.
-fn read_profiles(path: &std::path::Path) -> anyhow::Result<fs::DocumentFile> {
-    fs::read_document(path, ProfilesDocument::DOCUMENT)?
-        .with_context(|| format!("{} does not exist", path.display()))
+fn read_profiles(path: &std::path::Path) -> Result<fs::DocumentFile, Error> {
+    fs::read_document(path, ProfilesDocument::DOCUMENT)?.context(FindDocumentSnafu { path })
 }
 
 /// Atomically persist a profiles mapping stamped at `revision`, so a crash
@@ -921,14 +976,15 @@ fn write_profiles_atomic(
     profiles: Mapping,
     prefix: Option<&str>,
     revision: u64,
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     fs::write_document(path, ProfilesDocument::DOCUMENT, revision, profiles, prefix)
+        .map_err(Into::into)
 }
 
-fn profiles_mapping(profiles: &nyanpasu_config::profile::Profiles) -> anyhow::Result<Mapping> {
-    match serde_yaml::to_value(profiles).context("failed to serialize migrated profiles")? {
+fn profiles_mapping(profiles: &nyanpasu_config::profile::Profiles) -> Result<Mapping, Error> {
+    match serde_yaml::to_value(profiles)? {
         Value::Mapping(mapping) => Ok(mapping),
-        _ => anyhow::bail!("profiles did not serialize to a mapping"),
+        _ => SerializeMappingSnafu.fail(),
     }
 }
 
@@ -1766,9 +1822,7 @@ items:
         std::fs::write(&path, duplicate).unwrap();
 
         let err = run_clean_schema(&mut ctx).unwrap_err();
-        let message = err.to_string();
-        assert!(message.contains("clean-schema output rejected by domain model"));
-        assert!(message.contains("duplicate profile id: same"));
+        assert!(matches!(err, Error::ParseYaml { .. }));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), duplicate);
     }
 

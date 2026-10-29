@@ -29,6 +29,12 @@ const MAX_MEMORY_HISTORY: usize = 32;
 const MAX_TRAFFIC_HISTORY: usize = 32;
 const MAX_REASONABLE_MEMORY_BYTES: u64 = 16 * 1024_u64.pow(4);
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Debug, Clone, Default, Copy, Type, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClashConnectionsInfo {
@@ -876,7 +882,7 @@ impl StreamsClient {
         log_level: LogLevel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> Result<Self> {
+    ) -> std::result::Result<Self, Error> {
         let connections = broadcast::channel(16).0;
         let events = broadcast::channel(64).0;
         let details = watch::channel(None).0;
@@ -895,7 +901,8 @@ impl StreamsClient {
                 frames: frames.clone(),
             },
         )
-        .await?;
+        .await
+        .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner {
             actor,

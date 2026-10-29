@@ -1435,7 +1435,7 @@ impl ProfilesActor {
         .await
     }
 
-    fn log_reconcile_report(report: &MaterializationReconcileReport) {
+    pub(crate) fn log_reconcile_report(report: &MaterializationReconcileReport) {
         for degradation in &report.degradations {
             tracing::warn!(
                 phase = ?degradation.phase,
@@ -1640,26 +1640,6 @@ impl Actor for ProfilesActor {
         myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        // Startup recovery must finish before mutations are admitted; the
-        // producers wait for StartProducers. Blocking port work stays off the
-        // async runtime via spawn_blocking.
-        let loaded = args.manager.snapshot_handle().load().state.clone();
-        let materialization = Arc::clone(&args.materialization);
-        let report = tokio::task::spawn_blocking(move || materialization.reconcile(&loaded))
-            .await
-            .map_err(|error| match error.try_into_panic() {
-                Ok(panic) => std::panic::resume_unwind(panic),
-                Err(error) => ActorProcessingErr::from(anyhow::anyhow!(
-                    "startup materialization reconcile join failed: {error}"
-                )),
-            })?
-            .map_err(|error| {
-                ActorProcessingErr::from(anyhow::anyhow!(
-                    "startup materialization reconcile failed: {error}"
-                ))
-            })?;
-        Self::log_reconcile_report(&report);
-
         args.jobs
             .reconcile(
                 &args.manager.snapshot_handle().load().state,

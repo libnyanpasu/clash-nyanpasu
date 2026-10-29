@@ -453,6 +453,12 @@ impl Drop for ClientInner {
         self.actor.stop(None);
     }
 }
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Clone)]
 pub(crate) struct ProxiesClient(Arc<ClientInner>);
 impl ProxiesClient {
@@ -466,7 +472,7 @@ impl ProxiesClient {
         core: CoreClient,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> Result<Self> {
+    ) -> std::result::Result<Self, Error> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());
         let refresh_queued = Arc::new(AtomicBool::new(false));
@@ -481,7 +487,8 @@ impl ProxiesClient {
                 refresh_queued: refresh_queued.clone(),
             },
         )
-        .await?;
+        .await
+        .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,

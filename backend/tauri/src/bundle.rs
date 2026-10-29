@@ -1,9 +1,30 @@
 pub use nyanpasu_config::application::ReleaseChannel as Channel;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use nyanpasu_config::application::UpdateSource;
 use std::path::{Path, PathBuf};
 use tauri::utils::config::{Config, WebviewInstallMode};
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to parse build version"))]
+    ParseVersion { source: semver::Error },
+    #[snafu(display("failed to inspect bundled WebView2 directory {}", path.display()))]
+    InspectWebview {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("fixed WebView2 runtime is incomplete in {}", path.display()))]
+    ValidateWebview { path: PathBuf },
+    #[snafu(display("missing updater configuration"))]
+    LocateUpdaterConfiguration,
+    #[snafu(display("unsupported updater target"))]
+    ResolveUpdaterTarget,
+    #[snafu(context(false), display("failed to serialize updater endpoints"))]
+    SerializeUpdaterEndpoints { source: serde_json::Error },
+    #[snafu(display("invalid SourceForge project slug: {project}"))]
+    ValidateSourceforgeProject { project: String },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BundleMetadata {
@@ -13,7 +34,12 @@ pub struct BundleMetadata {
 }
 
 impl BundleMetadata {
-    pub fn resolve(windows: bool, config: &Config, executable_dir: &Path) -> Result<Self> {
+    pub fn resolve(
+        windows: bool,
+        config: &Config,
+        executable_dir: &Path,
+    ) -> std::result::Result<Self, Error> {
+        use snafu::ResultExt as _;
         let release_channel =
             compiled_channel(cfg!(feature = "nightly"), env!("NYANPASU_VERSION"))?;
         if !windows {
@@ -30,12 +56,9 @@ impl BundleMetadata {
             WebviewInstallMode::FixedRuntime { .. }
         ) || runtime_dir
             .try_exists()
-            .context("failed to inspect the bundled WebView2 directory")?;
+            .context(InspectWebviewSnafu { path: &runtime_dir })?;
         if is_fixed_webview && !runtime_dir.join("msedgewebview2.exe").is_file() {
-            bail!(
-                "fixed WebView2 runtime is incomplete in {}",
-                runtime_dir.display()
-            );
+            return ValidateWebviewSnafu { path: runtime_dir }.fail();
         }
 
         Ok(Self {
@@ -49,16 +72,17 @@ impl BundleMetadata {
         &self,
         config: &mut Config,
         executable_dir: &Path,
-    ) -> Result<tauri_plugin_updater::Builder> {
+    ) -> std::result::Result<tauri_plugin_updater::Builder, Error> {
+        use snafu::OptionExt as _;
         config
             .plugins
             .0
             .get_mut("updater")
-            .context("missing updater configuration")?["endpoints"] =
+            .context(LocateUpdaterConfigurationSnafu)?["endpoints"] =
             serde_json::to_value(update_endpoints(self.release_channel))?;
         let mut updater = tauri_plugin_updater::Builder::new();
         if self.is_fixed_webview {
-            let target = tauri_plugin_updater::target().context("unsupported updater target")?;
+            let target = tauri_plugin_updater::target().context(ResolveUpdaterTargetSnafu)?;
             updater = updater.target(self.updater_target(&target));
             // Tauri applies this before creating its runtime, including the WebView2 env var.
             config.bundle.windows.webview_install_mode = WebviewInstallMode::FixedRuntime {
@@ -89,7 +113,7 @@ fn fixed_runtime_dir(config: &Config, executable_dir: &Path) -> PathBuf {
     executable_dir.join(path)
 }
 
-fn compiled_channel(nightly: bool, version: &str) -> Result<Channel> {
+fn compiled_channel(nightly: bool, version: &str) -> std::result::Result<Channel, Error> {
     if nightly {
         Ok(Channel::Nightly)
     } else if semver::Version::parse(version)?.pre.is_empty() {
@@ -110,7 +134,10 @@ pub fn update_endpoints(channel: Channel) -> Vec<String> {
     }
 }
 
-fn update_endpoints_for_project(channel: Channel, project: Option<&str>) -> Result<Vec<String>> {
+fn update_endpoints_for_project(
+    channel: Channel,
+    project: Option<&str>,
+) -> std::result::Result<Vec<String>, Error> {
     let suffix = match channel {
         Channel::Stable => "",
         Channel::Beta => "-beta",
@@ -130,7 +157,7 @@ fn update_endpoints_for_project(channel: Channel, project: Option<&str>) -> Resu
     ];
     if let Some(project) = project.filter(|project| !project.trim().is_empty()) {
         if !is_valid_sourceforge_project(project) {
-            bail!("invalid SourceForge project slug: {project}");
+            return ValidateSourceforgeProjectSnafu { project }.fail();
         }
         endpoints.push(format!(
             "https://{project}.sourceforge.io/updater/update{suffix}.json"
@@ -191,6 +218,7 @@ fn sourceforge_download_url(
     target: &str,
     announced: &url::Url,
 ) -> Result<Option<url::Url>> {
+    use anyhow::Context as _;
     let Some(platform) = raw_json
         .get("platforms")
         .and_then(|value| value.get(target))
@@ -281,6 +309,7 @@ fn is_valid_sourceforge_project(project: &str) -> bool {
 }
 
 fn decode_path_component(segment: &str, description: &str) -> Result<String> {
+    use anyhow::Context as _;
     let decoded = percent_encoding::percent_decode_str(segment)
         .decode_utf8()
         .with_context(|| format!("invalid UTF-8 in SourceForge {description}"))?

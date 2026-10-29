@@ -15,3 +15,5 @@ pub use client::GeoIndexClient;
 pub use ports::CountryIndexSource;
 #[cfg(test)]
 pub use ports::{MockCountryIndexSource, NoopCountryIndexSource};
+
+pub(crate) use client::Error as SpawnError;

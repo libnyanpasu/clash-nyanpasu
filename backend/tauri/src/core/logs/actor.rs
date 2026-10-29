@@ -336,6 +336,12 @@ impl Actor for CoreLogsActor {
     }
 }
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Clone)]
 pub struct CoreLogsClient(Arc<Inner>);
 struct Inner {
@@ -353,7 +359,7 @@ impl CoreLogsClient {
         settings: CoreLogSettings,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> std::result::Result<Self, Error> {
         let changed = watch::channel(CoreLogStatus::default()).0;
         let (actor, _) = Actor::spawn(
             None,
@@ -365,7 +371,8 @@ impl CoreLogsClient {
                 changed: changed.clone(),
             },
         )
-        .await?;
+        .await
+        .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor, changed })))
     }

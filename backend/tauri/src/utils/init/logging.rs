@@ -1,11 +1,11 @@
 use crate::{client::ui_effects::ports::LogRotation, utils::profiling::Profilers};
-use anyhow::{Result, anyhow};
 use flexi_logger::{
     Age, Cleanup, Criterion, FileSpec, Naming,
     writers::{ArcFileLogWriter, FileLogWriter, FileLogWriterHandle},
 };
 use nyanpasu_config::application::LoggingLevel;
 use nyanpasu_paths::PathResolver;
+use snafu::ResultExt as _;
 use std::{
     fs,
     io::IsTerminal,
@@ -17,6 +17,21 @@ use tracing::error;
 use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard};
 use tracing_log::log_tracer;
 use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberExt, reload};
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to create log writer in {}", path.display()))]
+    CreateWriter {
+        path: PathBuf,
+        source: flexi_logger::FlexiLoggerError,
+    },
+    #[snafu(display("failed to install log tracer"))]
+    InstallLogTracer { source: log::SetLoggerError },
+    #[snafu(display("failed to install tracing subscriber"))]
+    InstallSubscriber {
+        source: tracing::subscriber::SetGlobalDefaultError,
+    },
+}
 
 pub type ReloadSignal = (Option<LoggingLevel>, Option<LogRotation>);
 
@@ -35,10 +50,10 @@ struct FileAppenderGuard {
 fn file_log_writer(
     log_dir: PathBuf,
     rotation: LogRotation,
-) -> Result<(ArcFileLogWriter, FileLogWriterHandle)> {
-    Ok(FileLogWriter::builder(
+) -> Result<(ArcFileLogWriter, FileLogWriterHandle), Error> {
+    FileLogWriter::builder(
         FileSpec::default()
-            .directory(log_dir)
+            .directory(&log_dir)
             .basename("clash-nyanpasu")
             .suffix("log"),
     )
@@ -51,13 +66,14 @@ fn file_log_writer(
         },
         Cleanup::KeepLogFiles(rotation.max_files),
     )
-    .try_build_with_handle()?)
+    .try_build_with_handle()
+    .context(CreateWriterSnafu { path: log_dir })
 }
 
 fn get_file_appender(
     logs_dir: PathBuf,
     rotation: LogRotation,
-) -> Result<(NonBlocking, FileAppenderGuard)> {
+) -> Result<(NonBlocking, FileAppenderGuard), Error> {
     let (writer, handle) = file_log_writer(logs_dir, rotation)?;
     let (appender, worker) = NonBlockingBuilder::default()
         .buffered_lines_limit(4096)
@@ -93,7 +109,7 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
 pub fn init(
     profilers: &mut Profilers,
     paths: &PathResolver,
-) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
+) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture), Error> {
     let jobs = crate::client::jobs::capture();
     let log_dir = paths.app_logs_dir();
     if !log_dir.exists() {
@@ -176,9 +192,8 @@ pub fn init(
         .with(jobs.layer())
         .with(profilers.trace_layer(log_dir.as_std_path()));
 
-    log_tracer::LogTracer::init()?;
-    tracing::subscriber::set_global_default(subscriber)
-        .map_err(|x| anyhow!("setup logging error: {}", x))?;
+    log_tracer::LogTracer::init().context(InstallLogTracerSnafu)?;
+    tracing::subscriber::set_global_default(subscriber).context(InstallSubscriberSnafu)?;
     Ok((sender, jobs))
 }
 

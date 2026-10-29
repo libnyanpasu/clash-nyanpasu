@@ -1,10 +1,10 @@
 use crate::core::migration::modules::profiles::ProfilesFormat;
-use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 use nyanpasu_core::format::Format;
 use nyanpasu_paths::PathResolver;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
+use snafu::ResultExt as _;
 use std::{
     fs::{self, File},
     io::{self, BufReader, Write},
@@ -27,28 +27,85 @@ pub struct MigrationChildFailed {
     pub stderr: String,
 }
 
-pub fn run_pending_migrations(paths: &PathResolver) -> Result<()> {
-    let current_exe = current_exe()?;
-    let current_exe = dunce::canonicalize(current_exe)?;
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to locate the executable"))]
+    LocateExecutable { source: io::Error },
+    #[snafu(display("failed to canonicalize executable"))]
+    CanonicalizeExecutable { source: io::Error },
+    #[snafu(display("failed to open migration log {}", path.display()))]
+    OpenMigrationLog { path: PathBuf, source: io::Error },
+    #[snafu(display("failed to create migration result directory"))]
+    CreateResultDirectory { source: io::Error },
+    #[snafu(display("failed to open migration stdout pipe"))]
+    OpenStdoutPipe { source: io::Error },
+    #[snafu(display("failed to open migration stderr pipe"))]
+    OpenStderrPipe { source: io::Error },
+    #[snafu(display("failed to spawn migration child"))]
+    SpawnMigration { source: io::Error },
+    #[snafu(display("failed to wait for migration child; stderr: {stderr}"))]
+    WaitMigration { source: io::Error, stderr: String },
+    #[snafu(display("migration child reported a failure"))]
+    ReadChildFailure {
+        #[snafu(source(from(crate::core::migration::child_result::Failure, Box::new)))]
+        source: Box<crate::core::migration::child_result::Failure>,
+    },
+    #[snafu(display("migration child exited without a readable failure report"))]
+    ChildExited { source: MigrationChildFailed },
+    // The existing Format port returns anyhow; do not erase or reformat that source.
+    #[snafu(display("failed to serialize initial profiles"))]
+    SerializeProfiles { source: anyhow::Error },
+    #[snafu(display("failed to save initial profiles {}", path.display()))]
+    SaveProfiles { path: PathBuf, source: io::Error },
+    #[snafu(display("the bundled resources directory is unknown"))]
+    LocateResources,
+    #[snafu(display("failed to create singleton directory"))]
+    CreateSingletonDirectory {
+        source: nyanpasu_paths::CreateDirError,
+    },
+    #[snafu(display("failed to create single instance"))]
+    CreateSingleton {
+        source: single_instance::error::SingleInstanceError,
+    },
+}
+
+pub fn run_pending_migrations(paths: &PathResolver) -> std::result::Result<(), Error> {
+    let current_exe = current_exe().context(LocateExecutableSnafu)?;
+    let current_exe = dunce::canonicalize(current_exe).context(CanonicalizeExecutableSnafu)?;
+    let log_path = paths
+        .app_data_dir()
+        .join("migration.log")
+        .into_std_path_buf();
     let file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(paths.app_data_dir().join("migration.log"))?;
+        .open(&log_path)
+        .context(OpenMigrationLogSnafu { path: log_path })?;
     let mut command = Command::new(current_exe);
-    command.arg("migrate");
-    run_migration_command(command, file)
+    let result_dir = tempfile::tempdir().context(CreateResultDirectorySnafu)?;
+    let result_path = result_dir.path().join("result.json");
+    command
+        .arg("migrate")
+        .arg("--result-file")
+        .arg(&result_path);
+    run_migration_command(command, file, &result_path)
 }
 
-fn run_migration_command(mut command: Command, file: File) -> Result<()> {
+fn run_migration_command(
+    mut command: Command,
+    file: File,
+    result_path: &Path,
+) -> std::result::Result<(), Error> {
     let file = Arc::new(parking_lot::Mutex::new(file));
-    let (stdout_reader, stdout_writer) = os_pipe::pipe()?;
-    let (stderr_reader, stderr_writer) = os_pipe::pipe()?;
+    let (stdout_reader, stdout_writer) = os_pipe::pipe().context(OpenStdoutPipeSnafu)?;
+    let (stderr_reader, stderr_writer) = os_pipe::pipe().context(OpenStderrPipeSnafu)?;
     let errs = Arc::new(parking_lot::Mutex::new(String::new()));
     let mut child = command
         .stderr(stderr_writer)
         .stdout(stdout_writer)
-        .spawn()?;
+        .spawn()
+        .context(SpawnMigrationSnafu)?;
     // Command owns the parent's write handles until dropped; readers need them closed for EOF.
     drop(command);
     let file_ = file.clone();
@@ -98,19 +155,26 @@ fn run_migration_command(mut command: Command, file: File) -> Result<()> {
     });
     let result = wait_for_migration_output(&mut child, [stdout_thread, stderr_thread]);
     let err = errs.lock();
-    result
-        .map_err(|e| anyhow!("Failed to wait for child: {:?}, errs: {}", e, err))
-        .and_then(|status| {
-            if !status.success() {
-                Err(MigrationChildFailed {
+    let status = result.context(WaitMigrationSnafu {
+        stderr: err.clone(),
+    })?;
+    if status.success() {
+        return Ok(());
+    }
+    match crate::core::migration::child_result::Failure::read(result_path) {
+        Ok(source) => Err(Error::ReadChildFailure {
+            source: Box::new(source),
+        }),
+        Err(error) => {
+            tracing::warn!(%error, "migration failure report unavailable; using exit status and stderr");
+            Err(Error::ChildExited {
+                source: MigrationChildFailed {
                     status,
                     stderr: err.clone(),
-                }
-                .into())
-            } else {
-                Ok(())
-            }
-        })
+                },
+            })
+        }
+    }
 }
 
 fn wait_for_migration_output(
@@ -130,7 +194,7 @@ fn wait_for_migration_output(
 
 /// Initialize all the config files
 /// before tauri setup
-pub fn init_config(paths: &PathResolver) -> Result<()> {
+pub fn init_config(paths: &PathResolver) -> std::result::Result<(), Error> {
     // Check if old config dir exist and new config dir is not exist
     // let mut old_app_dir: Option<PathBuf> = None;
     // let mut app_dir: Option<PathBuf> = None;
@@ -159,12 +223,16 @@ pub fn init_config(paths: &PathResolver) -> Result<()> {
         // Stamped like every later write, since the app refuses to load
         // an unstamped profiles.yaml.
         let mut content = Vec::new();
-        ProfilesFormat::default().serialize(
-            &mut content,
-            &nyanpasu_config::profile::Profiles::default(),
-            Some("# Clash Nyanpasu"),
-        )?;
-        fs::write(&path, content).with_context(|| format!("failed to save file \"{path}\""))?;
+        ProfilesFormat::default()
+            .serialize(
+                &mut content,
+                &nyanpasu_config::profile::Profiles::default(),
+                Some("# Clash Nyanpasu"),
+            )
+            .context(SerializeProfilesSnafu)?;
+        fs::write(&path, content).context(SaveProfilesSnafu {
+            path: path.as_std_path(),
+        })?;
     }
 
     Ok(())
@@ -176,8 +244,8 @@ pub fn bundled_resources_dir(manager: &impl tauri::Manager<tauri::Wry>) -> tauri
 }
 
 /// initialize app resources
-pub fn init_resources(app_dir: &Path, res_dir: Option<&Path>) -> Result<()> {
-    let res_dir = res_dir.ok_or_else(|| anyhow!("the bundled resources dir is unknown"))?;
+pub fn init_resources(app_dir: &Path, res_dir: Option<&Path>) -> std::result::Result<(), Error> {
+    let res_dir = res_dir.ok_or(Error::LocateResources)?;
 
     if !app_dir.exists() {
         let _ = fs::create_dir_all(app_dir);
@@ -309,16 +377,19 @@ fn config_hash(config_dir: &Path) -> String {
     format!("{:x}", hasher.finish())
 }
 
-pub fn check_singleton(paths: &PathResolver) -> Result<Option<single_instance::SingleInstance>> {
+pub fn check_singleton(
+    paths: &PathResolver,
+) -> std::result::Result<Option<single_instance::SingleInstance>, Error> {
     // The config dir is created first, as the lock file and the hash fallback live in it.
-    nyanpasu_paths::create_dir_all(paths.app_config_dir())?;
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())
+        .context(CreateSingletonDirectorySnafu)?;
     let placeholder = single_instance_placeholder(
         crate::host_paths::APP_NAME,
         paths.app_config_dir().as_std_path(),
     );
     for i in 0..5 {
-        let instance = single_instance::SingleInstance::new(&placeholder)
-            .context("failed to create single instance")?;
+        let instance =
+            single_instance::SingleInstance::new(&placeholder).context(CreateSingletonSnafu)?;
         if instance.is_single() {
             return Ok(Some(instance));
         }

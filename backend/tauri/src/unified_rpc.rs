@@ -210,11 +210,20 @@ pub struct UnifiedRpc {
 /// A weak dependency graph avoids an idle HTTP actor retaining its own client.
 #[derive(Default)]
 pub struct RpcHttpRoutes(std::sync::OnceLock<(std::sync::Weak<RpcDependencies>, CommandHandlers)>);
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum SetupError {
+    #[snafu(display("HTTP routes already installed"))]
+    InstallRoutes,
+    #[snafu(display("duplicate RPC command: {name}"))]
+    RegisterCommand { name: &'static str },
+}
+
 impl RpcHttpRoutes {
-    pub fn install(&self, rpc: &UnifiedRpc) -> anyhow::Result<()> {
+    pub fn install(&self, rpc: &UnifiedRpc) -> Result<(), SetupError> {
         self.0
             .set((Arc::downgrade(&rpc.dependencies), rpc.commands.clone()))
-            .map_err(|_| anyhow::anyhow!("HTTP routes already installed"))
+            .map_err(|_| SetupError::InstallRoutes)
     }
 }
 impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
@@ -234,16 +243,15 @@ impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
 }
 
 impl UnifiedRpc {
-    pub fn new(dependencies: RpcDependencies) -> anyhow::Result<Self> {
+    pub fn new(dependencies: RpcDependencies) -> Result<Self, SetupError> {
         let mut commands = HashMap::new();
         for entry in inventory::iter::<CommandEntry> {
-            anyhow::ensure!(
-                commands
-                    .insert(entry.name, (entry.http_handler, entry.tauri_handler))
-                    .is_none(),
-                "duplicate unified RPC command {}",
-                entry.name,
-            );
+            if commands
+                .insert(entry.name, (entry.http_handler, entry.tauri_handler))
+                .is_some()
+            {
+                return Err(SetupError::RegisterCommand { name: entry.name });
+            }
         }
         Ok(Self {
             dependencies: Arc::new(dependencies),

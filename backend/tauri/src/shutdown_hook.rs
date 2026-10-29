@@ -2,7 +2,7 @@
 
 use atomic_enum::atomic_enum;
 use once_cell::sync::OnceCell;
-use windows_core::{Error, w};
+use windows_core::{Error as WindowsError, w};
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
     System::{
@@ -35,16 +35,30 @@ pub enum ShutdownState {
 
 static SHUTDOWN_STATE: AtomicShutdownState = AtomicShutdownState::new(ShutdownState::Idle);
 
-pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Result<()> {
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("shutdown hook already set"))]
+    AlreadyInstalled,
+    #[snafu(display("failed to get module handle"))]
+    GetModuleHandle { source: WindowsError },
+    #[snafu(display("failed to register window class"))]
+    RegisterWindowClass { source: WindowsError },
+    #[snafu(display("failed to create hidden window"))]
+    CreateHiddenWindow { source: WindowsError },
+    #[snafu(display("shutdown hook initialization receiver was dropped"))]
+    SendInitialized,
+}
+
+pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> Result<(), Error> {
     if SHUTDOWN_HOOK_INSTANCE.get().is_some() {
-        anyhow::bail!("Shutdown hook already set");
+        return Err(Error::AlreadyInstalled);
     }
     let (initd_tx, initd_rx) = oneshot::channel();
     let handle = std::thread::spawn(move || setup_shutdown_hook_inner(f, initd_tx));
     if let Err(oneshot::RecvError) = initd_rx.recv() {
         handle
             .join()
-            .map_err(|_| anyhow::anyhow!("Failed to join the shutdown hook thread"))??;
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))?;
     }
     Ok(())
 }
@@ -74,7 +88,7 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                 tracing::info!("Blocking shutdown for cleanup...");
                 let reason = w!("Clash Nyanpasu is cleaning up...");
                 if unsafe { ShutdownBlockReasonCreate(hwnd, reason.as_ptr()) } == 0 {
-                    let err = Error::from_thread();
+                    let err = WindowsError::from_thread();
                     tracing::error!("Failed to create shutdown block reason: {err}");
                 }
                 tx.send(()).unwrap();
@@ -85,7 +99,7 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                 }
                 tracing::info!("Shutdown hook is ready for shutdown");
                 if unsafe { ShutdownBlockReasonDestroy(hwnd) } == 0 {
-                    let err = Error::from_thread();
+                    let err = WindowsError::from_thread();
                     tracing::error!("Failed to destroy shutdown block reason: {err}");
                 }
             }
@@ -117,7 +131,7 @@ pub fn set_ready_for_shutdown() {
 fn setup_shutdown_hook_inner(
     f: impl Fn() + Send + Sync + 'static,
     initd_tx: oneshot::Sender<()>,
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     let class_name = w!("TAURI_SHUTDOWN_HOOK");
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
@@ -131,8 +145,8 @@ fn setup_shutdown_hook_inner(
 
     let h_instance = unsafe { GetModuleHandleW(std::ptr::null()) };
     if h_instance.is_null() {
-        let err = Error::from_thread();
-        anyhow::bail!("Failed to get module handle: {err}");
+        let err = WindowsError::from_thread();
+        return Err(Error::GetModuleHandle { source: err });
     }
 
     let mut window_class_ex = unsafe { std::mem::zeroed::<WNDCLASSEXW>() };
@@ -143,8 +157,8 @@ fn setup_shutdown_hook_inner(
 
     unsafe {
         if RegisterClassExW(&window_class_ex) == 0 {
-            let err = Error::from_thread();
-            anyhow::bail!("Failed to register window class: {err}");
+            let err = WindowsError::from_thread();
+            return Err(Error::RegisterWindowClass { source: err });
         }
     }
 
@@ -166,8 +180,8 @@ fn setup_shutdown_hook_inner(
         )
     };
     if hidden_window.is_null() {
-        let err = Error::from_thread();
-        anyhow::bail!("Failed to create hidden window: {err}");
+        let err = WindowsError::from_thread();
+        return Err(Error::CreateHiddenWindow { source: err });
     }
 
     let window_handle = WindowHandle {
@@ -175,8 +189,8 @@ fn setup_shutdown_hook_inner(
         h_instance,
     };
 
-    if let Err(e) = initd_tx.send(()) {
-        anyhow::bail!("Failed to send initd signal: {e}");
+    if initd_tx.send(()).is_err() {
+        return Err(Error::SendInitialized);
     }
 
     let mut msg = unsafe { std::mem::zeroed::<MSG>() };
@@ -187,7 +201,7 @@ fn setup_shutdown_hook_inner(
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             } else {
-                let err = Error::from_thread();
+                let err = WindowsError::from_thread();
                 tracing::error!(
                     "GetMessageW failed with {result}, shutdown hook thread exiting: {err}"
                 );

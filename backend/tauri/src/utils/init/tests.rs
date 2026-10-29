@@ -1,5 +1,4 @@
-use super::{MigrationChildFailed, run_migration_command, wait_for_migration_output};
-use crate::core::backup::BACKUP_FAILED_EXIT_CODE;
+use super::{Error, run_migration_command, wait_for_migration_output};
 use std::{
     fs::File,
     io::{Read, Write},
@@ -28,10 +27,14 @@ fn fixture_command(case: &str) -> Command {
     command
 }
 
-fn run_fixture(case: &str) -> (anyhow::Result<()>, String) {
+fn run_fixture(case: &str) -> (Result<(), Error>, String) {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("migration.log");
-    let result = run_migration_command(fixture_command(case), File::create(&path).unwrap());
+    let result = run_migration_command(
+        fixture_command(case),
+        File::create(&path).unwrap(),
+        &root.path().join("missing-result.json"),
+    );
     (result, std::fs::read_to_string(path).unwrap())
 }
 
@@ -45,10 +48,12 @@ fn migration_collects_both_unterminated_utf8_tails_before_returning() {
 
 #[test]
 fn migration_failure_preserves_complete_stderr_and_exit_code() {
-    for (case, code) in [("failure", 1), ("backup", BACKUP_FAILED_EXIT_CODE)] {
+    for (case, code) in [("failure", 1), ("backup", 2)] {
         let (result, log) = run_fixture(case);
         let error = result.unwrap_err();
-        let failed = error.downcast_ref::<MigrationChildFailed>().unwrap();
+        let Error::ChildExited { source: failed } = error else {
+            panic!("unexpected migration error: {error:?}")
+        };
         assert_eq!(failed.status.code(), Some(code));
         assert_eq!(failed.stderr, STDERR_TAIL);
         assert!(log.contains(STDOUT_TAIL));
@@ -203,7 +208,7 @@ fn migration_process_fixture() {
     std::io::stderr().write_all(STDERR_TAIL.as_bytes()).unwrap();
     let code = match case.as_str() {
         "failure" => 1,
-        "backup" => BACKUP_FAILED_EXIT_CODE,
+        "backup" => 2,
         _ => 0,
     };
     std::process::exit(code);
@@ -228,4 +233,128 @@ fn test_get_single_instance_placeholder_with_sid() {
     // Should contain the app name
     assert!(placeholder.contains("clash-nyanpasu") || placeholder.contains("clash-nyanpasu-dev"));
     println!("Single instance placeholder: {}", placeholder);
+}
+
+#[test]
+fn migration_child_failure_file_round_trip() {
+    use crate::core::migration::child_result::{FailureStage, RevisionFailure};
+    for stage in [
+        FailureStage::RunnerConstruction,
+        FailureStage::Backup,
+        FailureStage::Migration,
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let paths =
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        paths.create_base_dirs().unwrap();
+        let result_path = root.path().join("result.json");
+        match stage {
+            FailureStage::RunnerConstruction => {
+                std::fs::write(
+                    paths.app_config_dir().join("migration-state.yaml"),
+                    "store_schema_version: 3\n",
+                )
+                .unwrap();
+            }
+            FailureStage::Backup => {
+                std::fs::write(paths.nyanpasu_config_path(), "language: en\n").unwrap();
+                std::fs::write(paths.backups_dir(), "blocks the backup directory").unwrap();
+            }
+            FailureStage::Migration => {
+                std::fs::write(paths.app_config_dir().join("migration-state.yaml"), "store_schema_version: 2\nmodules:\n  profiles:\n    applied_revision: 5\n    baseline_revision: 4\n").unwrap();
+            }
+        }
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "cmds::migrate::tests::migration_child_fixture",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(
+                "NYANPASU_TEST_MIGRATION_CONFIG",
+                paths.app_config_dir().as_str(),
+            )
+            .env(
+                "NYANPASU_TEST_MIGRATION_DATA",
+                paths.app_data_dir().as_str(),
+            )
+            .env("NYANPASU_TEST_MIGRATION_RESULT", &result_path);
+        let result = run_migration_command(
+            command,
+            File::create(root.path().join("migration.log")).unwrap(),
+            &result_path,
+        );
+        let Err(Error::ReadChildFailure { source: report }) = result else {
+            panic!("child failure was not decoded: {result:?}")
+        };
+        assert_eq!(report.stage, stage);
+        assert_eq!(report.config_dir, paths.app_config_dir().as_std_path());
+        assert_eq!(report.backups_dir, paths.backups_dir().as_std_path());
+        assert!(!report.backup_available);
+        assert!(!report.chain.is_empty());
+        match stage {
+            FailureStage::RunnerConstruction => assert!(matches!(
+                report.revision,
+                Some(RevisionFailure::NewerStoreSchema {
+                    read: 3,
+                    supported: 2,
+                    ..
+                })
+            )),
+            FailureStage::Migration => assert!(matches!(
+                report.revision,
+                Some(RevisionFailure::NewerAppliedModule {
+                    read: 5,
+                    supported: 4,
+                    ..
+                })
+            )),
+            FailureStage::Backup => assert_eq!(report.revision, None),
+        }
+    }
+}
+
+#[test]
+fn migration_child_failure_preserves_the_available_backup() {
+    use crate::core::migration::child_result::FailureStage;
+    let root = tempfile::tempdir().unwrap();
+    let paths =
+        crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+    paths.create_base_dirs().unwrap();
+    std::fs::write(paths.nyanpasu_config_path(), "app_log_level: [invalid]\n").unwrap();
+    let result_path = root.path().join("result.json");
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--exact",
+            "cmds::migrate::tests::migration_child_fixture",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(
+            "NYANPASU_TEST_MIGRATION_CONFIG",
+            paths.app_config_dir().as_str(),
+        )
+        .env(
+            "NYANPASU_TEST_MIGRATION_DATA",
+            paths.app_data_dir().as_str(),
+        )
+        .env("NYANPASU_TEST_MIGRATION_RESULT", &result_path);
+    let result = run_migration_command(
+        command,
+        File::create(root.path().join("migration.log")).unwrap(),
+        &result_path,
+    );
+    let Err(Error::ReadChildFailure { source: report }) = result else {
+        panic!("child failure was not decoded: {result:?}")
+    };
+    assert_eq!(report.stage, FailureStage::Migration);
+    assert!(report.backup_available);
+    assert!(
+        std::fs::read_dir(paths.backups_dir())
+            .unwrap()
+            .any(|entry| entry.unwrap().file_type().unwrap().is_dir())
+    );
 }

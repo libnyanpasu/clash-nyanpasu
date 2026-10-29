@@ -18,6 +18,12 @@ pub(crate) use instance::HttpUpdaterBackend;
 pub use instance::{UpdaterState, UpdaterSummary};
 use ports::{CoreUpdateInstaller, UpdaterBackend, UpdaterProgress};
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ManifestVersion {
     manifest_version: u64,
@@ -428,7 +434,7 @@ impl UpdaterClient {
         installer: Arc<dyn CoreUpdateInstaller>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> Result<Self> {
+    ) -> std::result::Result<Self, Error> {
         let (actor, _) = Actor::spawn(
             None,
             UpdaterActor,
@@ -438,7 +444,8 @@ impl UpdaterClient {
                 shutdown: shutdown.clone(),
             },
         )
-        .await?;
+        .await
+        .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner(actor))))
     }

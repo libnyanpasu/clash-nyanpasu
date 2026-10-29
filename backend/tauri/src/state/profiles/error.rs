@@ -83,6 +83,11 @@ pub enum ExpectedNode {
 #[snafu(visibility(pub(crate)))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProfileFileError {
+    #[snafu(display("could not preserve invalid profile materialization directory"))]
+    PreserveDerivedDirectory {
+        #[serde(skip)]
+        source: crate::core::corrupt::Error,
+    },
     #[snafu(display("could not inspect {path}"))]
     InspectPath {
         path: ErrorPath,

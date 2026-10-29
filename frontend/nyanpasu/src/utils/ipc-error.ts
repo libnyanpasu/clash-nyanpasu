@@ -288,6 +288,8 @@ function hotkeyActionName(action: HotkeyAction): string {
 export function storageErrorMessage(error: StorageOperationError): string {
   switch (error.kind) {
     case 'open_database':
+    case 'inspect_database':
+    case 'preserve_database':
       return m.error_storage_open()
     case 'begin_transaction':
     case 'open_table':

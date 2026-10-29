@@ -138,7 +138,8 @@ impl Failure {
                     | super::MigrationCheckError::Parse { path, .. }
                     | super::MigrationCheckError::Storage { path, .. }
                     | super::MigrationCheckError::Stamp { path, .. }
-                    | super::MigrationCheckError::MigrateClashOverrides { path, .. } => Some(path),
+                    | super::MigrationCheckError::MigrateClashOverrides { path, .. }
+                    | super::MigrationCheckError::ReadSessionState { path, .. } => Some(path),
                     super::MigrationCheckError::Unrecognized(_) => None,
                 }
             } else if let Some(crate::core::backup::BackupError::Io { path, .. }) =
@@ -161,6 +162,14 @@ impl Failure {
                     | super::fs::Error::CreateDirectory { path, .. }
                     | super::fs::Error::WriteFile { path, .. } => Some(path),
                 }
+            } else if let Some(crate::core::session_state::Error::ReadState { path, .. }) =
+                error.downcast_ref::<crate::core::session_state::Error>()
+            {
+                Some(path)
+            } else if let Some(crate::core::corrupt::Error::PreserveEvidence { path, .. }) =
+                error.downcast_ref::<crate::core::corrupt::Error>()
+            {
+                Some(path)
             } else {
                 None
             };

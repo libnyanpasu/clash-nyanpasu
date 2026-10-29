@@ -90,11 +90,18 @@ impl Default for MigrationStore {
 
 impl MigrationStore {
     pub fn load(path: &Path) -> Result<Self, Error> {
+        Self::load_with(path, || std::fs::read_to_string(path))
+    }
+
+    fn load_with(
+        path: &Path,
+        read: impl FnMut() -> std::io::Result<String>,
+    ) -> Result<Self, Error> {
         if !path.exists() {
             return Ok(Self::default());
         }
 
-        let raw = std::fs::read_to_string(path).context(ReadStateSnafu { path })?;
+        let raw = crate::core::corrupt::retry_io(read).context(ReadStateSnafu { path })?;
         let store: Self = serde_yaml::from_str(&raw).context(ParseStateSnafu { path })?;
         if store.store_schema_version > STORE_SCHEMA_VERSION {
             return NewerSchemaSnafu {
@@ -277,6 +284,63 @@ fn timestamp() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_reader_retries_transient_read_before_parsing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(STORE_FILE_NAME);
+        let mut expected = MigrationStore::default();
+        expected.set_last_succeeded(Version::new(2, 0, 0));
+        let raw = serde_yaml::to_string(&expected).unwrap();
+        std::fs::write(&path, &raw).unwrap();
+        let mut attempts = 0;
+        let store = MigrationStore::load_with(&path, || {
+            attempts += 1;
+            if attempts == 1 {
+                Err(std::io::ErrorKind::Interrupted.into())
+            } else {
+                std::fs::read_to_string(&path)
+            }
+        })
+        .unwrap();
+        assert_eq!(attempts, 2);
+        assert_eq!(store, expected);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn state_reader_reports_exhausted_and_permission_errors_without_renaming() {
+        use std::io;
+
+        for (kind, expected_attempts) in [
+            (io::ErrorKind::WouldBlock, 4),
+            (io::ErrorKind::PermissionDenied, 1),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join(STORE_FILE_NAME);
+            let raw = "store_schema_version: 2\n";
+            std::fs::write(&path, raw).unwrap();
+            let mut attempts = 0;
+            let result = MigrationStore::load_with(&path, || {
+                attempts += 1;
+                Err(io::Error::new(kind, std::fmt::Error))
+            });
+            let Err(Error::ReadState {
+                path: actual,
+                source,
+            }) = result
+            else {
+                panic!("expected a typed migration-state read error");
+            };
+            assert_eq!(actual, path);
+            assert_eq!(source.kind(), kind);
+            assert!(source.get_ref().unwrap().is::<std::fmt::Error>());
+            assert_eq!(attempts, expected_attempts);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+            assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+        }
+    }
 
     #[test]
     fn atomic_write_replaces_existing_store() {

@@ -20,7 +20,7 @@ use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
 use crate::{
-    core::actor_v2::api::ApiError,
+    core::{actor_v2::api::ApiError, corrupt},
     enhance::PostProcessingOutput,
     state::profiles::{ErrorPath, ProfilesError},
 };
@@ -455,41 +455,49 @@ impl RuntimePaths {
 
     pub async fn cleanup_stale_candidates(&self, max_age: Duration) -> Result<usize, Error> {
         prepare_private_dir(&self.candidate_dir).await?;
-        let now = SystemTime::now();
-        let mut removed = 0;
-        let mut entries =
-            tokio::fs::read_dir(&self.candidate_dir)
-                .await
-                .context(ReadCandidatesSnafu {
-                    path: &self.candidate_dir,
-                })?;
-        while let Some(entry) = entries.next_entry().await.context(ReadCandidatesSnafu {
-            path: &self.candidate_dir,
-        })? {
-            let name = entry.file_name();
-            if !name.to_string_lossy().starts_with("candidate-") {
-                continue;
-            }
-            let metadata = tokio::fs::symlink_metadata(entry.path())
-                .await
-                .context(InspectCandidateSnafu { path: entry.path() })?;
-            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-                continue;
-            }
-            let is_stale = metadata
-                .modified()
-                .ok()
-                .and_then(|modified| now.duration_since(modified).ok())
-                .is_some_and(|age| age >= max_age);
-            if is_stale {
-                tokio::fs::remove_file(entry.path())
-                    .await
-                    .context(RemoveCandidateSnafu { path: entry.path() })?;
-                removed += 1;
+        let path = self.candidate_dir.clone();
+        crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || cleanup_candidates(&path, max_age)).await,
+        )
+    }
+}
+
+// Directory iteration holds mutable iterator state across retries. Keep the
+// synchronous scan on a blocking worker, with retries around each filesystem
+// operation rather than repeating the whole cleanup.
+fn cleanup_candidates(path: &Utf8Path, max_age: Duration) -> Result<usize, Error> {
+    let now = SystemTime::now();
+    let mut removed = 0;
+    let mut entries =
+        corrupt::retry_io(|| std::fs::read_dir(path)).context(ReadCandidatesSnafu { path })?;
+    while let Some(entry) =
+        corrupt::retry_io(|| entries.next().transpose()).context(ReadCandidatesSnafu { path })?
+    {
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with("candidate-") {
+            continue;
+        }
+        let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(entry.path()))
+            .context(InspectCandidateSnafu { path: entry.path() })?;
+        if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
+            continue;
+        }
+        let modified = corrupt::retry_io(|| metadata.modified())
+            .context(InspectCandidateSnafu { path: entry.path() })?;
+        let is_stale = now
+            .duration_since(modified)
+            .ok()
+            .is_some_and(|age| age >= max_age);
+        if is_stale {
+            match corrupt::retry_io(|| std::fs::remove_file(entry.path())) {
+                Ok(()) => removed += 1,
+                Err(error) => tracing::warn!(path = %entry.path().display(),
+                    error = %snafu::Report::from_error(&error), action = "skip_stale_candidate",
+                    "could not remove a stale runtime candidate"),
             }
         }
-        Ok(removed)
     }
+    Ok(removed)
 }
 
 #[derive(Debug)]
@@ -550,11 +558,8 @@ pub(crate) enum Error {
         path: Utf8PathBuf,
         source: std::io::Error,
     },
-    #[snafu(display("failed to remove candidate {}", path.display()))]
-    RemoveCandidate {
-        path: std::path::PathBuf,
-        source: std::io::Error,
-    },
+    #[snafu(display("failed to preserve invalid candidate directory"))]
+    PreserveCandidateDirectory { source: corrupt::Error },
     #[cfg(unix)]
     #[snafu(display("failed to secure candidate directory {path}"))]
     SecureCandidateDirectory {
@@ -564,15 +569,40 @@ pub(crate) enum Error {
 }
 
 async fn prepare_private_dir(path: &Utf8Path) -> Result<(), Error> {
-    if let Ok(metadata) = tokio::fs::symlink_metadata(path).await
-        && is_symlink_or_reparse(&metadata)
-    {
-        return ValidateCandidateDirectorySnafu { path }.fail();
+    prepare_private_dir_with(path, || tokio::fs::create_dir_all(path)).await
+}
+
+async fn prepare_private_dir_with<F>(
+    path: &Utf8Path,
+    create: impl FnMut() -> F,
+) -> Result<(), Error>
+where
+    F: std::future::Future<Output = std::io::Result<()>>,
+{
+    match corrupt::retry_async(|| tokio::fs::symlink_metadata(path)).await {
+        Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_dir() => {
+            let error = ValidateCandidateDirectorySnafu { path }.build();
+            let original = path.to_path_buf();
+            crate::utils::blocking::join(
+                tokio::task::spawn_blocking(move || {
+                    corrupt::preserve(original.as_std_path(), &error)
+                })
+                .await,
+            )
+            .context(PreserveCandidateDirectorySnafu)?;
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).context(InspectCandidateSnafu {
+                path: path.as_std_path(),
+            });
+        }
     }
-    tokio::fs::create_dir_all(path)
+    corrupt::retry_async(create)
         .await
         .context(CreateCandidateDirectorySnafu { path })?;
-    let metadata = tokio::fs::symlink_metadata(path)
+    let metadata = corrupt::retry_async(|| tokio::fs::symlink_metadata(path))
         .await
         .context(InspectCandidateSnafu {
             path: path.as_std_path(),
@@ -583,9 +613,11 @@ async fn prepare_private_dir(path: &Utf8Path) -> Result<(), Error> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .await
-            .context(SecureCandidateDirectorySnafu { path })?;
+        corrupt::retry_async(|| {
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+        })
+        .await
+        .context(SecureCandidateDirectorySnafu { path })?;
     }
     Ok(())
 }
@@ -1181,22 +1213,125 @@ pub(crate) mod tests {
         assert!(!stale_path.exists());
     }
 
-    #[cfg(unix)]
     #[tokio::test]
-    async fn candidate_directory_rejects_symlink() {
-        use std::os::unix::fs::symlink;
+    async fn candidate_directory_file_is_preserved_then_candidates_are_usable() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = temp_runtime_paths(&dir);
+        std::fs::create_dir_all(paths.candidate_dir().parent().unwrap()).unwrap();
+        std::fs::write(paths.candidate_dir(), b"original node").unwrap();
+        assert_eq!(
+            paths
+                .cleanup_stale_candidates(Duration::ZERO)
+                .await
+                .unwrap(),
+            0
+        );
+        let evidence =
+            crate::client::startup_recovery_tests::evidence(paths.candidate_dir().as_std_path());
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(std::fs::read(&evidence[0]).unwrap(), b"original node");
+        let candidate = paths.create_candidate(b"usable").await.unwrap();
+        assert_eq!(std::fs::read(candidate.path()).unwrap(), b"usable");
+    }
 
+    #[tokio::test(start_paused = true)]
+    async fn candidate_directory_creation_retries_at_the_preparation_call_site() {
+        for failures in [3, 4] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = temp_runtime_paths(&dir);
+            let mut attempts = 0;
+            let before = tokio::time::Instant::now();
+            let result = prepare_private_dir_with(paths.candidate_dir(), || {
+                attempts += 1;
+                let failed = attempts <= failures;
+                let path = paths.candidate_dir();
+                async move {
+                    if failed {
+                        Err(std::io::ErrorKind::WouldBlock.into())
+                    } else {
+                        tokio::fs::create_dir_all(path).await
+                    }
+                }
+            })
+            .await;
+            assert_eq!(attempts, 4);
+            assert_eq!(
+                tokio::time::Instant::now() - before,
+                Duration::from_millis(350)
+            );
+            if failures == 3 {
+                result.unwrap();
+                assert!(paths.candidate_dir().is_dir());
+            } else {
+                assert!(
+                    matches!(result, Err(Error::CreateCandidateDirectory { source, .. })
+                    if source.kind() == std::io::ErrorKind::WouldBlock)
+                );
+                assert!(!paths.candidate_dir().exists());
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn one_stale_candidate_removal_failure_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = temp_runtime_paths(&dir);
+        prepare_private_dir(paths.candidate_dir()).await.unwrap();
+        use std::os::windows::fs::OpenOptionsExt as _;
+        let blocked = paths.candidate_dir().join("candidate-held.yaml");
+        let removable = paths.candidate_dir().join("candidate-removable.yaml");
+        std::fs::write(&blocked, b"kept").unwrap();
+        std::fs::write(&removable, b"remove").unwrap();
+        // A real sharing violation: allow reads/writes, but refuse deletion.
+        const FILE_SHARE_READ_WRITE: u32 = 3;
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ_WRITE)
+            .open(&blocked)
+            .unwrap();
+        let result = paths.cleanup_stale_candidates(Duration::ZERO).await;
+        drop(held);
+        assert_eq!(result.unwrap(), 1);
+        assert_eq!(std::fs::read(&blocked).unwrap(), b"kept");
+        assert!(!removable.exists());
+    }
+
+    #[cfg(any(unix, windows))]
+    #[tokio::test]
+    async fn candidate_directory_preserves_symlink_and_its_target() {
         let dir = tempfile::tempdir().unwrap();
         let paths = temp_runtime_paths(&dir);
         let target = dir.path().join("target");
         std::fs::create_dir_all(&target).unwrap();
         std::fs::create_dir_all(paths.candidate_dir().parent().unwrap()).unwrap();
-        symlink(target, paths.candidate_dir()).unwrap();
-
-        let error = paths.create_candidate(b"blocked").await.unwrap_err();
-        assert!(matches!(
-            error.downcast_ref::<Error>(),
-            Some(Error::ValidateCandidateDirectory { .. })
-        ));
+        std::fs::write(target.join("kept"), b"target data").unwrap();
+        #[cfg(unix)]
+        let link = std::os::unix::fs::symlink(&target, paths.candidate_dir());
+        #[cfg(windows)]
+        let link = std::os::windows::fs::symlink_dir(&target, paths.candidate_dir());
+        if let Err(error) = &link
+            && error.kind() == std::io::ErrorKind::PermissionDenied
+        {
+            eprintln!("SKIPPED candidate symlink fixture: symlink privilege unavailable");
+            return;
+        }
+        link.unwrap();
+        paths
+            .cleanup_stale_candidates(Duration::ZERO)
+            .await
+            .unwrap();
+        let candidate = paths.create_candidate(b"usable").await.unwrap();
+        assert_eq!(std::fs::read(candidate.path()).unwrap(), b"usable");
+        let evidence =
+            crate::client::startup_recovery_tests::evidence(paths.candidate_dir().as_std_path());
+        assert_eq!(evidence.len(), 1);
+        assert!(
+            std::fs::symlink_metadata(&evidence[0])
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read(target.join("kept")).unwrap(), b"target data");
     }
 }

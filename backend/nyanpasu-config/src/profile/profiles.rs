@@ -183,6 +183,20 @@ impl Profiles {
         }
     }
 
+    /// Clears only a selection whose item is absent, preserving transforms and
+    /// selections of an existing item for the caller's ordinary validation.
+    pub fn clear_dangling_current(&mut self) -> Option<ProfileId> {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|id| !self.items.contains_key(id))
+        {
+            self.current.take()
+        } else {
+            None
+        }
+    }
+
     /// Referential and semantic validation for an already deserialized document.
     pub fn validate(&self) -> Result<(), Vec<ProfileValidationError>> {
         let mut errors = Vec::new();

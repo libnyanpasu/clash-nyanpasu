@@ -20,13 +20,16 @@ use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
-use crate::state::profiles::{
-    error::*,
-    ports::{
-        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
-        SubscriptionFetcher,
+use crate::{
+    core::corrupt,
+    state::profiles::{
+        error::*,
+        ports::{
+            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
+            ProfileMaterializationPort, SubscriptionFetcher,
+        },
     },
 };
 
@@ -176,12 +179,13 @@ impl ProfileFileService {
             .context(NoParentDirectorySnafu { path: &root })?;
         ensure_real_directory_tree(config_dir)?;
 
-        match std::fs::symlink_metadata(&root) {
+        match corrupt::retry_io(|| std::fs::symlink_metadata(&root)) {
             Ok(metadata) => ensure_real_directory(&root, &metadata)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::create_dir(&root).context(CreateDirectorySnafu { path: &root })?;
-                let metadata =
-                    std::fs::symlink_metadata(&root).context(InspectPathSnafu { path: &root })?;
+                corrupt::retry_io(|| std::fs::create_dir(&root))
+                    .context(CreateDirectorySnafu { path: &root })?;
+                let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(&root))
+                    .context(InspectPathSnafu { path: &root })?;
                 ensure_real_directory(&root, &metadata)?;
                 sync_directory(config_dir)?;
                 sync_directory(&root)?;
@@ -202,15 +206,22 @@ impl ProfileFileService {
         let mut current = root.to_path_buf();
         for component in relative.components() {
             current.push(component.as_os_str());
-            let created = match std::fs::symlink_metadata(&current) {
-                Ok(metadata) => {
-                    ensure_real_directory(&current, &metadata)?;
-                    false
-                }
+            let created = match corrupt::retry_io(|| std::fs::symlink_metadata(&current)) {
+                Ok(metadata) => match ensure_real_directory(&current, &metadata) {
+                    Ok(()) => false,
+                    Err(error) if private => {
+                        corrupt::preserve(&current, &error)
+                            .context(PreserveDerivedDirectorySnafu)?;
+                        corrupt::retry_io(|| std::fs::create_dir(&current))
+                            .context(CreateDirectorySnafu { path: &current })?;
+                        true
+                    }
+                    Err(error) => return Err(error),
+                },
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    std::fs::create_dir(&current)
+                    corrupt::retry_io(|| std::fs::create_dir(&current))
                         .context(CreateDirectorySnafu { path: &current })?;
-                    let metadata = std::fs::symlink_metadata(&current)
+                    let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(&current))
                         .context(InspectPathSnafu { path: &current })?;
                     ensure_real_directory(&current, &metadata)?;
                     true
@@ -398,19 +409,20 @@ fn ensure_real_directory(path: &Path, metadata: &std::fs::Metadata) -> Result<()
 }
 
 fn ensure_real_directory_tree(path: &Path) -> Result<()> {
-    match std::fs::symlink_metadata(path) {
+    match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
         Ok(metadata) => ensure_real_directory(path, &metadata),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let parent = path.parent().context(NoParentDirectorySnafu { path })?;
             ensure_real_directory_tree(parent)?;
-            let created = match std::fs::create_dir(path) {
+            let created = match corrupt::retry_io(|| std::fs::create_dir(path)) {
                 Ok(()) => true,
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
                 Err(error) => {
                     return Err(error).context(CreateDirectorySnafu { path });
                 }
             };
-            let metadata = std::fs::symlink_metadata(path).context(InspectPathSnafu { path })?;
+            let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(path))
+                .context(InspectPathSnafu { path })?;
             ensure_real_directory(path, &metadata)?;
             if created {
                 sync_directory(parent)?;
@@ -427,8 +439,10 @@ fn set_private_directory_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .context(SetPermissionsSnafu { path })?;
+        corrupt::retry_io(|| {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+        })
+        .context(SetPermissionsSnafu { path })?;
     }
     Ok(())
 }
@@ -512,9 +526,9 @@ fn valid_operation_id(operation_id: &str) -> bool {
 
 #[cfg(unix)]
 fn sync_directory(path: &Path) -> Result<()> {
-    std::fs::File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .context(SyncDirectorySnafu { path })
+    let directory =
+        corrupt::retry_io(|| std::fs::File::open(path)).context(SyncDirectorySnafu { path })?;
+    corrupt::retry_io(|| directory.sync_all()).context(SyncDirectorySnafu { path })
 }
 
 #[cfg(not(unix))]
@@ -3365,7 +3379,7 @@ mod tests {
     }
 
     #[test]
-    fn private_root_and_private_artifact_symlinks_are_rejected() {
+    fn private_root_symlink_is_preserved_without_following() {
         let (temp, service) = service();
         let profiles_dir = service.paths.app_profiles_dir();
         std::fs::create_dir_all(&profiles_dir).unwrap();
@@ -3380,18 +3394,29 @@ mod tests {
             eprintln!("directory symlink unsupported in this environment, skipping");
             return;
         }
-        let error = service
+        let prepared = service
             .prepare_state_first(&managed("blocked.yaml"), file_resource("x: 1\n"), 1)
-            .unwrap_err();
+            .unwrap();
+        service.promote(&prepared).unwrap();
+        service.complete(&prepared).unwrap();
+        assert_eq!(service.read(&managed("blocked.yaml")).unwrap(), "x: 1\n");
+        let evidence: Vec<_> = profiles_dir
+            .read_dir()
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(".profile-materialization-v1.corrupt-")
+            })
+            .collect();
+        assert_eq!(evidence.len(), 1);
         assert!(
-            matches!(
-                error,
-                ProfileFileError::UnexpectedNode {
-                    expected: ExpectedNode::RealDirectory,
-                    ..
-                }
-            ),
-            "{error:?}"
+            std::fs::symlink_metadata(&evidence[0])
+                .unwrap()
+                .file_type()
+                .is_symlink()
         );
         assert!(outside_dir.read_dir().unwrap().next().is_none());
     }

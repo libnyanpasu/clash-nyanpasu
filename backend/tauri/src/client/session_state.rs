@@ -21,10 +21,9 @@ use crate::state::{
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
-    #[snafu(display("failed to load persistent state from {path}"))]
+    #[snafu(display("failed to load session state"))]
     LoadState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<PersistentState>>,
+        source: crate::core::session_state::Error,
     },
     #[snafu(display("failed to initialize persistent state at {path}"))]
     InitializeState {
@@ -57,21 +56,22 @@ impl SessionStateClient {
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
-        let should_load = config_path.exists();
+        let path = config_path.clone();
+        let state = crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                crate::core::session_state::read(path.as_std_path())
+            })
+            .await,
+        )
+        .context(LoadStateSnafu)?
+        .unwrap_or_default();
         let setup = PersistentStateManagerSetup::<PersistentState>::builder()
             .config_path(config_path.clone())
             .assemble();
-        let manager = if should_load {
-            setup
-                .load()
-                .await
-                .context(LoadStateSnafu { path: &config_path })?
-        } else {
-            setup
-                .from_state(PersistentState::default())
-                .await
-                .context(InitializeStateSnafu { path: &config_path })?
-        };
+        let manager = setup
+            .from_state(state)
+            .await
+            .context(InitializeStateSnafu { path: &config_path })?;
 
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(None, SessionStateActor, SessionStateActorArgs { manager })

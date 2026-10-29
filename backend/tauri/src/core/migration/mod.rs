@@ -187,6 +187,12 @@ pub enum MigrationCheckError {
         #[source]
         source: Box<modules::clash_config::Error>,
     },
+    #[error("failed to read session state at {}", path.display())]
+    ReadSessionState {
+        path: PathBuf,
+        #[source]
+        source: Box<crate::core::session_state::Error>,
+    },
     /// Readable and well-formed, but in no shape the step knows.
     #[error("{0}")]
     Unrecognized(String),

@@ -115,6 +115,6 @@
   },
   "packageManager": "pnpm@12.16.1",
   "engines": {
-    "node": "24.22.1"
+    "node": "24.22.2"
   }
 }

@@ -301,3 +301,44 @@ fn child_protocol_closes_stdin_before_waiting_and_rejects_nonzero_exit() {
         }
     }
 }
+
+#[test]
+fn one_shot_environment_messages_keep_actual_paths_and_localized_recovery() {
+    for locale in ["en", "ja", "ko", "ru", "zh-cn", "zh-tw"] {
+        for (kind, recovery) in [
+            (FailureKind::Directories, None),
+            (FailureKind::Logging, None),
+            (FailureKind::WebView2, Some("web_view2.portable_recovery")),
+            (FailureKind::WebView2, Some("web_view2.installed_recovery")),
+        ] {
+            let path = PathBuf::from("data/迁移/migration.log");
+            let failure = StartupFailure {
+                kind,
+                path: Some(path.clone()),
+                detail: "original cause".into(),
+            };
+            let message = one_shot_message(&failure, locale, recovery);
+            assert!(message.contains(&path.display().to_string()));
+            assert!(message.contains("original cause"));
+            assert!(!message.contains("dialog.startup_failure."));
+            let labels = crate::cmds::startup_failed::text(kind, locale);
+            assert!(message.contains(&labels.description));
+            if let Some(recovery) = recovery {
+                let key = format!("dialog.startup_failure.{recovery}");
+                assert!(message.contains(rust_i18n::t!(&key, locale = locale).as_ref()));
+            } else {
+                assert!(message.contains(&labels.recovery));
+            }
+        }
+        let failure = StartupFailure {
+            kind: FailureKind::Directories,
+            path: None,
+            detail: "platform has no directory".into(),
+        };
+        let message = one_shot_message(&failure, locale, None);
+        assert!(!message.contains("dialog.startup_failure."));
+        assert!(message.contains(
+            rust_i18n::t!("dialog.startup_failure.unresolved_path", locale = locale).as_ref()
+        ));
+    }
+}

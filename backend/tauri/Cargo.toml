@@ -275,6 +275,7 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+tauri = { version = '2.4', features = ['test'] }
 http-body-util = '0.1'
 tower = { version = '0.5', features = ['util'] }
 axum = { version = '0.8', features = ['ws'] }

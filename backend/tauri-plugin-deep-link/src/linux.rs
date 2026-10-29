@@ -50,7 +50,7 @@ pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F)
                 .expect("Called register() before prepare()")
                 .split('.')
                 .last()
-                .unwrap(),
+                .expect("split always yields at least one component"),
             exec = std::env::var("APPIMAGE").unwrap_or_else(|_| exe.display().to_string()),
             mime_types = mime_types
         )
@@ -101,31 +101,42 @@ pub fn unregister(_schemes: &[&str]) -> Result<()> {
 }
 
 pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
-    std::thread::spawn(move || {
-        let addr = format!(
-            "/tmp/{}-deep-link.sock",
-            ID.get().expect("listen() called before prepare()")
-        );
+    let addr = format!(
+        "/tmp/{}-deep-link.sock",
+        ID.get()
+            .expect("prepare() sets the identifier before listen()")
+    );
+    let listener = UnixListener::bind(&addr).map_err(|error| {
+        log::error!("Can't create deep-link listener at {addr}: {error}");
+        error
+    })?;
+    std::thread::Builder::new()
+        .name("deep-link".into())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(mut stream) => {
+                        let mut buffer = String::new();
+                        if let Err(io_err) = stream.read_to_string(&mut buffer) {
+                            log::error!(
+                                "Error reading incoming connection: {}",
+                                io_err.to_string()
+                            );
+                        };
 
-        let listener = UnixListener::bind(addr).expect("Can't create listener");
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(mut stream) => {
-                    let mut buffer = String::new();
-                    if let Err(io_err) = stream.read_to_string(&mut buffer) {
-                        log::error!("Error reading incoming connection: {}", io_err.to_string());
-                    };
-
-                    handler(dbg!(buffer));
-                }
-                Err(err) => {
-                    log::error!("Incoming connection failed: {}", err);
-                    continue;
+                        handler(dbg!(buffer));
+                    }
+                    Err(err) => {
+                        log::error!("Incoming connection failed: {}", err);
+                        continue;
+                    }
                 }
             }
-        }
-    });
+        })
+        .map_err(|error| {
+            log::error!("Failed to start deep-link listener thread: {error}");
+            error
+        })?;
 
     Ok(())
 }
@@ -154,4 +165,18 @@ pub fn prepare(identifier: &str) {
     };
     ID.set(identifier.to_string())
         .expect("prepare() called more than once with different identifiers.");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn occupied_socket_path_returns_error() {
+        let identifier = format!("nyanpasu-deep-link-test-{}", std::process::id());
+        let path = format!("/tmp/{identifier}-deep-link.sock");
+        std::fs::create_dir(&path).unwrap();
+        crate::set_identifier(&identifier).unwrap();
+        let result = crate::listen(|_| {});
+        std::fs::remove_dir(&path).unwrap();
+        assert!(result.is_err());
+    }
 }

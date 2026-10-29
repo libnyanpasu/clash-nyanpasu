@@ -36,8 +36,9 @@ pub struct BundleMetadata {
 impl BundleMetadata {
     pub fn resolve(
         windows: bool,
-        config: &Config,
+        config: &mut Config,
         executable_dir: &Path,
+        system_webview_available: impl FnOnce() -> bool,
     ) -> std::result::Result<Self, Error> {
         use snafu::ResultExt as _;
         let release_channel =
@@ -57,13 +58,22 @@ impl BundleMetadata {
         ) || runtime_dir
             .try_exists()
             .context(InspectWebviewSnafu { path: &runtime_dir })?;
-        if is_fixed_webview && !runtime_dir.join("msedgewebview2.exe").is_file() {
-            return ValidateWebviewSnafu { path: runtime_dir }.fail();
+        let is_portable = is_portable(executable_dir);
+        if is_fixed_webview {
+            if runtime_dir.join("msedgewebview2.exe").is_file() {
+                config.bundle.windows.webview_install_mode =
+                    WebviewInstallMode::FixedRuntime { path: runtime_dir };
+            } else if !is_portable && system_webview_available() {
+                tracing::warn!(path = %runtime_dir.display(), "fixed WebView2 incomplete; using system WebView2; reinstall to restore the bundled runtime");
+                config.bundle.windows.webview_install_mode = WebviewInstallMode::default();
+            } else {
+                return ValidateWebviewSnafu { path: runtime_dir }.fail();
+            }
         }
 
         Ok(Self {
             release_channel,
-            is_portable: is_portable(executable_dir),
+            is_portable,
             is_fixed_webview,
         })
     }
@@ -71,7 +81,6 @@ impl BundleMetadata {
     pub fn setup(
         &self,
         config: &mut Config,
-        executable_dir: &Path,
     ) -> std::result::Result<tauri_plugin_updater::Builder, Error> {
         use snafu::OptionExt as _;
         config
@@ -84,10 +93,6 @@ impl BundleMetadata {
         if self.is_fixed_webview {
             let target = tauri_plugin_updater::target().context(ResolveUpdaterTargetSnafu)?;
             updater = updater.target(self.updater_target(&target));
-            // Tauri applies this before creating its runtime, including the WebView2 env var.
-            config.bundle.windows.webview_install_mode = WebviewInstallMode::FixedRuntime {
-                path: fixed_runtime_dir(config, executable_dir),
-            };
         }
         Ok(updater)
     }

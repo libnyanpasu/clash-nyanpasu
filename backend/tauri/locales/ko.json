@@ -76,6 +76,7 @@
       "grant_core_permission": "TUN 모드가 정상적으로 작동하려면 Clash 코어에 관리자 권한이 필요합니다. 권한을 부여하시겠습니까?\n이 작업에는 비밀번호 입력이 필요합니다."
     },
     "startup_failure": {
+      "unresolved_path": "경로를 확인할 수 없습니다. 아래 세부 정보를 확인하세요.",
       "heading": "시작하지 못했습니다",
       "path": "경로",
       "details": "세부 정보",
@@ -113,7 +114,9 @@
       },
       "web_view2": {
         "description": "WebView2 런타임을 사용할 수 없습니다.",
-        "recovery": "포터블 패키지를 다시 다운로드하거나 Clash Nyanpasu를 다시 설치하세요."
+        "recovery": "포터블 패키지를 다시 다운로드하거나 Clash Nyanpasu를 다시 설치하세요.",
+        "portable_recovery": "포터블 패키지를 다시 다운로드하세요.",
+        "installed_recovery": "Clash Nyanpasu를 다시 설치하세요."
       },
       "logging": {
         "description": "앱 로그를 사용할 수 없습니다.",

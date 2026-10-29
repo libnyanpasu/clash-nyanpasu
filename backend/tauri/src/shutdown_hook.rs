@@ -2,6 +2,7 @@
 
 use atomic_enum::atomic_enum;
 use once_cell::sync::OnceCell;
+use snafu::ResultExt as _;
 use windows_core::{Error as WindowsError, w};
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
@@ -39,6 +40,10 @@ static SHUTDOWN_STATE: AtomicShutdownState = AtomicShutdownState::new(ShutdownSt
 pub(crate) enum Error {
     #[snafu(display("shutdown hook already set"))]
     AlreadyInstalled,
+    #[snafu(display("failed to start shutdown hook window thread"))]
+    StartWindowThread { source: std::io::Error },
+    #[snafu(display("failed to start shutdown hook callback thread"))]
+    StartCallbackThread { source: std::io::Error },
     #[snafu(display("failed to get module handle"))]
     GetModuleHandle { source: WindowsError },
     #[snafu(display("failed to register window class"))]
@@ -54,7 +59,10 @@ pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> Result<(), E
         return Err(Error::AlreadyInstalled);
     }
     let (initd_tx, initd_rx) = oneshot::channel();
-    let handle = std::thread::spawn(move || setup_shutdown_hook_inner(f, initd_tx));
+    let handle = std::thread::Builder::new()
+        .name("shutdown-hook-window".into())
+        .spawn(move || setup_shutdown_hook_inner(f, initd_tx))
+        .context(StartWindowThreadSnafu)?;
     if let Err(oneshot::RecvError) = initd_rx.recv() {
         handle
             .join()
@@ -135,11 +143,14 @@ fn setup_shutdown_hook_inner(
     let class_name = w!("TAURI_SHUTDOWN_HOOK");
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
-    std::thread::spawn(move || {
-        while let Ok(()) = rx.recv() {
-            f();
-        }
-    });
+    std::thread::Builder::new()
+        .name("shutdown-hook-callback".into())
+        .spawn(move || {
+            while let Ok(()) = rx.recv() {
+                f();
+            }
+        })
+        .context(StartCallbackThreadSnafu)?;
 
     SHUTDOWN_HOOK_INSTANCE.set(tx).unwrap();
 

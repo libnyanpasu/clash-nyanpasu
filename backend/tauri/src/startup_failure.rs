@@ -314,6 +314,59 @@ pub(crate) fn show(report: &Report) {
     );
 }
 
+/// Records an internal bootstrap failure before showing A4's reporter and flushing logging.
+pub(crate) fn show_internal(
+    error: &(dyn StdError + 'static),
+    paths: &PathResolver,
+    logging: &crate::utils::init::logging::LoggingShutdown,
+) {
+    let failure = StartupFailure {
+        kind: FailureKind::Internal,
+        path: None,
+        detail: snafu::Report::from_error(error).to_string(),
+    };
+    logging.record_startup_failure(failure.detail.clone());
+    show(&Report::new(failure, paths));
+    logging.finish_blocking();
+}
+
+/// Presents pre-Tauri failures without starting a reporter or event loop.
+pub(crate) fn show_one_shot(
+    kind: FailureKind,
+    path: Option<PathBuf>,
+    error: &(dyn StdError + 'static),
+    recovery_key: Option<&str>,
+) {
+    let failure = StartupFailure {
+        kind,
+        path,
+        detail: snafu::Report::from_error(error).to_string(),
+    };
+    tracing::error!(kind = ?failure.kind, path = ?failure.path, error = %failure.detail, "application startup failed");
+    let message = one_shot_message(&failure, rust_i18n::locale().as_ref(), recovery_key);
+    eprintln!("{message}");
+    crate::utils::dialog::error_dialog(message);
+}
+
+fn one_shot_message(failure: &StartupFailure, locale: &str, recovery_key: Option<&str>) -> String {
+    let text = crate::cmds::startup_failed::text(failure.kind, locale);
+    let recovery = recovery_key.map_or(text.recovery, |key| {
+        let key = format!("dialog.startup_failure.{key}");
+        rust_i18n::t!(&key, locale = locale).into_owned()
+    });
+    let path = failure
+        .path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| {
+            rust_i18n::t!("dialog.startup_failure.unresolved_path", locale = locale).into_owned()
+        });
+    format!(
+        "{}\n\n{}\n\n{}\n\n{}: {}\n\n{}",
+        text.heading, text.description, recovery, text.path, path, failure.detail
+    )
+}
+
 fn show_with(
     report: &Report,
     child: impl FnOnce() -> Result<(), Error>,

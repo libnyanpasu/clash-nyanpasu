@@ -76,6 +76,7 @@
       "grant_core_permission": "Clash 内核需要管理员权限才能使得 TUN 模式正常工作，是否授予？\n\n请注意：此操作需要输入密码。"
     },
     "startup_failure": {
+      "unresolved_path": "无法解析路径，请查看下方详情。",
       "heading": "启动失败",
       "path": "路径",
       "details": "详情",
@@ -113,7 +114,9 @@
       },
       "web_view2": {
         "description": "WebView2 运行时不可用。",
-        "recovery": "请重新下载便携版，或重新安装 Clash Nyanpasu。"
+        "recovery": "请重新下载便携版，或重新安装 Clash Nyanpasu。",
+        "portable_recovery": "请重新下载便携版软件包。",
+        "installed_recovery": "请重新安装 Clash Nyanpasu。"
       },
       "logging": {
         "description": "应用日志不可用。",

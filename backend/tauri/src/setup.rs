@@ -173,9 +173,6 @@ pub(crate) enum Error {
     InstallWidget {
         source: crate::client::ui_effects::adapters::InstallError,
     },
-    #[cfg(windows)]
-    #[snafu(display("failed to set up shutdown hook"))]
-    SetupShutdownHook { source: crate::shutdown_hook::Error },
 }
 
 /// Bound to `tauri::Wry` rather than generic over the runtime: the window
@@ -209,11 +206,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
-        super::shutdown_hook::setup_shutdown_hook(move || {
+        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(move || {
             tracing::info!("Shutdown hook triggered, exiting app...");
             shutdown_handle.exit(0);
-        })
-        .context(SetupShutdownHookSnafu)?;
+        }) {
+            tracing::warn!(error = %snafu::Report::from_error(&error), "shutdown hook unavailable; continuing without it");
+        }
     }
 
     // Only Tauri knows where the bundle is. Resources are copied best-effort,

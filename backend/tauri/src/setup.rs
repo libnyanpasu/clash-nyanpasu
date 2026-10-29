@@ -43,6 +43,82 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 const RESTART_BUDGET: u8 = 3;
 
+#[cfg(test)]
+#[path = "setup_tests.rs"]
+mod tests;
+
+/// The composition root retains these owners even when construction stops early.
+#[derive(Clone, Default)]
+pub(crate) struct StartupOwners {
+    shutdown: CancellationToken,
+    tasks: TaskTracker,
+    core: Option<crate::core::actor_v2::CoreClient>,
+}
+
+impl StartupOwners {
+    pub(crate) fn request_shutdown(&self) {
+        self.shutdown.cancel();
+        self.tasks.close();
+    }
+
+    pub(crate) async fn wait_shutdown(&self) {
+        self.tasks.wait().await;
+        if let Some(core) = &self.core {
+            core.finish_shutdown().await;
+        }
+    }
+}
+
+/// Keeps the error out of Tauri's panic-producing setup boundary. The failure
+/// handler shows the dialog and hands ownership to the event-loop exit path.
+pub(crate) fn run_setup(
+    mut owners: StartupOwners,
+    setup: impl FnOnce(&mut StartupOwners) -> Result<(), crate::startup_failure::StartupFailure>,
+    host: &impl StartupFailureHost,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Err(failure) = setup(&mut owners) {
+        tracing::error!(error = %failure.detail, path = ?failure.path, kind = ?failure.kind, "application startup failed");
+        host.show(failure);
+        host.retain(owners);
+        host.exit(1);
+    }
+    Ok(())
+}
+
+/// Presentation and event-loop ownership transfer at the setup boundary.
+pub(crate) trait StartupFailureHost {
+    fn show(&self, failure: crate::startup_failure::StartupFailure);
+    fn retain(&self, owners: StartupOwners);
+    fn exit(&self, code: i32);
+}
+
+pub(crate) struct TauriStartupFailureHost {
+    pub handle: tauri::AppHandle,
+    pub paths: PathResolver,
+}
+
+impl StartupFailureHost for TauriStartupFailureHost {
+    fn show(&self, failure: crate::startup_failure::StartupFailure) {
+        use tauri::Manager as _;
+        if let Some(logging) = self
+            .handle
+            .try_state::<crate::utils::init::logging::LoggingShutdown>()
+        {
+            logging.record_startup_failure(failure.detail.clone());
+        }
+        crate::startup_failure::show(&crate::startup_failure::Report::new(failure, &self.paths));
+    }
+
+    fn retain(&self, owners: StartupOwners) {
+        use tauri::Manager as _;
+        self.handle.manage(owners);
+    }
+
+    fn exit(&self, code: i32) {
+        self.handle.exit(code);
+    }
+}
+
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
     #[snafu(display("failed to prepare migrations"))]
@@ -112,6 +188,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     jobs_capture: nyanpasu_jobs::LogCapture,
     paths: PathResolver,
+    owners: &mut StartupOwners,
 ) -> Result<(), Error> {
     let app_handle = app.app_handle().clone();
     let rpc_events = crate::unified_rpc::EventBus::new();
@@ -127,8 +204,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     // The root of the shutdown. Created here rather than in the client: the
     // system proxy, hotkey and widget owners are built outside it.
-    let shutdown = CancellationToken::new();
-    let tasks = TaskTracker::new();
+    let shutdown = owners.shutdown.clone();
+    let tasks = owners.tasks.clone();
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
@@ -165,15 +242,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             .as_std_path(),
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
-    let (core_v2, service) = tauri::async_runtime::block_on(async {
+    let (core_v2, service, jobs) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths, &service_binary)
             .await
             .context(BuildCoreHostSnafu)?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
             Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
-        let core = crate::core::actor_v2::CoreClient::spawn(local)
-            .await
-            .context(SpawnCoreActorSnafu)?;
         let adapter = Arc::new(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
@@ -181,11 +255,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 paths.clone(),
             ),
         );
-        let service =
-            crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
-                .await
-                .context(SpawnServiceActorSnafu)?;
-        Ok::<_, Error>((core, service))
+        start_runtime_owners(owners, local, adapter, &paths, jobs_capture).await
     })?;
     drop(span);
     // The sink end of the hotkey channel goes into the actor; the receiving end
@@ -195,13 +265,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
     let span = tracing::info_span!("spawn_effect_owners").entered();
-    let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
-        paths.jobs_path().into_std_path_buf(),
-        jobs_capture,
-        shutdown.child_token(),
-        &tasks,
-    ))
-    .context(StartJobsSnafu)?;
     let (effects, widget_controller) = build_application_effects(
         &app_handle,
         main_thread.clone(),
@@ -353,6 +416,40 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(client);
 
     Ok(())
+}
+
+async fn start_runtime_owners(
+    owners: &mut StartupOwners,
+    local: crate::core::actor_v2::endpoint::EndpointHandle,
+    adapter: Arc<dyn crate::core::actor_v2::service_actor::ServiceHostAdapter>,
+    paths: &PathResolver,
+    jobs_capture: nyanpasu_jobs::LogCapture,
+) -> Result<
+    (
+        crate::core::actor_v2::CoreClient,
+        crate::core::actor_v2::service_actor::ServiceClient,
+        nyanpasu_jobs::JobsClient,
+    ),
+    Error,
+> {
+    let core = crate::core::actor_v2::CoreClient::spawn(local)
+        .await
+        .context(SpawnCoreActorSnafu)?;
+    owners.core = Some(core.clone());
+    let service =
+        crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
+            .await
+            .context(SpawnServiceActorSnafu)?;
+    service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());
+    let jobs = crate::client::jobs::start(
+        paths.jobs_path().into_std_path_buf(),
+        jobs_capture,
+        owners.shutdown.child_token(),
+        &owners.tasks,
+    )
+    .await
+    .context(StartJobsSnafu)?;
+    Ok((core, service, jobs))
 }
 
 #[derive(Debug, snafu::Snafu)]

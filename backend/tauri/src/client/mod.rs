@@ -2,7 +2,7 @@ use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
 pub mod app_update;
-mod application;
+pub(crate) mod application;
 pub mod application_workflow;
 mod clash_api;
 mod clash_config;

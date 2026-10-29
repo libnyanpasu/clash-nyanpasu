@@ -315,5 +315,6 @@ fn window_renders_in_both_schemes_and_scales() {
     }
     window.set_monospace_font("Nyanpasu Missing Test Font".into());
     window.window().take_snapshot().unwrap();
+    crate::startup_failure_render_tests::render_and_exercise_actions(&clock);
     cjk_glyphs_survive_a_sparse_system_fallback();
 }

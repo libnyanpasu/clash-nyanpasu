@@ -18,11 +18,42 @@ const RETRY_DELAYS: [Duration; 3] = [
     Duration::from_millis(200),
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum IoFailure {
     Transient,
     Permission,
     Other,
+}
+
+/// Finds IO hidden by libraries whose error implementation does not expose it.
+pub(crate) fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFailure> {
+    if let Some(error) = error.downcast_ref::<io::Error>() {
+        return Some(classify_io(error));
+    }
+    if let Some(error) = error.downcast_ref::<atomicwrites::Error<io::Error>>() {
+        let (atomicwrites::Error::Internal(source) | atomicwrites::Error::User(source)) = error;
+        return Some(classify_io(source));
+    }
+    if let Some(error) = error.downcast_ref::<redb::DatabaseError>() {
+        match error {
+            redb::DatabaseError::DatabaseAlreadyOpen => return Some(IoFailure::Transient),
+            redb::DatabaseError::Storage(source) => return error_io(source),
+            _ => {}
+        }
+    }
+    if let Some(redb::StorageError::Io(source)) = error.downcast_ref::<redb::StorageError>() {
+        return Some(classify_io(source));
+    }
+    if let Some(error) = error.downcast_ref::<nyanpasu_core_manager::Error>() {
+        match error {
+            nyanpasu_core_manager::Error::Io(source) => return Some(classify_io(source)),
+            nyanpasu_core_manager::Error::RuntimeDirectoryOwned(_) => {
+                return Some(IoFailure::Transient);
+            }
+            _ => {}
+        }
+    }
+    error.source().and_then(error_io)
 }
 
 pub(crate) fn classify_io(error: &io::Error) -> IoFailure {

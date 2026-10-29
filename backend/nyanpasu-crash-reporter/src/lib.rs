@@ -4,6 +4,10 @@ mod platform;
 #[cfg(test)]
 mod render_tests;
 mod report;
+mod startup_failure;
+#[cfg(test)]
+mod startup_failure_render_tests;
+pub use startup_failure::{StartupFailureInput, StartupFailureText, show_startup_failure};
 #[cfg(test)]
 mod tests;
 

@@ -152,12 +152,11 @@ pub fn on_exit_requested(app_handle: &AppHandle, code: Option<i32>, api: &ExitRe
 /// Starts the one wait that ends the app: once every owner has shut down it
 /// exits again, and that exit goes through.
 fn start_shutdown(app_handle: &AppHandle) {
-    let client = request_shutdown(app_handle);
+    let (client, partial) = prepare_shutdown(app_handle);
+    let drain = drain_shutdown_owners(client, partial);
     let app_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
-        if let Some(client) = client {
-            client.wait_shutdown().await;
-        }
+        drain.await;
         let intent = app_handle.state::<ExitBoundary>().gate.lock().finish();
         #[cfg(windows)]
         crate::shutdown_hook::set_ready_for_shutdown();
@@ -172,9 +171,8 @@ fn start_shutdown(app_handle: &AppHandle) {
 /// running, for a caller that then ends the process itself rather than through
 /// Tauri's exit: the updater's installer.
 pub async fn shutdown_before_exit(app_handle: &AppHandle) {
-    if let Some(client) = request_shutdown(app_handle) {
-        client.wait_shutdown().await;
-    }
+    let (client, partial) = prepare_shutdown(app_handle);
+    drain_shutdown_owners(client, partial).await;
     app_handle.state::<ExitBoundary>().gate.lock().cleaned_up();
 }
 
@@ -225,24 +223,64 @@ pub fn shutdown_before_exit_blocking(app_handle: &AppHandle) {
     }
 }
 
-/// Queues the main window's final geometry, then cancels the root token. The
-/// order matters: the session state owner drains what was queued before the
-/// cancel, so the save is written before it stops.
-fn request_shutdown(app_handle: &AppHandle) -> Option<NyanpasuClient> {
+/// Queues the main window's final geometry before the caller cancels the root
+/// token, so the session state owner drains the save before it stops.
+fn prepare_shutdown(
+    app_handle: &AppHandle,
+) -> (Option<NyanpasuClient>, Option<crate::setup::StartupOwners>) {
     let client = app_handle
         .try_state::<NyanpasuClient>()
-        .map(|state| state.inner().clone())?;
-    if app_handle
-        .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
-        .is_some()
+        .map(|state| state.inner().clone());
+    let partial = app_handle
+        .try_state::<crate::setup::StartupOwners>()
+        .map(|state| state.inner().clone());
+    if client.is_some()
+        && app_handle
+            .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
+            .is_some()
     {
         crate::log_err!(
             crate::window::kinds::save_window_state(app_handle),
             "failed to queue the final main window geometry"
         );
     }
-    client.request_shutdown();
-    Some(client)
+    (client, partial)
+}
+
+/// Selects the composed client or partial startup owners, cancels synchronously,
+/// and returns their drain so the event loop stays available during cleanup.
+pub(crate) fn drain_shutdown_owners(
+    client: Option<NyanpasuClient>,
+    partial: Option<crate::setup::StartupOwners>,
+) -> impl Future<Output = ()> + Send + 'static {
+    let owner = match client {
+        Some(client) => Some(ShutdownOwner::Client(client)),
+        None => partial.map(ShutdownOwner::Partial),
+    };
+    match &owner {
+        Some(ShutdownOwner::Client(client)) => client.request_shutdown(),
+        Some(ShutdownOwner::Partial(owners)) => owners.request_shutdown(),
+        None => {}
+    }
+    async move {
+        if let Some(owner) = owner {
+            owner.wait_shutdown().await;
+        }
+    }
+}
+
+enum ShutdownOwner {
+    Client(NyanpasuClient),
+    Partial(crate::setup::StartupOwners),
+}
+
+impl ShutdownOwner {
+    async fn wait_shutdown(&self) {
+        match self {
+            Self::Client(client) => client.wait_shutdown().await,
+            Self::Partial(owners) => owners.wait_shutdown().await,
+        }
+    }
 }
 
 /// The relauncher waits for this process to release the single-instance

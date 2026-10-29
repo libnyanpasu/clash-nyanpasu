@@ -11,6 +11,7 @@ use tauri::utils::platform::current_exe;
 
 mod migrate;
 mod panic_dialog;
+pub(crate) mod startup_failed;
 
 #[derive(Parser, Debug)]
 #[command(name = "clash-nyanpasu", version, about, long_about = None, disable_version_flag = true)]
@@ -41,6 +42,8 @@ enum Commands {
     },
     /// Show a panic dialog while the application is enter panic handler.
     PanicDialog(ReporterOptions),
+    /// Show a startup failure received as JSON on stdin.
+    StartupFailed(ReporterOptions),
     /// Open the manual diagnostics reporter; progress arrives as JSON lines on stdin.
     ReportIssue(ReporterOptions),
     /// Launch the Widget with the specified name.
@@ -64,16 +67,28 @@ pub(crate) enum Error {
     BuildCollectionRuntime { source: std::io::Error },
     #[snafu(display("failed to show diagnostics reporter"))]
     ShowReporter { source: anyhow::Error },
+    #[snafu(display("failed to show startup failure reporter"))]
+    ShowStartupFailure { source: startup_failed::Error },
 }
 
-pub fn parse(paths: &PathResolver) -> Result<(), Error> {
+pub fn parse(paths: &PathResolver) -> Result<bool, Error> {
+    dispatch(Cli::parse(), paths, startup_failed::show)
+}
+
+fn dispatch(
+    cli: Cli,
+    paths: &PathResolver,
+    show_startup: impl FnOnce(Option<I18nLanguage>) -> Result<(), startup_failed::Error>,
+) -> Result<bool, Error> {
     use snafu::ResultExt as _;
-    let cli = Cli::parse();
     if cli.version {
         print_version_info();
     }
     if let Some(commands) = &cli.command {
         match commands {
+            Commands::StartupFailed(options) => {
+                show_startup(options.language).context(ShowStartupFailureSnafu)?;
+            }
             Commands::Migrate(opts) => {
                 migrate::parse(opts, paths);
             }
@@ -130,9 +145,9 @@ pub fn parse(paths: &PathResolver) -> Result<(), Error> {
                     .expect("Failed to start statistic widget");
             }
         }
-        std::process::exit(0);
+        return Ok(true);
     }
-    Ok(()) // bypass
+    Ok(false) // bypass
 }
 
 #[cfg(test)]
@@ -141,6 +156,33 @@ mod tests {
     use nyanpasu_config::application::I18nLanguage;
 
     use super::{Cli, Commands};
+
+    #[test]
+    fn dispatches_startup_failure_to_its_handler_and_returns_without_starting_gui() {
+        let paths = nyanpasu_paths::PathResolver::with_base_dirs(
+            "unused-config".into(),
+            "unused-data".into(),
+        );
+        let cli = Cli::try_parse_from(["clash-nyanpasu", "startup-failed", "--language", "zh-cn"])
+            .unwrap();
+        let mut called = false;
+        let handled = super::dispatch(cli, &paths, |language| {
+            called = true;
+            assert_eq!(language, Some(I18nLanguage::SimplifiedChinese));
+            Ok(())
+        })
+        .unwrap();
+        assert!(called && handled);
+        let cli = Cli::try_parse_from(["clash-nyanpasu", "startup-failed"]).unwrap();
+        assert!(matches!(
+            super::dispatch(cli, &paths, |_| Err(
+                super::startup_failed::Error::ReadInput {
+                    source: std::io::ErrorKind::BrokenPipe.into()
+                }
+            )),
+            Err(super::Error::ShowStartupFailure { .. })
+        ));
+    }
 
     #[test]
     fn reporters_accept_the_application_languages() {

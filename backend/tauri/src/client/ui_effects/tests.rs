@@ -1347,10 +1347,13 @@ fn the_logger_refresher_forwards_to_the_reload_channel_it_was_given() {
     refresher
         .refresh(Some(LoggingLevel::Info), Some(rotation))
         .unwrap();
-    assert_eq!(
-        signals.try_recv().unwrap(),
-        (Some(LoggingLevel::Info), Some(rotation))
-    );
+    let crate::utils::init::logging::ReloadSignal::Reload(level, actual_rotation) =
+        signals.try_recv().unwrap()
+    else {
+        panic!("expected a logger reload");
+    };
+    assert_eq!(level, Some(LoggingLevel::Info));
+    assert_eq!(actual_rotation, Some(rotation));
 
     drop(signals);
     assert!(refresher.refresh(None, Some(rotation)).is_err());

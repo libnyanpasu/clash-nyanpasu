@@ -36,7 +36,6 @@ use super::{
 };
 use crate::{
     client::{
-        convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
         core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
         runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
@@ -48,6 +47,9 @@ use crate::{
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
         service_actor::{ServiceHostStatus, ServicePhase},
     },
+};
+use nyanpasu_core::client::convergence::{
+    ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait,
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).
@@ -1048,7 +1050,7 @@ mod tests {
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, RuntimeInfos, StatusResBody};
 
     use super::*;
-    use crate::core::service::compat::ServiceCompat;
+    use nyanpasu_core::service::compat::ServiceCompat;
 
     const INSTANCE_CONFIG_DIR: &str = "/nyanpasu/config";
 

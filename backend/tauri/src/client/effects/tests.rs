@@ -562,7 +562,7 @@ async fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
 
 #[tokio::test(start_paused = true)]
 async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         retryable: true,
@@ -639,7 +639,7 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
 
 #[tokio::test(start_paused = true)]
 async fn stale_retry_callback_keeps_the_replacement_timer_and_shutdown_cancels_it() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         fail_kind: Some(EffectKind::Locale),
@@ -693,7 +693,7 @@ async fn stale_retry_callback_keeps_the_replacement_timer_and_shutdown_cancels_i
 
 #[tokio::test]
 async fn missing_binding_waits_without_spending_apply_budget() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port::default());
     let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
@@ -737,7 +737,7 @@ async fn missing_binding_waits_without_spending_apply_budget() {
 
 #[tokio::test]
 async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         ..Default::default()
@@ -803,7 +803,7 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
     let pending = client.configuration_status();
     assert!(pending.event_seq > before.event_seq);
     assert!(pending.effects.iter().any(|e| e.kind == EffectKind::Locale
-        && e.health == crate::client::convergence::ConvergenceHealth::Pending));
+        && e.health == nyanpasu_core::client::convergence::ConvergenceHealth::Pending));
     port.release.notify_one();
     wait(&client.inner.effects, |state| {
         state

@@ -166,7 +166,7 @@ struct PublishedView {
     recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
         OperationId,
-        super::convergence::ConvergenceHealth,
+        nyanpasu_core::client::convergence::ConvergenceHealth,
         u32,
         u8,
         String,

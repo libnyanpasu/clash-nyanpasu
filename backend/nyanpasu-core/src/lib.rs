@@ -31,4 +31,6 @@ mod gxhash_smoke {
     }
 }
 pub mod client;
+pub mod download;
+pub mod service;
 pub mod utils;

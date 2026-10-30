@@ -1,13 +1,13 @@
 //! Read-only configuration status. No repair or retry occurs on inspection.
 use super::{
     NyanpasuClient,
-    convergence::ConvergenceHealth,
     effects::{
         plan::EffectKind,
         status::{EffectFailureCode, EffectHealth},
     },
 };
 use crate::state::profiles::sources::{SourceStatus, SourcesSnapshot};
+use nyanpasu_core::client::convergence::ConvergenceHealth;
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ConfigurationStatus {

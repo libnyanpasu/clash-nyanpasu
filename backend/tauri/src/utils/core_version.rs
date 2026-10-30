@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
 use snafu::{ResultExt, ensure};
 
-use crate::client::core_version::{
+use nyanpasu_core::client::core_version::{
     CoreVersionError, CoreVersionExitSnafu, CoreVersionReader, RunCoreVersionSnafu, parse_version,
 };
 

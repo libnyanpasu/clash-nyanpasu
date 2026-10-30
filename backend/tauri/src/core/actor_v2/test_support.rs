@@ -78,7 +78,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
         &self,
     ) -> std::result::Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(nyanpasu_ipc::types::StatusInfo {
@@ -122,21 +122,21 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
 
     async fn install(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.calls.lock().unwrap().push("install");
         Ok(())
     }
 
     async fn uninstall(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.calls.lock().unwrap().push("uninstall");
         Ok(())
     }
 
     async fn start_daemon(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.stopped
             .store(false, std::sync::atomic::Ordering::SeqCst);
         self.calls.lock().unwrap().push("start_daemon");
@@ -145,7 +145,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
 
     async fn stop_daemon(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.stopped
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.calls.lock().unwrap().push("stop_daemon");
@@ -154,7 +154,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
 
     async fn update(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         Ok(())
     }
 
@@ -196,7 +196,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAda
         &self,
     ) -> std::result::Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         Ok(nyanpasu_ipc::types::StatusInfo {
             name: std::borrow::Cow::Borrowed("test-service"),
@@ -208,31 +208,31 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAda
 
     async fn install(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn uninstall(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn start_daemon(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn stop_daemon(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn update(
         &self,
-    ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         Ok(())
     }
 

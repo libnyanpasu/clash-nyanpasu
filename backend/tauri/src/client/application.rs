@@ -2,7 +2,7 @@ use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
+use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel};
 use nyanpasu_core::state::{
     PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
     error::{LoadError, UpsertError},
@@ -61,7 +61,7 @@ struct ApplicationClientInner {
 impl ApplicationClient {
     pub(crate) async fn new(
         mutations: MutationCoordinator,
-        build_channel: crate::bundle::Channel,
+        build_channel: ReleaseChannel,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -88,9 +88,7 @@ impl ApplicationClient {
         let channel = match initial.release_channel {
             // The preference was saved by a nightly build, so a stable or beta
             // build installed over it follows its own channel.
-            Some(crate::bundle::Channel::Nightly)
-                if build_channel != crate::bundle::Channel::Nightly =>
-            {
+            Some(ReleaseChannel::Nightly) if build_channel != ReleaseChannel::Nightly => {
                 build_channel
             }
             preference => build_channel.resolve(preference),
@@ -108,7 +106,7 @@ impl ApplicationClient {
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
-        build_channel: crate::bundle::Channel,
+        build_channel: ReleaseChannel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
@@ -236,7 +234,7 @@ mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let client = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -273,7 +271,7 @@ mod tests {
         let shutdown = tokio_util::sync::CancellationToken::new();
         let client = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(&dir),
             shutdown.clone(),
             &tokio_util::task::TaskTracker::new(),
@@ -331,7 +329,7 @@ mod tests {
         drop(client);
         let reloaded = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -371,9 +369,12 @@ mod tests {
 
     #[tokio::test]
     async fn release_channel_persists_and_non_nightly_builds_can_choose_nightly() {
-        use crate::bundle::Channel;
         let (client, _dir) = test_client().await;
-        for channel in [Channel::Beta, Channel::Stable, Channel::Nightly] {
+        for channel in [
+            ReleaseChannel::Beta,
+            ReleaseChannel::Stable,
+            ReleaseChannel::Nightly,
+        ] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.release_channel = Some(Some(channel));
             assert_eq!(
@@ -385,11 +386,10 @@ mod tests {
 
     #[tokio::test]
     async fn non_nightly_build_installed_over_nightly_follows_its_own_channel() {
-        use crate::bundle::Channel;
-        for build in [Channel::Stable, Channel::Beta] {
+        for build in [ReleaseChannel::Stable, ReleaseChannel::Beta] {
             let (client, dir) = test_client().await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
-            patch.release_channel = Some(Some(Channel::Nightly));
+            patch.release_channel = Some(Some(ReleaseChannel::Nightly));
             client.patch(patch).await.unwrap();
             drop(client);
 
@@ -420,18 +420,17 @@ mod tests {
 
     #[tokio::test]
     async fn nightly_build_cannot_leave_nightly() {
-        use crate::bundle::Channel;
         let dir = tempdir().unwrap();
         let nightly = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            Channel::Nightly,
+            ReleaseChannel::Nightly,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
-        for channel in [Channel::Stable, Channel::Beta] {
+        for channel in [ReleaseChannel::Stable, ReleaseChannel::Beta] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.release_channel = Some(Some(channel));
             assert!(matches!(
@@ -449,21 +448,20 @@ mod tests {
         patch.release_channel = Some(None);
         assert_eq!(
             nightly.patch(patch).await.unwrap().state.release_channel,
-            Some(Channel::Nightly)
+            Some(ReleaseChannel::Nightly)
         );
     }
 
     #[tokio::test]
     async fn release_channel_compiled_nightly_overrides_saved_stable() {
-        use crate::bundle::Channel;
         let (client, dir) = test_client().await;
         assert_eq!(
             client.snapshot().state.release_channel,
-            Some(Channel::Stable)
+            Some(ReleaseChannel::Stable)
         );
         let nightly = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            Channel::Nightly,
+            ReleaseChannel::Nightly,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -472,7 +470,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             nightly.snapshot().state.release_channel,
-            Some(Channel::Nightly)
+            Some(ReleaseChannel::Nightly)
         );
     }
     #[tokio::test]
@@ -501,7 +499,6 @@ mod tests {
 
     #[tokio::test]
     async fn release_channel_migrates_old_beta_config_and_keeps_explicit_stable() {
-        use crate::bundle::Channel;
         let dir = tempdir().unwrap();
         let manager =
             PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
@@ -513,21 +510,24 @@ mod tests {
         drop(manager);
         let beta = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            Channel::Beta,
+            ReleaseChannel::Beta,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
-        assert_eq!(beta.snapshot().state.release_channel, Some(Channel::Beta));
+        assert_eq!(
+            beta.snapshot().state.release_channel,
+            Some(ReleaseChannel::Beta)
+        );
         let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.release_channel = Some(Some(Channel::Stable));
+        patch.release_channel = Some(Some(ReleaseChannel::Stable));
         beta.patch(patch).await.unwrap();
         drop(beta);
         let reloaded = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            Channel::Beta,
+            ReleaseChannel::Beta,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -536,7 +536,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             reloaded.snapshot().state.release_channel,
-            Some(Channel::Stable)
+            Some(ReleaseChannel::Stable)
         );
     }
 }

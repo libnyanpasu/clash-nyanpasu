@@ -4,6 +4,7 @@ mod app_lifecycle;
 pub mod app_update;
 pub(crate) mod application;
 pub mod application_workflow;
+pub(crate) mod bundle_metadata;
 mod clash_api;
 mod clash_config;
 mod clash_info;
@@ -36,8 +37,8 @@ mod traffic;
 pub mod ui_effects;
 
 use self::{
-    application::ApplicationClient, clash_config::ClashConfigClient,
-    session_state::SessionStateClient,
+    application::ApplicationClient, bundle_metadata::BundleMetadata,
+    clash_config::ClashConfigClient, session_state::SessionStateClient,
 };
 use crate::{
     core::{
@@ -61,7 +62,7 @@ use crate::{
     },
 };
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
     clash::{
         config::{ClashConfig, ClashConfigPatch},
         features::ConfigFeatures,
@@ -95,7 +96,7 @@ pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub jobs: nyanpasu_jobs::JobsClient,
-    pub bundle_metadata: crate::bundle::BundleMetadata,
+    pub bundle_metadata: BundleMetadata,
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
@@ -186,7 +187,7 @@ pub struct NyanpasuClient {
 
 async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
-    build_channel: crate::bundle::Channel,
+    build_channel: ReleaseChannel,
     paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
@@ -263,7 +264,7 @@ fn url_derived_name(url: &url::Url) -> String {
 
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
-    bundle_metadata: crate::bundle::BundleMetadata,
+    bundle_metadata: BundleMetadata,
     core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
@@ -436,7 +437,7 @@ impl NyanpasuClient {
     #[allow(clippy::too_many_arguments)]
     async fn with_parts(
         mutations: Option<crate::state::mutation::MutationCoordinator>,
-        bundle_metadata: crate::bundle::BundleMetadata,
+        bundle_metadata: BundleMetadata,
         logging: logs::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
@@ -613,11 +614,13 @@ impl NyanpasuClient {
                 events: app_update_events,
                 settings: app_update_settings,
                 supported: app_update_supported,
-                endpoints: crate::bundle::update_endpoints(
+                endpoints: app_update::endpoints::update_endpoints(
                     app_config
                         .release_channel
                         .unwrap_or(bundle_metadata.release_channel),
+                    bundle_metadata.sourceforge_project,
                 ),
+                bundle_metadata,
                 shutdown: shutdown.child_token(),
             },
             &tasks,
@@ -760,7 +763,7 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
+    pub async fn release_channel(&self) -> Result<ReleaseChannel> {
         Ok(self
             .inner
             .bundle_metadata
@@ -768,7 +771,7 @@ impl NyanpasuClient {
             .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
-    pub fn installed_release_channel(&self) -> crate::bundle::Channel {
+    pub fn installed_release_channel(&self) -> ReleaseChannel {
         self.inner.bundle_metadata.release_channel
     }
 
@@ -820,7 +823,7 @@ impl NyanpasuClient {
 
     pub async fn set_release_channel(
         &self,
-        channel: crate::bundle::Channel,
+        channel: ReleaseChannel,
     ) -> Result<runtime::MutationOutcome<()>> {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(Some(channel));
@@ -2481,7 +2484,7 @@ pub(crate) mod tests {
     ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
         let application = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(dir, "application.yaml"),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -2657,10 +2660,11 @@ pub(crate) mod tests {
         let (backup_paths, storage) = test_backup_deps(&dir);
         NyanpasuClient::with_parts(
             None,
-            crate::bundle::BundleMetadata {
+            BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
             },
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -2819,7 +2823,7 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
@@ -3189,10 +3193,11 @@ pub(crate) mod tests {
                     .join()
                     .unwrap()
             }),
-            bundle_metadata: crate::bundle::BundleMetadata {
+            bundle_metadata: BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
             },
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
@@ -3523,10 +3528,11 @@ pub(crate) mod tests {
         let (backup_paths, storage) = test_backup_deps(&dir);
         let client = NyanpasuClient::with_parts(
             None,
-            crate::bundle::BundleMetadata {
+            BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
             },
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -3672,7 +3678,7 @@ pub(crate) mod tests {
             let paths = test_paths(dir.path(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
-                crate::bundle::Channel::Stable,
+                ReleaseChannel::Stable,
                 paths,
                 &tokio_util::sync::CancellationToken::new(),
                 &tokio_util::task::TaskTracker::new(),
@@ -3706,10 +3712,11 @@ pub(crate) mod tests {
                     .join()
                     .unwrap()
             }),
-            bundle_metadata: crate::bundle::BundleMetadata {
+            bundle_metadata: BundleMetadata {
                 is_portable: true,
                 is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
             },
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
@@ -4707,10 +4714,11 @@ pub(crate) mod tests {
             let (backup_paths, storage) = test_backup_deps(&dir);
             let client = NyanpasuClient::with_parts(
                 None,
-                crate::bundle::BundleMetadata {
+                BundleMetadata {
                     is_portable: false,
                     is_fixed_webview: false,
-                    release_channel: crate::bundle::Channel::Stable,
+                    release_channel: ReleaseChannel::Stable,
+                    sourceforge_project: None,
                 },
                 logs::test_setup(
                     test_paths(dir.path(), dir.path().join("data"))
@@ -5200,7 +5208,7 @@ mod setup_error_tests {
         let tasks = tokio_util::task::TaskTracker::new();
         let result = new_typed_config_clients(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            nyanpasu_config::application::ReleaseChannel::Stable,
             paths,
             &shutdown,
             &tasks,

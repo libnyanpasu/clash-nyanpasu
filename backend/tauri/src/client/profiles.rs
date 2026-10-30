@@ -796,8 +796,10 @@ mod tests {
     #[tokio::test]
     async fn dangling_current_is_persisted_without_removing_global_transforms() {
         let root = tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
         paths.create_base_dirs().unwrap();
         let mut profiles = seeded_profiles();
         profiles.current = Some(ProfileId("missing".into()));
@@ -837,7 +839,7 @@ mod tests {
     async fn legacy_dangling_current_is_repaired_before_migration_validation() {
         for revision in [None, Some(3)] {
             let root = tempdir().unwrap();
-            let paths = crate::client::tests::test_paths(
+            let paths = crate::utils::test_support::test_paths(
                 root.path().join("config"),
                 root.path().join("data"),
             );
@@ -882,8 +884,10 @@ mod tests {
     #[tokio::test]
     async fn current_not_config_still_fails_without_rewriting_profiles() {
         let root = tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
         paths.create_base_dirs().unwrap();
         let mut profiles = seeded_profiles();
         profiles.current = Some(ProfileId("ovl1".into()));
@@ -909,8 +913,10 @@ mod tests {
     #[tokio::test]
     async fn dangling_current_does_not_sanitize_invalid_global_transforms() {
         let root = tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
         paths.create_base_dirs().unwrap();
         let mut profiles = seeded_profiles();
         profiles.current = Some(ProfileId("missing".into()));
@@ -939,8 +945,10 @@ mod tests {
     #[tokio::test]
     async fn materialization_symlink_is_preserved_without_touching_target() {
         let root = tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
         paths.create_base_dirs().unwrap();
         crate::client::startup_recovery_tests::migrate(&paths);
         crate::client::startup_recovery_tests::migrate(&paths);
@@ -988,7 +996,7 @@ mod tests {
     async fn materialization_directory_node_problems_rebuild_before_client_spawn() {
         for relative in ["", "staging", "journal/state-first/prepared"] {
             let root = tempdir().unwrap();
-            let paths = crate::client::tests::test_paths(
+            let paths = crate::utils::test_support::test_paths(
                 root.path().join("config"),
                 root.path().join("data"),
             );
@@ -1077,8 +1085,10 @@ mod tests {
     #[tokio::test]
     async fn materialization_preparation_failure_keeps_its_typed_source() {
         let root = tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
         std::fs::create_dir_all(paths.app_config_dir()).unwrap();
         let blocked = paths.app_profiles_dir();
         std::fs::write(&blocked, "a file blocks the private directory").unwrap();
@@ -1362,7 +1372,7 @@ mod tests {
     async fn refresh_downloads_writes_and_commits_subscription() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -2109,7 +2119,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -2161,7 +2171,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -2198,7 +2208,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -2236,7 +2246,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -2399,7 +2409,7 @@ mod tests {
     async fn add_generates_uid_canonical_path_and_writes_initial_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -3197,7 +3207,7 @@ mod tests {
     async fn add_success_leaves_no_materialization_staging_leftovers() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -3239,7 +3249,7 @@ mod tests {
     async fn refresh_persist_failure_restores_previous_materialized_bytes() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -3284,7 +3294,7 @@ mod tests {
     async fn an_activation_that_does_not_commit_names_the_activated_profile() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -3384,7 +3394,7 @@ mod tests {
     async fn delete_unreferenced_managed_profile_removes_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -4276,7 +4286,7 @@ mod tests {
     async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
@@ -5870,7 +5880,7 @@ mod tests {
             let target = target_dir.path().join("external.yaml");
             std::fs::write(&target, "proxies: []\n").unwrap();
             let fs = Arc::new(ProfileFileService::new(
-                crate::client::tests::test_paths(config_dir.path(), data_dir.path()),
+                crate::utils::test_support::test_paths(config_dir.path(), data_dir.path()),
                 Arc::new(NoProxyPort),
                 crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
             ));

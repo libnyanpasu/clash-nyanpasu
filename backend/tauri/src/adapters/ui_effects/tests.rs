@@ -220,7 +220,7 @@ async fn executor_with_owners(
 /// A controller whose icon paths lead nowhere: the widget logo is the bundled
 /// cat.
 fn widget_controller() -> TauriWidgetController {
-    TauriWidgetController::new(crate::client::tests::test_paths(
+    TauriWidgetController::new(crate::utils::test_support::test_paths(
         "/nonexistent/config",
         "/nonexistent/data",
     ))
@@ -419,7 +419,7 @@ fn logger_effect_forwards_level_and_rotation() {
 #[tokio::test]
 async fn widget_logo_hands_the_resolved_icon_to_the_runtime() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = crate::client::tests::test_paths(dir.path(), dir.path().join("data"));
+    let paths = crate::utils::test_support::test_paths(dir.path(), dir.path().join("data"));
     let mascot = include_bytes!("../../../icons/tray/mascot/tun.png").to_vec();
     std::fs::write(
         crate::core::widget_logo::widget_icon_path(&paths, crate::core::tray::icon::TrayIcon::Tun),

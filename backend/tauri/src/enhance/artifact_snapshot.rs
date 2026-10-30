@@ -147,13 +147,13 @@ mod tests {
     #[test]
     fn maps_scoped_global_and_builtin_logs_to_legacy_layout() {
         let mut profiles = Profiles::default();
-        profiles.append_item(crate::enhance::golden_support::file_config(
+        profiles.append_item(crate::enhance::test_support::file_config(
             "host",
             "h.yaml",
             &["scr1"],
         ));
-        profiles.append_item(crate::enhance::golden_support::overlay("scr1", "s.yaml"));
-        profiles.append_item(crate::enhance::golden_support::overlay("gfix", "g.yaml"));
+        profiles.append_item(crate::enhance::test_support::overlay("scr1", "s.yaml"));
+        profiles.append_item(crate::enhance::test_support::overlay("gfix", "g.yaml"));
         profiles.global_transforms = vec![ProfileId("gfix".into())];
 
         let host = ProfileId("host".into());

@@ -369,7 +369,7 @@ mod tests {
     }
 
     fn paths(root: &Path) -> PathResolver {
-        crate::client::tests::test_paths(root.join("config"), root.join("data"))
+        crate::utils::test_support::test_paths(root.join("config"), root.join("data"))
     }
 
     fn write(path: &(impl AsRef<Path> + ?Sized), content: &str) {
@@ -501,7 +501,7 @@ mod tests {
     fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        let paths = crate::client::tests::test_paths(config.clone(), config.clone());
+        let paths = crate::utils::test_support::test_paths(config.clone(), config.clone());
         write(&paths.profiles_path(), "profiles");
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");

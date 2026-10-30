@@ -264,7 +264,7 @@ mod tests {
         };
         let data = std::env::var_os("NYANPASU_TEST_MIGRATION_DATA").unwrap();
         let result_file = std::env::var_os("NYANPASU_TEST_MIGRATION_RESULT").unwrap();
-        let paths = crate::client::tests::test_paths(config, std::path::PathBuf::from(data));
+        let paths = crate::utils::test_support::test_paths(config, std::path::PathBuf::from(data));
         parse(
             &MigrateOpts {
                 force: false,

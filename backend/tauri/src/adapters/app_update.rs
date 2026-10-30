@@ -11,16 +11,14 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     adapters::events::AppUpdateStateChanged,
-    client::{
-        app_update::{
-            AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
-            AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
-        },
-        bundle_metadata::BundleMetadata,
+    client::app_update::{
+        AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
+        AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
     },
     service::profile_file::ports::SelfProxyPortSource,
 };
 use nyanpasu_config::application::UpdateSource;
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);
 
@@ -84,9 +82,10 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
                     }
                 });
             if let Some(port) = self.proxy_port.mixed_port() {
-                builder = builder.proxy(crate::utils::config::get_self_proxy(port).parse()?);
+                builder =
+                    builder.proxy(nyanpasu_core::utils::config::get_self_proxy(port).parse()?);
             }
-            if let Ok(Some(proxy)) = crate::utils::config::get_system_proxy() {
+            if let Ok(Some(proxy)) = nyanpasu_core::utils::config::get_system_proxy() {
                 builder = builder.proxy(proxy.parse().context("invalid system proxy")?);
             }
             let Some(mut update) = builder.build()?.check().await? else {

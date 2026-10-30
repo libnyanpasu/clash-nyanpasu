@@ -21,8 +21,8 @@ pub struct BundleMetadata {
     pub sourceforge_project: Option<&'static str>,
 }
 
-#[cfg(test)]
-pub(crate) const TEST_BUNDLE_METADATA: BundleMetadata = BundleMetadata {
+#[cfg(any(test, feature = "test-support"))]
+pub const TEST_BUNDLE_METADATA: BundleMetadata = BundleMetadata {
     app_version: "2.0.0-test+host",
     package_version: "1.0.0-test",
     build_date: "2026-10-29T00:00:00Z",

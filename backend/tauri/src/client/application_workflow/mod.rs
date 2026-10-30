@@ -678,7 +678,7 @@ impl ApplicationWorkflowClient {
                 }
             }
         });
-        crate::client::owner_shutdown::drain_on_shutdown(
+        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(
             &args.tasks,
             args.shutdown,
             actor.get_cell(),

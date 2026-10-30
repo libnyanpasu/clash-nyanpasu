@@ -371,7 +371,7 @@ impl NyanpasuClient {
             .find(|snapshot| snapshot.inspection_id == snapshot_id)
             .context(RuntimeSnapshotChangedSnafu)?;
         let snapshot_id = snapshot_id.to_owned();
-        crate::utils::blocking::join(
+        nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || snapshot.inspection_content(&snapshot_id, node_id))
                 .await,
         )

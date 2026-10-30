@@ -172,7 +172,7 @@ impl ProfilesClient {
 
         let loaded = snapshot.load().state.clone();
         let preparation = materialization.clone();
-        let report = crate::utils::blocking::join(
+        let report = nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || preparation.reconcile(&loaded)).await,
         )
         .context(PrepareMaterializationSnafu)?;
@@ -196,7 +196,11 @@ impl ProfilesClient {
         .await
         .context(SpawnActorSnafu)?
         .0;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(
+            tasks,
+            shutdown,
+            actor_ref.get_cell(),
+        );
 
         Ok(Self {
             inner: Arc::new(ProfilesClientInner {
@@ -779,7 +783,7 @@ mod tests {
         let service = Arc::new(ProfileFileService::new(
             paths.clone(),
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -796,7 +800,7 @@ mod tests {
     #[tokio::test]
     async fn dangling_current_is_persisted_without_removing_global_transforms() {
         let root = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -839,7 +843,7 @@ mod tests {
     async fn legacy_dangling_current_is_repaired_before_migration_validation() {
         for revision in [None, Some(3)] {
             let root = tempdir().unwrap();
-            let paths = crate::utils::test_support::test_paths(
+            let paths = nyanpasu_core::utils::test_support::test_paths(
                 root.path().join("config"),
                 root.path().join("data"),
             );
@@ -884,7 +888,7 @@ mod tests {
     #[tokio::test]
     async fn current_not_config_still_fails_without_rewriting_profiles() {
         let root = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -913,7 +917,7 @@ mod tests {
     #[tokio::test]
     async fn dangling_current_does_not_sanitize_invalid_global_transforms() {
         let root = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -945,7 +949,7 @@ mod tests {
     #[tokio::test]
     async fn materialization_symlink_is_preserved_without_touching_target() {
         let root = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -996,7 +1000,7 @@ mod tests {
     async fn materialization_directory_node_problems_rebuild_before_client_spawn() {
         for relative in ["", "staging", "journal/state-first/prepared"] {
             let root = tempdir().unwrap();
-            let paths = crate::utils::test_support::test_paths(
+            let paths = nyanpasu_core::utils::test_support::test_paths(
                 root.path().join("config"),
                 root.path().join("data"),
             );
@@ -1020,7 +1024,7 @@ mod tests {
             let service = ProfileFileService::new(
                 paths.clone(),
                 Arc::new(NoProxyPort),
-                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
             );
             let path = ManagedProfilePath::new("usable.yaml").unwrap();
             let prepared = service
@@ -1085,7 +1089,7 @@ mod tests {
     #[tokio::test]
     async fn materialization_preparation_failure_keeps_its_typed_source() {
         let root = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -1095,7 +1099,7 @@ mod tests {
         let service = Arc::new(ProfileFileService::new(
             paths.clone(),
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let shutdown = CancellationToken::new();
         let tasks = TaskTracker::new();
@@ -1372,11 +1376,12 @@ mod tests {
     async fn refresh_downloads_writes_and_commits_subscription() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2119,11 +2124,12 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2171,11 +2177,12 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2208,11 +2215,12 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2246,11 +2254,12 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -2409,11 +2418,12 @@ mod tests {
     async fn add_generates_uid_canonical_path_and_writes_initial_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3207,11 +3217,12 @@ mod tests {
     async fn add_success_leaves_no_materialization_staging_leftovers() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3249,11 +3260,12 @@ mod tests {
     async fn refresh_persist_failure_restores_previous_materialized_bytes() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -3294,11 +3306,12 @@ mod tests {
     async fn an_activation_that_does_not_commit_names_the_activated_profile() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -3394,11 +3407,12 @@ mod tests {
     async fn delete_unreferenced_managed_profile_removes_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -4286,11 +4300,12 @@ mod tests {
     async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir.path(), data_dir.path());
+        let paths =
+            nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(
             paths,
             Arc::new(NoProxyPort),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -5880,9 +5895,9 @@ mod tests {
             let target = target_dir.path().join("external.yaml");
             std::fs::write(&target, "proxies: []\n").unwrap();
             let fs = Arc::new(ProfileFileService::new(
-                crate::utils::test_support::test_paths(config_dir.path(), data_dir.path()),
+                nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path()),
                 Arc::new(NoProxyPort),
-                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
             ));
             let client = ProfilesClient::new(
                 crate::state::mutation::MutationCoordinator::isolated(),

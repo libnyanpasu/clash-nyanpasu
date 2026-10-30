@@ -366,7 +366,7 @@ pub(crate) async fn write_product(
             .context(CreateRuntimeDirectorySnafu { path: parent })?;
     }
     let path = product.to_path_buf();
-    let written = crate::utils::blocking::join(
+    let written = nyanpasu_core::utils::blocking::join(
         tokio::task::spawn_blocking(move || {
             atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite)
                 .write(|file| std::io::Write::write_all(file, &bytes))
@@ -456,7 +456,7 @@ impl RuntimePaths {
     pub async fn cleanup_stale_candidates(&self, max_age: Duration) -> Result<usize, Error> {
         prepare_private_dir(&self.candidate_dir).await?;
         let path = self.candidate_dir.clone();
-        crate::utils::blocking::join(
+        nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || cleanup_candidates(&path, max_age)).await,
         )
     }
@@ -583,7 +583,7 @@ where
         Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_dir() => {
             let error = ValidateCandidateDirectorySnafu { path }.build();
             let original = path.to_path_buf();
-            crate::utils::blocking::join(
+            nyanpasu_core::utils::blocking::join(
                 tokio::task::spawn_blocking(move || {
                     corrupt::preserve(original.as_std_path(), &error)
                 })
@@ -1108,7 +1108,7 @@ pub(crate) mod tests {
     #[test]
     fn runtime_paths_are_derived_from_injected_config_root() {
         let dir = tempfile::tempdir().unwrap();
-        let resolver = crate::utils::test_support::test_paths(
+        let resolver = nyanpasu_core::utils::test_support::test_paths(
             dir.path().join("config"),
             dir.path().join("data"),
         );

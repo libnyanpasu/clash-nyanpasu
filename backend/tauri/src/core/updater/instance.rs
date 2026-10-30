@@ -22,14 +22,14 @@ use super::{
     shared::{self, CoreTypeMeta},
 };
 use crate::{
-    client::{
-        bundle_metadata::BundleMetadata,
-        core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
-    },
+    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
     core::download::{DownloadSession, DownloadStatus},
-    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_core::{
+    client::bundle_metadata::BundleMetadata,
+    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
+};
 use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
@@ -110,7 +110,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
             Some(cached) if cached.1.elapsed() < Duration::from_secs(3600) => cached,
             _ => {
                 let results = client.mirror_speed_test(
-                    crate::utils::candy::INTERNAL_MIRRORS,
+                    nyanpasu_core::utils::candy::INTERNAL_MIRRORS,
                     "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
                 ).await?;
                 let (mirror, speed) = results
@@ -754,7 +754,7 @@ mod tests {
             dir.path().to_path_buf(),
             test_paths(&dir),
             port.clone(),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         );
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
@@ -837,7 +837,7 @@ mod tests {
             dir.path().to_path_buf(),
             test_paths(&dir),
             port,
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         );
         let token = CancellationToken::new();
         let prepare = tokio::spawn({

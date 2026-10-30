@@ -53,10 +53,9 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
     )
     .await
     .unwrap();
-    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
-        dir.path(),
-        dir.path().join("data"),
-    ));
+    let paths = runtime::RuntimePaths::from_resolver(
+        &nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data")),
+    );
     let endpoint = TestControlEndpoint::succeeding();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
     let preparation = RuntimePreparation::new(

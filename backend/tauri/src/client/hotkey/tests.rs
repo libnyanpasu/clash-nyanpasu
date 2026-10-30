@@ -640,15 +640,16 @@ mod facade {
         state::config_error::ConfigError,
     };
 
-    fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
-        let mut args = test_client_args_with_endpoint(dir, test_idle_endpoint());
+    async fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
+        let mut args = test_client_args_with_endpoint(dir, test_idle_endpoint()).await;
         args.window = Arc::new(window);
-        tauri::async_runtime::block_on(NyanpasuClient::try_new(args))
+        NyanpasuClient::try_new(args)
+            .await
             .expect("client should construct")
     }
 
-    fn client(dir: &TempDir) -> NyanpasuClient {
-        client_with_window(dir, MockWindowControl::new())
+    async fn client(dir: &TempDir) -> NyanpasuClient {
+        client_with_window(dir, MockWindowControl::new()).await
     }
 
     /// A mode change would otherwise ask the core to drop connections, which
@@ -662,12 +663,12 @@ mod facade {
         client.patch_clash_config(patch).await.unwrap();
     }
 
-    #[test]
-    fn dispatch_toggle_system_proxy_flips_app_config() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_toggle_system_proxy_flips_app_config() {
         let dir = tempdir().expect("tempdir should be created");
-        let client = client(&dir);
+        let client = client(&dir).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
 
             client
@@ -693,15 +694,16 @@ mod facade {
                 .await
                 .expect("the explicit disable should commit");
             assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn dispatch_toggle_tun_mode_flips_clash_config() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_toggle_tun_mode_flips_clash_config() {
         let dir = tempdir().expect("tempdir should be created");
-        let client = client(&dir);
+        let client = client(&dir).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let before = client.get_clash_config().await.unwrap().enable_tun_mode;
 
             client
@@ -724,15 +726,16 @@ mod facade {
                 .await
                 .expect("the explicit enable should commit");
             assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn dispatch_clash_mode_patches_runtime_overrides() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_clash_mode_patches_runtime_overrides() {
         let dir = tempdir().expect("tempdir should be created");
-        let client = client(&dir);
+        let client = client(&dir).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             disable_mode_interruption(&client).await;
 
             client
@@ -744,41 +747,43 @@ mod facade {
                 serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
                 "global"
             );
-        });
+        }).await;
     }
 
-    #[test]
-    fn dispatch_dashboard_goes_to_the_injected_window_control() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_dashboard_goes_to_the_injected_window_control() {
         let dir = tempdir().expect("tempdir should be created");
         let mut window = MockWindowControl::new();
         window
             .expect_toggle_dashboard()
             .times(1)
             .returning(|| Ok(()));
-        let client = client_with_window(&dir, window);
+        let client = client_with_window(&dir, window).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             client
                 .dispatch_hotkey_action(HotkeyAction::OpenOrCloseDashboard)
                 .await
                 .expect("the dashboard toggle should succeed");
-        });
+        })
+        .await;
     }
 
     /// The platform parser is the authority on an accelerator, and it has to be
     /// consulted here: after the commit the effect has already released the
     /// shortcuts that used to work, and the junk is on disk.
-    #[test]
-    fn platform_invalid_accelerator_is_rejected_before_commit() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn platform_invalid_accelerator_is_rejected_before_commit() {
         let dir = tempdir().expect("tempdir should be created");
         let mut effects = MockApplicationEffectsPort::new();
         effects.expect_apply().never();
-        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
+        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
         args.effects = Arc::new(effects);
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args))
+        let client = NyanpasuClient::try_new(args)
+            .await
             .expect("client should construct");
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();
             patch.hotkeys = Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]);
 
@@ -799,15 +804,16 @@ mod facade {
                 client.get_app_config().await.unwrap().hotkeys.is_empty(),
                 "nothing may be written when validation fails"
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn invalid_hotkey_is_rejected_before_commit() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn invalid_hotkey_is_rejected_before_commit() {
         let dir = tempdir().expect("tempdir should be created");
-        let client = client(&dir);
+        let client = client(&dir).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();
             patch.hotkeys = Some(vec!["toggle_tun_mode,Q".to_owned()]);
 
@@ -828,6 +834,7 @@ mod facade {
                 client.get_app_config().await.unwrap().hotkeys.is_empty(),
                 "nothing may be written when validation fails"
             );
-        });
+        })
+        .await;
     }
 }

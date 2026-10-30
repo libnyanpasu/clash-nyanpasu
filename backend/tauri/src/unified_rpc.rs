@@ -482,10 +482,11 @@ mod tests {
     #[test]
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
-        let args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+        let args =
+            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+                &directory,
+                crate::client::tests::TestControlEndpoint::succeeding(),
+            ));
         std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
         std::fs::write(
             args.paths
@@ -869,10 +870,11 @@ mod tests {
         }
         let directory = tempfile::tempdir().unwrap();
         let probe = Arc::new(Probe(AtomicUsize::new(0)));
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+        let mut args =
+            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+                &directory,
+                crate::client::tests::TestControlEndpoint::succeeding(),
+            ));
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -956,7 +958,9 @@ mod tests {
                 ),
         ));
         let directory = tempfile::tempdir().unwrap();
-        let args = crate::client::tests::test_client_args_with_endpoint(&directory, endpoint(url));
+        let args = tauri::async_runtime::block_on(
+            crate::client::tests::test_client_args_with_endpoint(&directory, endpoint(url)),
+        );
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -1074,10 +1078,11 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+        let mut args =
+            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+                &directory,
+                crate::client::tests::TestControlEndpoint::succeeding(),
+            ));
         let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
         args.host_adapters.debug_http =
@@ -1136,10 +1141,11 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+        let mut args =
+            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+                &directory,
+                crate::client::tests::TestControlEndpoint::succeeding(),
+            ));
         // The browser fixture uses English accessible names on every host locale.
         let config = nyanpasu_config::application::NyanpasuAppConfig {
             language: nyanpasu_config::application::I18nLanguage::English,

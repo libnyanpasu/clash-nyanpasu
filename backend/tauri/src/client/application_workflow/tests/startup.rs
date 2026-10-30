@@ -606,12 +606,12 @@ async fn a_clean_local_start_applies_once_under_a_proven_owner() {
 /// S4 (random port): startup is not a source transaction. A randomly picked
 /// mixed port lands in the runtime binding, and none of the four source
 /// domains changes, neither its version nor its bytes.
-#[test]
-fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     endpoint.set_status(Some(STOPPED), None);
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
     let clash = ClashConfig {
         mixed_port: PortStrategy {
             kind: PortStrategyKind::Random,
@@ -632,8 +632,8 @@ fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
             .map(|path| std::fs::read(path).ok())
             .collect::<Vec<_>>()
     };
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         let versions = |client: &NyanpasuClient| {
             let versions = client.configuration_status().source_versions;
             (
@@ -665,7 +665,8 @@ fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
             Some(picked),
             "the binding is the port the build picked"
         );
-    });
+    })
+    .await;
 }
 
 /// S5: a core an earlier session left running in the service, with Service

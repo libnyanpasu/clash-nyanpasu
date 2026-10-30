@@ -660,8 +660,8 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
     }
 }
 
-#[test]
-fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     use super::super::tests::{HostTransitionEndpoint, HostTransitionServiceAdapter};
     let dir = tempfile::tempdir().unwrap();
     let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -670,7 +670,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         entered: Notify::new(),
         release: Notify::new(),
     });
-    let (core, service) = tauri::async_runtime::block_on(async {
+    let (core, service) = (async {
         let core = CoreClient::spawn(HostTransitionEndpoint::stopped(
             ExecutionHost::Local,
             calls.clone(),
@@ -689,12 +689,13 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         .await
         .unwrap();
         (core, service)
-    });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
+    })
+    .await;
+    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
     args.core_v2 = core;
     args.service = service;
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         assert_eq!(
             client.startup_reconcile().await.outcome,
             super::startup::StartupOutcome::Ready
@@ -726,7 +727,8 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         let reconcile = calls.iter().rposition(|c| *c == "reconcile_local").unwrap();
         let uninstall = calls.iter().position(|c| *c == "uninstall").unwrap();
         assert!(reconcile < uninstall);
-    });
+    })
+    .await;
 }
 
 #[derive(Default)]
@@ -782,7 +784,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new(park: bool, fail: bool) -> Self {
+    async fn new(park: bool, fail: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         let installer = Arc::new(Installer {
@@ -794,9 +796,9 @@ impl Fixture {
             calls: AtomicUsize::new(0),
             submissions_at_copy: AtomicUsize::new(0),
         });
-        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
         args.binary_installer = installer.clone();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
+        let client = NyanpasuClient::try_new(args).await.unwrap();
         Self {
             client,
             endpoint,
@@ -885,10 +887,10 @@ async fn start_replacement(
     (task, staging_path)
 }
 
-#[test]
-fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
-    let f = Fixture::new(true, false);
-    tauri::async_runtime::block_on(async {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
+    let f = Fixture::new(true, false).await;
+    (async {
         f.endpoint.prime(&f.client).await;
         let (task, staging) = start_replacement(&f).await;
         assert_eq!(
@@ -921,11 +923,12 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
         );
         assert!(!staging.exists());
         assert!(!f.client.inner.application_workflow.status().uncertain);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn replacement_decisions_use_applied_identity_and_always_recover() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replacement_decisions_use_applied_identity_and_always_recover() {
     use nyanpasu_core_manager::CoreKind;
     use nyanpasu_ipc::api::status::CoreStateDetail;
     // desired, applied kind, stopped, target, calls before copy, restart
@@ -951,8 +954,8 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
         (ClashCore::Mihomo, None, true, ClashCore::ClashRs, 1, false),
     ];
     for (desired, kind, stopped, target, before_copy, restart) in cases {
-        let f = Fixture::new(false, false);
-        tauri::async_runtime::block_on(async {
+        let f = Fixture::new(false, false).await;
+        (async {
             f.endpoint.prime(&f.client).await;
             f.endpoint
                 .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
@@ -986,14 +989,15 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
                     desired
                 );
             }
-        });
+        })
+        .await;
     }
 }
 
-#[test]
-fn failed_death_proof_never_installs_even_when_status_says_stopped() {
-    let f = Fixture::new(false, false);
-    tauri::async_runtime::block_on(async {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn failed_death_proof_never_installs_even_when_status_says_stopped() {
+    let f = Fixture::new(false, false).await;
+    (async {
         f.endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             None,
@@ -1010,13 +1014,14 @@ fn failed_death_proof_never_installs_even_when_status_says_stopped() {
         );
         assert_eq!(f.installer.calls.load(Ordering::SeqCst), 0);
         assert!(!progress.0.load(Ordering::SeqCst));
-    });
+    })
+    .await;
 }
 
-#[test]
-fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
-    let f = Fixture::new(true, false);
-    tauri::async_runtime::block_on(async {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
+    let f = Fixture::new(true, false).await;
+    (async {
         let (replace, _) = start_replacement(&f).await;
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
@@ -1034,13 +1039,14 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         let before = f.endpoint.submissions();
         assert!(f.client.reconcile_core().await.is_err());
         assert_eq!(f.endpoint.submissions(), before);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn failed_installation_does_not_restart() {
-    let f = Fixture::new(false, true);
-    tauri::async_runtime::block_on(async {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn failed_installation_does_not_restart() {
+    let f = Fixture::new(false, true).await;
+    (async {
         let (artifact, progress) = f.artifact(ClashCore::Mihomo);
         assert!(
             f.client
@@ -1054,13 +1060,14 @@ fn failed_installation_does_not_restart() {
         assert_eq!(f.endpoint.submissions(), 2);
         assert!(!f.client.inner.application_workflow.status().uncertain);
         f.client.reconcile_core().await.unwrap();
-    });
+    })
+    .await;
 }
 
-#[test]
-fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product() {
-    let f = Fixture::new(false, false);
-    tauri::async_runtime::block_on(async {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product() {
+    let f = Fixture::new(false, false).await;
+    (async {
         f.endpoint.prime(&f.client).await;
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
@@ -1072,7 +1079,8 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
             RuntimeError::Isolated
         ));
         assert_eq!(f.endpoint.submissions(), 1);
-    });
+    })
+    .await;
 }
 
 /// Two graphs share no workflow state: a reconcile in one builds nothing in
@@ -1123,15 +1131,15 @@ async fn disable_mode_interruption(client: &NyanpasuClient) {
     client.patch_clash_config(patch).await.unwrap();
 }
 
-#[test]
-fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-        test_client_args_with_endpoint(&dir, endpoint.clone()),
-    ))
-    .unwrap();
-    tauri::async_runtime::block_on(async {
+    let client =
+        NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+            .await
+            .unwrap();
+    (async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let (left, right) = tokio::join!(
@@ -1154,17 +1162,18 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
         assert_eq!(applied.config()["ipv6"].as_bool(), Some(true));
         assert_eq!(applied.revision.get(), 3);
         assert_eq!(endpoint.submissions(), 2);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn config_reconcile_failure_reports_committed_state_without_replaying() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_reconcile_failure_reports_committed_state_without_replaying() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::failing();
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
     let config_path = args.paths.clash_config_path();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let outcome = client
@@ -1191,16 +1200,16 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
             serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
             "direct"
         );
-    });
+    }).await;
 }
 
-#[test]
-fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.snapshot();
@@ -1235,23 +1244,24 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
                 .get(),
             1
         );
-    });
+    })
+    .await;
 }
 
 /// V08/V09 (U7): a save whose write fails after its Try applied is returned
 /// as an error that names the persistence cause and what became of the
 /// runtime: rolled back, or not, in which case the domain is isolated. The
 /// source keeps its version either way.
-#[test]
-fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
     for restore_lost in [false, true] {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
-        let args = test_client_args_with_endpoint(&dir, scripted.clone());
+        let args = test_client_args_with_endpoint(&dir, scripted.clone()).await;
         let path = args.paths.clash_config_path();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        tauri::async_runtime::block_on(async {
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
             endpoint.prime(&client).await;
             disable_mode_interruption(&client).await;
             let before = client.inner.clash_config.snapshot();
@@ -1314,17 +1324,18 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
                 );
                 assert!(!client.inner.application_workflow.status().uncertain);
             }
-        });
+        })
+        .await;
     }
 }
 
 /// An installation sent after the workflow has stopped never reaches it, so it
 /// certainly did not run: the caller gets a definite refusal, and the progress
 /// observer its one terminal answer.
-#[test]
-fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
-    let f = Fixture::new(false, false);
-    tauri::async_runtime::block_on(async {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
+    let f = Fixture::new(false, false).await;
+    (async {
         f.client.request_shutdown();
         f.client.wait_shutdown().await;
         let (mut artifact, _) = f.artifact(ClashCore::Mihomo);
@@ -1376,7 +1387,8 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
             id,
             "a failed task reserves nothing"
         );
-    });
+    })
+    .await;
 }
 
 /// Counts the ClashConfig notifications the client sends the UI.
@@ -1419,17 +1431,17 @@ async fn until_notified(client: &NyanpasuClient) {
     .unwrap();
 }
 
-#[test]
-fn an_override_patch_submits_once_and_notifies_the_ui() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_override_patch_submits_once_and_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
     args.ui_sink = ui.clone();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         until_notified(&client).await;
@@ -1459,22 +1471,23 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
         .await
         .expect("the UI hears about the ClashConfig change")
         .unwrap();
-    });
+    })
+    .await;
 }
 
 /// A core reconcile refreshes the UI's clash view, as every lifecycle command
 /// does; the removed rebuild route only repeated this refresh.
-#[test]
-fn a_core_reconcile_notifies_the_ui() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_core_reconcile_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
     args.ui_sink = ui.clone();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         endpoint.prime(&client).await;
         until_notified(&client).await;
         let mut refreshed = ui.refreshed.subscribe();
@@ -1487,13 +1500,14 @@ fn a_core_reconcile_notifies_the_ui() {
         .await
         .expect("the UI hears about the reconcile")
         .unwrap();
-    });
+    })
+    .await;
 }
 
 /// The explicit start a reconcile becomes while no owner is proven refreshes
 /// the clash view too.
-#[test]
-fn an_explicit_start_notifies_the_ui() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_explicit_start_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     // No StartupReconcile runs, so nothing proves who owns the stopped core.
@@ -1504,10 +1518,10 @@ fn an_explicit_start_notifies_the_ui() {
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
     args.ui_sink = ui.clone();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         let workflow = &client.inner.application_workflow;
         assert_eq!(ownership(workflow).await, Ownership::Unproven);
         until_notified(&client).await;
@@ -1527,16 +1541,17 @@ fn an_explicit_start_notifies_the_ui() {
         .await
         .expect("the UI hears about the explicit start")
         .unwrap();
-    });
+    })
+    .await;
 }
 
-#[test]
-fn a_control_channel_patch_applies_the_committed_channel() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_control_channel_patch_applies_the_committed_channel() {
     use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
     use nyanpasu_core_manager::LocalIpcPolicy;
 
-    let f = Fixture::new(false, false);
-    tauri::async_runtime::block_on(async {
+    let f = Fixture::new(false, false).await;
+    (async {
         f.endpoint.prime(&f.client).await;
         for (channel, disable_http, policy) in [
             (ClashControlChannel::HttpOnly, true, LocalIpcPolicy::Disable),
@@ -1560,15 +1575,16 @@ fn a_control_channel_patch_applies_the_committed_channel() {
             assert_eq!(settings.policy, policy);
             assert_eq!(settings.keep_http_controller, !disable_http);
         }
-    });
+    })
+    .await;
 }
 
-#[test]
-fn a_control_channel_patch_does_not_start_a_stopped_core() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_control_channel_patch_does_not_start_a_stopped_core() {
     use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
 
-    let f = Fixture::new(false, false);
-    tauri::async_runtime::block_on(async {
+    let f = Fixture::new(false, false).await;
+    (async {
         f.endpoint.prime(&f.client).await;
         f.endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
@@ -1586,7 +1602,8 @@ fn a_control_channel_patch_does_not_start_a_stopped_core() {
         patch.clash_control_channel = Some(ClashControlChannel::PreferIpc);
         f.client.patch_clash_config(patch).await.unwrap();
         assert_eq!(f.endpoint.submissions(), 1);
-    });
+    })
+    .await;
 }
 
 #[derive(Default)]
@@ -1604,11 +1621,11 @@ impl BinaryInstallProgress for TerminalProgress {
 /// exactly once, whether the shutdown or an isolated execution domain refused
 /// it. It waits behind a parked installation, and its caller has already given
 /// up on it.
-#[test]
-fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it() {
     for isolate in [false, true] {
-        let f = Fixture::new(true, false);
-        tauri::async_runtime::block_on(async {
+        let f = Fixture::new(true, false).await;
+        (async {
             // A running core, so the installation ends in a restart.
             f.endpoint.prime(&f.client).await;
             let (first, _) = start_replacement(&f).await;
@@ -1648,6 +1665,7 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
                 "shutting down"
             }));
             assert_eq!(f.installer.calls.load(Ordering::SeqCst), 1);
-        });
+        })
+        .await;
     }
 }

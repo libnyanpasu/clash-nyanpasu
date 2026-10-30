@@ -360,17 +360,17 @@ async fn independent_graphs_and_shutdown_admission() {
     right_shutdown.run().await;
 }
 
-#[test]
-fn source_commit_and_second_save_do_not_wait_for_gui() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn source_commit_and_second_save_do_not_wait_for_gui() {
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port {
         block: Some(EffectKind::Tray),
         ..Default::default()
     });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
+    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
     args.effects = port.clone();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         let first = tokio::time::timeout(
             Duration::from_secs(5),
             client.patch_app_config(language(I18nLanguage::Korean)),
@@ -394,20 +394,21 @@ fn source_commit_and_second_save_do_not_wait_for_gui() {
         port.release.notify_one();
         client.request_shutdown();
         client.wait_shutdown().await;
-    });
+    })
+    .await;
 }
 
-#[test]
-fn asynchronous_failure_is_status_and_never_cancels_source() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn asynchronous_failure_is_status_and_never_cancels_source() {
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         ..Default::default()
     });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
+    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
     args.effects = port;
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         let result = client
             .patch_app_config(language(I18nLanguage::Korean))
             .await
@@ -433,17 +434,18 @@ fn asynchronous_failure_is_status_and_never_cancels_source() {
         );
         client.request_shutdown();
         client.wait_shutdown().await;
-    });
+    })
+    .await;
 }
 
-#[test]
-fn no_op_and_session_saves_do_not_dispatch() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_op_and_session_saves_do_not_dispatch() {
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
+    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
     args.effects = port.clone();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         let current = client.get_app_config().await.unwrap().language;
         client.patch_app_config(language(current)).await.unwrap();
         client
@@ -461,19 +463,20 @@ fn no_op_and_session_saves_do_not_dispatch() {
         assert!(port.calls.lock().unwrap().is_empty());
         client.request_shutdown();
         client.wait_shutdown().await;
-    });
+    })
+    .await;
 }
 
-#[test]
-fn rejected_source_never_dispatches() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rejected_source_never_dispatches() {
     use crate::{client::ClientError, state::config_error::ConfigError};
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
+    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
     args.effects = port.clone();
     args.bundle_metadata.release_channel = ReleaseChannel::Nightly;
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         let mut nightly = NyanpasuAppConfig::new_empty_patch();
         nightly.release_channel = Some(Some(ReleaseChannel::Nightly));
         client.patch_app_config(nightly).await.unwrap();
@@ -497,23 +500,24 @@ fn rejected_source_never_dispatches() {
         );
         client.request_shutdown();
         client.wait_shutdown().await;
-    });
+    })
+    .await;
 }
 
 /// The clash config and profiles owners hand the effects owner their own
 /// slices: a mode change reaches the tray from the clash config owner, and a
 /// profiles commit asks the tray for a partial refresh.
-#[test]
-fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
     use crate::client::tests::minimal_file_profile_request;
     use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, Mode};
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
     let endpoint = TestControlEndpoint::succeeding();
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
     args.effects = port.clone();
-    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-    tauri::async_runtime::block_on(async {
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    (async {
         endpoint.prime(&client).await;
         client
             .patch_runtime_overrides(ClashGuardOverridesPatch {
@@ -552,7 +556,8 @@ fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
         ));
         client.request_shutdown();
         client.wait_shutdown().await;
-    });
+    })
+    .await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -776,7 +781,7 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
         block: Some(EffectKind::Locale),
         ..Default::default()
     });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
+    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
     args.effects = port.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     let before = client.configuration_status();

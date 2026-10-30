@@ -2374,8 +2374,8 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
-        test_v2_clients_with_endpoint(test_idle_endpoint())
+    pub(crate) async fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
+        test_v2_clients_with_endpoint(test_idle_endpoint()).await
     }
 
     /// A core that answers nothing, for tests whose subject is the facade
@@ -2384,20 +2384,14 @@ pub(crate) mod tests {
         Arc::new(IdleEndpoint)
     }
 
-    pub(crate) fn test_v2_clients_with_endpoint(
+    pub(crate) async fn test_v2_clients_with_endpoint(
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
     ) -> (CoreClientV2, ServiceClient) {
-        std::thread::spawn(move || {
-            tauri::async_runtime::block_on(async {
-                let core = CoreClientV2::spawn(endpoint).await.unwrap();
-                let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-                    .await
-                    .unwrap();
-                (core, service)
-            })
-        })
-        .join()
-        .expect("test v2 client construction should not panic")
+        let core = CoreClientV2::spawn(endpoint).await.unwrap();
+        let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
+            .await
+            .unwrap();
+        (core, service)
     }
 
     fn temp_config_path(dir: &TempDir, file_name: &str) -> Utf8PathBuf {
@@ -2527,8 +2521,8 @@ pub(crate) mod tests {
         test_client_with_system_dns(dir, Arc::new(NoopSystemDnsCache)).await
     }
 
-    #[test]
-    fn logs_facade_reads_app_files_and_degrades_service_independently() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn logs_facade_reads_app_files_and_degrades_service_independently() {
         use crate::client::logs::LogSource;
         use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
         let dir = tempdir().unwrap();
@@ -2541,8 +2535,8 @@ pub(crate) mod tests {
             b"{\"level\":\"INFO\",\"fields\":{\"message\":\"app own log\"}}\n",
         )
         .unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        tauri::async_runtime::block_on(async {
+        let client = test_client(&dir).await;
+        (async {
             assert_eq!(
                 client.list_log_files(LogSource::App).await.unwrap().len(),
                 1
@@ -2591,7 +2585,8 @@ pub(crate) mod tests {
                 .close_log_session(LogSource::App, "window".into(), session.id)
                 .await
                 .unwrap();
-        });
+        })
+        .await;
     }
 
     async fn test_client_with_system_dns(
@@ -2642,7 +2637,7 @@ pub(crate) mod tests {
         .await
         .expect("profiles client should be created");
         let ports = Arc::new(SessionPortResolver::default());
-        let (core_v2, service) = test_v2_clients();
+        let (core_v2, service) = test_v2_clients().await;
         let (backup_paths, storage) = test_backup_deps(&dir);
         NyanpasuClient::with_parts(
             None,
@@ -3128,8 +3123,8 @@ pub(crate) mod tests {
         assert_eq!(client.inner.local_source.addresses().ipv4, None);
     }
 
-    #[test]
-    fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
         let dir = tempdir().unwrap();
         let mut reader = core_version::MockCoreVersionReader::new();
         reader
@@ -3142,10 +3137,10 @@ pub(crate) mod tests {
             .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
             .times(1)
             .returning(|core| Err(core_version::CoreVersionError::CoreVersionNotReported { core }));
-        let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint));
+        let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint)).await;
         args.core_versions = Arc::new(reader);
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        tauri::async_runtime::block_on(async {
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
             assert_eq!(
                 client
                     .get_core_version(nyanpasu_config::application::ClashCore::Meow)
@@ -3161,7 +3156,8 @@ pub(crate) mod tests {
                     source: core_version::CoreVersionError::CoreVersionNotReported { .. }
                 })
             ));
-        });
+        })
+        .await;
     }
 
     fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
@@ -3203,7 +3199,7 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn test_client_args_with_endpoint(
+    pub(crate) async fn test_client_args_with_endpoint(
         dir: &TempDir,
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
     ) -> ClientSetupArgs {
@@ -3214,19 +3210,9 @@ pub(crate) mod tests {
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         );
-        let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
+        let (core_v2, service) = test_v2_clients_with_endpoint(endpoint).await;
         ClientSetupArgs {
-            jobs: std::thread::scope(|scope| {
-                scope
-                    .spawn(|| {
-                        tauri::async_runtime::block_on(jobs::test_client_with_owner(
-                            shutdown.clone(),
-                            &tasks,
-                        ))
-                    })
-                    .join()
-                    .unwrap()
-            }),
+            jobs: jobs::test_client_with_owner(shutdown.clone(), &tasks).await,
             bundle_metadata: BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
@@ -3263,11 +3249,11 @@ pub(crate) mod tests {
         }
     }
 
-    fn host_transition_client(
+    async fn host_transition_client(
         dir: &TempDir,
         calls: Arc<StdMutex<Vec<&'static str>>>,
     ) -> NyanpasuClient {
-        host_transition_client_seeded(dir, calls, false)
+        host_transition_client_seeded(dir, calls, false).await
     }
 
     /// Records "persisted" before every readiness probe that finds service
@@ -3332,12 +3318,12 @@ pub(crate) mod tests {
         }
     }
 
-    fn host_transition_client_seeded(
+    async fn host_transition_client_seeded(
         dir: &TempDir,
         calls: Arc<StdMutex<Vec<&'static str>>>,
         service_seed: bool,
     ) -> NyanpasuClient {
-        let mut args = test_client_args_with_endpoint(dir, Arc::new(IdleEndpoint));
+        let mut args = test_client_args_with_endpoint(dir, Arc::new(IdleEndpoint)).await;
         let local = HostTransitionEndpoint::stopped(ExecutionHost::Local, calls.clone());
         let service_endpoint =
             HostTransitionEndpoint::stopped(ExecutionHost::Service, calls.clone());
@@ -3350,15 +3336,8 @@ pub(crate) mod tests {
             },
             application_config: args.paths.application_config_path().into_std_path_buf(),
         });
-        let (core_v2, service) = std::thread::spawn(move || {
-            tauri::async_runtime::block_on(async {
-                let core = CoreClientV2::spawn(local).await.unwrap();
-                let service = ServiceClient::spawn(adapter, 0).await.unwrap();
-                (core, service)
-            })
-        })
-        .join()
-        .unwrap();
+        let core_v2 = CoreClientV2::spawn(local).await.unwrap();
+        let service = ServiceClient::spawn(adapter, 0).await.unwrap();
         args.core_v2 = core_v2;
         args.service = service;
         if service_seed {
@@ -3368,9 +3347,9 @@ pub(crate) mod tests {
             };
             write_application_config(&args.paths.application_config_path(), &seed);
         }
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
+        let client = NyanpasuClient::try_new(args).await.unwrap();
         if !service_seed {
-            let report = tauri::async_runtime::block_on(client.startup_reconcile());
+            let report = client.startup_reconcile().await;
             assert_eq!(
                 report.outcome,
                 application_workflow::startup::StartupOutcome::Ready,
@@ -3392,20 +3371,21 @@ pub(crate) mod tests {
         client.patch_app_config(patch).await
     }
 
-    #[test]
-    fn enabling_service_mode_ensures_runtime_before_commit() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enabling_service_mode_ensures_runtime_before_commit() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(StdMutex::new(Vec::new()));
-        let client = host_transition_client(&dir, calls.clone());
+        let client = host_transition_client(&dir, calls.clone()).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let outcome = set_service_mode(&client, true).await.unwrap();
             assert!(matches!(
                 outcome,
                 runtime::MutationOutcome::Committed { .. }
             ));
             assert!(client.get_app_config().await.unwrap().enable_service_mode);
-        });
+        })
+        .await;
 
         let calls = calls.lock().unwrap();
         let ensure = calls
@@ -3421,13 +3401,13 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn disabling_service_mode_hands_off_before_stopping_the_daemon() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disabling_service_mode_hands_off_before_stopping_the_daemon() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(StdMutex::new(Vec::new()));
-        let client = host_transition_client(&dir, calls.clone());
+        let client = host_transition_client(&dir, calls.clone()).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             set_service_mode(&client, true).await.unwrap();
             calls.lock().unwrap().clear();
             let outcome = set_service_mode(&client, false).await.unwrap();
@@ -3436,7 +3416,8 @@ pub(crate) mod tests {
                 runtime::MutationOutcome::Committed { .. }
             ));
             assert!(!client.get_app_config().await.unwrap().enable_service_mode);
-        });
+        })
+        .await;
 
         let calls = calls.lock().unwrap();
         let handoff = calls
@@ -3453,15 +3434,16 @@ pub(crate) mod tests {
     /// A handoff adopts its target with the runtime stopped, so the switch is
     /// only finished once the core is reconciled onto the new host. Without
     /// that step both directions report success and leave nothing running.
-    #[test]
-    fn enabling_service_mode_reconciles_onto_the_adopted_host() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enabling_service_mode_reconciles_onto_the_adopted_host() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(StdMutex::new(Vec::new()));
-        let client = host_transition_client(&dir, calls.clone());
+        let client = host_transition_client(&dir, calls.clone()).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             set_service_mode(&client, true).await.unwrap();
-        });
+        })
+        .await;
 
         let calls = calls.lock().unwrap();
         let ensure = calls
@@ -3475,17 +3457,18 @@ pub(crate) mod tests {
         assert!(ensure < reconcile, "calls: {calls:?}");
     }
 
-    #[test]
-    fn disabling_service_mode_reconciles_local_before_stopping_the_daemon() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disabling_service_mode_reconciles_local_before_stopping_the_daemon() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(StdMutex::new(Vec::new()));
-        let client = host_transition_client(&dir, calls.clone());
+        let client = host_transition_client(&dir, calls.clone()).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             set_service_mode(&client, true).await.unwrap();
             calls.lock().unwrap().clear();
             set_service_mode(&client, false).await.unwrap();
-        });
+        })
+        .await;
 
         let calls = calls.lock().unwrap();
         let handoff = calls
@@ -3558,7 +3541,7 @@ pub(crate) mod tests {
         )
         .await
         .expect("profiles client should be created");
-        let (core_v2, service) = test_v2_clients();
+        let (core_v2, service) = test_v2_clients().await;
         let (backup_paths, storage) = test_backup_deps(&dir);
         let client = NyanpasuClient::with_parts(
             None,
@@ -3610,24 +3593,25 @@ pub(crate) mod tests {
         client
     }
 
-    #[test]
-    fn client_constructs_with_mandatory_typed_config_clients() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn client_constructs_with_mandatory_typed_config_clients() {
         let dir = tempdir().expect("tempdir should be created");
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client(&dir).await;
             let _ = client.clone();
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn manual_backups_keep_the_newest_three_and_leave_migration_backups() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn manual_backups_keep_the_newest_three_and_leave_migration_backups() {
         let dir = tempdir().expect("tempdir should be created");
         let backups = dir.path().join("data").join("backups");
         let migration = backups.join("migration-20250101T000000Z-1.0.0-to-2.0.0");
         std::fs::create_dir_all(&migration).unwrap();
 
-        let names = tauri::async_runtime::block_on(async {
+        let names = (async {
             let client = test_client(&dir).await;
             let mut names = Vec::new();
             for _ in 0..4 {
@@ -3635,7 +3619,8 @@ pub(crate) mod tests {
             }
             assert_eq!(client.backups_dir().unwrap(), backups);
             names
-        });
+        })
+        .await;
 
         let mut kept: Vec<_> = std::fs::read_dir(&backups)
             .unwrap()
@@ -3649,11 +3634,11 @@ pub(crate) mod tests {
         assert!(migration.exists());
     }
 
-    #[test]
-    fn typed_config_facade_delegates_to_typed_clients() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn typed_config_facade_delegates_to_typed_clients() {
         let dir = tempdir().expect("tempdir should be created");
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client(&dir).await;
 
             let mut app_patch = NyanpasuAppConfig::new_empty_patch();
@@ -3685,14 +3670,15 @@ pub(crate) mod tests {
                 .await
                 .expect("clash patch should succeed");
             assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn typed_setup_loads_persisted_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn typed_setup_loads_persisted_state() {
         let dir = tempdir().expect("tempdir should be created");
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.theme_color = Some(serde_yaml::from_str("\"#123456\"").unwrap());
@@ -3716,11 +3702,12 @@ pub(crate) mod tests {
             .expect("typed clients should load persisted state");
 
             assert_eq!(loaded.snapshot().state.theme_color.to_string(), "#123456");
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn try_new_with_args_constructs_typed_config_facade() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn try_new_with_args_constructs_typed_config_facade() {
         let dir = tempdir().expect("tempdir should be created");
         let (paths, storage) = test_backup_deps(&dir);
         let runtime_paths = RuntimePaths::from_resolver(&paths);
@@ -3728,19 +3715,9 @@ pub(crate) mod tests {
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         );
-        let (core_v2, service) = test_v2_clients();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
-            jobs: std::thread::scope(|scope| {
-                scope
-                    .spawn(|| {
-                        tauri::async_runtime::block_on(jobs::test_client_with_owner(
-                            shutdown.clone(),
-                            &tasks,
-                        ))
-                    })
-                    .join()
-                    .unwrap()
-            }),
+        let (core_v2, service) = test_v2_clients().await;
+        let client = NyanpasuClient::try_new(ClientSetupArgs {
+            jobs: jobs::test_client_with_owner(shutdown.clone(), &tasks).await,
             bundle_metadata: BundleMetadata {
                 is_portable: true,
                 is_fixed_webview: false,
@@ -3774,12 +3751,13 @@ pub(crate) mod tests {
             traffic_store: None,
             shutdown,
             tasks,
-        }))
+        })
+        .await
         .expect("client should construct with typed config actors");
 
         assert!(client.is_portable());
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.enable_system_proxy = Some(true);
             client
@@ -3787,7 +3765,8 @@ pub(crate) mod tests {
                 .await
                 .expect("typed app patch should succeed");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
-        });
+        })
+        .await;
     }
 
     /// A resolver rooted at `config` and `data`, for tests that do not run from an installed
@@ -3807,11 +3786,11 @@ pub(crate) mod tests {
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data")))
     }
 
-    #[test]
-    fn runtime_lifecycle_is_empty_before_first_rebuild() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runtime_lifecycle_is_empty_before_first_rebuild() {
         let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        let promoted = tauri::async_runtime::block_on(client.promoted_runtime());
+        let client = test_client(&dir).await;
+        let promoted = client.promoted_runtime().await;
         let lifecycle = client.inner.application_workflow.runtime();
 
         assert!(promoted.is_none());
@@ -3907,16 +3886,16 @@ pub(crate) mod tests {
         assert!(second.revision > first.revision);
     }
 
-    #[test]
-    fn repeated_core_updates_advance_the_runtime_revision() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeated_core_updates_advance_the_runtime_revision() {
         use nyanpasu_config::application::ClashCore;
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
+        (async {
             endpoint.prime(&client).await;
             client.update_core(ClashCore::ClashRs).await.unwrap();
             let first = client.promoted_runtime().await.unwrap();
@@ -3925,30 +3904,33 @@ pub(crate) mod tests {
             assert_eq!(first.target_core, ClashCore::ClashRs);
             assert_eq!(second.target_core, ClashCore::Mihomo);
             assert!(second.revision > first.revision);
-        });
+        })
+        .await;
         assert_eq!(endpoint.submissions(), 2);
     }
 
     /// Each composition root builds its own graph: what one client commits
     /// and submits never reaches another.
-    #[test]
-    fn two_client_graphs_are_independent() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_client_graphs_are_independent() {
         use nyanpasu_config::application::ClashCore;
         let (dir_a, dir_b) = (tempdir().unwrap(), tempdir().unwrap());
         let (endpoint_a, endpoint_b) = (
             TestControlEndpoint::succeeding(),
             TestControlEndpoint::succeeding(),
         );
-        let client_a = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir_a, endpoint_a.clone()),
-        ))
+        let client_a = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir_a, endpoint_a.clone()).await,
+        )
+        .await
         .unwrap();
-        let client_b = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir_b, endpoint_b.clone()),
-        ))
+        let client_b = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir_b, endpoint_b.clone()).await,
+        )
+        .await
         .unwrap();
         let default_core = NyanpasuAppConfig::default().core;
-        tauri::async_runtime::block_on(async {
+        (async {
             endpoint_a.prime(&client_a).await;
             endpoint_b.prime(&client_b).await;
             client_b.update_core(ClashCore::ClashRs).await.unwrap();
@@ -3961,7 +3943,8 @@ pub(crate) mod tests {
                 client_b.get_app_config().await.unwrap().core,
                 ClashCore::ClashRs
             );
-        });
+        })
+        .await;
         assert_eq!(endpoint_a.submissions(), 0);
         assert_eq!(endpoint_b.submissions(), 1);
     }
@@ -3980,15 +3963,12 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn facade_add_activate_rebuilds_via_control_endpoint() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_add_activate_rebuilds_via_control_endpoint() {
         let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client_with_fetcher(
-            &dir,
-            Arc::new(MockSubscriptionFetcher::new()),
-        ));
+        let client = test_client_with_fetcher(&dir, Arc::new(MockSubscriptionFetcher::new())).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let uid = client
                 .add_profile(
                     minimal_file_profile_request(),
@@ -4035,18 +4015,19 @@ pub(crate) mod tests {
                 .save_profile_file(uid.clone(), "proxies: []\nmode: direct\n".into())
                 .await
                 .unwrap();
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn activation_requires_runtime_success_before_committing_selection() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn activation_requires_runtime_success_before_committing_selection() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
+        (async {
             endpoint.prime(&client).await;
             let uid = client
                 .add_profile(
@@ -4061,19 +4042,20 @@ pub(crate) mod tests {
             let after = client.get_profiles().await.unwrap();
             assert!(after.current.is_none());
             assert_eq!(after.revision(), version);
-        });
+        })
+        .await;
     }
 
     /// S5 (the adopting half; `startup.rs` covers a residual core): the core
     /// actor always spawns on Local, so startup hands the runtime to a
     /// persisted Service host, and applies the configuration there.
-    #[test]
-    fn startup_adopts_a_ready_service_host_and_starts_the_core_there() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn startup_adopts_a_ready_service_host_and_starts_the_core_there() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(StdMutex::new(Vec::new()));
-        let client = host_transition_client_seeded(&dir, calls.clone(), true);
+        let client = host_transition_client_seeded(&dir, calls.clone(), true).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let report = client.startup_reconcile().await;
 
             assert_eq!(
@@ -4082,7 +4064,8 @@ pub(crate) mod tests {
                 "{report:?}"
             );
             assert_eq!(client.core_status().host, ExecutionHost::Service);
-        });
+        })
+        .await;
 
         let calls = calls.lock().unwrap();
         assert!(
@@ -4102,22 +4085,22 @@ pub(crate) mod tests {
     /// service, raising a UAC prompt at every launch for a user who merely
     /// left the setting on. Service mode is a preference, so the core runs
     /// locally instead.
-    #[test]
-    fn startup_never_converges_an_absent_daemon_and_runs_the_core_locally() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn startup_never_converges_an_absent_daemon_and_runs_the_core_locally() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             None,
         );
-        let args = test_client_args_with_endpoint(&dir, endpoint.clone());
+        let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
         let seed = NyanpasuAppConfig {
             enable_service_mode: true,
             ..Default::default()
         };
         write_application_config(&args.paths.application_config_path(), &seed);
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        tauri::async_runtime::block_on(async {
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
             let report = client.startup_reconcile().await;
 
             assert_eq!(
@@ -4135,19 +4118,20 @@ pub(crate) mod tests {
                 client.configuration_status().runtime.health,
                 crate::client::convergence::ConvergenceHealth::Healthy
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn inspection_recovers_a_successful_apply_without_reconciling_again() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn inspection_recovers_a_successful_apply_without_reconciling_again() {
         use std::sync::atomic::Ordering;
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
+        (async {
             endpoint.prime(&client).await;
             let uid = client
                 .add_profile(
@@ -4184,18 +4168,19 @@ pub(crate) mod tests {
                     .is_none()
             );
             assert!(client.inspect_applied_runtime().await.unwrap().applied);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn rebuild_checks_and_promotes_before_core_apply() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rebuild_checks_and_promotes_before_core_apply() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
+        (async {
             endpoint.prime(&client).await;
             let uid = client
                 .add_profile(
@@ -4208,7 +4193,8 @@ pub(crate) mod tests {
             client.activate_profile(Some(uid)).await.expect("activate");
             client.reconcile_core().await.expect("reconcile");
             assert!(endpoint.submissions() >= 1);
-        });
+        })
+        .await;
     }
 
     /// F2 regression: `reconcile_core`'s CAS token must come from an
@@ -4218,15 +4204,15 @@ pub(crate) mod tests {
     /// fake enforces CAS the way the real runtime does, so a reconcile that
     /// reads the stale cached revision submits a token one generation behind
     /// and gets rejected.
-    #[test]
-    fn two_reconciles_in_one_pump_interval_both_get_a_fresh_cas_token() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_reconciles_in_one_pump_interval_both_get_a_fresh_cas_token() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
+        (async {
             // Wait for the pump's very first read so the router's cached
             // projection is seeded with the endpoint's revision before
             // either reconcile below runs. Without this, both reconciles
@@ -4272,19 +4258,19 @@ pub(crate) mod tests {
                  before the first reconcile, and the fake endpoint rejects it exactly as the \
                  real runtime would",
             );
-        });
+        })
+        .await;
         assert_eq!(endpoint.submissions(), 2);
     }
 
-    #[test]
-    fn core_status_is_projected_from_the_control_endpoint() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn core_status_is_projected_from_the_control_endpoint() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client = NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint).await)
+            .await
+            .unwrap();
+        (async {
             for _ in 0..100 {
                 if client.core_status().snapshot.is_some() {
                     break;
@@ -4292,18 +4278,19 @@ pub(crate) mod tests {
                 tokio::task::yield_now().await;
             }
             assert_eq!(client.core_status().host, ExecutionHost::Local);
-        });
+        })
+        .await;
     }
 
     /// D5+P0-1 invariant: a failed reconcile must leave the promoted product
     /// visible while the control endpoint reports the failure.
-    #[test]
-    fn failed_reconcile_keeps_the_committed_product_visible() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_reconcile_keeps_the_committed_product_visible() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
-        let args = test_client_args_with_endpoint(&dir, endpoint.clone());
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        tauri::async_runtime::block_on(async {
+        let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
             endpoint.prime(&client).await;
             let uid = client
                 .add_profile(
@@ -4318,19 +4305,20 @@ pub(crate) mod tests {
             let lifecycle = client.inner.application_workflow.runtime();
             assert!(client.promoted_runtime().await.is_some());
             assert_eq!(lifecycle.promoted.unwrap().revision.get(), 1);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn failed_reconcile_still_advances_the_promoted_read_model() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_reconcile_still_advances_the_promoted_read_model() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
 
-        tauri::async_runtime::block_on(async {
+        (async {
             endpoint.prime(&client).await;
             let first = client.reconcile_core().await.expect_err("reconcile fails");
             assert!(first.to_string().contains("reconcile boom"));
@@ -4338,11 +4326,12 @@ pub(crate) mod tests {
             let _ = client.reconcile_core().await.expect_err("reconcile fails");
             let after = client.promoted_runtime().await.unwrap();
             assert!(after.revision > before.revision);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_import_downloads_and_conditionally_activates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_downloads_and_conditionally_activates() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
@@ -4356,7 +4345,7 @@ pub(crate) mod tests {
                 file_name: None,
             })
         });
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let mut patch = RemoteProfileOptions::new_empty_patch();
@@ -4384,14 +4373,15 @@ pub(crate) mod tests {
                 RemoteSyncInterval::from_minutes(360)
             );
             assert!(!option.with_proxy);
-        });
+        })
+        .await;
     }
 
     /// R6/R7: a source receipt reaches the configuration status and its
     /// change stream, the status sequence only grows, and deleting the
     /// profile drops its row.
-    #[test]
-    fn configuration_status_projects_source_receipts_and_prunes_them() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn configuration_status_projects_source_receipts_and_prunes_them() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counter = Arc::clone(&calls);
@@ -4410,7 +4400,7 @@ pub(crate) mod tests {
                 Err(SubscriptionFetchError::mock())
             }
         });
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let (_, _, sources) = client.subscribe_configuration_changes();
             // The first import becomes current; the second stays deletable.
@@ -4459,11 +4449,12 @@ pub(crate) mod tests {
             let pruned = client.configuration_status();
             assert!(pruned.sources.is_empty());
             assert!(pruned.event_seq > failed.event_seq);
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_import_keeps_explicit_interval_over_server_suggestion() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_keeps_explicit_interval_over_server_suggestion() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
@@ -4476,7 +4467,7 @@ pub(crate) mod tests {
                 file_name: None,
             })
         });
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(45));
@@ -4496,11 +4487,12 @@ pub(crate) mod tests {
                 option.update_interval_minutes,
                 RemoteSyncInterval::from_minutes(45)
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_import_keeps_explicit_zero_interval_as_auto_update_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_keeps_explicit_zero_interval_as_auto_update_off() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
@@ -4513,7 +4505,7 @@ pub(crate) mod tests {
                 file_name: None,
             })
         });
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(RemoteSyncInterval::DISABLED);
@@ -4530,7 +4522,8 @@ pub(crate) mod tests {
                 unreachable!()
             };
             assert_eq!(option.update_interval_minutes, RemoteSyncInterval::DISABLED);
-        });
+        })
+        .await;
     }
 
     fn local_config_request(name: &str) -> NewProfileRequest {
@@ -4582,15 +4575,15 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn facade_import_failure_commits_nothing() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_failure_commits_nothing() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
             .returning(|_, _| Err(SubscriptionFetchError::mock()));
         // A failed import never reaches core apply, so the bridge expects nothing.
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
             let result = client.import_profile(url, None, None, None, None).await;
@@ -4603,17 +4596,18 @@ pub(crate) mod tests {
                 snapshot.items.is_empty(),
                 "fetch-before-commit must leave zero durable items on download failure"
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_add_profile_rejects_remote_before_persist() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_add_profile_rejects_remote_before_persist() {
         let dir = tempdir().unwrap();
         // No fetcher/core activity: the remote shell must be rejected at the
         // public facade boundary before ProfilesClient::add is reached.
-        let client = tauri::async_runtime::block_on(test_client(&dir));
+        let client = test_client(&dir).await;
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let rejected = client.add_profile(remote_config_request(), None).await;
             assert!(
                 matches!(
@@ -4630,14 +4624,15 @@ pub(crate) mod tests {
                 "direct remote add must leave zero durable items"
             );
             assert!(snapshot.current.is_none());
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_create_auto_activates_config_and_rejects_remote() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_create_auto_activates_config_and_rejects_remote() {
         let dir = tempdir().unwrap();
         let fetcher = MockSubscriptionFetcher::new();
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
 
             // create_profile shares the public add_profile remote guard.
@@ -4668,7 +4663,8 @@ pub(crate) mod tests {
                 Some(&uid),
                 "an empty current must auto-activate the new Config profile"
             );
-        });
+        })
+        .await;
     }
 
     /// H2 E2E (Unix): Add commits, then post-commit `set_current_if_none` state
@@ -4676,8 +4672,8 @@ pub(crate) mod tests {
     /// permission-poisoning the profiles parent. create_profile must return
     /// `Ok(CommittedDegraded)` with the real ProfileId and keep current empty.
     #[cfg(unix)]
-    #[test]
-    fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempdir().unwrap();
@@ -4717,7 +4713,7 @@ pub(crate) mod tests {
             .expect_retry_cleanup()
             .returning(|_, _| Ok(CleanupOutcome::Removed));
 
-        tauri::async_runtime::block_on(async {
+        (async {
             let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
             let profiles = profiles::ProfilesClient::new(
                 crate::state::mutation::MutationCoordinator::isolated(),
@@ -4731,7 +4727,7 @@ pub(crate) mod tests {
             .await
             .expect("profiles client");
             let ports = Arc::new(SessionPortResolver::default());
-            let (core_v2, service) = test_v2_clients();
+            let (core_v2, service) = test_v2_clients().await;
             let (backup_paths, storage) = test_backup_deps(&dir);
             let client = NyanpasuClient::with_parts(
                 None,
@@ -4834,11 +4830,12 @@ pub(crate) mod tests {
                 snapshot.current.is_none(),
                 "failed set_current_if_none must leave current unset"
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_import_does_not_steal_existing_current() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_does_not_steal_existing_current() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
@@ -4851,7 +4848,7 @@ pub(crate) mod tests {
                 file_name: None,
             })
         });
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
 
             // Establish a current selection via a local Config.
@@ -4897,14 +4894,15 @@ pub(crate) mod tests {
                 option.update_interval_minutes,
                 RemoteSyncInterval::from_minutes(120)
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_create_skips_activation_as_applied_when_current_exists() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_create_skips_activation_as_applied_when_current_exists() {
         let dir = tempdir().unwrap();
         let fetcher = MockSubscriptionFetcher::new();
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let first = client
                 .create_profile(local_config_request("first"), Some("proxies: []\n".into()))
@@ -4926,7 +4924,8 @@ pub(crate) mod tests {
             let snapshot = client.get_profiles().await.unwrap();
             assert_eq!(snapshot.current.as_ref(), Some(&first));
             assert!(snapshot.items.contains_key(&second_uid));
-        });
+        })
+        .await;
     }
 
     /// create/import share try_auto_activate_if_none: an activation hard error
@@ -5009,10 +5008,10 @@ pub(crate) mod tests {
         fetcher
     }
 
-    #[test]
-    fn facade_import_without_name_derives_url_name_and_leaves_it_unpinned() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_without_name_derives_url_name_and_leaves_it_unpinned() {
         let dir = tempdir().unwrap();
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
@@ -5026,13 +5025,14 @@ pub(crate) mod tests {
                 !item.metadata.custom_name,
                 "no caller name -> unpinned so refresh name-sync can adopt a server name"
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_import_with_name_uses_it_and_pins_custom_name() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_with_name_uses_it_and_pins_custom_name() {
         let dir = tempdir().unwrap();
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
@@ -5046,13 +5046,14 @@ pub(crate) mod tests {
                 item.metadata.custom_name,
                 "a caller-provided name is user intent and must be pinned"
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn facade_import_transform_creates_remote_transform_without_activating_it() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_transform_creates_remote_transform_without_activating_it() {
         let dir = tempdir().unwrap();
-        tauri::async_runtime::block_on(async {
+        (async {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/overlay.yaml").unwrap();
             let uid = client
@@ -5069,22 +5070,23 @@ pub(crate) mod tests {
                         && matches!(transform.source(), nyanpasu_config::profile::ProfileSource::Remote { .. })
             ));
             assert_eq!(profiles.current, None, "a transform is never activatable");
-        });
+        }).await;
     }
 
-    #[test]
-    fn managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_overwriting_source() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_overwriting_source()
+     {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
             Some(nyanpasu_core_manager::CoreKind::Mihomo),
         );
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, endpoint.clone()),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
+        let client =
+            NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
+                .await
+                .unwrap();
+        (async {
             client.reconcile_core().await.unwrap();
             let uid = client
                 .add_profile(
@@ -5144,13 +5146,14 @@ pub(crate) mod tests {
             );
             client.request_shutdown();
             client.wait_shutdown().await;
-        });
+        })
+        .await;
     }
 
     /// Every committed configuration reaches the frontend as a state change,
     /// and a profiles commit names the files it may have changed.
-    #[test]
-    fn commits_tell_the_frontend_what_changed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn commits_tell_the_frontend_what_changed() {
         #[derive(Default)]
         struct Recorded(std::sync::Mutex<Vec<StateChanged>>);
         impl UiEventSink for Recorded {
@@ -5161,9 +5164,9 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         let ui = Arc::new(Recorded::default());
-        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
         args.ui_sink = ui.clone();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
+        let client = NyanpasuClient::try_new(args).await.unwrap();
         let take = || std::mem::take(&mut *ui.0.lock().unwrap());
         let files = |events: Vec<StateChanged>| -> Vec<Vec<ProfileId>> {
             events
@@ -5174,7 +5177,7 @@ pub(crate) mod tests {
                 })
                 .collect()
         };
-        tauri::async_runtime::block_on(async {
+        (async {
             endpoint.prime(&client).await;
             take();
 
@@ -5221,7 +5224,8 @@ mode: rule
 
             client.request_shutdown();
             client.wait_shutdown().await;
-        });
+        })
+        .await;
     }
 }
 

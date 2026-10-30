@@ -208,14 +208,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn disabled_recording_reports_unavailable() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disabled_recording_reports_unavailable() {
         let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, test_idle_endpoint()),
-        ))
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, test_idle_endpoint()).await,
+        )
+        .await
         .unwrap();
-        tauri::async_runtime::block_on(async {
+        (async {
             let unavailable = "traffic recording is unavailable";
             assert_eq!(
                 client.traffic_summary().await.unwrap_err().to_string(),
@@ -271,37 +272,40 @@ mod tests {
                     .to_string(),
                 unavailable
             );
-        });
+        })
+        .await;
     }
 
-    #[test]
-    fn an_unreadable_store_disables_recording_without_failing_the_client() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_unreadable_store_disables_recording_without_failing_the_client() {
         let dir = tempdir().unwrap();
         let store = Arc::new(UnreadableStore);
-        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
+        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
         args.traffic_store = Some(store.clone());
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        tauri::async_runtime::block_on(async {
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
             assert_eq!(
                 client.traffic_summary().await.unwrap_err().to_string(),
                 "traffic recording is unavailable"
             );
-        });
+        })
+        .await;
         drop(client);
     }
 
-    #[test]
-    fn injected_store_starts_an_empty_session() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn injected_store_starts_an_empty_session() {
         let dir = tempdir().unwrap();
-        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
+        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
         args.traffic_store = Some(Arc::new(TrafficFileStorage::new(
             dir.path().join("traffic.tsdb"),
             Profile::desktop().backend_cache,
         )));
-        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        tauri::async_runtime::block_on(async {
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
             let summary = client.traffic_summary().await.unwrap();
             assert_eq!(summary.active_connections, 0);
-        });
+        })
+        .await;
     }
 }

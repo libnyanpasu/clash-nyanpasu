@@ -3,43 +3,9 @@
 //! token is cancelled.
 use std::future::Future;
 
-use ractor::ActorCell;
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::sync::CancellationToken;
 
-use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
-
-/// Spawns the tracked task that drains `cell` once `token` is cancelled: what
-/// is already queued is still handled, anything sent later is refused, and the
-/// task ends once the actor, its `post_stop` included, has stopped.
-pub(crate) fn drain_on_shutdown(tasks: &TaskTracker, token: CancellationToken, cell: ActorCell) {
-    tasks.spawn(async move {
-        token.cancelled().await;
-        // An actor that has already stopped refuses the drain, and there is
-        // nothing left to wait for.
-        let _ = cell.drain_and_wait(None).await;
-    });
-}
-
-/// Wraps a boundary producer so that it ends once `token` is cancelled.
-/// Tracking starts here rather than when the returned future is spawned, and a
-/// producer wrapped after the cancel never runs.
-pub fn track_until_shutdown<F>(
-    tasks: &TaskTracker,
-    token: &CancellationToken,
-    producer: F,
-) -> impl Future<Output = ()> + Send + 'static
-where
-    F: Future<Output = ()> + Send + 'static,
-{
-    let token = token.clone();
-    tasks.track_future(async move {
-        tokio::select! {
-            biased;
-            () = token.cancelled() => {}
-            () = producer => {}
-        }
-    })
-}
+use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport, owner_shutdown};
 
 impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,
@@ -108,7 +74,13 @@ impl NyanpasuClient {
         token: &CancellationToken,
         producer: impl Future<Output = ()> + Send + 'static,
     ) {
-        tauri::async_runtime::spawn(track_until_shutdown(&self.inner.tasks, token, producer));
+        self.inner
+            .runtime
+            .spawn(owner_shutdown::track_until_shutdown(
+                &self.inner.tasks,
+                token,
+                producer,
+            ));
     }
 }
 
@@ -130,6 +102,7 @@ mod tests {
     use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo};
     use tempfile::TempDir;
     use tokio::sync::Notify;
+    use tokio_util::task::TaskTracker;
 
     use super::*;
     use crate::{
@@ -169,11 +142,15 @@ mod tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let dropped = Arc::new(AtomicBool::new(false));
         let guard = Dropped(Arc::clone(&dropped));
-        let task = tokio::spawn(track_until_shutdown(&tasks, &token, async move {
-            let _guard = guard;
-            let _ = started_tx.send(());
-            std::future::pending::<()>().await;
-        }));
+        let task = tokio::spawn(owner_shutdown::track_until_shutdown(
+            &tasks,
+            &token,
+            async move {
+                let _guard = guard;
+                let _ = started_tx.send(());
+                std::future::pending::<()>().await;
+            },
+        ));
         started_rx.await.unwrap();
 
         token.cancel();
@@ -191,9 +168,13 @@ mod tests {
 
         let ran = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&ran);
-        tokio::spawn(track_until_shutdown(&tasks, &token, async move {
-            flag.store(true, Ordering::SeqCst);
-        }))
+        tokio::spawn(owner_shutdown::track_until_shutdown(
+            &tasks,
+            &token,
+            async move {
+                flag.store(true, Ordering::SeqCst);
+            },
+        ))
         .await
         .unwrap();
         assert!(!ran.load(Ordering::SeqCst));

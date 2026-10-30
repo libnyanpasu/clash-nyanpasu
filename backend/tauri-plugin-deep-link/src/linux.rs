@@ -101,14 +101,13 @@ pub fn unregister(_schemes: &[&str]) -> Result<()> {
 }
 
 pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
+    let addr = format!(
+        "/tmp/{}-deep-link.sock",
+        ID.get().expect("listen() called before prepare()")
+    );
+    let listener = UnixListener::bind(&addr)?;
+
     std::thread::spawn(move || {
-        let addr = format!(
-            "/tmp/{}-deep-link.sock",
-            ID.get().expect("listen() called before prepare()")
-        );
-
-        let listener = UnixListener::bind(addr).expect("Can't create listener");
-
         for stream in listener.incoming() {
             match stream {
                 Ok(mut stream) => {
@@ -154,4 +153,99 @@ pub fn prepare(identifier: &str) {
     };
     ID.set(identifier.to_string())
         .expect("prepare() called more than once with different identifiers.");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        io::{ErrorKind, Write},
+        os::unix::net::{UnixListener, UnixStream},
+        process::Command,
+        sync::mpsc,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
+
+    #[test]
+    fn listen_reports_bind_errors_and_delivers_urls() {
+        const CHILD_CASE: &str = "NYANPASU_DEEP_LINK_TEST_CASE";
+        const CHILD_ID: &str = "NYANPASU_DEEP_LINK_TEST_ID";
+
+        // Each child gets its own once-set identifier and listener lifetime.
+        let Ok(case) = std::env::var(CHILD_CASE) else {
+            for case in ["occupied", "stale", "file", "healthy"] {
+                let identifier = format!(
+                    "nyanpasu-test-{}-{}-{}",
+                    std::process::id(),
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos(),
+                    case
+                );
+                let addr = format!("/tmp/{}-deep-link.sock", identifier);
+                let output = Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "platform_impl::tests::listen_reports_bind_errors_and_delivers_urls",
+                        "--nocapture",
+                    ])
+                    .env(CHILD_CASE, case)
+                    .env(CHILD_ID, identifier)
+                    .output();
+                // Clean up even when the child fails an assertion or panics.
+                let cleanup = fs::remove_file(&addr);
+                if let Err(err) = cleanup {
+                    assert_eq!(err.kind(), ErrorKind::NotFound);
+                }
+                let output = output.unwrap();
+                assert!(output.status.success(), "{case}: {output:?}");
+            }
+            return;
+        };
+
+        let identifier = std::env::var(CHILD_ID).unwrap();
+        crate::set_identifier(&identifier).unwrap();
+        let addr = format!("/tmp/{}-deep-link.sock", identifier);
+        let occupied = match case.as_str() {
+            "occupied" => Some(UnixListener::bind(&addr).unwrap()),
+            "stale" => {
+                drop(UnixListener::bind(&addr).unwrap());
+                None
+            }
+            "file" => {
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&addr)
+                    .unwrap();
+                file.write_all(b"keep this file").unwrap();
+                None
+            }
+            "healthy" => None,
+            _ => panic!("unknown listener test case: {case}"),
+        };
+        let (sender, receiver) = mpsc::channel();
+        let result = crate::listen(move |url| sender.send(url).unwrap());
+
+        if case == "healthy" {
+            result.unwrap();
+            let url = "clash-nyanpasu://install-config?url=https://example.com/config.yaml";
+            let mut stream = UnixStream::connect(&addr).unwrap();
+            stream.write_all(url.as_bytes()).unwrap();
+            drop(stream);
+            assert_eq!(receiver.recv_timeout(Duration::from_secs(5)).unwrap(), url);
+        } else {
+            assert_eq!(result.unwrap_err().kind(), ErrorKind::AddrInUse);
+            assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Disconnected));
+            if let Some(listener) = occupied {
+                listener.set_nonblocking(true).unwrap();
+                let _stream = UnixStream::connect(&addr).unwrap();
+                listener.accept().unwrap();
+            }
+            if case == "file" {
+                assert_eq!(fs::read(&addr).unwrap(), b"keep this file");
+            }
+        }
+    }
 }

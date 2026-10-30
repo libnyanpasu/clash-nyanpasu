@@ -22,7 +22,10 @@ use super::{
     shared::{self, CoreTypeMeta},
 };
 use crate::{
-    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
+    client::{
+        bundle_metadata::BundleMetadata,
+        core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
+    },
     core::download::{DownloadSession, DownloadStatus},
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
@@ -54,6 +57,7 @@ pub(crate) struct HttpUpdaterBackend {
     destination_dir: PathBuf,
     /// Resolves where the agent skills a core archive ships go.
     paths: PathResolver,
+    bundle_metadata: BundleMetadata,
 }
 
 impl HttpUpdaterBackend {
@@ -61,17 +65,22 @@ impl HttpUpdaterBackend {
         destination_dir: PathBuf,
         paths: PathResolver,
         proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+        bundle_metadata: BundleMetadata,
     ) -> Self {
         Self {
             proxy_port,
             destination_dir,
             paths,
+            bundle_metadata,
         }
     }
 
     fn http_client(&self) -> anyhow::Result<reqwest::Client> {
         let mut builder = reqwest::Client::builder()
-            .user_agent(concat!("clash-nyanpasu/", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!(
+                "clash-nyanpasu/{}",
+                self.bundle_metadata.package_version
+            ))
             .timeout(Duration::from_secs(120));
         if let Some(port) = self.proxy_port.mixed_port() {
             builder = builder.proxy(reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))?);
@@ -741,8 +750,12 @@ mod tests {
             first.local_addr().unwrap().port(),
         )));
         let dir = TempDir::new().unwrap();
-        let backend =
-            HttpUpdaterBackend::new(dir.path().to_path_buf(), test_paths(&dir), port.clone());
+        let backend = HttpUpdaterBackend::new(
+            dir.path().to_path_buf(),
+            test_paths(&dir),
+            port.clone(),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        );
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
                 listener.local_addr().unwrap().port(),
@@ -820,7 +833,12 @@ mod tests {
         let (stalled, mut stall) = tokio::sync::mpsc::unbounded_channel();
         let mirror = tokio::spawn(stalling_mirror(listener, stall_probe, stalled));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), test_paths(&dir), port);
+        let backend = HttpUpdaterBackend::new(
+            dir.path().to_path_buf(),
+            test_paths(&dir),
+            port,
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        );
         let token = CancellationToken::new();
         let prepare = tokio::spawn({
             let token = token.clone();

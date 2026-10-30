@@ -1,12 +1,16 @@
 use super::config::NyanpasuReqwestProxyExt;
+use crate::client::bundle_metadata::BundleMetadata;
 use anyhow::Result;
 use std::time::Duration;
 use url::Url;
 
 // TODO: 添加自定义 User-Agent 等配置，说白了就是重构一下 prfitem 的那坨代码
-pub fn get_reqwest_client(self_proxy_port: u16) -> Result<reqwest::Client> {
+pub fn get_reqwest_client(
+    self_proxy_port: u16,
+    metadata: &BundleMetadata,
+) -> Result<reqwest::Client> {
     let builder = reqwest::ClientBuilder::new();
-    let app_version = super::dirs::get_app_version();
+    let app_version = metadata.app_version;
     let client = builder
         .swift_set_nyanpasu_proxy(self_proxy_port)
         .user_agent(format!("clash-nyanpasu/{app_version}"))

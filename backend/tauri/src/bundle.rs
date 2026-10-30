@@ -31,14 +31,9 @@ pub fn resolve(
     system_webview_available: impl FnOnce() -> bool,
 ) -> std::result::Result<BundleMetadata, Error> {
     use snafu::ResultExt as _;
-    let release_channel = compiled_channel(cfg!(feature = "nightly"), env!("NYANPASU_VERSION"))?;
+    let metadata = compiled_metadata()?;
     if !windows {
-        return Ok(BundleMetadata {
-            release_channel,
-            sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
-            is_portable: false,
-            is_fixed_webview: false,
-        });
+        return Ok(metadata);
     }
 
     let runtime_dir = fixed_runtime_dir(config, executable_dir);
@@ -62,10 +57,23 @@ pub fn resolve(
     }
 
     Ok(BundleMetadata {
-        release_channel,
-        sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
         is_portable,
         is_fixed_webview,
+        ..metadata
+    })
+}
+
+pub fn compiled_metadata() -> std::result::Result<BundleMetadata, Error> {
+    Ok(BundleMetadata {
+        app_version: env!("NYANPASU_VERSION"),
+        package_version: env!("CARGO_PKG_VERSION"),
+        build_date: crate::consts::BUILD_INFO.build_date,
+        is_appimage: *crate::consts::IS_APPIMAGE,
+        main_window_label: crate::consts::MAIN_WINDOW_LABEL,
+        is_portable: false,
+        is_fixed_webview: false,
+        release_channel: compiled_channel(cfg!(feature = "nightly"), env!("NYANPASU_VERSION"))?,
+        sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
     })
 }
 

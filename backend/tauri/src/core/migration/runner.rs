@@ -3,9 +3,12 @@ use super::{
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::core::backup::{
-    self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
-    StorageSource,
+use crate::{
+    client::bundle_metadata::BundleMetadata,
+    core::backup::{
+        self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
+        StorageSource,
+    },
 };
 use nyanpasu_paths::PathResolver;
 use semver::Version;
@@ -128,15 +131,24 @@ impl Runner {
         self.backup.is_some()
     }
 
-    pub fn with_target(target: Version, paths: PathResolver, force: bool) -> Result<Self, Error> {
-        Self::with_context(target, force, Ctx::from_paths(paths))
+    pub fn with_target(
+        target: Version,
+        paths: PathResolver,
+        bundle_metadata: BundleMetadata,
+        force: bool,
+    ) -> Result<Self, Error> {
+        Self::with_context(target, force, Ctx::from_paths(paths, bundle_metadata))
     }
 
-    pub fn with_paths(paths: PathResolver, force: bool) -> Result<Self, Error> {
+    pub fn with_paths(
+        paths: PathResolver,
+        bundle_metadata: BundleMetadata,
+        force: bool,
+    ) -> Result<Self, Error> {
         Self::with_context(
-            current_version().context(ResolveVersionSnafu)?,
+            current_version(&bundle_metadata).context(ResolveVersionSnafu)?,
             force,
-            Ctx::from_paths(paths),
+            Ctx::from_paths(paths, bundle_metadata),
         )
     }
 
@@ -253,6 +265,7 @@ impl Runner {
         let storage_path = self.ctx.storage_path();
         let info = backup::create_backup(&BackupRequest {
             paths: self.ctx.paths(),
+            bundle_metadata: self.ctx.bundle_metadata,
             storage: StorageSource::File(&storage_path),
             kind: BackupKind::Migration {
                 from: self.store.app.last_succeeded.as_ref(),
@@ -726,7 +739,12 @@ mod tests {
             paths.create_base_dirs().unwrap();
             let path = paths.app_config_dir().join(STORE_FILE_NAME);
             std::fs::write(&path, format!("store_schema_version: {read}\n")).unwrap();
-            let error = Runner::with_paths(paths, false).unwrap_err();
+            let error = Runner::with_paths(
+                paths,
+                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                false,
+            )
+            .unwrap_err();
             match error {
                 Error::LoadState {
                     source:

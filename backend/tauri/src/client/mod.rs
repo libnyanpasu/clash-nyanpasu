@@ -372,6 +372,7 @@ impl NyanpasuClient {
                 let file_service = Arc::new(ProfileFileService::new(
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
+                    bundle_metadata,
                 ));
                 let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
@@ -583,6 +584,7 @@ impl NyanpasuClient {
                     .to_path_buf(),
                 paths.clone(),
                 ports.clone(),
+                bundle_metadata,
             )),
             Arc::new(application_workflow.clone()),
             shutdown.child_token(),
@@ -602,7 +604,7 @@ impl NyanpasuClient {
         let app_update_supported = app_update_backend_factory.is_some()
             && !bundle_metadata.is_portable
             && (cfg!(any(target_os = "windows", target_os = "macos"))
-                || (cfg!(target_os = "linux") && *crate::consts::IS_APPIMAGE));
+                || (cfg!(target_os = "linux") && bundle_metadata.is_appimage));
         let app_update_backend = app_update_backend_factory
             .map(|factory| factory(ports.clone() as Arc<dyn SelfProxyPortSource>))
             .unwrap_or_else(|| Arc::new(app_update::UnavailableAppUpdateBackend));
@@ -629,6 +631,7 @@ impl NyanpasuClient {
         .context(StartAppUpdaterSnafu)?;
         let changelog_http = Arc::new(app_update::adapters::ReqwestChangelogHttp::new(
             ports.clone() as Arc<dyn SelfProxyPortSource>,
+            bundle_metadata,
         ));
         let mut application_settings = application.subscribe_settings_changes();
         let settings_updater = app_updater.clone();
@@ -835,9 +838,11 @@ impl NyanpasuClient {
     /// A failed prune is logged and does not fail the backup it follows.
     pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
         let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
+        let bundle_metadata = self.inner.bundle_metadata;
         crate::utils::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let info = backup::create_backup(&BackupRequest {
+                    bundle_metadata,
                     paths: &paths,
                     storage: StorageSource::Live(&storage),
                     kind: BackupKind::Manual,
@@ -870,6 +875,34 @@ impl NyanpasuClient {
         core: nyanpasu_config::application::ClashCore,
     ) -> Vec<agent_skills::CoreAgentSkill> {
         agent_skills::core_agent_skills(&self.inner.paths, core).await
+    }
+
+    pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
+        crate::utils::net::url_delay_test(
+            url,
+            expected_status,
+            self.clash_info().port,
+            &self.inner.bundle_metadata,
+        )
+        .await
+    }
+
+    pub async fn get_ipsb_asn(&self) -> anyhow::Result<serde_json::Value> {
+        crate::utils::net::get_ipsb_asn(self.clash_info().port, &self.inner.bundle_metadata).await
+    }
+
+    pub async fn get_cached_icon(
+        &self,
+        url: &str,
+        paths: &PathResolver,
+    ) -> anyhow::Result<(String, bytes::Bytes)> {
+        crate::service::icon::get_cached_icon(
+            url,
+            self.clash_info().port,
+            paths,
+            &self.inner.bundle_metadata,
+        )
+        .await
     }
 
     pub fn is_portable(&self) -> bool {
@@ -1061,7 +1094,9 @@ impl NyanpasuClient {
 
     /// The geometry the main window reopens with, as last saved.
     pub fn main_window_geometry(&self) -> Option<nyanpasu_config::state::window::WindowState> {
-        self.inner.session_state.main_window_geometry()
+        self.inner
+            .session_state
+            .main_window_geometry(&self.inner.bundle_metadata)
     }
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
@@ -2666,6 +2701,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
+                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -3199,6 +3235,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
+                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
@@ -3513,6 +3550,7 @@ pub(crate) mod tests {
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3534,6 +3572,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
+                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -3718,6 +3757,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
+                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
@@ -4720,6 +4760,7 @@ pub(crate) mod tests {
                     is_fixed_webview: false,
                     release_channel: ReleaseChannel::Stable,
                     sourceforge_project: None,
+                    ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
                 },
                 logs::test_setup(
                     test_paths(dir.path(), dir.path().join("data"))

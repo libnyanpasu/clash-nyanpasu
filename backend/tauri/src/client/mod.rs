@@ -58,7 +58,6 @@ use crate::{
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
 };
-use anyhow::Context as _;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
@@ -69,6 +68,7 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use snafu::{OptionExt as _, ResultExt as _};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
@@ -128,6 +128,52 @@ pub struct ClientSetupArgs {
     pub tasks: tokio_util::task::TaskTracker,
 }
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum SetupError {
+    #[snafu(display("failed to load application"))]
+    LoadApplication { source: application::Error },
+    #[snafu(display("failed to load session state"))]
+    LoadSessionState { source: session_state::Error },
+    #[snafu(display("failed to load clash config"))]
+    LoadClashConfig { source: clash_config::Error },
+    #[snafu(display("failed to load profiles"))]
+    LoadProfiles { source: profiles::Error },
+    #[snafu(display("failed to cleanup candidates"))]
+    CleanupCandidates { source: runtime::Error },
+    #[snafu(display("failed to start http server"))]
+    StartHttpServer {
+        source: crate::server::debug_http::Error,
+    },
+    #[snafu(display("failed to start core logs"))]
+    StartCoreLogs {
+        source: crate::core::logs::SpawnError,
+    },
+    #[snafu(display("failed to start streams"))]
+    StartStreams {
+        source: crate::core::clash::ws::Error,
+    },
+    #[snafu(display("failed to start app logs"))]
+    StartAppLogs { source: nyanpasu_logging::LogError },
+    #[snafu(display("failed to start effects"))]
+    StartEffects { source: effects::actor::Error },
+    #[snafu(display("failed to start workflow"))]
+    StartWorkflow { source: application_workflow::Error },
+    #[snafu(display("failed to start updater"))]
+    StartUpdater { source: crate::core::updater::Error },
+    #[snafu(display("failed to start app updater"))]
+    StartAppUpdater { source: app_update::Error },
+    #[snafu(display("failed to start proxies"))]
+    StartProxies { source: crate::core::proxies::Error },
+    #[snafu(display("failed to start geo index"))]
+    StartGeoIndex {
+        source: crate::core::geo::SpawnError,
+    },
+    #[snafu(display("failed to locate executable"))]
+    LocateExecutable { source: std::io::Error },
+    #[snafu(display("executable has no parent directory"))]
+    LocateExecutableParent,
+}
+
 #[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
@@ -139,7 +185,7 @@ async fn new_typed_config_clients(
     paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
-) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
+) -> std::result::Result<(ApplicationClient, SessionStateClient, ClashConfigClient), SetupError> {
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
@@ -147,10 +193,13 @@ async fn new_typed_config_clients(
         shutdown.child_token(),
         tasks,
     )
-    .await?;
+    .await
+    .context(LoadApplicationSnafu)?;
 
     let session_state =
-        SessionStateClient::new(paths.session_state_path(), shutdown.child_token(), tasks).await?;
+        SessionStateClient::new(paths.session_state_path(), shutdown.child_token(), tasks)
+            .await
+            .context(LoadSessionStateSnafu)?;
 
     let clash_config = ClashConfigClient::new(
         mutations.clone(),
@@ -158,7 +207,8 @@ async fn new_typed_config_clients(
         shutdown.child_token(),
         tasks,
     )
-    .await?;
+    .await
+    .context(LoadClashConfigSnafu)?;
 
     Ok((application, session_state, clash_config))
 }
@@ -251,7 +301,7 @@ struct NyanpasuClientInner {
 }
 
 impl NyanpasuClient {
-    pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
+    pub fn try_new_with_args(args: ClientSetupArgs) -> std::result::Result<Self, SetupError> {
         let ClientSetupArgs {
             jobs,
             bundle_metadata,
@@ -298,7 +348,7 @@ impl NyanpasuClient {
                 runtime_paths_for_setup
                     .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
                     .await
-                    .context("failed to clean stale runtime candidates")?;
+                    .context(CleanupCandidatesSnafu)?;
                 let (application, session_state, clash_config) = new_typed_config_clients(
                     mutations.clone(),
                     bundle_metadata.release_channel,
@@ -327,8 +377,9 @@ impl NyanpasuClient {
                     owner_shutdown.child_token(),
                     &owner_tasks,
                 )
-                .await?;
-                anyhow::Ok((
+                .await
+                .context(LoadProfilesSnafu)?;
+                Ok::<_, SetupError>((
                     application,
                     session_state,
                     clash_config,
@@ -419,9 +470,11 @@ impl NyanpasuClient {
         >,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> std::result::Result<Self, SetupError> {
         let debug_http =
-            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes).await?;
+            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes)
+                .await
+                .context(StartHttpServerSnafu)?;
         tasks.spawn({
             let (http, token) = (debug_http.clone(), shutdown.child_token());
             async move {
@@ -437,7 +490,8 @@ impl NyanpasuClient {
             shutdown.child_token(),
             &tasks,
         )
-        .await?;
+        .await
+        .context(StartCoreLogsSnafu)?;
         // Before the effects owner, which hands it the capture level.
         let streams = crate::core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),
@@ -446,8 +500,11 @@ impl NyanpasuClient {
             shutdown.child_token(),
             &tasks,
         )
-        .await?;
-        let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
+        .await
+        .context(StartStreamsSnafu)?;
+        let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock)
+            .await
+            .context(StartAppLogsSnafu)?;
         // The log client exposes no actor cell, so a tracked task stops it.
         tasks.spawn({
             let (logs, token) = (app_logs.clone(), shutdown.child_token());
@@ -476,7 +533,8 @@ impl NyanpasuClient {
             },
             &tasks,
         )
-        .await?;
+        .await
+        .context(StartEffectsSnafu)?;
         let notifications: Arc<dyn effects::ports::CommitNotifications> =
             Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
@@ -505,15 +563,17 @@ impl NyanpasuClient {
                 tasks: tasks.clone(),
             },
         )
-        .await?;
+        .await
+        .context(StartWorkflowSnafu)?;
         if let Some(mutations) = mutations {
             mutations.connect(application_workflow.clone(), notifications);
         }
         let updater = crate::core::updater::UpdaterClient::spawn(
             Arc::new(crate::core::updater::HttpUpdaterBackend::new(
-                std::env::current_exe()?
+                std::env::current_exe()
+                    .context(LocateExecutableSnafu)?
                     .parent()
-                    .context("executable has no parent directory")?
+                    .context(LocateExecutableParentSnafu)?
                     .to_path_buf(),
                 paths.clone(),
                 ports.clone(),
@@ -522,7 +582,8 @@ impl NyanpasuClient {
             shutdown.child_token(),
             &tasks,
         )
-        .await?;
+        .await
+        .context(StartUpdaterSnafu)?;
         let app_config = application.snapshot().state;
         let app_update_settings = app_update::AppUpdateSettings {
             channel: app_config
@@ -556,7 +617,8 @@ impl NyanpasuClient {
             },
             &tasks,
         )
-        .await?;
+        .await
+        .context(StartAppUpdaterSnafu)?;
         let changelog_http = Arc::new(app_update::adapters::ReqwestChangelogHttp::new(
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
@@ -588,7 +650,8 @@ impl NyanpasuClient {
             shutdown.child_token(),
             &tasks,
         )
-        .await?;
+        .await
+        .context(StartProxiesSnafu)?;
         let geo_index = crate::core::geo::GeoIndexClient::spawn(
             crate::core::geo::GeoIndexArgs {
                 source: geo_index,
@@ -597,7 +660,8 @@ impl NyanpasuClient {
             shutdown.child_token(),
             &tasks,
         )
-        .await?;
+        .await
+        .context(StartGeoIndexSnafu)?;
         let local_source = Arc::new(traffic::LocalSourceCache::new(
             application.snapshot_handle(),
             clash_config.snapshot_handle(),
@@ -5103,5 +5167,40 @@ mode: rule
             client.request_shutdown();
             client.wait_shutdown().await;
         });
+    }
+}
+
+#[cfg(test)]
+mod setup_error_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn corrupt_application_yaml_keeps_the_typed_load_source() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = tests::test_paths(root.path().join("config"), root.path().join("data"));
+        paths.create_base_dirs().unwrap();
+        std::fs::write(paths.application_config_path(), "language: [broken").unwrap();
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let tasks = tokio_util::task::TaskTracker::new();
+        let result = new_typed_config_clients(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            crate::bundle::Channel::Stable,
+            paths,
+            &shutdown,
+            &tasks,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SetupError::LoadApplication {
+                source: application::Error::LoadState {
+                    source: nyanpasu_core::state::error::LoadError::DeserializeConfig(_),
+                    ..
+                },
+            })
+        ));
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
     }
 }

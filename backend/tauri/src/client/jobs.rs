@@ -25,11 +25,16 @@ pub(crate) async fn start(
     capture: LogCapture,
     shutdown: CancellationToken,
     tasks: &TaskTracker,
-) -> anyhow::Result<JobsClient> {
+) -> Result<JobsClient, Error> {
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
+    let store_path = path.clone();
     let store = crate::utils::blocking::join(
         tokio::task::spawn_blocking(move || RedbJobStore::open(path)).await,
-    )?;
+    )
+    .map_err(|source| Error::OpenStore {
+        path: store_path,
+        source,
+    })?;
     let mut limits = Limits::default();
     limits.retention.per_job = DEFAULT_HISTORY_LIMIT;
     // Profile sync coalesces elapsed interval slots after suspend; do not
@@ -37,7 +42,8 @@ pub(crate) async fn start(
     limits.lateness = std::time::Duration::MAX;
     let mut service = JobsService::start(Box::new(store), capture, limits)
         .with_subscriber(dispatch)
-        .await?;
+        .await
+        .map_err(|source| Error::StartOwner { source })?;
     let client = service.client();
     tasks.spawn(async move {
         shutdown.cancelled().await;
@@ -92,6 +98,17 @@ pub(crate) async fn test_client_with_owner(
         }
     });
     client
+}
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to open jobs at {}", path.display()))]
+    OpenStore {
+        path: PathBuf,
+        source: nyanpasu_jobs::Error,
+    },
+    #[snafu(display("failed to start jobs owner"))]
+    StartOwner { source: nyanpasu_jobs::Error },
 }
 
 #[derive(Debug, serde::Serialize, specta::Type)]

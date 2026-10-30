@@ -5,7 +5,6 @@ use crate::state::mutation::MutationCoordinator;
 
 use std::{sync::Arc, time::Duration};
 
-use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
     FolderId, ManagedProfilePath, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
@@ -14,9 +13,13 @@ use nyanpasu_config::profile::{
 };
 use nyanpasu_core::{
     profile_import::{self, ImportClassification, ImportFacts, ProfileImportKind},
-    state::{PersistentStateManagerSetup, StateSnapshot},
+    state::{
+        PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+        error::{LoadError, UpsertError},
+    },
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use snafu::ResultExt as _;
 use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -30,6 +33,36 @@ use crate::{
         sources::SourcesSnapshot,
     },
 };
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to load persistent state from {path}"))]
+    LoadState {
+        path: Utf8PathBuf,
+        source: LoadError<PersistentStateManager<Profiles, ProfilesFormat>>,
+    },
+    #[snafu(display("failed to initialize persistent state at {path}"))]
+    InitializeState {
+        path: Utf8PathBuf,
+        source: LoadError<PersistentStateManager<Profiles, ProfilesFormat>>,
+    },
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+    #[snafu(display("failed to persist state"))]
+    PersistState { source: UpsertError },
+    #[snafu(display("failed to advance profiles revision"))]
+    AdvanceRevision {
+        source: nyanpasu_config::profile::ProfileRevisionError,
+    },
+    #[snafu(display("profiles failed validation: {errors:?}"))]
+    ValidateProfiles {
+        errors: Vec<nyanpasu_config::profile::ProfileValidationError>,
+    },
+    #[snafu(display("failed to prepare profile materialization"))]
+    PrepareMaterialization {
+        source: crate::state::profiles::ProfileFileError,
+    },
+}
 
 #[derive(Clone)]
 pub struct ProfilesClient {
@@ -73,22 +106,23 @@ impl ProfilesClient {
         materialization: Arc<dyn ProfileMaterializationPort>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         let jobs = crate::state::profiles::jobs::ProfileJobs::new(jobs);
         let should_load = profiles_path.exists();
         let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
-            .config_path(profiles_path)
+            .config_path(profiles_path.clone())
             .assemble();
         let mut manager = if should_load {
-            setup
-                .load()
-                .await
-                .context("failed to load profiles persistent state manager")?
+            setup.load().await.context(LoadStateSnafu {
+                path: &profiles_path,
+            })?
         } else {
             setup
                 .from_state(Profiles::default())
                 .await
-                .context("failed to initialize profiles persistent state manager")?
+                .context(InitializeStateSnafu {
+                    path: &profiles_path,
+                })?
         };
 
         // A hand-edited or downgraded document may carry malformed folders or
@@ -103,13 +137,8 @@ impl ProfilesClient {
                 ?layout_repair,
                 "repaired malformed profile arrangements"
             );
-            loaded
-                .bump_revision()
-                .context("failed to advance the profiles revision after repairing arrangements")?;
-            manager
-                .upsert(loaded)
-                .await
-                .context("failed to save the repaired profile arrangements")?;
+            loaded.bump_revision().context(AdvanceRevisionSnafu)?;
+            manager.upsert(loaded).await.context(PersistStateSnafu)?;
         }
 
         let snapshot = manager.snapshot_handle();
@@ -117,7 +146,15 @@ impl ProfilesClient {
             .load()
             .state
             .validate()
-            .map_err(|errors| anyhow::anyhow!("profiles.yaml failed validation: {errors:?}"))?;
+            .map_err(|errors| Error::ValidateProfiles { errors })?;
+
+        let loaded = snapshot.load().state.clone();
+        let preparation = materialization.clone();
+        let report = crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || preparation.reconcile(&loaded)).await,
+        )
+        .context(PrepareMaterializationSnafu)?;
+        ProfilesActor::log_reconcile_report(&report);
 
         let (sources, sources_rx) = tokio::sync::watch::channel(SourcesSnapshot::default());
         let actor_ref = Actor::spawn(
@@ -135,7 +172,7 @@ impl ProfilesClient {
             },
         )
         .await
-        .context("failed to spawn profiles actor")?
+        .context(SpawnActorSnafu)?
         .0;
         crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
@@ -159,7 +196,7 @@ impl ProfilesClient {
         materialization: Arc<dyn ProfileMaterializationPort>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         // The journal must not lock directories used by filesystem fault fixtures.
         let jobs = crate::client::jobs::test_client_with_owner(shutdown.clone(), tasks).await;
         Self::new_with_jobs(
@@ -751,6 +788,46 @@ mod tests {
         .await
         .expect("a stamped profiles.yaml should load");
         assert_eq!(reloaded.snapshot().valid, vec!["dns".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn materialization_preparation_failure_keeps_its_typed_source() {
+        let root = tempdir().unwrap();
+        let paths =
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        std::fs::create_dir_all(paths.app_profiles_dir()).unwrap();
+        let blocked = paths.app_profiles_dir().join(".profile-materialization-v1");
+        std::fs::write(&blocked, "a file blocks the private directory").unwrap();
+        let service = Arc::new(ProfileFileService::new(
+            paths.clone(),
+            Arc::new(NoProxyPort),
+        ));
+        let shutdown = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let jobs = crate::client::jobs::test_client_with_owner(shutdown.clone(), &tasks).await;
+        let result = ProfilesClient::new_with_jobs(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            paths.profiles_path(),
+            jobs,
+            service.clone(),
+            service.clone(),
+            service,
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(Error::PrepareMaterialization {
+                source: ProfileFileError::UnexpectedNode {
+                    expected: crate::state::profiles::error::ExpectedNode::RealDirectory,
+                    ..
+                },
+            })
+        ));
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
     }
 
     #[tokio::test]

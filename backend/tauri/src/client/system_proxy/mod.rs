@@ -28,6 +28,12 @@ use crate::client::effects::{
 
 pub use self::actor::Args as SystemProxyArgs;
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 /// What the actor currently holds. Nothing in the effect protocol needs it —
 /// that travels as [`EffectStatus`] — so today only the tests observe the
 /// actor's private state through it.
@@ -53,9 +59,14 @@ pub struct SystemProxyClient {
 impl SystemProxyClient {
     /// The actor puts back the proxy settings it found once `args.shutdown`
     /// is cancelled, and `tasks` waits for that.
-    pub async fn spawn(args: SystemProxyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+    pub async fn spawn(
+        args: SystemProxyArgs,
+        tasks: &TaskTracker,
+    ) -> std::result::Result<Self, Error> {
         let shutdown = args.shutdown.clone();
-        let (actor, _handle) = Actor::spawn(None, SystemProxyActor, args).await?;
+        let (actor, _handle) = Actor::spawn(None, SystemProxyActor, args)
+            .await
+            .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor })
     }

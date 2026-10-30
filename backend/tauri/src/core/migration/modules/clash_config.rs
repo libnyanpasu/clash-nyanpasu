@@ -2,13 +2,29 @@ use super::super::{
     Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator,
     fs::{read_document, write_document},
 };
-use anyhow::{Context as _, bail};
 use nyanpasu_config::clash::config::ClashConfig;
 use nyanpasu_core::format::{Inspected, StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::{Mapping, Value};
+use snafu::OptionExt as _;
 use std::path::Path;
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to inspect migration input"))]
+    InspectInput {
+        source: super::super::MigrationCheckError,
+    },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: super::super::fs::Error },
+    #[snafu(display("migration document is missing: {}", path.display()))]
+    FindDocument { path: std::path::PathBuf },
+    #[snafu(display("expected mapping in {field}"))]
+    ReadMapping { field: &'static str },
+    #[snafu(display("expected boolean in {field}: {value:?}"))]
+    ReadGuard { field: &'static str, value: Value },
+}
 
 pub static MIGRATOR: ClashConfigMigrator = ClashConfigMigrator;
 
@@ -49,7 +65,7 @@ impl ModuleMigrator for ClashConfigMigrator {
         })
     }
 
-    fn detect_baseline(&self, _ctx: &Ctx) -> anyhow::Result<u64> {
+    fn detect_baseline(&self, _ctx: &Ctx) -> Result<u64, super::super::OperationError> {
         Ok(UNSTAMPED_CEILING)
     }
 
@@ -79,8 +95,11 @@ pub(in crate::core::migration) fn read_typed(
             Inspected::Stamped { stamp, payload } => (stamp.schema_revision, payload),
         };
     if revision < MANAGEABLE_GUARD_FIELDS.revision() {
-        manage_guard_fields(&mut payload).map_err(|error| {
-            MigrationCheckError::Unrecognized(format!("{}: {error:#}", path.display()))
+        manage_guard_fields(&mut payload).map_err(|source| {
+            MigrationCheckError::MigrateClashOverrides {
+                path: path.to_owned(),
+                source: Box::new(source),
+            }
         })?;
     }
     if revision < TUN_OVERRIDES.revision() {
@@ -122,28 +141,35 @@ impl MigrationStep for MigrateManageableGuardFields {
         "MigrateManageableGuardFields"
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let path = ctx.clash_config_path();
-        let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
-            .context("clash-config.yaml is gone")?;
-        let mut payload = file.payload;
-        manage_guard_fields(&mut payload)?;
-        write_document(
-            &path,
-            ClashConfigDocument::DOCUMENT,
-            self.revision(),
-            payload,
-            None,
-        )
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.clash_config_path();
+            let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            manage_guard_fields(&mut payload)?;
+            write_document(
+                &path,
+                ClashConfigDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
     }
 }
 
-fn manage_guard_fields(payload: &mut Mapping) -> anyhow::Result<()> {
+fn manage_guard_fields(payload: &mut Mapping) -> Result<(), Error> {
     let Some(overrides) = payload.get_mut(OVERRIDES_KEY) else {
         return Ok(());
     };
     let Some(overrides) = overrides.as_mapping_mut() else {
-        bail!("`{OVERRIDES_KEY}` is not a mapping");
+        return ReadMappingSnafu {
+            field: OVERRIDES_KEY,
+        }
+        .fail();
     };
     manage_override_fields(overrides)
 }
@@ -154,7 +180,7 @@ fn manage_guard_fields(payload: &mut Mapping) -> anyhow::Result<()> {
 /// head before this step runs on it.
 pub(in crate::core::migration) fn manage_override_fields(
     overrides: &mut Mapping,
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     for key in MANAGEABLE_GUARD_KEYS {
         let Some(value) = overrides.get_mut(key) else {
             continue;
@@ -167,7 +193,13 @@ pub(in crate::core::migration) fn manage_override_fields(
                 *value = Value::Mapping(managed);
             }
             Value::Mapping(_) => {}
-            other => bail!("`{key}` is {other:?}, not a boolean"),
+            other => {
+                return ReadGuardSnafu {
+                    field: key,
+                    value: other.clone(),
+                }
+                .fail();
+            }
         }
     }
     Ok(())
@@ -202,19 +234,23 @@ impl MigrationStep for MigrateTunOverrides {
         "MigrateTunOverrides"
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let path = ctx.clash_config_path();
-        let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
-            .context("clash-config.yaml is gone")?;
-        let mut payload = file.payload;
-        add_tun_overrides(&mut payload);
-        write_document(
-            &path,
-            ClashConfigDocument::DOCUMENT,
-            self.revision(),
-            payload,
-            None,
-        )
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.clash_config_path();
+            let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            add_tun_overrides(&mut payload);
+            write_document(
+                &path,
+                ClashConfigDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
     }
 }
 
@@ -235,6 +271,17 @@ fn add_tun_overrides(payload: &mut Mapping) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reading_legacy_clash_overrides_keeps_the_conversion_source() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("clash-config.yaml");
+        std::fs::write(&path, "overrides: []\n").unwrap();
+        let error = read_typed(&path).unwrap_err();
+        assert!(
+            matches!(error, MigrationCheckError::MigrateClashOverrides { source, .. } if matches!(source.as_ref(), Error::ReadMapping { field: "overrides" }))
+        );
+    }
 
     fn payload(src: &str) -> Mapping {
         serde_yaml::from_str(src).unwrap()

@@ -432,10 +432,10 @@ pub async fn setup(
     ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
     shutdown: CancellationToken,
     tasks: &TaskTracker,
-) -> anyhow::Result<WidgetManager> {
+) -> WidgetManager {
     let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost), shutdown, tasks);
     widget_manager.register_listener(ws_connections_receiver);
-    Ok(widget_manager)
+    widget_manager
 }
 
 #[cfg(test)]

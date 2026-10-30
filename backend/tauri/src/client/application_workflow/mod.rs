@@ -50,6 +50,12 @@ use workflow::ApplicationWorkflow;
 /// How many recent results the status and the journal keep.
 const HISTORY_LEN: usize = 32;
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CoreLifecycleStatus {
     pub active: Option<OperationId>,
@@ -595,7 +601,7 @@ macro_rules! method {
 }
 
 impl ApplicationWorkflowClient {
-    pub async fn spawn(args: ApplicationWorkflowArgs) -> anyhow::Result<Self> {
+    pub async fn spawn(args: ApplicationWorkflowArgs) -> std::result::Result<Self, Error> {
         Self::spawn_with_ticks(args, true).await
     }
 
@@ -603,7 +609,7 @@ impl ApplicationWorkflowClient {
     async fn spawn_with_ticks(
         args: ApplicationWorkflowArgs,
         schedule_ticks: bool,
-    ) -> anyhow::Result<Self> {
+    ) -> std::result::Result<Self, Error> {
         let runtime = args.ports.runtime();
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
         let (journal_tx, mutations) = watch::channel(MutationJournal::default());
@@ -650,7 +656,8 @@ impl ApplicationWorkflowClient {
                 schedule_ticks,
             },
         )
-        .await?;
+        .await
+        .map_err(|source| Error::SpawnActor { source })?;
         // The daemon's readiness, for the core to follow (#5443). Every
         // published change is passed on and the handler reads the status
         // afresh: the watch may coalesce several changes into the last one, so

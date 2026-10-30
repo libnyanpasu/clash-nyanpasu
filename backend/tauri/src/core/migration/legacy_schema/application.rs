@@ -5,7 +5,13 @@ use nyanpasu_config::application::{
 };
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
 
-pub(super) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to convert legacy YAML"))]
+    ConvertYaml { source: super::ConversionError },
+}
+
+pub(super) fn application_from_legacy(legacy: &IVerge) -> Result<NyanpasuAppConfig, Error> {
     let mut next = NyanpasuAppConfig::default();
 
     if let Some(value) = legacy.app_singleton_port {

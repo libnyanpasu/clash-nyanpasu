@@ -181,7 +181,7 @@ impl Env {
         &self,
         shutdown: &CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<TrafficClient> {
+    ) -> Result<TrafficClient, super::client::Error> {
         TrafficClient::spawn(
             TrafficArgs {
                 storage: self.store.clone(),

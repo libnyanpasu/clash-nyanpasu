@@ -6,12 +6,38 @@
 //! future swap only touches this file.
 
 use super::MigrationCheckError;
-use anyhow::{Context, ensure};
 use atomicwrites::{AllowOverwrite, AtomicFile};
 use nyanpasu_core::format::{DocumentStamp, Inspected, StampError};
 use serde::de::DeserializeOwned;
 use serde_yaml::Mapping;
-use std::{io::Write, path::Path};
+use snafu::{ResultExt as _, ensure};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to stamp {}", path.display()))]
+    StampDocument { path: PathBuf, source: StampError },
+    #[snafu(display("failed to serialize {}", path.display()))]
+    SerializeDocument {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
+    #[snafu(display("destination path has no file name: {}", path.display()))]
+    ValidateDestination { path: PathBuf },
+    #[snafu(display("failed to create {}", path.display()))]
+    CreateDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to atomically write {}", path.display()))]
+    WriteFile {
+        path: PathBuf,
+        source: atomicwrites::Error<std::io::Error>,
+    },
+}
 
 /// Whether `path` exists, reporting an inaccessible parent as an error
 /// instead of the `false` that [`Path::exists`] would return.
@@ -100,15 +126,14 @@ pub(crate) fn write_document(
     schema_revision: u64,
     payload: Mapping,
     prefix: Option<&str>,
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     let stamp = DocumentStamp {
         document: document.to_owned(),
         schema_revision,
     };
-    let stamped = nyanpasu_core::format::stamp(payload, &stamp)
-        .with_context(|| format!("failed to stamp {}", path.display()))?;
-    let body = serde_yaml::to_string(&stamped)
-        .with_context(|| format!("failed to serialize {}", path.display()))?;
+    let stamped =
+        nyanpasu_core::format::stamp(payload, &stamp).context(StampDocumentSnafu { path })?;
+    let body = serde_yaml::to_string(&stamped).context(SerializeDocumentSnafu { path })?;
     let content = match prefix {
         Some(prefix) => format!("{prefix}\n\n{body}"),
         None => body,
@@ -124,21 +149,19 @@ pub(crate) fn write_document(
 /// fsyncs the parent directories so the rename survives a crash; on Windows it
 /// replaces via `MoveFileExW` with write-through semantics. Missing parent
 /// directories are created first.
-pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
+pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), Error> {
     ensure!(
         path.file_name().is_some(),
-        "destination path has no file name: {}",
-        path.display()
+        ValidateDestinationSnafu { path }
     );
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create dir {}", parent.display()))?;
+        std::fs::create_dir_all(parent).context(CreateDirectorySnafu { path: parent })?;
     }
     AtomicFile::new(path, AllowOverwrite)
         .write(|file| file.write_all(contents))
-        .with_context(|| format!("failed to atomically write {}", path.display()))?;
+        .context(WriteFileSnafu { path })?;
     Ok(())
 }

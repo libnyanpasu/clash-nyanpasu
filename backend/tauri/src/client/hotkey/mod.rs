@@ -45,6 +45,12 @@ use super::{
 
 pub use self::actor::Args as HotkeyArgs;
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 /// The actor's private state, observable for tests and diagnostics. The effect
 /// protocol itself travels as [`EffectStatus`].
 #[cfg_attr(not(test), allow(dead_code))]
@@ -64,9 +70,11 @@ pub struct HotkeyClient {
 impl HotkeyClient {
     /// The actor hands every accelerator back to the OS once `args.shutdown`
     /// is cancelled, and `tasks` waits for that.
-    pub async fn spawn(args: HotkeyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+    pub async fn spawn(args: HotkeyArgs, tasks: &TaskTracker) -> std::result::Result<Self, Error> {
         let shutdown = args.shutdown.clone();
-        let (actor, _handle) = Actor::spawn(None, HotkeyActor, args).await?;
+        let (actor, _handle) = Actor::spawn(None, HotkeyActor, args)
+            .await
+            .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor })
     }

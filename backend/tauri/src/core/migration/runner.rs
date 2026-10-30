@@ -7,10 +7,111 @@ use crate::core::backup::{
     self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
     StorageSource,
 };
-use anyhow::{Context, bail};
 use nyanpasu_paths::PathResolver;
 use semver::Version;
+use snafu::ResultExt as _;
+use std::path::PathBuf;
 use time::OffsetDateTime;
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to resolve current version"))]
+    ResolveVersion { source: super::VersionError },
+    #[snafu(display("failed to load migration state"))]
+    LoadState { source: super::store::Error },
+    #[snafu(display("failed to persist migration state"))]
+    PersistState { source: super::store::Error },
+    #[snafu(display("failed to back up the config before migrating"))]
+    CreateBackup { source: backup::BackupError },
+    #[snafu(display("failed to read {}", path.display()))]
+    ReadConfigDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to inspect {module} files"))]
+    InspectDocument {
+        module: String,
+        #[snafu(source(from(MigrationCheckError, Box::new)))]
+        source: Box<MigrationCheckError>,
+    },
+    #[snafu(display("failed to stamp {module} files"))]
+    StampDocument {
+        module: String,
+        source: super::fs::Error,
+    },
+    #[snafu(display(
+        "document was written by a newer version (revision {read}, supported {supported})"
+    ))]
+    NewerDocument {
+        path: PathBuf,
+        read: u64,
+        supported: u64,
+    },
+    #[snafu(display(
+        "migration state was written by a newer version (revision {read}, supported {supported})"
+    ))]
+    NewerAppliedRevision {
+        path: PathBuf,
+        module: String,
+        read: u64,
+        supported: u64,
+    },
+    #[snafu(display("{} is stamped at revision {read}, although {} records {module} as migrated to revision {applied}", path.display(), state_path.display()))]
+    DocumentBehindState {
+        path: PathBuf,
+        state_path: PathBuf,
+        module: String,
+        read: u64,
+        applied: u64,
+    },
+    #[snafu(display("{} has lost the `_nyanpasu` stamp; restore it or remove {}", path.display(), state_path.display()))]
+    MissingDocumentStamp { path: PathBuf, state_path: PathBuf },
+    #[snafu(display("{reason}, although {} records {module} as migrated to revision {applied}. The files may have been moved, restored from a backup or rewritten by an older version. Restore them, or delete {} so the files on disk are detected and migrated again.", state_path.display(), state_path.display()))]
+    FilesBehindState {
+        state_path: PathBuf,
+        module: String,
+        applied: u64,
+        reason: String,
+    },
+    #[snafu(display("failed to detect {module} baseline"))]
+    DetectBaseline {
+        module: String,
+        #[snafu(source(from(super::OperationError, Box::new)))]
+        source: Box<super::OperationError>,
+    },
+    #[snafu(display("failed to inspect {module} files"))]
+    InspectModule {
+        module: String,
+        #[snafu(source(from(super::OperationError, Box::new)))]
+        source: Box<super::OperationError>,
+    },
+    #[snafu(display("failed to check migration {step}"))]
+    CheckStep {
+        step: String,
+        #[snafu(source(from(MigrationCheckError, Box::new)))]
+        source: Box<MigrationCheckError>,
+    },
+    #[snafu(display("failed to run migration {step}"))]
+    RunStep {
+        step: String,
+        #[snafu(source(from(super::OperationError, Box::new)))]
+        source: Box<super::OperationError>,
+    },
+    #[snafu(display(
+        "migration {step} ran without leaving its document stamped; this is a bug in the migration"
+    ))]
+    VerifyDocumentStamp { step: String },
+    #[snafu(display(
+        "migration {step} ran but its check still reports it as needed; this is a bug in the migration"
+    ))]
+    VerifyStep { step: String },
+    #[snafu(display("failed to persist failed migration {step} ({persistence})"))]
+    RecordFailure {
+        step: String,
+        source: Box<Error>,
+        persistence: super::store::Error,
+    },
+}
 
 #[derive(Debug)]
 pub struct Runner {
@@ -23,12 +124,20 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn with_target(target: Version, paths: PathResolver, force: bool) -> anyhow::Result<Self> {
+    pub(crate) fn backup_available(&self) -> bool {
+        self.backup.is_some()
+    }
+
+    pub fn with_target(target: Version, paths: PathResolver, force: bool) -> Result<Self, Error> {
         Self::with_context(target, force, Ctx::from_paths(paths))
     }
 
-    pub fn with_paths(paths: PathResolver, force: bool) -> anyhow::Result<Self> {
-        Self::with_context(current_version()?, force, Ctx::from_paths(paths))
+    pub fn with_paths(paths: PathResolver, force: bool) -> Result<Self, Error> {
+        Self::with_context(
+            current_version().context(ResolveVersionSnafu)?,
+            force,
+            Ctx::from_paths(paths),
+        )
     }
 
     pub fn advice_step(&self, step: &dyn MigrationStep) -> MigrationAdvice {
@@ -58,7 +167,7 @@ impl Runner {
         }
     }
 
-    pub fn run_migration(&mut self, step: &dyn MigrationStep) -> anyhow::Result<()> {
+    pub fn run_migration(&mut self, step: &dyn MigrationStep) -> Result<(), Error> {
         println!("Running migration: {} ({})", step.id(), step.name());
         self.ensure_known_revisions()?;
         let advice = self.advice_step(step);
@@ -70,7 +179,7 @@ impl Runner {
         self.run_step(step)
     }
 
-    pub fn run_pending(&mut self) -> anyhow::Result<()> {
+    pub fn run_pending(&mut self) -> Result<(), Error> {
         println!("Running migrations up to version: {}", self.target);
         self.ensure_known_revisions()?;
         let has_pending = registry::modules()
@@ -117,7 +226,7 @@ impl Runner {
         self.store.set_last_succeeded(self.target.clone());
         self.store
             .flush_atomic(&self.ctx.state_path())
-            .context("failed to persist successful migration state")?;
+            .context(PersistStateSnafu)?;
 
         let backups_dir = self.ctx.paths().backups_dir();
         if let Err(error) = backup::prune_backups(
@@ -133,7 +242,7 @@ impl Runner {
     /// Snapshots the files the steps may rewrite before the first one runs.
     /// A failed backup aborts: nothing is migrated without a way back. A fresh
     /// install has nothing to snapshot, so it takes no backup.
-    fn ensure_backup(&mut self) -> anyhow::Result<()> {
+    fn ensure_backup(&mut self) -> Result<(), Error> {
         if self.backup.is_some() {
             return Ok(());
         }
@@ -151,7 +260,7 @@ impl Runner {
             },
             now: OffsetDateTime::now_utc(),
         })
-        .context("failed to back up the config before migrating")?;
+        .context(CreateBackupSnafu)?;
         println!("Backup created at {}", info.path.display());
         self.backup = Some(info);
         Ok(())
@@ -159,17 +268,22 @@ impl Runner {
 
     /// Whether the config dir holds nothing but the migration state file and
     /// there is no `storage.db`, as on a fresh install.
-    fn has_nothing_to_protect(&self) -> anyhow::Result<bool> {
+    fn has_nothing_to_protect(&self) -> Result<bool, Error> {
         let config_dir = self.ctx.paths().app_config_dir();
         let entries = match std::fs::read_dir(config_dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(true),
             Err(error) => {
-                return Err(error).with_context(|| format!("failed to read {config_dir}"));
+                return Err(Error::ReadConfigDirectory {
+                    path: config_dir.as_std_path().to_owned(),
+                    source: error,
+                });
             }
         };
         for entry in entries {
-            let entry = entry.with_context(|| format!("failed to read {config_dir}"))?;
+            let entry = entry.context(ReadConfigDirectorySnafu {
+                path: config_dir.as_std_path(),
+            })?;
             if entry.file_name() != STORE_FILE_NAME {
                 return Ok(false);
             }
@@ -177,9 +291,9 @@ impl Runner {
         Ok(!self.ctx.storage_path().exists())
     }
 
-    fn with_context(target: Version, force: bool, ctx: Ctx) -> anyhow::Result<Self> {
+    fn with_context(target: Version, force: bool, ctx: Ctx) -> Result<Self, Error> {
         let state_path = ctx.state_path();
-        let store = MigrationStore::load(&state_path)?;
+        let store = MigrationStore::load(&state_path).context(LoadStateSnafu)?;
         let mut runner = Self {
             target,
             force,
@@ -191,16 +305,21 @@ impl Runner {
         Ok(runner)
     }
 
-    fn ensure_baselines(&mut self) -> anyhow::Result<()> {
+    fn ensure_baselines(&mut self) -> Result<(), Error> {
         let mut changed = self.reconcile_documents()?;
         for module in registry::modules() {
-            changed |= self.store.ensure_module(module, &self.ctx)?;
+            changed |=
+                self.store
+                    .ensure_module(module, &self.ctx)
+                    .context(DetectBaselineSnafu {
+                        module: module.module(),
+                    })?;
         }
 
         if changed {
             self.store
                 .flush_atomic(&self.ctx.state_path())
-                .context("failed to persist migration baselines")?;
+                .context(PersistStateSnafu)?;
         }
         Ok(())
     }
@@ -211,7 +330,7 @@ impl Runner {
     /// and it refuses a state that the file contradicts. A state already ahead
     /// of this build is left to `ensure_known_revisions`, which runs after the
     /// baselines are written. Returns whether the state changed.
-    fn reconcile_documents(&mut self) -> anyhow::Result<bool> {
+    fn reconcile_documents(&mut self) -> Result<bool, Error> {
         let state_path = self.ctx.state_path();
         let mut changed = false;
         for module in registry::modules() {
@@ -225,8 +344,9 @@ impl Runner {
                 continue;
             }
             let path = (spec.path)(&self.ctx);
-            let file = fs::read_document(&path, spec.document)
-                .with_context(|| format!("failed to inspect the {} files", module.module()))?;
+            let file = fs::read_document(&path, spec.document).context(InspectDocumentSnafu {
+                module: module.module(),
+            })?;
             let Some(file) = file else {
                 if entry.is_none() {
                     // Nothing to migrate: the file will be created at head.
@@ -239,30 +359,30 @@ impl Runner {
             };
 
             match (file.schema_revision, entry) {
-                (Some(stamped), _) if stamped > head => bail!(
-                    "{} is stamped at revision {stamped}, but this build only knows revisions \
-                     up to {head}; the file was written by a newer version. Update to that \
-                     version, or restore {} from a backup made by this one.",
-                    path.display(),
-                    path.display()
-                ),
+                (Some(stamped), _) if stamped > head => {
+                    return NewerDocumentSnafu {
+                        path,
+                        read: stamped,
+                        supported: head,
+                    }
+                    .fail();
+                }
                 (Some(stamped), None) => {
                     self.store
                         .modules
                         .insert(module.module().to_string(), at_revision(stamped, true));
                     changed = true;
                 }
-                (Some(stamped), Some(state)) if stamped < state.applied_revision => bail!(
-                    "{} is stamped at revision {stamped}, although {} records {} as migrated \
-                     to revision {}. The file may have been restored from a backup or rewritten \
-                     by an older version. Restore it, or delete {} so the file is migrated \
-                     again from its stamp.",
-                    path.display(),
-                    state_path.display(),
-                    module.module(),
-                    state.applied_revision,
-                    state_path.display()
-                ),
+                (Some(stamped), Some(state)) if stamped < state.applied_revision => {
+                    return DocumentBehindStateSnafu {
+                        path,
+                        state_path,
+                        module: module.module(),
+                        read: stamped,
+                        applied: state.applied_revision,
+                    }
+                    .fail();
+                }
                 (Some(_), Some(state)) => {
                     if !state.stamped {
                         self.set_stamped(module.module());
@@ -272,14 +392,7 @@ impl Runner {
                 (None, Some(state))
                     if state.stamped || state.applied_revision > spec.unstamped_ceiling =>
                 {
-                    bail!(
-                        "{} has lost the `{}` stamp it was written with; it may have been \
-                         rewritten by an older version or edited by hand. Restore it from a \
-                         backup, or delete {} so its revision is detected from its content.",
-                        path.display(),
-                        nyanpasu_core::format::STAMP_KEY,
-                        state_path.display()
-                    )
+                    return MissingDocumentStampSnafu { path, state_path }.fail();
                 }
                 // Written before stamps: `detect_baseline` and `files_behind`
                 // still judge it, and `stamp_adopted_documents` stamps it once
@@ -293,14 +406,16 @@ impl Runner {
     /// Stamps document files that predate stamps once they are verified at
     /// their module's head, and records every stamped file, so that later
     /// starts judge them by their stamp alone.
-    fn stamp_adopted_documents(&mut self) -> anyhow::Result<()> {
+    fn stamp_adopted_documents(&mut self) -> Result<(), Error> {
         for module in registry::modules() {
             let ModuleKind::Document(spec) = module.kind() else {
                 continue;
             };
             let path = (spec.path)(&self.ctx);
-            let Some(file) = fs::read_document(&path, spec.document)
-                .with_context(|| format!("failed to inspect the {} files", module.module()))?
+            let Some(file) =
+                fs::read_document(&path, spec.document).context(InspectDocumentSnafu {
+                    module: module.module(),
+                })?
             else {
                 continue;
             };
@@ -309,8 +424,11 @@ impl Runner {
                 if self.store.module_state(module.module()).applied_revision != head {
                     continue;
                 }
-                fs::write_document(&path, spec.document, head, file.payload, None)
-                    .with_context(|| format!("failed to stamp the {} files", module.module()))?;
+                fs::write_document(&path, spec.document, head, file.payload, None).context(
+                    StampDocumentSnafu {
+                        module: module.module(),
+                    },
+                )?;
             }
             self.set_stamped(module.module());
         }
@@ -328,16 +446,18 @@ impl Runner {
     /// Refuses data migrated by a newer build: this build cannot know which
     /// files those unknown revisions moved or rewrote, so it would start on
     /// stale locations.
-    fn ensure_known_revisions(&self) -> anyhow::Result<()> {
+    fn ensure_known_revisions(&self) -> Result<(), Error> {
         for module in registry::modules() {
             let applied = self.store.module_state(module.module()).applied_revision;
             let head = head_revision(module);
             if applied > head {
-                bail!(
-                    "migration state records {} at revision {applied}, but this build only \
-                     knows revisions up to {head}; the data was migrated by a newer version",
-                    module.module()
-                );
+                return NewerAppliedRevisionSnafu {
+                    path: self.ctx.state_path(),
+                    module: module.module(),
+                    read: applied,
+                    supported: head,
+                }
+                .fail();
             }
         }
         Ok(())
@@ -345,29 +465,29 @@ impl Runner {
 
     /// Refuses a state file that is ahead of the files on disk, which would
     /// otherwise skip the migrations those files still need.
-    fn verify_applied_revisions(&self) -> anyhow::Result<()> {
+    fn verify_applied_revisions(&self) -> Result<(), Error> {
         let state_path = self.ctx.state_path();
         for module in registry::modules() {
             let applied = self.store.module_state(module.module()).applied_revision;
             let behind = module
                 .files_behind(&self.ctx, applied)
-                .with_context(|| format!("failed to inspect the {} files", module.module()))?;
+                .context(InspectModuleSnafu {
+                    module: module.module(),
+                })?;
             if let Some(reason) = behind {
-                bail!(
-                    "{reason}, although {} records {} as migrated to revision {applied}. The \
-                     files may have been moved, restored from a backup or rewritten by an older \
-                     version. Restore them, or delete {} so the files on disk are detected and \
-                     migrated again.",
-                    state_path.display(),
-                    module.module(),
-                    state_path.display()
-                );
+                return FilesBehindStateSnafu {
+                    state_path,
+                    module: module.module(),
+                    applied,
+                    reason,
+                }
+                .fail();
             }
         }
         Ok(())
     }
 
-    fn run_step(&mut self, step: &dyn MigrationStep) -> anyhow::Result<()> {
+    fn run_step(&mut self, step: &dyn MigrationStep) -> Result<(), Error> {
         match check_step(step, &self.ctx) {
             Ok(Some(StepCheck::Satisfied)) => {
                 println!("Migration {} is already satisfied, skipping.", step.id());
@@ -375,8 +495,10 @@ impl Runner {
             }
             Ok(Some(StepCheck::Needed) | None) => {}
             Err(error) => {
-                let error =
-                    anyhow::Error::new(error).context(format!("failed to check {}", step.id()));
+                let error = Error::CheckStep {
+                    step: step.id().to_owned(),
+                    source: Box::new(error),
+                };
                 eprintln!("Migration {} failed: {error:#}", step.id());
                 return Err(self.record_failure(step, error));
             }
@@ -385,10 +507,11 @@ impl Runner {
         self.store.mark_in_progress(step);
         self.store
             .flush_atomic(&self.ctx.state_path())
-            .with_context(|| format!("failed to persist {} in-progress state", step.id()))?;
+            .context(PersistStateSnafu)?;
 
         match step
             .run(&mut self.ctx)
+            .context(RunStepSnafu { step: step.id() })
             .and_then(|()| ensure_satisfied(step, &self.ctx))
         {
             Ok(()) => {
@@ -408,11 +531,14 @@ impl Runner {
         }
     }
 
-    fn finish_step(&mut self, step: &dyn MigrationStep, skipped: bool) -> anyhow::Result<()> {
+    fn finish_step(&mut self, step: &dyn MigrationStep, skipped: bool) -> Result<(), Error> {
         // Recorded in the same flush, so a stamp lost later is recognised as
         // lost even if the rest of the run never finishes.
         if let Some(spec) = document_spec(step.module())
-            && fs::read_document(&(spec.path)(&self.ctx), spec.document)?
+            && fs::read_document(&(spec.path)(&self.ctx), spec.document)
+                .context(InspectDocumentSnafu {
+                    module: step.module(),
+                })?
                 .is_some_and(|file| file.schema_revision.is_some())
         {
             self.set_stamped(step.module());
@@ -425,17 +551,18 @@ impl Runner {
         self.store.bump_module(step.module());
         self.store
             .flush_atomic(&self.ctx.state_path())
-            .with_context(|| format!("failed to persist {} finished state", step.id()))
+            .context(PersistStateSnafu)
     }
 
-    fn record_failure(&mut self, step: &dyn MigrationStep, error: anyhow::Error) -> anyhow::Error {
+    fn record_failure(&mut self, step: &dyn MigrationStep, error: Error) -> Error {
         self.store.mark_failed(step, &error);
         match self.store.flush_atomic(&self.ctx.state_path()) {
             Ok(()) => error,
-            Err(flush_error) => error.context(format!(
-                "failed to persist {} failed state: {flush_error:#}",
-                step.id()
-            )),
+            Err(persistence) => Error::RecordFailure {
+                step: step.id().to_owned(),
+                source: Box::new(error),
+                persistence,
+            },
         }
     }
 }
@@ -444,27 +571,21 @@ impl Runner {
 /// check or the run is defective, which must not be recorded as completed.
 /// A document step must also leave its file in place and stamped, which a
 /// fallback check cannot tell.
-fn ensure_satisfied(step: &dyn MigrationStep, ctx: &Ctx) -> anyhow::Result<()> {
+fn ensure_satisfied(step: &dyn MigrationStep, ctx: &Ctx) -> Result<(), Error> {
     if let Some(spec) = document_spec(step.module()) {
         let file = fs::read_document(&(spec.path)(ctx), spec.document)
-            .with_context(|| format!("failed to check {} after it ran", step.id()))?;
+            .context(CheckStepSnafu { step: step.id() })?;
         if file.is_none_or(|file| file.schema_revision.is_none()) {
-            bail!(
-                "migration {} ran without leaving its document stamped; this is a bug in the \
-                 migration",
-                step.id()
-            );
+            return VerifyDocumentStampSnafu { step: step.id() }.fail();
         }
     }
     match check_step(step, ctx) {
-        Ok(Some(StepCheck::Needed)) => bail!(
-            "migration {} ran but its check still reports it as needed; this is a bug in the \
-             migration",
-            step.id()
-        ),
+        Ok(Some(StepCheck::Needed)) => VerifyStepSnafu { step: step.id() }.fail(),
         Ok(Some(StepCheck::Satisfied) | None) => Ok(()),
-        Err(error) => Err(anyhow::Error::new(error)
-            .context(format!("failed to check {} after it ran", step.id()))),
+        Err(source) => Err(Error::CheckStep {
+            step: step.id().to_owned(),
+            source: Box::new(source),
+        }),
     }
 }
 
@@ -532,7 +653,6 @@ mod tests {
         MigrationCheckError,
         store::{ModuleState, STORE_FILE_NAME},
     };
-    use anyhow::bail;
     use once_cell::sync::Lazy;
 
     static TEST_VERSION: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
@@ -565,9 +685,13 @@ mod tests {
             self.id
         }
 
-        fn run(&self, _: &mut Ctx) -> anyhow::Result<()> {
+        fn run(&self, _: &mut Ctx) -> Result<(), super::super::OperationError> {
             if self.fail {
-                bail!("boom")
+                return Err(super::super::OperationError::Application {
+                    source: Box::new(super::super::modules::application::Error::FindDocument {
+                        path: "test-application.yaml".into(),
+                    }),
+                });
             }
             Ok(())
         }
@@ -585,6 +709,43 @@ mod tests {
             ctx: Ctx::new(config_dir, data_dir),
             store,
             backup: None,
+        }
+    }
+
+    #[test]
+    fn runner_preserves_newer_and_older_store_schema_errors() {
+        for read in [
+            super::super::store::STORE_SCHEMA_VERSION + 1,
+            super::super::store::STORE_SCHEMA_VERSION - 1,
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let paths = crate::client::tests::test_paths(
+                root.path().join("config"),
+                root.path().join("data"),
+            );
+            paths.create_base_dirs().unwrap();
+            let path = paths.app_config_dir().join(STORE_FILE_NAME);
+            std::fs::write(&path, format!("store_schema_version: {read}\n")).unwrap();
+            let error = Runner::with_paths(paths, false).unwrap_err();
+            match error {
+                Error::LoadState {
+                    source:
+                        super::super::store::Error::NewerSchema {
+                            read: found,
+                            supported: 2,
+                            ..
+                        },
+                } if read > 2 => assert_eq!(found, read),
+                Error::LoadState {
+                    source:
+                        super::super::store::Error::OlderSchema {
+                            read: found,
+                            supported: 2,
+                            ..
+                        },
+                } if read < 2 => assert_eq!(found, read),
+                error => panic!("unexpected schema error: {error:?}"),
+            }
         }
     }
 
@@ -610,7 +771,12 @@ mod tests {
         let runner = runner_with_store(store.clone(), false);
         assert_eq!(runner.advice_step(&step), MigrationAdvice::Done);
 
-        store.mark_failed(&step, &anyhow::anyhow!("failed"));
+        store.mark_failed(
+            &step,
+            &Error::VerifyStep {
+                step: step.id().into(),
+            },
+        );
         let runner = runner_with_store(store.clone(), false);
         assert_eq!(runner.advice_step(&step), MigrationAdvice::Pending);
 
@@ -944,7 +1110,7 @@ mod tests {
     fn run_pending_with_store(
         store: MigrationStore,
         prepare: impl FnOnce(&std::path::Path),
-    ) -> (anyhow::Result<()>, MigrationStore) {
+    ) -> (Result<(), Error>, MigrationStore) {
         let temp = tempfile::tempdir().unwrap();
         let config_dir = temp.path().join("config");
         let data_dir = temp.path().join("data");
@@ -971,9 +1137,9 @@ mod tests {
 
         let (result, persisted) = run_pending_with_store(store, |_| {});
 
-        let error = format!("{:#}", result.unwrap_err());
-        assert!(error.contains("typed_config"), "{error}");
-        assert!(error.contains("newer version"), "{error}");
+        assert!(
+            matches!(result, Err(Error::NewerAppliedRevision { module, read: 3, supported: 2, .. }) if module == "typed_config")
+        );
         assert_eq!(persisted.app.last_succeeded, None);
     }
 
@@ -983,15 +1149,9 @@ mod tests {
         // happened; starting would silently fall back to defaults.
         let (result, persisted) = run_pending_with_store(store_at_head(), |_| {});
 
-        let error = format!("{:#}", result.unwrap_err());
-        assert!(error.contains("typed_config"), "{error}");
         assert!(
-            error.contains("application.yaml and session-state.yaml are missing"),
-            "{error}"
+            matches!(result, Err(Error::FilesBehindState { module, applied: 2, state_path, .. }) if module == "typed_config" && state_path.file_name().unwrap() == STORE_FILE_NAME)
         );
-        // The dialog must point at the state file and say how to recover.
-        assert!(error.contains(STORE_FILE_NAME), "{error}");
-        assert!(error.contains("delete"), "{error}");
         assert_eq!(persisted.app.last_succeeded, None);
     }
 
@@ -1041,8 +1201,8 @@ mod tests {
             (self.check)()
         }
 
-        fn run(&self, _: &mut Ctx) -> anyhow::Result<()> {
-            bail!("run must not be reached")
+        fn run(&self, _: &mut Ctx) -> Result<(), super::super::OperationError> {
+            panic!("run must not be reached")
         }
     }
 
@@ -1088,9 +1248,12 @@ mod tests {
             check: || Ok(Some(StepCheck::Satisfied)),
         };
         let mut runner = runner_with_example_at_zero();
-        runner
-            .store
-            .mark_failed(&step, &anyhow::anyhow!("previous failure"));
+        runner.store.mark_failed(
+            &step,
+            &Error::VerifyStep {
+                step: step.id().into(),
+            },
+        );
 
         runner.run_step(&step).unwrap();
 
@@ -1109,7 +1272,7 @@ mod tests {
         };
         let mut runner = runner_with_example_at_zero();
 
-        let error = format!("{:#}", runner.run_step(&step).unwrap_err());
+        let error = snafu::Report::from_error(runner.run_step(&step).unwrap_err()).to_string();
 
         assert!(error.contains("odd shape"), "{error}");
         assert!(!error.contains("run must not be reached"), "{error}");
@@ -1147,7 +1310,7 @@ mod tests {
             Ok(Some(StepCheck::Needed))
         }
 
-        fn run(&self, _: &mut Ctx) -> anyhow::Result<()> {
+        fn run(&self, _: &mut Ctx) -> Result<(), super::super::OperationError> {
             Ok(())
         }
     }
@@ -1172,12 +1335,9 @@ mod tests {
             std::fs::write(config_dir.join("profiles.yaml"), "items: [unclosed\n").unwrap();
         });
 
-        let error = format!("{:#}", result.unwrap_err());
         assert!(
-            error.contains("failed to inspect the profiles files"),
-            "{error}"
+            matches!(result, Err(Error::InspectDocument { module, source }) if module == "profiles" && matches!(source.as_ref(), MigrationCheckError::Stamp { .. }))
         );
-        assert!(!error.contains("delete"), "{error}");
         assert_eq!(persisted.app.last_succeeded, None);
     }
 
@@ -1198,8 +1358,9 @@ mod tests {
         let mut runner = Runner::with_context(TEST_VERSION.clone(), true, ctx).unwrap();
         let step = registry::find_migration("profiles/null_value").unwrap();
 
-        let error = format!("{:#}", runner.run_migration(step).unwrap_err());
-        assert!(error.contains("newer version"), "{error}");
+        assert!(
+            matches!(runner.run_migration(step), Err(Error::NewerAppliedRevision { module, read: 5, supported: 4, .. }) if module == "profiles")
+        );
         assert_eq!(runner.store.task_state(step.id()), None);
     }
 
@@ -1277,7 +1438,7 @@ mod tests {
             }
         }
 
-        fn runner(&self) -> anyhow::Result<Runner> {
+        fn runner(&self) -> Result<Runner, Error> {
             Runner::with_context(TEST_VERSION.clone(), false, self.ctx.clone())
         }
 
@@ -1363,11 +1524,24 @@ mod tests {
         let profiles = stamped_profiles(5, CLEAN_PROFILES);
         let case = DocumentCase::new(None, &profiles);
 
-        let error = format!("{:#}", case.runner().unwrap_err());
-        assert!(error.contains("newer version"), "{error}");
+        assert!(matches!(
+            case.runner(),
+            Err(Error::NewerDocument {
+                read: 5,
+                supported: 4,
+                ..
+            })
+        ));
         // `--migration <id>` builds the same runner, forced or not.
         let forced = Runner::with_context(TEST_VERSION.clone(), true, case.ctx.clone());
-        assert!(forced.is_err());
+        assert!(matches!(
+            forced,
+            Err(Error::NewerDocument {
+                read: 5,
+                supported: 4,
+                ..
+            })
+        ));
 
         assert_eq!(case.state(), None);
         assert_eq!(case.profiles(), profiles);
@@ -1381,11 +1555,8 @@ mod tests {
         ] {
             let case = DocumentCase::new(None, &profiles);
 
-            let error = format!("{:#}", case.runner().unwrap_err());
-
             assert!(
-                error.contains("failed to inspect the profiles files"),
-                "{error}"
+                matches!(case.runner(), Err(Error::InspectDocument { module, source }) if module == "profiles" && matches!(source.as_ref(), MigrationCheckError::Stamp { .. }))
             );
             assert_eq!(case.state(), None);
             assert_eq!(case.profiles(), profiles);
@@ -1420,7 +1591,7 @@ mod tests {
         };
         let mut runner = case.runner().unwrap();
 
-        let error = format!("{:#}", runner.run_step(&step).unwrap_err());
+        let error = snafu::Report::from_error(runner.run_step(&step).unwrap_err()).to_string();
 
         assert!(
             error.contains("without leaving its document stamped"),
@@ -1455,8 +1626,8 @@ mod tests {
             "RemovesProfiles"
         }
 
-        fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-            std::fs::remove_file(ctx.profiles_path())?;
+        fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+            std::fs::remove_file(ctx.profiles_path()).unwrap();
             Ok(())
         }
     }
@@ -2111,10 +2282,7 @@ tray_menu_close_behavior: hide
 
         let error = runner.run_pending().unwrap_err();
 
-        assert!(
-            error.downcast_ref::<backup::BackupError>().is_some(),
-            "{error:#}"
-        );
+        assert!(matches!(error, Error::CreateBackup { .. }), "{error:#}");
         assert_eq!(
             std::fs::read_to_string(case.ctx.nyanpasu_config_path()).unwrap(),
             include_str!("fixtures/v1_6_1/nyanpasu-config.yaml")

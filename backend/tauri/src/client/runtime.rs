@@ -453,17 +453,26 @@ impl RuntimePaths {
         .await?
     }
 
-    pub async fn cleanup_stale_candidates(&self, max_age: Duration) -> anyhow::Result<usize> {
+    pub async fn cleanup_stale_candidates(&self, max_age: Duration) -> Result<usize, Error> {
         prepare_private_dir(&self.candidate_dir).await?;
         let now = SystemTime::now();
         let mut removed = 0;
-        let mut entries = tokio::fs::read_dir(&self.candidate_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
+        let mut entries =
+            tokio::fs::read_dir(&self.candidate_dir)
+                .await
+                .context(ReadCandidatesSnafu {
+                    path: &self.candidate_dir,
+                })?;
+        while let Some(entry) = entries.next_entry().await.context(ReadCandidatesSnafu {
+            path: &self.candidate_dir,
+        })? {
             let name = entry.file_name();
             if !name.to_string_lossy().starts_with("candidate-") {
                 continue;
             }
-            let metadata = tokio::fs::symlink_metadata(entry.path()).await?;
+            let metadata = tokio::fs::symlink_metadata(entry.path())
+                .await
+                .context(InspectCandidateSnafu { path: entry.path() })?;
             if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
                 continue;
             }
@@ -473,7 +482,9 @@ impl RuntimePaths {
                 .and_then(|modified| now.duration_since(modified).ok())
                 .is_some_and(|age| age >= max_age);
             if is_stale {
-                tokio::fs::remove_file(entry.path()).await?;
+                tokio::fs::remove_file(entry.path())
+                    .await
+                    .context(RemoveCandidateSnafu { path: entry.path() })?;
                 removed += 1;
             }
         }
@@ -520,21 +531,61 @@ impl Drop for CandidateFile {
     }
 }
 
-async fn prepare_private_dir(path: &Utf8Path) -> anyhow::Result<()> {
+#[derive(Debug, Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to create candidate directory {path}"))]
+    CreateCandidateDirectory {
+        path: Utf8PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("candidate path is not a private directory: {path}"))]
+    ValidateCandidateDirectory { path: Utf8PathBuf },
+    #[snafu(display("failed to inspect candidate path {}", path.display()))]
+    InspectCandidate {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to read candidate directory {path}"))]
+    ReadCandidates {
+        path: Utf8PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to remove candidate {}", path.display()))]
+    RemoveCandidate {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(unix)]
+    #[snafu(display("failed to secure candidate directory {path}"))]
+    SecureCandidateDirectory {
+        path: Utf8PathBuf,
+        source: std::io::Error,
+    },
+}
+
+async fn prepare_private_dir(path: &Utf8Path) -> Result<(), Error> {
     if let Ok(metadata) = tokio::fs::symlink_metadata(path).await
         && is_symlink_or_reparse(&metadata)
     {
-        anyhow::bail!("runtime candidate directory is a symlink or reparse point: {path}");
+        return ValidateCandidateDirectorySnafu { path }.fail();
     }
-    tokio::fs::create_dir_all(path).await?;
-    let metadata = tokio::fs::symlink_metadata(path).await?;
+    tokio::fs::create_dir_all(path)
+        .await
+        .context(CreateCandidateDirectorySnafu { path })?;
+    let metadata = tokio::fs::symlink_metadata(path)
+        .await
+        .context(InspectCandidateSnafu {
+            path: path.as_std_path(),
+        })?;
     if is_symlink_or_reparse(&metadata) || !metadata.is_dir() {
-        anyhow::bail!("runtime candidate path is not a private directory: {path}");
+        return ValidateCandidateDirectorySnafu { path }.fail();
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).await?;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .await
+            .context(SecureCandidateDirectorySnafu { path })?;
     }
     Ok(())
 }
@@ -1143,6 +1194,9 @@ pub(crate) mod tests {
         symlink(target, paths.candidate_dir()).unwrap();
 
         let error = paths.create_candidate(b"blocked").await.unwrap_err();
-        assert!(error.to_string().contains("symlink or reparse point"));
+        assert!(matches!(
+            error.downcast_ref::<Error>(),
+            Some(Error::ValidateCandidateDirectory { .. })
+        ));
     }
 }

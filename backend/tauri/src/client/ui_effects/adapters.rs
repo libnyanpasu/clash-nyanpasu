@@ -21,6 +21,12 @@ use crate::{
     utils::init::logging::ReloadSignal,
 };
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum InstallError {
+    #[snafu(display("the widget runtime was installed twice"))]
+    AlreadyInstalled,
+}
+
 /// The `rust_i18n` locale.
 ///
 /// It is a crate-level process global with no injection point of its own, so
@@ -126,10 +132,10 @@ impl TauriWidgetController {
     }
 
     /// Called once by the composition root, after the widget is running.
-    pub fn install(&self, runtime: Arc<dyn WidgetRuntime>) -> anyhow::Result<()> {
+    pub fn install(&self, runtime: Arc<dyn WidgetRuntime>) -> Result<(), InstallError> {
         self.runtime
             .set(runtime)
-            .map_err(|_| anyhow::anyhow!("the widget runtime was installed twice"))
+            .map_err(|_| InstallError::AlreadyInstalled)
     }
 
     fn runtime(&self) -> Result<&Arc<dyn WidgetRuntime>, WidgetError> {

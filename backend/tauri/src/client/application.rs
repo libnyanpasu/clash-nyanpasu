@@ -1,11 +1,14 @@
 use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
-use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
+use nyanpasu_core::state::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+    error::{LoadError, UpsertError},
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
@@ -18,6 +21,28 @@ use crate::{
         config_error::{ConfigError, OwnerStoppedSnafu},
     },
 };
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to load persistent state from {path}"))]
+    LoadState {
+        path: Utf8PathBuf,
+        source: LoadError<PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>>,
+    },
+    #[snafu(display("failed to initialize persistent state at {path}"))]
+    InitializeState {
+        path: Utf8PathBuf,
+        source: LoadError<PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>>,
+    },
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+    #[snafu(display("failed to persist state"))]
+    PersistState { source: UpsertError },
+    #[snafu(display("invalid update sources: {reason}"))]
+    ValidateUpdateSources { reason: &'static str },
+    #[snafu(display("invalid core log settings: {reason}"))]
+    ValidateCoreLogs { reason: &'static str },
+}
 
 #[derive(Clone)]
 pub struct ApplicationClient {
@@ -40,23 +65,23 @@ impl ApplicationClient {
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         let mut seed = NyanpasuAppConfig::default();
         seed.release_channel = Some(build_channel.resolve(seed.release_channel));
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
-            .config_path(config_path)
+            .config_path(config_path.clone())
             .assemble();
         let mut manager = if should_load {
             setup
                 .load()
                 .await
-                .context("failed to load application persistent state manager")?
+                .context(LoadStateSnafu { path: &config_path })?
         } else {
             setup
                 .from_state(seed)
                 .await
-                .context("failed to initialize application persistent state manager")?
+                .context(InitializeStateSnafu { path: &config_path })?
         };
 
         let mut initial = manager.snapshot_handle().load().state.clone();
@@ -72,10 +97,7 @@ impl ApplicationClient {
         };
         if initial.release_channel != Some(channel) {
             initial.release_channel = Some(channel);
-            manager
-                .upsert(initial)
-                .await
-                .context("failed to persist release channel")?;
+            manager.upsert(initial).await.context(PersistStateSnafu)?;
         }
 
         Self::from_manager(mutations, manager, build_channel, shutdown, tasks).await
@@ -89,18 +111,18 @@ impl ApplicationClient {
         build_channel: crate::bundle::Channel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         nyanpasu_config::application::validate_update_sources(
             &manager.snapshot_handle().load().state.update_sources,
         )
-        .map_err(anyhow::Error::msg)?;
+        .map_err(|reason| Error::ValidateUpdateSources { reason })?;
         manager
             .snapshot_handle()
             .load()
             .state
             .core_logs
             .validate()
-            .map_err(anyhow::Error::msg)?;
+            .map_err(|reason| Error::ValidateCoreLogs { reason })?;
         let snapshot = manager.snapshot_handle();
         let (settings_tx, settings_changes) =
             tokio::sync::watch::channel(snapshot.load().state.clone());
@@ -116,7 +138,7 @@ impl ApplicationClient {
             },
         )
         .await
-        .context("failed to spawn application actor")?
+        .context(SpawnActorSnafu)?
         .0;
         crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 

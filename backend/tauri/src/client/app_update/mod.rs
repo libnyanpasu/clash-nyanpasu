@@ -11,6 +11,12 @@ use specta::Type;
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum AppUpdatePhase {
@@ -1028,8 +1034,13 @@ impl Drop for Inner {
 pub struct AppUpdateClient(Arc<Inner>);
 
 impl AppUpdateClient {
-    pub async fn spawn(args: AppUpdateArgs, tasks: &TaskTracker) -> Result<Self> {
-        let (actor, _) = Actor::spawn(None, AppUpdateActor, args.clone()).await?;
+    pub async fn spawn(
+        args: AppUpdateArgs,
+        tasks: &TaskTracker,
+    ) -> std::result::Result<Self, Error> {
+        let (actor, _) = Actor::spawn(None, AppUpdateActor, args.clone())
+            .await
+            .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner(actor))))
     }

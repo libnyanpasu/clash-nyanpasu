@@ -20,6 +20,12 @@ use super::{
 };
 use crate::client::convergence::{ConvergenceHealth, RetryBudget};
 
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to spawn actor"))]
+    SpawnActor { source: ractor::SpawnErr },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct EffectsSnapshot {
     pub event_seq: u64,
@@ -501,7 +507,7 @@ impl Actor for EffectsActor {
 }
 
 impl EffectsClient {
-    pub async fn spawn(args: EffectsArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+    pub async fn spawn(args: EffectsArgs, tasks: &TaskTracker) -> std::result::Result<Self, Error> {
         let shutdown = args.shutdown.clone();
         let (status, receiver) = watch::channel(EffectsSnapshot::default());
         let (actor, _) = Actor::spawn(
@@ -512,7 +518,8 @@ impl EffectsClient {
                 status,
             },
         )
-        .await?;
+        .await
+        .map_err(|source| Error::SpawnActor { source })?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self {
             actor,

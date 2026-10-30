@@ -2,6 +2,7 @@ use nyanpasu_paths::PathResolver;
 use semver::Version;
 use std::path::PathBuf;
 
+pub(crate) mod child_result;
 pub(crate) mod fs;
 mod legacy_schema;
 pub mod modules;
@@ -10,6 +11,40 @@ pub mod runner;
 pub mod store;
 
 pub use runner::Runner;
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum OperationError {
+    #[snafu(context(false), display("app_config migration failed"))]
+    AppConfig {
+        #[snafu(source(from(modules::app_config::Error, Box::new)))]
+        source: Box<modules::app_config::Error>,
+    },
+    #[snafu(context(false), display("application migration failed"))]
+    Application {
+        #[snafu(source(from(modules::application::Error, Box::new)))]
+        source: Box<modules::application::Error>,
+    },
+    #[snafu(context(false), display("clash_config migration failed"))]
+    ClashConfig {
+        #[snafu(source(from(modules::clash_config::Error, Box::new)))]
+        source: Box<modules::clash_config::Error>,
+    },
+    #[snafu(context(false), display("profiles migration failed"))]
+    Profiles {
+        #[snafu(source(from(modules::profiles::Error, Box::new)))]
+        source: Box<modules::profiles::Error>,
+    },
+    #[snafu(context(false), display("storage migration failed"))]
+    Storage {
+        #[snafu(source(from(modules::storage::Error, Box::new)))]
+        source: Box<modules::storage::Error>,
+    },
+    #[snafu(context(false), display("typed_config migration failed"))]
+    TypedConfig {
+        #[snafu(source(from(modules::typed_config::Error, Box::new)))]
+        source: Box<modules::typed_config::Error>,
+    },
+}
 
 pub type MigrationId = &'static str;
 pub type ModuleId = &'static str;
@@ -146,6 +181,12 @@ pub enum MigrationCheckError {
         #[source]
         source: nyanpasu_core::format::StampError,
     },
+    #[error("failed to migrate clash overrides in {}", path.display())]
+    MigrateClashOverrides {
+        path: PathBuf,
+        #[source]
+        source: Box<modules::clash_config::Error>,
+    },
     /// Readable and well-formed, but in no shape the step knows.
     #[error("{0}")]
     Unrecognized(String),
@@ -164,8 +205,8 @@ pub trait MigrationStep: Send + Sync {
     fn check(&self, _ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
         Ok(None)
     }
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()>;
-    fn rollback(&self, _: &mut Ctx) -> anyhow::Result<()> {
+    fn run(&self, ctx: &mut Ctx) -> Result<(), OperationError>;
+    fn rollback(&self, _: &mut Ctx) -> Result<(), OperationError> {
         Ok(())
     }
 }
@@ -201,7 +242,7 @@ pub trait ModuleMigrator: Send + Sync {
     }
     /// The revision of files that no state records. For a `Document` module
     /// it is only asked about an existing, unstamped file.
-    fn detect_baseline(&self, ctx: &Ctx) -> anyhow::Result<u64>;
+    fn detect_baseline(&self, ctx: &Ctx) -> Result<u64, OperationError>;
     fn steps(&self) -> &'static [&'static dyn MigrationStep];
     /// What the files on disk lack when they are behind `applied`, i.e. the
     /// state file claims migrations whose results are missing or were moved
@@ -209,11 +250,18 @@ pub trait ModuleMigrator: Send + Sync {
     /// be read or parsed. Only modules whose on-disk shape reliably reveals
     /// their revision override this; the rest cannot tell and accept any
     /// `applied`.
-    fn files_behind(&self, _ctx: &Ctx, _applied: u64) -> anyhow::Result<Option<String>> {
+    fn files_behind(&self, _ctx: &Ctx, _applied: u64) -> Result<Option<String>, OperationError> {
         Ok(None)
     }
 }
 
-pub fn current_version() -> anyhow::Result<Version> {
-    Version::parse(crate::consts::BUILD_INFO.pkg_version).map_err(Into::into)
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum VersionError {
+    #[snafu(display("failed to parse build version"))]
+    ParseBuildVersion { source: semver::Error },
+}
+
+pub fn current_version() -> Result<Version, VersionError> {
+    use snafu::ResultExt as _;
+    Version::parse(crate::consts::BUILD_INFO.pkg_version).context(ParseBuildVersionSnafu)
 }

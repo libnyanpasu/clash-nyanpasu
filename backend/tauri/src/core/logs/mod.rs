@@ -11,3 +11,5 @@ pub use redb::RedbCoreLogStore;
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use actor::Error as SpawnError;

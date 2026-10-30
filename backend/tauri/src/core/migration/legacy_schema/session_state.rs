@@ -8,7 +8,13 @@ use nyanpasu_config::state::{
 
 const MAIN_WINDOW_LABEL: &str = "main";
 
-pub(super) fn persistent_state_from_legacy(legacy: &IVerge) -> anyhow::Result<PersistentState> {
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(context(false), display("failed to convert legacy YAML"))]
+    ConvertYaml { source: super::ConversionError },
+}
+
+pub(super) fn persistent_state_from_legacy(legacy: &IVerge) -> Result<PersistentState, Error> {
     let state = if let Some(window_state) = legacy.window_size_state.as_ref() {
         super::yaml_convert::<_, WindowState>(window_state)?
     } else {

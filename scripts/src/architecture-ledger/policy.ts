@@ -182,6 +182,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
   ...migrationModuleStatics("clash_config", [
     "MANAGEABLE_GUARD_FIELDS",
     "TUN_OVERRIDES",
+    "TUN_MIPS",
   ]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",

@@ -41,6 +41,7 @@ pub fn base_inputs<'a>(
             overrides: TunOverrides::default(),
             flavor: TunFlavor::Standard {
                 stack: TunStackWrite::Selected(TunStack::Gvisor),
+                congestion_controller: None,
             },
             windows_fake_ip_filter: false,
         },

@@ -918,6 +918,8 @@ export type ClashConfig = {
   break_connection: BreakConnectionStrategy
   /**  Tun 堆栈选择 */
   tun_stack: TunStack
+  /**  The options of the mips stack, kept while another stack is selected. */
+  tun_mips?: MipsConfig
 }
 
 export type ClashConfigPatch =
@@ -938,6 +940,7 @@ export type ClashConfigPatch_Deserialize = {
   http_port?: PortStrategy | null
   break_connection?: BreakConnectionStrategyPatch_Deserialize
   tun_stack?: TunStack | null
+  tun_mips?: MipsConfigPatch_Deserialize
 }
 
 export type ClashConfigPatch_Serialize = {
@@ -955,6 +958,7 @@ export type ClashConfigPatch_Serialize = {
   http_port?: PortStrategy | null
   break_connection: BreakConnectionStrategyPatch_Serialize
   tun_stack?: TunStack | null
+  tun_mips: MipsConfigPatch_Serialize
 }
 
 /**
@@ -2715,6 +2719,27 @@ export type MaterializedFile_Serialize = {
 
 /**  What a topology orders and merges its nodes by. */
 export type Metric = 'bytes' | 'connections'
+
+/**
+ *  The options of the mips stack. Kept while another stack is selected, so
+ *  switching back restores them; read them through
+ *  `ClashConfig::selected_tun_stack`.
+ */
+export type MipsConfig = {
+  /**  `None` writes no key, so the core uses its own default. */
+  congestion_controller?: TunCongestionController | null
+}
+
+export type MipsConfigPatch =
+  MipsConfigPatch_Serialize | MipsConfigPatch_Deserialize
+
+export type MipsConfigPatch_Deserialize = {
+  congestion_controller?: TunCongestionController | null
+}
+
+export type MipsConfigPatch_Serialize = {
+  congestion_controller?: TunCongestionController | null
+}
 
 export type Mode = 'rule' | 'global' | 'direct' | 'script'
 
@@ -5522,6 +5547,9 @@ export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
  */
 export type TrayMenuMode = 'native' | 'webview'
 
+/**  mihomo `tun.congestion-controller`, read only by the mips stack. */
+export type TunCongestionController = 'cubic' | 'reno' | 'bbr' | 'bbr3'
+
 /**
  *  The `tun` keys Nyanpasu may force while TUN mode is on. The TUN switch and
  *  the stack stay separate settings.
@@ -5545,7 +5573,15 @@ export type TunOverridesPatch_Serialize = {
   'auto-route'?: ManageableField<boolean> | null
 }
 
-export type TunStack = 'system' | 'gvisor' | 'mixed'
+export type TunStack =
+  | 'system'
+  | 'gvisor'
+  | 'mixed'
+  /**
+   *  mihomo's own user-space network stack (Mihomo IP Stack), not the MIPS
+   *  processor architecture.
+   */
+  | 'mips'
 
 /**  A value in the final runtime config that the selected core rejects. */
 export type UnsupportedConfigValue = {

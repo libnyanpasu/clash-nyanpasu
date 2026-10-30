@@ -1778,7 +1778,7 @@ schema_revision: {revision}
     }
 
     /// The default clash config as 2.0.x wrote it, with boolean guard fields
-    /// and no `tun` overrides.
+    /// and neither `tun` overrides nor mips options.
     fn clash_config_2_0() -> serde_yaml::Mapping {
         let mut config: serde_yaml::Mapping = serde_yaml::from_str(
             &serde_yaml::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
@@ -1792,6 +1792,7 @@ schema_revision: {revision}
         overrides.insert("unified-delay".into(), true.into());
         overrides.insert("tcp-concurrent".into(), false.into());
         config.remove("tun");
+        config.remove("tun_mips");
         config
     }
 
@@ -1965,6 +1966,58 @@ tray_menu_close_behavior: hide
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
     }
 
+    /// A 2.0.0 install: stamped at revision 2, which this build reads only
+    /// after the mips step has run.
+    #[test]
+    fn a_clash_config_at_revision_2_gains_empty_mips_options() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, Some(1), "");
+        let mut payload = clash_config_2_0();
+        let overrides = payload
+            .get_mut("overrides")
+            .and_then(serde_yaml::Value::as_mapping_mut)
+            .unwrap();
+        overrides.insert("unified-delay".into(), managed(true));
+        overrides.insert("tcp-concurrent".into(), managed(false));
+        payload.insert("tun".into(), managed_auto_route());
+        payload.insert("tun_stack".into(), "mixed".into());
+        fs::write_document(
+            &case.ctx.clash_config_path(),
+            "clash_config",
+            2,
+            payload.clone(),
+            None,
+        )
+        .unwrap();
+        let mut store = MigrationStore::default();
+        store
+            .modules
+            .insert("clash_config".to_string(), at_revision(2, true));
+        store.flush_atomic(&case.ctx.state_path()).unwrap();
+
+        let mut runner = Runner::with_context(TEST_VERSION.clone(), false, case.ctx.clone())
+            .expect("a stamped revision 2 is behind this build, not lost");
+        runner.run_pending().unwrap();
+
+        assert_eq!(clash_config_stamp(&case), Some(3));
+        let mut expected = payload;
+        expected.insert("tun_mips".into(), serde_yaml::Mapping::new().into());
+        assert_eq!(clash_config_file(&case).into_payload(), expected);
+        assert_clash_config_loads(&case);
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert_eq!(
+            state.task_state("clash_config/tun_mips"),
+            Some(MigrationState::Completed)
+        );
+        for step in [
+            "clash_config/manageable_guard_fields",
+            "clash_config/tun_overrides",
+        ] {
+            assert_eq!(state.task_state(step), None, "{step} is already applied");
+        }
+        assert_eq!(state.module_state("clash_config").applied_revision, 3);
+    }
+
     fn clash_config_file(case: &LegacyCase) -> nyanpasu_core::format::Inspected {
         nyanpasu_core::format::inspect(
             &std::fs::read_to_string(case.ctx.clash_config_path()).unwrap(),
@@ -2008,14 +2061,15 @@ tray_menu_close_behavior: hide
         // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(2, false)
+            at_revision(3, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(2));
+        assert_eq!(clash_config_stamp(&case), Some(3));
         for step in [
             "clash_config/manageable_guard_fields",
             "clash_config/tun_overrides",
+            "clash_config/tun_mips",
         ] {
             assert_eq!(
                 runner.store.task_state(step),
@@ -2024,7 +2078,7 @@ tray_menu_close_behavior: hide
             );
         }
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(2, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(3, true));
         assert_clash_config_loads(&case);
     }
 
@@ -2034,14 +2088,14 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(2));
+        assert_eq!(clash_config_stamp(&case), Some(3));
         assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
         assert_eq!(
             clash_config_file(&case).into_payload()["tun"],
             managed_auto_route()
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config").applied_revision, 2);
+        assert_eq!(state.module_state("clash_config").applied_revision, 3);
         assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
@@ -2060,6 +2114,7 @@ tray_menu_close_behavior: hide
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
         expected.insert("tun".into(), managed_auto_route());
+        expected.insert("tun_mips".into(), serde_yaml::Mapping::new().into());
 
         let mut runner = case.runner();
         assert_eq!(
@@ -2068,20 +2123,21 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(2));
+        assert_eq!(clash_config_stamp(&case), Some(3));
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
         for step in [
             "clash_config/manageable_guard_fields",
             "clash_config/tun_overrides",
+            "clash_config/tun_mips",
         ] {
             assert_eq!(state.task_state(step), Some(MigrationState::Completed));
         }
         assert_eq!(
             state.module_state("clash_config"),
             ModuleState {
-                applied_revision: 2,
+                applied_revision: 3,
                 baseline_revision: 0,
                 stamped: true,
             }

@@ -3,7 +3,7 @@ use serde_json::json;
 use crate::{
     clash::config::{
         overrides::{ClashGuardOverrides, ManageableField, TunOverrides},
-        tun_stack::TunStack,
+        tun_stack::{TunCongestionController, TunStack},
     },
     runtime::{
         executor::{
@@ -61,6 +61,7 @@ fn tun_off() -> TunParams {
         overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
             stack: TunStackWrite::Selected(TunStack::Gvisor),
+            congestion_controller: None,
         },
         windows_fake_ip_filter: false,
     }
@@ -263,6 +264,7 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
         overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
             stack: TunStackWrite::Selected(TunStack::Gvisor),
+            congestion_controller: None,
         },
         windows_fake_ip_filter: true,
     };
@@ -306,7 +308,10 @@ fn tun_stack_write_decides_the_stack_over_the_profile() {
     for (stack, expected) in cases {
         let params = TunParams {
             enable: true,
-            flavor: TunFlavor::Standard { stack },
+            flavor: TunFlavor::Standard {
+                stack,
+                congestion_controller: None,
+            },
             ..tun_off()
         };
         let config = value(json!({ "tun": { "stack": "system" } }));
@@ -318,11 +323,42 @@ fn tun_stack_write_decides_the_stack_over_the_profile() {
         enable: true,
         flavor: TunFlavor::Standard {
             stack: TunStackWrite::Omitted,
+            congestion_controller: None,
         },
         ..tun_off()
     };
     let result = apply_tun_and_cache(&value(json!({})), &params).to_json();
     assert!(result["tun"].get("stack").is_none());
+}
+
+#[test]
+fn the_mips_stack_decides_the_congestion_controller_over_the_profile() {
+    let config = value(json!({ "tun": { "congestion-controller": "reno" } }));
+    let mips = |congestion_controller| TunParams {
+        enable: true,
+        flavor: TunFlavor::Standard {
+            stack: TunStackWrite::Selected(TunStack::Mips),
+            congestion_controller,
+        },
+        ..tun_off()
+    };
+
+    let set = mips(Some(TunCongestionController::Bbr3));
+    let result = apply_tun_and_cache(&config, &set).to_json();
+    assert_eq!(result["tun"]["stack"], json!("mips"));
+    assert_eq!(result["tun"]["congestion-controller"], json!("bbr3"));
+
+    // Unset means the core's default, not the profile's controller.
+    let result = apply_tun_and_cache(&config, &mips(None)).to_json();
+    assert!(result["tun"].get("congestion-controller").is_none());
+
+    // Another stack never reads the controller, so it is left alone.
+    let params = TunParams {
+        enable: true,
+        ..tun_off()
+    };
+    let result = apply_tun_and_cache(&config, &params).to_json();
+    assert_eq!(result["tun"]["congestion-controller"], json!("reno"));
 }
 
 #[test]
@@ -332,6 +368,7 @@ fn only_an_applied_downgrade_is_logged() {
             selected: TunStack::Mixed,
             written: TunStack::Gvisor,
         },
+        congestion_controller: None,
     };
     let params = TunParams {
         enable: true,
@@ -380,6 +417,7 @@ fn managed_auto_route_overwrites_profile_values_for_both_tun_flavors() {
         TunFlavor::ClashRs,
         TunFlavor::Standard {
             stack: TunStackWrite::Selected(TunStack::Gvisor),
+            congestion_controller: None,
         },
     ] {
         for enabled in [false, true] {
@@ -403,6 +441,7 @@ fn unmanaged_auto_route_preserves_profile_values_and_other_tun_defaults() {
         TunFlavor::ClashRs,
         TunFlavor::Standard {
             stack: TunStackWrite::Selected(TunStack::Gvisor),
+            congestion_controller: None,
         },
     ] {
         for route in [json!("global"), json!(false), json!(true)] {
@@ -444,6 +483,7 @@ fn unmanaged_auto_route_does_not_supply_a_default() {
         TunFlavor::ClashRs,
         TunFlavor::Standard {
             stack: TunStackWrite::Selected(TunStack::Gvisor),
+            congestion_controller: None,
         },
     ] {
         let params = TunParams {

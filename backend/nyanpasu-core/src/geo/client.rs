@@ -1,7 +1,7 @@
 //! Typed client for the country index owner.
 use std::sync::Arc;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use anyhow::Result;
 use nyanpasu_geodata::IpIndex;
 use ractor::{Actor, ActorRef};
@@ -11,7 +11,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::actor::{GeoIndexActor, GeoIndexArgs, Message};
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
 }
@@ -31,8 +31,8 @@ impl Drop for Inner {
 }
 
 impl GeoIndexClient {
-    #[cfg(test)]
-    pub(crate) async fn stop_for_test(&self) -> Result<()> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn stop_for_test(&self) -> Result<()> {
         self.0.actor.stop_and_wait(None, None).await?;
         Ok(())
     }
@@ -46,7 +46,7 @@ impl GeoIndexClient {
         let (actor, _) = Actor::spawn(None, GeoIndexActor, (args, published))
             .await
             .map_err(|source| Error::SpawnActor { source })?;
-        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor, index })))
     }
 

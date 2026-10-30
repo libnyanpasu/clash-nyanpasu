@@ -111,7 +111,7 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub direct_egress: Arc<dyn DirectEgressProbe>,
-    pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
+    pub geo_index: Arc<dyn nyanpasu_core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub core_versions: Arc<dyn nyanpasu_core::client::core_version::CoreVersionReader>,
@@ -145,7 +145,7 @@ pub(crate) enum SetupError {
     StartHttpServer { source: debug_http::Error },
     #[snafu(display("failed to start core logs"))]
     StartCoreLogs {
-        source: crate::core::logs::SpawnError,
+        source: nyanpasu_core::logs::SpawnError,
     },
     #[snafu(display("failed to start streams"))]
     StartStreams {
@@ -165,7 +165,7 @@ pub(crate) enum SetupError {
     StartProxies { source: crate::core::proxies::Error },
     #[snafu(display("failed to start geo index"))]
     StartGeoIndex {
-        source: crate::core::geo::SpawnError,
+        source: nyanpasu_core::geo::SpawnError,
     },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
@@ -232,7 +232,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: Arc<dyn DebugHttpControl>,
     bundle_metadata: BundleMetadata,
-    core_logs: crate::core::logs::CoreLogsClient,
+    core_logs: nyanpasu_core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -260,7 +260,7 @@ struct NyanpasuClientInner {
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
-    _geo_index: crate::core::geo::GeoIndexClient,
+    _geo_index: nyanpasu_core::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
@@ -397,7 +397,7 @@ impl NyanpasuClient {
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
-        geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
+        geo_index: Arc<dyn nyanpasu_core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         core_versions: Arc<dyn nyanpasu_core::client::core_version::CoreVersionReader>,
@@ -424,7 +424,7 @@ impl NyanpasuClient {
                 }
             }
         });
-        let core_logs = crate::core::logs::CoreLogsClient::spawn(
+        let core_logs = nyanpasu_core::logs::CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
             shutdown.child_token(),
@@ -588,8 +588,8 @@ impl NyanpasuClient {
         )
         .await
         .context(StartProxiesSnafu)?;
-        let geo_index = crate::core::geo::GeoIndexClient::spawn(
-            crate::core::geo::GeoIndexArgs {
+        let geo_index = nyanpasu_core::geo::GeoIndexClient::spawn(
+            nyanpasu_core::geo::GeoIndexArgs {
                 source: geo_index,
                 core: core_v2.clone(),
             },
@@ -1671,7 +1671,7 @@ pub(crate) mod tests {
             clash_config,
             system_dns,
             Arc::new(nyanpasu_core::client::direct_egress::MockDirectEgressProbe::new()),
-            Arc::new(crate::core::geo::NoopCountryIndexSource),
+            Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
             os_proxy,
         )
         .await
@@ -1684,7 +1684,7 @@ pub(crate) mod tests {
         clash_config: ClashConfigClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
-        geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
+        geo_index: Arc<dyn nyanpasu_core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn OsProxyPort>,
     ) -> NyanpasuClient {
         let profiles = profiles::ProfilesClient::new(
@@ -1904,7 +1904,7 @@ pub(crate) mod tests {
             clash_config,
             Arc::new(NoopSystemDnsCache),
             Arc::new(nyanpasu_core::client::direct_egress::MockDirectEgressProbe::new()),
-            Arc::new(crate::core::geo::NoopCountryIndexSource),
+            Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await;
@@ -2020,7 +2020,7 @@ pub(crate) mod tests {
             clash_config,
             Arc::new(NoopSystemDnsCache),
             direct_egress,
-            Arc::new(crate::core::geo::NoopCountryIndexSource),
+            Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await
@@ -2521,7 +2521,7 @@ pub(crate) mod tests {
             service,
             Arc::new(NoopSystemDnsCache),
             Arc::new(nyanpasu_core::client::direct_egress::MockDirectEgressProbe::new()),
-            Arc::new(crate::core::geo::NoopCountryIndexSource),
+            Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(nyanpasu_core::client::core_version::MockCoreVersionReader::new()),
@@ -2683,7 +2683,7 @@ pub(crate) mod tests {
             direct_egress: Arc::new(
                 nyanpasu_core::client::direct_egress::MockDirectEgressProbe::new(),
             ),
-            geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
+            geo_index: Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(
@@ -3704,7 +3704,7 @@ pub(crate) mod tests {
                 service,
                 Arc::new(NoopSystemDnsCache),
                 Arc::new(nyanpasu_core::client::direct_egress::MockDirectEgressProbe::new()),
-                Arc::new(crate::core::geo::NoopCountryIndexSource),
+                Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(nyanpasu_core::client::core_version::MockCoreVersionReader::new()),

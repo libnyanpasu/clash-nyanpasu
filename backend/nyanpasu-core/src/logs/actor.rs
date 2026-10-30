@@ -337,7 +337,7 @@ impl Actor for CoreLogsActor {
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
 }
@@ -373,7 +373,7 @@ impl CoreLogsClient {
         )
         .await
         .map_err(|source| Error::SpawnActor { source })?;
-        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor, changed })))
     }
 
@@ -410,7 +410,7 @@ impl CoreLogsClient {
         self.call(|reply| Message::Configure(settings, reply))
             .await?
     }
-    pub(crate) async fn set_instance(&self, instance: Option<String>) -> CoreLogResult<()> {
+    pub async fn set_instance(&self, instance: Option<String>) -> CoreLogResult<()> {
         self.call(|reply| Message::SetInstance(instance, reply))
             .await?
     }

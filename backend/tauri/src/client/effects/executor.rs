@@ -31,9 +31,10 @@ use crate::{
         },
         system_proxy::SystemProxyClient,
     },
-    core::{clash::ws::StreamsClient, logs::CoreLogsClient},
+    core::clash::ws::StreamsClient,
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
+use nyanpasu_core::logs::CoreLogsClient;
 
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,

@@ -12,6 +12,12 @@ verge-dev = []
 test-support = ['dep:mockall', 'dep:axum']
 
 [dependencies]
+nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
+nyanpasu-geodata = { path = '../nyanpasu-geodata' }
+memmap2 = '0.9'
+notify-debouncer-full = '0.7.0'
+zstd = '0.14.0'
+tempfile = '3.9.0'
 nyanpasu-core-manager = { workspace = true }
 backon = { version = '1.0.1', features = ['tokio-sleep'] }
 clash-api = { workspace = true }
@@ -73,7 +79,6 @@ winreg = { version = '0.56', features = ['transactions'] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 nix = '0.31.0'
-tempfile = '3.9.0'
 
 [target.'cfg(not(target_env = "musl"))'.dev-dependencies]
 # The desktop AES smoke test does not apply to generic router/musl targets.

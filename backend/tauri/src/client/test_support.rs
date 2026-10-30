@@ -795,7 +795,7 @@ pub(crate) async fn test_client_args_with_endpoint(
         service,
         system_dns: Arc::new(NoopSystemDnsCache),
         direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
-        geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
+        geo_index: Arc::new(nyanpasu_core::geo::NoopCountryIndexSource),
         os_proxy: Arc::new(MockOsProxyPort::new()),
         binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         core_versions: Arc::new(core_version::MockCoreVersionReader::new()),

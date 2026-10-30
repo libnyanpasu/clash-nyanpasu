@@ -3,8 +3,8 @@
 mod actor;
 mod adapters;
 mod client;
-#[cfg(test)]
-pub(crate) mod fixtures;
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixtures;
 mod ports;
 #[cfg(test)]
 mod tests;
@@ -15,7 +15,7 @@ pub use client::GeoIndexClient;
 pub use ports::CountryIndexSource;
 #[cfg(test)]
 pub use ports::MockCountryIndexSource;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use ports::NoopCountryIndexSource;
 
-pub(crate) use client::Error as SpawnError;
+pub use client::Error as SpawnError;

@@ -204,7 +204,7 @@ mod tests {
     use std::net::IpAddr;
 
     use super::*;
-    use crate::core::geo::fixtures::geoip_dat;
+    use crate::geo::fixtures::geoip_dat;
 
     struct Home {
         dir: tempfile::TempDir,

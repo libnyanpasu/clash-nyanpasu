@@ -151,7 +151,7 @@ impl RpcError {
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
             }
-            if let Some(log) = error.downcast_ref::<crate::core::logs::CoreLogError>() {
+            if let Some(log) = error.downcast_ref::<nyanpasu_core::logs::CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -1168,8 +1168,8 @@ mod tests {
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
-                    crate::core::logs::PreparedCoreLog::new(&crate::core::logs::CoreLogRecord {
-                        source: crate::core::logs::CoreLogSource {
+                    nyanpasu_core::logs::PreparedCoreLog::new(&nyanpasu_core::logs::CoreLogRecord {
+                        source: nyanpasu_core::logs::CoreLogSource {
                             capture: "http-fixture".into(),
                             instance_id: "instance".into(),
                             core_kind: Some("Mihomo".into()),

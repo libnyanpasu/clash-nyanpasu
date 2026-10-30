@@ -44,6 +44,16 @@ jobs:
           # The pull request merge commit and its first parent, the base tip.
           fetch-depth: 2
 
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: latest
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
       # The rules live in scripts/src/ci/changed-parts.ts.
       - name: Classify changed paths
         id: classify

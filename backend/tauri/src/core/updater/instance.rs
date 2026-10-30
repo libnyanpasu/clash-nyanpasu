@@ -53,7 +53,7 @@ pub struct UpdaterSummary {
 }
 
 pub(crate) struct HttpUpdaterBackend {
-    proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+    proxy_port: Arc<dyn crate::service::profile_file::ports::SelfProxyPortSource>,
     destination_dir: PathBuf,
     /// Resolves where the agent skills a core archive ships go.
     paths: PathResolver,
@@ -64,7 +64,7 @@ impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
         paths: PathResolver,
-        proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+        proxy_port: Arc<dyn crate::service::profile_file::ports::SelfProxyPortSource>,
         bundle_metadata: BundleMetadata,
     ) -> Self {
         Self {
@@ -705,7 +705,7 @@ mod tests {
         PathResolver::with_base_dirs(root.join("config"), root.join("data"))
     }
 
-    impl crate::service::profile_file::SelfProxyPortSource for ProxyPort {
+    impl crate::service::profile_file::ports::SelfProxyPortSource for ProxyPort {
         fn mixed_port(&self) -> Option<u16> {
             Some(self.0.load(std::sync::atomic::Ordering::SeqCst))
         }

@@ -18,7 +18,7 @@ use crate::{
         },
         bundle_metadata::BundleMetadata,
     },
-    service::profile_file::SelfProxyPortSource,
+    service::profile_file::ports::SelfProxyPortSource,
 };
 use nyanpasu_config::application::UpdateSource;
 

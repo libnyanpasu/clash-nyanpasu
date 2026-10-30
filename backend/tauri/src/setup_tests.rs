@@ -141,7 +141,8 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
     let paths =
         crate::client::tests::test_paths(dir.path().join("config"), dir.path().join("data"));
     paths.create_base_dirs().unwrap();
-    std::fs::create_dir(paths.jobs_path()).unwrap(); // A real redb open failure.
+    // A real redb open failure: another handle holds the jobs database.
+    let _held = redb::Database::create(paths.jobs_path()).unwrap();
     let cleanup = Arc::new(Mutex::new(Vec::new()));
     let endpoint: EndpointHandle = Arc::new(Endpoint(cleanup.clone()));
     let host = Host::default();
@@ -175,7 +176,7 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
                 )
                 .await
                 .err()
-                .expect("directory is not a jobs database");
+                .expect("a held jobs database cannot be opened");
                 assert!(matches!(error, super::Error::StartJobs { .. }));
                 core_watch = Some(owners.core.as_ref().unwrap().subscribe());
                 Err(StartupFailure::from_setup(&error, &paths))
@@ -187,7 +188,7 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
     assert_eq!(*host.events.borrow(), ["dialog", "retain", "exit"]);
     assert_eq!(
         host.failure.borrow().as_ref().unwrap().kind,
-        FailureKind::JobsDatabase
+        FailureKind::Busy
     );
     let owners = host.owners.take().unwrap();
     runtime.block_on(async {

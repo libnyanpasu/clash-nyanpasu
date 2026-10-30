@@ -83,7 +83,6 @@ impl StartupFailure {
                     ),
                 ),
             },
-            // v2.0.2 erases jobs storage causes into Journal(String).
             Error::StartJobs { .. } => (
                 FailureKind::JobsDatabase,
                 Some(paths.jobs_path().into_std_path_buf()),
@@ -157,11 +156,7 @@ impl StartupFailure {
         path: Option<PathBuf>,
         error: &(dyn StdError + 'static),
     ) -> Self {
-        let kind = if kind == FailureKind::JobsDatabase {
-            kind
-        } else {
-            io_kind(corrupt::error_io(error)).unwrap_or(kind)
-        };
+        let kind = io_kind(corrupt::error_io(error)).unwrap_or(kind);
         let mut path = path;
         let mut current = Some(error);
         while let Some(error) = current {

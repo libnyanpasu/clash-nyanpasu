@@ -14,8 +14,11 @@ use super::{
     },
     *,
 };
-use crate::client::core_lifecycle::ports::{
-    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+use crate::{
+    adapters::runtime_build::FsRuntimeBuildAdapter,
+    client::core_lifecycle::ports::{
+        BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+    },
 };
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
@@ -69,7 +72,7 @@ pub(super) fn scripted_publish_failure() -> crate::client::runtime::PublishRunti
 }
 
 struct BlockingBuilder {
-    delegate: adapters::FsRuntimeBuildAdapter,
+    delegate: FsRuntimeBuildAdapter,
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
@@ -356,7 +359,7 @@ async fn workflow_graph_with_clients(
         host: core.status().host,
     };
     let builder = Arc::new(BlockingBuilder {
-        delegate: adapters::FsRuntimeBuildAdapter {
+        delegate: FsRuntimeBuildAdapter {
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths,

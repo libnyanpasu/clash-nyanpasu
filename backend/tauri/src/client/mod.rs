@@ -104,9 +104,6 @@ pub struct ClientSetupArgs {
     /// for the storage commands.
     pub storage: Storage,
     pub runtime_paths: RuntimePaths,
-    /// Resolves the core binary a [`ClashCore`](nyanpasu_config::application::ClashCore)
-    /// selects; production looks it up on disk, tests substitute a fixed spec.
-    pub core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
     pub ui_sink: Arc<dyn UiEventSink>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -313,7 +310,6 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
-            core_specs,
             ui_sink,
             app_update_backend_factory,
             app_update_event_sink,
@@ -381,7 +377,6 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
-            core_specs,
             host_adapters,
             ui_sink,
             app_update_backend_factory,
@@ -421,7 +416,6 @@ impl NyanpasuClient {
         paths: PathResolver,
         storage: Storage,
         runtime_paths: RuntimePaths,
-        core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -518,12 +512,7 @@ impl NyanpasuClient {
                 profiles: profiles.snapshot_handle(),
                 core: core_v2.clone(),
                 service,
-                builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
-                    profiles_dir: profiles_dir.clone(),
-                    core_specs,
-                    paths: runtime_paths.clone(),
-                    scripts: host_adapters.script_dirs,
-                }),
+                builder: host_adapters.runtime_build,
                 validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
                     core_v2.clone(),
                     runtime_paths,
@@ -2681,9 +2670,16 @@ pub(crate) mod tests {
             backup_paths,
             storage,
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
-            Arc::new(runtime_core_spec),
             ClientHostAdapters {
-                script_dirs: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                runtime_build: Arc::new(crate::adapters::runtime_build::FsRuntimeBuildAdapter {
+                    profiles_dir: dir.path().join("profiles"),
+                    core_specs: Arc::new(runtime_core_spec),
+                    paths: RuntimePaths::from_resolver(&test_paths(
+                        dir.path(),
+                        dir.path().join("data"),
+                    )),
+                    scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                }),
                 ..test_host_adapters(&test_paths(dir.path(), dir.path().join("data")))
             },
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -3180,10 +3176,15 @@ pub(crate) mod tests {
                     crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
                 ))
             }),
-            script_dirs: nyanpasu_platform::enhance::ScriptDirs::new(
-                paths.scripts_dir().into_std_path_buf(),
-                paths.cache_dir().into_std_path_buf(),
-            ),
+            runtime_build: Arc::new(crate::adapters::runtime_build::FsRuntimeBuildAdapter {
+                profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
+                core_specs: Arc::new(runtime_core_spec),
+                paths: RuntimePaths::from_resolver(paths),
+                scripts: nyanpasu_platform::enhance::ScriptDirs::new(
+                    paths.scripts_dir().into_std_path_buf(),
+                    paths.cache_dir().into_std_path_buf(),
+                ),
+            }),
             profile_files: Arc::new({
                 let paths = paths.clone();
                 move |ports| {
@@ -3238,7 +3239,6 @@ pub(crate) mod tests {
             paths,
             storage,
             runtime_paths,
-            core_specs: Arc::new(runtime_core_spec),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,
             app_update_event_sink: None,
@@ -3586,7 +3586,6 @@ pub(crate) mod tests {
             backup_paths,
             storage,
             RuntimePaths::from_resolver(&paths),
-            Arc::new(runtime_core_spec),
             test_host_adapters(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
@@ -3754,7 +3753,6 @@ pub(crate) mod tests {
             paths,
             storage,
             runtime_paths,
-            core_specs: Arc::new(runtime_core_spec),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,
             app_update_event_sink: None,
@@ -4761,9 +4759,18 @@ pub(crate) mod tests {
                 backup_paths,
                 storage,
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
-                Arc::new(runtime_core_spec),
                 ClientHostAdapters {
-                    script_dirs: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                    runtime_build: Arc::new(
+                        crate::adapters::runtime_build::FsRuntimeBuildAdapter {
+                            profiles_dir: dir.path().join("profiles"),
+                            core_specs: Arc::new(runtime_core_spec),
+                            paths: RuntimePaths::from_resolver(&test_paths(
+                                dir.path(),
+                                dir.path().join("data"),
+                            )),
+                            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                        },
+                    ),
                     ..test_host_adapters(&test_paths(dir.path(), dir.path().join("data")))
                 },
                 Arc::new(crate::client::event_sink::NoopUiEventSink),

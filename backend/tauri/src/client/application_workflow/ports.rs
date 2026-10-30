@@ -5,7 +5,7 @@ use nyanpasu_core::enhance::RuntimeBuildError;
 use std::sync::Arc;
 
 #[async_trait]
-pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
+pub(crate) trait RuntimeBuildPort: Send + Sync + 'static {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,

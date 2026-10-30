@@ -330,10 +330,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     bundle_metadata,
                 ))
             }),
-            script_dirs: nyanpasu_platform::enhance::ScriptDirs::new(
-                paths.scripts_dir().into_std_path_buf(),
-                paths.cache_dir().into_std_path_buf(),
-            ),
+            runtime_build: Arc::new(crate::adapters::runtime_build::FsRuntimeBuildAdapter {
+                profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
+                core_specs: {
+                    let paths = paths.clone();
+                    Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &paths))
+                },
+                paths: runtime_paths.clone(),
+                scripts: nyanpasu_platform::enhance::ScriptDirs::new(
+                    paths.scripts_dir().into_std_path_buf(),
+                    paths.cache_dir().into_std_path_buf(),
+                ),
+            }),
             profile_files: Arc::new({
                 let paths = paths.clone();
                 move |ports| {
@@ -372,10 +380,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
             service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
             frontend: Arc::new(crate::client::frontend_events::TracingFrontendLogSink),
-        },
-        core_specs: {
-            let paths = paths.clone();
-            Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &paths))
         },
         paths: paths.clone(),
         storage,

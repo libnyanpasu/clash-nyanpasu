@@ -17,6 +17,7 @@ use super::super::{
     preparation::RuntimePreparation,
 };
 use crate::{
+    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         SessionPortResolver,
         core_lifecycle::ports::RuntimePreparationPort,
@@ -63,7 +64,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         application.snapshot_handle(),
         clash.snapshot_handle(),
         profiles.snapshot_handle(),
-        Arc::new(super::super::adapters::FsRuntimeBuildAdapter {
+        Arc::new(FsRuntimeBuildAdapter {
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),

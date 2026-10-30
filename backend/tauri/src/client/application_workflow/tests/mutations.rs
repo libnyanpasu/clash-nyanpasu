@@ -60,16 +60,14 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    core::{
-        actor_v2::{
-            CoreClient,
-            endpoint::ExecutionHost,
-            service_actor::{ServiceClient, ServiceHostAdapter},
-        },
-        migration::modules::application::ApplicationFormat,
+    core::actor_v2::{
+        CoreClient,
+        endpoint::ExecutionHost,
+        service_actor::{ServiceClient, ServiceHostAdapter},
     },
     state::mutation::{CommitAborted, RuntimeAftermath},
 };
+use nyanpasu_core::migration::modules::application::ApplicationFormat;
 
 // -- fixture ---------------------------------------------------------------
 

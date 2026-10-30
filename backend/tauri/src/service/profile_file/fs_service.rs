@@ -25,19 +25,16 @@ use super::{
     subscription,
 };
 
-use crate::{
-    core::corrupt,
-    state::profiles::{
-        error::*,
-        ports::{
-            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
-            ProfileMaterializationPort, SubscriptionFetcher,
-        },
+use crate::state::profiles::{
+    error::*,
+    ports::{
+        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+        SubscriptionFetcher,
     },
 };
-use nyanpasu_core::client::bundle_metadata::BundleMetadata;
+use nyanpasu_core::{client::bundle_metadata::BundleMetadata, corrupt};
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 

@@ -11,12 +11,10 @@ use nyanpasu_utils::io::IoFailure;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
-use crate::{
-    core::{
-        corrupt,
-        migration::child_result::{Failure, FailureStage, RevisionFailure},
-    },
-    setup,
+use crate::setup;
+use nyanpasu_core::{
+    corrupt,
+    migration::child_result::{Failure, FailureStage, RevisionFailure},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

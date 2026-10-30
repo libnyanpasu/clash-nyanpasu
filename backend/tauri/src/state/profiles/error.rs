@@ -86,7 +86,7 @@ pub enum ProfileFileError {
     #[snafu(display("could not preserve invalid profile materialization directory"))]
     PreserveDerivedDirectory {
         #[serde(skip)]
-        source: crate::core::corrupt::Error,
+        source: nyanpasu_core::corrupt::Error,
     },
     #[snafu(display("could not inspect {path}"))]
     InspectPath {

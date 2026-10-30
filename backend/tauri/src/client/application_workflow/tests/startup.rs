@@ -64,19 +64,18 @@ use crate::{
             test_client_args_with_endpoint,
         },
     },
-    core::{
-        actor_v2::{
-            CoreClient,
-            endpoint::{
-                ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
-                CoreSubmission, EndpointHandle, ExecutionHost,
-            },
-            service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
+    core::actor_v2::{
+        CoreClient,
+        endpoint::{
+            ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
+            CoreSubmission, EndpointHandle, ExecutionHost,
         },
-        migration::modules::application::ApplicationFormat,
+        service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
     },
 };
-use nyanpasu_core::client::convergence::ConvergenceHealth;
+use nyanpasu_core::{
+    client::convergence::ConvergenceHealth, migration::modules::application::ApplicationFormat,
+};
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
 

@@ -1,11 +1,11 @@
 use clap::Args;
 
-use crate::core::migration::{
+use colored::Colorize;
+use nyanpasu_core::migration::{
     MigrationAdvice, Runner,
     child_result::{Failure, FailureStage},
     current_version, registry,
 };
-use colored::Colorize;
 use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Args)]
@@ -50,7 +50,7 @@ pub(crate) enum Error {
     ParseVersion { source: semver::Error },
     #[snafu(display("failed to resolve current migration version"))]
     ResolveVersion {
-        source: crate::core::migration::VersionError,
+        source: nyanpasu_core::migration::VersionError,
     },
     #[snafu(display("failed to create migration directories"))]
     CreateDirectories {
@@ -58,13 +58,13 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to initialize migration runner"))]
     ConstructRunner {
-        source: crate::core::migration::runner::Error,
+        source: nyanpasu_core::migration::runner::Error,
     },
     #[snafu(display("migration not found: {id}"))]
     FindMigration { id: String },
     #[snafu(display("migration failed"))]
     RunMigration {
-        source: crate::core::migration::runner::Error,
+        source: nyanpasu_core::migration::runner::Error,
     },
 }
 
@@ -153,7 +153,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
         let stage = if matches!(
             &error,
             Error::RunMigration {
-                source: crate::core::migration::runner::Error::CreateBackup { .. }
+                source: nyanpasu_core::migration::runner::Error::CreateBackup { .. }
             }
         ) {
             FailureStage::Backup

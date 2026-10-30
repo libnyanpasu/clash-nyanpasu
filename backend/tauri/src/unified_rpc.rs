@@ -16,7 +16,8 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
 
-use crate::{client::NyanpasuClient, core::storage::Storage};
+use crate::client::NyanpasuClient;
+use nyanpasu_core::storage::Storage;
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
@@ -1157,7 +1158,7 @@ mod tests {
         };
         let mut application = Vec::new();
         nyanpasu_core::format::Format::serialize(
-            &crate::core::migration::modules::application::ApplicationFormat::default(),
+            &nyanpasu_core::migration::modules::application::ApplicationFormat::default(),
             &mut application,
             &config,
             None,

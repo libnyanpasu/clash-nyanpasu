@@ -29,12 +29,9 @@ use super::{
 };
 use crate::{
     client::system_proxy::ports::MockOsProxyPort,
-    core::{
-        actor_v2::{
-            endpoint::ExecutionHost,
-            test_support::{successful_reconcile, test_v2_clients_with_endpoint},
-        },
-        storage::Storage,
+    core::actor_v2::{
+        endpoint::ExecutionHost,
+        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
     service::profile_file::fs_service::ProfileFileService,
     state::profiles::{
@@ -47,6 +44,7 @@ use crate::{
 };
 use nyanpasu_core::{
     client::{bundle_metadata::BundleMetadata, core_version, direct_egress},
+    storage::Storage,
     utils::test_support::test_paths,
 };
 
@@ -668,7 +666,7 @@ pub(crate) fn write_clash_config(path: impl AsRef<std::path::Path>, config: &Cla
     use nyanpasu_core::format::Format as _;
 
     let mut content = Vec::new();
-    crate::core::migration::modules::clash_config::ClashConfigFormat::default()
+    nyanpasu_core::migration::modules::clash_config::ClashConfigFormat::default()
         .serialize(&mut content, config, None)
         .unwrap();
     std::fs::write(path, content).unwrap();

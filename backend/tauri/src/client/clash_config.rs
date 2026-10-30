@@ -14,7 +14,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
-    core::migration::modules::clash_config::ClashConfigFormat,
     state::{
         clash_config::{
             ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
@@ -22,6 +21,7 @@ use crate::{
         config_error::{ConfigError, OwnerStoppedSnafu},
     },
 };
+use nyanpasu_core::migration::modules::clash_config::ClashConfigFormat;
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {

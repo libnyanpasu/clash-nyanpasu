@@ -32,7 +32,7 @@ pub enum StorageOperationError {
     #[snafu(display("failed to preserve the unusable database"))]
     PreserveDatabase {
         #[serde(skip)]
-        source: crate::core::corrupt::Error,
+        source: crate::corrupt::Error,
     },
     #[snafu(display("failed to start a storage transaction"))]
     BeginTransaction {
@@ -228,7 +228,7 @@ fn preserve_database(
     path: &std::path::Path,
     error: &(dyn std::error::Error + 'static),
 ) -> Result<()> {
-    let evidence = crate::core::corrupt::preserve(path, error).context(PreserveDatabaseSnafu)?;
+    let evidence = crate::corrupt::preserve(path, error).context(PreserveDatabaseSnafu)?;
     tracing::warn!(original_path = %path.display(), evidence_path = %evidence.display(),
         error = %snafu::Report::from_error(error), action = "reset_key_value_storage",
         "resetting key-value storage discards frontend persisted state, task history, and legacy hotkey configuration");
@@ -237,7 +237,7 @@ fn preserve_database(
 
 impl StorageInner {
     fn create_and_init_database(path: &std::path::Path) -> Result<redb::Database> {
-        let db = crate::core::corrupt::retry(
+        let db = crate::corrupt::retry(
             || redb::Database::create(path),
             |error| transient_database_error(error),
         )
@@ -262,7 +262,7 @@ impl StorageInner {
         open: impl FnMut() -> Result<redb::Database>,
         wait: impl Fn(std::time::Duration) + 'static,
     ) -> Result<Self> {
-        use crate::core::corrupt;
+        use crate::corrupt;
         let metadata = match corrupt::retry_io(|| fs::symlink_metadata(path)) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,

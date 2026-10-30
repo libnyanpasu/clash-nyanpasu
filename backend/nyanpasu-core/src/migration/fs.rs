@@ -6,10 +6,10 @@
 //! future swap only touches this file.
 
 use super::MigrationCheckError;
+use crate::format::{DocumentStamp, Inspected, StampError};
 use atomicwrites::{AllowOverwrite, AtomicFile};
-use nyanpasu_core::format::{DocumentStamp, Inspected, StampError};
 use serde::de::DeserializeOwned;
-use serde_yaml::Mapping;
+use serde_yaml_ng::Mapping;
 use snafu::{ResultExt as _, ensure};
 use std::{
     io::Write,
@@ -17,13 +17,13 @@ use std::{
 };
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to stamp {}", path.display()))]
     StampDocument { path: PathBuf, source: StampError },
     #[snafu(display("failed to serialize {}", path.display()))]
     SerializeDocument {
         path: PathBuf,
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
     #[snafu(display("destination path has no file name: {}", path.display()))]
     ValidateDestination { path: PathBuf },
@@ -42,7 +42,7 @@ pub(crate) enum Error {
 /// Whether `path` exists, reporting an inaccessible parent as an error
 /// instead of the `false` that [`Path::exists`] would return.
 pub(crate) fn try_exists(path: &Path) -> Result<bool, MigrationCheckError> {
-    crate::core::corrupt::retry_io(|| path.try_exists()).map_err(|source| MigrationCheckError::Io {
+    crate::corrupt::retry_io(|| path.try_exists()).map_err(|source| MigrationCheckError::Io {
         path: path.to_path_buf(),
         source,
     })
@@ -59,7 +59,7 @@ fn read_yaml_if_exists_with<T: DeserializeOwned>(
     path: &Path,
     read: impl FnMut() -> std::io::Result<String>,
 ) -> Result<Option<T>, MigrationCheckError> {
-    let raw = match crate::core::corrupt::retry_io(read) {
+    let raw = match crate::corrupt::retry_io(read) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
@@ -69,7 +69,7 @@ fn read_yaml_if_exists_with<T: DeserializeOwned>(
             });
         }
     };
-    serde_yaml::from_str(&raw)
+    serde_yaml_ng::from_str(&raw)
         .map(Some)
         .map_err(|source| MigrationCheckError::Parse {
             path: path.to_path_buf(),
@@ -99,7 +99,7 @@ fn read_document_with(
     document: &str,
     read: impl FnMut() -> std::io::Result<String>,
 ) -> Result<Option<DocumentFile>, MigrationCheckError> {
-    let raw = match crate::core::corrupt::retry_io(read) {
+    let raw = match crate::corrupt::retry_io(read) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
@@ -113,19 +113,18 @@ fn read_document_with(
         path: path.to_path_buf(),
         source,
     };
-    let (schema_revision, payload) =
-        match nyanpasu_core::format::inspect(&raw).map_err(stamp_error)? {
-            Inspected::Unstamped(payload) => (None, payload),
-            Inspected::Stamped { stamp, payload } => {
-                if stamp.document != document {
-                    return Err(stamp_error(StampError::WrongDocument {
-                        expected: document.to_owned(),
-                        found: stamp.document,
-                    }));
-                }
-                (Some(stamp.schema_revision), payload)
+    let (schema_revision, payload) = match crate::format::inspect(&raw).map_err(stamp_error)? {
+        Inspected::Unstamped(payload) => (None, payload),
+        Inspected::Stamped { stamp, payload } => {
+            if stamp.document != document {
+                return Err(stamp_error(StampError::WrongDocument {
+                    expected: document.to_owned(),
+                    found: stamp.document,
+                }));
             }
-        };
+            (Some(stamp.schema_revision), payload)
+        }
+    };
     Ok(Some(DocumentFile {
         raw,
         schema_revision,
@@ -135,7 +134,7 @@ fn read_document_with(
 
 /// Atomically write `payload` to `path`, stamped as `document` at
 /// `schema_revision`, so the content and its revision always change together.
-pub(crate) fn write_document(
+pub fn write_document(
     path: &Path,
     document: &str,
     schema_revision: u64,
@@ -146,9 +145,8 @@ pub(crate) fn write_document(
         document: document.to_owned(),
         schema_revision,
     };
-    let stamped =
-        nyanpasu_core::format::stamp(payload, &stamp).context(StampDocumentSnafu { path })?;
-    let body = serde_yaml::to_string(&stamped).context(SerializeDocumentSnafu { path })?;
+    let stamped = crate::format::stamp(payload, &stamp).context(StampDocumentSnafu { path })?;
+    let body = serde_yaml_ng::to_string(&stamped).context(SerializeDocumentSnafu { path })?;
     let content = match prefix {
         Some(prefix) => format!("{prefix}\n\n{body}"),
         None => body,
@@ -173,10 +171,10 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), Error> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        crate::core::corrupt::retry_io(|| std::fs::create_dir_all(parent))
+        crate::corrupt::retry_io(|| std::fs::create_dir_all(parent))
             .context(CreateDirectorySnafu { path: parent })?;
     }
-    crate::core::corrupt::retry(
+    crate::corrupt::retry(
         || AtomicFile::new(path, AllowOverwrite).write(|file| file.write_all(contents)),
         |error| {
             let (atomicwrites::Error::Internal(error) | atomicwrites::Error::User(error)) = error;

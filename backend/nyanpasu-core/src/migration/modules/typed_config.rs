@@ -7,21 +7,21 @@ use super::{
     application::ApplicationFormat,
     clash_config::{self, ClashConfigFormat},
 };
+use crate::{format::Format as _, utils::yaml};
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
-use nyanpasu_core::{format::Format as _, utils::yaml};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use snafu::ResultExt as _;
 use std::path::Path;
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to serialize YAML"))]
-    SerializeYaml { source: serde_yaml::Error },
+    SerializeYaml { source: serde_yaml_ng::Error },
     #[snafu(context(false), display("failed to inspect migration input"))]
     InspectInput {
         source: super::super::MigrationCheckError,
@@ -34,7 +34,7 @@ pub(crate) enum Error {
     },
     #[snafu(context(false), display("failed to read legacy overrides"))]
     ReadLegacyOverrides {
-        source: nyanpasu_core::utils::yaml::YamlError,
+        source: crate::utils::yaml::YamlError,
     },
     #[snafu(context(false), display("serialized config was not UTF-8"))]
     DecodeConfig { source: std::string::FromUtf8Error },
@@ -208,11 +208,8 @@ impl MigrationStep for RepairClashConfigPath {
             };
 
             let clash_yaml = serialize_clash(&clash_config)?;
-            crate::core::migration::fs::atomic_write(
-                &ctx.clash_config_path(),
-                clash_yaml.as_bytes(),
-            )
-            .map_err(Into::into)
+            crate::migration::fs::atomic_write(&ctx.clash_config_path(), clash_yaml.as_bytes())
+                .map_err(Into::into)
         })()
         .map_err(Into::into)
     }
@@ -377,7 +374,7 @@ fn partial_typed_file_state(
 }
 
 fn read_session_state(ctx: &Ctx) -> Result<Option<PersistentState>, MigrationCheckError> {
-    crate::core::session_state::read(&ctx.session_state_path()).map_err(|source| {
+    crate::session_state::read(&ctx.session_state_path()).map_err(|source| {
         MigrationCheckError::ReadSessionState {
             path: ctx.session_state_path(),
             source: Box::new(source),
@@ -448,14 +445,14 @@ fn read_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, MigrationCheckError>
         path: path.to_path_buf(),
         source,
     })?;
-    serde_yaml::from_str(&raw).map_err(|source| MigrationCheckError::Parse {
+    serde_yaml_ng::from_str(&raw).map_err(|source| MigrationCheckError::Parse {
         path: path.to_path_buf(),
         source,
     })
 }
 
 fn serialize_yaml<T: Serialize>(value: &T) -> Result<String, Error> {
-    serde_yaml::to_string(value).map_err(Into::into)
+    serde_yaml_ng::to_string(value).map_err(Into::into)
 }
 
 /// `application.yaml` is written stamped from the start, at the revision its
@@ -506,7 +503,7 @@ fn write_typed_files(
     let mut written = Vec::new();
 
     for (_name, path, contents) in outputs {
-        if let Err(error) = crate::core::migration::fs::atomic_write(&path, contents) {
+        if let Err(error) = crate::migration::fs::atomic_write(&path, contents) {
             for created in written.iter().rev() {
                 let _ = std::fs::remove_file(created);
             }
@@ -525,7 +522,7 @@ fn current_revision() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::migration::legacy_schema::WindowState as LegacyWindowState;
+    use crate::migration::legacy_schema::WindowState as LegacyWindowState;
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
 
     fn test_ctx() -> (Ctx, tempfile::TempDir) {
@@ -538,7 +535,7 @@ mod tests {
     }
 
     fn write_yaml<T: Serialize>(path: &Path, value: &T) {
-        let raw = serde_yaml::to_string(value).unwrap();
+        let raw = serde_yaml_ng::to_string(value).unwrap();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
@@ -547,7 +544,7 @@ mod tests {
 
     fn read_typed<T: DeserializeOwned>(path: &Path) -> T {
         let raw = std::fs::read_to_string(path).unwrap();
-        serde_yaml::from_str(&raw).unwrap()
+        serde_yaml_ng::from_str(&raw).unwrap()
     }
 
     fn write_legacy_clash(path: &Path) {
@@ -562,7 +559,7 @@ mod tests {
 
     /// Every default mints its own controller secret, so it is left out.
     fn without_secret(clash: &ClashConfig) -> Value {
-        let mut value = serde_yaml::to_value(clash).unwrap();
+        let mut value = serde_yaml_ng::to_value(clash).unwrap();
         value["overrides"]
             .as_mapping_mut()
             .unwrap()
@@ -580,12 +577,12 @@ mod tests {
         let session: PersistentState = read_typed(&ctx.session_state_path());
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
         assert_eq!(
-            serde_yaml::to_value(&application).unwrap(),
-            serde_yaml::to_value(NyanpasuAppConfig::default()).unwrap()
+            serde_yaml_ng::to_value(&application).unwrap(),
+            serde_yaml_ng::to_value(NyanpasuAppConfig::default()).unwrap()
         );
         assert_eq!(
-            serde_yaml::to_value(&session).unwrap(),
-            serde_yaml::to_value(PersistentState::default()).unwrap()
+            serde_yaml_ng::to_value(&session).unwrap(),
+            serde_yaml_ng::to_value(PersistentState::default()).unwrap()
         );
         assert_eq!(
             without_secret(&clash),
@@ -714,7 +711,7 @@ mod tests {
         REPAIR_CLASH_CONFIG_PATH.run(&mut ctx).unwrap();
 
         let repaired: ClashConfig = read_typed(&ctx.clash_config_path());
-        let overrides = serde_yaml::to_value(&repaired.overrides).unwrap();
+        let overrides = serde_yaml_ng::to_value(&repaired.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
         assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
         assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
@@ -879,7 +876,7 @@ mod tests {
             write_typed_files(&ctx, "app: true\n", "session: true\n", "clash: true\n").unwrap_err();
 
         assert!(
-            matches!(err, Error::WriteOutput { source: crate::core::migration::fs::Error::WriteFile { path, .. } } if path == ctx.session_state_path())
+            matches!(err, Error::WriteOutput { source: crate::migration::fs::Error::WriteFile { path, .. } } if path == ctx.session_state_path())
         );
         assert!(
             !ctx.application_config_path().exists(),
@@ -966,7 +963,7 @@ mod tests {
         SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
-        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = serde_yaml_ng::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
         assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
         assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
@@ -986,7 +983,7 @@ mod tests {
         SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
-        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = serde_yaml_ng::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
         assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
         assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
@@ -1016,7 +1013,7 @@ mod tests {
         SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
-        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = serde_yaml_ng::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
         assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
         assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
@@ -1036,7 +1033,7 @@ mod tests {
         SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
-        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = serde_yaml_ng::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
         assert_eq!(clash.mixed_port.start_port, 7890);
         assert_eq!(clash.external_controller.host.to_string(), "127.0.0.1");
@@ -1057,7 +1054,7 @@ mod tests {
         SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
-        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = serde_yaml_ng::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
         assert_eq!(overrides.get("mode"), Some(&Value::String("rule".into())));
         assert_eq!(

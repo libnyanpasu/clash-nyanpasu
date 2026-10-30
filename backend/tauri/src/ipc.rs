@@ -3,7 +3,7 @@ use crate::{
         ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
         effects::error::EffectsError, system_proxy::ports::OsProxyError,
     },
-    core::{storage::Storage, updater::ManifestVersionLatest, *},
+    core::{updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::{
         config_error::ConfigError,
@@ -19,11 +19,13 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
-use nyanpasu_core::client::direct_egress::DirectEgress;
+use nyanpasu_core::{
+    client::direct_egress::DirectEgress,
+    storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
+};
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
-use storage::{StorageItem, StorageOperationError, StorageRevision, WebStorage};
 use tauri::{AppHandle, State, Webview};
 use tray::icon::TrayIcon;
 
@@ -152,7 +154,7 @@ unknown_domain!(
     serde_json::Error,
     tauri::Error,
     anyhow::Error,
-    backup::BackupError,
+    nyanpasu_core::backup::BackupError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;

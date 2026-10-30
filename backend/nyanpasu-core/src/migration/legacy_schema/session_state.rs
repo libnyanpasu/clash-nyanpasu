@@ -9,7 +9,7 @@ use nyanpasu_config::state::{
 const MAIN_WINDOW_LABEL: &str = "main";
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to convert legacy YAML"))]
     ConvertYaml { source: super::ConversionError },
 }

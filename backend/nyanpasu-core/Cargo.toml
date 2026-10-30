@@ -6,13 +6,22 @@ license.workspace = true
 authors.workspace = true
 
 [features]
+default-meta = []
 default = []
 verge-dev = []
 test-support = ['dep:mockall']
 
 [dependencies]
+nyanpasu-core-manager = { workspace = true }
+backon = { version = '1.0.1', features = ['tokio-sleep'] }
+redb = '4.0.0'
+chrono = { version = '0.4', features = ['serde'] }
+time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
+uuid = '1.7.0'
+nyanpasu-macro = { path = '../nyanpasu-macro' }
+nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol' }
 nyanpasu-ipc = { workspace = true }
-nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
+nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 runas = { workspace = true }
 semver = '1.0'
 parking_lot = { version = '0.13.0' }
@@ -60,6 +69,7 @@ serde_yaml_ng = { workspace = true }
 winreg = { version = '0.56', features = ['transactions'] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+nix = '0.31.0'
 tempfile = '3.9.0'
 
 [target.'cfg(not(target_env = "musl"))'.dev-dependencies]
@@ -71,6 +81,7 @@ tempfile = '3.9.0'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+pretty_assertions = '1.4.0'
 mockall = '0.15'
 axum = { version = '0.8', features = ['ws'] }
 nyanpasu-paths = { path = '../nyanpasu-paths' }

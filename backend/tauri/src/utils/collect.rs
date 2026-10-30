@@ -42,7 +42,7 @@ fn core_from_config(
     // The same typed formatter as ApplicationClient's persistence; no ad hoc YAML parser.
     let file = std::fs::File::open(paths.application_config_path()).map_err(|e| e.to_string())?;
     let config: NyanpasuAppConfig =
-        crate::core::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_core::migration::modules::application::ApplicationFormat::default()
             .deserialize(file)
             .map_err(|e| e.to_string())?;
     let version = runtime.block_on(super::core_version::SidecarCoreVersionReader.read(config.core));

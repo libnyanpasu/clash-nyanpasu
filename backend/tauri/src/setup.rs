@@ -30,12 +30,10 @@ use crate::{
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
-    core::{
-        storage::StorageNotification,
-        traffic::{TrafficFileStorage, TrafficStorage},
-    },
+    core::traffic::{TrafficFileStorage, TrafficStorage},
     utils::init::logging::ReloadSignal,
 };
+use nyanpasu_core::storage::StorageNotification;
 use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
 use snafu::ResultExt as _;
 use tauri_specta::Event;
@@ -123,11 +121,11 @@ impl StartupFailureHost for TauriStartupFailureHost {
 pub(crate) enum Error {
     #[snafu(display("failed to prepare migrations"))]
     PrepareMigrations {
-        source: crate::core::migration::runner::Error,
+        source: nyanpasu_core::migration::runner::Error,
     },
     #[snafu(display("failed to run migrations"))]
     RunMigrations {
-        source: crate::core::migration::runner::Error,
+        source: nyanpasu_core::migration::runner::Error,
     },
     #[snafu(display("failed to build service ipc"))]
     BuildServiceIpc {
@@ -165,7 +163,7 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to open storage"))]
     OpenStorage {
-        source: crate::core::storage::StorageOperationError,
+        source: nyanpasu_core::storage::StorageOperationError,
     },
     #[snafu(display("failed to build client"))]
     BuildClient { source: crate::client::SetupError },
@@ -220,7 +218,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
     let mut migrations =
-        crate::core::migration::Runner::with_paths(paths.clone(), bundle_metadata, false)
+        nyanpasu_core::migration::Runner::with_paths(paths.clone(), bundle_metadata, false)
             .context(PrepareMigrationsSnafu)?;
     migrations.run_pending().context(RunMigrationsSnafu)?;
     crate::log_err!(crate::utils::init::init_resources(
@@ -279,7 +277,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
-    let storage = crate::core::storage::Storage::try_new(paths.storage_path().as_std_path())
+    let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context(OpenStorageSnafu)?;
     app.manage(storage.clone());
     let storage_changes = storage.subscribe();
@@ -287,7 +285,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
-        crate::core::storage::forward_storage_changes(storage_changes, move |notification| {
+        nyanpasu_core::storage::forward_storage_changes(storage_changes, move |notification| {
             let emitted = match notification {
                 StorageNotification::Changed(change) => StorageValueChangedEvent {
                     key: change.key,
@@ -512,7 +510,7 @@ pub(crate) enum UnifiedRpcError {
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
-        storage: (*app.state::<crate::core::storage::Storage>()).clone(),
+        storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };

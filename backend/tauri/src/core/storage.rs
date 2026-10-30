@@ -277,7 +277,7 @@ impl StorageInner {
     fn try_new_with_open(
         path: &std::path::Path,
         open: impl FnMut() -> Result<redb::Database>,
-        wait: impl FnMut(std::time::Duration),
+        wait: impl Fn(std::time::Duration) + 'static,
     ) -> Result<Self> {
         use crate::core::corrupt;
         let metadata = match corrupt::retry_io(|| fs::symlink_metadata(path)) {
@@ -458,7 +458,8 @@ mod tests {
             storage.set_item("kept", &42).unwrap();
             drop(storage);
             let mut attempts = 0;
-            let mut delays = Vec::new();
+            let delays = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let recorded = delays.clone();
             let result = StorageInner::try_new_with_open(
                 &path,
                 || {
@@ -474,11 +475,11 @@ mod tests {
                         StorageInner::open_database(&path)
                     }
                 },
-                |delay| delays.push(delay),
+                move |delay| recorded.borrow_mut().push(delay),
             );
             assert_eq!(attempts, 4);
             assert_eq!(
-                delays,
+                *delays.borrow(),
                 [
                     std::time::Duration::from_millis(50),
                     std::time::Duration::from_millis(100),

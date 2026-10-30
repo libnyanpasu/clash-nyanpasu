@@ -8,19 +8,13 @@ use std::{
     time::Duration,
 };
 
+use backon::{BlockingRetryable as _, Retryable as _};
 use nyanpasu_utils::{
-    io::{IoFailure, classify},
+    io::{IoFailure, classify, transient_backoff},
     redb_ext::{RedbFailure, find_failure},
 };
 use snafu::{ResultExt as _, Snafu};
 use time::OffsetDateTime;
-
-/// Three retries after the initial operation, bounded to 350 ms of waiting.
-const RETRY_DELAYS: [Duration; 3] = [
-    Duration::from_millis(50),
-    Duration::from_millis(100),
-    Duration::from_millis(200),
-];
 
 /// Finds IO hidden by libraries whose error implementation does not expose it.
 pub(crate) fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFailure> {
@@ -75,36 +69,25 @@ pub(crate) fn retry<T, E>(
 }
 
 pub(crate) fn retry_with_delay<T, E>(
-    mut operation: impl FnMut() -> Result<T, E>,
+    operation: impl FnMut() -> Result<T, E>,
     transient: impl Fn(&E) -> bool,
-    mut wait: impl FnMut(Duration),
+    wait: impl Fn(Duration) + 'static,
 ) -> Result<T, E> {
-    let mut delays = RETRY_DELAYS.into_iter();
-    loop {
-        match operation() {
-            Err(error) if transient(&error) => match delays.next() {
-                Some(delay) => wait(delay),
-                None => return Err(error),
-            },
-            result => return result,
-        }
-    }
+    operation
+        .retry(transient_backoff())
+        .sleep(wait)
+        .when(transient)
+        .call()
 }
 
-pub(crate) async fn retry_async<T, F>(mut operation: impl FnMut() -> F) -> io::Result<T>
+pub(crate) async fn retry_async<T, F>(operation: impl FnMut() -> F) -> io::Result<T>
 where
     F: Future<Output = io::Result<T>>,
 {
-    let mut delays = RETRY_DELAYS.into_iter();
-    loop {
-        match operation().await {
-            Err(error) if classify(&error) == IoFailure::Transient => match delays.next() {
-                Some(delay) => tokio::time::sleep(delay).await,
-                None => return Err(error),
-            },
-            result => return result,
-        }
-    }
+    operation
+        .retry(transient_backoff())
+        .when(|error| classify(error) == IoFailure::Transient)
+        .await
 }
 
 #[derive(Debug, Snafu)]

@@ -34,7 +34,7 @@ pub(crate) fn read(path: &Path) -> Result<Option<PersistentState>, Error> {
 fn read_with(
     path: &Path,
     read: impl FnMut() -> io::Result<Vec<u8>>,
-    wait: impl FnMut(Duration),
+    wait: impl Fn(Duration) + 'static,
 ) -> Result<Option<PersistentState>, Error> {
     match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
         Ok(metadata) if !metadata.is_file() || corrupt::is_link(&metadata) => {
@@ -85,7 +85,8 @@ mod tests {
             let original = b"window_state: {}\n";
             std::fs::write(&path, original).unwrap();
             let mut attempts = 0;
-            let mut delays = Vec::new();
+            let delays = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let recorded = delays.clone();
             let result = read_with(
                 &path,
                 || {
@@ -96,11 +97,11 @@ mod tests {
                         std::fs::read(&path)
                     }
                 },
-                |delay| delays.push(delay),
+                move |delay| recorded.borrow_mut().push(delay),
             );
             assert_eq!(attempts, 4);
             assert_eq!(
-                delays,
+                *delays.borrow(),
                 [
                     Duration::from_millis(50),
                     Duration::from_millis(100),

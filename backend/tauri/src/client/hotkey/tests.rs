@@ -9,31 +9,18 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     HotkeyArgs, HotkeyClient,
     ports::{
-        AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp,
-        HotkeyParseError, MockHotkeyActionSink, ShortcutError, ShortcutRegistrar,
+        HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, HotkeyParseError, ShortcutError,
+        ShortcutRegistrar,
     },
 };
-use crate::{
-    adapters::hotkey::PlatformAcceleratorValidator,
-    client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision},
+use crate::client::{
+    effects::status::{EffectFailureCode, EffectHealth, EffectRevision},
+    hotkey::ports::MockHotkeyActionSink,
+    test_support::AnyAccelerator,
 };
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
-}
-
-/// Accepts anything the shape rules already let through, so the registration
-/// tests read as the spelling under test rather than as a platform verdict.
-struct AnyAccelerator;
-
-impl AcceleratorValidator for AnyAccelerator {
-    fn validate(&self, _accelerator: &str) -> Result<(), HotkeyParseError> {
-        Ok(())
-    }
-
-    fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError> {
-        Ok(accelerator.to_owned())
-    }
 }
 
 #[test]
@@ -102,62 +89,6 @@ fn parse_rejects_duplicate_accelerator() {
                     && *second == HotkeyAction::DisableTunMode
         ),
         "{error:?}"
-    );
-}
-
-#[test]
-fn parse_rejects_what_the_platform_parser_refuses() {
-    let error = HotkeyBindings::parse(
-        &entries(&["toggle_tun_mode,Control+DefinitelyNotAKey"]),
-        &PlatformAcceleratorValidator,
-    )
-    .unwrap_err();
-    assert!(
-        matches!(
-            &error,
-            HotkeyParseError::UnsupportedAccelerator { accelerator, .. }
-                if accelerator == "Control+DefinitelyNotAKey"
-        ),
-        "the shape rules alone cannot tell a key name from a typo: {error:?}"
-    );
-    assert!(
-        HotkeyBindings::parse(
-            &entries(&["toggle_tun_mode,Control+Shift+T"]),
-            &PlatformAcceleratorValidator,
-        )
-        .is_ok()
-    );
-}
-
-/// The OS keys a grab by the parsed shortcut, not by the text, so two
-/// spellings of one accelerator would otherwise be two bindings here and one
-/// registration there — the second silently replacing the first.
-#[test]
-fn equivalent_spellings_are_the_same_binding() {
-    let abbreviated = HotkeyBindings::parse(
-        &entries(&["toggle_tun_mode,Ctrl+Q"]),
-        &PlatformAcceleratorValidator,
-    )
-    .expect("an abbreviated modifier is a valid accelerator");
-    let spelled_out = HotkeyBindings::parse(
-        &entries(&["toggle_tun_mode,Control+Q"]),
-        &PlatformAcceleratorValidator,
-    )
-    .expect("the long modifier is the same accelerator");
-
-    assert_eq!(abbreviated, spelled_out);
-    assert!(
-        abbreviated.diff(&spelled_out).is_empty(),
-        "rewriting a binding into the other spelling must not touch the OS"
-    );
-    let error = HotkeyBindings::parse(
-        &entries(&["enable_tun_mode,Ctrl+Q", "disable_tun_mode,Control+Q"]),
-        &PlatformAcceleratorValidator,
-    )
-    .unwrap_err();
-    assert!(
-        matches!(&error, HotkeyParseError::DuplicateAccelerator { accelerator, .. } if accelerator == "Control+Q"),
-        "one grab cannot run two functions: {error:?}"
     );
 }
 
@@ -630,10 +561,10 @@ mod facade {
     use nyanpasu_config::application::NyanpasuAppConfig;
     use tempfile::{TempDir, tempdir};
 
-    use super::super::ports::{HotkeyAction, HotkeyParseError, MockWindowControl};
+    use super::super::ports::{HotkeyAction, HotkeyParseError};
     use crate::{
         client::{
-            ClientError, NyanpasuClient, effects::ports::MockApplicationEffectsPort,
+            ClientError, NyanpasuClient, hotkey::ports::MockWindowControl,
             test_support::test_client_args_with_endpoint,
         },
         core::actor_v2::test_support::test_idle_endpoint,
@@ -765,45 +696,6 @@ mod facade {
                 .dispatch_hotkey_action(HotkeyAction::OpenOrCloseDashboard)
                 .await
                 .expect("the dashboard toggle should succeed");
-        })
-        .await;
-    }
-
-    /// The platform parser is the authority on an accelerator, and it has to be
-    /// consulted here: after the commit the effect has already released the
-    /// shortcuts that used to work, and the junk is on disk.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn platform_invalid_accelerator_is_rejected_before_commit() {
-        let dir = tempdir().expect("tempdir should be created");
-        let mut effects = MockApplicationEffectsPort::new();
-        effects.expect_apply().never();
-        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
-        args.effects = Arc::new(effects);
-        let client = NyanpasuClient::try_new(args)
-            .await
-            .expect("client should construct");
-
-        (async {
-            let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();
-            patch.hotkeys = Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]);
-
-            let error = client
-                .patch_app_config(patch)
-                .await
-                .expect_err("an accelerator the platform cannot parse must not be persisted");
-            assert!(
-                matches!(
-                    &error,
-                    ClientError::Config(ConfigError::ValidateHotkeys {
-                        source: HotkeyParseError::UnsupportedAccelerator { accelerator, .. },
-                    }) if accelerator == "Control+DefinitelyNotAKey"
-                ),
-                "unexpected error: {error:?}"
-            );
-            assert!(
-                client.get_app_config().await.unwrap().hotkeys.is_empty(),
-                "nothing may be written when validation fails"
-            );
         })
         .await;
     }

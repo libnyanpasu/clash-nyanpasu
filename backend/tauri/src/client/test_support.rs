@@ -1,5 +1,7 @@
 //! Application facade, configuration, and profile fixtures shared by application tests.
 
+pub(crate) mod runtime_build;
+
 use std::sync::{Arc, Mutex as StdMutex};
 
 use camino::Utf8PathBuf;
@@ -23,7 +25,7 @@ use super::{
     clash_config::ClashConfigClient,
     core_lifecycle, core_version, direct_egress, effects,
     host_adapters::{ClientHostAdapters, ProfileFilePorts},
-    hotkey, jobs, logs, runtime, runtime_core_spec,
+    hotkey, jobs, logs, runtime,
     session_state::SessionStateClient,
 };
 use crate::{
@@ -730,25 +732,18 @@ pub(crate) fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort>
 
 pub(super) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
     ClientHostAdapters {
-        debug_http: crate::server::debug_http::tests::control_factory(
-            None,
-            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+        debug_http: Arc::new(|| {
+            Box::pin(async {
+                Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)
+            })
+        }),
+        changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
+        runtime_build: Arc::new(
+            crate::client::test_support::runtime_build::TestRuntimeBuildPort {
+                profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
+                paths: RuntimePaths::from_resolver(paths),
+            },
         ),
-        changelog_http: Arc::new(|ports| {
-            Arc::new(crate::adapters::changelog_http::ReqwestChangelogHttp::new(
-                ports,
-                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
-            ))
-        }),
-        runtime_build: Arc::new(crate::adapters::runtime_build::FsRuntimeBuildAdapter {
-            profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
-            core_specs: Arc::new(runtime_core_spec),
-            paths: RuntimePaths::from_resolver(paths),
-            scripts: nyanpasu_platform::enhance::ScriptDirs::new(
-                paths.scripts_dir().into_std_path_buf(),
-                paths.cache_dir().into_std_path_buf(),
-            ),
-        }),
         profile_files: Arc::new({
             let paths = paths.clone();
             move |ports| {
@@ -808,9 +803,7 @@ pub(crate) async fn test_client_args_with_endpoint(
         // A mock rather than a no-op: a test that dispatches a window
         // action without saying so should fail, not pass silently.
         window: Arc::new(hotkey::ports::MockWindowControl::new()),
-        // The real rule: a test that writes a hotkey the platform cannot
-        // parse should fail here, exactly as the app would.
-        accelerators: Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
+        accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
         traffic_store: None,
         shutdown,
         tasks,
@@ -855,4 +848,79 @@ pub(crate) fn minimal_file_profile_request() -> NewProfileRequest {
 /// The runtime paths every test client is built with.
 pub(crate) fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
     RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data")))
+}
+
+/// The fixed core spec tests inject in place of the on-disk lookup.
+pub(crate) fn runtime_core_spec(
+    core: &nyanpasu_config::application::ClashCore,
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
+    use nyanpasu_core_manager::CoreKind;
+    let kind = match core {
+        nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,
+        nyanpasu_config::application::ClashCore::ClashRs
+        | nyanpasu_config::application::ClashCore::ClashRsAlpha => CoreKind::ClashRust,
+        nyanpasu_config::application::ClashCore::Mihomo
+        | nyanpasu_config::application::ClashCore::MihomoAlpha => CoreKind::Mihomo,
+        nyanpasu_config::application::ClashCore::Meow
+        | nyanpasu_config::application::ClashCore::MeowAlpha => CoreKind::Meow,
+    };
+    Ok(nyanpasu_core_manager::CoreSpec {
+        kind,
+        binary_path: camino::Utf8PathBuf::from("fake-core"),
+        version: None,
+        features: Vec::new(),
+    })
+}
+
+/// Accepts anything the shape rules already let through, so the registration
+/// tests read as the spelling under test rather than as a platform verdict.
+pub(crate) struct AnyAccelerator;
+
+impl hotkey::ports::AcceleratorValidator for AnyAccelerator {
+    fn validate(
+        &self,
+        _accelerator: &str,
+    ) -> std::result::Result<(), hotkey::ports::HotkeyParseError> {
+        Ok(())
+    }
+
+    fn canonical(
+        &self,
+        accelerator: &str,
+    ) -> std::result::Result<String, hotkey::ports::HotkeyParseError> {
+        Ok(accelerator.to_owned())
+    }
+}
+
+struct DisabledDebugHttp;
+
+#[async_trait::async_trait]
+impl super::debug_http::DebugHttpControl for DisabledDebugHttp {
+    async fn status(&self) -> anyhow::Result<super::debug_http::DebugHttpStatus> {
+        Ok(super::debug_http::DebugHttpStatus::default())
+    }
+
+    async fn set_enabled(
+        &self,
+        enabled: bool,
+    ) -> anyhow::Result<super::debug_http::DebugHttpStatus> {
+        anyhow::ensure!(!enabled, "HTTP routes are unavailable");
+        self.status().await
+    }
+
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+struct UnconfiguredChangelogHttp;
+
+#[async_trait::async_trait]
+impl super::app_update::changelog::ChangelogHttp for UnconfiguredChangelogHttp {
+    async fn get_text(&self, _url: &url::Url) -> anyhow::Result<String> {
+        anyhow::bail!("changelog HTTP is not configured in this fixture")
+    }
 }

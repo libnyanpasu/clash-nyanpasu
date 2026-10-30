@@ -8,13 +8,11 @@ mod startup;
 mod validation;
 
 use super::{super::NyanpasuClient, *};
-use crate::{
-    adapters::runtime_build::FsRuntimeBuildAdapter,
-    client::{
-        core_lifecycle::ports::{
-            BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
-        },
-        test_support::{TestControlEndpoint, set_service_mode, test_client_args_with_endpoint},
+use crate::client::{
+    core_lifecycle::ports::{BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary},
+    test_support::{
+        TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
+        test_client_args_with_endpoint,
     },
 };
 use futures_util::FutureExt;
@@ -69,7 +67,7 @@ pub(super) fn scripted_publish_failure() -> crate::client::runtime::PublishRunti
 }
 
 struct BlockingBuilder {
-    delegate: FsRuntimeBuildAdapter,
+    delegate: TestRuntimeBuildPort,
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
@@ -367,11 +365,9 @@ async fn workflow_graph_with_clients(
         host: core.status().host,
     };
     let builder = Arc::new(BlockingBuilder {
-        delegate: FsRuntimeBuildAdapter {
-            core_specs: Arc::new(crate::client::runtime_core_spec),
+        delegate: TestRuntimeBuildPort {
             profiles_dir: dir.path().join("profiles"),
             paths,
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),

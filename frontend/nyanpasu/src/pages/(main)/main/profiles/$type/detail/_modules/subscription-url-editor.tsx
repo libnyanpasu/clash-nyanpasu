@@ -15,8 +15,8 @@ import {
   type ProfileDefinition_Deserialize,
   type ProfileItem_Serialize,
 } from '@nyanpasu/rpc/types'
-import AnimatedErrorItem from '../../../_modules/error-item'
 import { subscriptionUrlSchema } from '../../../_modules/subscription-url-schema'
+import AnimatedErrorItem from '../../../../_modules/error-item'
 import ProfileFieldDialog from './profile-field-dialog'
 
 const formSchema = z.object({

@@ -19,10 +19,12 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
             core::storage::StorageValueChangedEvent,
+            core::storage::StorageResyncEvent,
             ipc::SchemeRequestReceivedEvent,
             core::actor_v2::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
-            core::actor_v2::ServiceStatusChangedEvent
+            core::actor_v2::ServiceStatusChangedEvent,
+            crate::client::StateChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -69,7 +71,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::service::status_service,
             ipc::is_portable,
             ipc::get_proxies,
-            ipc::collect_envs,
             ipc::get_cached_icon,
             ipc::get_tray_icon,
             ipc::is_tray_icon_set,
@@ -141,6 +142,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::uwp::invoke_uwp_tool,
             ipc::update_core,
             ipc::collect_logs,
+            ipc::report_issue,
             ipc::set_tray_icon_from_bytes,
             ipc::set_widget_icon_from_bytes,
             ipc::enhance_profiles,
@@ -151,6 +153,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::reorder_profiles_by_list,
             ipc::set_profile_layout,
             ipc::create_profile_folder,
+            ipc::set_proxy_group_layout,
+            ipc::create_proxy_group_folder,
             ipc::update_profile,
             ipc::delete_profile,
             ipc::activate_profile,
@@ -185,6 +189,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
+            ipc::simulate_crash,
             ipc::create_editor_window,
             ipc::report_window_ready,
             ipc::copy_clash_env,
@@ -197,10 +202,12 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         core::clash::ws::ClashWsEvent,
         window::WindowMessageEvent,
         core::storage::StorageValueChangedEvent,
+        core::storage::StorageResyncEvent,
         ipc::SchemeRequestReceivedEvent,
         core::actor_v2::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
-        core::actor_v2::ServiceStatusChangedEvent
+        core::actor_v2::ServiceStatusChangedEvent,
+        crate::client::StateChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the
@@ -214,7 +221,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     .typ::<nyanpasu_config::profile::ProfileMetadataPatch>()
     .typ::<nyanpasu_config::profile::RemoteProfileOptionsPatch>()
     .typ::<nyanpasu_config::profile::ProfileValidationError>()
-    .typ::<crate::client::StateChanged>()
     .build(TanstackQueryFramework::React);
 
     let (query_bindings, builder) = command_set;
@@ -319,7 +325,7 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
         "const events = {",
     );
     let commands_and_events = format!(
-        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenMutation: (callback: (payload: StateChanged) => void) => transport.events.listenMutation((payload) => callback(payload as StateChanged)), listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
+        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
     );
     let source = format!(
         "{}{}{}",
@@ -555,6 +561,7 @@ mod tests {
             assert!(mutations.contains(name));
         }
         assert!(generated.contains("appUpdateStateChanged:"));
+        assert!(generated.contains("stateChangedEvent:"));
         assert!(!generated.contains("checkUpdate:"));
         assert!(!generated.contains("installUpdate:"));
         assert!(!generated.contains("__TAURI_EVENT"));

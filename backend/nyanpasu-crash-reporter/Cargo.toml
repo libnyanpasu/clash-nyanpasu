@@ -1,0 +1,47 @@
+[package]
+name = 'nyanpasu-crash-reporter'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
+slint = { version = '=1.18.1', default-features = false, features = [
+  'std',
+  'compat-1-2',
+  'renderer-software',
+  'unstable-fontique-011',
+] }
+# Use the backend directly: Slint's selector enables muda 0.19, whose
+# Objective-C classes clash with Tauri's muda 0.20 on macOS. Internal Slint
+# crates only stay compatible within a release, hence the exact pin.
+i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+  'renderer-software',
+] }
+# The version and features Slint's winit backend already links.
+arboard = { version = '3.6', default-features = false }
+serde = { version = '1', features = ['derive'] }
+open = '5'
+# Selects the archive in the file manager, the way Tauri's opener plugin does,
+# without depending on Tauri.
+opener = { version = '0.9', features = ['reveal'] }
+snafu = { workspace = true }
+url = '2'
+
+# The opaque window needs no GL renderer on Linux either.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+  'x11',
+  'wayland',
+] }
+
+[dev-dependencies]
+png = '0.18'
+serde_json = '1'
+
+[build-dependencies]
+slint-build = { version = '=1.18.1', default-features = false, features = [
+  'compat-1-18',
+] }

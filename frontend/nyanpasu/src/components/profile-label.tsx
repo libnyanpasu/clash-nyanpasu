@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
-import { profileTypeOf } from '@/pages/(main)/main/profiles/$type/_modules/utils'
+import { profileTypeOf } from '@/pages/(main)/main/profiles/_modules/utils'
 import type { LabelPart, ProfileLookup } from '@/utils/profile-label'
 import { useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'

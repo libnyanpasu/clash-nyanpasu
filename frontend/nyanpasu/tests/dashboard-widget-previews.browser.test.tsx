@@ -10,8 +10,9 @@ import {
 } from '@/components/widgets/consts'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { DndContext } from '@dnd-kit/core'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient } from '@nyanpasu/rpc'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const types = Object.values(WidgetId)
 
@@ -23,12 +24,16 @@ test.each(['library', 'overlay'] as const)(
     const rpc = new Proxy(base, {
       get(target, key) {
         if (key === 'getStorageItem')
-          return async () => ({ status: 'ok', data: null })
+          return async () => ({
+            status: 'ok',
+            data: { value: null, revision: 0 },
+          })
         if (key === 'listenResync') return () => () => {}
         if (key === 'events')
           return {
             ...base.events,
             storageValueChangedEvent: { listen: async () => () => {} },
+            storageResyncEvent: { listen: async () => () => {} },
           }
         const value = Reflect.get(target, key)
         return typeof value === 'function'
@@ -58,51 +63,55 @@ test.each(['library', 'overlay'] as const)(
     })
     root.render(
       <RpcProvider rpc={rpc}>
-        <TooltipProvider>
-          <DashboardProvider>
-            <DndContext>
-              <DndGridProvider
-                value={{
-                  displayItems: items,
-                  getItemRect: (item) => ({
-                    left: item.x * 76,
-                    top: item.y * 80,
-                    width: item.w * 76,
-                    height: item.h * 80 - 16,
-                  }),
-                  dropInfoMap: {},
-                  activeItemId: null,
-                  resizingItemId: null,
-                  disabled: false,
-                  sourceOnly: kind === 'library',
-                  isOverlay: kind === 'overlay',
-                  dragIdPrefix: kind === 'library' ? 'sheet:' : '',
-                  constraintsMapRef: { current: {} },
-                  onResizeStart: () => {},
-                  onResizeMove: () => {},
-                  onResizeEnd: () => {},
-                }}
-              >
-                {items.map((item) => {
-                  const Widget = RENDER_MAP[item.type]
-                  return (
-                    <div
-                      key={item.id}
-                      data-preview={item.type}
-                      style={
-                        kind === 'overlay'
-                          ? { width: 304, height: 304 }
-                          : undefined
-                      }
-                    >
-                      <Widget id={item.id} />
-                    </div>
-                  )
-                })}
-              </DndGridProvider>
-            </DndContext>
-          </DashboardProvider>
-        </TooltipProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <KvStorageProvider>
+            <TooltipProvider>
+              <DashboardProvider>
+                <DndContext>
+                  <DndGridProvider
+                    value={{
+                      displayItems: items,
+                      getItemRect: (item) => ({
+                        left: item.x * 76,
+                        top: item.y * 80,
+                        width: item.w * 76,
+                        height: item.h * 80 - 16,
+                      }),
+                      dropInfoMap: {},
+                      activeItemId: null,
+                      resizingItemId: null,
+                      disabled: false,
+                      sourceOnly: kind === 'library',
+                      isOverlay: kind === 'overlay',
+                      dragIdPrefix: kind === 'library' ? 'sheet:' : '',
+                      constraintsMapRef: { current: {} },
+                      onResizeStart: () => {},
+                      onResizeMove: () => {},
+                      onResizeEnd: () => {},
+                    }}
+                  >
+                    {items.map((item) => {
+                      const Widget = RENDER_MAP[item.type]
+                      return (
+                        <div
+                          key={item.id}
+                          data-preview={item.type}
+                          style={
+                            kind === 'overlay'
+                              ? { width: 304, height: 304 }
+                              : undefined
+                          }
+                        >
+                          <Widget id={item.id} />
+                        </div>
+                      )
+                    })}
+                  </DndGridProvider>
+                </DndContext>
+              </DashboardProvider>
+            </TooltipProvider>
+          </KvStorageProvider>
+        </QueryClientProvider>
       </RpcProvider>,
     )
     await expect

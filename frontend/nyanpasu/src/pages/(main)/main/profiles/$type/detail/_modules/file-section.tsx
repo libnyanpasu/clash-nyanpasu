@@ -4,7 +4,7 @@ import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import { hasMaterializedFile } from '../../_modules/utils'
+import { hasMaterializedFile } from '../../../_modules/utils'
 import { DetailRow, DetailSection } from './detail-section'
 import { useShowInFileManager } from './use-show-in-file-manager'
 

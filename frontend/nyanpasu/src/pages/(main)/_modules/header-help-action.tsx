@@ -1,10 +1,9 @@
-import { PropsWithChildren } from 'react'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarTrigger,
+} from '@nyanpasu/ui/menubar'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
@@ -16,9 +15,9 @@ const WikiItem = () => {
   const handleClick = useLockFn(openWiki)
 
   return (
-    <DropdownMenuItem onClick={handleClick}>
+    <MenubarItem onSelect={handleClick}>
       {m.header_help_action_wiki()}
-    </DropdownMenuItem>
+    </MenubarItem>
   )
 }
 
@@ -26,9 +25,9 @@ const IssuesItem = () => {
   const handleClick = useLockFn(openIssueReport)
 
   return (
-    <DropdownMenuItem onClick={handleClick}>
+    <MenubarItem onSelect={handleClick}>
       {m.header_help_action_issues()}
-    </DropdownMenuItem>
+    </MenubarItem>
   )
 }
 
@@ -45,28 +44,30 @@ const CollectLogItem = () => {
   })
 
   return (
-    <DropdownMenuItem onClick={handleClick}>
+    <MenubarItem onSelect={handleClick}>
       {m.header_help_action_collect_logs()}
-    </DropdownMenuItem>
+    </MenubarItem>
   )
 }
 
-export default function HeaderHelpAction({ children }: PropsWithChildren) {
+export default function HeaderHelpAction() {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+    <MenubarMenu value="help">
+      <MenubarTrigger className="min-h-8 py-1">
+        {m.header_help_action_title()}
+      </MenubarTrigger>
 
-      <DropdownMenuContent>
+      <MenubarContent>
         <WikiItem />
 
         <IssuesItem />
 
         <CollectLogItem />
 
-        <DropdownMenuItem asChild>
+        <MenubarItem asChild>
           <Link to="/main/settings/about">{m.header_help_action_about()}</Link>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </MenubarItem>
+      </MenubarContent>
+    </MenubarMenu>
   )
 }

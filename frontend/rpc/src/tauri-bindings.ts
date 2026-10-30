@@ -32,6 +32,8 @@ export const events = {
   serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent_Deserialize>(
     'service-status-changed-event',
   ),
+  stateChangedEvent: makeEvent<StateChangedEvent>('state-changed-event'),
+  storageResyncEvent: makeEvent<StorageResyncEvent>('storage-resync-event'),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
   ),
@@ -697,6 +699,23 @@ export type SourceVersions = {
   profiles: number
 }
 
+export type StateChanged =
+  | { kind: 'nyanpasu_config' }
+  /**  The clash config, or the runtime it is applied to. */
+  | { kind: 'clash_config' }
+  /**
+   *  The profiles document. `files` names the profiles whose file content
+   *  may have changed or is gone, so a reader of a file refetches only those.
+   */
+  | { kind: 'profiles'; files: ProfileId[] }
+  | { kind: 'proxies' }
+
+/**
+ *  What changed in the state the frontend reads, so it refetches what depends
+ *  on it.
+ */
+export type StateChangedEvent = StateChanged
+
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
 
 export type StatusResBody_Deserialize = {
@@ -730,6 +749,19 @@ export type StatusResBody_Serialize = {
 }
 
 /**
+ *  Event emitted to all windows when storage changes were dropped, so every
+ *  storage value must be read again.
+ *  Event name: `storage-resync-event`
+ */
+export type StorageResyncEvent = Record<string, never>
+
+/**
+ *  Orders the commits of one open store, every key alike. It is kept in
+ *  memory and starts at 0 each time the store opens.
+ */
+export type StorageRevision = number
+
+/**
  *  Event emitted to all windows when a storage value changes.
  *  Event name: `storage-value-changed-event`
  */
@@ -737,6 +769,7 @@ export type StorageValueChangedEvent = {
   key: string
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
+  revision: StorageRevision
 }
 
 export type TrafficRate = {

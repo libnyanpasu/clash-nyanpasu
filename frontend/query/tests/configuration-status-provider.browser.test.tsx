@@ -62,7 +62,6 @@ function mockRpc(initial: ConfigurationStatus) {
     }),
     once: vi.fn(async () => () => {}),
     emit: vi.fn(async () => {}),
-    listenMutation: vi.fn(async () => () => {}),
     listenResync: vi.fn((callback: () => void) => {
       resyncHandler = callback
       return () => {

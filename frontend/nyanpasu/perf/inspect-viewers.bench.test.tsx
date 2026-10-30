@@ -19,6 +19,9 @@ const env = import.meta.env
 const PROXIES = Number(env.VITE_PERF_NODES ?? 1500)
 const RULES = Number(env.VITE_PERF_RULES ?? 10000)
 const SWITCHES = Number(env.VITE_PERF_SWITCHES ?? 6)
+// Each switch shows the YAML as a document not seen before, as opening another
+// step does, so its tokens are never cached.
+const FRESH = env.VITE_PERF_FRESH === '1'
 const WARMUP = 1
 
 const yaml = createRuntimeYaml(PROXIES, RULES)
@@ -33,6 +36,7 @@ test(`switch the inspector views over ${yaml.split('\n').length} lines`, async (
   onTestFinished(() => root.unmount())
 
   const queries = new QueryClient()
+  let documentNumber = 0
   const show = (view: 'yaml' | 'diff' | 'none') =>
     root.render(
       <QueryClientProvider client={queries}>
@@ -43,7 +47,7 @@ test(`switch the inspector views over ${yaml.split('\n').length} lines`, async (
                 key="yaml"
                 code={yaml}
                 label="YAML"
-                cacheKey={['bench', 0]}
+                cacheKey={['bench', documentNumber]}
               />
             ) : view === 'diff' ? (
               <DiffViewer key="diff" hunks={hunks} />
@@ -52,9 +56,11 @@ test(`switch the inspector views over ${yaml.split('\n').length} lines`, async (
         </div>
       </QueryClientProvider>,
     )
-  // Highlighted output carries inline token colors.
+  // The YAML view marks its highlighted text; the diff draws its highlighted
+  // tokens as colored spans.
   const highlighted = () =>
-    container.querySelector('[style*="--shiki-dark"]') !== null
+    container.querySelector('[data-highlighted], td > span[style*="color"]') !==
+    null
 
   const samples = { yaml: [] as number[], diff: [] as number[] }
   const frames = { yaml: [], diff: [] } as Record<
@@ -63,6 +69,7 @@ test(`switch the inspector views over ${yaml.split('\n').length} lines`, async (
   >
 
   for (let i = 0; i < SWITCHES; i++) {
+    if (FRESH) documentNumber = i
     for (const view of ['yaml', 'diff'] as const) {
       show('none')
       await new Promise((resolve) => setTimeout(resolve, 200))

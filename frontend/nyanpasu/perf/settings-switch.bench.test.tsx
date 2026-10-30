@@ -1,4 +1,4 @@
-import { Profiler } from 'react'
+import { Profiler, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
@@ -8,6 +8,8 @@ import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { Route as ClashControlRoute } from '@/pages/(main)/main/settings/clash/control/index'
 import { Route as ClashCoreRoute } from '@/pages/(main)/main/settings/clash/core/index'
 import { Route as ClashNetworkRoute } from '@/pages/(main)/main/settings/clash/network/index'
+import { Route as DebugIndexRoute } from '@/pages/(main)/main/settings/debug/index'
+import { Route as DebugRoute } from '@/pages/(main)/main/settings/debug/route'
 import { Route as SettingsRoute } from '@/pages/(main)/main/settings/route'
 import { Route as SystemProxyRoute } from '@/pages/(main)/main/settings/system/proxy/index'
 import { Route as SystemServiceRoute } from '@/pages/(main)/main/settings/system/service/index'
@@ -119,6 +121,13 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
       value: { rule: true, global: false, direct: false },
     }),
     useClashSetting: (key: string) => clashSettings[key] ?? generic,
+    // The outlet freezes the clash streams of a leaving page; none run here.
+    ClashWSFreezeBoundary: ({ children }: { children: ReactNode }) => children,
+    ClashConnectionDetailsFreezeBoundary: ({
+      children,
+    }: {
+      children: ReactNode
+    }) => children,
   }
 })
 
@@ -161,6 +170,8 @@ function createSettingsRouter() {
       getParentRoute: () => settingsRoute,
     } as never)
 
+  const debugRoute = child(DebugRoute, '/debug') as typeof mainRoute
+
   return createRouter({
     routeTree: rootRoute.addChildren([
       mainRoute.addChildren([
@@ -170,12 +181,25 @@ function createSettingsRouter() {
           child(ClashControlRoute, '/clash/control') as never,
           child(SystemProxyRoute, '/system/proxy') as never,
           child(SystemServiceRoute, '/system/service') as never,
+          debugRoute.addChildren([
+            DebugIndexRoute.update({
+              id: '/debug/',
+              path: '/',
+              getParentRoute: () => debugRoute,
+            } as never) as never,
+          ]) as never,
           createRoute({
             path: '/blank',
             getParentRoute: () => settingsRoute as never,
             component: () => <div data-slot="blank-page" />,
           }) as never,
         ]),
+        // Another section of the app, to open the settings from.
+        createRoute({
+          path: '/main/other',
+          getParentRoute: () => mainRoute,
+          component: () => null,
+        }),
       ]),
     ]),
     history: createMemoryHistory({
@@ -186,7 +210,7 @@ function createSettingsRouter() {
 
 const PAGES = (
   env.VITE_PERF_PAGES ??
-  'clash/core,clash/network,clash/control,system/proxy,system/service'
+  'clash/core,clash/network,clash/control,system/proxy,system/service,debug'
 ).split(',')
 
 test(`switch settings pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
@@ -236,4 +260,25 @@ test(`switch settings pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
       })}`,
     )
   }
+
+  // The settings, sidebar included, opened on the first page from another
+  // section.
+  const opens = []
+  for (let i = 1; i <= SWITCHES; i++) {
+    await router.navigate({ to: '/main/other' as never })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    opens.push(
+      await measureFrames(() => {
+        go(PAGES[0])
+      }, 900),
+    )
+  }
+  console.log(
+    `PERF_REPORT ${JSON.stringify({
+      browser: server.browser,
+      page: `open:${PAGES[0]}`,
+      throttle: THROTTLE,
+      ...summarize(opens.slice(WARMUP)),
+    })}`,
+  )
 })

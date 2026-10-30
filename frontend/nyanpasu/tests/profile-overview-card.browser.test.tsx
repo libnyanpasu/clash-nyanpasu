@@ -1,13 +1,19 @@
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
+import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
+import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import ProfileOverviewCard from '@/pages/(main)/main/profiles/$type/detail/_modules/profile-overview-card'
 import { m } from '@/paraglide/messages'
 import type {
+  ProfileFolder,
   ProfileItem_Serialize,
+  ProfileLayout,
   ProfileSubscriptionInfo,
 } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
@@ -64,14 +70,26 @@ const mount = async (
   profile: ProfileItem_Serialize,
   current: string,
   onTestFinished: (fn: () => void) => void,
+  folders: ProfileFolder[] = [],
+  layouts: ProfileLayout[] = [],
 ) => {
   vi.stubGlobal('isTauri', true)
   mockIPC((command, args) => {
-    const wire = args as { method: string }
+    const wire = args as { method: string; params: { layout: ProfileLayout } }
     const method = command === 'call_rpc' ? wire.method : command
     if (method === 'get_profiles')
-      return { current, items: [profile], global_transforms: [], valid: [] }
+      return {
+        current,
+        items: [profile],
+        global_transforms: [],
+        valid: [],
+        folders,
+      }
     if (method === 'read_profile_file') return 'proxies: [{name: Node}]'
+    if (method === 'set_profile_layout') {
+      layouts.push(wire.params.layout)
+      return { status: 'committed', value: null, commits: [] }
+    }
     throw new Error(`Unexpected RPC ${method}`)
   })
   const queries = new QueryClient({
@@ -87,11 +105,17 @@ const mount = async (
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <ProfileOverviewCard
-              profile={profile}
-              profiles={[profile]}
-              isGlobal={false}
-            />
+            <SharedTooltip>
+              <SnackbarProvider>
+                <ProfilesLayoutProvider>
+                  <ProfileOverviewCard
+                    profile={profile}
+                    profiles={[profile]}
+                    isGlobal={false}
+                  />
+                </ProfilesLayoutProvider>
+              </SnackbarProvider>
+            </SharedTooltip>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>
@@ -192,4 +216,74 @@ test('the overview card has no name row and marks the active profile', async ({
   expect(card()?.textContent).toContain(m.profile_is_active_label())
   expect(card()?.textContent).not.toContain(profile.name)
   expect(card()?.querySelector('h1, h2, h3')).toBeNull()
+})
+
+test('the overview card names the folder and moves the profile from its menu', async ({
+  onTestFinished,
+}) => {
+  const profile = remoteProfile()
+  const layouts: ProfileLayout[] = []
+  const container = await mount(
+    profile,
+    'other',
+    onTestFinished,
+    [
+      { id: 'f1', name: 'Work', members: [profile.uid] },
+      { id: 'f2', name: 'Home', members: [] },
+    ],
+    layouts,
+  )
+  const chip = () =>
+    container.querySelector<HTMLElement>('[data-slot="profile-folder-chip"]')
+
+  await expect.poll(() => chip()?.textContent).toBe('Work')
+
+  await page
+    .getByRole('button', { name: m.profile_detail_more_actions() })
+    .click()
+  await page.getByRole('menuitem', { name: m.profile_move_to_folder() }).click()
+
+  // The current folder is not a destination.
+  await expect
+    .element(page.getByRole('menuitem', { name: 'Work' }))
+    .toHaveAttribute('data-disabled')
+  await page.getByRole('menuitem', { name: 'Home' }).click()
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.members)).toEqual([
+    [],
+    [profile.uid],
+  ])
+})
+
+test('a profile in no folder has no chip and cannot be removed from one', async ({
+  onTestFinished,
+}) => {
+  const profile = remoteProfile()
+  const container = await mount(profile, 'other', onTestFinished, [
+    { id: 'f1', name: 'Work', members: [] },
+  ])
+
+  await expect
+    .poll(() =>
+      container.querySelector('[data-slot="profile-detail-overview"]'),
+    )
+    .not.toBeNull()
+  expect(
+    container.querySelector('[data-slot="profile-folder-chip"]'),
+  ).toBeNull()
+
+  await page
+    .getByRole('button', { name: m.profile_detail_more_actions() })
+    .click()
+  await page.getByRole('menuitem', { name: m.profile_move_to_folder() }).click()
+
+  await expect
+    .element(page.getByRole('menuitem', { name: 'Work' }))
+    .toBeVisible()
+  await expect
+    .element(
+      page.getByRole('menuitem', { name: m.profile_move_remove_from_folder() }),
+    )
+    .not.toBeInTheDocument()
 })

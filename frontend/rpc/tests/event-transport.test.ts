@@ -69,13 +69,13 @@ describe('HTTP event transport', () => {
     transport.dispose()
   })
 
-  it('routes one-shot and mutation subscriptions, then releases them on dispose', async () => {
+  it('routes one-shot and ongoing subscriptions, then releases them on dispose', async () => {
     useBrowserEventSource()
     const transport = createHttpEventTransport()
     const once = vi.fn()
-    const mutation = vi.fn()
+    const changed = vi.fn()
     await transport.once('storage-value-changed-event', once)
-    const stopMutation = await transport.listenMutation(mutation)
+    const stopChanged = await transport.listen('state-changed-event', changed)
     const source = FakeEventSource.instances[0]
 
     source.dispatch(
@@ -89,24 +89,26 @@ describe('HTTP event transport', () => {
     source.dispatch(
       'message',
       JSON.stringify({
-        name: 'nyanpasu://mutation',
-        payload: { domain: 'profiles' },
+        name: 'state-changed-event',
+        payload: { kind: 'profiles' },
       }),
     )
     expect(once).toHaveBeenCalledOnce()
-    expect(mutation).toHaveBeenCalledWith({ domain: 'profiles' })
+    expect(changed).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: { kind: 'profiles' } }),
+    )
 
     transport.dispose()
     expect(source.close).toHaveBeenCalledOnce()
     source.dispatch(
       'message',
       JSON.stringify({
-        name: 'nyanpasu://mutation',
-        payload: { domain: 'state' },
+        name: 'state-changed-event',
+        payload: { kind: 'proxies' },
       }),
     )
-    expect(mutation).toHaveBeenCalledOnce()
-    stopMutation()
+    expect(changed).toHaveBeenCalledOnce()
+    stopChanged()
     expect(source.close).toHaveBeenCalledOnce()
   })
 

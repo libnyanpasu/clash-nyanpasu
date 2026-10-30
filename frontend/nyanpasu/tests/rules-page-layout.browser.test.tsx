@@ -174,9 +174,9 @@ for (const width of [1440, 420]) {
       await expect
         .poll(() => scrollbar.getBoundingClientRect().bottom)
         .toBeLessThanOrEqual(dock.getBoundingClientRect().top - 8)
-      expect(
-        scrollbar.querySelector('[data-slot="scroll-area-thumb"]'),
-      ).not.toBeNull()
+      await expect
+        .poll(() => scrollbar.querySelector('[data-slot="scroll-area-thumb"]'))
+        .not.toBeNull()
     } else {
       expect(horizontalViewport.scrollWidth).toBeLessThanOrEqual(
         horizontalViewport.clientWidth,

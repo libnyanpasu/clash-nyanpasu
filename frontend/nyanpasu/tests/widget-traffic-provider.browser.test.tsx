@@ -70,7 +70,10 @@ function createRpc(storage: string, retention: string | null = '7d') {
     params?: Record<string, unknown>,
   ) => {
     if (method === 'get_storage_item') {
-      return (params?.key === 'dashboard-widget-configs' ? storage : null) as T
+      return {
+        value: params?.key === 'dashboard-widget-configs' ? storage : null,
+        revision: 0,
+      } as T
     }
     if (method === 'get_app_config') {
       reports.metadataReads.push(method)
@@ -95,7 +98,6 @@ function createRpc(storage: string, retention: string | null = '7d') {
     listen: async () => () => {},
     once: async () => () => {},
     emit: async () => {},
-    listenMutation: async () => () => {},
     listenResync: () => () => {},
     dispose: () => {},
   }

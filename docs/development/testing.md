@@ -50,6 +50,20 @@ checks need the build prerequisites described in [workflow](workflow.md). See th
 and [Windows bundle testing](../testing/windows-bundle.md) for packaged validation.
 Tests must use temporary or injected paths rather than real user configuration.
 
+## Validate localized native text
+
+Changes to native-window fonts, locale handling or renderers must exercise mixed
+environments: the OS region, OS UI language and selected application language are
+independent inputs. In particular, check Japanese regional defaults with Chinese
+report text and a selected application language different from the OS UI language.
+
+String validity and snapshot dimensions do not detect missing glyphs. Keep the
+crash reporter's sparse-font pixel regression and extend its fixtures for new
+missing characters or scripts. New locales belong in the rendering matrix;
+inspect light/dark previews for labels, progress, failure states and non-Latin
+paths. Renderer/font-library upgrades must rerun these checks on each supported
+desktop OS and review the versioned font API and fallback behavior.
+
 ## Profile memory and startup
 
 `pnpm build:profiling` builds the frontend and the application with the `profiling`

@@ -66,22 +66,14 @@ const MIHOMO_FAMILY: &[ClashCore] = &[
     ClashCore::Meow,
     ClashCore::MeowAlpha,
 ];
-const ALL_CORES: &[ClashCore] = &[
-    ClashCore::ClashPremium,
-    ClashCore::ClashRs,
-    ClashCore::Mihomo,
-    ClashCore::MihomoAlpha,
-    ClashCore::ClashRsAlpha,
-    ClashCore::Meow,
-    ClashCore::MeowAlpha,
-];
 // Legacy quirk preserved (chain.rs:174): clash_rs_comp never gated in ClashRsAlpha.
 const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];
 
-/// Legacy builtin table, ported 1:1 from enhance/chain.rs:145-176. Order is
-/// execution order.
+/// Legacy builtin table from enhance/chain.rs:145-176, without
+/// `config_fixer`: the managed settings already write `log-level` as a
+/// string. Order is execution order.
 pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
-    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 4] = [
+    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 3] = [
         (
             MIHOMO_FAMILY,
             "verge_hy_alpn",
@@ -93,12 +85,6 @@ pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
             "verge_meta_guard",
             ScriptRuntime::JavaScript,
             include_str!("./builtin/meta_guard.js"),
-        ),
-        (
-            ALL_CORES,
-            "config_fixer",
-            ScriptRuntime::JavaScript,
-            include_str!("./builtin/config_fixer.js"),
         ),
         (
             CLASH_RS_ONLY,
@@ -260,19 +246,16 @@ mod tests {
         };
         assert_eq!(
             names(ClashCore::Mihomo),
-            vec!["verge_hy_alpn", "verge_meta_guard", "config_fixer"]
+            vec!["verge_hy_alpn", "verge_meta_guard"]
         );
-        assert_eq!(
-            names(ClashCore::ClashRs),
-            vec!["config_fixer", "clash_rs_comp"]
-        );
+        assert_eq!(names(ClashCore::ClashRs), vec!["clash_rs_comp"]);
         // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
-        assert_eq!(names(ClashCore::ClashRsAlpha), vec!["config_fixer"]);
-        assert_eq!(names(ClashCore::ClashPremium), vec!["config_fixer"]);
+        assert!(names(ClashCore::ClashRsAlpha).is_empty());
+        assert!(names(ClashCore::ClashPremium).is_empty());
         // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
         assert_eq!(
             names(ClashCore::Meow),
-            vec!["verge_hy_alpn", "verge_meta_guard", "config_fixer"]
+            vec!["verge_hy_alpn", "verge_meta_guard"]
         );
     }
 

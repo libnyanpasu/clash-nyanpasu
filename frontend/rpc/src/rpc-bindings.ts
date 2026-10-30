@@ -203,8 +203,6 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
-    collectEnvs: () =>
-      typedError<EnvInfo, IpcError>(__RPC_INVOKE('collect_envs')),
     getCachedIcon: (url: string) =>
       typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
     getTrayIcon: (mode: TrayIcon) =>
@@ -230,7 +228,7 @@ export function createRpcClient(
     getServiceInstallPrompt: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_service_install_prompt')),
     getStorageItem: (key: string) =>
-      typedError<string | null, IpcError>(
+      typedError<StorageItem<string>, IpcError>(
         __RPC_INVOKE('get_storage_item', { key }),
       ),
     /**
@@ -477,6 +475,8 @@ export function createRpcClient(
     updateCore: (coreType: ClashCore_Deserialize) =>
       typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
     collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+    reportIssue: (page: PageCapabilities) =>
+      typedError<null, IpcError>(__RPC_INVOKE('report_issue', { page })),
     setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
@@ -543,6 +543,18 @@ export function createRpcClient(
     createProfileFolder: (name: string, members: ProfileId[]) =>
       typedError<MutationOutcome<FolderId>, IpcError>(
         __RPC_INVOKE('create_profile_folder', { name, members }),
+      ),
+    setProxyGroupLayout: (profile: ProfileId, layout: ProxyGroupLayout) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_proxy_group_layout', { profile, layout }),
+      ),
+    createProxyGroupFolder: (
+      profile: ProfileId,
+      name: string,
+      members: string[],
+    ) =>
+      typedError<MutationOutcome<FolderId>, IpcError>(
+        __RPC_INVOKE('create_proxy_group_folder', { profile, name, members }),
       ),
     updateProfile: (
       uid: ProfileId,
@@ -641,11 +653,13 @@ export function createRpcClient(
     openThat: (path: string) =>
       typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
     setStorageItem: (key: string, value: string) =>
-      typedError<null, IpcError>(
+      typedError<StorageRevision, IpcError>(
         __RPC_INVOKE('set_storage_item', { key, value }),
       ),
     removeStorageItem: (key: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('remove_storage_item', { key })),
+      typedError<StorageRevision, IpcError>(
+        __RPC_INVOKE('remove_storage_item', { key }),
+      ),
     /**
      *  Debug: clears all frontend KV entries (keys with the `web:` prefix).
      *  Internal storage entries used by other subsystems are left intact.
@@ -674,6 +688,14 @@ export function createRpcClient(
       typedError<null, IpcError>(__RPC_INVOKE('create_main_window')),
     createDebugTrayMenuWindow: () =>
       typedError<null, IpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
+    /**
+     *  Panics on purpose, so the crash reporter can be tested. The panic hook
+     *  exits differently when the main thread panics, hence the choice.
+     */
+    simulateCrash: (mainThread: boolean) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('simulate_crash', { mainThread }),
+      ),
     createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
@@ -715,6 +737,14 @@ export function createRpcClient(
       transport.events,
       'service-status-changed-event',
     ),
+    stateChangedEvent: makeEvent<StateChangedEvent>(
+      transport.events,
+      'state-changed-event',
+    ),
+    storageResyncEvent: makeEvent<StorageResyncEvent>(
+      transport.events,
+      'storage-resync-event',
+    ),
     storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
       transport.events,
       'storage-value-changed-event',
@@ -728,10 +758,6 @@ export function createRpcClient(
   return {
     ...commands,
     events,
-    listenMutation: (callback: (payload: StateChanged) => void) =>
-      transport.events.listenMutation((payload) =>
-        callback(payload as StateChanged),
-      ),
     listenResync: transport.events.listenResync.bind(transport.events),
     dispose: () => transport.events.dispose(),
   }
@@ -791,6 +817,11 @@ export type AppUpdateSnapshot = {
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
 
+export type BrandVersion = {
+  brand: string
+  version: string
+}
+
 export type BreakConnectionStrategy = {
   /**  切换代理时中断连接 */
   on_proxy_change: ProxyChangeBreakMode
@@ -814,20 +845,6 @@ export type BreakConnectionStrategyPatch_Serialize = {
   on_proxy_change?: ProxyChangeBreakMode | null
   on_profile_change?: boolean | null
   on_mode_change?: boolean | null
-}
-
-export type BuildInfo = {
-  app_name: string
-  app_version: string
-  pkg_version: string
-  commit_hash: string
-  commit_author: string
-  commit_date: string
-  build_date: string
-  build_profile: string
-  build_platform: string
-  rustc_version: string
-  llvm_version: string
 }
 
 /**  Built-in post-processing steps applied to the selected config. */
@@ -1963,16 +1980,6 @@ export type DelayHistory = {
   delay: number
 }
 
-export type DeviceInfo = {
-  /**  Device name, such as "Intel Core i5-8250U CPU @ 1.60GHz x 8" */
-  cpu: string[]
-  /**
-   *  GPU name, such as "Intel UHD Graphics 620 (Kabylake GT2)"
-   *  Memory size in bytes
-   */
-  memory: string
-}
-
 /**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
 export type Dimension =
   /**  Derived: the process when known, else the source. */
@@ -2121,26 +2128,6 @@ export type EndpointConnectivity =
    *  router never falls back on its own.
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
-
-export type EnvInfo = {
-  os: string
-  arch: string
-  core: { [key in string]: string }
-  device: DeviceInfo
-  build_info: {
-    app_name: string
-    app_version: string
-    pkg_version: string
-    commit_hash: string
-    commit_author: string
-    commit_date: string
-    build_date: string
-    build_profile: string
-    build_platform: string
-    rustc_version: string
-    llvm_version: string
-  }
-}
 
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
@@ -3221,6 +3208,15 @@ export type OverlayTransform_Serialize = {
   source: ProfileSource_Serialize
 }
 
+export type PageCapabilities = {
+  userAgent?: string | null
+  fullVersionList?: BrandVersion[] | null
+  platformVersion?: string | null
+  webgl?: WebGl | null
+  webgpu?: WebGpu | null
+  devicePixelRatio?: number | null
+}
+
 export type PickPortError =
   { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
 
@@ -3307,6 +3303,7 @@ export type ProfileDocument_Deserialize = {
   global_transforms?: ProfileId[]
   valid: string[]
   folders?: ProfileFolder[]
+  proxy_group_layouts?: { [key in ProfileId]: ProxyGroupLayout }
   items: ProfileItem_Deserialize[]
 }
 
@@ -3315,6 +3312,7 @@ export type ProfileDocument_Serialize = {
   global_transforms?: ProfileId[]
   valid: string[]
   folders?: ProfileFolder[]
+  proxy_group_layouts?: { [key in ProfileId]: ProxyGroupLayout }
   items: ProfileItem_Serialize[]
 }
 
@@ -3590,6 +3588,11 @@ export type ProfileValidationError =
       FolderNotFound?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3612,6 +3615,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3634,6 +3642,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3662,6 +3675,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3689,6 +3707,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3714,6 +3737,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3741,6 +3769,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3769,6 +3802,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3797,6 +3835,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3824,6 +3867,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3851,6 +3899,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3879,6 +3932,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3907,6 +3965,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
     })
@@ -3932,6 +3995,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3958,6 +4026,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3985,6 +4058,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -4012,6 +4090,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -4038,6 +4121,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -4064,6 +4152,11 @@ export type ProfileValidationError =
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -4090,6 +4183,11 @@ export type ProfileValidationError =
       FolderNotFound?: never
       ItemKeyMismatch?: never
       LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -4116,6 +4214,169 @@ export type ProfileValidationError =
       FolderNotFound?: never
       ItemKeyMismatch?: never
       LayoutMissingProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupLayoutProfileNotConfig: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupFolderDuplicateId: {
+        profile: ProfileId
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupFolderNameEmpty: {
+        profile: ProfileId
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupNameEmpty: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupDuplicate?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      ProxyGroupDuplicate: {
+        profile: ProfileId
+        name: string
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      ProxyGroupFolderDuplicateId?: never
+      ProxyGroupFolderNameEmpty?: never
+      ProxyGroupLayoutProfileNotConfig?: never
+      ProxyGroupNameEmpty?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -4258,6 +4519,17 @@ export type ProxyGroupCapabilities = {
   clearFixed: boolean
 }
 
+/**
+ *  A user-named group of proxy groups in the Proxies sidebar. Clash identifies a
+ *  proxy group only by its name, so members are names.
+ */
+export type ProxyGroupFolder = {
+  id: FolderId
+  name: string
+  /**  Display order inside the folder. */
+  members: string[]
+}
+
 /**  A group's `type`, as the core reports it. */
 export type ProxyGroupKind =
   | 'Selector'
@@ -4268,6 +4540,20 @@ export type ProxyGroupKind =
   | 'Smart'
   /**  A type this build does not know, kept verbatim. */
   | string
+
+/**
+ *  How a Config profile's proxy groups are arranged in the sidebar: the groups
+ *  in no folder, then the folders.
+ *
+ *  The groups come from the running core, not from the profile document, so a
+ *  layout may name groups that no longer exist and may not name new ones. It is
+ *  presentation only: [`ProxyGroupLayout::resolve`] reconciles it with the live
+ *  groups, and nothing here touches the runtime config.
+ */
+export type ProxyGroupLayout = {
+  folders: ProxyGroupFolder[]
+  ungrouped: string[]
+}
 
 export type ProxyName = string
 
@@ -4930,7 +5216,21 @@ export type SourceVersions = {
 }
 
 export type StateChanged =
-  'nyanpasu_config' | 'clash_config' | 'profiles' | 'proxies'
+  | { kind: 'nyanpasu_config' }
+  /**  The clash config, or the runtime it is applied to. */
+  | { kind: 'clash_config' }
+  /**
+   *  The profiles document. `files` names the profiles whose file content
+   *  may have changed or is gone, so a reader of a file refetches only those.
+   */
+  | { kind: 'profiles'; files: ProfileId[] }
+  | { kind: 'proxies' }
+
+/**
+ *  What changed in the state the frontend reads, so it refetches what depends
+ *  on it.
+ */
+export type StateChangedEvent = StateChanged
 
 export type StatisticWidgetVariant = 'large' | 'small'
 
@@ -4984,6 +5284,12 @@ export type StorageEntry = {
   value: string
 }
 
+/**  A stored value, or `None` if the key is absent, as of `revision`. */
+export type StorageItem<T> = {
+  value: T | null
+  revision: StorageRevision
+}
+
 /**
  *  What a storage operation failed with. Library causes stay in `source`
  *  (skipped on the wire); they reach the user only through the copied detail.
@@ -5002,6 +5308,19 @@ export type StorageOperationError =
   | { kind: 'encode_value'; key: string }
 
 /**
+ *  Event emitted to all windows when storage changes were dropped, so every
+ *  storage value must be read again.
+ *  Event name: `storage-resync-event`
+ */
+export type StorageResyncEvent = Record<string, never>
+
+/**
+ *  Orders the commits of one open store, every key alike. It is kept in
+ *  memory and starts at 0 each time the store opens.
+ */
+export type StorageRevision = number
+
+/**
  *  Event emitted to all windows when a storage value changes.
  *  Event name: `storage-value-changed-event`
  */
@@ -5009,6 +5328,7 @@ export type StorageValueChangedEvent = {
   key: string
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
+  revision: StorageRevision
 }
 
 /**
@@ -5268,6 +5588,23 @@ export type UsagePage = {
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
+
+export type WebGl = {
+  vendor?: string | null
+  renderer?: string | null
+}
+
+export type WebGpu = {
+  available: boolean
+  adapter?: WebGpuAdapter | null
+}
+
+export type WebGpuAdapter = {
+  vendor?: string | null
+  architecture?: string | null
+  device?: string | null
+  description?: string | null
+}
 
 /**  What closing a window does. */
 export type WindowCloseBehavior =

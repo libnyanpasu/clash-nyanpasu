@@ -10,10 +10,16 @@ pnpm -F @nyanpasu/nyanpasu bench
 Each test prints one `PERF_REPORT {...}` line, averaged over the measured
 actions after a warm-up (the connections benchmark reports page openings under
 `open`, search keystrokes under `keystroke` and streamed frames under `frame`;
-the traffic benchmark prints a line per action: `open:<page>`, `poll:<page>`
-for a polled report arriving, `switch:<page>` for switching to the page from
-the overview, `append:rankings` for the next page of the listing and
-`filter:overview` for a ranking row toggling its filter):
+the profiles benchmark reports the list opened from another section under
+`open`, moves to and from a detail page under `detail` and `list`, and
+`unchangedRefetch`; the proxies benchmark prints a line for group switches,
+`switch`, and one for the page opened on a group from another section, `open`;
+the settings benchmark prints a line per page and `open:<page>` for the
+settings opened on their first page from another section; the traffic
+benchmark prints a line per action: `open:<page>`, `poll:<page>` for a polled
+report arriving, `switch:<page>` for switching to the page from the overview,
+`append:rankings` for the next page of the listing and `filter:overview` for a
+ranking row toggling its filter):
 
 | Field             | Meaning                                                                       |
 | ----------------- | ----------------------------------------------------------------------------- |
@@ -67,6 +73,7 @@ working tree ends with the changes applied.
 | `VITE_PERF_PAGE`           | `connections` | Page the connection stream feeds: `connections` or `rules`                        |
 | `VITE_PERF_CONNECTIONS`    | `2000`        | Connections in each streamed frame; 1% are replaced per frame                     |
 | `VITE_PERF_RULES`          | `3000`        | Rules in the rules fixture (`10000` in the inspector benchmark)                   |
+| `VITE_PERF_FRESH`          | unset         | `1` shows the inspector's YAML as a new document each switch, never cached        |
 | `VITE_PERF_FRAMES`         | `12`          | Measured connection frames, one a second, including 2 warm-ups                    |
 | `VITE_PERF_PAGES`          | all           | Pages to measure: settings `clash,system`, traffic `overview,flow,map,rankings`   |
 | `VITE_PERF_TRAFFIC_GROUPS` | `1000`        | Hosts the traffic rankings page lists, 50 per loaded page                         |

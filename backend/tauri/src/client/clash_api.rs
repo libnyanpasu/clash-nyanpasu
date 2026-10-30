@@ -160,13 +160,17 @@ impl NyanpasuClient {
     ) -> Result<Delay> {
         let query = delay_query(url, expected, &self.get_app_config().await?)?;
         let provider = provider.map(ProviderName::new);
-        Ok(self
+        let delay = self
             .inner
             .core_api
             .api_client()
             .await?
             .proxy_delay(&ProxyName::new(name), provider.as_ref(), &query)
-            .await?)
+            .await;
+        // The core records the result, a timeout too, in the node's history,
+        // which the tray and the proxies snapshot show.
+        self.request_proxy_refresh();
+        Ok(delay?)
     }
 
     pub async fn group_delay(
@@ -176,13 +180,15 @@ impl NyanpasuClient {
         expected: Option<String>,
     ) -> Result<IndexMap<ProxyName, u16>> {
         let query = delay_query(url, expected, &self.get_app_config().await?)?;
-        Ok(self
+        let delays = self
             .inner
             .core_api
             .api_client()
             .await?
             .group_delay(&ProxyName::new(group), &query)
-            .await?)
+            .await;
+        self.request_proxy_refresh();
+        Ok(delays?)
     }
 
     pub async fn close_clash_connections(&self, id: Option<String>) -> Result<()> {

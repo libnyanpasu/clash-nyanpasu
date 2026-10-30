@@ -640,7 +640,7 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
         unreachable!("only the clash config owner sends its slice")
     }
 
-    fn profiles_committed(&self) {
+    fn profiles_committed(&self, _: Vec<nyanpasu_config::profile::ProfileId>) {
         unreachable!("only the profiles owner sends its slice")
     }
 

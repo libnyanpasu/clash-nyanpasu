@@ -14,6 +14,7 @@ pub mod kinds;
 mod manager;
 mod table;
 
+pub use engine::collect_webview_info;
 pub use manager::WindowManager;
 
 use crate::trace_err;

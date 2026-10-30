@@ -5,6 +5,7 @@ import '@/assets/styles/tailwind.css'
 import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import { DelayHistoryTooltip } from '@/components/proxies/delay-history'
 import ProxyNodeButton from '@/pages/(main)/main/proxies/group/_modules/proxy-node-button'
 import type { ClashProxiesQueryProxyItem } from '@nyanpasu/query'
 
@@ -36,16 +37,18 @@ async function renderButton(
   const screen = await render(
     <BlockTaskProvider>
       <TooltipProvider>
-        <ProxyNodeButton
-          proxy={node}
-          selectable={selectable}
-          fixed={fixed}
-          onSelect={onSelect}
-          onDelayTest={onDelayTest}
-          history={node.history}
-          delay={extra.delay}
-          leaf={extra.leaf}
-        />
+        <DelayHistoryTooltip>
+          <ProxyNodeButton
+            proxy={node}
+            selectable={selectable}
+            fixed={fixed}
+            onSelect={onSelect}
+            onDelayTest={onDelayTest}
+            history={node.history}
+            delay={extra.delay}
+            leaf={extra.leaf}
+          />
+        </DelayHistoryTooltip>
       </TooltipProvider>
     </BlockTaskProvider>,
   )
@@ -111,15 +114,17 @@ test('retesting a measured node shows loading until the test finishes', async ()
   const screen = await render(
     <BlockTaskProvider>
       <TooltipProvider>
-        <ProxyNodeButton
-          proxy={proxy}
-          selectable
-          fixed={false}
-          onSelect={onSelect}
-          onDelayTest={onDelayTest}
-          history={proxy.history}
-          delay={189}
-        />
+        <DelayHistoryTooltip>
+          <ProxyNodeButton
+            proxy={proxy}
+            selectable
+            fixed={false}
+            onSelect={onSelect}
+            onDelayTest={onDelayTest}
+            history={proxy.history}
+            delay={189}
+          />
+        </DelayHistoryTooltip>
       </TooltipProvider>
     </BlockTaskProvider>,
   )
@@ -165,18 +170,20 @@ test('a long leaf truncates instead of clipping the feature chips', async () => 
   const screen = await render(
     <BlockTaskProvider>
       <TooltipProvider>
-        <div style={{ width: 300 }}>
-          <ProxyNodeButton
-            proxy={{ ...proxy, type: 'URLTest' }}
-            selectable
-            fixed={false}
-            onSelect={async () => {}}
-            onDelayTest={async () => {}}
-            history={proxy.history}
-            delay={39}
-            leaf="香港标准 IEPL 专线 6 [Premium] 0.8x"
-          />
-        </div>
+        <DelayHistoryTooltip>
+          <div style={{ width: 300 }}>
+            <ProxyNodeButton
+              proxy={{ ...proxy, type: 'URLTest' }}
+              selectable
+              fixed={false}
+              onSelect={async () => {}}
+              onDelayTest={async () => {}}
+              history={proxy.history}
+              delay={39}
+              leaf="香港标准 IEPL 专线 6 [Premium] 0.8x"
+            />
+          </div>
+        </DelayHistoryTooltip>
       </TooltipProvider>
     </BlockTaskProvider>,
   )
@@ -203,4 +210,22 @@ test('a plain member shows no leaf', async () => {
   expect(
     screen.container.querySelector('[data-slot="proxy-node-leaf"]'),
   ).toBeNull()
+})
+
+test('hovering a node shows its delay history', async () => {
+  const { screen } = await renderButton(true, false, {
+    ...proxy,
+    history: [{ time: '2026-10-25T10:00:00Z', delay: 123 }],
+  })
+
+  await screen.getByRole('button', { name: /node-a/ }).hover()
+
+  // The tooltip is portalled out of the rendered tree.
+  await expect
+    .poll(
+      () =>
+        document.querySelector('[data-slot="proxy-delay-history"]')
+          ?.textContent,
+    )
+    .toContain('123 ms')
 })

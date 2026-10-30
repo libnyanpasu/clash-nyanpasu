@@ -49,6 +49,12 @@ export const Route = createFileRoute('/(main)/main/dashboard/')({
   component: RouteComponent,
 })
 
+// The layout picked for the grid's size stays while the window is being
+// resized, so widgets that a smaller grid hides come back as it grows again.
+// Once the size has settled this long, the layout is picked again for the
+// new size, as it is when the page opens.
+const SETTLED_RESIZE_MS = 200
+
 // Widgets declare these minimum sizes; they are known before any widget has
 // rendered.
 const constraintsFor = (items: DashboardItem[]) =>
@@ -179,17 +185,32 @@ const WidgetRender = () => {
     [displayItems],
   )
 
-  const handleSizeChange = useCallback((newSize: GridSize) => {
-    gridSizeRef.current = newSize
-    setGridSize(newSize)
-
-    if (activeLayoutIdRef.current === null) {
-      const id =
-        selectLayoutEntry(layoutStorageRef.current, newSize)?.id ?? null
-      activeLayoutIdRef.current = id
-      setActiveLayoutId(id)
-    }
+  const selectForSize = useCallback((size: GridSize) => {
+    const id = selectLayoutEntry(layoutStorageRef.current, size)?.id ?? null
+    activeLayoutIdRef.current = id
+    setActiveLayoutId(id)
   }, [])
+
+  const settledTimerRef = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(settledTimerRef.current), [])
+
+  const handleSizeChange = useCallback(
+    (newSize: GridSize) => {
+      gridSizeRef.current = newSize
+      setGridSize(newSize)
+
+      window.clearTimeout(settledTimerRef.current)
+      if (activeLayoutIdRef.current === null) {
+        selectForSize(newSize)
+      } else {
+        settledTimerRef.current = window.setTimeout(
+          () => selectForSize(newSize),
+          SETTLED_RESIZE_MS,
+        )
+      }
+    },
+    [selectForSize],
+  )
 
   const handleLayoutChange = useCallback(
     (newItems: DashboardItem[]) => {

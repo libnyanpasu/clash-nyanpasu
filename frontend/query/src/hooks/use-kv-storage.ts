@@ -1,41 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { invokeMutation, invokeQuery } from '../ipc/query-options'
-import { useQueryApi } from '../provider/rpc-provider'
-
-const LOCAL_CACHE_PREFIX = 'nyanpasu-kv-:'
-/** Mirrors the `WEB_STORAGE_KEY_PREFIX` constant on the backend. */
-const WEB_KEY_PREFIX = 'web:'
-
-function getLocalCache<T>(
-  key: string,
-  defaultValue: T,
-  migrate?: (value: unknown) => T,
-): T {
-  try {
-    const raw = localStorage.getItem(LOCAL_CACHE_PREFIX + btoa(key))
-
-    if (raw === null) {
-      return defaultValue
-    }
-
-    const parsed: unknown = JSON.parse(raw)
-    return migrate ? migrate(parsed) : (parsed as T)
-  } catch {
-    return defaultValue
-  }
-}
-
-function setLocalCache<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(LOCAL_CACHE_PREFIX + btoa(key), JSON.stringify(value))
-  } catch {
-    // ignore quota / security errors
-  }
-}
-
-function removeLocalCache(key: string): void {
-  localStorage.removeItem(LOCAL_CACHE_PREFIX + btoa(key))
-}
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react'
+import {
+  readKvStorageLocalCache,
+  useKvStorageStore,
+} from '../provider/kv-storage-provider'
+import type { KvStorageEntry } from '../provider/kv-storage-state'
 
 export interface UseKvStorageOptions<T> {
   /**
@@ -45,19 +19,40 @@ export interface UseKvStorageOptions<T> {
   migrate?: (value: unknown) => T
 }
 
+type KvStorageView = {
+  /** The shown JSON text, or `null` for the default. */
+  raw: string | null
+  isLoading: boolean
+  readError: unknown | null
+}
+
+function viewOf(
+  entry: KvStorageEntry | undefined,
+  cached: string | null,
+): KvStorageView {
+  if (!entry) return { raw: cached, isLoading: true, readError: null }
+  return {
+    raw:
+      entry.draft?.value ?? (entry.value === undefined ? cached : entry.value),
+    isLoading: entry.read.status !== 'done',
+    readError: entry.read.error,
+  }
+}
+
 /**
  * A `useState`-like hook backed by the Tauri/redb KV storage.
  *
- * - Reads the localStorage cache immediately so the UI has a value on first
- *   render without flickering.
- * - Fetches the authoritative value from the backend on mount; the backend
- *   wins unless a newer write or event overtakes that read.
- * - Listens for `StorageValueChangedEvent` so all open windows stay in sync.
- * - Writing calls the generated `api.mutations.setStorageItem` binding and
- *   optimistically updates local state; the subsequent backend event confirms
- *   the change. Writes from one hook instance reach the backend in call order.
- * - The setter returns whether the mutation was confirmed. Failed writes keep
- *   the optimistic value available for a consumer to display and retry.
+ * - Every hook of a key in this window shares one value, kept by
+ *   `KvStorageProvider`: the backend is read when the key is first used here,
+ *   and its change events keep the value current, so mounting a used key
+ *   costs no IPC.
+ * - Until that read finishes, `isLoading` is true and the value comes from the
+ *   localStorage cache, so the UI has a value on first render.
+ * - Writing shows the new value at once in every hook of the key; writes of a
+ *   key reach the backend in call order.
+ * - The setter returns whether the write was confirmed. A failed value stays
+ *   shown for a consumer to display and retry, until a newer value is
+ *   committed.
  */
 export function useKvStorage<T>(
   key: string,
@@ -72,220 +67,71 @@ export function useKvStorage<T>(
     refresh: () => Promise<void>
   },
 ] {
-  const api = useQueryApi()
-  const [value, setValueState] = useState<T>(() =>
-    getLocalCache(key, defaultValue, options?.migrate),
-  )
-  const [isLoading, setIsLoading] = useState(true)
-  const [readError, setReadError] = useState<unknown | null>(null)
-  const refreshRef = useRef<() => Promise<void>>(async () => {})
-  const refreshStorage = useCallback(() => refreshRef.current(), [])
+  const store = useKvStorageStore()
 
-  // Stable refs to avoid stale closures
   const defaultValueRef = useRef(defaultValue)
-
-  const valueRef = useRef(value)
-  valueRef.current = value
-
   const migrateRef = useRef(options?.migrate)
   migrateRef.current = options?.migrate
 
-  // Track pending writes so the echo event from the backend doesn't cause a
-  // redundant re-render. The set stores the serialized JSON of each in-flight
-  // write; when the confirming event arrives we just discard it.
-  const pendingWritesRef = useRef<Set<string>>(new Set())
-  const revisionRef = useRef(0)
-  const activeWritesRef = useRef(0)
-  // Backend writes of this instance run one after another so an older value
-  // cannot reach storage after a newer one.
-  const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve())
+  const cached = useMemo(() => readKvStorageLocalCache(key), [key])
 
-  const applyMigrate = useCallback((raw: unknown): T => {
-    return migrateRef.current ? migrateRef.current(raw) : (raw as T)
+  // Rendered in the same pass as the change, as `useState` would be, so a
+  // handler that builds on the shown value never sees an older one.
+  const viewRef = useRef<KvStorageView | null>(null)
+  const subscribe = useCallback(
+    (onChange: () => void) => store.subscribe(key, onChange),
+    [store, key],
+  )
+  const view = useSyncExternalStore(subscribe, () => {
+    const next = viewOf(store.peek(key), cached)
+    const previous = viewRef.current
+    if (
+      previous?.raw === next.raw &&
+      previous.isLoading === next.isLoading &&
+      previous.readError === next.readError
+    ) {
+      return previous
+    }
+    viewRef.current = next
+    return next
+  })
+
+  const decode = useCallback((raw: string | null): T => {
+    if (raw === null) return defaultValueRef.current
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return migrateRef.current ? migrateRef.current(parsed) : (parsed as T)
+    } catch {
+      return defaultValueRef.current
+    }
   }, [])
+  // Unchanged text keeps its value, so a confirmation of the shown value
+  // spares every reader a render. Another key decodes with its own migration.
+  const value = useMemo(() => decode(view.raw), [decode, key, view.raw])
 
-  // The initial state already holds this key's cache.
-  const cachedKeyRef = useRef(key)
-
-  // When key changes: reset to local cache and re-fetch from backend
   useEffect(() => {
-    if (cachedKeyRef.current !== key) {
-      cachedKeyRef.current = key
-      const cached = getLocalCache(
-        key,
-        defaultValueRef.current,
-        migrateRef.current,
-      )
-      valueRef.current = cached
-      setValueState(cached)
-      setIsLoading(true)
-    }
-
-    let disposed = false
-    const refresh = async () => {
-      const revision = revisionRef.current
-      const readingDuringWrite = activeWritesRef.current > 0
-      setIsLoading(true)
-      try {
-        const result = await invokeQuery(api.queries.getStorageItem(key))
-        if (disposed) return
-        // A read started before/during a write must not replace its preview or
-        // a newer event snapshot with an older backend response.
-        if (
-          readingDuringWrite ||
-          activeWritesRef.current > 0 ||
-          revision !== revisionRef.current
-        ) {
-          return
-        }
-
-        if (result.status === 'error') {
-          throw result.error
-        }
-
-        if (result.data === null) {
-          valueRef.current = defaultValueRef.current
-          setValueState(defaultValueRef.current)
-          removeLocalCache(key)
-        } else {
-          const migrated = applyMigrate(JSON.parse(result.data))
-          // Usually the backend confirms the cached value; keeping the state
-          // object then spares every reader a render.
-          if (JSON.stringify(migrated) !== JSON.stringify(valueRef.current)) {
-            valueRef.current = migrated
-            setValueState(migrated)
-            setLocalCache(key, migrated)
-          }
-        }
-        setReadError(null)
-      } catch (error) {
-        if (disposed) return
-        setReadError(error)
-        console.error('[useKvStorage] read failed:', error)
-      } finally {
-        if (!disposed) setIsLoading(false)
-      }
-    }
-
-    refreshRef.current = refresh
-
-    const stopResync = api.listenResync(() => {
-      refresh()
-    })
-
-    refresh()
-
-    return () => {
-      disposed = true
-      stopResync()
-    }
-  }, [key, applyMigrate, api])
-
-  // Listen for changes emitted from backend (any window).
-  // The backend emits the raw storage key which includes the `web:` prefix.
-  useEffect(() => {
-    const unlistenPromise = api.events.storageValueChangedEvent.listen(
-      (event) => {
-        if (event.payload.key !== WEB_KEY_PREFIX + key) {
-          return
-        }
-
-        if (event.payload.value === null) {
-          revisionRef.current += 1
-          pendingWritesRef.current.delete('null')
-          valueRef.current = defaultValueRef.current
-          setValueState(defaultValueRef.current)
-          removeLocalCache(key)
-        } else {
-          // If this event is the echo of our own optimistic write, skip the
-          // redundant setState to avoid an unnecessary re-render.
-          // Note: the backend double-encodes the value in the event payload
-          // (the stored JSON string is wrapped in another JSON string), so we
-          // compare against the double-encoded form.
-          if (pendingWritesRef.current.has(event.payload.value)) {
-            pendingWritesRef.current.delete(event.payload.value)
-            return
-          }
-
-          try {
-            // The backend emits the stored value double-encoded: the raw stored
-            // string (already valid JSON) is JSON-encoded again inside the event
-            // payload. Parse once to get the inner string, then parse again to
-            // get the actual value. Fall back to single-parse for backends that
-            // emit the value without extra encoding.
-            const firstParsed = JSON.parse(event.payload.value)
-            const parsed =
-              typeof firstParsed === 'string'
-                ? JSON.parse(firstParsed)
-                : firstParsed
-            const migrated = applyMigrate(parsed)
-
-            revisionRef.current += 1
-            valueRef.current = migrated
-            setValueState(migrated)
-            setLocalCache(key, migrated)
-          } catch {
-            // ignore invalid JSON from event
-          }
-        }
-      },
-    )
-
-    return () => {
-      unlistenPromise.then((fn) => fn())
-    }
-  }, [key, applyMigrate, api])
+    store.ensureRead(key)
+  }, [store, key])
 
   const setValue = useCallback(
-    async (newValue: T | ((prev: T) => T)) => {
+    (next: T | ((prev: T) => T)) => {
+      // Read the shared value, which may already hold another hook's write.
       const resolved =
-        typeof newValue === 'function'
-          ? (newValue as (prev: T) => T)(valueRef.current)
-          : newValue
-
-      const serialized = JSON.stringify(resolved)
-      revisionRef.current += 1
-      activeWritesRef.current += 1
-
-      // Register this write so the confirming event can be suppressed.
-      // The backend double-encodes the value in the event, so we store the
-      // double-encoded form to match what the event listener will receive.
-      pendingWritesRef.current.add(JSON.stringify(serialized))
-
-      // Optimistic update — the backend event will also arrive and confirm
-      valueRef.current = resolved
-      setValueState(resolved)
-      setLocalCache(key, resolved)
-
-      const previousWrite = writeQueueRef.current
-      const write = (async () => {
-        await previousWrite
-        return invokeMutation(api.mutations.setStorageItem, [key, serialized])
-      })()
-      writeQueueRef.current = write.catch(() => {})
-
-      try {
-        const result = await write
-        if (result.status === 'error') {
-          throw result.error
-        }
-
-        return true
-      } catch (error) {
-        pendingWritesRef.current.delete(JSON.stringify(serialized))
-        console.error('[useKvStorage] setStorageItem failed:', error)
-
-        return false
-      } finally {
-        activeWritesRef.current -= 1
-      }
+        typeof next === 'function'
+          ? (next as (prev: T) => T)(
+              decode(viewOf(store.peek(key), cached).raw),
+            )
+          : next
+      return store.write(key, JSON.stringify(resolved))
     },
-    [api, key],
+    [store, key, cached, decode],
   )
+
+  const refresh = useCallback(() => store.refresh(key), [store, key])
 
   return [
     value,
     setValue,
-    { isLoading, readError, refresh: refreshStorage },
+    { isLoading: view.isLoading, readError: view.readError, refresh },
   ] as const
 }

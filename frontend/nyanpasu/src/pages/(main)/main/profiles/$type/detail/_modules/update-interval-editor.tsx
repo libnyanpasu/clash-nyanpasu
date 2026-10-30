@@ -8,7 +8,7 @@ import { m } from '@/paraglide/messages'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { getRemoteSource } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import AnimatedErrorItem from '../../../_modules/error-item'
+import AnimatedErrorItem from '../../../../_modules/error-item'
 import ProfileFieldDialog from './profile-field-dialog'
 import {
   UNCHANGED_REMOTE_OPTIONS,

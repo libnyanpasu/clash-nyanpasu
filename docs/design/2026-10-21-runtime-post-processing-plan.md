@@ -246,4 +246,3 @@ tun:
   - 未托管选项的说明尚未改为"不受字段过滤影响"；
   - 字段过滤卡片中，`unified-delay`、`tcp-concurrent` 的开关已不起作用，尚未禁用或加提示。
 - 真机 TUN 冒烟（Windows + meow-rs）尚未进行。
-- `config_fixer` 实际上从不生效：它把布尔型 `log-level` 改为 `debug`，而 guard 总是写入字符串。`clash_rs_comp` 的 `allow_lan`、`dns.enabled` 与 Nyanpasu 写入的拼写不一致。这两点只记录，不改。

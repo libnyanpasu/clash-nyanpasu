@@ -104,8 +104,9 @@ pub(crate) trait CommitNotifications: Send + Sync + 'static {
     fn clash_committed(&self, fields: super::plan::ClashEffectFields);
 
     /// The profiles owner. No effect reads the profiles, so a commit only asks
-    /// the tray for a partial refresh.
-    fn profiles_committed(&self);
+    /// the tray for a partial refresh. `files` names the profiles whose file
+    /// content the commit may have changed or removed.
+    fn profiles_committed(&self, files: Vec<nyanpasu_config::profile::ProfileId>);
 
     /// The Runtime, after a mutation's Confirm or Cancel, a lifecycle command
     /// or a recovery: the ports the core is bound to now. `refresh` asks the
@@ -115,6 +116,39 @@ pub(crate) trait CommitNotifications: Send + Sync + 'static {
     /// Hands every owner its complete desired value and rebuilds the tray.
     /// StartupReconcile sends it once (T10 §1.9), with the ports it bound.
     fn publish_full(&self, ports: Option<ResolvedPortBindings>);
+}
+
+/// Tells both receivers about every commit, the first one first.
+impl<A: CommitNotifications, B: CommitNotifications> CommitNotifications for (A, B) {
+    fn application_committed(
+        &self,
+        fields: super::plan::ApplicationEffectFields,
+        requested: Vec<super::plan::EffectKind>,
+    ) {
+        self.0
+            .application_committed(fields.clone(), requested.clone());
+        self.1.application_committed(fields, requested);
+    }
+
+    fn clash_committed(&self, fields: super::plan::ClashEffectFields) {
+        self.0.clash_committed(fields.clone());
+        self.1.clash_committed(fields);
+    }
+
+    fn profiles_committed(&self, files: Vec<nyanpasu_config::profile::ProfileId>) {
+        self.0.profiles_committed(files.clone());
+        self.1.profiles_committed(files);
+    }
+
+    fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool) {
+        self.0.runtime_bound(ports.clone(), refresh);
+        self.1.runtime_bound(ports, refresh);
+    }
+
+    fn publish_full(&self, ports: Option<ResolvedPortBindings>) {
+        self.0.publish_full(ports.clone());
+        self.1.publish_full(ports);
+    }
 }
 
 #[cfg(test)]
@@ -130,7 +164,7 @@ impl CommitNotifications for NoopCommitNotifications {
 
     fn clash_committed(&self, _: super::plan::ClashEffectFields) {}
 
-    fn profiles_committed(&self) {}
+    fn profiles_committed(&self, _: Vec<nyanpasu_config::profile::ProfileId>) {}
 
     fn runtime_bound(&self, _: Option<ResolvedPortBindings>, _: bool) {}
 

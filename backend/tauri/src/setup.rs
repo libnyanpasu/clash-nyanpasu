@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::{
     client::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
-        OsSystemDnsCache, RuntimePaths, TauriMainThread, TauriUiEventSink,
+        OsSystemDnsCache, RuntimePaths, StateChanged, TauriMainThread, TauriUiEventSink,
+        UiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -29,7 +30,10 @@ use crate::{
             ports::LocaleSink,
         },
     },
-    core::traffic::{TrafficFileStorage, TrafficStorage},
+    core::{
+        storage::{StorageNotification, StorageResyncEvent, StorageValueChangedEvent},
+        traffic::{TrafficFileStorage, TrafficStorage},
+    },
     utils::init::logging::ReloadSignal,
 };
 use anyhow::Context;
@@ -157,12 +161,36 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let storage = crate::core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
+    let storage_changes = storage.subscribe();
+    let storage_handle = app_handle.clone();
+    tauri::async_runtime::spawn(track_until_shutdown(
+        &tasks,
+        &shutdown,
+        crate::core::storage::forward_storage_changes(storage_changes, move |notification| {
+            let emitted = match notification {
+                StorageNotification::Changed(change) => StorageValueChangedEvent {
+                    key: change.key,
+                    value: change
+                        .value
+                        .map(|value| String::from_utf8_lossy(&value).into_owned()),
+                    revision: change.revision,
+                }
+                .emit(&storage_handle),
+                StorageNotification::Resync => StorageResyncEvent {}.emit(&storage_handle),
+            };
+            if let Err(error) = emitted {
+                tracing::warn!(%error, "failed to emit a storage notification");
+            }
+        }),
+    ));
     // The core runs with the app data dir as its home, where its geo databases live.
     let geo_index = Arc::new(crate::core::geo::FsCountryIndexSource::new(
         paths.app_data_dir().as_std_path().to_owned(),
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
     let span = tracing::info_span!("build_client").entered();
+    let ui_sink: Arc<dyn UiEventSink> =
+        Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
@@ -195,7 +223,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths: paths.clone(),
         storage,
         runtime_paths: runtime_paths.clone(),
-        ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
+        ui_sink: ui_sink.clone(),
         app_update_backend_factory: Some(Arc::new({
             let app_handle = app_handle.clone();
             move |proxy_port| {
@@ -217,9 +245,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         geo_index,
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-        core_versions: Arc::new(crate::utils::core_version::TauriCoreVersionReader::new(
-            app_handle.clone(),
-        )),
+        core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),
         accelerators: Arc::new(PlatformAcceleratorValidator),
@@ -239,7 +265,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowManager::new(app_handle.clone()));
     app.manage(crate::window::kinds::TrayMenuWindowController::default());
-    forward_actor_events(app_handle.clone(), client.clone(), &shutdown, &tasks);
+    forward_actor_events(
+        app_handle.clone(),
+        client.clone(),
+        ui_sink,
+        &shutdown,
+        &tasks,
+    );
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
@@ -400,6 +432,7 @@ fn build_application_effects(
 fn forward_actor_events(
     app_handle: tauri::AppHandle,
     client: NyanpasuClient,
+    ui_sink: Arc<dyn UiEventSink>,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
 ) {
@@ -433,6 +466,13 @@ fn forward_actor_events(
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
+        }
+    }));
+
+    let mut proxy_changes = client.subscribe_proxy_changes();
+    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
+        while proxy_changes.changed().await.is_ok() {
+            ui_sink.state_changed(StateChanged::Proxies);
         }
     }));
 

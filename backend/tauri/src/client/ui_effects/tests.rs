@@ -773,7 +773,6 @@ impl PacPort for HeldPac {
 #[tokio::test(start_paused = true)]
 async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     use crate::client::{
-        NoopUiEventSink,
         convergence::ConvergenceHealth,
         effects::{
             actor::{EffectsArgs, EffectsClient},
@@ -804,7 +803,6 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: Arc::new(executor),
-            ui: Arc::new(NoopUiEventSink),
             initial: proxied_inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },
@@ -911,12 +909,9 @@ impl PacPort for CancelledPac {
 /// after it on the owner's own exit path, and nothing installs a proxy again.
 #[tokio::test]
 async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
-    use crate::client::{
-        NoopUiEventSink,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
 
     let shutdown = Shutdown::new();
@@ -953,7 +948,6 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: Arc::new(executor),
-            ui: Arc::new(NoopUiEventSink),
             initial: proxied_inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },
@@ -1178,12 +1172,9 @@ impl ApplicationEffectsPort for HeldEffects {
 /// shutdown waits until every one of them has really finished.
 #[tokio::test]
 async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
-    use crate::client::{
-        NoopUiEventSink,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
 
     let shutdown = Shutdown::new();
@@ -1234,7 +1225,6 @@ async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: held.clone(),
-            ui: Arc::new(NoopUiEventSink),
             initial: inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },
@@ -1275,12 +1265,9 @@ async fn effects_with_a_widget_starting(
     crate::client::effects::actor::EffectsClient,
     crate::widget::WidgetManager,
 ) {
-    use crate::client::{
-        NoopUiEventSink,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
 
     let manager = crate::widget::WidgetManager::new(
@@ -1304,7 +1291,6 @@ async fn effects_with_a_widget_starting(
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: Arc::new(executor),
-            ui: Arc::new(NoopUiEventSink),
             initial: inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },

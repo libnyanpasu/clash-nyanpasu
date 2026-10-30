@@ -12,6 +12,8 @@ remaining migration graph; this guide defines the current dependency rules.
 | `nyanpasu-platform`        | Concrete script, filesystem, process and OS adapters                                             | Tauri host, egui/eframe or Slint                           |
 | `nyanpasu-widget-protocol` | Render-free statistic widget contract: variants, messages and the optional `ipc` channel         | Tauri, egui/eframe or Slint                                |
 | `nyanpasu-widget`          | Statistic widget process frontend, rendered with Slint                                           | Tauri; no neutral crate may depend on it                   |
+| `nyanpasu-diagnose`        | Host facts, diagnostic reports, redacted archives and synchronous progress protocol              | Core, platform, Tauri, egui/eframe or Slint                |
+| `nyanpasu-crash-reporter`  | Crash report window, rendered with Slint                                                         | Tauri; no neutral crate may depend on it                   |
 | `backend/tauri`            | Desktop composition root, concrete Tauri adapters, GUI lifecycle and IPC                         | No reverse dependency from neutral crates                  |
 
 The core crate receives dependencies through constructors, function

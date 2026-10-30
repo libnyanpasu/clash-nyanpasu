@@ -103,3 +103,32 @@ test('the chart follows a resize without waiting for a sample', async ({
   container.style.width = '600px'
   await expect.poll(() => linePath(container)).not.toBe(before)
 })
+
+test('the first traffic peak does not stretch the chart from zero', async ({
+  onTestFinished,
+}) => {
+  const style = document.createElement('style')
+  style.textContent = STYLES
+  document.head.append(style)
+  const container = document.createElement('div')
+  container.style.cssText = 'width: 300px; height: 100px'
+  document.body.append(container)
+  const root = createRoot(container)
+  onTestFinished(() => {
+    root.unmount()
+    container.remove()
+    style.remove()
+  })
+
+  const empty = Array<number>(10).fill(0)
+  flushSync(() => root.render(<Sparkline data={empty} />))
+  await expect.poll(() => linePath(container)).toBeTruthy()
+
+  flushSync(() => root.render(<Sparkline data={[...empty.slice(1), 10_000]} />))
+  const chart = container.querySelector('[data-slot="sparkline"]')!
+  const animations = chart.getAnimations({ subtree: true })
+  expect(animations).toHaveLength(1)
+  expect(
+    (animations[0].effect as KeyframeEffect).getKeyframes()[0].transform,
+  ).toContain('translateX')
+})

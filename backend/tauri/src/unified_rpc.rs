@@ -34,8 +34,9 @@ const EVENT_NAMES: &[&str] = &[
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
     <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
+    <crate::core::storage::StorageResyncEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    "nyanpasu://mutation",
+    <crate::client::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
 
 #[derive(Clone)]
@@ -293,14 +294,11 @@ async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
 ) -> Result<Response, (StatusCode, Json<RpcError>)> {
     let paths = rpc.dependencies.paths.clone();
-    let archive =
-        tokio::task::spawn_blocking(move || crate::utils::candy::collect_logs_tempfile(&paths))
-            .await
-            .map_err(RpcError::application)
-            .map_err(http_rpc_error)?
-            .map_err(|error| RpcError::new("application_error", error.to_string()))
-            .map_err(http_rpc_error)?;
-    let file = tokio::fs::File::open(archive.path())
+    let archive = crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
+        .await
+        .map_err(|error| RpcError::new("application_error", error.to_string()))
+        .map_err(http_rpc_error)?;
+    let file = tokio::fs::File::open(&archive)
         .await
         .map_err(RpcError::application)
         .map_err(http_rpc_error)?;
@@ -489,6 +487,7 @@ mod tests {
         )
         .unwrap();
         let paths = args.paths.clone();
+        let logs_dir = paths.app_logs_dir();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -512,6 +511,7 @@ mod tests {
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
             for method in [
+                "report_issue",
                 "read_clipboard_text",
                 "write_clipboard_text",
                 "show_native_notification",
@@ -689,31 +689,65 @@ mod tests {
             .await;
             assert_eq!(malformed.0, StatusCode::BAD_REQUEST);
             assert_eq!(malformed.1["kind"], "invalid_params");
-            let set = app.clone().oneshot(Request::post("/bridge/rpc")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"method":"set_storage_item","params":{"key":"theme","value":"dark"}}"#)).unwrap())
-            .await.unwrap();
-            assert_eq!(set.status(), StatusCode::OK);
-            let get = app
+            let theme = serde_json::json!({"key": "theme"});
+            let (status, written) = rpc_for_test_call(
+                &app,
+                "set_storage_item",
+                serde_json::json!({"key": "theme", "value": "dark"}),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let (status, item) =
+                rpc_for_test_call(&app, "get_storage_item", theme.clone(), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(
+                item,
+                serde_json::json!({"value": "dark", "revision": written})
+            );
+            let (status, removal) =
+                rpc_for_test_call(&app, "remove_storage_item", theme.clone(), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(
+                removal.as_u64() > written.as_u64(),
+                "{written} then {removal}"
+            );
+            let (_, item) = rpc_for_test_call(&app, "get_storage_item", theme, None).await;
+            assert_eq!(
+                item,
+                serde_json::json!({"value": null, "revision": removal})
+            );
+
+            // The HTTP download shares the redacted archive pipeline with the save dialog.
+            std::fs::write(
+                logs_dir.join("clash-nyanpasu_http.log"),
+                "password=never-export\n",
+            )
+            .unwrap();
+            let response = app
                 .clone()
                 .oneshot(
-                    Request::post("/bridge/rpc")
-                        .header("content-type", "application/json")
-                        .body(Body::from(
-                            r#"{"method":"get_storage_item","params":{"key":"theme"}}"#,
-                        ))
+                    Request::get("/bridge/logs/archive")
+                        .body(Body::empty())
                         .unwrap(),
                 )
                 .await
                 .unwrap();
-            assert_eq!(get.status(), StatusCode::OK);
-            assert_eq!(
-                to_bytes(get.into_body(), usize::MAX)
-                    .await
-                    .unwrap()
-                    .as_ref(),
-                br#""dark""#
-            );
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()["content-type"], "application/zip");
+            let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
+                .await
+                .unwrap();
+            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+            let mut log = String::new();
+            std::io::Read::read_to_string(
+                &mut zip.by_name("logs/app/clash-nyanpasu_http.log").unwrap(),
+                &mut log,
+            )
+            .unwrap();
+            assert_eq!(log, "password=<redacted>\n");
+            assert!(zip.by_name("report.txt").is_ok());
+            assert!(zip.by_name("logs/core/core.log").is_ok());
 
             let response = app
                 .clone()
@@ -722,17 +756,25 @@ mod tests {
                 .unwrap();
             let mut stream = response.into_body().into_data_stream();
             stream.next().await.unwrap().unwrap();
+            let name = <crate::client::StateChangedEvent as tauri_specta::Event>::NAME;
             for sequence in 0..300 {
-                events.publish("nyanpasu://mutation", serde_json::json!(sequence));
+                events.publish(name, serde_json::json!(sequence));
             }
             let gap = stream.next().await.unwrap().unwrap();
             assert!(std::str::from_utf8(&gap).unwrap().contains("event: resync"));
             let event = stream.next().await.unwrap().unwrap();
-            assert!(
-                std::str::from_utf8(&event)
-                    .unwrap()
-                    .contains("nyanpasu://mutation")
-            );
+            assert!(std::str::from_utf8(&event).unwrap().contains(name));
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::get("/bridge/events?name=storage-resync-event")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            // An event the bridge does not forward is refused by name.
+            assert_eq!(response.status(), StatusCode::OK);
             let response = app
                 .clone()
                 .oneshot(

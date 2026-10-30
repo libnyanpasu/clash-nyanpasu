@@ -1,0 +1,306 @@
+import { Button, TextEdit, Palette, ProgressIndicator } from "std-widgets.slint";
+export { Palette } from "std-widgets.slint";
+
+// The host supplies its locale before showing the window.
+export global ReporterStrings {
+    in property <string> heading;
+    in property <string> description;
+    in property <string> version;
+    in property <string> system;
+    in property <string> error;
+    in property <string> location;
+    in property <string> backtrace;
+    in property <string> environment;
+    in property <string> copy;
+    in property <string> copy-section;
+    in property <string> close;
+    in property <string> report-issue;
+    in property <string> show-in-folder;
+}
+
+// Fluent has no segmented control in Slint's widget set: a pill of options in a
+// tinted track, the current one raised on the control fill.
+component Segmented {
+    in property <[string]> options;
+    in-out property <int> current;
+    height: 32px;
+
+    Rectangle {
+        border-radius: 6px;
+        background: Palette.alternate-background;
+        border-width: 1px;
+        border-color: Palette.border;
+    }
+    HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+        for option[index] in root.options: Rectangle {
+            accessible-role: tab;
+            accessible-label: option;
+            accessible-item-selected: index == root.current;
+            accessible-action-default => { root.current = index; }
+            border-radius: 4px;
+            background: index == root.current ? Palette.control-background
+                : touch.has-hover ? Palette.control-background.with-alpha(0.5) : transparent;
+            border-width: index == root.current ? 1px : 0;
+            border-color: Palette.border;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                Text {
+                    text: option;
+                    color: Palette.foreground;
+                    font-size: 12px;
+                    font-weight: index == root.current ? 600 : 400;
+                    vertical-alignment: center;
+                }
+            }
+            touch := TouchArea {
+                clicked => { root.current = index; }
+            }
+        }
+    }
+}
+
+component DetailLabel inherits Text {
+    color: Palette.foreground.with-alpha(0.65);
+    font-size: 12px;
+    vertical-alignment: top;
+    horizontal-stretch: 0;
+}
+
+component DetailValue inherits Text {
+    color: Palette.foreground;
+    font-size: 12px;
+    wrap: word-wrap;
+    horizontal-stretch: 1;
+}
+
+export component ReporterWindow inherits Window {
+    title: "Clash Nyanpasu";
+    icon: @image-url("../../tauri/icons/128x128.png");
+    // The host reads the opening size to centre the window before it exists.
+    out property <length> opening-width: 720px;
+    out property <length> opening-height: 620px;
+    preferred-width: opening-width;
+    preferred-height: opening-height;
+    min-width: 520px;
+    min-height: 480px;
+    background: Palette.background;
+    default-font-size: 14px;
+    forward-focus: keys;
+
+    in property <string> app;
+    in property <string> os;
+    in property <string> payload;
+    in property <string> location;
+    // The whole report, copied and given to the issue; the panes show its parts.
+    in-out property <string> report-text;
+    in property <string> backtrace-text;
+    in-out property <string> environment-text;
+    // 0 shows the backtrace, 1 the environment; a manual report has only the latter.
+    in-out property <int> pane;
+    property <string> shown-text: root.is-crash && root.pane == 0 ? root.backtrace-text : root.environment-text;
+    in property <string> monospace-font;
+    in property <string> status;
+    in property <bool> is-crash: true;
+    in property <bool> finished;
+    in property <bool> has-problems;
+    in property <float> progress;
+    in property <string> progress-label;
+    in property <string> archive-path;
+    callback show-archive;
+    callback copy-report;
+    callback copy-section(string);
+    callback report-issue;
+    callback close-report;
+
+    // Whether the report has been scrolled to its top once it has a height.
+    property <bool> report-laid-out;
+
+    // Setting the text moves the cursor to its end, and the TextEdit scrolls
+    // to the cursor; each pane reads from the top.
+    changed shown-text => {
+        report-edit.set-selection-offsets(0, 0);
+    }
+
+    keys := FocusScope {
+        forward-focus: issue-button;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-report();
+                return accept;
+            }
+            return reject;
+        }
+
+        VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+
+            HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    // A crash is an error; a manual report only asks for one.
+                    background: !root.is-crash ? Palette.accent-background
+                        : Palette.color-scheme == ColorScheme.dark ? #FF99A4 : #C42B1C;
+                    Text {
+                        text: root.is-crash ? "!" : "?";
+                        font-size: 24px;
+                        font-weight: 700;
+                        color: !root.is-crash ? Palette.accent-foreground
+                            : Palette.color-scheme == ColorScheme.dark ? black : white;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: ReporterStrings.heading;
+                        font-size: 20px;
+                        font-weight: 600;
+                        color: Palette.foreground;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: ReporterStrings.description;
+                        color: Palette.foreground.with-alpha(0.65);
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            GridLayout {
+                spacing: 8px;
+                spacing-horizontal: 16px;
+                Row {
+                    DetailLabel { text: ReporterStrings.version; }
+                    DetailValue { text: root.app; }
+                }
+                Row {
+                    DetailLabel { text: ReporterStrings.system; }
+                    DetailValue { text: root.os; }
+                }
+                if root.is-crash: Row {
+                    DetailLabel { text: ReporterStrings.error; }
+                    DetailValue { text: root.payload; max-lines: 3; overflow: elide; }
+                }
+                if root.is-crash: Row {
+                    DetailLabel { text: ReporterStrings.location; }
+                    // A source path reads as code, like the report below.
+                    DetailValue { text: root.location; font-family: root.monospace-font; }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.progress-label;
+                        color: root.has-problems ? (Palette.color-scheme == ColorScheme.dark ? #FFCC66 : #8A5700) : Palette.foreground;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        font-size: 12px;
+                    }
+                    if root.finished && root.archive-path != "": Button { text: ReporterStrings.show-in-folder; clicked => { root.show-archive(); } }
+                }
+                if !root.finished: ProgressIndicator { progress: root.progress; }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    if root.is-crash: Segmented {
+                        options: [ReporterStrings.backtrace, ReporterStrings.environment];
+                        current <=> root.pane;
+                    }
+                    if !root.is-crash: Text {
+                        text: ReporterStrings.environment;
+                        color: Palette.foreground;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                // Sees the pointer before the TextEdit and passes every event
+                // on, so hovering the report reveals its copy button.
+                report-hover := TouchArea {
+                    vertical-stretch: 1;
+                    report-edit := TextEdit {
+                        width: 100%;
+                        height: 100%;
+                        // Until the first layout the TextEdit scrolls to the cursor
+                        // against a negative visible height, which leaves even a
+                        // cursor at the start scrolled down a few lines.
+                        changed height => {
+                            if (!root.report-laid-out && self.height > 0) {
+                                root.report-laid-out = true;
+                                self.content-x = 0;
+                                self.content-y = 0;
+                            }
+                        }
+                        text: root.shown-text;
+                        read-only: true;
+                        wrap: no-wrap;
+                        font-size: 12px;
+                        font-family: root.monospace-font;
+                    }
+                    // Fluent's button fill is translucent: an opaque backing in
+                    // the TextEdit's colour keeps long lines from showing through.
+                    Rectangle {
+                        x: section-copy.x;
+                        y: section-copy.y;
+                        width: section-copy.width;
+                        height: section-copy.height;
+                        visible: section-copy.visible;
+                        border-radius: 4px;
+                        background: Palette.alternate-background;
+                    }
+                    // Clear of the vertical scroll bar; shown while the pointer
+                    // or the keyboard is in the report.
+                    section-copy := Button {
+                        x: parent.width - self.width - 20px;
+                        y: 8px;
+                        text: ReporterStrings.copy-section;
+                        visible: report-hover.has-hover || report-edit.has-focus || self.has-focus;
+                        clicked => { root.copy-section(root.shown-text); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                Button {
+                    text: ReporterStrings.copy;
+                    clicked => { root.copy-report(); }
+                }
+                Text {
+                    text: root.status;
+                    wrap: word-wrap;
+                    color: Palette.foreground.with-alpha(0.65);
+                    font-size: 12px;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                Button {
+                    text: ReporterStrings.close;
+                    clicked => { root.close-report(); }
+                }
+                issue-button := Button {
+                    text: ReporterStrings.report-issue;
+                    primary: true;
+                    enabled: root.finished;
+                    clicked => { root.report-issue(); }
+                }
+            }
+        }
+    }
+}

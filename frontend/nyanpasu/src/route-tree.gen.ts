@@ -42,6 +42,7 @@ import { Route as mainMainTopologyIndexRouteImport } from './pages/(main)/main/t
 import { Route as trayMenuTrayMenuProxiesIndexRouteImport } from './pages/(tray-menu)/tray-menu/proxies/index'
 import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
 import { Route as mainMainProfilesTypeIndexRouteImport } from './pages/(main)/main/profiles/$type/index'
+import { Route as mainMainProfilesFolderIndexRouteImport } from './pages/(main)/main/profiles/folder/index'
 import { Route as mainMainProvidersProxiesKeyRouteImport } from './pages/(main)/main/providers/proxies/$key'
 import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/main/providers/rules/$key'
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
@@ -52,6 +53,7 @@ import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/ma
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
+import { Route as mainMainProfilesFolderFolderIdIndexRouteImport } from './pages/(main)/main/profiles/folder/$folderId/index'
 import { Route as mainMainSettingsAboutCreditsIndexRouteImport } from './pages/(main)/main/settings/about/credits/index'
 import { Route as mainMainSettingsClashAiIndexRouteImport } from './pages/(main)/main/settings/clash/ai/index'
 import { Route as mainMainSettingsClashControlIndexRouteImport } from './pages/(main)/main/settings/clash/control/index'
@@ -243,6 +245,12 @@ const mainMainProfilesTypeIndexRoute =
     path: '/$type/',
     getParentRoute: () => mainMainProfilesRouteRoute,
   } as any)
+const mainMainProfilesFolderIndexRoute =
+  mainMainProfilesFolderIndexRouteImport.update({
+    id: '/folder/',
+    path: '/folder/',
+    getParentRoute: () => mainMainProfilesRouteRoute,
+  } as any)
 const mainMainProvidersProxiesKeyRoute =
   mainMainProvidersProxiesKeyRouteImport.update({
     id: '/proxies/$key',
@@ -301,6 +309,12 @@ const mainMainProfilesTypeDetailUidRoute =
   mainMainProfilesTypeDetailUidRouteImport.update({
     id: '/$type/detail/$uid',
     path: '/$type/detail/$uid',
+    getParentRoute: () => mainMainProfilesRouteRoute,
+  } as any)
+const mainMainProfilesFolderFolderIdIndexRoute =
+  mainMainProfilesFolderFolderIdIndexRouteImport.update({
+    id: '/folder/$folderId/',
+    path: '/folder/$folderId/',
     getParentRoute: () => mainMainProfilesRouteRoute,
   } as any)
 const mainMainSettingsAboutCreditsIndexRoute =
@@ -431,12 +445,14 @@ export interface FileRoutesByFullPath {
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
+  '/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
   '/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/main/profiles/folder/$folderId/': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
   '/main/settings/clash/ai/': typeof mainMainSettingsClashAiIndexRoute
   '/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
@@ -477,12 +493,14 @@ export interface FileRoutesByTo {
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
+  '/main/profiles/folder': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug': typeof mainMainSettingsDebugIndexRoute
   '/main/topology/$dimension': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/main/profiles/folder/$folderId': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/main/settings/about/credits': typeof mainMainSettingsAboutCreditsIndexRoute
   '/main/settings/clash/ai': typeof mainMainSettingsClashAiIndexRoute
   '/main/settings/clash/control': typeof mainMainSettingsClashControlIndexRoute
@@ -538,12 +556,14 @@ export interface FileRoutesById {
   '/(main)/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/(tray-menu)/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/(main)/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
+  '/(main)/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/(main)/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/(main)/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
   '/(main)/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/(main)/main/profiles/folder/$folderId/': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/(main)/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
   '/(main)/main/settings/clash/ai/': typeof mainMainSettingsClashAiIndexRoute
   '/(main)/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
@@ -599,12 +619,14 @@ export interface FileRouteTypes {
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type/'
+    | '/main/profiles/folder/'
     | '/main/settings/about/'
     | '/main/settings/debug/'
     | '/main/topology/$dimension/'
     | '/main/topology/flow/'
     | '/main/topology/map/'
     | '/main/profiles/$type/detail/$uid'
+    | '/main/profiles/folder/$folderId/'
     | '/main/settings/about/credits/'
     | '/main/settings/clash/ai/'
     | '/main/settings/clash/control/'
@@ -645,12 +667,14 @@ export interface FileRouteTypes {
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type'
+    | '/main/profiles/folder'
     | '/main/settings/about'
     | '/main/settings/debug'
     | '/main/topology/$dimension'
     | '/main/topology/flow'
     | '/main/topology/map'
     | '/main/profiles/$type/detail/$uid'
+    | '/main/profiles/folder/$folderId'
     | '/main/settings/about/credits'
     | '/main/settings/clash/ai'
     | '/main/settings/clash/control'
@@ -705,12 +729,14 @@ export interface FileRouteTypes {
     | '/(main)/main/proxies/group/$name'
     | '/(tray-menu)/tray-menu/proxies/group/$name'
     | '/(main)/main/profiles/$type/'
+    | '/(main)/main/profiles/folder/'
     | '/(main)/main/settings/about/'
     | '/(main)/main/settings/debug/'
     | '/(main)/main/topology/$dimension/'
     | '/(main)/main/topology/flow/'
     | '/(main)/main/topology/map/'
     | '/(main)/main/profiles/$type/detail/$uid'
+    | '/(main)/main/profiles/folder/$folderId/'
     | '/(main)/main/settings/about/credits/'
     | '/(main)/main/settings/clash/ai/'
     | '/(main)/main/settings/clash/control/'
@@ -967,6 +993,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainProfilesTypeIndexRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }
+    '/(main)/main/profiles/folder/': {
+      id: '/(main)/main/profiles/folder/'
+      path: '/folder'
+      fullPath: '/main/profiles/folder/'
+      preLoaderRoute: typeof mainMainProfilesFolderIndexRouteImport
+      parentRoute: typeof mainMainProfilesRouteRoute
+    }
     '/(main)/main/providers/proxies/$key': {
       id: '/(main)/main/providers/proxies/$key'
       path: '/proxies/$key'
@@ -1035,6 +1068,13 @@ declare module '@tanstack/react-router' {
       path: '/$type/detail/$uid'
       fullPath: '/main/profiles/$type/detail/$uid'
       preLoaderRoute: typeof mainMainProfilesTypeDetailUidRouteImport
+      parentRoute: typeof mainMainProfilesRouteRoute
+    }
+    '/(main)/main/profiles/folder/$folderId/': {
+      id: '/(main)/main/profiles/folder/$folderId/'
+      path: '/folder/$folderId'
+      fullPath: '/main/profiles/folder/$folderId/'
+      preLoaderRoute: typeof mainMainProfilesFolderFolderIdIndexRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }
     '/(main)/main/settings/about/credits/': {
@@ -1189,7 +1229,9 @@ interface mainMainProfilesRouteRouteChildren {
   mainMainProfilesInspectRouteRoute: typeof mainMainProfilesInspectRouteRoute
   mainMainProfilesIndexRoute: typeof mainMainProfilesIndexRoute
   mainMainProfilesTypeIndexRoute: typeof mainMainProfilesTypeIndexRoute
+  mainMainProfilesFolderIndexRoute: typeof mainMainProfilesFolderIndexRoute
   mainMainProfilesTypeDetailUidRoute: typeof mainMainProfilesTypeDetailUidRoute
+  mainMainProfilesFolderFolderIdIndexRoute: typeof mainMainProfilesFolderFolderIdIndexRoute
 }
 
 const mainMainProfilesRouteRouteChildren: mainMainProfilesRouteRouteChildren = {
@@ -1197,7 +1239,10 @@ const mainMainProfilesRouteRouteChildren: mainMainProfilesRouteRouteChildren = {
   mainMainProfilesInspectRouteRoute: mainMainProfilesInspectRouteRoute,
   mainMainProfilesIndexRoute: mainMainProfilesIndexRoute,
   mainMainProfilesTypeIndexRoute: mainMainProfilesTypeIndexRoute,
+  mainMainProfilesFolderIndexRoute: mainMainProfilesFolderIndexRoute,
   mainMainProfilesTypeDetailUidRoute: mainMainProfilesTypeDetailUidRoute,
+  mainMainProfilesFolderFolderIdIndexRoute:
+    mainMainProfilesFolderFolderIdIndexRoute,
 }
 
 const mainMainProfilesRouteRouteWithChildren =

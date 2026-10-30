@@ -15,3 +15,6 @@ cc 9838b486025c593b4a827c31d18fc033e3c3937190e48731b31063f34fea7d58
 # value: 0 }], false, false), Clock(1000), Write([Point { at: 0, label: 0, value: 0 }], false,
 # false), Write([Point { at: 0, label: 0, value: 0 }], true, false), Write([Point { at: 0,
 # label: 0, value: 0 }], false, false), Capture(false), Policy(None, None), Capture(false)]
+cc 8bb6da0e4a51cf83235c0276eaa4e7d655d0ca066e2598a00174340b0923b593
+# shrinks to the last writes leaving journal records in old windows, which no commit chunks
+# before finish converges, so the cursor stops before windows that hold more than R runs

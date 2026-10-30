@@ -9,8 +9,8 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
     FolderId, ManagedProfilePath, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
-    ProfileMetadataPatch, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch,
-    SubscriptionInfo, TransformKind,
+    ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
+    RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
 };
 use nyanpasu_core::{
     profile_import::{self, ImportClassification, ImportFacts, ProfileImportKind},
@@ -91,20 +91,25 @@ impl ProfilesClient {
                 .context("failed to initialize profiles persistent state manager")?
         };
 
-        // A hand-edited or downgraded document may carry malformed folders.
-        // Folders are display state, so they are repaired and the repair is
-        // saved rather than refusing to start over them.
+        // A hand-edited or downgraded document may carry malformed folders or
+        // proxy group layouts. Both are display state, so they are repaired and
+        // the repair is saved rather than refusing to start over them.
         let mut loaded = manager.snapshot().as_ref().clone();
         let repair = loaded.repair_folders();
-        if !repair.is_empty() {
-            tracing::warn!(?repair, "repaired malformed profile folders");
+        let layout_repair = loaded.repair_proxy_group_layouts();
+        if !repair.is_empty() || !layout_repair.is_empty() {
+            tracing::warn!(
+                ?repair,
+                ?layout_repair,
+                "repaired malformed profile arrangements"
+            );
             loaded
                 .bump_revision()
-                .context("failed to advance the profiles revision after repairing folders")?;
+                .context("failed to advance the profiles revision after repairing arrangements")?;
             manager
                 .upsert(loaded)
                 .await
-                .context("failed to save the repaired profile folders")?;
+                .context("failed to save the repaired profile arrangements")?;
         }
 
         let snapshot = manager.snapshot_handle();
@@ -327,6 +332,42 @@ impl ProfilesClient {
         .await
     }
 
+    /// Replace how `profile`'s proxy groups are arranged; an empty layout removes it.
+    pub async fn set_proxy_group_layout(
+        &self,
+        profile: ProfileId,
+        layout: ProxyGroupLayout,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetProxyGroupLayout {
+                profile,
+                layout,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
+    /// Create a proxy group folder around `members`, which leave the places they were in.
+    pub async fn create_proxy_group_folder(
+        &self,
+        profile: ProfileId,
+        name: String,
+        members: Vec<String>,
+    ) -> Result<(CommitReport, FolderId), ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::CreateProxyGroupFolder {
+                profile,
+                name,
+                members,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
     /// Create a folder holding `members`; they leave the folders they were in.
     pub async fn create_folder(
         &self,
@@ -520,8 +561,8 @@ mod tests {
         ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
         ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition, ProfileFolder,
         ProfileId, ProfileLayout, ProfileMetadata, ProfileSource, ProfileValidationError, Profiles,
-        RemoteProfileOptions, RemoteSyncInterval, ScriptRuntime, ScriptTransform, SubscriptionInfo,
-        TransformDefinition,
+        ProxyGroupFolder, ProxyGroupLayout, RemoteProfileOptions, RemoteSyncInterval,
+        ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
     use nyanpasu_core::state::ReplaceIfVersionError;
     use struct_patch::Patch as _;
@@ -3312,6 +3353,215 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(!raw.contains("ghost"), "{raw}");
         assert!(!raw.contains("Again"), "{raw}");
+    }
+
+    fn group_folder(id: &str, name: &str, members: &[&str]) -> ProxyGroupFolder {
+        ProxyGroupFolder {
+            id: FolderId(id.into()),
+            name: name.into(),
+            members: members.iter().map(|name| (*name).to_owned()).collect(),
+        }
+    }
+
+    fn group_layout(ungrouped: &[&str], folders: Vec<ProxyGroupFolder>) -> ProxyGroupLayout {
+        ProxyGroupLayout {
+            folders,
+            ungrouped: ungrouped.iter().map(|name| (*name).to_owned()).collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn set_proxy_group_layout_commits_once_and_stores_it_for_the_profile() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot().revision();
+        let layout = group_layout(
+            &["Proxy"],
+            vec![group_folder("f1", "Streaming", &["Netflix"])],
+        );
+
+        let report = client
+            .set_proxy_group_layout(ProfileId("cfg1".into()), layout.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(report.snapshot.revision(), before + 1);
+        assert_eq!(
+            report.snapshot.proxy_group_layouts[&ProfileId("cfg1".into())],
+            layout
+        );
+        assert!(
+            !report
+                .snapshot
+                .proxy_group_layouts
+                .contains_key(&ProfileId("cfg2".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_proxy_group_layout_removes_the_arrangement() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_proxy_group_layout(ProfileId("cfg1".into()), group_layout(&["Proxy"], vec![]))
+            .await
+            .unwrap();
+
+        let report = client
+            .set_proxy_group_layout(ProfileId("cfg1".into()), ProxyGroupLayout::default())
+            .await
+            .unwrap();
+
+        assert!(report.snapshot.proxy_group_layouts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_invalid_proxy_group_layout_fails_and_changes_nothing() {
+        let (client, _dir) = seeded_client().await;
+        let before = client.snapshot();
+
+        let duplicate = client
+            .set_proxy_group_layout(
+                ProfileId("cfg1".into()),
+                group_layout(&["Proxy", "Proxy"], vec![]),
+            )
+            .await
+            .unwrap_err();
+        let not_a_config = client
+            .set_proxy_group_layout(ProfileId("ovl1".into()), group_layout(&["Proxy"], vec![]))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(duplicate, ProfilesError::ValidationFailed { .. }));
+        assert!(matches!(
+            not_a_config,
+            ProfilesError::ValidationFailed { .. }
+        ));
+        let after = client.snapshot();
+        assert_eq!(after.revision(), before.revision());
+        assert!(after.proxy_group_layouts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_proxy_group_folder_moves_the_members_into_a_new_folder() {
+        let (client, _dir) = seeded_client().await;
+        let profile = ProfileId("cfg1".into());
+        client
+            .set_proxy_group_layout(
+                profile.clone(),
+                group_layout(
+                    &["Proxy", "Netflix"],
+                    vec![group_folder("f1", "Old", &["YouTube", "Disney"])],
+                ),
+            )
+            .await
+            .unwrap();
+
+        let (report, folder) = client
+            .create_proxy_group_folder(
+                profile.clone(),
+                "Streaming".into(),
+                vec!["Netflix".into(), "YouTube".into()],
+            )
+            .await
+            .unwrap();
+
+        let layout = &report.snapshot.proxy_group_layouts[&profile];
+        assert_eq!(layout.ungrouped, vec!["Proxy".to_owned()]);
+        assert_eq!(layout.folders[0], group_folder("f1", "Old", &["Disney"]));
+        assert_eq!(
+            layout.folders[1],
+            group_folder(&folder.0, "Streaming", &["Netflix", "YouTube"])
+        );
+        assert_ne!(folder, FolderId("f1".into()));
+    }
+
+    #[tokio::test]
+    async fn create_proxy_group_folder_works_on_a_profile_without_a_layout() {
+        let (client, _dir) = seeded_client().await;
+        let profile = ProfileId("cfg2".into());
+
+        let (report, folder) = client
+            .create_proxy_group_folder(profile.clone(), "Regions".into(), vec!["HK".into()])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            report.snapshot.proxy_group_layouts[&profile],
+            group_layout(&[], vec![group_folder(&folder.0, "Regions", &["HK"])])
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_profile_removes_its_proxy_group_layout() {
+        let (client, _dir) = seeded_client().await;
+        for uid in ["cfg1", "cfg2"] {
+            client
+                .set_proxy_group_layout(ProfileId(uid.into()), group_layout(&["Proxy"], vec![]))
+                .await
+                .unwrap();
+        }
+
+        let report = client.delete(ProfileId("cfg1".into())).await.unwrap();
+
+        assert_eq!(
+            report
+                .snapshot
+                .proxy_group_layouts
+                .keys()
+                .collect::<Vec<_>>(),
+            vec![&ProfileId("cfg2".into())]
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_keeps_the_proxy_group_layouts_of_the_new_document() {
+        let (client, _dir) = seeded_client().await;
+        let mut profiles = seeded_profiles();
+        profiles
+            .proxy_group_layouts
+            .insert(ProfileId("cfg1".into()), group_layout(&["Proxy"], vec![]));
+
+        let report = client.replace(profiles).await.unwrap();
+
+        assert_eq!(
+            report.snapshot.proxy_group_layouts[&ProfileId("cfg1".into())],
+            group_layout(&["Proxy"], vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_repairs_a_malformed_proxy_group_layout_and_saves_the_repair() {
+        let dir = tempdir().unwrap();
+        let path = temp_profiles_path(&dir);
+        std::fs::write(
+            &path,
+            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\nrevision: 7\nproxy_group_layouts:\n  a:\n    folders:\n    - id: f1\n      name: ''\n      members:\n      - Netflix\n      - Proxy\n    ungrouped:\n    - Proxy\n  ghost:\n    folders: []\n    ungrouped:\n    - Proxy\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+        )
+        .unwrap();
+
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            path.clone(),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("a malformed layout is repaired, not fatal");
+
+        let snapshot = client.snapshot();
+        assert_eq!(
+            snapshot.proxy_group_layouts.keys().collect::<Vec<_>>(),
+            vec![&ProfileId("a".into())]
+        );
+        assert_eq!(
+            snapshot.proxy_group_layouts[&ProfileId("a".into())],
+            group_layout(&["Proxy"], vec![group_folder("f1", "Folder", &["Netflix"])])
+        );
+        assert_eq!(snapshot.revision(), 8);
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("ghost"), "{raw}");
     }
 
     #[tokio::test]

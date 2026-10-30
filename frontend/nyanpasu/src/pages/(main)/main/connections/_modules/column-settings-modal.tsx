@@ -1,9 +1,9 @@
-import DragIndicatorRounded from '~icons/material-symbols/drag-indicator-rounded'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
+import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
@@ -28,30 +28,21 @@ function ColumnItem({
   locked: boolean
   onVisibleChange: (visible: boolean) => void
 }) {
-  const { ref, handleRef, isDragging } = useSortable({ id, index })
+  // The whole row is the drag source; the pointer sensor ignores the switch.
+  const { ref, isDragging } = useSortable({ id, index })
 
   return (
     <div
       ref={ref}
       className={cn(
-        'flex h-12 items-center gap-2 rounded-xl pr-3 pl-1',
+        'flex h-12 items-center gap-2 rounded-xl pr-3 pl-4 select-none',
         'bg-surface-variant/30 dark:bg-surface-variant/10',
+        'hover:bg-surface-variant/60 cursor-grab active:cursor-grabbing',
+        'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
         isDragging && 'opacity-60',
       )}
       data-slot="connections-column-settings-item"
     >
-      <button
-        ref={handleRef}
-        type="button"
-        className={cn(
-          'text-on-surface-variant grid size-9 shrink-0 cursor-grab touch-none place-content-center',
-          'focus-visible:ring-primary rounded-lg outline-none focus-visible:ring-2',
-        )}
-        aria-label={m.connections_column_settings_reorder()}
-      >
-        <DragIndicatorRounded className="size-5" />
-      </button>
-
       <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
 
       <Switch
@@ -84,7 +75,7 @@ export default function ColumnSettingsModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      {/* Focusing the first drag handle on open would mark it as if picked. */}
+      {/* Focusing the first row on open would mark it as if picked. */}
       <ModalContent onOpenAutoFocus={(event) => event.preventDefault()}>
         <Card divider className="flex w-96 max-w-[90vw] flex-col">
           <CardHeader>
@@ -94,6 +85,7 @@ export default function ColumnSettingsModal({
           <CardContent asChild className="p-0">
             <ScrollArea className="max-h-[60vh]">
               <DragDropProvider
+                sensors={WHOLE_ITEM_DRAG_SENSORS}
                 onDragEnd={(event) => {
                   const next = move(order, event)
 

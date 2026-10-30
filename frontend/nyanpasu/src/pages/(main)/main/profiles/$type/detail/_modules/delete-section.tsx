@@ -1,7 +1,7 @@
 import { m } from '@/paraglide/messages'
 import { useCurrentProfileUid } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import { useDeleteProfile } from '../../_modules/use-delete-profile'
+import { useDeleteProfile } from '../../../_modules/use-delete-profile'
 import { SettingsGroup } from '../../../../_modules/settings-card'
 import { DetailRow } from './detail-section'
 

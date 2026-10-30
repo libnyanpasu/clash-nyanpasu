@@ -23,6 +23,7 @@ import {
 } from './download.ts'
 import {
   verifyEnableLoopbackChecksum,
+  type EnableLoopbackAsset,
   type EnableLoopbackInfo,
 } from './enable-loopback.ts'
 import { normalizeArch, normalizePlatform } from './platform.ts'
@@ -86,8 +87,43 @@ export async function resolveEnableLoopback(
   options?: ResolveOptions,
   download = downloadFile,
 ): Promise<ResolveInfo> {
-  const { version, assetName, downloadURL, checksumURL } = await info
-  const file = 'enableLoopback.exe'
+  const resolved = await info
+  return resolveEnableLoopbackAsset(
+    context,
+    resolved.version,
+    resolved,
+    'enableLoopback.exe',
+    options,
+    download,
+  )
+}
+
+/** Windows builds before Windows 11 24H1 load it beside enableLoopback.exe. */
+export async function resolveEnableLoopbackBootstrapper(
+  context: ResourceResolverOptions,
+  info: Promise<EnableLoopbackInfo> | EnableLoopbackInfo,
+  options?: ResolveOptions,
+  download = downloadFile,
+): Promise<ResolveInfo> {
+  const resolved = await info
+  return resolveEnableLoopbackAsset(
+    context,
+    resolved.version,
+    resolved.bootstrapper,
+    'Microsoft.WindowsAppRuntime.Bootstrap.dll',
+    options,
+    download,
+  )
+}
+
+async function resolveEnableLoopbackAsset(
+  context: ResourceResolverOptions,
+  version: string,
+  { assetName, downloadURL, checksumURL }: EnableLoopbackAsset,
+  file: string,
+  options: ResolveOptions | undefined,
+  download: typeof downloadFile,
+): Promise<ResolveInfo> {
   const targetPath = path.join(context.resourcesDir, file)
   const stampPath = `${targetPath}.version`
   const stamp = `${version}/${assetName}`

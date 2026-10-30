@@ -69,14 +69,12 @@ export default function AnimatedLogo({
       let cancelled = false
 
       const run = async () => {
-        // Init animation: blur fade in
+        // Init animation: fade and scale in
         logoControls.set({
-          filter: 'blur(10px)',
           opacity: 0,
           scale: 2,
         })
         await logoControls.start({
-          filter: 'blur(0px)',
           opacity: 1,
           scale: 1,
           transition: {
@@ -105,7 +103,6 @@ export default function AnimatedLogo({
       logoControls.start({
         rotate: 0,
         scale: 1,
-        filter: 'blur(0px)',
         opacity: 1,
         transition: { duration: 0.4, ease: FAST_SPRING },
       })

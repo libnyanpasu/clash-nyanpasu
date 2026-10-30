@@ -785,9 +785,27 @@ sidebar:
 - A status chip explains the state in words: applied, not applied yet, or the
   core's view pending.
 
-**Graph.** The existing Mermaid chain stays as an optional "Graph" view in the
-rail heading, because it helps with compositions, which branch. It stays lazy
-and strict. The list is the default.
+**Lanes.** The build is a graph: a node's `next` edges can fork (a composition's
+contributors) and merge. Both views read one lane layout, computed from the visible
+steps in display order. The first successor of a step continues in its lane, each
+further successor opens a lane, and a step that several lanes lead into closes them.
+A step hidden by the "only changed" filter is bypassed, so its neighbours stay joined.
+A back edge, which cannot be drawn downward, is left out.
+
+**List (branch gutter).** The rail shows the lanes in a gutter to the left of the rows,
+outside the cards, so a row keeps its M3E shape and carries no coloured border.
+Lane 0 is an outline-coloured line; further lanes are primary. A start is a hollow
+ring, a merge a diamond, a fork a rounded square, and every other step a dot; the
+selected step has a halo. The lines run through the stage labels. The gutter is as
+wide as the lanes the build needs, 14px each, so a plain chain costs 14px.
+
+**Graph.** A "List | Graph" segment in the toolbar switches the left pane. The graph
+draws each stage as a tonal 28px band with a kicker, each step as a 44px node with its
+status icon (no border or stripe), and each edge as a line with rounded elbows.
+Selected is a primary fill, the field trace is primary-container and dims the rest,
+and edges into or out of the selection are primary. Zoom out, zoom in and Fit sit at
+the corner, with a legend of the status icons and the "only changed" switch. Selecting
+a node opens the same step detail as the list, without a card layer around it.
 
 **Kept.**
 
@@ -796,6 +814,23 @@ and strict. The list is the default.
 - Redaction on the backend.
 - Invalidation on `configurationStatusChanged`.
 - The profile chips: `useProfileLookup` and `useOpenProfile`.
+
+**Implementation addendum.**
+
+- **Narrow widths.** In a container narrower than `3xl` the step rail moves
+  into a drawer that a "Steps" button in the toolbar opens. The detail panel
+  then takes the full width.
+- **Step keys.** The keys above gain a few forms so every node has one:
+  - `core_controller` is `core`; `builtin_transform` nodes are
+    `builtin-transform:<step_index>`.
+  - A scoped transform whose role is not the selected one appends
+    `@<composition_id>`.
+  - Any key still shared by several nodes gets `~2`, `~3`, ... in node order.
+- **Only steps that changed something.** It keeps Source, Result, the selected
+  step, steps with changed fields, and steps whose `max_log_level` is a warning
+  or an error.
+- **Selection.** The selected step lives in the `?step=` search param and
+  changes use `replace`, so the back button does not walk through steps.
 
 ### 8.4 Links between the tools
 
@@ -811,7 +846,7 @@ The bindings are regenerated.
 
 - **`final_id: number`.** It removes the guess about which node is the final
   config.
-- **`max_log_level: Option<LogLevel>` per node.** Without it, a failure can only
+- **`max_log_level: Option<StepLogLevel>` per node.** Without it, a failure can only
   be found by fetching every node's content, and each fetch restores and
   serializes the YAML.
 

@@ -1,84 +1,141 @@
-import { memo } from 'react'
+import AddRounded from '~icons/material-symbols/add-rounded'
+import { useEffect } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import GroupSummary from '@/components/proxies/group-summary'
-import { CacheImage } from '@/components/ui/image'
 import {
-  ClashProxiesQuery,
-  ClashProxiesQueryGroupItem,
-  useClashProxies,
-} from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
-import { Link, useLocation } from '@tanstack/react-router'
+  NavigationList,
+  NavigationListGroup,
+} from '@nyanpasu/ui/navigation-list'
+import { m } from '@/paraglide/messages'
+import { pointerIntersection } from '@dnd-kit/collision'
+import { useDroppable } from '@dnd-kit/react'
+import { useClashProxies } from '@nyanpasu/query'
+import { useParams } from '@tanstack/react-router'
+import { useFolderCollapsed } from '../../_modules/use-folder-collapsed'
+import GroupFolder from './group-folder'
+import GroupListActions from './group-list-actions'
+import GroupNavItem from './group-nav-item'
+import {
+  folderOfDragId,
+  GROUP_DRAG_TYPE,
+  groupNamesOf,
+  SECTION_DRAG_TYPE,
+  sectionId,
+} from './resolve-group-drop'
+import { useGroupLayout } from './use-group-layout'
+import { useProxiesDnd } from './use-proxies-dnd'
 
-// Memoized so that switching groups re-renders only the items whose active
-// state changed, not every group in the sidebar.
-const ProxiesNavigateItem = memo(function ProxiesNavigateItem({
-  group,
-  proxies,
-  active,
-}: {
-  group: ClashProxiesQueryGroupItem
-  proxies: ClashProxiesQuery
-  active: boolean
-}) {
-  return (
-    <Button variant="fab" data-active={String(active)} asChild>
-      <Link
-        className={cn(
-          'h-16',
-          'flex items-center gap-2',
-          'data-[active=true]:bg-surface-variant/80',
-          'data-[active=false]:bg-transparent',
-          'data-[active=false]:shadow-none',
-          'data-[active=false]:hover:shadow-none',
-          'data-[active=false]:hover:bg-surface-variant/30',
-        )}
-        to="/main/proxies/group/$name"
-        params={{
-          name: group.name,
-        }}
-        search={(previous) => ({ q: previous.q })}
-      >
-        <div className="flex w-full min-w-0 items-center gap-2.5">
-          {group.icon && (
-            <div className="size-8 shrink-0">
-              <CacheImage
-                icon={group.icon}
-                className="size-8"
-                loadingClassName="rounded-full"
-              />
-            </div>
-          )}
-
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="truncate text-sm font-medium" title={group.name}>
-              {group.name}
-            </div>
-            <GroupSummary group={group} proxies={proxies} />
-          </div>
-        </div>
-      </Link>
-    </Button>
-  )
-})
+const COLLAPSED_KV_KEY = 'proxies-folder-collapsed'
 
 export default function ProxiesNavigate() {
   const {
     proxies: { data: proxies },
   } = useClashProxies()
 
-  const location = useLocation()
+  const { layout, openCreateFolder } = useGroupLayout()
 
-  return (
-    <div className="flex flex-col gap-2 p-2">
-      {proxies?.groups.map((group) => (
-        <ProxiesNavigateItem
-          key={group.name}
+  const { isCollapsed, toggle, setAll } = useFolderCollapsed(COLLAPSED_KV_KEY)
+
+  // The lists follow a drag in progress, so they show where an item would land.
+  const { items, folders: folderOrder } = useProxiesDnd()
+
+  const { ref: groupsRef } = useDroppable({
+    id: sectionId(null),
+    type: SECTION_DRAG_TYPE,
+    accept: GROUP_DRAG_TYPE,
+    collisionDetector: pointerIntersection,
+  })
+
+  const { name: activeName } = useParams({ strict: false })
+
+  const folderOfActive = layout?.folders.find((folder) =>
+    activeName ? folder.members.includes(activeName) : false,
+  )?.id
+
+  // A selected group stays visible: opening it (from a link, the keyboard or
+  // the tray) opens the folder it is in.
+  useEffect(() => {
+    if (folderOfActive) {
+      setAll([folderOfActive], false)
+    }
+  }, [folderOfActive, activeName, setAll])
+
+  if (!proxies || !layout) {
+    return null
+  }
+
+  const groups = new Map(proxies.groups.map((group) => [group.name, group]))
+
+  const renderGroups = (section: string | null) =>
+    groupNamesOf(items[sectionId(section)] ?? []).map((name, index) => {
+      const group = groups.get(name)
+
+      return group ? (
+        <GroupNavItem
+          key={name}
           group={group}
           proxies={proxies}
-          active={location.pathname.endsWith(`/group/${group.name}`)}
+          active={name === activeName}
+          index={index}
+          section={section}
         />
-      ))}
-    </div>
+      ) : null
+    })
+
+  const folderIds = layout.folders.map((folder) => folder.id)
+
+  const folders = folderOrder.flatMap(
+    (id) =>
+      layout.folders.find((folder) => folder.id === folderOfDragId(id)) ?? [],
+  )
+
+  return (
+    <NavigationList aria-label={m.proxies_nav_label()}>
+      <NavigationListGroup
+        ref={groupsRef}
+        label={m.proxies_nav_groups()}
+        action={
+          <GroupListActions
+            hasFolders={folderIds.length > 0}
+            onExpandAll={() => setAll(folderIds, false)}
+            onCollapseAll={() => setAll(folderIds, true)}
+          />
+        }
+      >
+        {renderGroups(null)}
+      </NavigationListGroup>
+
+      <NavigationListGroup
+        label={m.proxies_nav_folders()}
+        className="[&>[role=group]]:gap-2"
+        action={
+          <Button
+            icon
+            className="mr-2 size-8"
+            aria-label={m.profile_folder_new_title()}
+            data-slot="proxies-folder-add"
+            onClick={() => openCreateFolder()}
+          >
+            <AddRounded className="size-5" />
+          </Button>
+        }
+      >
+        {folders.map((folder, index) => {
+          const members = groupNamesOf(items[sectionId(folder.id)] ?? [])
+
+          return (
+            <GroupFolder
+              key={folder.id}
+              folder={{ ...folder, members }}
+              index={index}
+              count={folders.length}
+              expanded={!isCollapsed(folder.id)}
+              onToggle={() => toggle(folder.id)}
+            >
+              {renderGroups(folder.id)}
+            </GroupFolder>
+          )
+        })}
+      </NavigationListGroup>
+    </NavigationList>
   )
 }

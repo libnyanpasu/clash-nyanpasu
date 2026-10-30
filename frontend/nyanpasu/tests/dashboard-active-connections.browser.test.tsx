@@ -13,7 +13,7 @@ import { ActiveConnectionsWidget } from '@/components/widgets/widget-active-conn
 import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { DndContext } from '@dnd-kit/core'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
 import type {
   ClashConnection_Serialize,
@@ -117,9 +117,10 @@ test.for([3, 2, 4])(
       invoke: async <T,>(method: string, params?: Record<string, unknown>) => {
         invoked.push(method)
         if (method === 'get_storage_item')
-          return (
-            params?.key === 'dashboard-widget-configs' ? storage : null
-          ) as T
+          return {
+            value: params?.key === 'dashboard-widget-configs' ? storage : null,
+            revision: 0,
+          } as T
         if (method === 'get_clash_ws_snapshot')
           return {
             sequence: 0,
@@ -145,7 +146,6 @@ test.for([3, 2, 4])(
       },
       once: async () => () => {},
       emit: async () => {},
-      listenMutation: async () => () => {},
       listenResync: () => () => {},
       dispose: () => {},
     }
@@ -214,13 +214,15 @@ test.for([3, 2, 4])(
       <div style={{ transform: 'scale(0.5)', transformOrigin: 'top left' }}>
         <RpcProvider rpc={rpc}>
           <QueryClientProvider client={queryClient}>
-            <ClashWSProvider>
-              <ConnectionDetailsBridge>
-                <TooltipProvider>
-                  <RouterProvider router={router} />
-                </TooltipProvider>
-              </ConnectionDetailsBridge>
-            </ClashWSProvider>
+            <KvStorageProvider>
+              <ClashWSProvider>
+                <ConnectionDetailsBridge>
+                  <TooltipProvider>
+                    <RouterProvider router={router} />
+                  </TooltipProvider>
+                </ConnectionDetailsBridge>
+              </ClashWSProvider>
+            </KvStorageProvider>
           </QueryClientProvider>
         </RpcProvider>
       </div>,

@@ -1,5 +1,12 @@
 //! Actor-owned proxy cache shared by IPC and tray adapters.
-use std::{hash::Hasher, sync::Arc, time::Duration};
+use std::{
+    hash::Hasher,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use crate::client::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
@@ -47,6 +54,8 @@ enum Message {
         reply: RpcReplyPort<Result<()>>,
     },
     Refresh,
+    /// The sidebar arrangement of the groups changed; the snapshot did not.
+    Rearranged,
     Invalidated(u64),
 }
 
@@ -77,6 +86,7 @@ struct Args {
     core: CoreClient,
     snapshots: watch::Sender<Option<Arc<Snapshot>>>,
     changes: watch::Sender<()>,
+    refresh_queued: Arc<AtomicBool>,
     shutdown: CancellationToken,
 }
 struct State {
@@ -87,6 +97,9 @@ struct State {
     generation: u64,
     monitor: Option<tokio::task::JoinHandle<()>>,
     timer: Option<tokio::task::JoinHandle<()>>,
+    /// Set while a refresh request waits in the mailbox, so a burst of
+    /// requests (a delay test per node) rereads once rather than once each.
+    refresh_queued: Arc<AtomicBool>,
     shutdown: CancellationToken,
 }
 impl Drop for State {
@@ -282,6 +295,7 @@ impl Actor for ProxiesActor {
             generation: 0,
             monitor: None,
             timer: None,
+            refresh_queued: args.refresh_queued,
             shutdown: args.shutdown,
         })
     }
@@ -324,7 +338,7 @@ impl Actor for ProxiesActor {
                 Message::Provider { reply, .. } => {
                     let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
                 }
-                Message::Refresh | Message::Invalidated(_) => {}
+                Message::Refresh | Message::Rearranged | Message::Invalidated(_) => {}
             }
             return Ok(());
         }
@@ -403,9 +417,13 @@ impl Actor for ProxiesActor {
                 let _ = reply.send(result);
             }
             Message::Refresh => {
+                state.refresh_queued.store(false, Ordering::Release);
                 if let Err(error) = state.read(&actor, true).await {
                     tracing::debug!(%error, "proxy cache refresh failed");
                 }
+            }
+            Message::Rearranged => {
+                state.changes.send_replace(());
             }
             Message::Invalidated(generation) if generation == state.generation => state.clear(),
             Message::Invalidated(_) => {}
@@ -428,6 +446,7 @@ struct ClientInner {
     actor: ActorRef<Message>,
     snapshots: watch::Receiver<Option<Arc<Snapshot>>>,
     changes: watch::Receiver<()>,
+    refresh_queued: Arc<AtomicBool>,
 }
 impl Drop for ClientInner {
     fn drop(&mut self) {
@@ -450,6 +469,7 @@ impl ProxiesClient {
     ) -> Result<Self> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());
+        let refresh_queued = Arc::new(AtomicBool::new(false));
         let (actor, _) = Actor::spawn(
             None,
             ProxiesActor,
@@ -458,6 +478,7 @@ impl ProxiesClient {
                 shutdown: shutdown.clone(),
                 snapshots,
                 changes,
+                refresh_queued: refresh_queued.clone(),
             },
         )
         .await?;
@@ -466,6 +487,7 @@ impl ProxiesClient {
             actor,
             snapshots: snapshot_rx,
             changes: changes_rx,
+            refresh_queued,
         })))
     }
     async fn call<T: Send + 'static>(
@@ -541,7 +563,13 @@ impl ProxiesClient {
         .await
     }
     pub fn request_refresh(&self) {
-        let _ = self.0.actor.cast(Message::Refresh);
+        if !self.0.refresh_queued.swap(true, Ordering::AcqRel) {
+            let _ = self.0.actor.cast(Message::Refresh);
+        }
+    }
+    /// Wakes the subscribers because the order they show the groups in changed.
+    pub fn notify_rearranged(&self) {
+        let _ = self.0.actor.cast(Message::Rearranged);
     }
     pub fn snapshot(&self) -> Proxies {
         self.0
@@ -872,6 +900,25 @@ mod tests {
         server.abort();
     }
     #[tokio::test]
+    async fn a_burst_of_refresh_requests_rereads_once() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        for _ in 0..5 {
+            client.request_refresh();
+        }
+        // Answered after the queued refresh, from the snapshot it just read.
+        client.get(false).await.unwrap();
+        assert_eq!(fixture.reads.load(Ordering::SeqCst), 2);
+        client.request_refresh();
+        client.get(false).await.unwrap();
+        assert_eq!(
+            fixture.reads.load(Ordering::SeqCst),
+            3,
+            "a request after the reread queues another"
+        );
+        server.abort();
+    }
+    #[tokio::test]
     async fn provider_summaries_keep_node_counts_and_notify_only_for_application_changes() {
         let (client, core, _, fixture, server) = setup().await;
         let node = |name, delay| {
@@ -950,6 +997,25 @@ mod tests {
 
         client.get(true).await.unwrap();
         assert!(!changes.has_changed().unwrap());
+
+        client.stop_for_test().await.unwrap();
+        core.shutdown().await.unwrap();
+        server.abort();
+    }
+    /// The arrangement is not part of the snapshot, so the subscribers (the
+    /// tray) are woken by the owner on request.
+    #[tokio::test]
+    async fn a_rearrangement_wakes_subscribers_although_the_snapshot_is_unchanged() {
+        let (client, core, _, _, server) = setup().await;
+        let mut changes = client.subscribe();
+        client.get(true).await.unwrap();
+        changes.borrow_and_update();
+
+        client.notify_rearranged();
+        tokio::time::timeout(Duration::from_secs(5), changes.changed())
+            .await
+            .expect("the subscribers are woken")
+            .unwrap();
 
         client.stop_for_test().await.unwrap();
         core.shutdown().await.unwrap();

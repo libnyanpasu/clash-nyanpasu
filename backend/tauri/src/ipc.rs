@@ -11,8 +11,6 @@ use crate::{
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     utils::{
-        candy,
-        collect::EnvInfo,
         help,
         proxy_env::{self, CopyEnvOption},
     },
@@ -28,7 +26,7 @@ use log::debug;
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
-use storage::{StorageOperationError, WebStorage};
+use storage::{StorageItem, StorageOperationError, StorageRevision, WebStorage};
 use tauri::{AppHandle, State, Webview};
 use tray::icon::TrayIcon;
 
@@ -372,7 +370,7 @@ pub struct GetSysProxyResponse {
 use crate::state::profiles::actor::NewProfileRequest;
 use nyanpasu_config::profile::{
     FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
-    Profiles as DomainProfiles, RemoteProfileOptionsPatch, TransformKind,
+    Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
 };
 
 #[nyanpasu_macro::rpc(http)]
@@ -524,6 +522,31 @@ pub async fn set_profile_layout(
     layout: ProfileLayout,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_profile_layout(layout).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_proxy_group_layout(
+    client: State<'_, NyanpasuClient>,
+    profile: ProfileId,
+    layout: ProxyGroupLayout,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.set_proxy_group_layout(profile, layout).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn create_proxy_group_folder(
+    client: State<'_, NyanpasuClient>,
+    profile: ProfileId,
+    name: String,
+    members: Vec<String>,
+) -> Result<crate::client::runtime::MutationOutcome<FolderId>> {
+    Ok(client
+        .create_proxy_group_folder(profile, name, members)
+        .await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1045,8 +1068,12 @@ pub async fn get_core_version(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>) -> Result {
-    let paths = paths.clone();
+pub async fn collect_logs(
+    app_handle: AppHandle,
+    paths: State<'_, PathResolver>,
+    client: State<'_, NyanpasuClient>,
+) -> Result {
+    let archive = crate::utils::collect::logs_archive((*paths).clone(), (*client).clone()).await?;
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());
@@ -1057,7 +1084,7 @@ pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>)
         .save_file(move |file_path| match file_path {
             Some(path) if path.as_path().is_some() => {
                 debug!("{path:#?}");
-                match candy::collect_logs(path.as_path().unwrap(), &paths) {
+                match std::fs::copy(&archive, path.as_path().unwrap()) {
                     Ok(_) => (),
                     Err(err) => {
                         log::error!(target: "app", "{err:?}");
@@ -1232,11 +1259,16 @@ pub async fn clash_api_healthcheck_proxy_provider(
     Ok(client.healthcheck_proxy_provider(name).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn collect_envs(paths: State<'_, PathResolver>) -> Result<EnvInfo<'static>> {
-    Ok((crate::utils::collect::collect_envs(paths))?)
+pub fn report_issue(
+    paths: State<'_, PathResolver>,
+    client: State<'_, NyanpasuClient>,
+    page: nyanpasu_diagnose::report::PageCapabilities,
+) -> Result {
+    crate::utils::collect::report_issue((*paths).clone(), (*client).clone(), page)?;
+    Ok(())
 }
 
 #[nyanpasu_macro::rpc]
@@ -1629,25 +1661,26 @@ fn web_key(key: &str) -> String {
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<Option<String>> {
-    let value = (storage.get_item(web_key(&key)))?;
-    Ok(value)
+pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageItem<String>> {
+    Ok(storage.get_item(web_key(&key))?)
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn set_storage_item(storage: State<'_, Storage>, key: String, value: String) -> Result {
-    (storage.set_item(web_key(&key), &value))?;
-    Ok(())
+pub fn set_storage_item(
+    storage: State<'_, Storage>,
+    key: String,
+    value: String,
+) -> Result<StorageRevision> {
+    Ok(storage.set_item(web_key(&key), &value)?)
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result {
-    (storage.remove_item(web_key(&key)))?;
-    Ok(())
+pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageRevision> {
+    Ok(storage.remove_item(web_key(&key))?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -2079,6 +2112,20 @@ pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()>
 #[specta::specta]
 pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
     kinds::create_debug_tray_menu_window(&app_handle)?;
+    Ok(())
+}
+
+/// Panics on purpose, so the crash reporter can be tested. The panic hook
+/// exits differently when the main thread panics, hence the choice.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<()> {
+    if main_thread {
+        app_handle.run_on_main_thread(|| panic!("simulated crash on the main thread"))?;
+    } else {
+        std::thread::spawn(|| panic!("simulated crash on a background thread"));
+    }
     Ok(())
 }
 

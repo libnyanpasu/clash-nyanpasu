@@ -12,7 +12,7 @@ import type { WidgetConfigStorage } from '@/components/widgets/widget-config'
 import WidgetItem from '@/components/widgets/widget-item'
 import { m } from '@/paraglide/messages'
 import { DndContext } from '@dnd-kit/core'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
 import type { ProfileDocument_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -61,12 +61,15 @@ function createRpc() {
     invoke: async <T,>(method: string, params?: Record<string, unknown>) => {
       switch (method) {
         case 'get_storage_item':
-          return backend.storage as T
+          return {
+            value: backend.storage,
+            revision: backend.writes.length,
+          } as T
         case 'set_storage_item': {
           const value = params?.value as string
           backend.storage = value
           backend.writes.push(value)
-          return null as T
+          return backend.writes.length as T
         }
         case 'get_profiles':
           return { items: backend.profiles, valid: [], current: null } as T
@@ -104,7 +107,6 @@ function createRpc() {
     listen: async () => () => {},
     once: async () => () => {},
     emit: async () => {},
-    listenMutation: async () => () => {},
     listenResync: () => () => {},
     dispose: () => {},
   }
@@ -176,13 +178,15 @@ function mount(
   root.render(
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={queryClient}>
-        <DashboardProvider>
-          <TooltipProvider>
-            <DndContext>
-              <Scene />
-            </DndContext>
-          </TooltipProvider>
-        </DashboardProvider>
+        <KvStorageProvider>
+          <DashboardProvider>
+            <TooltipProvider>
+              <DndContext>
+                <Scene />
+              </DndContext>
+            </TooltipProvider>
+          </DashboardProvider>
+        </KvStorageProvider>
       </QueryClientProvider>
     </RpcProvider>,
   )

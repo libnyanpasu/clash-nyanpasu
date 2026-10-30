@@ -1,16 +1,15 @@
-import { PropsWithChildren } from 'react'
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
+  MenubarCheckboxItem,
+  MenubarContent,
+  MenubarMenu,
+  MenubarRadioGroup,
+  MenubarRadioItem,
+  MenubarSeparator,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+  MenubarTrigger,
+} from '@nyanpasu/ui/menubar'
 import { CircularProgress } from '@nyanpasu/ui/progress'
 import { useLanguage } from '@/components/providers/language-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
@@ -28,24 +27,24 @@ const LanguageSelector = () => {
   }
 
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
+    <MenubarSub>
+      <MenubarSubTrigger>
         {m.header_settings_action_language()}
-      </DropdownMenuSubTrigger>
+      </MenubarSubTrigger>
 
-      <DropdownMenuSubContent>
-        <DropdownMenuRadioGroup
+      <MenubarSubContent>
+        <MenubarRadioGroup
           value={language}
           onValueChange={handleLanguageChange}
         >
           {Object.entries(locales).map(([key, value]) => (
-            <DropdownMenuRadioItem key={key} value={value}>
+            <MenubarRadioItem key={key} value={value}>
               {m.language(key, { locale: value })}
-            </DropdownMenuRadioItem>
+            </MenubarRadioItem>
           ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+        </MenubarRadioGroup>
+      </MenubarSubContent>
+    </MenubarSub>
   )
 }
 
@@ -63,24 +62,24 @@ const ThemeModeSelector = () => {
   } satisfies Record<ThemeMode, string>
 
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
+    <MenubarSub>
+      <MenubarSubTrigger>
         {m.header_settings_action_theme_mode()}
-      </DropdownMenuSubTrigger>
+      </MenubarSubTrigger>
 
-      <DropdownMenuSubContent>
-        <DropdownMenuRadioGroup
+      <MenubarSubContent>
+        <MenubarRadioGroup
           value={themeMode}
           onValueChange={handleThemeModeChange}
         >
           {Object.entries(messages).map(([key, value]) => (
-            <DropdownMenuRadioItem key={key} value={key}>
+            <MenubarRadioItem key={key} value={key}>
               {value}
-            </DropdownMenuRadioItem>
+            </MenubarRadioItem>
           ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+        </MenubarRadioGroup>
+      </MenubarSubContent>
+    </MenubarSub>
   )
 }
 
@@ -99,13 +98,13 @@ const ProxySettings = () => {
   } satisfies Record<ProxyMode, string>
 
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
+    <MenubarSub>
+      <MenubarSubTrigger>
         {m.header_settings_action_proxy_settings()}
-      </DropdownMenuSubTrigger>
+      </MenubarSubTrigger>
 
-      <DropdownMenuSubContent>
-        <DropdownMenuCheckboxItem
+      <MenubarSubContent>
+        <MenubarCheckboxItem
           key="system-proxy"
           className="group relative"
           checked={systemProxy.isActive}
@@ -122,9 +121,9 @@ const ProxySettings = () => {
             className="invisible size-4 group-data-[loading=true]:visible"
             indeterminate
           />
-        </DropdownMenuCheckboxItem>
+        </MenubarCheckboxItem>
 
-        <DropdownMenuCheckboxItem
+        <MenubarCheckboxItem
           key="tun-mode"
           className="group relative"
           checked={tunMode.isActive}
@@ -141,43 +140,41 @@ const ProxySettings = () => {
             className="invisible size-4 group-data-[loading=true]:visible"
             indeterminate
           />
-        </DropdownMenuCheckboxItem>
+        </MenubarCheckboxItem>
 
-        <DropdownMenuSeparator />
+        <MenubarSeparator />
 
-        <DropdownMenuRadioGroup
+        <MenubarRadioGroup
           value={
             Object.entries(proxyMode.value).find(([, enabled]) => enabled)?.[0]
           }
           onValueChange={(value) => proxyMode.upsert(value as ProxyMode)}
         >
           {Object.keys(proxyMode.value).map((key) => (
-            <DropdownMenuRadioItem
-              key={key}
-              className="[&>div]:pl-1.5"
-              value={key}
-            >
+            <MenubarRadioItem key={key} value={key}>
               {proxyModeMessages[key as ProxyMode]}
-            </DropdownMenuRadioItem>
+            </MenubarRadioItem>
           ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+        </MenubarRadioGroup>
+      </MenubarSubContent>
+    </MenubarSub>
   )
 }
 
-export default function HeaderSettingsAction({ children }: PropsWithChildren) {
+export default function HeaderSettingsAction() {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+    <MenubarMenu value="settings">
+      <MenubarTrigger className="min-h-8 py-1">
+        {m.header_settings_action_title()}
+      </MenubarTrigger>
 
-      <DropdownMenuContent>
+      <MenubarContent>
         <LanguageSelector />
 
         <ThemeModeSelector />
 
         <ProxySettings />
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </MenubarContent>
+    </MenubarMenu>
   )
 }

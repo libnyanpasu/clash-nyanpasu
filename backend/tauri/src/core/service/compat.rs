@@ -13,13 +13,10 @@ use nyanpasu_ipc::types::{ServiceStatus, StatusInfo};
 /// PR-5-pre 起，只有主版本等于此值的 daemon 允许承载核心生命周期。
 pub const REQUIRED_SERVICE_MAJOR: u64 = 2;
 
-/// 原生存储的用户绑定、内核隔离和生命周期管理随 `2.0.0-rc.10` 发布。
-/// 更早版本仍可能生成桌面用户不可写的缓存，必须先升级服务。
-///
-/// 存成字符串而非 `semver::Version` 常量：`Prerelease::new` 不是 `const fn`，
-/// 能进 const 上下文的只有不带预发布标识的版本，而那样只能写成 `2.0.0`——按
-/// semver 预发布序 `2.0.0-rc.3 < 2.0.0`，反而会把本轮发布的 rc 系列全拒掉。
-pub const REQUIRED_SERVICE_MIN: &str = "2.0.0-rc.10";
+/// 残留 pid 记录遇 PID 复用时的清扫修复随 `2.0.2` 发布。
+/// 更早版本在记录的 PID 被其他进程复用后无法构造内核管理器，服务每次启动都失败，
+/// 必须先升级服务。
+pub const REQUIRED_SERVICE_MIN: &str = "2.0.2";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -237,17 +234,24 @@ mod tests {
         assert!(compat.allows_service_backend());
     }
 
-    /// 最低版本不能连"正式版"一起挡掉：按 semver 预发布序 `2.0.0 > 2.0.0-rc.3`。
     #[test]
-    fn the_stable_release_outranks_the_minimum() {
+    fn a_daemon_without_the_reused_pid_sweep_is_incompatible() {
         let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
         info.server
             .as_mut()
             .expect("running fixture must include server info")
-            .version = Cow::Borrowed("2.0.0");
+            .version = Cow::Borrowed("2.0.1");
         let compat = ServiceCompat::classify(&info);
 
-        assert!(compat.allows_service_backend());
+        assert_eq!(
+            compat,
+            ServiceCompat::Incompatible {
+                server_version: "2.0.1".to_owned(),
+                required_major: REQUIRED_SERVICE_MAJOR,
+                required_min: REQUIRED_SERVICE_MIN.to_owned(),
+            }
+        );
+        assert!(!compat.allows_service_backend());
     }
 
     /// 最低版本是编译期字面量，写错了要在测试里就炸，而不是等运行时 `expect`。

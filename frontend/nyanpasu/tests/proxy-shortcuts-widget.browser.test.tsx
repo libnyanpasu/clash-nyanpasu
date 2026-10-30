@@ -90,7 +90,6 @@ test('the proxy status header settles instead of flickering in a narrow widget',
     listen: async () => () => {},
     once: async () => () => {},
     emit: async () => {},
-    listenMutation: async () => () => {},
     listenResync: () => () => {},
     dispose: () => {},
   }

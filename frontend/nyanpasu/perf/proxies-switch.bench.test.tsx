@@ -1,10 +1,11 @@
-import { Profiler } from 'react'
+import { Profiler, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { Route as GroupRoute } from '@/pages/(main)/main/proxies/group/$name'
 import { Route as ProxiesRoute } from '@/pages/(main)/main/proxies/route'
 import {
@@ -60,10 +61,33 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     upsert: noop,
   }
   const connections = { data: [] }
+  // Stable, as the store's own are.
+  const kvState = { isLoading: false, readError: null, refresh: noop }
+  const setKv = async () => true
+  const setting = { value: undefined, upsert: noop }
+  // No arrangement stored: the sidebar lists the groups in the core's order.
+  const profile = {
+    query: { data: { current: null, proxy_group_layouts: {} } },
+    setProxyGroupLayout: { mutateAsync: noop },
+    createProxyGroupFolder: { mutateAsync: noop },
+  }
 
   return {
     ...(await importOriginal<object>()),
+    // The outlet freezes the clash streams of a leaving page; none run here.
+    ClashWSFreezeBoundary: ({ children }: { children: ReactNode }) => children,
+    ClashConnectionDetailsFreezeBoundary: ({
+      children,
+    }: {
+      children: ReactNode
+    }) => children,
     useClashProxies: () => clashProxies,
+    useProfile: () => profile,
+    // The node view and the latency URL keep their defaults; there is no
+    // backend to store in.
+    useKvStorage: (_key: string, defaultValue: unknown) =>
+      [defaultValue, setKv, kvState] as const,
+    useSetting: () => setting,
     useProxyMode: () => proxyMode,
     useClashConnections: () => connections,
     useCachedIcon: () => ({ data: undefined }),
@@ -77,16 +101,18 @@ function createProxiesRouter() {
     component: () => (
       <TooltipProvider>
         <BlockTaskProvider>
-          <div
-            className="bg-mixed-background flex flex-col"
-            style={{ height: 850, width: 1350 }}
-          >
-            <Profiler id="app" onRender={onProfilerRender}>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>div]:min-h-0 [&>div]:flex-1">
-                <Outlet />
-              </div>
-            </Profiler>
-          </div>
+          <ContextMenuProvider>
+            <div
+              className="bg-mixed-background flex flex-col"
+              style={{ height: 850, width: 1350 }}
+            >
+              <Profiler id="app" onRender={onProfilerRender}>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>div]:min-h-0 [&>div]:flex-1">
+                  <Outlet />
+                </div>
+              </Profiler>
+            </div>
+          </ContextMenuProvider>
         </BlockTaskProvider>
       </TooltipProvider>
     ),
@@ -114,6 +140,12 @@ function createProxiesRouter() {
     path: '/group/$name',
     getParentRoute: () => proxiesRoute,
   } as never)
+  // Another section of the app, to open the proxies page from.
+  const otherRoute = createRoute({
+    path: '/main/other',
+    getParentRoute: () => mainRoute,
+    component: () => null,
+  })
 
   return createRouter({
     routeTree: rootRoute.addChildren([
@@ -122,6 +154,7 @@ function createProxiesRouter() {
           indexRoute as never,
           groupRoute as never,
         ]),
+        otherRoute,
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: ['/main/proxies'] }),
@@ -178,6 +211,18 @@ test(`switch between ${GROUPS} groups of ${NODES} nodes`, async ({
     )
   }
 
+  // The page, sidebar included, opened on a group from another section.
+  const opens = []
+  for (let i = 1; i <= SWITCHES; i++) {
+    await router.navigate({ to: '/main/other' as never })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    opens.push(
+      await measureFrames(() => {
+        openGroup(i)
+      }, 1200),
+    )
+  }
+
   if (env.VITE_PERF_PRINT_GAPS) {
     for (const sample of samples) {
       console.log(`GAPS ${sample.gaps.map((gap) => gap.toFixed(0)).join(',')}`)
@@ -207,5 +252,15 @@ test(`switch between ${GROUPS} groups of ${NODES} nodes`, async ({
     ...summarize(samples.slice(WARMUP)),
   }
 
-  console.log(`PERF_REPORT ${JSON.stringify(report)}`)
+  console.log(`PERF_REPORT ${JSON.stringify({ action: 'switch', ...report })}`)
+  console.log(
+    `PERF_REPORT ${JSON.stringify({
+      action: 'open',
+      browser: server.browser,
+      groups: GROUPS,
+      nodes: NODES,
+      throttle: THROTTLE,
+      ...summarize(opens.slice(WARMUP)),
+    })}`,
+  )
 })

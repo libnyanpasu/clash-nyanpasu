@@ -14,7 +14,7 @@ import SystemUpdateAltRounded from '~icons/material-symbols/system-update-alt-ro
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import VpnLockRounded from '~icons/material-symbols/vpn-lock-rounded'
 import WidgetsRounded from '~icons/material-symbols/widgets-rounded'
-import { ComponentProps, ReactNode } from 'react'
+import { ComponentProps, ForwardedRef, ReactNode } from 'react'
 import {
   NavigationList,
   NavigationListGroup,
@@ -28,7 +28,7 @@ import { m } from '@/paraglide/messages'
 import { useCoreAgentSkills, useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
-import { Link, useMatchRoute } from '@tanstack/react-router'
+import { Link, useLinkProps } from '@tanstack/react-router'
 
 const NyanpasuLogo = () => {
   return (
@@ -53,6 +53,7 @@ function SettingsNavigationItem({
   color,
   label,
   description,
+  ref,
   ...props
 }: ComponentProps<typeof Link> & {
   icon: ReactNode
@@ -60,22 +61,28 @@ function SettingsNavigationItem({
   label: string
   description: string
 }) {
-  const matchRoute = useMatchRoute()
-
   // An item stays selected on its child pages, unless the link asks for an
-  // exact match because another item lives under its path.
-  const isActive = !!matchRoute({
-    to: props.to,
-    fuzzy: !props.activeOptions?.exact,
-  })
+  // exact match because another item lives under its path. The link tells
+  // whether it is active from the location being navigated to; `matchRoute`
+  // reads the last resolved one until the navigation settles, so the settings
+  // opened from another section would render their item unselected first and
+  // then fade into the selected colors.
+  const linkProps = useLinkProps(
+    {
+      ...props,
+      activeOptions: { ...props.activeOptions, includeSearch: false },
+    } as Parameters<typeof useLinkProps>[0],
+    ref as ForwardedRef<Element>,
+  )
+  const isActive = linkProps['aria-current'] === 'page'
 
   return (
     <NavigationListItem active={isActive} asChild>
-      <Link aria-current={isActive ? 'page' : undefined} {...props}>
+      <a {...linkProps}>
         <NavigationListItemIcon color={color}>{icon}</NavigationListItemIcon>
 
         <NavigationListItemText headline={label} supporting={description} />
-      </Link>
+      </a>
     </NavigationListItem>
   )
 }

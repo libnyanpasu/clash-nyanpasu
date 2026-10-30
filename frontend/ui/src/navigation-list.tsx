@@ -2,6 +2,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import {
   createContext,
   useContext,
+  useDeferredValue,
   useId,
   type ComponentProps,
   type ReactNode,
@@ -153,30 +154,52 @@ export function NavigationListItem({
   )
 }
 
+/**
+ * The shape at the start of an item. A glyph child takes a tonal `color`. An
+ * `image` child (an `<img>`) is the item's own picture: it is shown whole, with
+ * no background, no clipping and no cropping, and it does not change when its
+ * item is selected.
+ */
 export function NavigationListItemIcon({
   color,
+  image,
   className,
   children,
   ...props
-}: Omit<ComponentProps<'span'>, 'color'> & {
-  color: NavigationListItemColor
-}) {
+}: Omit<ComponentProps<'span'>, 'color'> &
+  (
+    | { color: NavigationListItemColor; image?: false }
+    | { color?: undefined; image: true }
+  )) {
   const { active } = useContext(NavigationListItemContext)
+  // The morph is timed on the JS frame loop. Selecting an item usually
+  // renders a new page in the same update, and the frames that work blocks
+  // would consume most of the morph, so it starts in a deferred render after.
+  const morphActive = useDeferredValue(active)
 
   return (
     <span
-      className={cn('flex size-8 shrink-0', className)}
+      className={cn(
+        'flex size-8 shrink-0',
+        image &&
+          'items-center justify-center [&>img]:size-full [&>img]:object-contain',
+        className,
+      )}
       data-slot="navigation-list-item-icon"
       aria-hidden
       {...props}
     >
-      <MaterialShape
-        className={navigationListItemIconVariants({ color })}
-        // A circle at rest; the selected item morphs it into a cookie.
-        depth={active ? undefined : 0}
-      >
-        {children}
-      </MaterialShape>
+      {image ? (
+        children
+      ) : (
+        <MaterialShape
+          className={navigationListItemIconVariants({ color })}
+          // A circle at rest; the selected item morphs it into a cookie.
+          depth={morphActive ? undefined : 0}
+        >
+          {children}
+        </MaterialShape>
+      )}
     </span>
   )
 }
@@ -184,22 +207,56 @@ export function NavigationListItemIcon({
 export function NavigationListItemText({
   headline,
   supporting,
+  supportingStart,
   className,
   ...props
 }: Omit<ComponentProps<'span'>, 'children'> & {
   headline: string
   supporting: string
+  /** Fixed content before the supporting text, such as a chip or an icon. */
+  supportingStart?: ReactNode
 }) {
+  const supportingText = (
+    <TextMarquee className="text-on-surface-variant group-data-[active=true]/navigation-list-item:text-on-secondary-container/80 text-xs leading-4">
+      {supporting}
+    </TextMarquee>
+  )
+
   return (
     <span
       className={cn('flex min-w-0 flex-1 flex-col gap-0.5', className)}
       {...props}
     >
-      <span className="text-sm leading-5 font-medium">{headline}</span>
+      <span className="truncate text-sm leading-5 font-medium" title={headline}>
+        {headline}
+      </span>
 
-      <TextMarquee className="text-on-surface-variant group-data-[active=true]/navigation-list-item:text-on-secondary-container/80 text-xs leading-4">
-        {supporting}
-      </TextMarquee>
+      {supportingStart ? (
+        <span className="flex min-w-0 items-center gap-1.5">
+          {supportingStart}
+
+          <span className="min-w-0 flex-1">{supportingText}</span>
+        </span>
+      ) : (
+        supportingText
+      )}
     </span>
+  )
+}
+
+/**
+ * Content after the text of an item, such as a status chip. It never shrinks,
+ * so the text gives way instead.
+ */
+export function NavigationListItemTrailing({
+  className,
+  ...props
+}: ComponentProps<'span'>) {
+  return (
+    <span
+      className={cn('flex shrink-0 items-center', className)}
+      data-slot="navigation-list-item-trailing"
+      {...props}
+    />
   )
 }

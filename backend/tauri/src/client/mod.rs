@@ -64,8 +64,8 @@ use nyanpasu_config::{
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
         FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
-        ProfileMetadataPatch, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch,
-        TransformKind,
+        ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
+        RemoteProfileOptionsPatch, TransformKind,
     },
     runtime::executor::ResolvedPortBindings,
 };
@@ -77,10 +77,8 @@ pub use app_lifecycle::track_until_shutdown;
 pub use clash_info::ClashInfo;
 pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
-#[cfg(test)]
-pub use event_sink::NoopUiEventSink;
 pub use event_sink::{
-    MainThreadHandoff, MainThreadWork, STATE_CHANGED_URI, StateChanged, TauriMainThread,
+    MainThreadHandoff, MainThreadWork, StateChanged, StateChangedEvent, TauriMainThread,
     TauriUiEventSink, UiEventSink,
 };
 pub use main_thread::MainThreadExecutor;
@@ -469,7 +467,6 @@ impl NyanpasuClient {
                     streams.clone(),
                     core_logs.clone(),
                 )),
-                ui: ui_sink,
                 initial: effects::plan::ApplicationEffectInputs::project(
                     &application.snapshot().state,
                     &clash_config.snapshot().state,
@@ -480,9 +477,11 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        let notifications: Arc<dyn effects::ports::CommitNotifications> =
+            Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
-                notifications: Arc::new(effects.clone()),
+                notifications: notifications.clone(),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
                 profiles: profiles.snapshot_handle(),
@@ -508,7 +507,7 @@ impl NyanpasuClient {
         )
         .await?;
         if let Some(mutations) = mutations {
-            mutations.connect(application_workflow.clone(), Arc::new(effects.clone()));
+            mutations.connect(application_workflow.clone(), notifications);
         }
         let updater = crate::core::updater::UpdaterClient::spawn(
             Arc::new(crate::core::updater::HttpUpdaterBackend::new(
@@ -1267,6 +1266,54 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_layout(layout).await?;
         Ok(self.after_commit(&report).await)
+    }
+
+    /// Replace how `profile`'s proxy groups are arranged in the Proxies sidebar.
+    /// An empty layout removes the arrangement.
+    pub async fn set_proxy_group_layout(
+        &self,
+        profile: ProfileId,
+        layout: ProxyGroupLayout,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self
+            .inner
+            .profiles
+            .set_proxy_group_layout(profile, layout)
+            .await?;
+        self.inner.proxies.notify_rearranged();
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// How the proxy groups of the running profile are arranged, if the user
+    /// arranged them.
+    pub fn current_proxy_group_layout(&self) -> Option<ProxyGroupLayout> {
+        let profiles = self.inner.profiles.snapshot();
+        profiles
+            .current
+            .as_ref()
+            .and_then(|current| profiles.proxy_group_layouts.get(current))
+            .cloned()
+    }
+
+    /// Create a proxy group folder around `members`, which leave the places
+    /// they were in.
+    pub async fn create_proxy_group_folder(
+        &self,
+        profile: ProfileId,
+        name: String,
+        members: Vec<String>,
+    ) -> Result<runtime::MutationOutcome<FolderId>> {
+        let (report, folder) = self
+            .inner
+            .profiles
+            .create_proxy_group_folder(profile, name, members)
+            .await?;
+        self.inner.proxies.notify_rearranged();
+        Ok(runtime::MutationOutcome::from_parts(
+            folder,
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone()))
     }
 
     /// Create a folder around `members`, which leave the folders they were in.
@@ -2100,7 +2147,7 @@ pub(crate) mod tests {
             if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(nyanpasu_ipc::types::StatusInfo {
                     name: "test-service".into(),
-                    version: "2.0.0".into(),
+                    version: "2.0.2".into(),
                     status: nyanpasu_ipc::types::ServiceStatus::Stopped,
                     server: None,
                 });
@@ -2108,11 +2155,11 @@ pub(crate) mod tests {
             self.calls.lock().unwrap().push("ensure_ready");
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
-                version: std::borrow::Cow::Borrowed("2.0.0"),
+                version: std::borrow::Cow::Borrowed("2.0.2"),
                 status: nyanpasu_ipc::types::ServiceStatus::Running,
                 server: Some(nyanpasu_ipc::api::status::StatusResBody {
                     log_query_version: None,
-                    version: std::borrow::Cow::Borrowed("2.0.0"),
+                    version: std::borrow::Cow::Borrowed("2.0.2"),
                     core_infos: nyanpasu_ipc::api::status::CoreInfos {
                         instance_id: None,
                         r#type: None,
@@ -4976,6 +5023,83 @@ pub(crate) mod tests {
                     .and_then(serde_yaml::Value::as_str),
                 Some("t6-fresh")
             );
+            client.request_shutdown();
+            client.wait_shutdown().await;
+        });
+    }
+
+    /// Every committed configuration reaches the frontend as a state change,
+    /// and a profiles commit names the files it may have changed.
+    #[test]
+    fn commits_tell_the_frontend_what_changed() {
+        #[derive(Default)]
+        struct Recorded(std::sync::Mutex<Vec<StateChanged>>);
+        impl UiEventSink for Recorded {
+            fn state_changed(&self, state: StateChanged) {
+                self.0.lock().unwrap().push(state);
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let ui = Arc::new(Recorded::default());
+        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+        args.ui_sink = ui.clone();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let take = || std::mem::take(&mut *ui.0.lock().unwrap());
+        let files = |events: Vec<StateChanged>| -> Vec<Vec<ProfileId>> {
+            events
+                .into_iter()
+                .filter_map(|event| match event {
+                    StateChanged::Profiles { files } => Some(files),
+                    _ => None,
+                })
+                .collect()
+        };
+        tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
+            take();
+
+            let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
+            patch.language = Some(nyanpasu_config::application::I18nLanguage::Korean);
+            client.patch_app_config(patch).await.unwrap();
+            assert!(
+                take()
+                    .iter()
+                    .any(|event| matches!(event, StateChanged::NyanpasuConfig))
+            );
+
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some(
+                        "proxies: []
+"
+                        .into(),
+                    ),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            assert_eq!(files(take()), [vec![uid.clone()]], "an import");
+            client
+                .save_profile_file(
+                    uid.clone(),
+                    "proxies: []
+mode: rule
+"
+                    .into(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(files(take()), [vec![uid.clone()]], "a saved file");
+            client
+                .reorder_profiles_by_list(vec![uid.clone()])
+                .await
+                .unwrap();
+            assert_eq!(files(take()), [Vec::<ProfileId>::new()], "the order alone");
+            client.delete_profile(uid.clone()).await.unwrap();
+            assert_eq!(files(take()), [vec![uid]], "a removed profile");
+
             client.request_shutdown();
             client.wait_shutdown().await;
         });

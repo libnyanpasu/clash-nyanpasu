@@ -34,7 +34,13 @@ export default defineConfig({
         },
         optimizeDeps: {
           // A barrel loads every re-export in native ESM, including unused controls.
-          entries: [...browserTests, 'frontend/ui/src/index.ts'],
+          // The tests do not import the workers, so a dependency only a worker
+          // has would be found mid-run, and optimizing it reloads the tests.
+          entries: [
+            ...browserTests,
+            'frontend/ui/src/index.ts',
+            'frontend/nyanpasu/src/**/*.worker.ts',
+          ],
           include: [
             'react',
             'react-dom',

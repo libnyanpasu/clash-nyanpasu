@@ -1,22 +1,23 @@
-import { PropsWithChildren } from 'react'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarTrigger,
+} from '@nyanpasu/ui/menubar'
 import { m } from '@/paraglide/messages'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../main/profiles/_modules/consts'
 import { Action } from '../main/profiles/$type/index'
 
-export default function HeaderFileAction({ children }: PropsWithChildren) {
+export default function HeaderFileAction() {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+    <MenubarMenu value="file">
+      <MenubarTrigger className="min-h-8 py-1">
+        {m.header_file_action_title()}
+      </MenubarTrigger>
 
-      <DropdownMenuContent>
-        <DropdownMenuItem asChild>
+      <MenubarContent>
+        <MenubarItem asChild>
           <Link
             to="/main/profiles/$type"
             params={{
@@ -28,8 +29,8 @@ export default function HeaderFileAction({ children }: PropsWithChildren) {
           >
             {m.header_file_action_import_local_profile()}
           </Link>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </MenubarItem>
+      </MenubarContent>
+    </MenubarMenu>
   )
 }

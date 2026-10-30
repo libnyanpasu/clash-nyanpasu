@@ -18,7 +18,10 @@ import {
   parseEnableLoopbackVersion,
   verifyEnableLoopbackChecksum,
 } from './enable-loopback.ts'
-import { resolveEnableLoopback } from './resources.ts'
+import {
+  resolveEnableLoopback,
+  resolveEnableLoopbackBootstrapper,
+} from './resources.ts'
 
 const BYTES = new TextEncoder().encode('abc')
 const HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
@@ -68,6 +71,14 @@ test('enable-loopback release URLs follow both packaging targets', () => {
       `https://github.com/libnyanpasu/enable-loopback/releases/download/v0.1.0/enableLoopback-${target}-pc-windows-msvc.exe`,
     )
     assert.deepStrictEqual(info.checksumURL, `${info.downloadURL}.sha256`)
+    assert.deepStrictEqual(
+      info.bootstrapper.downloadURL,
+      `https://github.com/libnyanpasu/enable-loopback/releases/download/v0.1.0/Microsoft.WindowsAppRuntime.Bootstrap-${target}-pc-windows-msvc.dll`,
+    )
+    assert.deepStrictEqual(
+      info.bootstrapper.checksumURL,
+      `${info.bootstrapper.downloadURL}.sha256`,
+    )
   }
   assert.throws(() => enableLoopbackInfo('0.1.0', 'ia32'))
 })
@@ -146,6 +157,76 @@ test('enable-loopback installs verified bytes, replaces legacy cache and preserv
       { message: /SHA-256 mismatch/ },
     )
     assert.deepStrictEqual(await readdir(context.tempRoot), [])
+  } finally {
+    await rm(root, { recursive: true })
+  }
+})
+
+test('enable-loopback installs the verified bootstrapper beside the executable', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'nyanpasu-scripts-'))
+  const context = {
+    resourcesDir: path.join(root, 'resources'),
+    sidecarDir: path.join(root, 'sidecar'),
+    tempRoot: path.join(root, 'temp'),
+    platform: 'win32',
+    arch: 'arm64',
+  }
+  const info = enableLoopbackInfo('0.1.0', 'arm64')
+  const { bootstrapper } = info
+  let corrupt = false
+  const download: typeof downloadFile = async (url, destination) => {
+    if (url === bootstrapper.checksumURL) {
+      await writeFile(destination, `${HASH}  ${bootstrapper.assetName}\n`)
+    } else {
+      assert.deepStrictEqual(url, bootstrapper.downloadURL)
+      await writeFile(destination, corrupt ? new Uint8Array([0]) : BYTES)
+    }
+    return { size: 3, speed: 1 }
+  }
+  try {
+    const target = path.join(
+      context.resourcesDir,
+      'Microsoft.WindowsAppRuntime.Bootstrap.dll',
+    )
+    const installed = await resolveEnableLoopbackBootstrapper(
+      context,
+      info,
+      undefined,
+      download,
+    )
+    assert.deepStrictEqual(
+      installed.file,
+      'Microsoft.WindowsAppRuntime.Bootstrap.dll',
+    )
+    assert.deepStrictEqual(installed.cached, false)
+    assert.deepStrictEqual(new Uint8Array(await readFile(target)), BYTES)
+    assert.deepStrictEqual(
+      await readFile(`${target}.version`, 'utf8'),
+      `0.1.0/${bootstrapper.assetName}`,
+    )
+    assert.deepStrictEqual(
+      (
+        await resolveEnableLoopbackBootstrapper(
+          context,
+          info,
+          undefined,
+          download,
+        )
+      ).cached,
+      true,
+    )
+    corrupt = true
+    await assert.rejects(
+      () =>
+        resolveEnableLoopbackBootstrapper(
+          context,
+          info,
+          { force: true },
+          download,
+        ),
+      { message: /SHA-256 mismatch/ },
+    )
+    assert.deepStrictEqual(new Uint8Array(await readFile(target)), BYTES)
   } finally {
     await rm(root, { recursive: true })
   }

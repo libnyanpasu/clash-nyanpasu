@@ -5,9 +5,10 @@ import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outlin
 import FormatListNumberedRounded from '~icons/material-symbols/format-list-numbered-rounded'
 import ManageSearchRounded from '~icons/material-symbols/manage-search-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
+import PlaylistAddRounded from '~icons/material-symbols/playlist-add-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { AnimatePresence } from 'motion/react'
-import { memo } from 'react'
+import { memo, type ReactNode } from 'react'
 import { AnimatedItem } from '@nyanpasu/ui/animated-item'
 import { Button } from '@nyanpasu/ui/button'
 import { cardVariants } from '@nyanpasu/ui/card'
@@ -29,12 +30,29 @@ import { useSortable } from '@dnd-kit/react/sortable'
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { SettingsGroup } from '../../_modules/settings-card'
-import { profileTypeOf, type TransformProfile } from '../$type/_modules/utils'
+import { RowAction } from './compact-controls'
 import { PROFILE_TYPE_NAMES } from './consts'
+import {
+  StepGroup,
+  StepRowIcon,
+  StepRowText,
+  stepRowVariants,
+} from './step-list'
 import { TransformAddMenu } from './transform-add-menu'
-import { useTransformChainDraft } from './use-transform-chain-draft'
+import {
+  useTransformChainDraft,
+  type TransformChainDraft,
+} from './use-transform-chain-draft'
+import { profileTypeOf, type TransformProfile } from './utils'
+
+/**
+ * `card` is a roomy card with a menu; `step` is a row of a grouped step list
+ * with its actions in the open, which the whole row drags.
+ */
+export type TransformChainVariant = 'card' | 'step'
 
 type ItemProps = {
+  variant: TransformChainVariant
   profile: TransformProfile
   index: number
   count: number
@@ -46,7 +64,7 @@ type ItemProps = {
   onRemove: (uid: string) => void
 }
 
-function ItemContent({
+function CardItemContent({
   profile,
   index,
   count,
@@ -59,7 +77,7 @@ function ItemContent({
   dragging,
   dropTarget,
   draggable,
-}: ItemProps & {
+}: Omit<ItemProps, 'variant'> & {
   itemRef?: (element: Element | null) => void
   dragging?: boolean
   dropTarget?: boolean
@@ -175,6 +193,104 @@ function ItemContent({
   )
 }
 
+function StepItemContent({
+  profile,
+  index,
+  traceStep,
+  saving,
+  actionsDisabled,
+  onRemove,
+  itemRef,
+  dragging,
+  dropTarget,
+  draggable,
+}: Omit<ItemProps, 'variant'> & {
+  itemRef?: (element: Element | null) => void
+  dragging?: boolean
+  dropTarget?: boolean
+  draggable?: boolean
+}) {
+  return (
+    <div
+      ref={itemRef}
+      data-slot="profile-chain-editor-item"
+      data-uid={profile.uid}
+      data-dragging={dragging || undefined}
+      aria-label={
+        draggable
+          ? m.profile_chain_editor_drag_item({ name: profile.name })
+          : undefined
+      }
+      className={cn(
+        stepRowVariants({ interactive: draggable }),
+        'py-1 select-none',
+        // Only colours transition: dnd-kit animates the item's position itself.
+        draggable && 'cursor-grab touch-none active:cursor-grabbing',
+        dragging && 'bg-secondary-container shadow-lg',
+        dropTarget && 'ring-primary ring-2',
+        saving && 'opacity-50',
+      )}
+    >
+      <span
+        data-slot="profile-chain-editor-order"
+        className="bg-secondary-container text-on-secondary-container grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums"
+      >
+        {index + 1}
+      </span>
+
+      <StepRowText
+        title={profile.name}
+        sub={PROFILE_TYPE_NAMES[profileTypeOf(profile)]}
+      />
+
+      <RowAction
+        label={m.profile_chain_editor_open_editor()}
+        data-slot="profile-chain-editor-open-editor"
+        onClick={async () => {
+          await rpc.createEditorWindow('profile', profile.uid)
+        }}
+      >
+        <EditSquareOutlineRounded className="size-5" aria-hidden />
+      </RowAction>
+
+      <RowAction
+        asChild
+        label={m.profile_chain_editor_trace()}
+        data-slot="profile-chain-editor-trace"
+      >
+        <Link to="/main/profiles/inspect" search={{ step: traceStep }}>
+          <ManageSearchRounded className="size-5" aria-hidden />
+        </Link>
+      </RowAction>
+
+      <RowAction
+        label={m.profile_chain_editor_remove()}
+        disabled={actionsDisabled}
+        data-slot="profile-chain-editor-remove"
+        onClick={() => onRemove(profile.uid)}
+      >
+        <DeleteOutlineRounded className="size-5" aria-hidden />
+      </RowAction>
+    </div>
+  )
+}
+
+function ItemContent({
+  variant,
+  ...props
+}: ItemProps & {
+  itemRef?: (element: Element | null) => void
+  dragging?: boolean
+  dropTarget?: boolean
+  draggable?: boolean
+}) {
+  return variant === 'step' ? (
+    <StepItemContent {...props} />
+  ) : (
+    <CardItemContent {...props} />
+  )
+}
+
 // Every drag-over commits a new draft, so an item re-renders only when its own
 // props change instead of with the whole list.
 const Item = memo(function Item(props: ItemProps) {
@@ -196,26 +312,87 @@ const Item = memo(function Item(props: ItemProps) {
   )
 })
 
-/** Ordered, sortable chain of enabled transforms with an explicit Apply. */
-export function TransformChainList({
-  transforms,
-  taskKey,
+/** Count of enabled transforms and the menu that adds one. */
+function TransformChainHeader({ chain }: { chain: TransformChainDraft }) {
+  return (
+    <div
+      data-slot="profile-chain-editor-header"
+      className="flex items-center justify-between gap-3"
+    >
+      <p className="text-on-surface-variant flex items-center gap-2 px-3 text-sm">
+        <FormatListNumberedRounded className="size-5" aria-hidden />
+        {m.profile_chain_editor_enabled_count({
+          count: chain.enabled.length,
+        })}
+      </p>
+
+      <TransformAddMenu
+        available={chain.available}
+        disabled={chain.actionsDisabled}
+        onAdd={chain.handleAdd}
+      />
+    </div>
+  )
+}
+
+/** Appears once the draft differs from the persisted chain. */
+function TransformChainBar({ chain }: { chain: TransformChainDraft }) {
+  return (
+    <AnimatePresence>
+      {chain.dataReady && chain.isChanged && (
+        <AnimatedItem
+          data-slot="profile-chain-editor-bar"
+          className="bg-surface sticky bottom-0 z-10 rounded-full"
+        >
+          <div className="flex items-center justify-end gap-1 p-2">
+            <Button
+              onClick={chain.handleReset}
+              disabled={chain.actionsDisabled}
+            >
+              {m.common_reset()}
+            </Button>
+
+            <Button
+              variant="flat"
+              onClick={chain.handleApply}
+              disabled={chain.actionsDisabled}
+            >
+              {m.common_apply()}
+            </Button>
+          </div>
+        </AnimatedItem>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/**
+ * The sortable list of a transform chain draft owned by the caller. `header`
+ * and `footer` are the caller's controls for the draft, such as the add menu
+ * and the Apply bar.
+ */
+export function TransformChain({
+  chain,
   traceStepOf,
-  onApply,
+  variant = 'card',
+  empty,
+  header,
+  footer,
   className,
 }: {
-  /** The persisted chain, in order. */
-  transforms: string[]
-  taskKey: string
+  chain: TransformChainDraft
   /** Builds the Inspect step key of a chain entry from its uid and position. */
   traceStepOf: (uid: string, index: number) => string
-  onApply: (transforms: string[]) => Promise<unknown>
+  variant?: TransformChainVariant
+  /** Replaces the text of the empty chain. */
+  empty?: { message: string; hint: string }
+  header?: ReactNode
+  footer?: ReactNode
   className?: string
 }) {
-  const chain = useTransformChainDraft({ transforms, taskKey, onApply })
-
   // Duplicated ids must never register multiple sortables.
   const readOnly = !chain.editable && !chain.dragging
+  const Group = variant === 'step' ? StepGroup : SettingsGroup
 
   return (
     <section
@@ -223,23 +400,7 @@ export function TransformChainList({
       aria-busy={chain.saving}
       className={cn('relative flex min-w-0 flex-col gap-3', className)}
     >
-      <div
-        data-slot="profile-chain-editor-header"
-        className="flex items-center justify-between gap-3"
-      >
-        <p className="text-on-surface-variant flex items-center gap-2 px-3 text-sm">
-          <FormatListNumberedRounded className="size-5" aria-hidden />
-          {m.profile_chain_editor_enabled_count({
-            count: chain.enabled.length,
-          })}
-        </p>
-
-        <TransformAddMenu
-          available={chain.available}
-          disabled={chain.actionsDisabled}
-          onAdd={chain.handleAdd}
-        />
-      </div>
+      {header}
 
       {chain.saving && (
         <LinearProgress
@@ -283,21 +444,41 @@ export function TransformChainList({
         onDragEnd={(event) => chain.endDrag(event.canceled)}
       >
         {chain.enabled.length === 0 ? (
-          <EmptyState
-            size="compact"
-            tone="normal"
-            data-slot="profile-chain-editor-empty"
-            className="min-h-28 py-5"
-            icon={FormatListNumberedRounded}
-            message={m.profile_chain_editor_empty()}
-            description={m.profile_chain_editor_empty_hint()}
-          />
+          variant === 'step' ? (
+            <StepGroup>
+              <div
+                data-slot="profile-chain-editor-empty"
+                className={stepRowVariants()}
+              >
+                <StepRowIcon>
+                  <PlaylistAddRounded />
+                </StepRowIcon>
+
+                <StepRowText
+                  dim
+                  title={empty?.message ?? m.profile_chain_editor_empty()}
+                  sub={empty?.hint ?? m.profile_chain_editor_empty_hint()}
+                />
+              </div>
+            </StepGroup>
+          ) : (
+            <EmptyState
+              size="compact"
+              tone="normal"
+              data-slot="profile-chain-editor-empty"
+              className="min-h-28 py-5"
+              icon={FormatListNumberedRounded}
+              message={empty?.message ?? m.profile_chain_editor_empty()}
+              description={empty?.hint ?? m.profile_chain_editor_empty_hint()}
+            />
+          )
         ) : (
-          <SettingsGroup data-slot="profile-chain-editor-items">
+          <Group data-slot="profile-chain-editor-items">
             {chain.enabled.map((profile, index) =>
               readOnly ? (
                 <ItemContent
                   key={`${profile.uid}-${index}`}
+                  variant={variant}
                   profile={profile}
                   index={index}
                   count={chain.enabled.length}
@@ -310,6 +491,7 @@ export function TransformChainList({
               ) : (
                 <Item
                   key={profile.uid}
+                  variant={variant}
                   profile={profile}
                   index={index}
                   count={chain.enabled.length}
@@ -321,35 +503,40 @@ export function TransformChainList({
                 />
               ),
             )}
-          </SettingsGroup>
+          </Group>
         )}
       </DragDropProvider>
 
-      <AnimatePresence>
-        {chain.dataReady && chain.isChanged && (
-          <AnimatedItem
-            data-slot="profile-chain-editor-bar"
-            className="bg-surface sticky bottom-0 z-10 rounded-full"
-          >
-            <div className="flex items-center justify-end gap-1 p-2">
-              <Button
-                onClick={chain.handleReset}
-                disabled={chain.actionsDisabled}
-              >
-                {m.common_reset()}
-              </Button>
-
-              <Button
-                variant="flat"
-                onClick={chain.handleApply}
-                disabled={chain.actionsDisabled}
-              >
-                {m.common_apply()}
-              </Button>
-            </div>
-          </AnimatedItem>
-        )}
-      </AnimatePresence>
+      {footer}
     </section>
+  )
+}
+
+/** Ordered, sortable chain of enabled transforms with an explicit Apply. */
+export function TransformChainList({
+  transforms,
+  taskKey,
+  traceStepOf,
+  onApply,
+  className,
+}: {
+  /** The persisted chain, in order. */
+  transforms: string[]
+  taskKey: string
+  /** Builds the Inspect step key of a chain entry from its uid and position. */
+  traceStepOf: (uid: string, index: number) => string
+  onApply: (transforms: string[]) => Promise<unknown>
+  className?: string
+}) {
+  const chain = useTransformChainDraft({ transforms, taskKey, onApply })
+
+  return (
+    <TransformChain
+      chain={chain}
+      traceStepOf={traceStepOf}
+      header={<TransformChainHeader chain={chain} />}
+      footer={<TransformChainBar chain={chain} />}
+      className={className}
+    />
   )
 }

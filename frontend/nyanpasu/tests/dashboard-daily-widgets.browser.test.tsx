@@ -26,7 +26,7 @@ import { rpc } from '@/services/rpc'
 import { formatDate } from '@/utils/date'
 import { DndContext } from '@dnd-kit/core'
 import { MutationUnconfirmedError } from '@nyanpasu/query'
-import { RpcProvider } from '@nyanpasu/query/provider'
+import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import type { ProfileItem_Serialize, RunDto } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -39,7 +39,10 @@ const hooks = vi.hoisted(() => ({
   useCoreStatus: vi.fn(),
 }))
 
-const backend = vi.hoisted(() => ({ value: new Map<string, string>() }))
+const backend = vi.hoisted(() => ({
+  value: new Map<string, string>(),
+  revision: 0,
+}))
 const cacheWidgetConfig = (config: unknown) => {
   const serialized = JSON.stringify({
     version: 1,
@@ -73,16 +76,21 @@ vi.mock('@/services/rpc', async (importOriginal) => {
       ...original.rpc,
       getStorageItem: async (key: string) => ({
         status: 'ok',
-        data: backend.value.get(key) ?? null,
+        data: {
+          value: backend.value.get(key) ?? null,
+          revision: backend.revision,
+        },
       }),
       setStorageItem: async (key: string, value: string) => {
         backend.value.set(key, value)
-        return { status: 'ok', data: null }
+        backend.revision += 1
+        return { status: 'ok', data: backend.revision }
       },
       listenResync: () => () => {},
       events: {
         ...original.rpc.events,
         storageValueChangedEvent: { listen: async () => () => {} },
+        storageResyncEvent: { listen: async () => () => {} },
       },
     },
   }
@@ -229,6 +237,7 @@ function setupHooks() {
 beforeEach(() => {
   localStorage.clear()
   backend.value.clear()
+  backend.revision = 0
   Object.values(hooks).forEach((hook) => hook.mockReset())
   setupHooks()
 })
@@ -262,36 +271,38 @@ function mount(
   root.render(
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={client}>
-        <DashboardProvider>
-          <TooltipProvider>
-            <DndContext>
-              <DndGridProvider
-                value={{
-                  displayItems: [item],
-                  getItemRect: () => ({
-                    left: 0,
-                    top: 0,
-                    width: 320,
-                    height: options.pixelHeight ?? 220,
-                  }),
-                  dropInfoMap: {},
-                  activeItemId: null,
-                  resizingItemId: null,
-                  disabled: options.gridDisabled ?? true,
-                  sourceOnly: options.sourceOnly ?? false,
-                  dragIdPrefix: options.sourceOnly ? 'sheet:' : '',
-                  isOverlay: false,
-                  constraintsMapRef: { current: {} },
-                  onResizeStart: () => {},
-                  onResizeMove: () => {},
-                  onResizeEnd: () => {},
-                }}
-              >
-                <Widget id={id} onCloseClick={() => {}} />
-              </DndGridProvider>
-            </DndContext>
-          </TooltipProvider>
-        </DashboardProvider>
+        <KvStorageProvider>
+          <DashboardProvider>
+            <TooltipProvider>
+              <DndContext>
+                <DndGridProvider
+                  value={{
+                    displayItems: [item],
+                    getItemRect: () => ({
+                      left: 0,
+                      top: 0,
+                      width: 320,
+                      height: options.pixelHeight ?? 220,
+                    }),
+                    dropInfoMap: {},
+                    activeItemId: null,
+                    resizingItemId: null,
+                    disabled: options.gridDisabled ?? true,
+                    sourceOnly: options.sourceOnly ?? false,
+                    dragIdPrefix: options.sourceOnly ? 'sheet:' : '',
+                    isOverlay: false,
+                    constraintsMapRef: { current: {} },
+                    onResizeStart: () => {},
+                    onResizeMove: () => {},
+                    onResizeEnd: () => {},
+                  }}
+                >
+                  <Widget id={id} onCloseClick={() => {}} />
+                </DndGridProvider>
+              </DndContext>
+            </TooltipProvider>
+          </DashboardProvider>
+        </KvStorageProvider>
       </QueryClientProvider>
     </RpcProvider>,
   )

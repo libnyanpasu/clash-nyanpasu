@@ -1,315 +1,297 @@
-import ArticleRounded from '~icons/material-symbols/article-rounded'
-import { useEffect, useState } from 'react'
+import CloseRounded from '~icons/material-symbols/close-rounded'
+import { useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHandle,
+  DrawerTitle,
+} from '@nyanpasu/ui/drawer'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
-import { Switch } from '@nyanpasu/ui/switch'
 import { ErrorMessage } from '@/components/error-message'
-import { PageTitle } from '@/components/page-title'
-import {
-  StepLabel,
-  stepParts,
-  useOpenProfile,
-  useProfileLookup,
-} from '@/components/profile-label'
+import { useOpenProfile, useProfileLookup } from '@/components/profile-label'
+import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { events, queries } from '@/services/rpc'
-import { unwrapQueryOptions } from '@nyanpasu/query'
+import { unwrapQueryOptions, useKvStorage } from '@nyanpasu/query'
+import { cn } from '@nyanpasu/utils'
 import {
-  type RuntimeInspection,
-  type RuntimeInspectionContent,
-} from '@nyanpasu/rpc/types'
-import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
-import LogLevelBadge from '../../logs/_modules/log-level-badge'
-import ChainGraph from './_modules/chain-graph'
-import ChangedFields from './_modules/changed-fields'
-import DiffViewer from './_modules/diff-viewer'
-import YamlViewer from './_modules/yaml-viewer'
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  buildSteps,
+  filterSteps,
+  matchField,
+  resolveStep,
+} from './_modules/inspect-steps'
+import InspectToolbar, {
+  type SnapshotView,
+  type StepLayout,
+} from './_modules/inspect-toolbar'
+import {
+  DEFAULT_INSPECT_VIEW,
+  INSPECT_VIEW_KV_KEY,
+  toInspectView,
+  type InspectView,
+} from './_modules/inspect-view'
+import StepDetail, { defaultTab, type InspectTab } from './_modules/step-detail'
+import StepGraph from './_modules/step-graph'
+import StepRail from './_modules/step-rail'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
   validateSearch: z.object({ step: z.string().optional() }),
+  staticData: { layout: 'fill' },
 })
+
+function invalidateSnapshots(queryClient: QueryClient) {
+  for (const query of [
+    queries.inspectRuntime(),
+    queries.inspectAppliedRuntime(),
+  ]) {
+    queryClient.invalidateQueries({ queryKey: query.queryKey })
+  }
+}
 
 function RouteComponent() {
   const queryClient = useQueryClient()
-  const [appliedView, setAppliedView] = useState(false)
-  const inspectionQuery = appliedView
-    ? queries.inspectAppliedRuntime()
-    : queries.inspectRuntime()
+  const navigate = useNavigate({ from: Route.fullPath })
+  const { step: stepParam } = Route.useSearch()
+  const profiles = useProfileLookup()
+  const openProfile = useOpenProfile(profiles)
+
+  const [view, setView] = useState<SnapshotView>('latest')
+  const [layout, setLayout] = useState<StepLayout>('list')
+  const [inspectView, setInspectView] = useKvStorage(
+    INSPECT_VIEW_KV_KEY,
+    DEFAULT_INSPECT_VIEW,
+    { migrate: toInspectView },
+  )
+  // A view that fails to save still applies; it is only not remembered.
+  const updateView = (update: Partial<InspectView>) => {
+    setInspectView((previous) => ({ ...previous, ...update }))
+  }
+  const { onlyChanged } = inspectView
+  const setOnlyChanged = (next: boolean) => updateView({ onlyChanged: next })
+  const [fieldQuery, setFieldQuery] = useState('')
+  const [stepsOpen, setStepsOpen] = useState(false)
+  const [tabOverride, setTabOverride] = useState<{
+    key: string
+    tab: InspectTab
+  }>()
+
+  const inspectionQuery =
+    view === 'applied'
+      ? queries.inspectAppliedRuntime()
+      : queries.inspectRuntime()
   const inspection = useQuery({
     ...unwrapQueryOptions(inspectionQuery, inspectionQuery.queryFn!),
     refetchOnWindowFocus: false,
     retry: false,
   })
+  const snapshot = inspection.data
 
   // Every rebuild or apply publishes a configuration status change, so the
   // snapshots are refetched on it instead of by hand.
   useEffect(() => {
     const listener = events.configurationStatusChanged
-      .listen(() => {
-        for (const query of [
-          queries.inspectRuntime(),
-          queries.inspectAppliedRuntime(),
-        ]) {
-          queryClient.invalidateQueries({ queryKey: query.queryKey })
-        }
-      })
+      .listen(() => invalidateSnapshots(queryClient))
       .catch(() => undefined)
     return () => {
       listener.then((unlisten) => unlisten?.())
     }
   }, [queryClient])
 
-  return (
-    <section className="@container flex min-w-0 flex-1 flex-col">
-      <PageTitle backTo="/main/profiles">{m.inspect_title()}</PageTitle>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 pb-4">
-        <label className="flex items-center justify-end gap-2 text-sm">
-          {m.inspect_last_applied()}
-          <Switch checked={appliedView} onCheckedChange={setAppliedView} />
-        </label>
-        {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
-        {inspection.isError && (
-          <p role="alert">
-            {m.inspect_error()} <ErrorMessage error={inspection.error} />
-          </p>
-        )}
-        {!inspection.isError && inspection.data === null && (
-          <EmptyState
-            tone="normal"
-            className="flex-1"
-            message={m.inspect_empty()}
-          />
-        )}
-        {!inspection.isError && inspection.data && (
-          <SnapshotBrowser
-            key={inspection.data.snapshot_id}
-            snapshot={inspection.data}
-          />
-        )}
-      </div>
-    </section>
+  const steps = useMemo(
+    () => (snapshot ? buildSteps(snapshot.nodes, snapshot.final_id) : []),
+    [snapshot],
   )
-}
-
-function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
-  const [showAll, setShowAll] = useState(false)
-  const [selectedId, setSelectedId] = useState<number>()
-  const [view, setView] = useState('diff')
-  const [stepsView, setStepsView] = useState('list')
-  const profiles = useProfileLookup()
-  const openProfile = useOpenProfile(profiles)
-  // The chain keeps every step so that its edges stay connected.
-  const nodes =
-    showAll || stepsView === 'chain'
-      ? snapshot.nodes
-      : snapshot.nodes.filter(
-          (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
-        )
-  const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
-  const contentQuery = selected
-    ? queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
-    : null
-  const content = useQuery<RuntimeInspectionContent>({
-    queryKey: contentQuery?.queryKey ?? [
-      'runtime-inspection-node',
-      snapshot.snapshot_id,
-      selected?.id,
-    ],
-    queryFn: contentQuery
-      ? unwrapQueryOptions(contentQuery, contentQuery.queryFn!).queryFn
-      : skipToken,
-    retry: false,
-    refetchOnWindowFocus: false,
-    gcTime: 0,
+  // The step lives in the address, so a rebuild or a switch of snapshot keeps
+  // it, and a key that no step has any more falls back to the final one.
+  const selected = resolveStep(steps, stepParam)
+  const visibleSteps = filterSteps(steps, {
+    onlyChanged,
+    selectedKey: selected?.key,
   })
+  const matchedKeys = useMemo(
+    () =>
+      fieldQuery.trim()
+        ? new Set(
+            steps
+              .filter((step) => matchField(step, fieldQuery))
+              .map((step) => step.key),
+          )
+        : undefined,
+    [steps, fieldQuery],
+  )
+
+  const selectStep = (step: string) =>
+    navigate({
+      to: '.',
+      search: (previous) => ({ ...previous, step }),
+      replace: true,
+      state: keepReturn,
+    })
+
+  // Enter in the search steps through the steps that changed a matching field.
+  const cycleMatch = (delta: 1 | -1) => {
+    if (!matchedKeys || !selected) return
+    const matches = steps.filter((step) => matchedKeys.has(step.key))
+    if (matches.length === 0) return
+    const position = steps.indexOf(selected)
+    const next =
+      delta === 1
+        ? (matches.find((step) => steps.indexOf(step) > position) ?? matches[0])
+        : (matches.findLast((step) => steps.indexOf(step) < position) ??
+          matches.at(-1))
+    if (next) selectStep(next.key)
+  }
+
+  const tab =
+    selected && tabOverride?.key === selected.key
+      ? tabOverride.tab
+      : selected && (inspectView.documentTab ?? defaultTab(selected))
+
+  const graph = (className?: string) =>
+    snapshot && (
+      <StepGraph
+        className={className}
+        steps={visibleSteps}
+        allSteps={steps}
+        selectedKey={selected?.key}
+        onSelect={selectStep}
+        profiles={profiles}
+        onlyChanged={onlyChanged}
+        onOnlyChangedChange={setOnlyChanged}
+        matchedKeys={matchedKeys}
+      />
+    )
+
+  const rail = (className?: string, onSelected?: () => void) =>
+    snapshot && (
+      <StepRail
+        className={className}
+        steps={visibleSteps}
+        allSteps={steps}
+        selectedKey={selected?.key}
+        onSelect={(key) => {
+          selectStep(key)
+          onSelected?.()
+        }}
+        profiles={profiles}
+        targetCore={snapshot.target_core}
+        onlyChanged={onlyChanged}
+        onOnlyChangedChange={setOnlyChanged}
+        matchedKeys={matchedKeys}
+      />
+    )
 
   return (
-    <>
-      <p className="text-on-surface-variant text-sm">
-        {snapshot.effective_pending
-          ? m.inspect_effective_pending()
-          : snapshot.applied
-            ? m.inspect_applied()
-            : m.inspect_generated()}{' '}
-        · {snapshot.target_core} · {m.inspect_revision()} {snapshot.revision}
-      </p>
-      {/* On wide layouts both columns share the remaining viewport height and
-          scroll inside, so a long diff or log does not move the step list. */}
-      <div className="grid min-w-0 gap-4 @[40rem]:min-h-[28rem] @[40rem]:grow @[40rem]:basis-0 @[40rem]:grid-cols-[20rem_minmax(0,1fr)] @[40rem]:grid-rows-[minmax(0,1fr)]">
-        <div className="flex min-h-0 min-w-0 flex-col gap-3">
-          <SegmentedButton
-            size="sm"
-            value={stepsView}
-            onValueChange={(value) => {
-              if (value) setStepsView(value)
+    <section
+      data-slot="inspect-page"
+      className="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+    >
+      <InspectToolbar
+        snapshot={snapshot}
+        view={view}
+        onViewChange={setView}
+        layout={layout}
+        onLayoutChange={setLayout}
+        fieldQuery={fieldQuery}
+        onFieldQueryChange={setFieldQuery}
+        onCycleMatch={cycleMatch}
+        onRefresh={() => invalidateSnapshots(queryClient)}
+        onShowSteps={() => setStepsOpen(true)}
+      />
+
+      {inspection.isPending && (
+        <p
+          role="status"
+          className="text-on-surface-variant flex flex-1 items-center justify-center text-sm"
+        >
+          {m.inspect_loading()}
+        </p>
+      )}
+
+      {inspection.isError && (
+        <p
+          role="alert"
+          className="flex flex-1 flex-wrap content-center items-center justify-center gap-1 px-4 text-sm"
+        >
+          {m.inspect_error()} <ErrorMessage error={inspection.error} />
+        </p>
+      )}
+
+      {!inspection.isError && snapshot === null && (
+        <EmptyState
+          tone="normal"
+          className="flex-1"
+          message={m.inspect_empty()}
+        />
+      )}
+
+      {!inspection.isError && snapshot && selected && tab && (
+        <div
+          className={cn(
+            'grid min-h-0 flex-1',
+            'grid-rows-[minmax(0,1fr)] @3xl:grid-cols-[20rem_minmax(0,1fr)]',
+            // Stacked, the graph gets the smaller share.
+            layout === 'graph' &&
+              'grid-rows-[minmax(0,2fr)_minmax(0,3fr)] @3xl:grid-rows-[minmax(0,1fr)]',
+          )}
+        >
+          {layout === 'graph' ? graph() : rail('hidden @3xl:flex')}
+
+          <StepDetail
+            key={selected.key}
+            snapshotId={snapshot.snapshot_id}
+            step={selected}
+            steps={steps}
+            profiles={profiles}
+            targetCore={snapshot.target_core}
+            onOpenProfile={openProfile}
+            tab={tab}
+            onTabChange={(next) => {
+              setTabOverride({ key: selected.key, tab: next })
+              if (next !== 'logs') updateView({ documentTab: next })
             }}
-          >
-            <SegmentedButtonItem value="list">
-              {m.inspect_view_list()}
-            </SegmentedButtonItem>
-            <SegmentedButtonItem value="chain">
-              {m.inspect_view_chain()}
-            </SegmentedButtonItem>
-          </SegmentedButton>
-          {stepsView === 'list' && (
-            <label className="flex items-center justify-between gap-2 text-sm">
-              {m.inspect_show_all()}
-              <Switch checked={showAll} onCheckedChange={setShowAll} />
-            </label>
-          )}
-          {stepsView === 'chain' ? (
-            <ChainGraph
-              nodes={nodes}
-              profiles={profiles}
-              onOpenProfile={openProfile}
-              selectedId={selected?.id}
-              onSelect={setSelectedId}
-            />
-          ) : (
-            <nav
-              aria-label={m.inspect_steps()}
-              className="flex max-h-[65vh] flex-col gap-1 overflow-auto @[40rem]:max-h-none @[40rem]:min-h-0 @[40rem]:flex-1"
-            >
-              {nodes.map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  aria-current={selected?.id === node.id ? 'step' : undefined}
-                  onClick={() => setSelectedId(node.id)}
-                  className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary flex items-center gap-2 rounded-lg p-3 text-left text-sm focus-visible:outline-2"
-                >
-                  <span className="text-on-surface-variant shrink-0 self-start">
-                    #{node.id + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <StepLabel
-                      parts={stepParts(node.tag)}
-                      profiles={profiles}
-                      onOpenProfile={openProfile}
-                    />
-                  </span>
-                  {node.has_logs && (
-                    <ArticleRounded
-                      role="img"
-                      aria-label={m.inspect_logs()}
-                      className="text-on-surface-variant size-4 shrink-0"
-                    />
-                  )}
-                </button>
-              ))}
-            </nav>
-          )}
+            fieldQuery={fieldQuery}
+          />
         </div>
-        {!selected && (
-          <EmptyState tone="normal" message={m.inspect_filtered_empty()} />
-        )}
-        {selected && (
-          <div className="flex min-h-0 min-w-0 flex-col gap-3">
-            <h2 className="font-medium">
-              #{selected.id + 1}{' '}
-              <StepLabel
-                parts={stepParts(selected.tag)}
-                profiles={profiles}
-                onOpenProfile={openProfile}
-              />
-            </h2>
-            <ChangedFields key={selected.id} fields={selected.changed_fields} />
-            {showAll && selected.next.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span>{m.inspect_next()}</span>
-                {selected.next.map((id) => (
-                  <Button key={id} onClick={() => setSelectedId(id)}>
-                    #{id + 1}
-                  </Button>
-                ))}
-              </div>
-            )}
-            {content.isPending && <p role="status">{m.inspect_loading()}</p>}
-            {content.isError && (
-              <p role="alert">
-                {m.inspect_content_error()}{' '}
-                <ErrorMessage error={content.error} />
-              </p>
-            )}
-            {content.isSuccess && (
-              <>
-                <SegmentedButton
-                  className="max-w-md"
-                  size="sm"
-                  value={view}
-                  onValueChange={(value) => {
-                    if (value) setView(value)
-                  }}
-                >
-                  <SegmentedButtonItem value="yaml">YAML</SegmentedButtonItem>
-                  <SegmentedButtonItem value="diff">
-                    {m.inspect_diff()}
-                  </SegmentedButtonItem>
-                  <SegmentedButtonItem value="logs">
-                    {m.inspect_logs()}
-                    {content.data.logs.length > 0 &&
-                      ` (${content.data.logs.length})`}
-                  </SegmentedButtonItem>
-                </SegmentedButton>
-                {view === 'logs' ? (
-                  content.data.logs.length === 0 ? (
-                    <p
-                      role="status"
-                      className="text-on-surface-variant text-sm"
-                    >
-                      {m.inspect_no_logs()}
-                    </p>
-                  ) : (
-                    <ol
-                      aria-label={m.inspect_logs()}
-                      className="bg-surface divide-outline-variant/50 h-[55vh] min-h-64 divide-y overflow-auto rounded-lg @[40rem]:h-auto @[40rem]:min-h-48 @[40rem]:flex-1"
-                    >
-                      {content.data.logs.map((log, index) => (
-                        <li
-                          key={index}
-                          className="flex items-start gap-3 px-3 py-2"
-                        >
-                          <LogLevelBadge>{log.level}</LogLevelBadge>
-                          <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
-                            {log.message}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  )
-                ) : view === 'yaml' ? (
-                  <YamlViewer
-                    code={content.data.yaml}
-                    label={m.inspect_yaml()}
-                    cacheKey={[snapshot.snapshot_id, selected.id]}
-                  />
-                ) : content.data.diff ? (
-                  <>
-                    <p className="text-on-surface-variant text-sm">
-                      {m.inspect_diff_description({
-                        step: content.data.diff.parent_id + 1,
-                      })}
-                    </p>
-                    <DiffViewer hunks={content.data.diff.hunks} />
-                  </>
-                ) : (
-                  <p role="status" className="text-on-surface-variant text-sm">
-                    {m.inspect_diff_independent()}
-                  </p>
-                )}
-              </>
-            )}
+      )}
+
+      <Drawer open={stepsOpen} onOpenChange={setStepsOpen}>
+        <DrawerContent
+          aria-describedby={undefined}
+          className="h-[85dvh] max-h-[85dvh] min-h-0 w-[calc(100%-1rem)] max-w-[960px]"
+        >
+          <DrawerHandle />
+
+          <div className="flex shrink-0 items-center justify-between gap-4 px-4 pt-2">
+            <DrawerTitle className="text-lg font-semibold">
+              {m.inspect_steps()}
+            </DrawerTitle>
+
+            <DrawerClose asChild>
+              <Button
+                variant="raised"
+                className="size-8"
+                icon
+                aria-label={m.inspect_hide_steps()}
+              >
+                <CloseRounded className="size-4" />
+              </Button>
+            </DrawerClose>
           </div>
-        )}
-      </div>
-    </>
+
+          {rail('min-h-0 flex-1', () => setStepsOpen(false))}
+        </DrawerContent>
+      </Drawer>
+    </section>
   )
 }

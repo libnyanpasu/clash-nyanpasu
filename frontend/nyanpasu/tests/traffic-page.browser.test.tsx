@@ -190,6 +190,7 @@ const rpc = vi.hoisted(() => ({
   basisKeys: ['dialed', 'resolved'],
   // The KV store, by key.
   storage: new Map<string, string>(),
+  storageRevision: 0,
 }))
 
 function mockBackend(pages: Record<string, UsagePage> = {}) {
@@ -239,12 +240,16 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
     }
 
     if (method === 'get_storage_item') {
-      return rpc.storage.get(params.key as string) ?? null
+      return {
+        value: rpc.storage.get(params.key as string) ?? null,
+        revision: rpc.storageRevision,
+      }
     }
 
     if (method === 'set_storage_item') {
       rpc.storage.set(params.key as string, params.value as string)
-      return null
+      rpc.storageRevision += 1
+      return rpc.storageRevision
     }
 
     throw new Error(`unexpected rpc ${method}`)
@@ -518,13 +523,12 @@ test('the route stores category selection and filters in search state', async ({
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/process')
-  // The page transition settles on one ranking before the switch is used.
+  // The exiting overview has its own source row until its animation finishes.
   await expect
-    .poll(
-      () =>
-        document.querySelectorAll('[data-slot="traffic-ranking-list"]').length,
+    .poll(() =>
+      document.querySelector('[data-slot="traffic-overview-masonry"]'),
     )
-    .toBe(1)
+    .toBeNull()
   await sidebarItem(view, dimensionName('source')).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))

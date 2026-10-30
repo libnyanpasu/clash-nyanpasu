@@ -108,7 +108,7 @@ test('a proxies event refreshes only mounted provider summaries, without re-rend
   await settle()
 
   commits = 0
-  await emit('nyanpasu://mutation', 'proxies')
+  await emit('state-changed-event', { kind: 'proxies' })
   await expect.poll(() => providerFetches).toBe(2)
   await settle()
   expect(commits).toBe(0)
@@ -117,8 +117,8 @@ test('a proxies event refreshes only mounted provider summaries, without re-rend
   await expect
     .poll(() => container.querySelector('[data-slot="other-page"]'))
     .toBeTruthy()
-  await emit('nyanpasu://mutation', 'proxies')
-  await emit('nyanpasu://mutation', 'proxies')
+  await emit('state-changed-event', { kind: 'proxies' })
+  await emit('state-changed-event', { kind: 'proxies' })
   await settle()
   expect(providerFetches).toBe(2)
 })

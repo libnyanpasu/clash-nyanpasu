@@ -1,0 +1,25 @@
+[package]
+name = 'nyanpasu-diagnose'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-config = { path = '../nyanpasu-config' }
+serde = { version = '1', features = ['derive'] }
+specta = { version = '^2.0.0-rc.25' }
+sysinfo = '0.39'
+chrono = '0.4'
+zip = '9.0.0'
+tempfile = '3'
+gpu-info = { git = 'https://github.com/libnyanpasu/gpu-info', rev = 'c4952b528bbf8eb4bd33101c9900e48fb02febf9', default-features = false, features = [
+  'serde'
+] }
+
+[target.'cfg(windows)'.dependencies]
+windows-registry = '0.6.0'
+
+[dev-dependencies]
+serde_json = '1'

@@ -124,12 +124,42 @@ suffix and call them at the use site. Do not extract class strings into
 `*_CLASS` or `*_CLASSES` constants. Keep one-use layout classes inline; use `cn()`
 to merge generated classes with caller overrides, not to define reusable styles.
 
+Split long Tailwind class lists into readable lines, grouped by responsibility
+(layout, colors, interaction states, and motion). Do not leave an oversized string
+on one line or rely on Prettier to split it. In JSX, use multiple string arguments
+to `cn()`; in `cva()`, pass an array as the first argument. Long class lists inside
+variants also use arrays. Keep short class lists inline, and do not introduce
+`*_CLASS` or `*_CLASSES` constants just to break lines.
+
+```tsx
+const menuItemVariants = cva([
+  'flex min-h-10 items-center gap-2 rounded-lg px-3 py-2',
+  'text-on-surface text-sm outline-none',
+  'data-highlighted:bg-surface-variant',
+  'data-disabled:pointer-events-none data-disabled:opacity-38',
+])
+
+<div
+  className={cn(
+    'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden',
+    'bg-surface text-on-surface rounded-xl border p-4',
+    className,
+  )}
+/>
+```
+
 Dashboard widgets must not contain internal scrollbars. Keep content within the
 widget's allocated size with `min-h-0` and `overflow-hidden`; do not use
 `overflow-auto` or `overflow-scroll` to accommodate widget content. Reduce visible
 ranking rows to fit the available height and fold hidden rows into the existing
 other total. Clip any remaining overflow rather than creating a scrollable area.
 Apply this rule to compact, expanded, loading, empty, and error states.
+
+Menu items align their content to the start: an icon, then the label, with
+nothing pushed to the far edge. Only a trailing element that the menu component
+itself owns, such as a submenu arrow, sits at the end. Do not add
+`justify-between` or `ml-auto` to a menu item or its label to place text at the
+end.
 
 If a needed component is missing, check Radix UI for a suitable primitive first.
 When one exists, wrap and style it in the UI package, expose the appropriate
@@ -203,6 +233,17 @@ page-specific data selection in its route.
   `h-full` on a child of an auto-height parent is insufficient. Keep long content
   scrollable rather than fixing every page to the viewport height. See the
   component's JSDoc for the layout contract.
+- A tool page may opt in to the fill layout instead of scrolling as a whole, but
+  only when every region of the page scrolls internally. It declares
+  `staticData: { layout: 'fill' }` on its route (the option is typed in
+  `@/components/router/route-layout`), and the layout route that owns the scroll
+  surface reads it with `useLeafRouteLayout()` and, for a fill page, gives the
+  content container `h-full` instead of `min-h-full`, the outlet `min-h-0`, and
+  the scroll viewport `overflow-clip`. Other pages of that layout keep scrolling.
+  The page is a `flex min-h-0 flex-1 flex-col overflow-hidden` column. Its header
+  is a toolbar of fixed height instead of a scrolling `PageTitle`, and every
+  region below it is `min-h-0 flex-1` with its own `ScrollArea`, like `DataPage`.
+  Do not use it for a page whose content only happens to be short.
 - Place a child page in its own directory with `index.tsx`, for example
   `topology/flow/index.tsx`, instead of a flat `topology/flow.tsx`. Place
   modules used only by that page in `topology/flow/_modules/`.
@@ -246,14 +287,14 @@ page-specific data selection in its route.
 
 ## What is enforced
 
-| Requirement                                                                                          | Enforcement                         |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Mechanical formatting, imports, Tailwind class ordering                                              | Prettier                            |
-| Existing correctness, hooks, props, and import rules                                                 | Oxlint                              |
-| Radix boundary                                                                                       | Oxlint error outside `frontend/ui/` |
-| Types                                                                                                | Package TypeScript checks           |
-| CSS declarations and selectors                                                                       | Existing Stylelint configuration    |
-| Meaningful slots, reusable constants, logical blank lines, component reuse, design and i18n grouping | Mandatory code review               |
+| Requirement                                                                                                                | Enforcement                         |
+| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Mechanical formatting, imports, Tailwind class ordering                                                                    | Prettier                            |
+| Existing correctness, hooks, props, and import rules                                                                       | Oxlint                              |
+| Radix boundary                                                                                                             | Oxlint error outside `frontend/ui/` |
+| Types                                                                                                                      | Package TypeScript checks           |
+| CSS declarations and selectors                                                                                             | Existing Stylelint configuration    |
+| Meaningful slots, reusable constants, logical blank lines, readable class lists, component reuse, design and i18n grouping | Mandatory code review               |
 
 Run `pnpm lint:oxlint`, `pnpm lint:prettier`, and `pnpm typecheck` as appropriate.
 The [Oxlint import rule](https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-restricted-imports)

@@ -4,6 +4,7 @@
 )]
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
+mod adapters;
 mod bundle;
 mod client;
 mod cmds;
@@ -420,7 +421,7 @@ pub fn run() -> std::process::ExitCode {
             // A reloaded page keeps the same webview, so `Channel::send`
             // cannot tell its old connection-detail subscriptions are gone.
             if payload.event() == tauri::webview::PageLoadEvent::Started {
-                core::clash::connection_details::cancel_for_webview(webview, webview.label());
+                adapters::connection_details::cancel_for_webview(webview, webview.label());
             }
         })
         .setup(move |app| {
@@ -539,7 +540,7 @@ pub fn run() -> std::process::ExitCode {
             // Every webview's connection-detail subscriptions must end on
             // destroy, not just "main"'s: `Channel::send` cannot detect it.
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                core::clash::connection_details::cancel_for_webview(app_handle, &label);
+                adapters::connection_details::cancel_for_webview(app_handle, &label);
             }
         }
         #[cfg(target_os = "macos")]

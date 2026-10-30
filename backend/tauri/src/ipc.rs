@@ -1921,10 +1921,10 @@ pub async fn subscribe_clash_connection_details(
     let receiver = client.subscribe_clash_connection_details().await?;
     let parent = client.shutdown_child_token();
     let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
-    client.spawn_tracked(
+    tokio::spawn(client.track_until_shutdown(
         &cancel,
-        crate::core::clash::connection_details::forward_details(receiver, on_frame),
-    );
+        crate::adapters::connection_details::forward_details(receiver, on_frame),
+    ));
     Ok(id)
 }
 

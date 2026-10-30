@@ -1,6 +1,7 @@
 use super::core::clash::ws::ClashConnectionsConnectorEvent;
-use crate::client::{
-    effects::{
+use crate::{
+    adapters::ui_effects::ports::WIDGET_STOP_BOUND,
+    client::effects::{
         ports::{
             ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
             ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu,
@@ -8,7 +9,6 @@ use crate::client::{
         },
         status::failure_text,
     },
-    ui_effects::ports::WIDGET_STOP_BOUND,
 };
 
 use futures::future::BoxFuture;

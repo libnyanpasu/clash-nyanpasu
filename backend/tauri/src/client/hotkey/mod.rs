@@ -7,7 +7,6 @@
 //! cycle.
 
 mod actor;
-pub mod adapters;
 pub(crate) mod error;
 pub mod ports;
 

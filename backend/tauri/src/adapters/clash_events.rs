@@ -2,7 +2,10 @@
 
 use tauri_specta::Event as _;
 
-use crate::core::clash::{connection_details, ws};
+use crate::{
+    adapters::events::{ClashWsEvent, CoreLogsChanged},
+    core::clash::{connection_details, ws},
+};
 
 // Tauri owns only event-forwarding tasks; stream state lives in StreamsActor.
 struct StreamEventBridge(Vec<tauri::async_runtime::JoinHandle<()>>);
@@ -28,7 +31,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
     tauri::async_runtime::spawn(client.track_until_shutdown(&logs_token, async move {
         while logs_rx.changed().await.is_ok() {
             let status = logs_rx.borrow_and_update().clone();
-            if let Err(error) = (crate::core::logs::CoreLogsChanged { status }).emit(&logs_app) {
+            if let Err(error) = (CoreLogsChanged { status }).emit(&logs_app) {
                 tracing::warn!(%error, "failed to emit Core log status");
             }
         }
@@ -39,7 +42,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
             let event = match ws_rx.recv().await {
                 Ok(event) => event,
                 Err(RecvError::Lagged(_)) => match client.clash_ws_snapshot().await {
-                    Ok(snapshot) => ws::ClashWsEvent {
+                    Ok(snapshot) => ws::ClashWsPacket {
                         sequence: snapshot.sequence,
                         update: ws::ClashWsUpdate::Reset(Box::new(snapshot)),
                     },
@@ -50,7 +53,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
                 },
                 Err(RecvError::Closed) => break,
             };
-            if let Err(error) = event.emit(&app) {
+            if let Err(error) = ClashWsEvent::from(event).emit(&app) {
                 tracing::warn!(%error, "failed to emit Clash stream event");
             }
         }

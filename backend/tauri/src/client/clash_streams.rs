@@ -4,7 +4,7 @@ use tokio::sync::{broadcast, watch};
 
 use super::{NyanpasuClient, Result};
 use crate::core::clash::ws::{
-    ClashConnectionDetails, ClashConnectionsConnectorEvent, ClashWsEvent, ClashWsKind,
+    ClashConnectionDetails, ClashConnectionsConnectorEvent, ClashWsKind, ClashWsPacket,
     ClashWsRecording, ClashWsSnapshot,
 };
 
@@ -55,7 +55,7 @@ impl NyanpasuClient {
     ) -> broadcast::Receiver<ClashConnectionsConnectorEvent> {
         self.inner.streams.subscribe()
     }
-    pub fn subscribe_clash_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
+    pub fn subscribe_clash_ws(&self) -> broadcast::Receiver<ClashWsPacket> {
         self.inner.streams.subscribe_ws()
     }
     pub async fn subscribe_clash_connection_details(

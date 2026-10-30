@@ -152,6 +152,8 @@ export function createRpcClient(
       ),
     getClashConfig: () =>
       typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
+    getConfigFeatures: () =>
+      typedError<ConfigFeatures, IpcError>(__RPC_INVOKE('get_config_features')),
     getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
     getProfiles: () =>
       typedError<ProfileDocument_Serialize, IpcError>(
@@ -1355,6 +1357,11 @@ export type ConfigExecutionRole =
       }
     }
 
+/**  What the selected core reads, by config domain. */
+export type ConfigFeatures = {
+  tun: TunFeatures
+}
+
 /**
  *  Identity of the config the running core actually adopted.
  *
@@ -2212,6 +2219,13 @@ export type ExternalMode = 'symlink' | 'mirror'
 
 /**  An absolute path outside the managed profile directory. */
 export type ExternalProfilePath = string
+
+/**  Whether a core reads one config key, and which values it accepts there. */
+export type FieldSupport<T> =
+  /**  The core does not read the key: Nyanpasu writes none and checks none. */
+  | { kind: 'ignored' }
+  /**  The core reads the key and fails on any value outside this list. */
+  | { kind: 'values'; value: T[] }
 
 export type FileConfig = FileConfig_Serialize | FileConfig_Deserialize
 
@@ -5549,6 +5563,13 @@ export type TrayMenuMode = 'native' | 'webview'
 
 /**  mihomo `tun.congestion-controller`, read only by the mips stack. */
 export type TunCongestionController = 'cubic' | 'reno' | 'bbr' | 'bbr3'
+
+/**  What the selected core reads under `tun`. */
+export type TunFeatures = {
+  stack: FieldSupport<TunStack>
+  /**  Read only while the stack is mips. */
+  congestion_controller: FieldSupport<TunCongestionController>
+}
 
 /**
  *  The `tun` keys Nyanpasu may force while TUN mode is on. The TUN switch and

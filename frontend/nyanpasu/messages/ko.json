@@ -209,6 +209,8 @@
   "settings_clash_settings_managed_guard_field_enabled": "항상 켜기",
   "settings_clash_settings_managed_guard_field_disabled": "항상 끄기",
   "settings_clash_settings_tun_stack_label": "TUN 스택",
+  "settings_clash_settings_tun_congestion_controller_label": "TCP 혼잡 제어",
+  "settings_clash_settings_tun_congestion_controller_core_default": "코어 기본값",
   "settings_clash_settings_log_level_label": "로그 레벨",
   "settings_clash_settings_core_log_shard_size_label": "코어 로그 순환 크기",
   "settings_clash_settings_core_log_max_size_label": "코어 로그 저장 한도",

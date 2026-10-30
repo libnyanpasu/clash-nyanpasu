@@ -209,6 +209,8 @@
   "settings_clash_settings_managed_guard_field_enabled": "强制开启",
   "settings_clash_settings_managed_guard_field_disabled": "强制关闭",
   "settings_clash_settings_tun_stack_label": "TUN 堆栈",
+  "settings_clash_settings_tun_congestion_controller_label": "TCP 拥塞控制",
+  "settings_clash_settings_tun_congestion_controller_core_default": "内核默认",
   "settings_clash_settings_log_level_label": "日志级别",
   "settings_clash_settings_core_log_shard_size_label": "内核日志轮转大小",
   "settings_clash_settings_core_log_max_size_label": "内核日志存储上限",

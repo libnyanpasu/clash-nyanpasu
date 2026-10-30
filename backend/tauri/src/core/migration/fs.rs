@@ -42,7 +42,7 @@ pub(crate) enum Error {
 /// Whether `path` exists, reporting an inaccessible parent as an error
 /// instead of the `false` that [`Path::exists`] would return.
 pub(crate) fn try_exists(path: &Path) -> Result<bool, MigrationCheckError> {
-    path.try_exists().map_err(|source| MigrationCheckError::Io {
+    crate::core::corrupt::retry_io(|| path.try_exists()).map_err(|source| MigrationCheckError::Io {
         path: path.to_path_buf(),
         source,
     })
@@ -52,7 +52,14 @@ pub(crate) fn try_exists(path: &Path) -> Result<bool, MigrationCheckError> {
 pub(crate) fn read_yaml_if_exists<T: DeserializeOwned>(
     path: &Path,
 ) -> Result<Option<T>, MigrationCheckError> {
-    let raw = match std::fs::read_to_string(path) {
+    read_yaml_if_exists_with(path, || std::fs::read_to_string(path))
+}
+
+fn read_yaml_if_exists_with<T: DeserializeOwned>(
+    path: &Path,
+    read: impl FnMut() -> std::io::Result<String>,
+) -> Result<Option<T>, MigrationCheckError> {
+    let raw = match crate::core::corrupt::retry_io(read) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
@@ -84,7 +91,15 @@ pub(crate) fn read_document(
     path: &Path,
     document: &str,
 ) -> Result<Option<DocumentFile>, MigrationCheckError> {
-    let raw = match std::fs::read_to_string(path) {
+    read_document_with(path, document, || std::fs::read_to_string(path))
+}
+
+fn read_document_with(
+    path: &Path,
+    document: &str,
+    read: impl FnMut() -> std::io::Result<String>,
+) -> Result<Option<DocumentFile>, MigrationCheckError> {
+    let raw = match crate::core::corrupt::retry_io(read) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
@@ -158,10 +173,122 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), Error> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        std::fs::create_dir_all(parent).context(CreateDirectorySnafu { path: parent })?;
+        crate::core::corrupt::retry_io(|| std::fs::create_dir_all(parent))
+            .context(CreateDirectorySnafu { path: parent })?;
     }
-    AtomicFile::new(path, AllowOverwrite)
-        .write(|file| file.write_all(contents))
-        .context(WriteFileSnafu { path })?;
+    crate::core::corrupt::retry(
+        || AtomicFile::new(path, AllowOverwrite).write(|file| file.write_all(contents)),
+        |error| {
+            let (atomicwrites::Error::Internal(error) | atomicwrites::Error::User(error)) = error;
+            crate::core::corrupt::classify_io(error) == crate::core::corrupt::IoFailure::Transient
+        },
+    )
+    .context(WriteFileSnafu { path })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn yaml_reader_retries_transient_read_before_parsing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.yaml");
+        std::fs::write(&path, "value: 7").unwrap();
+        let mut attempts = 0;
+        let value: Mapping = read_yaml_if_exists_with(&path, || {
+            attempts += 1;
+            if attempts == 1 {
+                Err(io::ErrorKind::Interrupted.into())
+            } else {
+                std::fs::read_to_string(&path)
+            }
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(attempts, 2);
+        assert_eq!(value["value"].as_u64(), Some(7));
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn yaml_reader_reports_exhausted_and_permission_errors_without_renaming() {
+        for (kind, expected_attempts) in [
+            (io::ErrorKind::WouldBlock, 4),
+            (io::ErrorKind::PermissionDenied, 1),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("config.yaml");
+            std::fs::write(&path, "value: 7").unwrap();
+            let mut attempts = 0;
+            let result = read_yaml_if_exists_with::<Mapping>(&path, || {
+                attempts += 1;
+                Err(io::Error::from(kind))
+            });
+            assert!(
+                matches!(result, Err(MigrationCheckError::Io { path: actual, source }) if actual == path && source.kind() == kind)
+            );
+            assert_eq!(attempts, expected_attempts);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "value: 7");
+            assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+        }
+    }
+
+    #[test]
+    fn document_reader_retries_transient_read_before_inspection() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.yaml");
+        let raw = "value: 7";
+        std::fs::write(&path, raw).unwrap();
+        let mut attempts = 0;
+        let document = read_document_with(&path, "test.document", || {
+            attempts += 1;
+            if attempts == 1 {
+                Err(io::ErrorKind::Interrupted.into())
+            } else {
+                std::fs::read_to_string(&path)
+            }
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(attempts, 2);
+        assert_eq!(document.raw, raw);
+        assert_eq!(document.schema_revision, None);
+        assert_eq!(document.payload["value"].as_u64(), Some(7));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn document_reader_reports_exhausted_and_permission_errors_without_renaming() {
+        for (kind, expected_attempts) in [
+            (io::ErrorKind::WouldBlock, 4),
+            (io::ErrorKind::PermissionDenied, 1),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("config.yaml");
+            let raw = "value: 7";
+            std::fs::write(&path, raw).unwrap();
+            let mut attempts = 0;
+            let result = read_document_with(&path, "test.document", || {
+                attempts += 1;
+                Err(io::Error::new(kind, std::fmt::Error))
+            });
+            let Err(MigrationCheckError::Io {
+                path: actual,
+                source,
+            }) = result
+            else {
+                panic!("expected a typed document read error");
+            };
+            assert_eq!(actual, path);
+            assert_eq!(source.kind(), kind);
+            assert!(source.get_ref().unwrap().is::<std::fmt::Error>());
+            assert_eq!(attempts, expected_attempts);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+            assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+        }
+    }
 }

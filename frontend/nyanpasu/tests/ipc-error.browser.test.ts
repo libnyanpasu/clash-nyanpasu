@@ -486,6 +486,12 @@ test('a storage failure tells an unopenable database from unreadable data', () =
     ipcErrorMessage(storage({ kind: 'open_database', path: 'storage.redb' })),
   ).toBe(m.error_storage_open())
   expect(
+    ipcErrorMessage(storage({ kind: 'inspect_database', path: 'storage.db' })),
+  ).toBe(m.error_storage_open())
+  expect(ipcErrorMessage(storage({ kind: 'preserve_database' }))).toBe(
+    m.error_storage_open(),
+  )
+  expect(
     ipcErrorMessage(storage({ kind: 'read_item', key: 'web:theme' })),
   ).toBe(m.error_storage_access())
   expect(

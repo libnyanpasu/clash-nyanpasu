@@ -3322,6 +3322,7 @@ export type ProfileDocument_Serialize = {
  *  materialization port, whose implementations share their helpers.
  */
 export type ProfileFileError =
+  | { kind: 'preserve_derived_directory' }
   | { kind: 'inspect_path'; path: ErrorPath }
   | { kind: 'read_file'; path: ErrorPath }
   | { kind: 'read_link'; path: ErrorPath }
@@ -5297,6 +5298,8 @@ export type StorageItem<T> = {
  */
 export type StorageOperationError =
   | { kind: 'open_database'; path: string }
+  | { kind: 'inspect_database'; path: string }
+  | { kind: 'preserve_database' }
   | { kind: 'begin_transaction' }
   | { kind: 'open_table' }
   | { kind: 'read_item'; key: string }

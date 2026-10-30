@@ -20,6 +20,17 @@ pub enum StorageOperationError {
         #[serde(skip)]
         source: redb::DatabaseError,
     },
+    #[snafu(display("failed to inspect the database at {path}"))]
+    InspectDatabase {
+        path: String,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to preserve the unusable database"))]
+    PreserveDatabase {
+        #[serde(skip)]
+        source: crate::core::corrupt::Error,
+    },
     #[snafu(display("failed to start a storage transaction"))]
     BeginTransaction {
         #[serde(skip)]
@@ -212,11 +223,72 @@ pub trait WebStorage {
     fn get_all(&self) -> Result<Vec<(String, String)>>;
 }
 
+fn transient_database_error(error: &redb::DatabaseError) -> bool {
+    match error {
+        redb::DatabaseError::DatabaseAlreadyOpen => true,
+        redb::DatabaseError::Storage(redb::StorageError::Io(error)) => {
+            crate::core::corrupt::classify_io(error) == crate::core::corrupt::IoFailure::Transient
+        }
+        _ => false,
+    }
+}
+
+fn transient_open_error(error: &StorageOperationError) -> bool {
+    match error {
+        StorageOperationError::OpenDatabase { source, .. } => transient_database_error(source),
+        StorageOperationError::BeginTransaction {
+            source: redb::TransactionError::Storage(redb::StorageError::Io(error)),
+        }
+        | StorageOperationError::OpenTable {
+            source: redb::TableError::Storage(redb::StorageError::Io(error)),
+        } => crate::core::corrupt::classify_io(error) == crate::core::corrupt::IoFailure::Transient,
+        _ => false,
+    }
+}
+
+fn confirmed_database_problem(error: &StorageOperationError) -> bool {
+    match error {
+        StorageOperationError::OpenDatabase { source, .. } => {
+            matches!(
+                source,
+                redb::DatabaseError::UpgradeRequired(_)
+                    | redb::DatabaseError::Storage(redb::StorageError::Corrupted(_))
+            ) || matches!(source, redb::DatabaseError::Storage(redb::StorageError::Io(error))
+            if matches!(error.kind(), std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof))
+        }
+        StorageOperationError::OpenTable { source } => {
+            matches!(
+                source,
+                redb::TableError::TableTypeMismatch { .. }
+                    | redb::TableError::TableIsMultimap(_)
+                    | redb::TableError::TypeDefinitionChanged { .. }
+                    | redb::TableError::TableDoesNotExist(_)
+                    | redb::TableError::Storage(redb::StorageError::Corrupted(_))
+            ) || matches!(source, redb::TableError::Storage(redb::StorageError::Io(error))
+            if matches!(error.kind(), std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof))
+        }
+        _ => false,
+    }
+}
+
+fn preserve_database(
+    path: &std::path::Path,
+    error: &(dyn std::error::Error + 'static),
+) -> Result<()> {
+    let evidence = crate::core::corrupt::preserve(path, error).context(PreserveDatabaseSnafu)?;
+    tracing::warn!(original_path = %path.display(), evidence_path = %evidence.display(),
+        error = %snafu::Report::from_error(error), action = "reset_key_value_storage",
+        "resetting key-value storage discards frontend persisted state, task history, and legacy hotkey configuration");
+    Ok(())
+}
+
 impl StorageInner {
     fn create_and_init_database(path: &std::path::Path) -> Result<redb::Database> {
-        let db = redb::Database::create(path).context(OpenDatabaseSnafu {
-            path: path.display().to_string(),
-        })?;
+        let db =
+            crate::core::corrupt::retry(|| redb::Database::create(path), transient_database_error)
+                .context(OpenDatabaseSnafu {
+                    path: path.display().to_string(),
+                })?;
         // Create table
         let write_txn = db.begin_write().context(BeginTransactionSnafu)?;
         write_txn
@@ -227,29 +299,43 @@ impl StorageInner {
     }
 
     pub fn try_new(path: &std::path::Path) -> Result<Self> {
-        let metadata = fs::metadata(path).ok();
-        let instance: redb::Database = if metadata.as_ref().is_some_and(|m| m.is_file()) {
-            match redb::Database::open(path) {
-                Ok(db) => db,
-                // In redb v3 upgrading point, we only store the task history, and frontend persist state,
-                // such as memorized router, which is NOT very valuable to make us keep two redb versions,
-                // intended to support upgrade database formats.
-                Err(redb::DatabaseError::UpgradeRequired(ver)) => {
-                    tracing::error!("database upgrade required {ver:?}, removing...");
-                    fs::remove_file(path).unwrap();
-                    Self::create_and_init_database(path)?
+        Self::try_new_with_open(path, || Self::open_database(path), std::thread::sleep)
+    }
+
+    fn try_new_with_open(
+        path: &std::path::Path,
+        open: impl FnMut() -> Result<redb::Database>,
+        wait: impl FnMut(std::time::Duration),
+    ) -> Result<Self> {
+        use crate::core::corrupt;
+        let metadata = match corrupt::retry_io(|| fs::symlink_metadata(path)) {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(error).context(InspectDatabaseSnafu {
+                    path: path.display().to_string(),
+                });
+            }
+        };
+        let instance = if let Some(metadata) = metadata {
+            if metadata.is_file() && !corrupt::is_link(&metadata) {
+                match corrupt::retry_with_delay(open, transient_open_error, wait) {
+                    Ok(db) => db,
+                    Err(error) if confirmed_database_problem(&error) => {
+                        preserve_database(path, &error)?;
+                        Self::create_and_init_database(path)?
+                    }
+                    Err(error) => return Err(error),
                 }
-                Err(source) => {
-                    return Err(source).context(OpenDatabaseSnafu {
-                        path: path.display().to_string(),
-                    });
-                }
+            } else {
+                let error = std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "database path is not a regular file",
+                );
+                preserve_database(path, &error)?;
+                Self::create_and_init_database(path)?
             }
         } else {
-            // Remove previous rocksdb files
-            if metadata.is_some_and(|m| m.is_dir()) {
-                fs::remove_dir_all(path).unwrap();
-            }
             Self::create_and_init_database(path)?
         };
         Ok(Self {
@@ -259,6 +345,17 @@ impl StorageInner {
             #[cfg(test)]
             before_publish: None,
         })
+    }
+
+    fn open_database(path: &std::path::Path) -> Result<redb::Database> {
+        let db = redb::Database::open(path).context(OpenDatabaseSnafu {
+            path: path.display().to_string(),
+        })?;
+        {
+            let read = db.begin_read().context(BeginTransactionSnafu)?;
+            read.open_table(NYANPASU_TABLE).context(OpenTableSnafu)?;
+        }
+        Ok(db)
     }
 
     pub fn get_instance(&self) -> &redb::Database {
@@ -377,6 +474,96 @@ mod tests {
 
     fn open(dir: &tempfile::TempDir) -> StorageInner {
         StorageInner::try_new(&dir.path().join("storage.redb")).expect("storage should open")
+    }
+
+    #[test]
+    fn database_open_retries_typed_io_without_resetting_the_file() {
+        for failures in [3, 4] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("storage.db");
+            let storage = StorageInner::try_new(&path).unwrap();
+            storage.set_item("kept", &42).unwrap();
+            drop(storage);
+            let mut attempts = 0;
+            let mut delays = Vec::new();
+            let result = StorageInner::try_new_with_open(
+                &path,
+                || {
+                    attempts += 1;
+                    if attempts <= failures {
+                        Err(StorageOperationError::OpenDatabase {
+                            path: path.display().to_string(),
+                            source: redb::DatabaseError::Storage(redb::StorageError::Io(
+                                std::io::ErrorKind::TimedOut.into(),
+                            )),
+                        })
+                    } else {
+                        StorageInner::open_database(&path)
+                    }
+                },
+                |delay| delays.push(delay),
+            );
+            assert_eq!(attempts, 4);
+            assert_eq!(
+                delays,
+                [
+                    std::time::Duration::from_millis(50),
+                    std::time::Duration::from_millis(100),
+                    std::time::Duration::from_millis(200)
+                ]
+            );
+            if failures == 3 {
+                assert_eq!(
+                    result.unwrap().get_item::<i32>("kept").unwrap().value,
+                    Some(42)
+                );
+            } else {
+                assert!(matches!(result, Err(StorageOperationError::OpenDatabase {
+                source: redb::DatabaseError::Storage(redb::StorageError::Io(error)), ..
+            }) if error.kind() == std::io::ErrorKind::TimedOut));
+            }
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+            assert_eq!(
+                StorageInner::try_new(&path)
+                    .unwrap()
+                    .get_item::<i32>("kept")
+                    .unwrap()
+                    .value,
+                Some(42)
+            );
+        }
+    }
+
+    #[test]
+    fn unconfirmed_database_failure_is_returned_without_renaming() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("storage.db");
+        let storage = StorageInner::try_new(&path).unwrap();
+        storage.set_item("kept", &42).unwrap();
+        drop(storage);
+        let original = std::fs::read(&path).unwrap();
+        let mut attempts = 0;
+        let result = StorageInner::try_new_with_open(
+            &path,
+            || {
+                attempts += 1;
+                Err(StorageOperationError::OpenDatabase {
+                    path: path.display().to_string(),
+                    source: redb::DatabaseError::RepairAborted,
+                })
+            },
+            |_| panic!("unconfirmed failure must not retry"),
+        );
+        assert_eq!(attempts, 1);
+        assert!(matches!(
+            result,
+            Err(StorageOperationError::OpenDatabase {
+                source: redb::DatabaseError::RepairAborted,
+                ..
+            })
+        ));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        assert_eq!(std::fs::read(path).unwrap(), original);
     }
 
     #[test]

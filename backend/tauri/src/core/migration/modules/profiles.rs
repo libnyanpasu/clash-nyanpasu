@@ -352,8 +352,9 @@ impl MigrationStep for MigrateProfilesRepairSchema {
                 );
             }
             let repaired = migrate_clean_schema(payload)?;
-            let profiles: nyanpasu_config::profile::Profiles =
+            let mut profiles: nyanpasu_config::profile::Profiles =
                 serde_yaml::from_value(Value::Mapping(repaired)).context(ParseYamlSnafu)?;
+            let dangling_current = profiles.clear_dangling_current();
             profiles
                 .validate()
                 .map_err(|errors| Error::ValidateProfiles { errors })?;
@@ -366,9 +367,21 @@ impl MigrationStep for MigrateProfilesRepairSchema {
                 profiles_mapping(&profiles)?,
                 Some("# Profiles Config for Clash Nyanpasu"),
                 self.revision(),
-            )
+            )?;
+            warn_cleared_current(&path, dangling_current.as_ref());
+            Ok(())
         })()
         .map_err(Into::into)
+    }
+}
+
+fn warn_cleared_current(
+    path: &std::path::Path,
+    current: Option<&nyanpasu_config::profile::ProfileId>,
+) {
+    if let Some(id) = current {
+        tracing::warn!(original_id = %id, path = %path.display(), action = "clear_dangling_current",
+            "cleared missing selected profile during migration");
     }
 }
 
@@ -405,8 +418,9 @@ fn run_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
     // Typed round-trip: the only accepted output is a document the new domain
     // model can load AND validate (design §14.4). Duplicate uids are rejected
     // here by the items deserializer (R13).
-    let profiles: nyanpasu_config::profile::Profiles =
+    let mut profiles: nyanpasu_config::profile::Profiles =
         serde_yaml::from_value(Value::Mapping(migrated)).context(ParseYamlSnafu)?;
+    let dangling_current = profiles.clear_dangling_current();
     profiles
         .validate()
         .map_err(|errors| Error::ValidateProfiles { errors })?;
@@ -416,7 +430,9 @@ fn run_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
         profiles_mapping(&profiles)?,
         Some("# Profiles Config for Clash Nyanpasu"),
         CLEAN_SCHEMA.revision(),
-    )
+    )?;
+    warn_cleared_current(&path, dangling_current.as_ref());
+    Ok(())
 }
 
 fn rollback_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {

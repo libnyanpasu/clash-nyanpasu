@@ -18,3 +18,5 @@ pub mod win_uwp;
 pub(crate) mod proxies;
 
 pub(crate) mod connections;
+pub(crate) mod corrupt;
+pub(crate) mod session_state;

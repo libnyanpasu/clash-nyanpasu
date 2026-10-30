@@ -236,7 +236,8 @@ enum SharedClashFileState {
 
 fn typed_file_state(ctx: &Ctx) -> Result<TypedFileState, MigrationCheckError> {
     let application_exists = try_exists(&ctx.application_config_path())?;
-    let session_exists = try_exists(&ctx.session_state_path())?;
+    // Recover before partial-file classification, in both migration executions.
+    let session_exists = read_session_state(ctx)?.is_some();
     let clash_state = classify_shared_clash_file(ctx)?;
 
     if !application_exists && !session_exists {
@@ -376,6 +377,15 @@ fn partial_typed_file_state(
     )))
 }
 
+fn read_session_state(ctx: &Ctx) -> Result<Option<PersistentState>, MigrationCheckError> {
+    crate::core::session_state::read(&ctx.session_state_path()).map_err(|source| {
+        MigrationCheckError::ReadSessionState {
+            path: ctx.session_state_path(),
+            source: Box::new(source),
+        }
+    })
+}
+
 fn validate_existing_typed_files(ctx: &Ctx) -> Result<(), MigrationCheckError> {
     validate_existing_application_and_session(ctx)?;
     clash_config::read_typed(&ctx.clash_config_path())?;
@@ -384,7 +394,7 @@ fn validate_existing_typed_files(ctx: &Ctx) -> Result<(), MigrationCheckError> {
 
 fn validate_existing_application_and_session(ctx: &Ctx) -> Result<(), MigrationCheckError> {
     read_yaml::<nyanpasu_config::application::NyanpasuAppConfig>(&ctx.application_config_path())?;
-    read_yaml::<nyanpasu_config::state::PersistentState>(&ctx.session_state_path())?;
+    read_session_state(ctx)?;
     Ok(())
 }
 

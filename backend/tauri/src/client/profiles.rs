@@ -36,6 +36,11 @@ use crate::{
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
+    #[snafu(display("failed to inspect profiles at {path}"))]
+    InspectState {
+        path: Utf8PathBuf,
+        source: std::io::Error,
+    },
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
@@ -108,7 +113,12 @@ impl ProfilesClient {
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
         let jobs = crate::state::profiles::jobs::ProfileJobs::new(jobs);
-        let should_load = profiles_path.exists();
+        let should_load =
+            crate::core::corrupt::retry_async(|| tokio::fs::try_exists(&profiles_path))
+                .await
+                .context(InspectStateSnafu {
+                    path: &profiles_path,
+                })?;
         let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path.clone())
             .assemble();
@@ -131,14 +141,26 @@ impl ProfilesClient {
         let mut loaded = manager.snapshot().as_ref().clone();
         let repair = loaded.repair_folders();
         let layout_repair = loaded.repair_proxy_group_layouts();
+        let dangling_current = loaded.clear_dangling_current();
         if !repair.is_empty() || !layout_repair.is_empty() {
             tracing::warn!(
                 ?repair,
                 ?layout_repair,
                 "repaired malformed profile arrangements"
             );
+        }
+        if !repair.is_empty() || !layout_repair.is_empty() || dangling_current.is_some() {
+            if dangling_current.is_some() {
+                loaded
+                    .validate()
+                    .map_err(|errors| Error::ValidateProfiles { errors })?;
+            }
             loaded.bump_revision().context(AdvanceRevisionSnafu)?;
             manager.upsert(loaded).await.context(PersistStateSnafu)?;
+            if let Some(id) = &dangling_current {
+                tracing::warn!(original_id = %id, path = %profiles_path,
+                    action = "clear_dangling_current", "cleared missing selected profile");
+            }
         }
 
         let snapshot = manager.snapshot_handle();
@@ -749,6 +771,263 @@ mod tests {
         (client, dir)
     }
 
+    async fn startup_client(
+        paths: &nyanpasu_paths::PathResolver,
+        shutdown: &CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<ProfilesClient, Error> {
+        let service = Arc::new(ProfileFileService::new(
+            paths.clone(),
+            Arc::new(NoProxyPort),
+        ));
+        ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            paths.profiles_path(),
+            service.clone(),
+            service.clone(),
+            service,
+            shutdown.child_token(),
+            tasks,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn dangling_current_is_persisted_without_removing_global_transforms() {
+        let root = tempdir().unwrap();
+        let paths =
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        paths.create_base_dirs().unwrap();
+        let mut profiles = seeded_profiles();
+        profiles.current = Some(ProfileId("missing".into()));
+        profiles.global_transforms = vec![ProfileId("ovl1".into())];
+        std::fs::write(
+            paths.profiles_path(),
+            serde_yaml::to_string(&profiles).unwrap(),
+        )
+        .unwrap();
+        crate::client::startup_recovery_tests::migrate(&paths);
+        crate::client::startup_recovery_tests::migrate(&paths);
+        let shutdown = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let client = startup_client(&paths, &shutdown, &tasks).await.unwrap();
+        assert_eq!(client.snapshot().current, None);
+        assert_eq!(
+            client.snapshot().global_transforms,
+            profiles.global_transforms
+        );
+        use nyanpasu_core::format::Format as _;
+        let saved: Profiles = ProfilesFormat::default()
+            .deserialize(std::fs::read(paths.profiles_path()).unwrap().as_slice())
+            .unwrap();
+        assert_eq!(saved.current, None);
+        assert_eq!(saved.global_transforms, profiles.global_transforms);
+        assert_eq!(
+            serde_yaml::to_value(&saved.items).unwrap(),
+            serde_yaml::to_value(&profiles.items).unwrap()
+        );
+        assert_eq!(saved.revision(), profiles.revision() + 1);
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[tokio::test]
+    async fn legacy_dangling_current_is_repaired_before_migration_validation() {
+        for revision in [None, Some(3)] {
+            let root = tempdir().unwrap();
+            let paths = crate::client::tests::test_paths(
+                root.path().join("config"),
+                root.path().join("data"),
+            );
+            paths.create_base_dirs().unwrap();
+            let legacy = "current: [missing]\nchain: []\nitems:\n  - {uid: cfg, type: local, name: CFG, file: cfg.yaml}\n";
+            if let Some(revision) = revision {
+                crate::core::migration::fs::write_document(
+                    paths.profiles_path().as_std_path(),
+                    "profiles",
+                    revision,
+                    serde_yaml::from_str(legacy).unwrap(),
+                    None,
+                )
+                .unwrap();
+            } else {
+                std::fs::write(paths.profiles_path(), legacy).unwrap();
+            }
+            crate::client::startup_recovery_tests::migrate(&paths);
+            crate::client::startup_recovery_tests::migrate(&paths);
+            let shutdown = CancellationToken::new();
+            let tasks = TaskTracker::new();
+            let client = startup_client(&paths, &shutdown, &tasks).await.unwrap();
+            assert_eq!(client.snapshot().current, None);
+            assert!(
+                client
+                    .snapshot()
+                    .items
+                    .contains_key(&ProfileId("cfg".into()))
+            );
+            use nyanpasu_core::format::Format as _;
+            let saved: Profiles = ProfilesFormat::default()
+                .deserialize(std::fs::read(paths.profiles_path()).unwrap().as_slice())
+                .unwrap();
+            assert_eq!(saved.current, None);
+            saved.validate().unwrap();
+            shutdown.cancel();
+            tasks.close();
+            tasks.wait().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn current_not_config_still_fails_without_rewriting_profiles() {
+        let root = tempdir().unwrap();
+        let paths =
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        paths.create_base_dirs().unwrap();
+        let mut profiles = seeded_profiles();
+        profiles.current = Some(ProfileId("ovl1".into()));
+        std::fs::write(
+            paths.profiles_path(),
+            serde_yaml::to_string(&profiles).unwrap(),
+        )
+        .unwrap();
+        crate::client::startup_recovery_tests::migrate(&paths);
+        crate::client::startup_recovery_tests::migrate(&paths);
+        let before = std::fs::read(paths.profiles_path()).unwrap();
+        let shutdown = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let result = startup_client(&paths, &shutdown, &tasks).await;
+        assert!(matches!(result, Err(Error::ValidateProfiles { ref errors })
+            if errors.iter().any(|error| matches!(error, ProfileValidationError::CurrentNotConfig(id) if id.0 == "ovl1"))));
+        assert_eq!(std::fs::read(paths.profiles_path()).unwrap(), before);
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[tokio::test]
+    async fn dangling_current_does_not_sanitize_invalid_global_transforms() {
+        let root = tempdir().unwrap();
+        let paths =
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        paths.create_base_dirs().unwrap();
+        let mut profiles = seeded_profiles();
+        profiles.current = Some(ProfileId("missing".into()));
+        profiles.global_transforms = vec![ProfileId("missing-transform".into())];
+        std::fs::write(
+            paths.profiles_path(),
+            serde_yaml::to_string(&profiles).unwrap(),
+        )
+        .unwrap();
+        crate::client::startup_recovery_tests::migrate(&paths);
+        crate::client::startup_recovery_tests::migrate(&paths);
+        let before = std::fs::read(paths.profiles_path()).unwrap();
+        let shutdown = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let result = startup_client(&paths, &shutdown, &tasks).await;
+        assert!(matches!(result, Err(Error::ValidateProfiles { ref errors })
+            if errors.iter().any(|error| matches!(error,
+                ProfileValidationError::TransformTargetNotFound { target, .. } if target.0 == "missing-transform"))));
+        assert_eq!(std::fs::read(paths.profiles_path()).unwrap(), before);
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[cfg(any(unix, windows))]
+    #[tokio::test]
+    async fn materialization_symlink_is_preserved_without_touching_target() {
+        let root = tempdir().unwrap();
+        let paths =
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        paths.create_base_dirs().unwrap();
+        crate::client::startup_recovery_tests::migrate(&paths);
+        crate::client::startup_recovery_tests::migrate(&paths);
+        std::fs::create_dir_all(paths.app_profiles_dir()).unwrap();
+        let blocked = paths.app_profiles_dir().join(".profile-materialization-v1");
+        let target = root.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("kept"), b"target data").unwrap();
+        #[cfg(unix)]
+        let link = std::os::unix::fs::symlink(&target, &blocked);
+        #[cfg(windows)]
+        let link = std::os::windows::fs::symlink_dir(&target, &blocked);
+        if let Err(error) = &link
+            && error.kind() == std::io::ErrorKind::PermissionDenied
+        {
+            eprintln!("SKIPPED materialization symlink fixture: symlink privilege unavailable");
+            return;
+        }
+        link.unwrap();
+        let shutdown = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let _client = startup_client(&paths, &shutdown, &tasks).await.unwrap();
+        assert!(blocked.is_dir());
+        assert!(
+            !std::fs::symlink_metadata(&blocked)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let evidence = crate::client::startup_recovery_tests::evidence(blocked.as_std_path());
+        assert_eq!(evidence.len(), 1);
+        assert!(
+            std::fs::symlink_metadata(&evidence[0])
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read(target.join("kept")).unwrap(), b"target data");
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[tokio::test]
+    async fn materialization_directory_node_problems_rebuild_before_client_spawn() {
+        for relative in ["", "staging", "journal/state-first/prepared"] {
+            let root = tempdir().unwrap();
+            let paths = crate::client::tests::test_paths(
+                root.path().join("config"),
+                root.path().join("data"),
+            );
+            paths.create_base_dirs().unwrap();
+            crate::client::startup_recovery_tests::migrate(&paths);
+            crate::client::startup_recovery_tests::migrate(&paths);
+            let private_root = paths.app_profiles_dir().join(".profile-materialization-v1");
+            let blocked = if relative.is_empty() {
+                private_root
+            } else {
+                private_root.join(relative)
+            };
+            std::fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+            std::fs::write(&blocked, b"preserve this node").unwrap();
+            let shutdown = CancellationToken::new();
+            let tasks = TaskTracker::new();
+            let client = startup_client(&paths, &shutdown, &tasks).await.unwrap();
+            let preserved = crate::client::startup_recovery_tests::evidence(blocked.as_std_path());
+            assert_eq!(preserved.len(), 1);
+            assert_eq!(std::fs::read(&preserved[0]).unwrap(), b"preserve this node");
+            let service = ProfileFileService::new(paths.clone(), Arc::new(NoProxyPort));
+            let path = ManagedProfilePath::new("usable.yaml").unwrap();
+            let prepared = service
+                .prepare_state_first(
+                    &path,
+                    crate::state::profiles::ports::MaterializationResource::File {
+                        content: "usable: true\n".into(),
+                    },
+                    client.snapshot().revision() + 1,
+                )
+                .unwrap();
+            service.promote(&prepared).unwrap();
+            assert_eq!(service.read(&path).unwrap(), "usable: true\n");
+            service.complete(&prepared).unwrap();
+            shutdown.cancel();
+            tasks.close();
+            tasks.wait().await;
+        }
+    }
+
     #[tokio::test]
     async fn fresh_store_starts_with_default_profiles() {
         let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
@@ -795,8 +1074,8 @@ mod tests {
         let root = tempdir().unwrap();
         let paths =
             crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
-        std::fs::create_dir_all(paths.app_profiles_dir()).unwrap();
-        let blocked = paths.app_profiles_dir().join(".profile-materialization-v1");
+        std::fs::create_dir_all(paths.app_config_dir()).unwrap();
+        let blocked = paths.app_profiles_dir();
         std::fs::write(&blocked, "a file blocks the private directory").unwrap();
         let service = Arc::new(ProfileFileService::new(
             paths.clone(),
@@ -3872,7 +4151,7 @@ mod tests {
         let path = temp_profiles_path(&dir);
         std::fs::write(
             &path,
-            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\ncurrent: ghost\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\ncurrent: a\nglobal_transforms: [ghost]\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
         )
         .unwrap();
         let result = ProfilesClient::new(
@@ -3885,7 +4164,9 @@ mod tests {
             &tokio_util::task::TaskTracker::new(),
         )
         .await;
-        assert!(result.is_err(), "invalid persisted document must fail fast");
+        assert!(matches!(result, Err(Error::ValidateProfiles { ref errors })
+            if errors.iter().any(|error| matches!(error, ProfileValidationError::TransformTargetNotFound { target, .. }
+                if target.0 == "ghost"))));
     }
 
     #[tokio::test]

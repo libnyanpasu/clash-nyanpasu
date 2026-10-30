@@ -28,6 +28,8 @@ pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
 mod session_state;
+#[cfg(test)]
+mod startup_recovery_tests;
 mod system_dns;
 pub mod system_proxy;
 mod traffic;

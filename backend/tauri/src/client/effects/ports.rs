@@ -1,17 +1,161 @@
-//! The single dispatch seam between the facade and the owners of each effect.
+//! Effect dispatch, commit notifications and the capabilities consumed by the effects executor.
 //!
-//! One trait, not one per effect: the facade holds a single dependency and the
+//! The facade holds a single dispatch dependency and the
 //! fan-out to actor clients and adapters stays inside the executor. There is no
 //! lookup API here, so this is not a service locator.
 
-use nyanpasu_config::runtime::executor::ResolvedPortBindings;
+use nyanpasu_config::{
+    application::{
+        I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NetworkStatisticWidgetLogoSource,
+    },
+    runtime::executor::ResolvedPortBindings,
+};
+use nyanpasu_widget_protocol::ipc::WidgetIpcError;
+use snafu::Snafu;
 
 #[cfg(test)]
 use super::status::EffectHealth;
 use super::{
-    plan::ApplicationEffectPlan,
-    status::{EffectRevision, EffectStatus},
+    plan::{ApplicationEffectPlan, TrayView, WidgetLogoState},
+    status::{EffectFailureCode, EffectRevision, EffectStatus},
 };
+
+/// The process-wide i18n locale that the tray menu labels are rendered from.
+/// Setting it cannot fail.
+#[cfg_attr(test, mockall::automock)]
+pub trait LocaleSink: Send + Sync + 'static {
+    fn set_locale(&self, language: I18nLanguage);
+}
+
+/// Why the tray could not be asked to refresh. Whatever goes wrong once the
+/// work is queued is logged where the tray runs it.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum TrayError {
+    #[snafu(display("could not schedule the tray work on the main thread"))]
+    ScheduleTrayWork {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+
+impl TrayError {
+    pub fn code(&self) -> EffectFailureCode {
+        EffectFailureCode::TrayRefreshFailed
+    }
+}
+
+/// Why the running logger could not be reconfigured.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum LoggerError {
+    #[snafu(display("the logger reload thread has stopped"))]
+    ReloadThreadStopped,
+}
+
+impl LoggerError {
+    pub fn code(&self) -> EffectFailureCode {
+        EffectFailureCode::LoggerRefreshFailed
+    }
+}
+
+/// A tray rebuild (`refresh_full`) or a refresh of the parts that change with
+/// state (`refresh_part`), both rendered from `view`. Async because the
+/// concrete implementation has to reach the main thread to touch the tray at
+/// all.
+#[async_trait::async_trait]
+#[cfg_attr(test, mockall::automock)]
+pub trait TrayRefresher: Send + Sync + 'static {
+    async fn refresh_full(&self, view: TrayView) -> Result<(), TrayError>;
+    async fn refresh_part(&self, view: TrayView) -> Result<(), TrayError>;
+}
+
+/// How the log file is split and how many of its files are kept. The two
+/// limits change together because the file writer is rebuilt from both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogRotation {
+    pub max_files: usize,
+    /// Split the current file once it exceeds this many MiB.
+    pub max_file_size: u64,
+}
+
+/// Reconfigures the running logger.
+///
+/// The two `Option`s are the shape the underlying reload signal already has:
+/// `None` means "leave this half alone". The plan always carries both, but the
+/// port keeps the signal's own vocabulary so the adapter stays a pass-through.
+#[cfg_attr(test, mockall::automock)]
+pub trait LoggerRefresher: Send + Sync + 'static {
+    fn refresh(
+        &self,
+        level: Option<LoggingLevel>,
+        rotation: Option<LogRotation>,
+    ) -> Result<(), LoggerError>;
+}
+
+/// Why a widget effect could not be applied.
+///
+/// A controller that has not been handed its runtime yet is a startup
+/// ordering fact the caller can retry, while every other variant names a step
+/// of starting or stopping the widget itself. `StillOwned` is a stop that
+/// ran out of time: the widget is still owned, and the caller must not report
+/// it gone.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum WidgetError {
+    #[snafu(display("the network statistic widget is not available yet"))]
+    Unavailable,
+    #[snafu(display("the app is shutting down; no widget starts"))]
+    ShuttingDown,
+    #[snafu(display("could not stop the running widget before starting another"))]
+    StopPrevious {
+        #[snafu(source(from(WidgetError, Box::new)))]
+        source: Box<WidgetError>,
+    },
+    #[snafu(display("could not locate the running executable"))]
+    LocateExecutable { source: std::io::Error },
+    #[snafu(display("could not create the widget's IPC server"))]
+    CreateIpcServer { source: WidgetIpcError },
+    #[snafu(display("could not hand the app's output to the widget"))]
+    DuplicateStdio { source: std::io::Error },
+    #[snafu(display("could not spawn the {variant} widget"))]
+    SpawnWidget {
+        variant: String,
+        source: std::io::Error,
+    },
+    #[snafu(display("the widget did not connect back"))]
+    ConnectWidget { source: WidgetIpcError },
+    #[snafu(display("the widget process exited before it connected: {status}"))]
+    WidgetExited { status: String },
+    #[snafu(display("could not wait for the widget process"))]
+    WaitWidget { source: std::io::Error },
+    #[snafu(display("the app is shutting down before the widget connected"))]
+    ShutdownBeforeConnect,
+    #[snafu(display("widget process still owned, exit not confirmed"))]
+    StillOwned,
+}
+
+impl WidgetError {
+    pub fn code(&self) -> EffectFailureCode {
+        match self {
+            Self::Unavailable => EffectFailureCode::WidgetUnavailable,
+            _ => EffectFailureCode::WidgetApplyFailed,
+        }
+    }
+}
+
+/// Drives the network statistic widget towards a desired configuration.
+#[async_trait::async_trait]
+#[cfg_attr(test, mockall::automock)]
+pub trait WidgetController: Send + Sync + 'static {
+    async fn apply(&self, config: NetworkStatisticWidgetConfig) -> Result<(), WidgetError>;
+    /// Shows the icon of `state` from `source`: in the running widget now,
+    /// and in every widget started later.
+    async fn show_logo(
+        &self,
+        source: NetworkStatisticWidgetLogoSource,
+        state: WidgetLogoState,
+    ) -> Result<(), WidgetError>;
+}
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]

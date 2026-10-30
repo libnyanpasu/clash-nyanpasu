@@ -10,13 +10,15 @@ use nyanpasu_paths::PathResolver;
 use nyanpasu_widget_protocol::{Logo, StatisticWidgetVariant};
 use snafu::{OptionExt as _, ResultExt as _};
 
-use super::ports::{
-    LocaleSink, LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu,
-    ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
-    WidgetError, WidgetRuntime,
-};
+use super::ports::{WIDGET_STOP_BOUND, WidgetRuntime};
 use crate::{
-    client::effects::plan::{TrayView, WidgetLogoState},
+    client::effects::{
+        plan::{TrayView, WidgetLogoState},
+        ports::{
+            LocaleSink, LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu,
+            ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WidgetController, WidgetError,
+        },
+    },
     core::tray::{Tray, TrayWork, icon::TrayIcon},
     utils::init::logging::ReloadSignal,
 };

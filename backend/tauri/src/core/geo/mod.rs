@@ -14,6 +14,8 @@ pub use adapters::FsCountryIndexSource;
 pub use client::GeoIndexClient;
 pub use ports::CountryIndexSource;
 #[cfg(test)]
-pub use ports::{MockCountryIndexSource, NoopCountryIndexSource};
+pub use ports::MockCountryIndexSource;
+#[cfg(test)]
+pub use ports::NoopCountryIndexSource;
 
 pub(crate) use client::Error as SpawnError;

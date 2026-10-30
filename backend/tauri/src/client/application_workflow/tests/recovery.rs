@@ -4,15 +4,15 @@
 use std::sync::Arc;
 
 use super::workflow_graph_with_clients;
-use crate::{
-    client::{
-        runtime,
-        runtime_recovery::{
-            ObservedRuntime, RecoveryMismatch, RecoveryVerification, verify_recovery_target,
-        },
-        test_support::TestControlEndpoint,
+use crate::client::{
+    runtime,
+    runtime_recovery::{
+        ObservedRuntime, RecoveryMismatch, RecoveryVerification, verify_recovery_target,
     },
-    core::actor_v2::{CoreClient, service_actor::ServiceClient, test_support::IdleServiceAdapter},
+    test_support::TestControlEndpoint,
+};
+use nyanpasu_core::actor_v2::{
+    CoreClient, service_actor::ServiceClient, test_support::IdleServiceAdapter,
 };
 
 /// The audited scenario: the app was running A, applied B, then asked to be
@@ -605,14 +605,14 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
 /// The ordinary daemon, except that its next stop can be held past the
 /// service actor's bound, so the workflow never hears how it ended.
 struct ParkedStop {
-    delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter,
+    delegate: nyanpasu_core::actor_v2::test_support::HostTransitionServiceAdapter,
     park: std::sync::atomic::AtomicBool,
     parked: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
+impl nyanpasu_core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
     async fn probe(
         &self,
     ) -> Result<
@@ -644,7 +644,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
     async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_core::actor_v2::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
 }
@@ -655,9 +655,9 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
 /// Confirm owed without stopping the daemon a second time.
 #[tokio::test]
 async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
-    use crate::core::actor_v2::endpoint::ExecutionHost;
+    use nyanpasu_core::actor_v2::endpoint::ExecutionHost;
     let daemon = Arc::new(ParkedStop {
-        delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
+        delegate: nyanpasu_core::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -757,13 +757,13 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
 /// A service daemon whose install is held at a barrier past the actor's
 /// bound, while its probe keeps answering `Ready`.
 struct ParkedInstall {
-    delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter,
+    delegate: nyanpasu_core::actor_v2::test_support::HostTransitionServiceAdapter,
     parked: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall {
+impl nyanpasu_core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall {
     async fn probe(
         &self,
     ) -> Result<
@@ -793,7 +793,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
     async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_core::actor_v2::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
 }
@@ -806,9 +806,9 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
 async fn a_service_command_still_running_keeps_the_domain_isolated() {
     let dir = tempfile::tempdir().unwrap();
     let daemon = Arc::new(ParkedInstall {
-        delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
+        delegate: nyanpasu_core::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(
-                crate::core::actor_v2::endpoint::ExecutionHost::Service,
+                nyanpasu_core::actor_v2::endpoint::ExecutionHost::Service,
             ),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -847,7 +847,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     daemon.parked.notified().await;
     assert_eq!(
         service.probe().await.unwrap().phase,
-        crate::core::actor_v2::service_actor::ServicePhase::Ready,
+        nyanpasu_core::actor_v2::service_actor::ServicePhase::Ready,
         "the daemon probes a stable Ready while the helper runs"
     );
     assert!(client.status().uncertain);
@@ -951,7 +951,7 @@ async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() 
 /// domain.
 #[tokio::test]
 async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
-    use crate::core::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
+    use nyanpasu_core::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
     let g = a_lost_handoff().await;
     let mut status = g.core.subscribe();
 
@@ -1040,7 +1040,7 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
         "the stop is all recovery owed"
     );
     assert!(matches!(
-        crate::core::actor_v2::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
+        nyanpasu_core::actor_v2::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
             .await
             .unwrap()
             .state,

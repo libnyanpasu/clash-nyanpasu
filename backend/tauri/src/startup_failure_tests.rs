@@ -1,6 +1,9 @@
 use super::*;
-use crate::{client, client::SetupError, core::actor_v2::local_host};
-use nyanpasu_core::migration::{runner, store};
+use crate::{client, client::SetupError};
+use nyanpasu_core::{
+    actor_v2::local_host,
+    migration::{runner, store},
+};
 
 fn paths() -> PathResolver {
     PathResolver::with_base_dirs("config".into(), "data".into())

@@ -60,14 +60,16 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    core::actor_v2::{
+    state::mutation::{CommitAborted, RuntimeAftermath},
+};
+use nyanpasu_core::{
+    actor_v2::{
         CoreClient,
         endpoint::ExecutionHost,
         service_actor::{ServiceClient, ServiceHostAdapter},
     },
-    state::mutation::{CommitAborted, RuntimeAftermath},
+    migration::modules::application::ApplicationFormat,
 };
-use nyanpasu_core::migration::modules::application::ApplicationFormat;
 
 // -- fixture ---------------------------------------------------------------
 
@@ -97,7 +99,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_core::actor_v2::local_host::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }
@@ -207,20 +209,20 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
             version: None,
             features: Vec::new(),
         },
-        host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+        host: nyanpasu_core::actor_v2::endpoint::ExecutionHost::Local,
         run_intent: super::super::policy::CoreRunIntent::Running,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings {
             policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
             keep_http_controller: true,
         },
-        binding: crate::core::actor_v2::facade::AppliedConfigBinding {
+        binding: nyanpasu_core::actor_v2::facade::AppliedConfigBinding {
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: 1,
                 generation: 1,
                 source_hash: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
                 effective_hash: "effective".into(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::actor_v2::endpoint::ExecutionHost::Local,
             generation: 0,
         },
         ports: SessionPortResolver::default()
@@ -266,8 +268,8 @@ async fn fixture_with_hosts(
 /// that need to park one of its legs wrap instead of reimplementing.
 fn host_transition_daemon(
     endpoint: Arc<TestControlEndpoint>,
-) -> crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
-    crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
+) -> nyanpasu_core::actor_v2::test_support::HostTransitionServiceAdapter {
+    nyanpasu_core::actor_v2::test_support::HostTransitionServiceAdapter {
         endpoint,
         calls: Arc::new(StdMutex::new(Vec::new())),
         stopped: AtomicBool::new(false),
@@ -298,7 +300,7 @@ async fn fixture_with_parts(
     let service = match daemon {
         Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
         None => ServiceClient::spawn(
-            Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
+            Arc::new(nyanpasu_core::actor_v2::test_support::IdleServiceAdapter),
             0,
         )
         .await
@@ -3648,8 +3650,9 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
 async fn successful_confirm_keeps_the_promoted_inspection() {
     let mut f = fixture().await;
     f.endpoint.set_effective_enabled(true);
-    let _ = crate::core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
-        .await;
+    let _ =
+        nyanpasu_core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
+            .await;
     let (id, result) = simple_mutate(
         &mut f.clash,
         &f.client,
@@ -3684,7 +3687,7 @@ impl ServiceHostAdapter for RefusedInstall {
         nyanpasu_ipc::types::StatusInfo<'static>,
         nyanpasu_core::service::control::ServiceCommandError,
     > {
-        crate::core::actor_v2::test_support::IdleServiceAdapter
+        nyanpasu_core::actor_v2::test_support::IdleServiceAdapter
             .probe()
             .await
     }
@@ -3709,7 +3712,7 @@ impl ServiceHostAdapter for RefusedInstall {
     async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_core::actor_v2::endpoint::EndpointHandle {
         unreachable!()
     }
 }

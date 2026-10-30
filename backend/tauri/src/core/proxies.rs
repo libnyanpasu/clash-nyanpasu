@@ -19,10 +19,8 @@ use seahash::SeaHasher;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    actor_v2::{CoreClient, api::ApiClient},
-    clash::proxies::{Proxies, ProxyProviderSummary},
-};
+use crate::core::clash::proxies::{Proxies, ProxyProviderSummary};
+use nyanpasu_core::actor_v2::{CoreClient, api::ApiClient};
 
 struct Snapshot {
     api: ApiClient,
@@ -248,8 +246,10 @@ impl State {
             .await?;
         // Keep every follow-up on the change's revocable source capability.
         let interruption =
-            match super::connections::ConnectionScope::for_proxy_change(strategy, group) {
-                Some(scope) => super::connections::interrupt_connections(&api, &scope).await,
+            match nyanpasu_core::connections::ConnectionScope::for_proxy_change(strategy, group) {
+                Some(scope) => {
+                    nyanpasu_core::connections::interrupt_connections(&api, &scope).await
+                }
                 None => Ok(()),
             };
         let mut degradations = Vec::new();
@@ -595,7 +595,6 @@ impl ProxiesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::test_support::{endpoint, server};
     use axum::{
         Json, Router,
         extract::{Path, State as HttpState},
@@ -604,6 +603,7 @@ mod tests {
         routing::{delete, get, put},
     };
     use clash_api::ProxyName;
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
     use std::sync::{
         Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -760,7 +760,7 @@ mod tests {
     async fn setup() -> (
         ProxiesClient,
         CoreClient,
-        Arc<crate::core::actor_v2::test_support::Endpoint>,
+        Arc<nyanpasu_core::actor_v2::test_support::Endpoint>,
         Arc<Fixture>,
         tokio::task::JoinHandle<()>,
     ) {

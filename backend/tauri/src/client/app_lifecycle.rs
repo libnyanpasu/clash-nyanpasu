@@ -98,26 +98,24 @@ mod tests {
     use tokio_util::task::TaskTracker;
 
     use super::*;
-    use crate::{
-        client::{
-            effects::{
-                plan::ApplicationEffectPlan,
-                ports::ApplicationEffectsPort,
-                status::{EffectHealth, EffectRevision, EffectStatus},
-            },
-            hotkey::{
-                HotkeyArgs, HotkeyClient,
-                ports::{
-                    HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-                    ShortcutError, ShortcutRegistrar,
-                },
-            },
-            test_support::{TestControlEndpoint, test_client_args_with_endpoint},
+    use crate::client::{
+        effects::{
+            plan::ApplicationEffectPlan,
+            ports::ApplicationEffectsPort,
+            status::{EffectHealth, EffectRevision, EffectStatus},
         },
-        core::actor_v2::endpoint::{
-            CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
-            EndpointHandle, ExecutionHost,
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            ports::{
+                HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
+                ShortcutError, ShortcutRegistrar,
+            },
         },
+        test_support::{TestControlEndpoint, test_client_args_with_endpoint},
+    };
+    use nyanpasu_core::actor_v2::endpoint::{
+        CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
+        EndpointHandle, ExecutionHost,
     };
 
     /// Flags its own drop, which is how a cancelled producer ends.

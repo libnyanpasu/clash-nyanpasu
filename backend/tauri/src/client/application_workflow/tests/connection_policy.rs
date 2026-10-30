@@ -14,17 +14,14 @@ use nyanpasu_ipc::api::{
 use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
-use crate::{
-    client::{
-        NyanpasuClient,
-        test_support::{
-            TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
-            test_client_args_with_endpoint,
-        },
+use crate::client::{
+    NyanpasuClient,
+    test_support::{
+        TestControlEndpoint, runtime_build::TestRuntimeBuildPort, test_client_args_with_endpoint,
     },
-    core::actor_v2::endpoint::{
-        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
-    },
+};
+use nyanpasu_core::actor_v2::endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
 };
 
 #[derive(Default)]
@@ -136,7 +133,7 @@ impl Fixture {
                     }),
                 )
                 .with_state(calls.clone());
-            crate::core::actor_v2::test_support::server(router).await
+            nyanpasu_core::actor_v2::test_support::server(router).await
         })
         .await;
         let endpoint = Arc::new(Endpoint {
@@ -918,7 +915,7 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_core::actor_v2::local_host::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }

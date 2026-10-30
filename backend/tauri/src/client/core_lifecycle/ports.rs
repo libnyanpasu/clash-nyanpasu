@@ -9,9 +9,9 @@ use tempfile::TempDir;
 use super::super::runtime;
 use crate::{
     client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
-    core::actor_v2::local_host::CoreSpecError,
     state::profiles::ErrorPath,
 };
+use nyanpasu_core::actor_v2::local_host::CoreSpecError;
 
 /// Owns the staging directory until installation and its restart have finished.
 pub struct PreparedCoreBinary {
@@ -95,7 +95,7 @@ pub(in crate::client) struct PreparedRuntime {
     pub snapshot: Arc<runtime::RuntimeSnapshot>,
     /// The to-be-committed bytes, serialized exactly once so the advisory
     /// check and the reconcile cannot drift apart.
-    pub intent: Arc<crate::core::actor_v2::intent::RuntimeIntent>,
+    pub intent: Arc<nyanpasu_core::actor_v2::intent::RuntimeIntent>,
     /// The ports this candidate would bind. Inert: only the receipt of an
     /// apply that succeeded may confirm them.
     pub ports: crate::client::ports::CandidatePortBindings,

@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::actor_v2::{
+use nyanpasu_core::actor_v2::{
     EndpointConnectivity,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
     service_actor::ServiceHostAdapter,

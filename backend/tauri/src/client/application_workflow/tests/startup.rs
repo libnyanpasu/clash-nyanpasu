@@ -54,17 +54,17 @@ use super::{
     },
     ownership,
 };
-use crate::{
-    client::{
-        NyanpasuClient, SessionPortResolver,
-        core_lifecycle::{Ownership, ports::PreparedCoreBinary},
-        runtime,
-        test_support::{
-            TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
-            test_client_args_with_endpoint,
-        },
+use crate::client::{
+    NyanpasuClient, SessionPortResolver,
+    core_lifecycle::{Ownership, ports::PreparedCoreBinary},
+    runtime,
+    test_support::{
+        TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
+        test_client_args_with_endpoint,
     },
-    core::actor_v2::{
+};
+use nyanpasu_core::{
+    actor_v2::{
         CoreClient,
         endpoint::{
             ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
@@ -72,9 +72,8 @@ use crate::{
         },
         service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
     },
-};
-use nyanpasu_core::{
-    client::convergence::ConvergenceHealth, migration::modules::application::ApplicationFormat,
+    client::convergence::ConvergenceHealth,
+    migration::modules::application::ApplicationFormat,
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };

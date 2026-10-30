@@ -28,7 +28,7 @@ impl RuntimeBuildPort for Builder {
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_core::actor_v2::local_host::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }

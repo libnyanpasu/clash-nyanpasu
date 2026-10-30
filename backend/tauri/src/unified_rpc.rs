@@ -927,7 +927,7 @@ mod tests {
 
     #[test]
     fn provider_query_returns_summaries_over_http() {
-        use crate::core::actor_v2::test_support::{endpoint, server};
+        use nyanpasu_core::actor_v2::test_support::{endpoint, server};
         use serde_json::json;
 
         let (url, core_server) = tauri::async_runtime::block_on(server(

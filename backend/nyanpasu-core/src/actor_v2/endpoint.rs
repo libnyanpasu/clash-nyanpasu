@@ -190,7 +190,7 @@ impl ControlEndpoint for LocalEndpoint {
                         source_hash: snapshot.revision.source_hash.clone(),
                         effective_hash: snapshot.revision.effective_hash.clone(),
                     },
-                    config: serde_yaml::to_string(snapshot.config.as_ref()).map_err(|_| {
+                    config: serde_yaml_ng::to_string(snapshot.config.as_ref()).map_err(|_| {
                         CoreError::new(
                             CoreErrorKind::Internal,
                             "failed to serialize effective config",
@@ -652,9 +652,7 @@ fn app_core_kind_to_type(
 /// (`CoreLifecycleWorkflow::replace_binary`), not the service host's
 /// *applied* kind -- `map_service_status` no longer feeds its `applied_kind`
 /// through this function; see that field's comment (R6b).
-pub(crate) fn wire_core_type_to_kind(
-    core_type: &nyanpasu_utils::core::CoreType,
-) -> Option<CoreKind> {
+pub fn wire_core_type_to_kind(core_type: &nyanpasu_utils::core::CoreType) -> Option<CoreKind> {
     use nyanpasu_utils::core::{ClashCoreType, CoreType};
     match core_type {
         CoreType::Clash(ClashCoreType::Mihomo | ClashCoreType::MihomoAlpha) => {

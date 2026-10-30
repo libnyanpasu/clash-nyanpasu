@@ -47,11 +47,6 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
-    core::actor_v2::{
-        CoreClient as CoreClientV2, CoreStatusProjection,
-        facade::{ReconcileReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
-    },
     service::profile_file::ports::SelfProxyPortSource,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
@@ -73,6 +68,11 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
 };
 use nyanpasu_core::{
+    actor_v2::{
+        CoreClient as CoreClientV2, CoreStatusProjection,
+        facade::{ReconcileReport, StopReport},
+        service_actor::{ServiceClient, ServiceHostStatus},
+    },
     backup,
     backup::{
         BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
@@ -1521,10 +1521,6 @@ pub(crate) mod tests {
     };
     use crate::{
         client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
-        core::actor_v2::{
-            endpoint::ExecutionHost,
-            test_support::{HostTransitionServiceAdapter, test_idle_endpoint, test_v2_clients},
-        },
         service::profile_file::fs_service::ProfileFileService,
         state::profiles::{
             error::SubscriptionFetchError,
@@ -1544,7 +1540,13 @@ pub(crate) mod tests {
         },
         state::window::WindowState,
     };
-    use nyanpasu_core::utils::test_support::test_paths;
+    use nyanpasu_core::{
+        actor_v2::{
+            endpoint::ExecutionHost,
+            test_support::{HostTransitionServiceAdapter, test_idle_endpoint, test_v2_clients},
+        },
+        utils::test_support::test_paths,
+    };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
@@ -2242,7 +2244,7 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
+    impl nyanpasu_core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
         async fn probe(
             &self,
         ) -> std::result::Result<
@@ -2290,7 +2292,7 @@ pub(crate) mod tests {
             self.delegate.update().await
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_core::actor_v2::endpoint::EndpointHandle {
             self.delegate.endpoint()
         }
     }

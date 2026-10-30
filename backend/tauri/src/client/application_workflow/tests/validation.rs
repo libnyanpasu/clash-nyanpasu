@@ -16,15 +16,13 @@ use super::super::{
     },
     preparation::RuntimePreparation,
 };
-use crate::{
-    client::{
-        SessionPortResolver,
-        core_lifecycle::ports::RuntimePreparationPort,
-        runtime,
-        test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
-    },
-    core::actor_v2::{CoreClient, endpoint::ExecutionHost, facade::CoreFacade},
+use crate::client::{
+    SessionPortResolver,
+    core_lifecycle::ports::RuntimePreparationPort,
+    runtime,
+    test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
 };
+use nyanpasu_core::actor_v2::{CoreClient, endpoint::ExecutionHost, facade::CoreFacade};
 
 struct Graph {
     endpoint: Arc<TestControlEndpoint>,
@@ -102,8 +100,8 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
         .await;
     assert_eq!(outcome, RuntimeCheckOutcome::Passed);
 
-    let service = crate::core::actor_v2::service_actor::ServiceClient::spawn(
-        Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
+    let service = nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(
+        Arc::new(nyanpasu_core::actor_v2::test_support::IdleServiceAdapter),
         0,
     )
     .await

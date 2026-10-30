@@ -12,7 +12,7 @@ use snafu::{ResultExt, Snafu};
 use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to inspect {}", path.display()))]
     InspectConfig {
         path: std::path::PathBuf,
@@ -124,7 +124,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_spawns_under_a_temp_root() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths = nyanpasu_core::utils::test_support::test_paths(
+        let paths = crate::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -140,8 +140,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths =
-            nyanpasu_core::utils::test_support::test_paths(root.path(), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(root.path(), root.path().join("data"));
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 

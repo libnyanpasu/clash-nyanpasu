@@ -1,4 +1,3 @@
-pub mod actor_v2;
 pub mod clash;
 pub mod geo;
 pub mod logs;
@@ -11,5 +10,3 @@ pub mod widget_logo;
 pub mod win_uwp;
 
 pub(crate) mod proxies;
-
-pub(crate) mod connections;

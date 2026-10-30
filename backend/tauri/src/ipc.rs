@@ -800,7 +800,7 @@ pub async fn get_postprocessing_output(
 #[specta::specta]
 pub async fn get_core_status(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::actor_v2::CoreStatusInfo> {
+) -> Result<nyanpasu_core::actor_v2::CoreStatusInfo> {
     Ok(client.core_status().into())
 }
 
@@ -1548,7 +1548,7 @@ pub mod service {
         pub status: nyanpasu_ipc::types::ServiceStatus,
         pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
         pub compat: nyanpasu_core::service::compat::ServiceCompat,
-        pub phase: crate::core::actor_v2::service_actor::ServicePhase,
+        pub phase: nyanpasu_core::actor_v2::service_actor::ServicePhase,
         pub restart_attempts: u8,
     }
 

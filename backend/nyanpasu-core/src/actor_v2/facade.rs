@@ -29,7 +29,7 @@ pub struct AppliedConfigBinding {
 
 /// Failure before the router's host handoff cannot change the running core.
 #[derive(Debug)]
-pub(crate) struct HostChangeFailure {
+pub struct HostChangeFailure {
     pub error: CoreError,
     pub handoff_started: bool,
 }
@@ -133,7 +133,7 @@ impl CommandFailure {
 /// a lost reply or an elapsed wait always leaves the latest action here, never
 /// nothing and never an older one. It is cleared only on positive evidence
 /// that this exact action finished, or that it was never submitted.
-pub(crate) enum PendingAction {
+pub enum PendingAction {
     Submission {
         operation: OperationId,
         /// The endpoint that accepted it. Only its own operation store can
@@ -235,7 +235,7 @@ impl CoreFacade {
         }
     }
 
-    pub(crate) fn pending_action(&self) -> Option<&PendingAction> {
+    pub fn pending_action(&self) -> Option<&PendingAction> {
         self.pending.as_ref()
     }
 
@@ -309,7 +309,7 @@ impl CoreFacade {
     /// Consumes the pending action once its evidence says it finished, which
     /// is what frees the slot for the next one. Nothing is consumed while the
     /// action may still be running.
-    pub(crate) async fn consume_settled_action(&mut self) -> Result<(), String> {
+    pub async fn consume_settled_action(&mut self) -> Result<(), String> {
         match self.action_evidence().await {
             None => Ok(()),
             Some(ActionEvidence::Settled) => {
@@ -404,7 +404,7 @@ impl CoreFacade {
         result
     }
 
-    pub(crate) async fn api_client_if_running(
+    pub async fn api_client_if_running(
         &self,
     ) -> Result<Option<super::api::ApiClient>, super::api::ApiError> {
         let status = self
@@ -604,7 +604,7 @@ impl CoreFacade {
         })
     }
 
-    pub(crate) async fn change_execution_host(
+    pub async fn change_execution_host(
         &mut self,
         host: ExecutionHost,
     ) -> Result<HandoffReport, HostChangeFailure> {
@@ -641,7 +641,7 @@ impl CoreFacade {
     /// Move to the Service host only if the daemon is already `Ready`, never
     /// by converging one. Startup uses this to take a persisted host back
     /// without installing or starting a service on the user's behalf.
-    pub(crate) async fn adopt_service_host(&mut self) -> Result<HandoffReport, HostChangeFailure> {
+    pub async fn adopt_service_host(&mut self) -> Result<HandoffReport, HostChangeFailure> {
         let target = self
             .service
             .adopt_if_ready()
@@ -655,7 +655,7 @@ impl CoreFacade {
 
     /// Re-adopt the same Service owner after a transport failure. Ordinary
     /// unavailability is retryable; a lost actor reply remains fail-closed.
-    pub(crate) async fn recover_service_endpoint(
+    pub async fn recover_service_endpoint(
         &mut self,
         closing: &tokio_util::sync::CancellationToken,
     ) -> Result<HandoffReport, CoreError> {
@@ -704,7 +704,7 @@ impl CoreFacade {
 
     /// Whether every command the ServiceActor accepted has ended, including
     /// one it started before this facade existed (T10 §1.3).
-    pub(crate) async fn service_command_settled(&self) -> Result<bool, CoreError> {
+    pub async fn service_command_settled(&self) -> Result<bool, CoreError> {
         self.service.command_settled().await
     }
 
@@ -919,7 +919,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::core::actor_v2::{
+    use crate::actor_v2::{
         endpoint::{ControlEndpoint, CoreStatusSnapshot},
         service_actor::ServiceHostAdapter,
     };
@@ -1060,8 +1060,7 @@ mod tests {
     impl ServiceHostAdapter for ReadyService {
         async fn probe(
             &self,
-        ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError>
-        {
+        ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("ensure_ready");
             Ok(StatusInfo {
                 name: Cow::Borrowed("nyanpasu-service"),
@@ -1092,30 +1091,22 @@ mod tests {
             })
         }
 
-        async fn install(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn uninstall(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn start_daemon(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn stop_daemon(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             Ok(())
         }
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
             self.endpoint.clone()
         }
     }
@@ -1144,10 +1135,10 @@ mod tests {
         }
     }
 
-    fn intent(document: &serde_yaml::Mapping) -> super::RuntimeIntent {
+    fn intent(document: &serde_yaml_ng::Mapping) -> super::RuntimeIntent {
         super::super::intent::RuntimeIntentBuilder::build(
             (&ClashCore::Mihomo).into(),
-            serde_yaml::to_string(document)
+            serde_yaml_ng::to_string(document)
                 .expect("the fixture document serializes")
                 .into(),
             nyanpasu_core_manager::LocalIpcSettings {
@@ -1167,7 +1158,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, Some(expected.clone()));
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1217,7 +1208,7 @@ mod tests {
         });
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1252,7 +1243,7 @@ mod tests {
         local.lose_the_result();
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1302,7 +1293,7 @@ mod tests {
         });
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1326,7 +1317,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, Some(zero_epoch));
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1388,7 +1379,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         local.lose_the_next_result();
         let lost = facade
             .reconcile(&intent(&document), fake_spec(), &facade.core_status())
@@ -1434,7 +1425,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
         local.lose_the_next_result();
         let lost = facade
             .reconcile(&intent(&document), fake_spec(), &facade.core_status())

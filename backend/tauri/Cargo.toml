@@ -40,7 +40,7 @@ nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-platform = { path = '../nyanpasu-platform' }
-nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
+nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [

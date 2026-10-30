@@ -8,45 +8,33 @@ use std::{
     time::Duration,
 };
 
+use backon::{BlockingRetryable as _, Retryable as _};
+use nyanpasu_utils::{
+    io::{IoFailure, classify, transient_backoff},
+    redb_ext::{RedbFailure, find_failure},
+};
 use snafu::{ResultExt as _, Snafu};
 use time::OffsetDateTime;
-
-/// Three retries after the initial operation, bounded to 350 ms of waiting.
-const RETRY_DELAYS: [Duration; 3] = [
-    Duration::from_millis(50),
-    Duration::from_millis(100),
-    Duration::from_millis(200),
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum IoFailure {
-    Transient,
-    Permission,
-    Other,
-}
 
 /// Finds IO hidden by libraries whose error implementation does not expose it.
 pub(crate) fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFailure> {
     if let Some(error) = error.downcast_ref::<io::Error>() {
-        return Some(classify_io(error));
+        return Some(classify(error));
     }
     if let Some(error) = error.downcast_ref::<atomicwrites::Error<io::Error>>() {
         let (atomicwrites::Error::Internal(source) | atomicwrites::Error::User(source)) = error;
-        return Some(classify_io(source));
+        return Some(classify(source));
     }
-    if let Some(error) = error.downcast_ref::<redb::DatabaseError>() {
-        match error {
-            redb::DatabaseError::DatabaseAlreadyOpen => return Some(IoFailure::Transient),
-            redb::DatabaseError::Storage(source) => return error_io(source),
-            _ => {}
-        }
-    }
-    if let Some(redb::StorageError::Io(source)) = error.downcast_ref::<redb::StorageError>() {
-        return Some(classify_io(source));
+    match find_failure(error) {
+        Some(RedbFailure::AlreadyOpen) => return Some(IoFailure::Transient),
+        Some(RedbFailure::Io(failure)) => return Some(failure),
+        // A redb data or program failure is not an IO failure.
+        Some(_) => return None,
+        None => {}
     }
     if let Some(error) = error.downcast_ref::<nyanpasu_core_manager::Error>() {
         match error {
-            nyanpasu_core_manager::Error::Io(source) => return Some(classify_io(source)),
+            nyanpasu_core_manager::Error::Io(source) => return Some(classify(source)),
             nyanpasu_core_manager::Error::RuntimeDirectoryOwned(_) => {
                 return Some(IoFailure::Transient);
             }
@@ -54,22 +42,6 @@ pub(crate) fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFa
         }
     }
     error.source().and_then(error_io)
-}
-
-pub(crate) fn classify_io(error: &io::Error) -> IoFailure {
-    // Windows sharing/locking violations can also map to PermissionDenied.
-    #[cfg(windows)]
-    if matches!(error.raw_os_error(), Some(32 | 33)) {
-        return IoFailure::Transient;
-    }
-    match error.kind() {
-        io::ErrorKind::Interrupted
-        | io::ErrorKind::WouldBlock
-        | io::ErrorKind::TimedOut
-        | io::ErrorKind::ResourceBusy => IoFailure::Transient,
-        io::ErrorKind::PermissionDenied => IoFailure::Permission,
-        _ => IoFailure::Other,
-    }
 }
 
 pub(crate) fn is_link(metadata: &std::fs::Metadata) -> bool {
@@ -86,9 +58,7 @@ pub(crate) fn is_link(metadata: &std::fs::Metadata) -> bool {
 }
 
 pub(crate) fn retry_io<T>(operation: impl FnMut() -> io::Result<T>) -> io::Result<T> {
-    retry(operation, |error| {
-        classify_io(error) == IoFailure::Transient
-    })
+    retry(operation, |error| classify(error) == IoFailure::Transient)
 }
 
 pub(crate) fn retry<T, E>(
@@ -99,36 +69,25 @@ pub(crate) fn retry<T, E>(
 }
 
 pub(crate) fn retry_with_delay<T, E>(
-    mut operation: impl FnMut() -> Result<T, E>,
+    operation: impl FnMut() -> Result<T, E>,
     transient: impl Fn(&E) -> bool,
-    mut wait: impl FnMut(Duration),
+    wait: impl Fn(Duration) + 'static,
 ) -> Result<T, E> {
-    let mut delays = RETRY_DELAYS.into_iter();
-    loop {
-        match operation() {
-            Err(error) if transient(&error) => match delays.next() {
-                Some(delay) => wait(delay),
-                None => return Err(error),
-            },
-            result => return result,
-        }
-    }
+    operation
+        .retry(transient_backoff())
+        .sleep(wait)
+        .when(transient)
+        .call()
 }
 
-pub(crate) async fn retry_async<T, F>(mut operation: impl FnMut() -> F) -> io::Result<T>
+pub(crate) async fn retry_async<T, F>(operation: impl FnMut() -> F) -> io::Result<T>
 where
     F: Future<Output = io::Result<T>>,
 {
-    let mut delays = RETRY_DELAYS.into_iter();
-    loop {
-        match operation().await {
-            Err(error) if classify_io(&error) == IoFailure::Transient => match delays.next() {
-                Some(delay) => tokio::time::sleep(delay).await,
-                None => return Err(error),
-            },
-            result => return result,
-        }
-    }
+    operation
+        .retry(transient_backoff())
+        .when(|error| classify(error) == IoFailure::Transient)
+        .await
 }
 
 #[derive(Debug, Snafu)]

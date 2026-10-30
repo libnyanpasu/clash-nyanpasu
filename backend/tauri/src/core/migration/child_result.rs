@@ -49,7 +49,7 @@ pub(crate) struct Failure {
     pub chain: Vec<String>,
     pub backup_available: bool,
     #[serde(default)]
-    pub io_failure: Option<crate::core::corrupt::IoFailure>,
+    pub io_failure: Option<nyanpasu_utils::io::IoFailure>,
 }
 
 #[derive(Debug, snafu::Snafu)]

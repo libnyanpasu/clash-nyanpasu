@@ -6792,6 +6792,7 @@ dependencies = [
 name = "nyanpasu-core-manager"
 version = "1.0.2"
 dependencies = [
+ "backon",
  "camino",
  "chrono",
  "clash-api",
@@ -7112,6 +7113,7 @@ dependencies = [
  "os_pipe",
  "parking_lot 0.13.0",
  "processkit",
+ "redb",
  "reqwest 0.13.5",
  "reqwest-websocket",
  "serde",

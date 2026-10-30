@@ -433,3 +433,75 @@ async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
     tasks.close();
     tasks.wait().await;
 }
+
+async fn start_jobs(path: &Path) -> Result<(), crate::client::jobs::Error> {
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    let started = crate::client::jobs::start(
+        path.to_owned(),
+        crate::client::jobs::capture(),
+        shutdown.clone(),
+        &tasks,
+    )
+    .await
+    .map(drop);
+    shutdown.cancel();
+    tasks.close();
+    tasks.wait().await;
+    started
+}
+
+#[tokio::test]
+async fn unusable_jobs_journals_are_preserved_and_rebuilt() {
+    const RUNS: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("jobs_runs_v1");
+    let temp = tempfile::tempdir().unwrap();
+    let foreign = temp.path().join("foreign").join("jobs.redb");
+    fs::create_dir_all(foreign.parent().unwrap()).unwrap();
+    fs::write(&foreign, vec![b'x'; 4096]).unwrap();
+    // Opens cleanly; the record fails to decode while the owner recovers.
+    let undecodable = temp.path().join("undecodable").join("jobs.redb");
+    fs::create_dir_all(undecodable.parent().unwrap()).unwrap();
+    {
+        let db = redb::Database::create(&undecodable).unwrap();
+        let tx = db.begin_write().unwrap();
+        tx.open_table(RUNS)
+            .unwrap()
+            .insert("run", b"not json".as_slice())
+            .unwrap();
+        tx.commit().unwrap();
+    }
+    let directory = temp.path().join("directory").join("jobs.redb");
+    fs::create_dir_all(&directory).unwrap();
+
+    for path in [&foreign, &undecodable, &directory] {
+        start_jobs(path).await.unwrap();
+
+        assert_eq!(evidence(path).len(), 1, "{}", path.display());
+        let db = redb::Database::open(path).unwrap();
+        let tx = db.begin_read().unwrap();
+        assert!(
+            tx.open_table(RUNS).unwrap().get("run").unwrap().is_none(),
+            "the rebuilt journal starts empty: {}",
+            path.display()
+        );
+    }
+    assert_eq!(fs::read(&evidence(&foreign)[0]).unwrap(), vec![b'x'; 4096]);
+    assert!(evidence(&directory)[0].is_dir());
+}
+
+#[tokio::test]
+async fn a_held_jobs_journal_is_reported_without_rebuilding() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("jobs.redb");
+    let _held = redb::Database::create(&path).unwrap();
+
+    let error = start_jobs(&path).await.unwrap_err();
+
+    assert!(
+        matches!(&error, crate::client::jobs::Error::OpenStore { .. })
+            && nyanpasu_utils::redb_ext::find_failure(&error)
+                == Some(nyanpasu_utils::redb_ext::RedbFailure::AlreadyOpen),
+        "{error:?}"
+    );
+    assert!(evidence(&path).is_empty());
+}

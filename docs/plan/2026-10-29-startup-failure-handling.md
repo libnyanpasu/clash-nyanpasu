@@ -25,7 +25,7 @@
 | A4  | app     | `feat/startup-failure-dialog`      | 报告器 `startup-failed` 模式；setup 失败弹窗后走正常退出流程收尾；迁移失败弹窗迁移  | N2–N4、N7，§3.1 权限与占用 |
 | A5  | app     | `fix/startup-environment-failures` | 构建前与平台相关的失败：目录、WebView2、日志、Tauri 构建、deep-link、平台钩子与菜单 | D7–D9、N1、N5、N8          |
 
-不在本次交付内：runtime 发版与 app bump pin；D5 在 app 中的隔离重建（R2 发版后另做，见下）。在那之前：
+不在本次交付内：runtime 发版与 app bump pin；D5 在 app 中的隔离重建（R2 之后另做，见实施记录的"后续：D5 与共享 redb 分类"）。在那之前：
 
 - D1、D2 的触发条件在 app 中按 N4 报告，不再 panic。
 - `jobs.redb` 打不开时，app 无法区分权限、占用与损坏，A4 按"任务库不可用"报告：给出 `jobs.redb` 路径，说明该文件只保存任务历史，可以删除或移走后重启。
@@ -210,7 +210,7 @@
   - 文档与迁移状态读取各补注入式重试测试。
 - **第三轮：** codex 结论 PASS，无剩余 Critical/Major。
 - **记为已知限制，未修：**
-  - quarantine 恢复只重查父进程。父进程被杀后子进程无法确认退出时，`recover_quarantine` 会放行。根因是 pid 记录不持久化子进程身份，v2.0.2 下次启动重新清扫时同样放行。
+  - quarantine 恢复只重查父进程。父进程被杀后子进程无法确认退出时，`recover_quarantine` 会放行。根因是 pid 记录不持久化子进程身份，v2.0.2 下次启动重新清扫时同样放行。追踪：libnyanpasu/nyanpasu-runtime#465。
   - 文件名为 u64 最大值的日志分片或配置产物会导致计数溢出。属既有问题，需人为构造文件名。
   - shutdown hook 线程创建失败没有测试：需要为测试在生产代码中加注入点。
 
@@ -222,3 +222,13 @@
 - runtime 的 `Cargo.lock` 中 `nyanpasu-log-preview` 记为 0.1.1，而清单是 0.1.0。这是 v2.0.2 发版时就有的不一致，构建会改写它，未纳入本次提交。
 
 - 计划审计（codex gpt-6.1-sol xhigh，只读）：9 个阻断项全部采纳。主要修订：D5 的类型化错误移到 runtime（R2），app 侧 D5 推迟；setup 失败的收尾从"setup 内阻塞等待"改为交给正常退出流程，避免与需要主线程的清理死锁；不在 tracker 内的 actor 在构造后立即纳入；迁移子进程增加结构化结果；D3、D4 覆盖迁移路径；deep-link 与构建前的其余 panic 点纳入 A5。
+
+**后续：D5 与共享 redb 分类**
+
+R2 保留了类型化错误，但 app 判断 redb 错误仍是三处手写匹配（KV 存储、启动失败分类、流量存储），且互不一致：只有 KV 存储把截断文件当作损坏，流量存储只认魔数不符。为此不在 jobs 里单独加分类，而是把分类放进 utils，供所有 redb 使用方共用：
+
+- **utils（libnyanpasu/nyanpasu-utils#212）：** `io::classify` 给出暂时性、权限、其他三类；`redb` feature 下的 `redb_ext` 把 redb 4.4 的全部错误类型分成损坏、格式不符、缺表、被占用、IO、内部六类，`find_failure` 沿使用方的错误链查找。只给事实，不定策略。`IoFailure` 在 `serde` feature 下可序列化，供迁移子进程报告使用。
+- **runtime（libnyanpasu/nyanpasu-runtime#466）：** 日志落盘改用 `io::classify`；redb 锁定版本从 4.2.0 升到 4.4.0。
+- **app：** submodule 暂钉 runtime#466 的提交，合入前须改到发布 tag。KV 存储、启动失败分类、流量存储改用共享分类，删掉 app 自带的 `IoFailure` 与 `classify_io`。流量统计文件被截断时也会丢弃重建。
+- **D5：** `jobs.redb` 不是常规文件、redb 判为损坏或格式不符、恢复或修剪时记录解码失败，都改名留证后新建，任务历史丢失。被占用与暂时性 IO 按 50/100/200 ms 重试；权限与其余 IO 失败不改名，按权限或占用报告。启动失败分类不再对任务库特判，权限与占用按对应类型提示。
+- **审查：** utils 的分类经 `/ccg:review` 三轮（codex 后端 + kimi，均为后端审查），终审 PASS。第一轮两方都指出 redb 4.4 的 `CursorError`、`BackendError` 未纳入，已补并把下限提到 4.4。未采纳：Unix 上 `EACCES` 锁冲突的说明（没有使用方自加 fcntl 锁）、自定义存储后端的说明（没有使用方使用）。

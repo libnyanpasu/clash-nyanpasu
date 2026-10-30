@@ -71,12 +71,22 @@ fn typed_setup_and_rpc_sources_select_failure_kinds_and_paths() {
             setup::Error::StartJobs {
                 source: client::jobs::Error::OpenStore {
                     path: paths.jobs_path().into_std_path_buf(),
-                    source: nyanpasu_jobs::Error::Journal(
-                        "permission or corruption erased upstream".into(),
-                    ),
+                    source: nyanpasu_jobs::Error::Journal("sequence exhausted".into()),
                 },
             },
             FailureKind::JobsDatabase,
+            Some(paths.jobs_path().into_std_path_buf()),
+        ),
+        (
+            setup::Error::StartJobs {
+                source: client::jobs::Error::OpenStore {
+                    path: paths.jobs_path().into_std_path_buf(),
+                    source: nyanpasu_jobs::Error::JournalDirectory(std::io::Error::from(
+                        std::io::ErrorKind::PermissionDenied,
+                    )),
+                },
+            },
+            FailureKind::Permission,
             Some(paths.jobs_path().into_std_path_buf()),
         ),
         (

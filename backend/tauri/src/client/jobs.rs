@@ -1,7 +1,12 @@
 //! Composition of the shared job owner; business registrations stay with their domain.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use nyanpasu_jobs::{JobsClient, JobsService, Limits, LogCapture, LogPolicy, RedbJobStore};
+use nyanpasu_utils::{
+    io::IoFailure,
+    redb_ext::{RedbFailure, find_failure},
+};
+use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::instrument::WithSubscriber;
 
@@ -26,24 +31,22 @@ pub(crate) async fn start(
     shutdown: CancellationToken,
     tasks: &TaskTracker,
 ) -> Result<JobsClient, Error> {
-    let dispatch = tracing::dispatcher::get_default(Clone::clone);
-    let store_path = path.clone();
-    let store = crate::utils::blocking::join(
-        tokio::task::spawn_blocking(move || RedbJobStore::open(path)).await,
-    )
-    .map_err(|source| Error::OpenStore {
-        path: store_path,
-        source,
-    })?;
-    let mut limits = Limits::default();
-    limits.retention.per_job = DEFAULT_HISTORY_LIMIT;
-    // Profile sync coalesces elapsed interval slots after suspend; do not
-    // discard an overdue sync.
-    limits.lateness = std::time::Duration::MAX;
-    let mut service = JobsService::start(Box::new(store), capture, limits)
-        .with_subscriber(dispatch)
-        .await
-        .map_err(|source| Error::StartOwner { source })?;
+    let mut service = match start_service(&path, capture.clone()).await {
+        Err(error) if error.unusable_journal() => {
+            let journal = path.clone();
+            crate::utils::blocking::join(
+                tokio::task::spawn_blocking(move || {
+                    crate::core::corrupt::preserve(&journal, &error)
+                })
+                .await,
+            )
+            .context(PreserveStoreSnafu)?;
+            tracing::warn!(path = %path.display(), action = "reset_jobs_journal",
+                "resetting the jobs journal discards run history; schedules are registered again");
+            start_service(&path, capture).await?
+        }
+        result => result?,
+    };
     let client = service.client();
     tasks.spawn(async move {
         shutdown.cancelled().await;
@@ -61,6 +64,41 @@ pub(crate) async fn start(
         }
     });
     Ok(client)
+}
+
+async fn start_service(path: &Path, capture: LogCapture) -> Result<JobsService, Error> {
+    let dispatch = tracing::dispatcher::get_default(Clone::clone);
+    let store_path = path.to_owned();
+    let store = crate::utils::blocking::join(
+        tokio::task::spawn_blocking(move || open_store(&store_path)).await,
+    )?;
+    let mut limits = Limits::default();
+    limits.retention.per_job = DEFAULT_HISTORY_LIMIT;
+    // Profile sync coalesces elapsed interval slots after suspend; do not
+    // discard an overdue sync.
+    limits.lateness = std::time::Duration::MAX;
+    JobsService::start(Box::new(store), capture, limits)
+        .with_subscriber(dispatch)
+        .await
+        .context(StartOwnerSnafu)
+}
+
+fn open_store(path: &Path) -> Result<RedbJobStore, Error> {
+    use crate::core::corrupt;
+    match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
+        Ok(metadata) if !metadata.is_file() || corrupt::is_link(&metadata) => {
+            return NotAFileSnafu { path }.fail();
+        }
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            return Err(error).context(InspectStoreSnafu { path });
+        }
+        _ => {}
+    }
+    corrupt::retry(
+        || RedbJobStore::open(path),
+        |error| corrupt::error_io(error) == Some(IoFailure::Transient),
+    )
+    .context(OpenStoreSnafu { path })
 }
 
 pub(crate) async fn wait(
@@ -102,6 +140,13 @@ pub(crate) async fn test_client_with_owner(
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
+    #[snafu(display("failed to inspect jobs at {}", path.display()))]
+    InspectStore {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("jobs at {} is not a regular file", path.display()))]
+    NotAFile { path: PathBuf },
     #[snafu(display("failed to open jobs at {}", path.display()))]
     OpenStore {
         path: PathBuf,
@@ -109,6 +154,30 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to start jobs owner"))]
     StartOwner { source: nyanpasu_jobs::Error },
+    #[snafu(display("failed to preserve the unusable jobs journal"))]
+    PreserveStore { source: crate::core::corrupt::Error },
+}
+
+impl Error {
+    /// The journal only holds run history, so a node that is not a regular
+    /// file, or a file confirmed corrupt or written in an incompatible layout,
+    /// is preserved and rebuilt. Permission, lock and other IO failures are
+    /// reported instead.
+    fn unusable_journal(&self) -> bool {
+        let source = match self {
+            Self::NotAFile { .. } => return true,
+            Self::OpenStore { source, .. } | Self::StartOwner { source } => source,
+            Self::InspectStore { .. } | Self::PreserveStore { .. } => return false,
+        };
+        matches!(
+            source,
+            nyanpasu_jobs::Error::JournalRecoveryDecode(_)
+                | nyanpasu_jobs::Error::JournalPruneDecode(_)
+        ) || matches!(
+            find_failure(source),
+            Some(RedbFailure::Corrupt | RedbFailure::Incompatible)
+        )
+    }
 }
 
 #[derive(Debug, serde::Serialize, specta::Type)]

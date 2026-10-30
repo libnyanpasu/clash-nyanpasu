@@ -8,9 +8,10 @@ use std::{
 };
 
 use nyanpasu_config::state::PersistentState;
+use nyanpasu_utils::io::{IoFailure, classify};
 use snafu::{ResultExt as _, Snafu};
 
-use super::corrupt::{self, IoFailure};
+use super::corrupt;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -33,7 +34,7 @@ pub(crate) fn read(path: &Path) -> Result<Option<PersistentState>, Error> {
 fn read_with(
     path: &Path,
     read: impl FnMut() -> io::Result<Vec<u8>>,
-    wait: impl FnMut(Duration),
+    wait: impl Fn(Duration) + 'static,
 ) -> Result<Option<PersistentState>, Error> {
     match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
         Ok(metadata) if !metadata.is_file() || corrupt::is_link(&metadata) => {
@@ -46,7 +47,7 @@ fn read_with(
     }
     let bytes = match corrupt::retry_with_delay(
         read,
-        |error| corrupt::classify_io(error) == IoFailure::Transient,
+        |error| classify(error) == IoFailure::Transient,
         wait,
     ) {
         Ok(bytes) => bytes,
@@ -84,7 +85,8 @@ mod tests {
             let original = b"window_state: {}\n";
             std::fs::write(&path, original).unwrap();
             let mut attempts = 0;
-            let mut delays = Vec::new();
+            let delays = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let recorded = delays.clone();
             let result = read_with(
                 &path,
                 || {
@@ -95,11 +97,11 @@ mod tests {
                         std::fs::read(&path)
                     }
                 },
-                |delay| delays.push(delay),
+                move |delay| recorded.borrow_mut().push(delay),
             );
             assert_eq!(attempts, 4);
             assert_eq!(
-                delays,
+                *delays.borrow(),
                 [
                     Duration::from_millis(50),
                     Duration::from_millis(100),

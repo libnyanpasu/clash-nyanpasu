@@ -7,12 +7,13 @@ use std::{
 };
 
 use nyanpasu_paths::PathResolver;
+use nyanpasu_utils::io::IoFailure;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
 use crate::{
     core::{
-        corrupt::{self, IoFailure},
+        corrupt,
         migration::child_result::{Failure, FailureStage, RevisionFailure},
     },
     setup,
@@ -82,7 +83,6 @@ impl StartupFailure {
                     ),
                 ),
             },
-            // v2.0.2 erases jobs storage causes into Journal(String).
             Error::StartJobs { .. } => (
                 FailureKind::JobsDatabase,
                 Some(paths.jobs_path().into_std_path_buf()),
@@ -156,11 +156,7 @@ impl StartupFailure {
         path: Option<PathBuf>,
         error: &(dyn StdError + 'static),
     ) -> Self {
-        let kind = if kind == FailureKind::JobsDatabase {
-            kind
-        } else {
-            io_kind(corrupt::error_io(error)).unwrap_or(kind)
-        };
+        let kind = io_kind(corrupt::error_io(error)).unwrap_or(kind);
         let mut path = path;
         let mut current = Some(error);
         while let Some(error) = current {
@@ -204,7 +200,7 @@ impl StartupFailure {
 
 fn io_kind(failure: Option<IoFailure>) -> Option<FailureKind> {
     match failure {
-        Some(IoFailure::Permission) => Some(FailureKind::Permission),
+        Some(IoFailure::PermissionDenied) => Some(FailureKind::Permission),
         Some(IoFailure::Transient) => Some(FailureKind::Busy),
         _ => None,
     }

@@ -4,11 +4,9 @@ use super::TrafficStorage;
 use nyanpasu_traffic::{TrafficDb, store::Opened};
 use nyanpasu_tsdb::{
     ErrorKind, OpenError, Profile, RecoveryError,
-    storage::{
-        StorageError,
-        redb::{RedbError, RedbStorage},
-    },
+    storage::{StorageError, redb::RedbStorage},
 };
+use nyanpasu_utils::redb_ext::{RedbFailure, find_failure};
 use std::path::{Path, PathBuf};
 
 pub struct TrafficFileStorage {
@@ -94,12 +92,10 @@ fn disposable(error: &RecoveryError) -> bool {
         RecoveryError::Open {
             source: OpenError::SchemaMismatch { .. } | OpenError::StoreFormat { .. },
         } => true,
-        // redb classifies a bad magic number as InvalidData, wrapped as BackendFailed.
+        // A foreign or truncated file reaches here wrapped as BackendFailed.
         RecoveryError::Reopen {
             source: StorageError::Failed { source },
-        } => {
-            matches!(source.downcast_ref::<RedbError>(), Some(RedbError::Open { source: redb::DatabaseError::Storage(redb::StorageError::Io(io)) }) if io.kind() == std::io::ErrorKind::InvalidData)
-        }
+        } => find_failure(source.as_ref()) == Some(RedbFailure::Corrupt),
         _ => false,
     }
 }

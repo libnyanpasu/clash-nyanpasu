@@ -180,7 +180,7 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), Error> {
         || AtomicFile::new(path, AllowOverwrite).write(|file| file.write_all(contents)),
         |error| {
             let (atomicwrites::Error::Internal(error) | atomicwrites::Error::User(error)) = error;
-            crate::core::corrupt::classify_io(error) == crate::core::corrupt::IoFailure::Transient
+            nyanpasu_utils::io::classify(error) == nyanpasu_utils::io::IoFailure::Transient
         },
     )
     .context(WriteFileSnafu { path })?;

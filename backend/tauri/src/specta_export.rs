@@ -5,7 +5,7 @@
 use tauri_specta::{collect_commands, collect_events};
 use tauri_specta_query::{CommandSet, TanstackQueryFramework};
 
-use crate::{core, ipc, unified_rpc, window};
+use crate::{adapters::events, core, ipc, unified_rpc, window};
 
 pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
@@ -21,9 +21,9 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             core::storage::StorageValueChangedEvent,
             core::storage::StorageResyncEvent,
             ipc::SchemeRequestReceivedEvent,
-            core::actor_v2::CoreStatusChangedEvent,
+            events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
-            core::actor_v2::ServiceStatusChangedEvent,
+            events::ServiceStatusChangedEvent,
             crate::adapters::event_sink::StateChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
@@ -205,9 +205,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         core::storage::StorageValueChangedEvent,
         core::storage::StorageResyncEvent,
         ipc::SchemeRequestReceivedEvent,
-        core::actor_v2::CoreStatusChangedEvent,
+        events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
-        core::actor_v2::ServiceStatusChangedEvent,
+        events::ServiceStatusChangedEvent,
         crate::adapters::event_sink::StateChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them

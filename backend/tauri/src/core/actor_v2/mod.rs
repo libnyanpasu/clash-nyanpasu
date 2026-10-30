@@ -185,12 +185,6 @@ impl From<CoreStatusProjection> for CoreStatusInfo {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
-
-#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct ServiceStatusChangedEvent(pub service_actor::ServiceHostStatus);
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandoffReport {
     /// The target already owned the runtime; nothing moved.

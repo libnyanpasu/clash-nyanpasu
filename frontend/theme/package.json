@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@material/material-color-utilities": "0.4.0",
-    "es-toolkit": "1.53.0"
+    "es-toolkit": "1.53.1"
   }
 }

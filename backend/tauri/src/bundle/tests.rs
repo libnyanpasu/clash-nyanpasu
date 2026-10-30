@@ -33,7 +33,10 @@ fn resolves_portable_and_fixed_webview_independently() {
             }
             for windows in [false, true] {
                 let metadata =
-                    BundleMetadata::resolve(windows, &config(false), directory.path()).unwrap();
+                    BundleMetadata::resolve(windows, &mut config(false), directory.path(), || {
+                        false
+                    })
+                    .unwrap();
                 assert_eq!(metadata.is_portable, windows && portable);
                 assert_eq!(metadata.is_fixed_webview, windows && fixed);
             }
@@ -49,11 +52,14 @@ fn compiled_runtime_path_takes_precedence_over_directory_detection() {
     config.bundle.windows.webview_install_mode = WebviewInstallMode::FixedRuntime {
         path: "custom-runtime".into(),
     };
-    assert!(BundleMetadata::resolve(true, &config, directory.path()).is_err());
+    assert!(matches!(
+        BundleMetadata::resolve(true, &mut config, directory.path(), || false),
+        Err(Error::ValidateWebview { path }) if path == directory.path().join("custom-runtime")
+    ));
     add_runtime(&directory.path().join("custom-runtime"));
-    let metadata = BundleMetadata::resolve(true, &config, directory.path()).unwrap();
+    let metadata = BundleMetadata::resolve(true, &mut config, directory.path(), || false).unwrap();
     assert!(metadata.is_fixed_webview);
-    metadata.setup(&mut config, directory.path()).unwrap();
+    metadata.setup(&mut config).unwrap();
     assert!(matches!(
         config.bundle.windows.webview_install_mode,
         WebviewInstallMode::FixedRuntime { path } if path == directory.path().join("custom-runtime")
@@ -64,13 +70,11 @@ fn compiled_runtime_path_takes_precedence_over_directory_detection() {
 fn incomplete_runtime_fails_without_changing_configuration() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("WebView2")).unwrap();
-    let config = config(false);
+    let mut config = config(false);
     let before = serde_json::to_value(&config).unwrap();
-    let error = BundleMetadata::resolve(true, &config, directory.path()).unwrap_err();
+    let error = BundleMetadata::resolve(true, &mut config, directory.path(), || false).unwrap_err();
     assert!(
-        error
-            .to_string()
-            .contains("fixed WebView2 runtime is incomplete")
+        matches!(error, Error::ValidateWebview { path } if path == directory.path().join("WebView2"))
     );
     assert_eq!(serde_json::to_value(&config).unwrap(), before);
 }
@@ -85,13 +89,14 @@ fn setup_injects_runtime_and_preserves_compiled_feeds() {
         for nightly in [false, true] {
             let mut config = config(nightly);
             let mut expected = serde_json::to_value(&config).unwrap();
-            let mut metadata = BundleMetadata::resolve(true, &config, directory.path()).unwrap();
+            let mut metadata =
+                BundleMetadata::resolve(true, &mut config, directory.path(), || false).unwrap();
             metadata.release_channel = if nightly {
                 Channel::Nightly
             } else {
                 Channel::Stable
             };
-            metadata.setup(&mut config, directory.path()).unwrap();
+            metadata.setup(&mut config).unwrap();
             if fixed {
                 expected["bundle"]["windows"]["webviewInstallMode"] = json!({
                     "type": "fixedRuntime", "path": directory.path().join("WebView2"),
@@ -395,7 +400,7 @@ fn release_channel_selects_feeds_without_changing_fixed_target() {
                 release_channel: channel,
             };
             let mut config = config(false);
-            metadata.setup(&mut config, Path::new("/app")).unwrap();
+            metadata.setup(&mut config).unwrap();
             assert_eq!(config.plugins.0["updater"]["endpoints"], json!(endpoints));
             assert_eq!(
                 metadata.updater_target("windows-aarch64"),
@@ -510,6 +515,111 @@ fn release_channel_only_nightly_accepts_newer_build_of_same_version() {
             &local,
             &remote,
             time::OffsetDateTime::UNIX_EPOCH
+        ));
+    }
+}
+
+#[test]
+fn portable_incomplete_runtime_never_uses_system_webview() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(directory.path().join(".config")).unwrap();
+    std::fs::write(directory.path().join(".config/PORTABLE"), b"").unwrap();
+    let mut config = config(false);
+    config.bundle.windows.webview_install_mode = WebviewInstallMode::FixedRuntime {
+        path: "WebView2".into(),
+    };
+    let before = serde_json::to_value(&config).unwrap();
+    let error = BundleMetadata::resolve(true, &mut config, directory.path(), || {
+        panic!("portable startup must not probe system WebView2")
+    })
+    .unwrap_err();
+    assert!(
+        matches!(error, Error::ValidateWebview { path } if path == directory.path().join("WebView2"))
+    );
+    assert_eq!(serde_json::to_value(&config).unwrap(), before);
+}
+
+#[tokio::test]
+async fn installed_webview_fallback_configures_runtime_and_selects_fixed_update_package() {
+    use std::io::{BufRead as _, Write as _};
+    use tauri_plugin_updater::UpdaterExt as _;
+
+    for compiled_fixed in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("WebView2")).unwrap();
+        let mut config = config(false);
+        if compiled_fixed {
+            config.bundle.windows.webview_install_mode = WebviewInstallMode::FixedRuntime {
+                path: "WebView2".into(),
+            };
+        }
+        let mut probed = false;
+        let metadata = BundleMetadata::resolve(true, &mut config, directory.path(), || {
+            probed = true;
+            true
+        })
+        .unwrap();
+        assert!(probed);
+        assert!(!metadata.is_portable);
+        assert!(metadata.is_fixed_webview);
+        let updater = metadata.setup(&mut config).unwrap();
+        assert!(!matches!(
+            config.bundle.windows.webview_install_mode,
+            WebviewInstallMode::FixedRuntime { .. }
+        ));
+
+        let target = tauri_plugin_updater::target().unwrap();
+        let manifest = json!({
+            "version": "99.0.0",
+            "platforms": {
+                target.clone(): {"url": "https://example.com/standard.zip", "signature": "standard"},
+                format!("{target}-fixed-webview"): {"url": "https://example.com/fixed.zip", "signature": "fixed"},
+            }
+        }).to_string();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/update.json", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                .unwrap();
+            let mut request = std::io::BufReader::new(&mut stream);
+            loop {
+                let mut line = String::new();
+                assert!(request.read_line(&mut line).unwrap() > 0);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            drop(request);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{manifest}", manifest.len()).unwrap();
+        });
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        *context.config_mut() = config;
+        let app = tauri::test::mock_builder()
+            .plugin(updater.build())
+            .build(context)
+            .unwrap();
+        let update = app
+            .updater_builder()
+            .endpoints(vec![endpoint.parse().unwrap()])
+            .unwrap()
+            .build()
+            .unwrap()
+            .check()
+            .await
+            .unwrap()
+            .unwrap();
+        server.join().unwrap();
+        assert_eq!(update.target, format!("{target}-fixed-webview"));
+        assert_eq!(
+            update.download_url.as_str(),
+            "https://example.com/fixed.zip"
+        );
+        assert_eq!(update.signature, "fixed");
+        assert!(!matches!(
+            app.config().bundle.windows.webview_install_mode,
+            WebviewInstallMode::FixedRuntime { .. }
         ));
     }
 }

@@ -76,6 +76,7 @@
       "grant_core_permission": "TUN モードを正しく動作させるには、Clash コアに管理者権限が必要です。権限を付与しますか？\nこの操作にはパスワードの入力が必要です。"
     },
     "startup_failure": {
+      "unresolved_path": "パスを解決できませんでした。以下の詳細を確認してください。",
       "heading": "起動できませんでした",
       "path": "パス",
       "details": "詳細",
@@ -113,7 +114,9 @@
       },
       "web_view2": {
         "description": "WebView2 ランタイムを使用できません。",
-        "recovery": "ポータブル版を再ダウンロードするか、Clash Nyanpasu を再インストールしてください。"
+        "recovery": "ポータブル版を再ダウンロードするか、Clash Nyanpasu を再インストールしてください。",
+        "portable_recovery": "ポータブル版パッケージを再ダウンロードしてください。",
+        "installed_recovery": "Clash Nyanpasu を再インストールしてください。"
       },
       "logging": {
         "description": "アプリのログを使用できません。",

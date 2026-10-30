@@ -20,6 +20,11 @@ use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberEx
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
+    #[snafu(display("failed to create logging directory {}", path.display()))]
+    CreateDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[snafu(display("failed to start logging thread"))]
     StartReloadThread { source: std::io::Error },
     #[snafu(display("failed to create log writer in {}", path.display()))]
@@ -39,9 +44,10 @@ pub(crate) enum Error {
 pub enum ReloadSignal {
     Reload(Option<LoggingLevel>, Option<LogRotation>),
     StartupFailure { detail: String, done: Sender<()> },
+    Finish(Sender<()>),
 }
 
-/// Acknowledges startup failure records.
+/// Acknowledges startup failure records and pre-Tauri logging cleanup.
 pub(crate) struct LoggingShutdown(pub Sender<ReloadSignal>);
 
 impl LoggingShutdown {
@@ -52,6 +58,14 @@ impl LoggingShutdown {
             .send(ReloadSignal::StartupFailure { detail, done })
             .is_ok()
         {
+            let _ = completed.recv();
+        }
+    }
+
+    /// Pre-Tauri failures have no event loop to keep responsive while flushing.
+    pub(crate) fn finish_blocking(&self) {
+        let (done, completed) = mpsc::channel();
+        if self.0.send(ReloadSignal::Finish(done)).is_ok() {
             let _ = completed.recv();
         }
     }
@@ -142,8 +156,16 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
             std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
         )
         .from_env_lossy()
-        .add_directive(format!("nyanpasu={level}").parse().unwrap())
-        .add_directive(format!("clash_nyanpasu={level}").parse().unwrap())
+        .add_directive(
+            format!("nyanpasu={level}")
+                .parse()
+                .expect("the static crate name and LevelFilter form a valid directive"),
+        )
+        .add_directive(
+            format!("clash_nyanpasu={level}")
+                .parse()
+                .expect("the static crate name and LevelFilter form a valid directive"),
+        )
 }
 
 /// initial instance global logger, returning the channel that reloads it; the
@@ -154,9 +176,9 @@ pub fn init(
 ) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture), Error> {
     let jobs = crate::client::jobs::capture();
     let log_dir = paths.app_logs_dir();
-    if !log_dir.exists() {
-        let _ = fs::create_dir_all(&log_dir);
-    }
+    fs::create_dir_all(&log_dir).context(CreateDirectorySnafu {
+        path: log_dir.as_std_path(),
+    })?;
     // This is intended to capture config loading errors
     let (log_level, log_rotation) = (
         LoggingLevel::Debug,
@@ -196,9 +218,16 @@ pub fn init(
                         let _ = done.send(());
                         continue;
                     }
+                    ReloadSignal::Finish(done) => {
+                        drop(_guard);
+                        let _ = done.send(());
+                        return;
+                    }
                 };
                 if let Some(level) = level {
-                    filter_handle.reload(app_filter(level)).unwrap(); // panic if error
+                    filter_handle
+                        .reload(app_filter(level))
+                        .expect("the global subscriber outlives its logging reload thread");
                 }
 
                 // Rebuilding the writer opens a new file, so an unchanged rotation
@@ -248,8 +277,14 @@ pub fn init(
         .with(jobs.layer())
         .with(profilers.trace_layer(log_dir.as_std_path()));
 
-    log_tracer::LogTracer::init().context(InstallLogTracerSnafu)?;
-    tracing::subscriber::set_global_default(subscriber).context(InstallSubscriberSnafu)?;
+    let installed = (|| {
+        log_tracer::LogTracer::init().context(InstallLogTracerSnafu)?;
+        tracing::subscriber::set_global_default(subscriber).context(InstallSubscriberSnafu)
+    })();
+    if let Err(error) = installed {
+        LoggingShutdown(sender).finish_blocking();
+        return Err(error);
+    }
     Ok((sender, jobs))
 }
 
@@ -258,6 +293,20 @@ mod tests {
     use super::*;
     use nyanpasu_logging::{FsLogFiles, LogFiles};
     use std::io::Write;
+
+    #[test]
+    fn logging_init_reports_the_unwritable_directory_before_installing_globals() {
+        let directory = tempfile::tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            directory.path().join("config").try_into().unwrap(),
+            directory.path().join("data").try_into().unwrap(),
+        );
+        let logs = paths.app_logs_dir();
+        fs::create_dir_all(logs.parent().unwrap()).unwrap();
+        fs::write(&logs, b"not a directory").unwrap();
+        let error = init(&mut Profilers::default(), &paths).err().unwrap();
+        assert!(matches!(error, Error::CreateDirectory { path, .. } if path == logs));
+    }
 
     #[test]
     fn startup_failure_is_on_disk_before_the_logging_guard_drops() {

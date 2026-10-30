@@ -76,6 +76,7 @@
       "grant_core_permission": "Clash core needs admin permission to make TUN mode work properly, grant it?\nPlease note that this operation requires password input."
     },
     "startup_failure": {
+      "unresolved_path": "Path could not be resolved; see details below.",
       "heading": "Startup failed",
       "path": "Path",
       "details": "Details",
@@ -113,7 +114,9 @@
       },
       "web_view2": {
         "description": "The WebView2 runtime is unavailable.",
-        "recovery": "Download the portable package again, or reinstall Clash Nyanpasu."
+        "recovery": "Download the portable package again, or reinstall Clash Nyanpasu.",
+        "portable_recovery": "Download the portable package again.",
+        "installed_recovery": "Reinstall Clash Nyanpasu."
       },
       "logging": {
         "description": "Application logging is unavailable.",

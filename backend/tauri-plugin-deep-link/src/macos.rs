@@ -67,7 +67,7 @@ define_class!(
         #[unsafe(method(handleEvent:withReplyEvent:))]
         fn handle_event(&self, event: *mut AnyObject, _replace: *const AnyObject) {
             let s = parse_url_event(event).unwrap_or_default();
-            let mut cb = HANDLER.get().unwrap().lock().unwrap();
+            let mut cb = HANDLER.get().expect("listen() installs the handler before events arrive").lock().expect("the deep-link handler has not panicked");
             cb(s);
         }
     }
@@ -148,27 +148,44 @@ pub fn listen<F: FnMut(String) + Send + 'static>(handler: F) -> Result<()> {
     }
 
     #[cfg(debug_assertions)]
-    std::thread::spawn(move || {
-        let listener = UnixListener::bind(addr).expect("Can't create listener");
+    let listener = UnixListener::bind(&addr).map_err(|error| {
+        log::error!("Can't create deep-link listener at {addr}: {error}");
+        error
+    })?;
 
-        for stream in listener.incoming() {
-            match stream {
-                Ok(mut stream) => {
-                    let mut buffer = String::new();
-                    if let Err(io_err) = stream.read_to_string(&mut buffer) {
-                        log::error!("Error reading incoming connection: {}", io_err.to_string());
-                    };
+    #[cfg(debug_assertions)]
+    std::thread::Builder::new()
+        .name("deep-link".into())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(mut stream) => {
+                        let mut buffer = String::new();
+                        if let Err(io_err) = stream.read_to_string(&mut buffer) {
+                            log::error!(
+                                "Error reading incoming connection: {}",
+                                io_err.to_string()
+                            );
+                        };
 
-                    let mut cb = HANDLER.get().unwrap().lock().unwrap();
-                    cb(buffer);
-                }
-                Err(err) => {
-                    log::error!("Incoming connection failed: {}", err);
-                    continue;
+                        let mut cb = HANDLER
+                            .get()
+                            .expect("listen() installs the handler before events arrive")
+                            .lock()
+                            .expect("the deep-link handler has not panicked");
+                        cb(buffer);
+                    }
+                    Err(err) => {
+                        log::error!("Incoming connection failed: {}", err);
+                        continue;
+                    }
                 }
             }
-        }
-    });
+        })
+        .map_err(|error| {
+            log::error!("Failed to start deep-link listener thread: {error}");
+            error
+        })?;
 
     Ok(())
 }

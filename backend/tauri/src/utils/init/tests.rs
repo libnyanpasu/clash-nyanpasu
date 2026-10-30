@@ -358,3 +358,18 @@ fn migration_child_failure_preserves_the_available_backup() {
             .any(|entry| entry.unwrap().file_type().unwrap().is_dir())
     );
 }
+
+#[test]
+fn migration_log_creation_failure_precedes_child_launch() {
+    let directory = tempfile::tempdir().unwrap();
+    let data = directory.path().join("data");
+    std::fs::create_dir_all(data.join("migration.log")).unwrap();
+    let paths = nyanpasu_paths::PathResolver::with_base_dirs(
+        directory.path().join("config").try_into().unwrap(),
+        data.clone().try_into().unwrap(),
+    );
+    let error = super::run_pending_migrations(&paths).unwrap_err();
+    assert!(
+        matches!(error, Error::OpenMigrationLog { path, .. } if path == data.join("migration.log"))
+    );
+}

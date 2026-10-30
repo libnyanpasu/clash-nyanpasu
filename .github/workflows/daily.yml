@@ -36,16 +36,11 @@ jobs:
         with:
           run_install: false
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Install dependencies
         run: pnpm install
 
       - name: Generate Manifest
-        run: pnpm generate:manifest
+        run: pnpm run generate:manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -88,16 +83,11 @@ jobs:
         with:
           run_install: false
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Install dependencies
         run: pnpm install
 
       - name: Generate Manifest
-        run: pnpm generate:manifest
+        run: pnpm run generate:manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

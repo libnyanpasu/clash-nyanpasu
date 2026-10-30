@@ -156,7 +156,7 @@ After installing the prerequisites:
 ```sh
 git submodule update --init --recursive
 pnpm install
-deno task prepare:check
+pnpm run prepare:check
 pnpm dev
 ```
 

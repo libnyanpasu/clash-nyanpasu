@@ -29,19 +29,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
 
       - name: Check changes since previous nightly
         id: changes
-        run: deno task check:nightly-changes
+        run: pnpm run check:nightly-changes
 
       - name: Check configured storage before package builds
         if: ${{ steps.changes.outputs.should_build == 'true' && (vars.SOURCEFORGE_PROJECT != '') }}
         continue-on-error: true
-        run: deno task storage:preflight
+        run: pnpm run storage:preflight
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
@@ -230,11 +238,21 @@ jobs:
       - name: Checkout repository
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/checkout@v7
-      - name: Install Deno
+      - name: Install Node
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
-        uses: denoland/setup-deno@v2
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
       - name: Download target publication reports
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/download-artifact@v8
@@ -246,7 +264,7 @@ jobs:
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         id: verify
         run: >-
-          deno task sourceforge:verify ./publication-reports ./sourceforge-mirrors.json nightly
+          pnpm run sourceforge:verify ./publication-reports ./sourceforge-mirrors.json nightly
           windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64
       - name: Preserve verified mirror manifest
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
@@ -264,12 +282,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
       - name: Retain current build and defer cleanup until old archives are ready
-        run: deno task sourceforge:cleanup ./sourceforge-cleanup-report.json
+        run: pnpm run sourceforge:cleanup ./sourceforge-cleanup-report.json
         env:
           SOURCEFORGE_PROJECT: ${{ needs.verify_sourceforge.outputs.sourceforge_project }}
           SOURCEFORGE_BUILD_ID: ${{ needs.verify_sourceforge.outputs.sourceforge_build_id }}

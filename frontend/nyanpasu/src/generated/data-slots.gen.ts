@@ -1,4 +1,4 @@
-// AUTO-GENERATED — do not edit manually. Run: deno task generate:data-slots
+// AUTO-GENERATED — do not edit manually. Run: pnpm run generate:data-slots
 export const DATA_SLOTS = [
   'about-card-header',
   'about-help-link',

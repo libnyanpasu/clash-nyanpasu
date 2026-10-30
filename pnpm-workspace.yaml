@@ -1,5 +1,6 @@
 packages:
   - 'frontend/*'
+  - 'scripts'
 overrides:
   # The app uses Tailwind and plain CSS; do not install Vite's optional Sass compilers.
   'vite>sass': '-'
@@ -15,6 +16,10 @@ allowBuilds:
   '@parcel/watcher': false
   core-js: true
   meta-json-schema: true
+  bufferutil: true
+  es5-ext: false
+  koffi: false
+  utf-8-validate: true
 supportedArchitectures:
   os:
     - linux

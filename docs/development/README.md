@@ -14,8 +14,8 @@ to these guides, and restates only the most frequently violated rules.
 | Commands, frontend backend calls, HTTP capabilities, or events       | [Unified RPC](rpc.md)                            |
 | Tests, mocks, verification, or final review                          | [Testing and review](testing.md)                 |
 | Worktree selection, build prerequisites, or commits                  | [Development workflow](workflow.md)              |
-| Repository scripts, Deno tasks, tool dependencies and script layout  | [Repository scripts](scripts.md)                 |
-| Rust style, API design, errors, panics, concurrency, migration debt  | [Rust code guide](rust.md)                       |
+| Repository scripts, tasks, tool dependencies and script layout       | [Repository scripts](scripts.md)                 |
+| Rust style, API design, errors, panics, concurrency, migration debt  | [Rust code style](rust.md)                       |
 | TypeScript, React, routed pages, module ownership, or UI composition | [TypeScript and React code style](typescript.md) |
 
 Start with the [root README](../../README.md#development) for running the app and
@@ -33,7 +33,7 @@ For package ownership, dependency directions, and source-only typechecking, see
 - Wait for real in-process RPC results; a caller leaving does not cancel owner-started work.
 - Plan and write code to the [Rust](rust.md) and [TypeScript and React](typescript.md) guides; new code follows them even where nearby code does not.
 - Keep changes focused, verify the intended behavior, and submit atomic commits.
-- Keep repository scripts under `scripts/src/` and call public entrypoints through `deno task`.
+- Keep repository scripts under `scripts/src/` and call public entrypoints through `pnpm run`.
 - Prefer isolated worktrees for feature/refactoring work; review costs before choosing the current checkout.
 
 ## Maintaining these rules

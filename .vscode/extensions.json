@@ -3,7 +3,6 @@
     "inlang.vs-code-extension",
     "editorconfig.editorconfig",
     "vadimcn.vscode-lldb",
-    "denoland.vscode-deno",
     "esbenp.prettier-vscode",
     "yoavbls.pretty-ts-errors",
     "rust-lang.rust-analyzer",

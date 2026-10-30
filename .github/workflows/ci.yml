@@ -44,14 +44,20 @@ jobs:
           # The pull request merge commit and its first parent, the base tip.
           fetch-depth: 2
 
-      - uses: denoland/setup-deno@v2
+      - name: Install Node.js
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
 
       # The rules live in scripts/src/ci/changed-parts.ts.
       - name: Classify changed paths
         id: classify
-        run: deno task check:changed-parts "$BASE"
+        run: pnpm run check:changed-parts "$BASE"
         env:
           BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
 
@@ -152,11 +158,6 @@ jobs:
         with:
           run_install: false
 
-      - uses: denoland/setup-deno@v2
-        if: env.RUN == 'true'
-        with:
-          deno-version: v2.x
-
       - name: Install dependencies
         if: env.RUN == 'true'
         run: pnpm install --no-frozen-lockfile
@@ -171,11 +172,11 @@ jobs:
 
       - name: Prepare sidecar and resources
         if: env.BACKEND == 'true'
-        run: pnpm prepare:check
+        run: pnpm run prepare:check
 
       - name: Lint formatting
         if: startsWith(matrix.targets.os, 'ubuntu-')
-        run: pnpm lint:prettier
+        run: pnpm run lint:prettier
 
       - name: Lint frontend
         if: startsWith(matrix.targets.os, 'ubuntu-') && env.FRONTEND == 'true'
@@ -183,11 +184,11 @@ jobs:
 
       - name: Lint frontend boundaries
         if: startsWith(matrix.targets.os, 'ubuntu-') && (env.FRONTEND == 'true' || env.SCRIPTS == 'true')
-        run: pnpm lint:frontend-boundaries
+        run: pnpm run lint:frontend-boundaries
 
       - name: Lint scripts
         if: startsWith(matrix.targets.os, 'ubuntu-') && env.SCRIPTS == 'true'
-        run: pnpm lint:deno
+        run: pnpm run lint:ts:scripts
 
       - name: Lint backend boundaries
         if: startsWith(matrix.targets.os, 'ubuntu-') && (env.BACKEND == 'true' || env.SCRIPTS == 'true')
@@ -202,7 +203,7 @@ jobs:
       # Any dependency change can bring in a license the credits do not accept.
       - name: Lint open source credits
         if: startsWith(matrix.targets.os, 'ubuntu-') && (env.FRONTEND == 'true' || env.BACKEND == 'true' || env.SCRIPTS == 'true')
-        run: deno task lint:credits
+        run: pnpm run lint:credits
 
       - name: Lint backend
         if: env.BACKEND == 'true'
@@ -264,12 +265,6 @@ jobs:
         with:
           node-version: latest
 
-      - name: Install Deno
-        if: env.RUN == 'true'
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
         if: env.BACKEND == 'true'
@@ -289,7 +284,7 @@ jobs:
 
       - name: Prepare sidecar and resources
         if: env.BACKEND == 'true'
-        run: pnpm prepare:check
+        run: pnpm run prepare:check
 
       - name: Prepare frontend
         if: env.RUN == 'true'
@@ -363,12 +358,6 @@ jobs:
         with:
           node-version: latest
 
-      - name: Install Deno
-        if: env.RUN == 'true'
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
         if: env.BACKEND == 'true'
@@ -388,7 +377,7 @@ jobs:
 
       - name: Prepare sidecar and resources
         if: env.BACKEND == 'true'
-        run: pnpm prepare:check
+        run: pnpm run prepare:check
 
       - name: Prepare frontend
         if: env.RUN == 'true' && (env.FRONTEND == 'true' || env.BACKEND == 'true')
@@ -414,15 +403,15 @@ jobs:
       # Each suite runs even when an earlier one failed, as `pnpm test` did.
       - name: Test frontend
         if: ${{ !cancelled() && startsWith(matrix.os, 'ubuntu-') && env.FRONTEND == 'true' }}
-        run: pnpm test:frontend
+        run: pnpm run test:frontend
 
       - name: Test backend
         if: ${{ !cancelled() && env.BACKEND == 'true' }}
-        run: pnpm test:backend
+        run: pnpm run test:backend
 
       - name: Test scripts
         if: ${{ !cancelled() && env.SCRIPTS == 'true' }}
-        run: pnpm test:scripts
+        run: pnpm run test:scripts
 
       - name: Check typescript bindings freshness
         if: matrix.os == 'ubuntu-latest' && env.BACKEND == 'true'

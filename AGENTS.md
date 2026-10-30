@@ -93,12 +93,12 @@ The actor/dependency-injection migration is complete: application services are e
 
 Non-negotiable rules, restated because they are the most common violations:
 
-- Do not add global service singletons (`::global()`, `static` `OnceCell`/`OnceLock`/`Lazy` service state). The `deno task lint:architecture-ledger` gate enforces this.
+- Do not add global service singletons (`::global()`, `static` `OnceCell`/`OnceLock`/`Lazy` service state). The `pnpm run lint:architecture-ledger` gate enforces this.
 - Dependencies are explicit: constructors, builders, function parameters, or actor startup arguments.
 - `NyanpasuClient` is a facade with domain operations, never a service locator or a raw `ActorRef` registry.
 - In-process request/reply waits for the real result; deadlines belong to network/IPC adapters. Dropping a caller does not cancel owner-started work.
 - Business logic does not touch Tauri types; infrastructure goes behind narrow, consumer-owned port traits.
-- Backend packages follow [Backend packages](docs/development/backend-packages.md): `nyanpasu-core` owns use cases, typed actor clients and consumed ports; `nyanpasu-platform` implements infrastructure ports and may depend on core; core must not depend on platform in production. Neither neutral crate nor `nyanpasu-config` may depend on Tauri, egui/eframe or Slint. Run `deno task lint:backend-boundaries` after backend package-boundary changes.
+- Backend packages follow [Backend packages](docs/development/backend-packages.md): `nyanpasu-core` owns use cases, typed actor clients and consumed ports; `nyanpasu-platform` implements infrastructure ports and may depend on core; core must not depend on platform in production. Neither neutral crate nor `nyanpasu-config` may depend on Tauri, egui/eframe or Slint. Run `pnpm run lint:backend-boundaries` after backend package-boundary changes.
 
 ## 6. Current Goal: Separate `NyanpasuClient` from the GUI
 
@@ -131,7 +131,7 @@ Read [Testing and review](docs/development/testing.md) for test design and the c
 | TS/TSX, React grouping, constants, composition, context, data slots, i18n | [TypeScript and React code style](docs/development/typescript.md)                                  |
 | Frontend package ownership and dependency direction                       | [Frontend packages](docs/development/frontend-packages.md)                                         |
 | Routed pages, page composition, and module scope                          | [Routed pages and modules](docs/development/typescript.md#organize-routed-pages-and-their-modules) |
-| Repository scripts and Deno tasks                                         | [Repository scripts](docs/development/scripts.md)                                                  |
+| Repository scripts and tasks                                              | [Repository scripts](docs/development/scripts.md)                                                  |
 | GitHub workflow display names                                             | [Development workflow](docs/development/workflow.md#github-workflows)                              |
 
 Apply these guides when planning and when implementing, not only at review: a plan names the guide rules its tasks touch, and new code follows them. Existing violations are migration debt; do not copy them, and do not fix them outside the task (section 3). See [Scope and verification](docs/development/workflow.md#scope-and-verification).

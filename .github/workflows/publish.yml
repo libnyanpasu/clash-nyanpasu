@@ -64,12 +64,8 @@ jobs:
       - name: Install
         run: pnpm i
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Test release versioning
-        run: deno task test:release
+        run: pnpm run test:release
 
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff

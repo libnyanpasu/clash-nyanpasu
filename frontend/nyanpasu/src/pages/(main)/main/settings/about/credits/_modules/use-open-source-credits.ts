@@ -17,7 +17,7 @@ export type CreditPackage = {
 }
 
 /**
- * Written by `deno task generate:credits`
+ * Written by `pnpm run generate:credits`
  * (scripts/src/generate/credits/document.ts) before every app build.
  */
 export type OpenSourceCredits = {

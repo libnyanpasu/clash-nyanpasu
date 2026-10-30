@@ -23,7 +23,7 @@ pnpm exec vitest --project browser --browser.headless=false
 pnpm lint:ts:tests
 ```
 
-`pnpm test` runs frontend, Rust, and Deno tests once. It also requires the existing
+`pnpm test` runs frontend, Rust, and repository script tests once. It also requires the existing
 backend build prerequisites. `pnpm typecheck` includes the frontend test typecheck;
 Vitest's TS/TSX transformation alone does not check types.
 
@@ -80,7 +80,7 @@ asserted cache on slow workers, and verifies that the mutation clears its interv
 ## Real HTTP UI integration
 
 Browser Mode tests mock transports and do not verify the real backend chain. The
-existing `deno task test:http-ui <running debug HTTP server URL>` checks the
+existing `pnpm run test:http-ui <running debug HTTP server URL>` checks the
 browser UI and actual HTTP RPC against an already-running debug server. Use its
 authenticated entry URL; the script verifies credential removal from the URL,
 HTTP capability restrictions, structured errors, and absence of native API errors.

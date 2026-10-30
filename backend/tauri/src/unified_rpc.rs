@@ -1223,10 +1223,10 @@ mod tests {
             let repository = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
             let output = tokio::time::timeout(
                 std::time::Duration::from_secs(60),
-                tokio::process::Command::new("deno")
+                tokio::process::Command::new("node")
                     .env("NYANPASU_HTTP_CORE_LOG_FIXTURE", "1")
                     .env("NYANPASU_HTTP_FRONTEND_EVENT_FIXTURE", "1")
-                    .args(["task", "test:http-ui"])
+                    .args(["--run", "test:http-ui", "--"])
                     .current_dir(repository)
                     .arg(&url)
                     .kill_on_drop(true)

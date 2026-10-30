@@ -57,14 +57,14 @@ custom target. This change does not publish new updates to those old fixed feeds
 ## Automated checks
 
 ```sh
-deno task test:windows-bundle
-deno task test:updater
+pnpm run test:windows-bundle
+pnpm run test:updater
 cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib startup:: --locked
 ```
 
 Rust tests cover directory detection, incomplete runtimes, source failures,
 unchanged endpoints for both channels, native startup, and Tauri's selection of
-standard/fixed artifacts from one manifest. Deno tests cover portable ZIP
+standard/fixed artifacts from one manifest. Script tests cover portable ZIP
 contents, platform-neutral release preparation, shared packaging endpoints,
 all manifest targets, and archive/signature pairing.
 

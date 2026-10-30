@@ -133,7 +133,7 @@ Core must not depend on platform in production. Neither neutral crate nor
 root and GUI/transport adapter; Tauri-specific implementations stay at that
 boundary. Move complete existing call paths and update callers without retaining
 old-path wrappers solely to avoid import changes. Run
-`deno task lint:backend-boundaries` after backend package-boundary changes.
+`pnpm run lint:backend-boundaries` after backend package-boundary changes.
 
 ### Do not add new global service singletons
 
@@ -149,7 +149,7 @@ static SERVICE: Lazy<Service>
 
 Exceptions are allowed only for immutable constants, static lookup tables, feature flags, or values that are truly process-wide and have no lifecycle, no mutable state, and no dependency graph.
 
-Allowed statics are listed in `scripts/src/architecture-ledger/policy.ts`, and `deno task lint:architecture-ledger` rejects new ones.
+Allowed statics are listed in `scripts/src/architecture-ledger/policy.ts`, and `pnpm run lint:architecture-ledger` rejects new ones.
 
 ### Prefer explicit construction
 
@@ -306,7 +306,7 @@ When refactoring or moving services (including into `nyanpasu-core`):
 - Prefer migratable breaking changes over compatibility layers.
 - Do not add a compatibility layer simply to avoid updating call sites.
 - Add a compatibility or migration layer only when a full migration is not currently possible due to cyclic dependencies, public API constraints, external plugin behavior, large cross-cutting risk, platform limitation, or staged release requirements.
-- Every compatibility layer must be explicitly marked with `TODO(actor-migration)` or `FIXME(actor-migration)` and must explain the reason and removal condition. The marker keeps its historical name because `deno task lint:architecture-ledger` counts it.
+- Every compatibility layer must be explicitly marked with `TODO(actor-migration)` or `FIXME(actor-migration)` and must explain the reason and removal condition. The marker keeps its historical name because `pnpm run lint:architecture-ledger` counts it.
 - New code must not call compatibility APIs unless the call site is itself part of a documented migration step.
 
 Do this:

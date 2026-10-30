@@ -1,7 +1,10 @@
-/** A logical processor, its physical core and its efficiency class. */
-export type Processor = { processor: number; core: number; efficiency: number };
+import { readFileSync } from 'node:fs'
+import koffi from 'koffi'
 
-export type CoreKind = "performance" | "efficiency";
+/** A logical processor, its physical core and its efficiency class. */
+export type Processor = { processor: number; core: number; efficiency: number }
+
+export type CoreKind = 'performance' | 'efficiency'
 
 /**
  * One logical processor per physical core of the given kind: the cores of
@@ -11,74 +14,78 @@ export type CoreKind = "performance" | "efficiency";
  * only the first of each is taken.
  */
 export function chooseProcessors(processors: Processor[], kind: CoreKind) {
-  const classes = processors.map(({ efficiency }) => efficiency);
-  const target = kind === "performance"
-    ? Math.max(...classes)
-    : Math.min(...classes);
-  const firstOfCore = new Map<number, number>();
+  const classes = processors.map(({ efficiency }) => efficiency)
+  const target =
+    kind === 'performance' ? Math.max(...classes) : Math.min(...classes)
+  const firstOfCore = new Map<number, number>()
 
   for (const { processor, core, efficiency } of processors) {
-    if (efficiency !== target) continue;
-    const first = firstOfCore.get(core);
+    if (efficiency !== target) continue
+    const first = firstOfCore.get(core)
     if (first === undefined || processor < first) {
-      firstOfCore.set(core, processor);
+      firstOfCore.set(core, processor)
     }
   }
 
-  return [...firstOfCore.values()].sort((a, b) => a - b);
+  return [...firstOfCore.values()].sort((a, b) => a - b)
 }
 
 /** The affinity mask of the processors, in hexadecimal. */
 export function affinityMask(processors: number[]) {
   return processors
     .reduce((mask, processor) => mask | (1n << BigInt(processor)), 0n)
-    .toString(16);
+    .toString(16)
 }
 
 /** Reads the CPU sets Windows reports, from the first processor group. */
 function windowsProcessors(): Processor[] {
-  const kernel32 = Deno.dlopen("kernel32.dll", {
-    GetSystemCpuSetInformation: {
-      parameters: ["buffer", "u32", "buffer", "pointer", "u32"],
-      result: "i32",
-    },
-  });
+  const kernel32 = koffi.load('kernel32.dll')
 
   try {
-    const length = new Uint32Array(1);
-    const query = kernel32.symbols.GetSystemCpuSetInformation;
-    query(null, 0, length, null, 0);
-    const buffer = new Uint8Array(length[0]);
+    const query = kernel32.func(
+      'int GetSystemCpuSetInformation(void *information, uint32_t bufferLength, _Inout_ uint32_t *returnedLength, void *process, uint32_t flags)',
+    )
+    const length = [0]
+    query(null, 0, length, null, 0)
+    const buffer = Buffer.alloc(length[0])
     if (!query(buffer, buffer.length, length, null, 0)) {
-      throw new Error("GetSystemCpuSetInformation failed");
+      throw new Error('GetSystemCpuSetInformation failed')
     }
 
     // SYSTEM_CPU_SET_INFORMATION: Size, Type, then the CpuSet fields.
-    const view = new DataView(buffer.buffer);
-    const processors: Processor[] = [];
+    const view = new DataView(
+      buffer.buffer,
+      buffer.byteOffset,
+      buffer.byteLength,
+    )
+    const processors: Processor[] = []
     for (let offset = 0; offset < length[0];) {
-      const size = view.getUint32(offset, true);
+      const size = view.getUint32(offset, true)
       if (view.getUint16(offset + 12, true) === 0) {
         processors.push({
           processor: view.getUint8(offset + 14),
           core: view.getUint8(offset + 15),
           efficiency: view.getUint8(offset + 18),
-        });
+        })
       }
-      offset += size;
+      offset += size
     }
-    return processors;
+    return processors
   } finally {
-    kernel32.close();
+    kernel32.unload()
   }
 }
 
 /** Parses a Linux CPU list such as `0-7,16`. */
 export function parseCpuList(list: string) {
-  return list.trim().split(",").filter(Boolean).flatMap((range) => {
-    const [start, end = start] = range.split("-").map(Number);
-    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-  });
+  return list
+    .trim()
+    .split(',')
+    .filter(Boolean)
+    .flatMap((range) => {
+      const [start, end = start] = range.split('-').map(Number)
+      return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+    })
 }
 
 /**
@@ -89,29 +96,27 @@ export function parseCpuList(list: string) {
 function linuxProcessors(): Processor[] {
   const read = (path: string) => {
     try {
-      return Deno.readTextFileSync(path);
+      return readFileSync(path, 'utf8')
     } catch {
-      return undefined;
+      return undefined
     }
-  };
+  }
   const performance = new Set(
-    parseCpuList(read("/sys/devices/cpu_core/cpus") ?? ""),
-  );
-  const online = parseCpuList(
-    read("/sys/devices/system/cpu/online") ?? "",
-  );
+    parseCpuList(read('/sys/devices/cpu_core/cpus') ?? ''),
+  )
+  const online = parseCpuList(read('/sys/devices/system/cpu/online') ?? '')
 
   return online.map((processor) => {
     const siblings = read(
       `/sys/devices/system/cpu/cpu${processor}/topology/thread_siblings_list`,
-    );
+    )
     return {
       processor,
       // The first sibling names the core.
       core: siblings ? parseCpuList(siblings)[0] : processor,
       efficiency: performance.has(processor) ? 1 : 0,
-    };
-  });
+    }
+  })
 }
 
 /**
@@ -120,32 +125,29 @@ function linuxProcessors(): Processor[] {
  * starts, the browser among them, inherit the affinity.
  */
 export function pinCores(kind: CoreKind): string[] {
-  switch (Deno.build.os) {
-    case "windows": {
-      const mask = affinityMask(chooseProcessors(windowsProcessors(), kind));
-      const kernel32 = Deno.dlopen("kernel32.dll", {
-        GetCurrentProcess: { parameters: [], result: "pointer" },
-        SetProcessAffinityMask: {
-          parameters: ["pointer", "usize"],
-          result: "i32",
-        },
-      });
+  switch (process.platform) {
+    case 'win32': {
+      const mask = affinityMask(chooseProcessors(windowsProcessors(), kind))
+      const kernel32 = koffi.load('kernel32.dll')
       try {
-        const { GetCurrentProcess, SetProcessAffinityMask } = kernel32.symbols;
-        if (!SetProcessAffinityMask(GetCurrentProcess(), BigInt(`0x${mask}`))) {
-          throw new Error("SetProcessAffinityMask failed");
+        const getCurrentProcess = kernel32.func('void *GetCurrentProcess()')
+        const setProcessAffinityMask = kernel32.func(
+          'int SetProcessAffinityMask(void *process, uintptr_t mask)',
+        )
+        if (!setProcessAffinityMask(getCurrentProcess(), BigInt(`0x${mask}`))) {
+          throw new Error('SetProcessAffinityMask failed')
         }
       } finally {
-        kernel32.close();
+        kernel32.unload()
       }
-      return [];
+      return []
     }
-    case "linux":
+    case 'linux':
       return [
-        "taskset",
+        'taskset',
         affinityMask(chooseProcessors(linuxProcessors(), kind)),
-      ];
+      ]
     default:
-      throw new Error(`pinning cores is not supported on ${Deno.build.os}`);
+      throw new Error(`pinning cores is not supported on ${process.platform}`)
   }
 }

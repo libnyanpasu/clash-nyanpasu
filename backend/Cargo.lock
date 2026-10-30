@@ -7112,6 +7112,7 @@ dependencies = [
  "os_pipe",
  "parking_lot 0.13.0",
  "processkit",
+ "redb",
  "reqwest 0.13.5",
  "reqwest-websocket",
  "serde",

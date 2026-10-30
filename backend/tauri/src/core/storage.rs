@@ -1,3 +1,7 @@
+use nyanpasu_utils::{
+    io::IoFailure,
+    redb_ext::{RedbFailure, find_failure},
+};
 use parking_lot::Mutex;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -223,52 +227,18 @@ pub trait WebStorage {
     fn get_all(&self) -> Result<Vec<(String, String)>>;
 }
 
-fn transient_database_error(error: &redb::DatabaseError) -> bool {
-    match error {
-        redb::DatabaseError::DatabaseAlreadyOpen => true,
-        redb::DatabaseError::Storage(redb::StorageError::Io(error)) => {
-            crate::core::corrupt::classify_io(error) == crate::core::corrupt::IoFailure::Transient
-        }
-        _ => false,
-    }
-}
-
-fn transient_open_error(error: &StorageOperationError) -> bool {
-    match error {
-        StorageOperationError::OpenDatabase { source, .. } => transient_database_error(source),
-        StorageOperationError::BeginTransaction {
-            source: redb::TransactionError::Storage(redb::StorageError::Io(error)),
-        }
-        | StorageOperationError::OpenTable {
-            source: redb::TableError::Storage(redb::StorageError::Io(error)),
-        } => crate::core::corrupt::classify_io(error) == crate::core::corrupt::IoFailure::Transient,
-        _ => false,
-    }
+fn transient_database_error(error: &(dyn std::error::Error + 'static)) -> bool {
+    matches!(
+        find_failure(error),
+        Some(RedbFailure::AlreadyOpen | RedbFailure::Io(IoFailure::Transient))
+    )
 }
 
 fn confirmed_database_problem(error: &StorageOperationError) -> bool {
-    match error {
-        StorageOperationError::OpenDatabase { source, .. } => {
-            matches!(
-                source,
-                redb::DatabaseError::UpgradeRequired(_)
-                    | redb::DatabaseError::Storage(redb::StorageError::Corrupted(_))
-            ) || matches!(source, redb::DatabaseError::Storage(redb::StorageError::Io(error))
-            if matches!(error.kind(), std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof))
-        }
-        StorageOperationError::OpenTable { source } => {
-            matches!(
-                source,
-                redb::TableError::TableTypeMismatch { .. }
-                    | redb::TableError::TableIsMultimap(_)
-                    | redb::TableError::TypeDefinitionChanged { .. }
-                    | redb::TableError::TableDoesNotExist(_)
-                    | redb::TableError::Storage(redb::StorageError::Corrupted(_))
-            ) || matches!(source, redb::TableError::Storage(redb::StorageError::Io(error))
-            if matches!(error.kind(), std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof))
-        }
-        _ => false,
-    }
+    matches!(
+        find_failure(error),
+        Some(RedbFailure::Corrupt | RedbFailure::Incompatible | RedbFailure::MissingTable)
+    )
 }
 
 fn preserve_database(
@@ -284,11 +254,13 @@ fn preserve_database(
 
 impl StorageInner {
     fn create_and_init_database(path: &std::path::Path) -> Result<redb::Database> {
-        let db =
-            crate::core::corrupt::retry(|| redb::Database::create(path), transient_database_error)
-                .context(OpenDatabaseSnafu {
-                    path: path.display().to_string(),
-                })?;
+        let db = crate::core::corrupt::retry(
+            || redb::Database::create(path),
+            |error| transient_database_error(error),
+        )
+        .context(OpenDatabaseSnafu {
+            path: path.display().to_string(),
+        })?;
         // Create table
         let write_txn = db.begin_write().context(BeginTransactionSnafu)?;
         write_txn
@@ -319,7 +291,8 @@ impl StorageInner {
         };
         let instance = if let Some(metadata) = metadata {
             if metadata.is_file() && !corrupt::is_link(&metadata) {
-                match corrupt::retry_with_delay(open, transient_open_error, wait) {
+                match corrupt::retry_with_delay(open, |error| transient_database_error(error), wait)
+                {
                     Ok(db) => db,
                     Err(error) if confirmed_database_problem(&error) => {
                         preserve_database(path, &error)?;

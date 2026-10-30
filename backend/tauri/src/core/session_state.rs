@@ -8,9 +8,10 @@ use std::{
 };
 
 use nyanpasu_config::state::PersistentState;
+use nyanpasu_utils::io::{IoFailure, classify};
 use snafu::{ResultExt as _, Snafu};
 
-use super::corrupt::{self, IoFailure};
+use super::corrupt;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -46,7 +47,7 @@ fn read_with(
     }
     let bytes = match corrupt::retry_with_delay(
         read,
-        |error| corrupt::classify_io(error) == IoFailure::Transient,
+        |error| classify(error) == IoFailure::Transient,
         wait,
     ) {
         Ok(bytes) => bytes,

@@ -7,12 +7,13 @@ use std::{
 };
 
 use nyanpasu_paths::PathResolver;
+use nyanpasu_utils::io::IoFailure;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
 use crate::{
     core::{
-        corrupt::{self, IoFailure},
+        corrupt,
         migration::child_result::{Failure, FailureStage, RevisionFailure},
     },
     setup,
@@ -204,7 +205,7 @@ impl StartupFailure {
 
 fn io_kind(failure: Option<IoFailure>) -> Option<FailureKind> {
     match failure {
-        Some(IoFailure::Permission) => Some(FailureKind::Permission),
+        Some(IoFailure::PermissionDenied) => Some(FailureKind::Permission),
         Some(IoFailure::Transient) => Some(FailureKind::Busy),
         _ => None,
     }

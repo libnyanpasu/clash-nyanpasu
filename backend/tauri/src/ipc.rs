@@ -2480,7 +2480,7 @@ mod tests {
 #[specta::specta]
 pub async fn get_debug_http_status(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::server::debug_http::DebugHttpStatus> {
+) -> Result<crate::client::debug_http::DebugHttpStatus> {
     Ok(client.debug_http_status().await?)
 }
 #[nyanpasu_macro::rpc]
@@ -2489,6 +2489,6 @@ pub async fn get_debug_http_status(
 pub async fn set_debug_http_enabled(
     client: State<'_, NyanpasuClient>,
     enabled: bool,
-) -> Result<crate::server::debug_http::DebugHttpStatus> {
+) -> Result<crate::client::debug_http::DebugHttpStatus> {
     Ok(client.set_debug_http_enabled(enabled).await?)
 }

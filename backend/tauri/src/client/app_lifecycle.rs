@@ -354,11 +354,7 @@ mod tests {
             )
             .await
             .unwrap();
-            let client =
-                tokio::task::spawn_blocking(move || NyanpasuClient::try_new_with_args(args))
-                    .await
-                    .unwrap()
-                    .unwrap();
+            let client = NyanpasuClient::try_new(args).await.unwrap();
             Self {
                 client,
                 core,

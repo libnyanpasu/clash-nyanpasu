@@ -659,6 +659,7 @@
   "error_runtime_build_start_script_runner": "スクリプトエンジンを起動できませんでした",
   "error_runtime_build_validate_profiles": "ファイルに無効な項目が含まれています",
   "error_runtime_build_transforms_failed": "次の変換が失敗しました: {names}",
+  "error_runtime_build_unsupported_config_value": "選択中のコアは {path} の値 {value} を受け付けません。使用できる値：{supported}",
   "error_runtime_build_selected_profile_not_found": "選択したファイル {profile} が見つかりません",
   "error_runtime_build_selected_profile_not_config": "選択したファイル {profile} は設定ではありません",
   "error_runtime_build_composition_member_invalid": "組み合わせ {composition} に無効なメンバーが含まれています",

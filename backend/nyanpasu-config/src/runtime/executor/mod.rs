@@ -94,12 +94,27 @@ pub struct TunParams {
     pub windows_fake_ip_filter: bool,
 }
 
-/// Caller derives from (core, tun_stack), including the legacy
-/// Premium+Mixed→Gvisor downgrade (tun.rs:58-60); executor stays core-free.
+/// Caller derives from the core and its config features; executor stays
+/// core-free.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TunFlavor {
     ClashRs,
-    Standard { stack: TunStack },
+    Standard { stack: TunStackWrite },
+}
+
+/// The `tun.stack` Nyanpasu forces, decided by the caller from what the core
+/// reads.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TunStackWrite {
+    /// The core does not read `stack`.
+    Omitted,
+    Selected(TunStack),
+    /// The core does not support the selected stack, so `written` replaces it
+    /// and the build logs a warning. The saved setting is left as it is.
+    Downgraded {
+        selected: TunStack,
+        written: TunStack,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,11 +333,12 @@ pub fn execute(
 
     let (next, patch) = apply_settings(&working, &ownership);
     working = Arc::new(next);
-    builder.push_delta(
-        step(BuiltinStepKind::ManagedSettings),
-        working.clone(),
-        patch,
-    )?;
+    let managed_settings = step(BuiltinStepKind::ManagedSettings);
+    logs.extend(
+        managed_settings.node_key(),
+        plan::managed_settings_logs(&inputs.tun),
+    );
+    builder.push_delta(managed_settings, working.clone(), patch)?;
     let (next, patch) = apply_defaults(&working, &ownership);
     working = Arc::new(next);
     builder.push_delta(step(BuiltinStepKind::Defaults), working.clone(), patch)?;

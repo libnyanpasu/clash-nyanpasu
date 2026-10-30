@@ -4,64 +4,15 @@ use fast_image_resize::{
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
     images::{Image, ImageRef},
 };
-use fs_err as fs;
 use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::de::DeserializeOwned;
-use serde_yaml::{Mapping, Value};
 use std::{
     io::{BufWriter, Cursor},
-    path::{Path, PathBuf},
-    str::FromStr,
+    path::Path,
 };
 use tauri::{AppHandle, Manager};
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
-
-#[derive(Debug, snafu::Snafu)]
-pub(crate) enum YamlError {
-    #[snafu(display("file not found {}", path.display()))]
-    FindFile { path: PathBuf },
-    #[snafu(display("failed to read {}", path.display()))]
-    ReadFile {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    #[snafu(display("failed to parse {}", path.display()))]
-    ParseFile {
-        path: PathBuf,
-        source: serde_yaml::Error,
-    },
-    #[snafu(display("failed to apply merge in {}", path.display()))]
-    ApplyMerge {
-        path: PathBuf,
-        source: serde_yaml::Error,
-    },
-    #[snafu(display("expected a YAML mapping in {}", path.display()))]
-    ReadMapping { path: PathBuf },
-}
-
-pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(
-    path: P,
-) -> std::result::Result<T, YamlError> {
-    use snafu::ResultExt as _;
-    let path = path.as_ref();
-    if !path.exists() {
-        return FindFileSnafu { path }.fail();
-    }
-    let yaml_str = fs::read_to_string(path).context(ReadFileSnafu { path })?;
-    serde_yaml::from_str(&yaml_str).context(ParseFileSnafu { path })
-}
-
-pub fn read_merge_mapping(path: &PathBuf) -> std::result::Result<Mapping, YamlError> {
-    use snafu::{OptionExt as _, ResultExt as _};
-    let mut val: Value = read_yaml(path)?;
-    val.apply_merge().context(ApplyMergeSnafu { path })?;
-    Ok(val
-        .as_mapping()
-        .context(ReadMappingSnafu { path })?
-        .to_owned())
-}
 
 const ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
@@ -74,18 +25,6 @@ const ALPHABET: [char; 62] = [
 pub fn get_uid(prefix: &str) -> String {
     let id = nanoid!(11, &ALPHABET);
     format!("{prefix}{id}")
-}
-
-/// parse the string
-/// xxx=123123; => 123123
-pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
-    target.split(';').map(str::trim).find_map(|s| {
-        let mut parts = s.splitn(2, '=');
-        match (parts.next(), parts.next()) {
-            (Some(k), Some(v)) if k == key => v.parse::<T>().ok(),
-            _ => None,
-        }
-    })
 }
 
 type Opener = fn(&Path) -> std::io::Result<()>;
@@ -294,24 +233,4 @@ macro_rules! trace_err {
             log::trace!(target: "app", "{}, err {:?}", $err_str, err);
         }
     }
-}
-
-#[test]
-fn test_parse_value() {
-    let test_1 = "upload=111; download=2222; total=3333; expire=444";
-    let test_2 = "attachment; filename=Clash.yaml";
-
-    assert_eq!(parse_str::<usize>(test_1, "upload").unwrap(), 111);
-    assert_eq!(parse_str::<usize>(test_1, "download").unwrap(), 2222);
-    assert_eq!(parse_str::<usize>(test_1, "total").unwrap(), 3333);
-    assert_eq!(parse_str::<usize>(test_1, "expire").unwrap(), 444);
-    assert_eq!(
-        parse_str::<String>(test_2, "filename").unwrap(),
-        format!("Clash.yaml")
-    );
-
-    assert_eq!(parse_str::<usize>(test_1, "aaa"), None);
-    assert_eq!(parse_str::<usize>(test_1, "upload1"), None);
-    assert_eq!(parse_str::<usize>(test_1, "expire1"), None);
-    assert_eq!(parse_str::<usize>(test_2, "attachment"), None);
 }

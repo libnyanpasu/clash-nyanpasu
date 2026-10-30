@@ -8,6 +8,7 @@ pub mod dirs;
 pub mod exit;
 pub mod help;
 pub mod init;
+pub mod key_value;
 pub mod main_thread;
 pub mod profiling;
 pub mod proxy_env;
@@ -22,3 +23,4 @@ pub mod open;
 
 pub mod dock;
 pub mod sudo;
+pub mod yaml;

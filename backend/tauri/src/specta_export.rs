@@ -14,7 +14,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         // in the schema builder below and dispatch through call_rpc.
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
-            crate::client::app_update::AppUpdateStateChanged,
+            events::AppUpdateStateChanged,
             events::CoreLogsChanged,
             events::ClashWsEvent,
             window::WindowMessageEvent,
@@ -24,7 +24,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
             events::ServiceStatusChangedEvent,
-            crate::adapters::event_sink::StateChangedEvent
+            events::StateChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -198,7 +198,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
-        crate::client::app_update::AppUpdateStateChanged,
+        events::AppUpdateStateChanged,
         events::CoreLogsChanged,
         events::ClashWsEvent,
         window::WindowMessageEvent,
@@ -208,7 +208,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
         events::ServiceStatusChangedEvent,
-        crate::adapters::event_sink::StateChangedEvent
+        events::StateChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the

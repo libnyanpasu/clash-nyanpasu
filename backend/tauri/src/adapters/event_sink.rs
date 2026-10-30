@@ -1,14 +1,11 @@
 //! Delivers committed state changes to Tauri windows.
 
-use serde::{Deserialize, Serialize};
 use tauri_specta::Event as _;
 
-use crate::client::{StateChanged, UiEventSink};
-
-/// What changed in the state the frontend reads, so it refetches what depends
-/// on it.
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct StateChangedEvent(pub StateChanged);
+use crate::{
+    adapters::events::StateChangedEvent,
+    client::{StateChanged, UiEventSink},
+};
 
 #[derive(Clone)]
 pub struct TauriUiEventSink<R: tauri::Runtime = tauri::Wry> {

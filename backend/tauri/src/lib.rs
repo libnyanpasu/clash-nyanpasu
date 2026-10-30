@@ -16,6 +16,7 @@ mod server;
 mod service;
 mod setup;
 mod specta_export;
+mod startup_failure;
 mod state;
 mod unified_rpc;
 
@@ -143,7 +144,7 @@ fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() -> std::io::Result<()> {
+pub fn run() -> std::process::ExitCode {
     // Nothing before the logger reaches a trace, so its share is logged.
     let started = std::time::Instant::now();
     // The one resolver: every later stage is given it, none looks the directories up again.
@@ -175,7 +176,14 @@ pub fn run() -> std::io::Result<()> {
 
     if custom_scheme.is_none() {
         // Parse commands
-        cmds::parse(&paths).unwrap();
+        match cmds::parse(&paths) {
+            Ok(true) => return std::process::ExitCode::SUCCESS,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("{}", snafu::Report::from_error(&error));
+                return std::process::ExitCode::FAILURE;
+            }
+        }
     };
     // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
     // Only the GUI needs it: the subcommands above exit without it, and building
@@ -219,13 +227,8 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
         && let Err(e) = init::run_pending_migrations(&paths)
     {
-        let backup_failed = matches!(&e, init::Error::ReadChildFailure { source } if source.stage == core::migration::child_result::FailureStage::Backup);
-        let message = format!(
-            "Failed to finish migration event: {}",
-            snafu::Report::from_error(&e)
-        );
-        utils::dialog::migration_failed_dialog(&message, &paths, backup_failed);
-        std::process::exit(1);
+        startup_failure::show(&startup_failure::Report::migration(&e, &paths));
+        return std::process::ExitCode::FAILURE;
     }
 
     let (logger_reload, jobs_capture) =
@@ -318,6 +321,7 @@ pub fn run() -> std::io::Result<()> {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .manage(utils::exit::ExitBoundary::default())
+        .manage(init::logging::LoggingShutdown(logger_reload.clone()))
         .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
@@ -336,63 +340,80 @@ pub fn run() -> std::io::Result<()> {
             }
         })
         .setup(move |app| {
-            transport_builder.mount_events(app);
-            setup::setup(app, metadata, logger_reload, jobs_capture, paths).inspect_err(|e| {
-                tracing::error!("Failed to setup the app: {:#?}", e);
-            })?;
+            let failure_host = setup::TauriStartupFailureHost {
+                handle: app.handle().clone(),
+                paths: paths.clone(),
+            };
+            setup::run_setup(
+                setup::StartupOwners::default(),
+                |owners| {
+                    transport_builder.mount_events(app);
+                    setup::setup(
+                        app,
+                        metadata,
+                        logger_reload,
+                        jobs_capture,
+                        paths.clone(),
+                        owners,
+                    )
+                    .map_err(|error| startup_failure::StartupFailure::from_setup(&error, &paths))?;
 
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::menu::{MenuBuilder, SubmenuBuilder};
-                let submenu = SubmenuBuilder::new(app, "Edit")
-                    .undo()
-                    .redo()
-                    .copy()
-                    .paste()
-                    .cut()
-                    .select_all()
-                    .close_window()
-                    .quit()
-                    .build()
-                    .unwrap();
-                let menu = MenuBuilder::new(app).item(&submenu).build().unwrap();
-                app.set_menu(menu).unwrap();
-            }
+                    #[cfg(target_os = "macos")]
+                    {
+                        use tauri::menu::{MenuBuilder, SubmenuBuilder};
+                        let submenu = SubmenuBuilder::new(app, "Edit")
+                            .undo()
+                            .redo()
+                            .copy()
+                            .paste()
+                            .cut()
+                            .select_all()
+                            .close_window()
+                            .quit()
+                            .build()
+                            .unwrap();
+                        let menu = MenuBuilder::new(app).item(&submenu).build().unwrap();
+                        app.set_menu(menu).unwrap();
+                    }
 
-            install_panic_hook(Some(app.handle().clone()));
-            resolve::resolve_setup(app);
-            setup::setup_unified_rpc(app)?;
+                    install_panic_hook(Some(app.handle().clone()));
+                    resolve::resolve_setup(app);
+                    setup::setup_unified_rpc(app)
+                        .map_err(|error| startup_failure::StartupFailure::from_rpc(&error))?;
 
-            // setup custom scheme
-            let handle = app.handle().clone();
-            // Deep links wait here until a frontend takes them.
-            app.manage(crate::ipc::PendingDeepLinks::default());
-            // For start new app from schema
-            #[cfg(not(target_os = "macos"))]
-            if let Some(url) = custom_scheme {
-                log::info!(target: "app", "started with schema");
-                queue_deep_link(&handle, url.to_string());
-                log_err!(
-                    handle
-                        .state::<window::WindowManager>()
-                        .open(&window::kinds::MainWindow, None)
-                );
-            }
-            // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
-            log_err!(tauri_plugin_deep_link::register(
-                &["clash-nyanpasu", "clash"],
-                move |request| {
-                    log::info!(target: "app", "scheme request received: {:?}", request);
-                    // create window if not exists
-                    log_err!(
-                        handle
-                            .state::<window::WindowManager>()
-                            .open(&window::kinds::MainWindow, None)
-                    );
-                    queue_deep_link(&handle, request);
-                }
-            ));
-            Ok(())
+                    // setup custom scheme
+                    let handle = app.handle().clone();
+                    // Deep links wait here until a frontend takes them.
+                    app.manage(crate::ipc::PendingDeepLinks::default());
+                    // For start new app from schema
+                    #[cfg(not(target_os = "macos"))]
+                    if let Some(url) = custom_scheme {
+                        log::info!(target: "app", "started with schema");
+                        queue_deep_link(&handle, url.to_string());
+                        log_err!(
+                            handle
+                                .state::<window::WindowManager>()
+                                .open(&window::kinds::MainWindow, None)
+                        );
+                    }
+                    // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
+                    log_err!(tauri_plugin_deep_link::register(
+                        &["clash-nyanpasu", "clash"],
+                        move |request| {
+                            log::info!(target: "app", "scheme request received: {:?}", request);
+                            // create window if not exists
+                            log_err!(
+                                handle
+                                    .state::<window::WindowManager>()
+                                    .open(&window::kinds::MainWindow, None)
+                            );
+                            queue_deep_link(&handle, request);
+                        }
+                    ));
+                    Ok(())
+                },
+                &failure_host,
+            )
         });
 
     let app = builder
@@ -439,5 +460,5 @@ pub fn run() -> std::io::Result<()> {
         _ => {}
     });
 
-    Ok(())
+    std::process::ExitCode::SUCCESS
 }

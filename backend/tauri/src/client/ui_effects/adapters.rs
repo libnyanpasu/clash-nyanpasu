@@ -99,7 +99,7 @@ impl LoggerRefresher for TracingLoggerRefresher {
         rotation: Option<LogRotation>,
     ) -> Result<(), LoggerError> {
         self.reload
-            .send((level, rotation))
+            .send(ReloadSignal::Reload(level, rotation))
             .ok()
             .context(ReloadThreadStoppedSnafu)
     }

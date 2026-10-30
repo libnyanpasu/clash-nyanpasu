@@ -1,0 +1,115 @@
+import { Button, TextEdit, Palette } from "std-widgets.slint";
+
+export component StartupFailureWindow inherits Window {
+    title: root.heading;
+    icon: @image-url("../../tauri/icons/128x128.png");
+    out property <length> opening-width: 760px;
+    out property <length> opening-height: 620px;
+    preferred-width: opening-width;
+    preferred-height: opening-height;
+    min-width: 660px;
+    min-height: 540px;
+    background: Palette.background;
+    default-font-size: 14px;
+    forward-focus: keys;
+
+    in property <string> heading;
+    in property <string> description;
+    in property <string> recovery;
+    in property <string> version;
+    in property <string> path;
+    in property <string> path-label;
+    in property <string> details-label;
+    in property <string> details;
+    in property <string> monospace-font;
+    in property <string> containing-label;
+    in property <string> backups-label;
+    in property <string> logs-label;
+    in property <string> copy-label;
+    in property <string> exit-label;
+    in property <bool> has-containing;
+    in property <bool> has-backups;
+    in property <bool> has-logs;
+    in property <string> status;
+    in property <bool> status-is-error;
+    callback open-containing;
+    callback open-backups;
+    callback open-logs;
+    callback copy-details;
+    callback exit;
+    property <bool> details-laid-out;
+    changed details => { details-edit.set-selection-offsets(0, 0); }
+
+    keys := FocusScope {
+        forward-focus: copy-button;
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.exit(); return accept; }
+            return reject;
+        }
+        VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+            HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: Palette.color-scheme == ColorScheme.dark ? #FF99A4 : #C42B1C;
+                    Text {
+                        text: "!";
+                        font-size: 24px;
+                        font-weight: 700;
+                        color: Palette.color-scheme == ColorScheme.dark ? black : white;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    Text { text: root.heading; color: Palette.foreground; font-size: 20px; font-weight: 600; wrap: word-wrap; }
+                    Text { text: root.description; color: Palette.foreground; wrap: word-wrap; }
+                }
+            }
+            if root.recovery != "": Text { text: root.recovery; color: Palette.foreground; wrap: word-wrap; }
+            Text { text: root.version; color: Palette.foreground.with-alpha(0.65); font-size: 12px; }
+            if root.path != "": VerticalLayout {
+                spacing: 4px;
+                Text { text: root.path-label; color: Palette.foreground.with-alpha(0.65); font-size: 12px; }
+                Text { text: root.path; color: Palette.foreground; font-family: root.monospace-font; font-size: 12px; wrap: word-wrap; }
+            }
+            // Wraps because label widths depend on the locale and the system font.
+            if root.has-containing || root.has-backups || root.has-logs: FlexboxLayout {
+                spacing: 8px;
+                if root.has-containing: Button { text: root.containing-label; clicked => { root.open-containing(); } }
+                if root.has-backups: Button { text: root.backups-label; clicked => { root.open-backups(); } }
+                if root.has-logs: Button { text: root.logs-label; clicked => { root.open-logs(); } }
+            }
+            VerticalLayout {
+                spacing: 8px;
+                Text { text: root.details-label; color: Palette.foreground.with-alpha(0.65); font-size: 12px; }
+                details-edit := TextEdit {
+                    vertical-stretch: 1;
+                    text: root.details;
+                    read-only: true;
+                    wrap: no-wrap;
+                    font-family: root.monospace-font;
+                    font-size: 12px;
+                    changed height => {
+                        if !root.details-laid-out && self.height > 0 {
+                            root.details-laid-out = true;
+                            self.content-x = 0;
+                            self.content-y = 0;
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                copy-button := Button { text: root.copy-label; primary: true; clicked => { root.copy-details(); } }
+                Text { text: root.status; color: root.status-is-error ? (Palette.color-scheme == ColorScheme.dark ? #FFCC66 : #8A5700) : Palette.foreground.with-alpha(0.65); wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; font-size: 12px; }
+                Button { text: root.exit-label; clicked => { root.exit(); } }
+            }
+        }
+    }
+}

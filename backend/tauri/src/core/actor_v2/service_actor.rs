@@ -665,6 +665,7 @@ impl Actor for ServiceActor {
     ) -> Result<(), ActorProcessingErr> {
         if let Some(timer) = state.health_timer.take() {
             timer.abort();
+            let _ = timer.await;
         }
         Ok(())
     }
@@ -991,6 +992,15 @@ pub struct ServiceClient {
 }
 
 impl ServiceClient {
+    /// Registers cleanup immediately after construction, including partial startup.
+    pub(crate) fn drain_on_shutdown(
+        &self,
+        tasks: &tokio_util::task::TaskTracker,
+        shutdown: tokio_util::sync::CancellationToken,
+    ) {
+        crate::client::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
+    }
+
     pub async fn spawn(
         adapter: Arc<dyn ServiceHostAdapter>,
         restart_budget: u8,

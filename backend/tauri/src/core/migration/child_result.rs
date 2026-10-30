@@ -48,6 +48,8 @@ pub(crate) struct Failure {
     pub revision: Option<RevisionFailure>,
     pub chain: Vec<String>,
     pub backup_available: bool,
+    #[serde(default)]
+    pub io_failure: Option<crate::core::corrupt::IoFailure>,
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -199,6 +201,7 @@ impl Failure {
             revision,
             chain,
             backup_available,
+            io_failure: crate::core::corrupt::error_io(error),
         }
     }
 

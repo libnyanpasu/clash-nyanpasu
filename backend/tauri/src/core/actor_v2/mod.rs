@@ -984,6 +984,7 @@ impl Actor for CoreActor {
                 }
                 if let Some(pump) = state.pump.take() {
                     pump.abort();
+                    let _ = pump.await;
                 }
                 if matches!(state.slot, EndpointSlot::HandingOff { .. }) {
                     // A stop for this very runtime is already in flight.
@@ -1547,6 +1548,17 @@ impl CoreClient {
             ),
         )
         .await
+    }
+
+    /// Stops the core the way `NyanpasuClient::wait_shutdown` does, then
+    /// waits for the router and its pump to stop, for a startup that failed
+    /// before the client took the core over.
+    pub(crate) async fn finish_shutdown(&self) {
+        let stop = self.shutdown().await.and_then(|report| report.stop);
+        if let Err(error) = stop {
+            tracing::warn!(%error, "the core was not proven stopped");
+        }
+        let _ = self.actor.get_cell().drain_and_wait(None).await;
     }
 
     /// `on_timeout` is the error each public method above hands back when its

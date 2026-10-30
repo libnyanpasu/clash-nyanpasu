@@ -2,8 +2,9 @@
 
 The panicking process cannot safely run another UI event loop. A child process
 receives the panic over stdin and owns the report window. Manual reports use the
-same child and window, with events streamed by the running GUI. The host keeps
-startup-error dialogs and a short rfd fallback if Slint fails.
+same child and window, with events streamed by the running GUI. Startup failures
+use a separate `startup-failed` child and window. The host keeps one-shot rfd
+dialogs for pre-builder environment failures and as a fallback if Slint fails.
 
 - `src/report.rs`: `PanicDetails`, `CrashReport`, `ReporterInput` and encoded issue
   URLs. Crash URLs drop whole backtrace lines to fit 6000 bytes. Manual URLs have
@@ -24,6 +25,26 @@ startup-error dialogs and a short rfd fallback if Slint fails.
 - `src/render_tests.rs`: headless software snapshots in each locale, both themes,
   scales 1/2 and the minimum size, plus crash/manual progress at 40%, finished,
   failed-row and append-scroll checks. PNG output is environment-gated.
+- `src/startup_failure.rs` and `ui/startup-failure.slint`: host-supplied heading,
+  description, recovery, version, path and copyable details. Optional containing,
+  backups and logs folder actions stay in the window; only Exit/Escape or the
+  window close control ends it. Folder/copy failures set an inline status.
+  The clipboard owner remains alive through the window lifetime. Backend,
+  centring, theme and font selection are shared with the crash reporter.
+- `src/startup_failure_render_tests.rs`: runs on the existing headless UI thread,
+  asserts localized text, folder visibility and action callbacks in all six
+  locales, both themes, scales 1/2 and minimum size. Set
+  `NYANPASU_STARTUP_PREVIEW_DIR` to save the English and Simplified Chinese
+  light/dark PNGs for migration, user config, runtime directory and internal
+  failures. Paths are deliberately mixed Latin/CJK, independent of OS language.
+
+The startup TextEdit retains the crash window's two layout safeguards: reset
+selection when assigning text, and reset scroll after the first nonzero layout.
+Setting scroll before layout alone lets the initial cursor move it to the end.
+The host sends one JSON document then closes stdin explicitly before waiting;
+the startup child reads to EOF. It never starts diagnostics collection or opens
+the application's stores. Failure classification, available backup information,
+paths and translations belong to the host, not to this renderer.
 
 The backend is selected directly to avoid the muda 0.19/0.20 Objective-C class
 collision described in `nyanpasu-widget/Cargo.toml`. The opaque window needs no GL

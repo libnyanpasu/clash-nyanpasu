@@ -2186,7 +2186,7 @@ fn parse_subscription_userinfo(headers: &reqwest::header::HeaderMap) -> Subscrip
         return SubscriptionInfo::default();
     };
     let raw = value.to_str().unwrap_or("");
-    let field = |key: &str| crate::utils::help::parse_str::<u64>(raw, key);
+    let field = |key: &str| crate::utils::key_value::parse_str::<u64>(raw, key);
     SubscriptionInfo {
         upload: field("upload"),
         download: field("download"),

@@ -11,7 +11,7 @@ use crate::{
         executor::{
             BuiltinTransform, ExecutionTarget, GuardInputs, ResolvedPortBindings,
             RuntimePipelineError, RuntimePipelineInputs, StepLogLevel, TunFlavor, TunParams,
-            execute,
+            TunStackWrite, execute,
         },
         snapshot::{BuiltinStepKind, ConfigExecutionRole, OperatorTag},
     },
@@ -40,7 +40,7 @@ pub fn base_inputs<'a>(
             enable: false,
             overrides: TunOverrides::default(),
             flavor: TunFlavor::Standard {
-                stack: TunStack::Gvisor,
+                stack: TunStackWrite::Selected(TunStack::Gvisor),
             },
             windows_fake_ip_filter: false,
         },

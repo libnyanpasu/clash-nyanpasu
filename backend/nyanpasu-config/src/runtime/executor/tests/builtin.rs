@@ -7,9 +7,9 @@ use crate::{
     },
     runtime::{
         executor::{
-            GuardInputs, ResolvedPortBindings, TunFlavor, TunParams,
+            GuardInputs, ResolvedPortBindings, StepLogEntry, TunFlavor, TunParams, TunStackWrite,
             builtin::{filter_fields, known_fields, stage1_fields},
-            plan::{cache_ownership, guard_ownership, tun_ownership},
+            plan::{cache_ownership, guard_ownership, managed_settings_logs, tun_ownership},
         },
         post_process::{apply_defaults, apply_settings},
         value::ConfigValue,
@@ -60,7 +60,7 @@ fn tun_off() -> TunParams {
         enable: false,
         overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
-            stack: TunStack::Gvisor,
+            stack: TunStackWrite::Selected(TunStack::Gvisor),
         },
         windows_fake_ip_filter: false,
     }
@@ -262,7 +262,7 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
         enable: true,
         overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
-            stack: TunStack::Gvisor,
+            stack: TunStackWrite::Selected(TunStack::Gvisor),
         },
         windows_fake_ip_filter: true,
     };
@@ -271,7 +271,7 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
     let result = apply_tun_and_cache(&config, &params).to_json();
 
     assert_eq!(result["tun"]["enable"], json!(true));
-    assert_eq!(result["tun"]["stack"], json!("system"));
+    assert_eq!(result["tun"]["stack"], json!("gvisor"));
     assert_eq!(result["tun"]["dns-hijack"], json!(["any:53"]));
     assert_eq!(result["tun"]["auto-route"], json!(true));
     assert_eq!(result["tun"]["auto-detect-interface"], json!(true));
@@ -288,6 +288,73 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
             "www.msftconnecttest.com"
         ])
     );
+}
+
+#[test]
+fn tun_stack_write_decides_the_stack_over_the_profile() {
+    let cases = [
+        (TunStackWrite::Omitted, json!("system")),
+        (TunStackWrite::Selected(TunStack::Mixed), json!("mixed")),
+        (
+            TunStackWrite::Downgraded {
+                selected: TunStack::Mixed,
+                written: TunStack::Gvisor,
+            },
+            json!("gvisor"),
+        ),
+    ];
+    for (stack, expected) in cases {
+        let params = TunParams {
+            enable: true,
+            flavor: TunFlavor::Standard { stack },
+            ..tun_off()
+        };
+        let config = value(json!({ "tun": { "stack": "system" } }));
+        let result = apply_tun_and_cache(&config, &params).to_json();
+        assert_eq!(result["tun"]["stack"], expected, "{stack:?}");
+    }
+
+    let params = TunParams {
+        enable: true,
+        flavor: TunFlavor::Standard {
+            stack: TunStackWrite::Omitted,
+        },
+        ..tun_off()
+    };
+    let result = apply_tun_and_cache(&value(json!({})), &params).to_json();
+    assert!(result["tun"].get("stack").is_none());
+}
+
+#[test]
+fn only_an_applied_downgrade_is_logged() {
+    let downgraded = TunFlavor::Standard {
+        stack: TunStackWrite::Downgraded {
+            selected: TunStack::Mixed,
+            written: TunStack::Gvisor,
+        },
+    };
+    let params = TunParams {
+        enable: true,
+        flavor: downgraded,
+        ..tun_off()
+    };
+    assert_eq!(
+        managed_settings_logs(&params),
+        vec![StepLogEntry::warn(
+            "the selected core does not support the TUN stack `mixed`; `gvisor` is used instead"
+        )]
+    );
+    // Nothing is written while TUN is off, so nothing was downgraded.
+    let params = TunParams {
+        flavor: downgraded,
+        ..tun_off()
+    };
+    assert!(managed_settings_logs(&params).is_empty());
+    let params = TunParams {
+        enable: true,
+        ..tun_off()
+    };
+    assert!(managed_settings_logs(&params).is_empty());
 }
 
 #[test]
@@ -312,7 +379,7 @@ fn managed_auto_route_overwrites_profile_values_for_both_tun_flavors() {
     for flavor in [
         TunFlavor::ClashRs,
         TunFlavor::Standard {
-            stack: TunStack::Gvisor,
+            stack: TunStackWrite::Selected(TunStack::Gvisor),
         },
     ] {
         for enabled in [false, true] {
@@ -335,7 +402,7 @@ fn unmanaged_auto_route_preserves_profile_values_and_other_tun_defaults() {
     for flavor in [
         TunFlavor::ClashRs,
         TunFlavor::Standard {
-            stack: TunStack::Gvisor,
+            stack: TunStackWrite::Selected(TunStack::Gvisor),
         },
     ] {
         for route in [json!("global"), json!(false), json!(true)] {
@@ -376,7 +443,7 @@ fn unmanaged_auto_route_does_not_supply_a_default() {
     for flavor in [
         TunFlavor::ClashRs,
         TunFlavor::Standard {
-            stack: TunStack::Gvisor,
+            stack: TunStackWrite::Selected(TunStack::Gvisor),
         },
     ] {
         let params = TunParams {

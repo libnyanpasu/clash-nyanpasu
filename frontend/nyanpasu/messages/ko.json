@@ -670,6 +670,7 @@
   "error_runtime_build_start_script_runner": "스크립트 엔진을 시작하지 못했습니다",
   "error_runtime_build_validate_profiles": "프로필에 잘못된 항목이 있습니다",
   "error_runtime_build_transforms_failed": "다음 변환이 실패했습니다: {names}",
+  "error_runtime_build_unsupported_config_value": "선택한 코어는 {path}에 {value} 값을 허용하지 않습니다. 지원되는 값: {supported}",
   "error_runtime_build_selected_profile_not_found": "선택한 프로필 {profile}을(를) 찾을 수 없습니다",
   "error_runtime_build_selected_profile_not_config": "선택한 프로필 {profile}은(는) 구성 프로필이 아닙니다",
   "error_runtime_build_composition_member_invalid": "조합 프로필 {composition}에 잘못된 구성원이 있습니다",

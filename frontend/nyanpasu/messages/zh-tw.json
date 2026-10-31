@@ -670,6 +670,7 @@
   "error_runtime_build_start_script_runner": "無法啟動指令碼引擎",
   "error_runtime_build_validate_profiles": "設定檔含有無效項目",
   "error_runtime_build_transforms_failed": "下列轉換失敗：{names}",
+  "error_runtime_build_unsupported_config_value": "所選核心不接受 {path} 的值 {value}。支援的值：{supported}",
   "error_runtime_build_selected_profile_not_found": "找不到所選設定檔 {profile}",
   "error_runtime_build_selected_profile_not_config": "所選設定檔 {profile} 不是有效的設定檔",
   "error_runtime_build_composition_member_invalid": "組合設定檔 {composition} 含有無效成員",

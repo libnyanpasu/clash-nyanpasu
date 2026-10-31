@@ -640,6 +640,7 @@
   "error_runtime_build_start_script_runner": "Не удалось запустить движок скриптов",
   "error_runtime_build_validate_profiles": "В профилях есть недопустимые элементы",
   "error_runtime_build_transforms_failed": "Не удалось выполнить преобразования: {names}",
+  "error_runtime_build_unsupported_config_value": "Выбранное ядро не принимает значение {value} для {path}. Допустимые значения: {supported}",
   "error_runtime_build_selected_profile_not_found": "Выбранный профиль {profile} не найден",
   "error_runtime_build_selected_profile_not_config": "Выбранный профиль {profile} не является конфигурацией",
   "error_runtime_build_composition_member_invalid": "В составном профиле {composition} есть недопустимый участник",

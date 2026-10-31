@@ -4820,6 +4820,8 @@ export type RuntimeBuildError =
     }
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
+  /**  The profiles or transforms wrote values the selected core rejects. */
+  | { kind: 'unsupported_config_values'; values: UnsupportedConfigValue[] }
 
 export type RuntimeBuildLog = {
   tag: OperatorTag
@@ -5544,6 +5546,16 @@ export type TunOverridesPatch_Serialize = {
 }
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
+
+/**  A value in the final runtime config that the selected core rejects. */
+export type UnsupportedConfigValue = {
+  /**  Dotted path in the final config, such as `tun.stack`. */
+  path: string
+  /**  The value as written in the config. */
+  value: string
+  /**  The values the core accepts at `path`. */
+  supported: string[]
+}
 
 export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
 

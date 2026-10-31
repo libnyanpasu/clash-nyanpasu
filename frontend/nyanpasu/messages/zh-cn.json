@@ -670,6 +670,7 @@
   "error_runtime_build_start_script_runner": "无法启动脚本引擎",
   "error_runtime_build_validate_profiles": "配置文件存在无效项",
   "error_runtime_build_transforms_failed": "以下转换失败：{names}",
+  "error_runtime_build_unsupported_config_value": "所选内核不接受 {path} 的值 {value}。支持的值：{supported}",
   "error_runtime_build_selected_profile_not_found": "找不到所选配置 {profile}",
   "error_runtime_build_selected_profile_not_config": "所选配置 {profile} 不是配置文件",
   "error_runtime_build_composition_member_invalid": "组合配置 {composition} 包含无效成员",

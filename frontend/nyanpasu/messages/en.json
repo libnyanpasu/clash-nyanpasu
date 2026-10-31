@@ -670,6 +670,7 @@
   "error_runtime_build_start_script_runner": "Could not start the script engine",
   "error_runtime_build_validate_profiles": "The profiles contain invalid items",
   "error_runtime_build_transforms_failed": "These transforms failed: {names}",
+  "error_runtime_build_unsupported_config_value": "The selected core does not accept {value} for {path}. Supported values: {supported}",
   "error_runtime_build_selected_profile_not_found": "The selected profile {profile} was not found",
   "error_runtime_build_selected_profile_not_config": "The selected profile {profile} is not a configuration",
   "error_runtime_build_composition_member_invalid": "The composition {composition} has an invalid member",

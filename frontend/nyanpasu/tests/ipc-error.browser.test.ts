@@ -340,6 +340,29 @@ test('a failed build names the profile or the transform', () => {
       }),
     ),
   ).toBe(m.error_runtime_build_transforms_failed({ names: 't1, config_fixer' }))
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: {
+          kind: 'unsupported_config_values',
+          values: [
+            {
+              path: 'tun.stack',
+              value: 'mixed',
+              supported: ['system', 'gvisor'],
+            },
+          ],
+        },
+      }),
+    ),
+  ).toBe(
+    m.error_runtime_build_unsupported_config_value({
+      path: 'tun.stack',
+      value: 'mixed',
+      supported: 'system, gvisor',
+    }),
+  )
 })
 
 test('a port in use names the port, and a missing one names the field', () => {

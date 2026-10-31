@@ -548,7 +548,8 @@ mod tests {
     use nyanpasu_config::{
         application::{
             ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig,
-            ProxiesSelectorMode, ThemeMode, TrayMenuMode, WindowCloseBehavior, WindowCloseSettings,
+            ProxiesSelectorMode, ReleaseChannel, ThemeMode, TrayMenuMode, WindowCloseBehavior,
+            WindowCloseSettings,
         },
         clash::config::{
             ClashConfigPatch,
@@ -815,7 +816,7 @@ mod tests {
             },
             AppCase {
                 field: "release_channel",
-                mutate: |app| app.release_channel = Some(crate::bundle::Channel::Beta),
+                mutate: |app| app.release_channel = Some(ReleaseChannel::Beta),
                 impact: RuntimeImpact::None,
                 owners: &[],
             },

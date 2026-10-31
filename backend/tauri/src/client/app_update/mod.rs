@@ -1,5 +1,7 @@
 //! Backend-owned application update state and task lifecycle.
 
+use crate::client::bundle_metadata::BundleMetadata;
+
 use std::{any::Any, sync::Arc};
 
 use anyhow::{Result, anyhow};
@@ -124,6 +126,7 @@ pub trait AppUpdateEventSink: Send + Sync + 'static {
 
 pub(crate) mod adapters;
 pub mod changelog;
+pub(crate) mod endpoints;
 mod progress;
 
 use progress::{ProgressSample, ProgressSampler, SAMPLE_INTERVAL};
@@ -163,6 +166,7 @@ pub struct AppUpdateArgs {
     pub settings: AppUpdateSettings,
     pub supported: bool,
     pub endpoints: Vec<String>,
+    pub bundle_metadata: BundleMetadata,
     pub shutdown: CancellationToken,
 }
 
@@ -645,8 +649,12 @@ impl Actor for AppUpdateActor {
                 if identity_changed && !installing {
                     state.settings_revision = state.settings_revision.saturating_add(1);
                 }
+                let endpoints = endpoints::update_endpoints(
+                    channel,
+                    state.args.bundle_metadata.sourceforge_project,
+                );
                 Self::update_snapshot(state, |snapshot| {
-                    snapshot.endpoints = crate::bundle::update_endpoints(channel);
+                    snapshot.endpoints = endpoints;
                 });
                 if identity_changed && !installing {
                     state.offer = None;

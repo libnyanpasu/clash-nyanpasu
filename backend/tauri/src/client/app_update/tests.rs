@@ -206,6 +206,12 @@ async fn test_client(
             },
             supported: true,
             endpoints: Vec::new(),
+            bundle_metadata: BundleMetadata {
+                is_portable: false,
+                is_fixed_webview: false,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
+            },
             shutdown: shutdown.clone(),
         },
         &tasks,

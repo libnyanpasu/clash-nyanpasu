@@ -837,7 +837,7 @@ pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<Di
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----
 
 use nyanpasu_config::{
-    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
     clash::{
         config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
         features::ConfigFeatures,
@@ -2009,9 +2009,9 @@ pub fn report_frontend_events(
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ReleaseChannelInfo {
     /// The feed update checks follow.
-    current: crate::bundle::Channel,
+    current: ReleaseChannel,
     /// The channel of the installed build; a nightly build cannot leave Nightly.
-    installed: crate::bundle::Channel,
+    installed: ReleaseChannel,
 }
 
 #[nyanpasu_macro::rpc]
@@ -2029,7 +2029,7 @@ pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<Re
 #[specta::specta]
 pub async fn set_release_channel(
     client: State<'_, NyanpasuClient>,
-    channel: crate::bundle::Channel,
+    channel: ReleaseChannel,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_release_channel(channel).await?)
 }

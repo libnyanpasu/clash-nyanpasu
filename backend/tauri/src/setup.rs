@@ -7,6 +7,7 @@ use crate::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
         OsSystemDnsCache, RuntimePaths, StateChanged, TauriMainThread, TauriUiEventSink,
         UiEventSink,
+        bundle_metadata::BundleMetadata,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -181,7 +182,7 @@ pub(crate) enum Error {
 #[tracing::instrument(skip_all)]
 pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app: &M,
-    bundle_metadata: crate::bundle::BundleMetadata,
+    bundle_metadata: BundleMetadata,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     jobs_capture: nyanpasu_jobs::LogCapture,
     paths: PathResolver,

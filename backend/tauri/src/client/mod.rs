@@ -22,6 +22,7 @@ pub mod hotkey;
 pub(crate) mod jobs;
 pub mod logs;
 mod main_thread;
+pub(crate) mod owner_shutdown;
 mod ports;
 pub mod profiles;
 pub mod runtime;
@@ -78,8 +79,6 @@ use snafu::{OptionExt as _, ResultExt as _};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub(crate) use app_lifecycle::drain_on_shutdown;
-pub use app_lifecycle::track_until_shutdown;
 pub use clash_info::ClashInfo;
 pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
@@ -304,6 +303,7 @@ struct NyanpasuClientInner {
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
     tasks: tokio_util::task::TaskTracker,
+    runtime: tokio::runtime::Handle,
 }
 
 impl NyanpasuClient {
@@ -743,6 +743,7 @@ impl NyanpasuClient {
                 accelerators,
                 shutdown,
                 tasks,
+                runtime: tokio::runtime::Handle::current(),
             }),
         })
     }

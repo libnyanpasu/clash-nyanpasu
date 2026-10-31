@@ -17,12 +17,12 @@ use crate::{
             },
             ports::HotkeyAction,
         },
+        owner_shutdown::track_until_shutdown,
         system_proxy::{
             SystemProxyArgs, SystemProxyClient,
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
             ports::OsProxyPort,
         },
-        track_until_shutdown,
         ui_effects::{
             adapters::{
                 RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,

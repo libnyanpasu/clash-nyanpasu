@@ -678,7 +678,11 @@ impl ApplicationWorkflowClient {
                 }
             }
         });
-        crate::client::drain_on_shutdown(&args.tasks, args.shutdown, actor.get_cell());
+        crate::client::owner_shutdown::drain_on_shutdown(
+            &args.tasks,
+            args.shutdown,
+            actor.get_cell(),
+        );
         Ok(Self(Arc::new(ClientInner {
             actor,
             runtime,

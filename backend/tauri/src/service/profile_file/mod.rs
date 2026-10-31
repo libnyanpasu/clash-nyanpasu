@@ -2,9 +2,7 @@
 
 pub mod fs_service;
 mod materialization;
-pub mod ports;
 mod subscription;
-pub mod yaml;
 
 #[cfg(test)]
 pub(crate) mod test_support;

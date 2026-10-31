@@ -6,12 +6,27 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default-meta = []
-default = []
+default-meta = ['nyanpasu-config/default-meta']
+default = ['default-meta', 'nesting']
+nesting = ['nyanpasu-config/nesting', 'struct-patch/nesting']
 verge-dev = []
 test-support = ['dep:mockall', 'dep:axum']
 
 [dependencies]
+nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
+  'specta'
+] }
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
+  'specta'
+] }
+struct-patch = '0.14'
+postcard = { version = '1.1', features = ['alloc'] }
+bytes = { version = '1', features = ['serde'] }
+flate2 = '1.0'
+tar = '0.4'
+zip = '9.0.0'
+nanoid = '0.5.0'
+seahash = { version = '4.1', features = ['use_std'] }
 nyanpasu-tsdb = { path = '../nyanpasu-tsdb', features = ['redb'] }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
@@ -30,7 +45,9 @@ chrono = { version = '0.4', features = ['serde'] }
 time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
 uuid = '1.7.0'
 nyanpasu-macro = { path = '../nyanpasu-macro' }
-nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol' }
+nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
+  'ipc'
+] }
 nyanpasu-ipc = { workspace = true }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 runas = { workspace = true }
@@ -58,7 +75,13 @@ whoami = '2.0.0'
 serde_json = { version = '1.0', features = ['preserve_order'] }
 tracing-attributes = '0.1'
 nyanpasu-config = { path = '../nyanpasu-config' }
-specta = { version = '^2.0.0-rc.25' }
+specta = { version = '^2.0.0-rc.25', features = [
+  'serde_json',
+  'serde_yaml',
+  'uuid',
+  'url',
+  'indexmap'
+] }
 snafu = { workspace = true }
 strum = { version = '0.28', features = ['derive'] }
 anyhow = '1'
@@ -70,7 +93,7 @@ indexmap = { version = '2.2.3', features = ['serde'] }
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-serde = { version = '1.0', features = ['derive'] }
+serde = { version = '1.0', features = ['derive', 'rc'] }
 atomicwrites = '0.4.4'
 camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }

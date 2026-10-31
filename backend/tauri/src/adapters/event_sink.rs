@@ -2,10 +2,8 @@
 
 use tauri_specta::Event as _;
 
-use crate::{
-    adapters::events::StateChangedEvent,
-    client::{StateChanged, UiEventSink},
-};
+use crate::adapters::events::StateChangedEvent;
+use nyanpasu_core::client::{StateChanged, UiEventSink};
 
 #[derive(Clone)]
 pub struct TauriUiEventSink<R: tauri::Runtime = tauri::Wry> {

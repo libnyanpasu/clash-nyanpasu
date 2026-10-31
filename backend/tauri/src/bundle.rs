@@ -1,4 +1,4 @@
-use crate::client::app_update::endpoints;
+use nyanpasu_core::client::app_update::endpoints;
 
 use anyhow::{Result, bail};
 use nyanpasu_config::application::{ReleaseChannel, UpdateSource};

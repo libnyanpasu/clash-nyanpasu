@@ -19,22 +19,24 @@ use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
-use super::{
-    materialization::{self, MATERIALIZATION_ROOT},
-    ports::SelfProxyPortSource,
-    subscription,
+use crate::service::profile_file::{
+    materialization, materialization::MATERIALIZATION_ROOT, subscription,
 };
+use nyanpasu_core::service::profile_file::ports::SelfProxyPortSource;
 
-use crate::state::profiles::{
-    error::*,
-    ports::{
-        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
-        SubscriptionFetcher,
+use nyanpasu_core::{
+    client::bundle_metadata::BundleMetadata,
+    corrupt,
+    state::profiles::{
+        error::*,
+        ports::{
+            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
+            ProfileMaterializationPort, SubscriptionFetcher,
+        },
     },
 };
-use nyanpasu_core::{client::bundle_metadata::BundleMetadata, corrupt};
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 
@@ -2136,7 +2138,6 @@ impl SubscriptionFetcher for ProfileFileService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::profiles::ports::SubscriptionFetcher;
     use axum::{
         Router,
         http::{HeaderMap as AxumHeaderMap, StatusCode, header},
@@ -2148,6 +2149,7 @@ mod tests {
         ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource, Profiles,
         RemoteProfileOptions, RemoteSyncInterval,
     };
+    use nyanpasu_core::state::profiles::ports::SubscriptionFetcher;
     use std::{
         sync::{
             Arc, Mutex,

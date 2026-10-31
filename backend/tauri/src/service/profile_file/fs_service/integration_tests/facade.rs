@@ -1,31 +1,32 @@
 //! Facade integration with real profile, log, backup and runtime files.
 
-#[cfg(unix)]
-use crate::{
-    client::test_support::facade::local_config_request,
-    state::profiles::ports::{
-        CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-        PreparedCleanup, PreparedMaterialization,
-    },
+use crate::service::profile_file::test_support::{
+    test_client_args_with_endpoint, test_client_with_fetcher,
 };
-use crate::{
+use nyanpasu_core::{
     client::{
-        NyanpasuClient,
+        NyanpasuClient, test_support,
         test_support::{
-            self, TestCheckAnswer, TestControlEndpoint, facade::test_client,
+            TestCheckAnswer, TestControlEndpoint, facade::test_client,
             minimal_file_profile_request, test_runtime_paths,
         },
     },
-    service::profile_file::test_support::{
-        test_client_args_with_endpoint, test_client_with_fetcher,
-    },
     state::profiles::ports::MockSubscriptionFetcher,
+    utils::test_support::test_paths,
 };
-use nyanpasu_core::utils::test_support::test_paths;
 #[cfg(unix)]
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::tempdir;
+#[cfg(unix)]
+use {
+    nyanpasu_core::client::test_support::facade::local_config_request,
+    nyanpasu_core::state::profiles::ports::CleanupOutcome,
+    nyanpasu_core::state::profiles::ports::MaterializationReconcileReport,
+    nyanpasu_core::state::profiles::ports::MockProfileMaterializationPort,
+    nyanpasu_core::state::profiles::ports::PreparedCleanup,
+    nyanpasu_core::state::profiles::ports::PreparedMaterialization,
+};
 /// Restores a directory's unix mode on drop so tempdir cleanup stays reliable
 /// after permission-poison tests.
 #[cfg(unix)]
@@ -43,7 +44,7 @@ impl Drop for RestoreDirMode {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn logs_facade_reads_app_files_and_degrades_service_independently() {
-    use crate::client::logs::LogSource;
+    use nyanpasu_core::client::logs::LogSource;
     use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
     let dir = tempdir().unwrap();
     let paths = test_paths(dir.path(), dir.path().join("data"));
@@ -279,7 +280,7 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             matches!(
                 outcome,
-                crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                nyanpasu_core::client::runtime::MutationOutcome::CommittedDegraded { .. }
             ),
             "auto-activation hard failure after commit must be CommittedDegraded"
         );
@@ -287,14 +288,14 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             outcome.degradations().iter().any(|item| matches!(
                 item.reason,
-                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                nyanpasu_core::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
             )),
             "expected ProfileAutoActivationFailed, got {:?}",
             outcome.degradations()
         );
         assert!(
             outcome.degradations().iter().any(|item| {
-                item.phase == crate::client::runtime::DegradationPhase::SystemEffect
+                item.phase == nyanpasu_core::client::runtime::DegradationPhase::SystemEffect
                     && item.retryable
             }),
             "H2 degradation must be retryable SystemEffect"

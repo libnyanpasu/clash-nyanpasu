@@ -15,35 +15,33 @@ use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{adapters::TauriWidgetController, ports::MockWidgetRuntime};
-use crate::{
-    adapters::hotkey::PlatformAcceleratorValidator,
-    client::{
-        effects::{
-            executor::ApplicationEffectExecutor,
-            plan::{
-                ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-                TrayRefresh,
-            },
-            ports::{
-                ApplicationEffectsPort, LocaleSink, LogRotation, LoggerError, LoggerRefresher,
-                MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
-                TrayError, TrayRefresher, WidgetController, WidgetError,
-            },
-            status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+use crate::adapters::hotkey::PlatformAcceleratorValidator;
+use nyanpasu_core::client::{
+    effects::{
+        executor::ApplicationEffectExecutor,
+        plan::{
+            ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
+            TrayRefresh,
         },
-        hotkey::{
-            HotkeyArgs, HotkeyClient,
-            ports::{
-                HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-                MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
-            },
+        ports::{
+            ApplicationEffectsPort, LocaleSink, LogRotation, LoggerError, LoggerRefresher,
+            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
+            TrayError, TrayRefresher, WidgetController, WidgetError,
         },
-        system_proxy::{
-            SystemProxyArgs, SystemProxyClient,
-            ports::{
-                MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
-                OsProxyPort, PacError, PacPort,
-            },
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    },
+    hotkey::{
+        HotkeyArgs, HotkeyClient,
+        ports::{
+            HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
+            MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
+        },
+    },
+    system_proxy::{
+        SystemProxyArgs, SystemProxyClient,
+        ports::{
+            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
+            OsProxyPort, PacError, PacPort,
         },
     },
 };
@@ -439,7 +437,7 @@ async fn widget_logo_hands_the_resolved_icon_to_the_runtime() {
     controller
         .show_logo(
             nyanpasu_config::application::NetworkStatisticWidgetLogoSource::Widget,
-            crate::client::effects::plan::WidgetLogoState::Tun,
+            nyanpasu_core::client::effects::plan::WidgetLogoState::Tun,
         )
         .await
         .expect("an installed runtime takes the logo");
@@ -450,7 +448,7 @@ async fn widget_logo_before_the_runtime_is_installed_is_unavailable() {
     let error = widget_controller()
         .show_logo(
             nyanpasu_config::application::NetworkStatisticWidgetLogoSource::Tray,
-            crate::client::effects::plan::WidgetLogoState::Normal,
+            nyanpasu_core::client::effects::plan::WidgetLogoState::Normal,
         )
         .await
         .unwrap_err();
@@ -771,11 +769,13 @@ impl PacPort for HeldPac {
 
 #[tokio::test(start_paused = true)]
 async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
-    use crate::client::effects::{
-        actor::{EffectsArgs, EffectsClient},
-        ports::CommitNotifications,
+    use nyanpasu_core::client::{
+        convergence::ConvergenceHealth,
+        effects::{
+            actor::{EffectsArgs, EffectsClient},
+            ports::CommitNotifications,
+        },
     };
-    use nyanpasu_core::client::convergence::ConvergenceHealth;
 
     let pac = Arc::new(HeldPac::default());
     let shutdown = Shutdown::new();
@@ -906,7 +906,7 @@ impl PacPort for CancelledPac {
 /// after it on the owner's own exit path, and nothing installs a proxy again.
 #[tokio::test]
 async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
-    use crate::client::effects::{
+    use nyanpasu_core::client::effects::{
         actor::{EffectsArgs, EffectsClient},
         ports::CommitNotifications,
     };
@@ -1169,7 +1169,7 @@ impl ApplicationEffectsPort for HeldEffects {
 /// shutdown waits until every one of them has really finished.
 #[tokio::test]
 async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
-    use crate::client::effects::{
+    use nyanpasu_core::client::effects::{
         actor::{EffectsArgs, EffectsClient},
         ports::CommitNotifications,
     };
@@ -1259,10 +1259,10 @@ async fn effects_with_a_widget_starting(
     host: &Arc<crate::widget::tests::FakeWidgetHost>,
     shutdown: &Shutdown,
 ) -> (
-    crate::client::effects::actor::EffectsClient,
+    nyanpasu_core::client::effects::actor::EffectsClient,
     crate::widget::WidgetManager,
 ) {
-    use crate::client::effects::{
+    use nyanpasu_core::client::effects::{
         actor::{EffectsArgs, EffectsClient},
         ports::CommitNotifications,
     };

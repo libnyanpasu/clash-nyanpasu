@@ -45,4 +45,6 @@ pub mod traffic;
 pub mod utils;
 
 pub mod corrupt;
+pub mod proxies;
 pub mod session_state;
+pub mod updater;

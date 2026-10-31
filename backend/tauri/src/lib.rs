@@ -6,11 +6,9 @@
 #![allow(clippy::duplicated_attributes)]
 mod adapters;
 mod bundle;
-mod client;
 mod cmds;
 mod consts;
 mod core;
-mod enhance;
 mod event_handler;
 mod ipc;
 mod server;
@@ -18,7 +16,6 @@ mod service;
 mod setup;
 mod specta_export;
 mod startup_failure;
-mod state;
 mod unified_rpc;
 
 mod host_paths;

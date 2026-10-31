@@ -71,7 +71,6 @@ itertools = '0.15'  # sweet iterator utilities
 rayon = '1.10'  # for iterator parallel processing
 ambassador = '0.5.0'  # for trait delegation
 strum = { version = '0.28', features = ['derive'] }  # for enum string conversion
-struct-patch = '0.14'
 atomic_enum = '0.3.0'  # for atomic enum
 enumflags2 = '0.7'  # for enum flags
 backon = { version = '1.0.1', features = ['tokio-sleep'] }  # for backoff retry
@@ -125,14 +124,9 @@ serde_json = { version = '1.0', features = ['preserve_order'] }
 serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [
   'specta',
 ] }
-postcard = { version = '1.1', features = ['alloc'] }
-bytes = { version = '1', features = ['serde'] }
 semver = '1.0'
 
 # Compression & Encoding
-flate2 = '1.0'
-tar = '0.4'
-zip = '9.0.0'
 zip-extensions = '0.14.0'
 base64 = '0.23'
 hex = '0.4'
@@ -144,7 +138,6 @@ rand = '0.10'
 md-5 = '0.11.0'
 sha2 = '0.11'
 nanoid = '0.5.0'
-seahash = { version = '4.1', features = ['use_std'] }
 
 # System Utilities
 auto-launch = { workspace = true }
@@ -270,6 +263,8 @@ webview2-com = '0.39'
 [dev-dependencies]
 redb = '4.0.0'
 tauri = { version = '2.4', features = ['test'] }
+struct-patch = '0.14'
+zip = '9.0.0'
 nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }
 http-body-util = '0.1'
 tower = { version = '0.5', features = ['util'] }
@@ -297,6 +292,5 @@ trace-chrome = ['dep:tracing-chrome']
 # Records the Rust heap's allocation sites and writes a DHAT profile to the
 # logs directory.
 dhat-heap = ['dep:dhat']
-# nyanpasu-config turns on struct-patch's `nesting`, and the `Patch` derives in
-# this crate emit `cfg(feature = "nesting")`, so it must be on here too.
-nesting = ['nyanpasu-config/nesting']
+# Keep the configuration and application patch derives on the same feature.
+nesting = ['nyanpasu-config/nesting', 'nyanpasu-core/nesting']

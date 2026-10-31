@@ -30,10 +30,12 @@ use crate::{
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
-    core::traffic::{TrafficFileStorage, TrafficStorage},
     utils::init::logging::ReloadSignal,
 };
-use nyanpasu_core::storage::StorageNotification;
+use nyanpasu_core::{
+    storage::StorageNotification,
+    traffic::{TrafficFileStorage, TrafficStorage},
+};
 use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
 use snafu::ResultExt as _;
 use tauri_specta::Event;

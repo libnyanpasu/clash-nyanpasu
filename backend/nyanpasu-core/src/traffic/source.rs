@@ -8,7 +8,7 @@ use super::{
     LocalSourceIps,
     geo::{CountryLookup, locate_destination, locate_source},
 };
-use nyanpasu_core::clash::ws::ClashConnectionsFrame;
+use crate::clash::ws::ClashConnectionsFrame;
 
 const UNKNOWN: &str = "unknown";
 

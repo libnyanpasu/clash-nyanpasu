@@ -9,7 +9,7 @@ use std::{
 use tempfile::TempDir;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::*;
+use super::{test_support::TestStore, *};
 
 fn record(number: usize, size: usize) -> CoreLogRecord {
     CoreLogRecord {
@@ -38,57 +38,6 @@ fn query(direction: CoreLogDirection, cursor: Option<CoreLogCursor>) -> CoreLogQ
         level: None,
         keyword: String::new(),
         limit: 200,
-    }
-}
-
-struct TestStore {
-    // Field drop order keeps the directory until the database has closed.
-    inner: RedbCoreLogStore,
-    _directory: TempDir,
-}
-impl CoreLogStore for TestStore {
-    fn configure(
-        &mut self,
-        settings: nyanpasu_config::application::CoreLogSettings,
-    ) -> CoreLogResult<()> {
-        self.inner.configure(settings)
-    }
-    fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()> {
-        self.inner.append(records)
-    }
-    fn query(&mut self, request: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
-        self.inner.query(request)
-    }
-    fn detail(&mut self, cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord> {
-        self.inner.detail(cursor)
-    }
-    fn export(&mut self, home: Option<String>) -> CoreLogResult<CoreLogExport> {
-        self.inner.export(home)
-    }
-    fn clear(&mut self) -> CoreLogResult<()> {
-        self.inner.clear()
-    }
-    fn status(&mut self) -> CoreLogResult<CoreLogStatus> {
-        self.inner.status()
-    }
-}
-impl CoreLogsClient {
-    pub(crate) async fn test_client() -> Self {
-        let directory = TempDir::new().unwrap();
-        let store = TestStore {
-            inner: RedbCoreLogStore::open(directory.path().into()).unwrap(),
-            _directory: directory,
-        };
-        let client = Self::spawn(
-            Box::new(store),
-            Default::default(),
-            CancellationToken::new(),
-            &TaskTracker::new(),
-        )
-        .await
-        .unwrap();
-        client.set_instance(Some("instance".into())).await.unwrap();
-        client
     }
 }
 
@@ -465,13 +414,12 @@ async fn crash_writer_child() {
 #[test]
 fn startup_discards_both_committed_and_pending_records_after_abrupt_exit() {
     let directory = TempDir::new().unwrap();
+    let test_name = concat!(module_path!(), "::crash_writer_child")
+        .split_once("::")
+        .expect("the test module path includes the crate name")
+        .1;
     let status = Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "core::logs::tests::crash_writer_child",
-            "--ignored",
-            "--nocapture",
-        ])
+        .args(["--exact", test_name, "--ignored", "--nocapture"])
         .env("NYANPASU_CORE_LOG_CRASH_DIRECTORY", directory.path())
         .status()
         .unwrap();

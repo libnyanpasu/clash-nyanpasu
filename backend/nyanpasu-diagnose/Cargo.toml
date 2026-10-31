@@ -10,7 +10,7 @@ authors.workspace = true
 nyanpasu-config = { path = '../nyanpasu-config' }
 serde = { version = '1', features = ['derive'] }
 specta = { version = '^2.0.0-rc.25' }
-sysinfo = '0.39'
+sysinfo = '0.40'
 chrono = '0.4'
 zip = '9.0.0'
 tempfile = '3'

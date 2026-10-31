@@ -156,7 +156,7 @@ runas = { workspace = true }
 single-instance = '0.3.3'
 which = '8'
 open = '5.0.1'
-sysinfo = '0.39'
+sysinfo = '0.40'
 os_pipe = '1.2.1'
 whoami = '2.0.0'
 camino = { version = '1.1.9', features = ['serde1'] }

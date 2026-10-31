@@ -29,7 +29,7 @@ use nyanpasu_ipc::{
 };
 
 use super::endpoint::EndpointHandle;
-use nyanpasu_core::service::{
+use crate::service::{
     compat::ServiceCompat,
     control::{ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu},
 };
@@ -993,16 +993,12 @@ pub struct ServiceClient {
 
 impl ServiceClient {
     /// Registers cleanup immediately after construction, including partial startup.
-    pub(crate) fn drain_on_shutdown(
+    pub fn drain_on_shutdown(
         &self,
         tasks: &tokio_util::task::TaskTracker,
         shutdown: tokio_util::sync::CancellationToken,
     ) {
-        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(
-            tasks,
-            shutdown,
-            self.actor.get_cell(),
-        );
+        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
     }
 
     pub async fn spawn(
@@ -1087,8 +1083,8 @@ impl ServiceClient {
 
     /// The same seam for a workflow test that needs an elevated command to
     /// outlive a short bound.
-    #[cfg(test)]
-    pub(crate) async fn spawn_bounded(
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn spawn_bounded(
         adapter: Arc<dyn ServiceHostAdapter>,
         restart_budget: u8,
         command_timeout: std::time::Duration,
@@ -1229,7 +1225,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::core::actor_v2::endpoint::{
+    use crate::actor_v2::endpoint::{
         ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
     };
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};
@@ -1326,11 +1322,10 @@ mod tests {
     impl ServiceHostAdapter for FakeDaemon {
         async fn probe(
             &self,
-        ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError>
-        {
+        ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("probe");
             if self.probe_fail.load(Ordering::SeqCst) {
-                return Err(nyanpasu_core::service::test_support::service_command_error(
+                return Err(crate::service::test_support::service_command_error(
                     "probe unreachable",
                 ));
             }
@@ -1379,14 +1374,12 @@ mod tests {
                 server,
             })
         }
-        async fn install(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             if self.hang_install.load(Ordering::SeqCst) {
                 // Never resolves: only the actor's own `command_timeout`
                 // bound (F6) can end this call.
                 return std::future::pending::<
-                    Result<(), nyanpasu_core::service::control::ServiceCommandError>,
+                    Result<(), crate::service::control::ServiceCommandError>,
                 >()
                 .await;
             }
@@ -1397,7 +1390,7 @@ mod tests {
 
             self.installs.fetch_add(1, Ordering::SeqCst);
             if self.fail_install.load(Ordering::SeqCst) {
-                return Err(nyanpasu_core::service::test_support::service_command_error(
+                return Err(crate::service::test_support::service_command_error(
                     "install refused",
                 ));
             }
@@ -1406,37 +1399,31 @@ mod tests {
             state.1 = true; // install auto-starts, like most platforms
             Ok(())
         }
-        async fn uninstall(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             self.uninstalls.fetch_add(1, Ordering::SeqCst);
             *self.state.lock().unwrap() = (false, false, String::new());
             Ok(())
         }
-        async fn start_daemon(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             self.starts.fetch_add(1, Ordering::SeqCst);
             if self.hang_start.load(Ordering::SeqCst) {
                 return std::future::pending().await;
             }
             if self.fail_start.load(Ordering::SeqCst) {
-                return Err(nyanpasu_core::service::test_support::service_command_error(
+                return Err(crate::service::test_support::service_command_error(
                     "start refused",
                 ));
             }
             self.state.lock().unwrap().1 = true;
             Ok(())
         }
-        async fn stop_daemon(
-            &self,
-        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("stop_daemon");
             // Like `nyanpasu-service stop`, which exits with an error for a
             // service that is already stopped.
             if !self.state.lock().unwrap().1 {
-                return Err(nyanpasu_core::service::test_support::service_command_error(
+                return Err(crate::service::test_support::service_command_error(
                     "service already stopped",
                 ));
             }
@@ -1445,7 +1432,7 @@ mod tests {
             }
             Ok(())
         }
-        async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
             if self.park_update.load(Ordering::SeqCst) {
                 self.parked.notify_one();
                 self.release.notified().await;
@@ -1670,34 +1657,28 @@ mod tests {
         impl ServiceHostAdapter for StubbornDaemon {
             async fn probe(
                 &self,
-            ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError>
+            ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError>
             {
                 self.0.probe().await
             }
-            async fn install(
-                &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.install().await
             }
-            async fn uninstall(
-                &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.uninstall().await
             }
             async fn start_daemon(
                 &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            ) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.start_daemon().await
             }
             async fn stop_daemon(
                 &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            ) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.stop_daemon().await
             }
-            async fn update(
-                &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
-                Err(nyanpasu_core::service::test_support::service_command_error(
+            async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+                Err(crate::service::test_support::service_command_error(
                     "service upgrade failed",
                 ))
             }
@@ -2121,33 +2102,27 @@ mod tests {
         impl ServiceHostAdapter for StubbornDaemon {
             async fn probe(
                 &self,
-            ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError>
+            ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError>
             {
                 self.0.probe().await
             }
-            async fn install(
-                &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.install().await
             }
-            async fn uninstall(
-                &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.uninstall().await
             }
             async fn start_daemon(
                 &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            ) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.start_daemon().await
             }
             async fn stop_daemon(
                 &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            ) -> Result<(), crate::service::control::ServiceCommandError> {
                 self.0.stop_daemon().await
             }
-            async fn update(
-                &self,
-            ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+            async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
                 Ok(()) // succeeds without changing anything
             }
             fn endpoint(&self) -> EndpointHandle {

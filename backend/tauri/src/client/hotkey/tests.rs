@@ -567,9 +567,9 @@ mod facade {
             ClientError, NyanpasuClient, hotkey::ports::MockWindowControl,
             test_support::test_client_args_with_endpoint,
         },
-        core::actor_v2::test_support::test_idle_endpoint,
         state::config_error::ConfigError,
     };
+    use nyanpasu_core::actor_v2::test_support::test_idle_endpoint;
 
     async fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
         let mut args = test_client_args_with_endpoint(dir, test_idle_endpoint()).await;

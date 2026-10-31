@@ -9,11 +9,14 @@ authors.workspace = true
 default-meta = []
 default = []
 verge-dev = []
-test-support = ['dep:mockall']
+test-support = ['dep:mockall', 'dep:axum']
 
 [dependencies]
 nyanpasu-core-manager = { workspace = true }
 backon = { version = '1.0.1', features = ['tokio-sleep'] }
+clash-api = { workspace = true }
+futures-util = '0.3'
+axum = { version = '0.8', features = ['ws'], optional = true }
 redb = '4.0.0'
 chrono = { version = '0.4', features = ['serde'] }
 time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
@@ -81,6 +84,11 @@ tempfile = '3.9.0'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+tracing-subscriber = { version = '0.3', features = [
+  'env-filter',
+  'json',
+  'parking_lot'
+] }
 pretty_assertions = '1.4.0'
 mockall = '0.15'
 axum = { version = '0.8', features = ['ws'] }

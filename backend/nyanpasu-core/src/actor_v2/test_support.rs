@@ -23,14 +23,14 @@ use super::{
 struct IdleEndpoint;
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
+impl crate::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Local
     }
 
     async fn submit(
         &self,
-        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        submission: crate::actor_v2::endpoint::CoreSubmission,
     ) -> std::result::Result<
         nyanpasu_ipc::api::core::v2::OperationInfo,
         nyanpasu_core_manager::CoreError,
@@ -49,10 +49,10 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
     async fn status(
         &self,
     ) -> std::result::Result<
-        crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+        crate::actor_v2::endpoint::CoreStatusSnapshot,
         nyanpasu_core_manager::CoreError,
     > {
-        Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+        Ok(crate::actor_v2::endpoint::CoreStatusSnapshot {
             controller: None,
             state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             state_changed_at: 0,
@@ -64,8 +64,8 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
     }
 }
 
-pub(crate) struct HostTransitionServiceAdapter {
-    pub endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+pub struct HostTransitionServiceAdapter {
+    pub endpoint: crate::actor_v2::endpoint::EndpointHandle,
     pub calls: Arc<StdMutex<Vec<&'static str>>>,
     pub stopped: std::sync::atomic::AtomicBool,
     /// The config dir the daemon reports it was installed with.
@@ -73,12 +73,12 @@ pub(crate) struct HostTransitionServiceAdapter {
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
+impl crate::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
     async fn probe(
         &self,
     ) -> std::result::Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        nyanpasu_core::service::control::ServiceCommandError,
+        crate::service::control::ServiceCommandError,
     > {
         if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(nyanpasu_ipc::types::StatusInfo {
@@ -122,21 +122,21 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
 
     async fn install(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         self.calls.lock().unwrap().push("install");
         Ok(())
     }
 
     async fn uninstall(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         self.calls.lock().unwrap().push("uninstall");
         Ok(())
     }
 
     async fn start_daemon(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         self.stopped
             .store(false, std::sync::atomic::Ordering::SeqCst);
         self.calls.lock().unwrap().push("start_daemon");
@@ -145,7 +145,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
 
     async fn stop_daemon(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         self.stopped
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.calls.lock().unwrap().push("stop_daemon");
@@ -154,16 +154,16 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransition
 
     async fn update(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         Ok(())
     }
 
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         self.endpoint.clone()
     }
 }
 
-pub(crate) fn successful_reconcile(
+pub fn successful_reconcile(
     id: nyanpasu_core_manager::OperationId,
 ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
     nyanpasu_ipc::api::core::v2::OperationInfo {
@@ -188,15 +188,15 @@ pub(crate) fn successful_reconcile(
     }
 }
 
-pub(crate) struct IdleServiceAdapter;
+pub struct IdleServiceAdapter;
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
+impl crate::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
     async fn probe(
         &self,
     ) -> std::result::Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        nyanpasu_core::service::control::ServiceCommandError,
+        crate::service::control::ServiceCommandError,
     > {
         Ok(nyanpasu_ipc::types::StatusInfo {
             name: std::borrow::Cow::Borrowed("test-service"),
@@ -208,51 +208,51 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAda
 
     async fn install(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn uninstall(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn start_daemon(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn stop_daemon(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         Ok(())
     }
 
     async fn update(
         &self,
-    ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
         Ok(())
     }
 
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         Arc::new(IdleEndpoint)
     }
 }
 
-pub(crate) async fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
+pub async fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
     test_v2_clients_with_endpoint(test_idle_endpoint()).await
 }
 
 /// A core that answers nothing, for tests whose subject is the facade
 /// rather than the running core.
-pub(crate) fn test_idle_endpoint() -> crate::core::actor_v2::endpoint::EndpointHandle {
+pub fn test_idle_endpoint() -> crate::actor_v2::endpoint::EndpointHandle {
     Arc::new(IdleEndpoint)
 }
 
-pub(crate) async fn test_v2_clients_with_endpoint(
-    endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+pub async fn test_v2_clients_with_endpoint(
+    endpoint: crate::actor_v2::endpoint::EndpointHandle,
 ) -> (CoreClientV2, ServiceClient) {
     let core = CoreClientV2::spawn(endpoint).await.unwrap();
     let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
@@ -261,9 +261,9 @@ pub(crate) async fn test_v2_clients_with_endpoint(
     (core, service)
 }
 
-pub(crate) struct Endpoint {
+pub struct Endpoint {
     pub(super) host: ExecutionHost,
-    pub(crate) binding: watch::Sender<Option<CoreApiConnection>>,
+    pub binding: watch::Sender<Option<CoreApiConnection>>,
 }
 
 #[async_trait::async_trait]
@@ -327,7 +327,7 @@ impl ControlEndpoint for Endpoint {
     }
 }
 
-pub(crate) fn endpoint(url: String) -> Arc<Endpoint> {
+pub fn endpoint(url: String) -> Arc<Endpoint> {
     let (binding, _) = watch::channel(Some(CoreApiConnection {
         instance_id: "first-process".into(),
         controller: CoreControllerInfo::Http(url),
@@ -339,7 +339,7 @@ pub(crate) fn endpoint(url: String) -> Arc<Endpoint> {
     })
 }
 
-pub(crate) async fn server(router: Router) -> (String, tokio::task::JoinHandle<()>) {
+pub async fn server(router: Router) -> (String, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/", listener.local_addr().unwrap());
     let task = tokio::spawn(async move {

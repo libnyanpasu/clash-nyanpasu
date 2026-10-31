@@ -12,15 +12,13 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::core::{
-    actor_v2::{
-        CoreClient,
-        api::{ApiClient, ApiError},
-    },
-    clash::connection_rates::{
-        ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionDetails,
-        ConnectionRateScratch, ConnectionRates,
-    },
+use crate::core::clash::connection_rates::{
+    ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionDetails,
+    ConnectionRateScratch, ConnectionRates,
+};
+use nyanpasu_core::actor_v2::{
+    CoreClient,
+    api::{ApiClient, ApiError},
 };
 
 const MAX_CONNECTIONS_HISTORY: usize = 32;
@@ -727,7 +725,7 @@ impl Actor for StreamsActor {
                     && let Some(snapshot) = projection.snapshot
                     && matches!(
                         projection.connectivity,
-                        crate::core::actor_v2::EndpointConnectivity::Connected
+                        nyanpasu_core::actor_v2::EndpointConnectivity::Connected
                     )
                     && matches!(
                         snapshot.state,
@@ -976,8 +974,8 @@ impl StreamsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::test_support::{endpoint, server};
     use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
 
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {
         ws.on_upgrade(|mut socket| async move { while socket.recv().await.is_some() {} })

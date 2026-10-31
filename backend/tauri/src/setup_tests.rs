@@ -11,16 +11,16 @@ use nyanpasu_ipc::{
 };
 
 use super::{StartupFailureHost, StartupOwners};
-use crate::{
-    core::actor_v2::{
+use crate::startup_failure::{FailureKind, StartupFailure};
+use nyanpasu_core::{
+    actor_v2::{
         endpoint::{
             ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
         },
         service_actor::ServiceHostAdapter,
     },
-    startup_failure::{FailureKind, StartupFailure},
+    service::control::ServiceCommandError,
 };
-use nyanpasu_core::service::control::ServiceCommandError;
 
 struct Endpoint(Arc<Mutex<Vec<&'static str>>>);
 

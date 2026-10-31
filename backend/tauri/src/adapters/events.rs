@@ -7,12 +7,14 @@ use tauri_specta::Event;
 use crate::{
     client::{StateChanged, app_update::AppUpdateSnapshot},
     core::{
-        actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
         clash::ws::{ClashWsPacket, ClashWsUpdate},
         logs::CoreLogStatus,
     },
 };
-use nyanpasu_core::storage::StorageRevision;
+use nyanpasu_core::{
+    actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
+    storage::StorageRevision,
+};
 
 /// What changed in the state the frontend reads, so it refetches what depends
 /// on it.

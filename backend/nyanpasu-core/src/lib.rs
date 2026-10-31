@@ -30,8 +30,10 @@ mod gxhash_smoke {
         );
     }
 }
+pub mod actor_v2;
 pub mod backup;
 pub mod client;
+pub mod connections;
 pub mod download;
 pub mod migration;
 pub mod service;

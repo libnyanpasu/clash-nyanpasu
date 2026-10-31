@@ -27,14 +27,14 @@ pub struct RpcDependencies {
 
 const EVENT_NAMES: &[&str] = &[
     <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
-    <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
-    <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
+    <crate::adapters::events::ClashWsEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
     <crate::adapters::events::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
     <crate::adapters::events::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
-    <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
-    <crate::core::storage::StorageResyncEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::StorageValueChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::StorageResyncEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
     <crate::adapters::event_sink::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
@@ -804,7 +804,7 @@ mod tests {
                     .unwrap()
                     .contains("\"sequence\":1")
             );
-            let name = <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME;
+            let name = <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME;
             let response = app
                 .oneshot(
                     Request::get(format!("/bridge/events?name={name}"))
@@ -1217,8 +1217,8 @@ mod tests {
                 while logs.changed().await.is_ok() {
                     let status = logs.borrow_and_update().clone();
                     events.publish(
-                        <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
-                        serde_json::to_value(crate::core::logs::CoreLogsChanged { status })
+                        <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
+                        serde_json::to_value(crate::adapters::events::CoreLogsChanged { status })
                             .unwrap(),
                     );
                 }

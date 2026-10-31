@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use snafu::{ResultExt as _, Snafu};
 use specta::Type;
 use std::{fs, ops::Deref, result::Result as StdResult, sync::Arc};
-use tauri_specta::Event;
 use tokio::sync::broadcast::{self, Receiver, Sender, error::RecvError};
 
 /// What a storage operation failed with. Library causes stay in `source`
@@ -199,22 +198,6 @@ pub enum StorageNotification {
     Changed(StorageChange),
     /// Changes were dropped before they were forwarded.
     Resync,
-}
-
-/// Event emitted to all windows when storage changes were dropped, so every
-/// storage value must be read again.
-/// Event name: `storage-resync-event`
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
-pub struct StorageResyncEvent {}
-
-/// Event emitted to all windows when a storage value changes.
-/// Event name: `storage-value-changed-event`
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
-pub struct StorageValueChangedEvent {
-    pub key: String,
-    /// The new JSON-encoded value, or `None` if the key was removed.
-    pub value: Option<String>,
-    pub revision: StorageRevision,
 }
 
 pub trait WebStorage {

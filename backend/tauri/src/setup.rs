@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::{
     adapters::{
         event_sink::TauriUiEventSink,
+        events::{StorageResyncEvent, StorageValueChangedEvent},
         hotkey::{
             ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
             TauriWindowControl,
@@ -25,7 +26,7 @@ use crate::{
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
     core::{
-        storage::{StorageNotification, StorageResyncEvent, StorageValueChangedEvent},
+        storage::StorageNotification,
         traffic::{TrafficFileStorage, TrafficStorage},
     },
     utils::init::logging::ReloadSignal,

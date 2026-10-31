@@ -5,7 +5,7 @@
 use tauri_specta::{collect_commands, collect_events};
 use tauri_specta_query::{CommandSet, TanstackQueryFramework};
 
-use crate::{adapters::events, core, ipc, unified_rpc, window};
+use crate::{adapters::events, ipc, unified_rpc, window};
 
 pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
@@ -15,11 +15,11 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
             crate::client::app_update::AppUpdateStateChanged,
-            core::logs::CoreLogsChanged,
-            core::clash::ws::ClashWsEvent,
+            events::CoreLogsChanged,
+            events::ClashWsEvent,
             window::WindowMessageEvent,
-            core::storage::StorageValueChangedEvent,
-            core::storage::StorageResyncEvent,
+            events::StorageValueChangedEvent,
+            events::StorageResyncEvent,
             ipc::SchemeRequestReceivedEvent,
             events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
@@ -199,11 +199,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     )
     .events(collect_events![
         crate::client::app_update::AppUpdateStateChanged,
-        core::logs::CoreLogsChanged,
-        core::clash::ws::ClashWsEvent,
+        events::CoreLogsChanged,
+        events::ClashWsEvent,
         window::WindowMessageEvent,
-        core::storage::StorageValueChangedEvent,
-        core::storage::StorageResyncEvent,
+        events::StorageValueChangedEvent,
+        events::StorageResyncEvent,
         ipc::SchemeRequestReceivedEvent,
         events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,

@@ -20,7 +20,7 @@ use super::{
     ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficStorage},
     source::frame_from_snapshot,
 };
-use nyanpasu_core::clash::ws::ClashConnectionsFrame;
+use crate::clash::ws::ClashConnectionsFrame;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 pub(super) enum Message {
@@ -104,7 +104,7 @@ impl<S: Storage> Actor for TrafficActor<S> {
         // An unreadable store must not start an empty session: the stored live connections would
         // be recorded again and the store diverge from what the session knows.
         let opener = storage.clone();
-        let (mut db, restored) = nyanpasu_core::utils::blocking::join(
+        let (mut db, restored) = crate::utils::blocking::join(
             tokio::task::spawn_blocking(move || opener.initialize(profile)).await,
         )?;
         db.set_retention(retention.retention());

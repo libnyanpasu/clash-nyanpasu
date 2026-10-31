@@ -12,6 +12,8 @@ verge-dev = []
 test-support = ['dep:mockall', 'dep:axum']
 
 [dependencies]
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb', features = ['redb'] }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 nyanpasu-geodata = { path = '../nyanpasu-geodata' }
 memmap2 = '0.9'

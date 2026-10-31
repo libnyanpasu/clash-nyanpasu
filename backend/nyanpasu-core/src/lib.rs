@@ -41,6 +41,7 @@ pub mod logs;
 pub mod migration;
 pub mod service;
 pub mod storage;
+pub mod traffic;
 pub mod utils;
 
 pub mod corrupt;

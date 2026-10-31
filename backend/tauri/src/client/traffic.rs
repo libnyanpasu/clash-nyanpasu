@@ -11,7 +11,7 @@ use nyanpasu_traffic::{
 };
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::core::traffic::{
+use nyanpasu_core::traffic::{
     Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
 };
 
@@ -175,7 +175,7 @@ impl NyanpasuClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::traffic::{TrafficFileStorage, TrafficStorage};
+    use nyanpasu_core::traffic::{TrafficFileStorage, TrafficStorage};
     use nyanpasu_traffic::{
         Dimension, Metric, ReportRequest, TrafficQuery, TrafficRange, TrafficScope,
     };

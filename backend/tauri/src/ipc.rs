@@ -1915,10 +1915,10 @@ pub async fn subscribe_clash_connection_details(
     client: tauri::State<'_, NyanpasuClient>,
     subscriptions: tauri::State<
         '_,
-        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+        crate::adapters::connection_details::ConnectionDetailSubscriptions,
     >,
     on_frame: tauri::ipc::Channel<std::sync::Arc<crate::core::clash::ws::ClashConnectionDetails>>,
-) -> Result<crate::core::clash::connection_details::SubscriptionId> {
+) -> Result<crate::adapters::connection_details::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details().await?;
     let parent = client.shutdown_child_token();
     let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
@@ -1936,9 +1936,9 @@ pub fn unsubscribe_clash_connection_details(
     window: tauri::Window,
     subscriptions: tauri::State<
         '_,
-        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+        crate::adapters::connection_details::ConnectionDetailSubscriptions,
     >,
-    id: crate::core::clash::connection_details::SubscriptionId,
+    id: crate::adapters::connection_details::SubscriptionId,
 ) -> Result {
     subscriptions.unsubscribe(id, window.label())?;
     Ok(())

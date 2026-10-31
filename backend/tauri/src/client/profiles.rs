@@ -601,7 +601,7 @@ impl Drop for ProfilesClientInner {
 mod tests {
     use super::*;
     use crate::{
-        service::profile_file::{ProfileFileService, SelfProxyPortSource},
+        service::profile_file::{fs_service::ProfileFileService, ports::SelfProxyPortSource},
         state::{
             mutation::CommitAborted,
             profiles::{

@@ -1,5 +1,5 @@
 //! Consumer-owned ports for the profiles actor (design §7, D10). Concrete
-//! implementations live in `crate::service::profile_file`.
+//! implementations live in `crate::service::profile_file::fs_service`.
 
 use nyanpasu_config::profile::{
     ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,

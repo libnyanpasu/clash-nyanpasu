@@ -3,7 +3,9 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 
-use crate::{client::bundle_metadata::BundleMetadata, service::profile_file::SelfProxyPortSource};
+use crate::{
+    client::bundle_metadata::BundleMetadata, service::profile_file::ports::SelfProxyPortSource,
+};
 
 pub(crate) struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,

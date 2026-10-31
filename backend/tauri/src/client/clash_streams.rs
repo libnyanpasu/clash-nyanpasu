@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, watch};
 
 use super::{NyanpasuClient, Result};
-use crate::core::clash::ws::{
+use nyanpasu_core::clash::ws::{
     ClashConnectionDetails, ClashConnectionsConnectorEvent, ClashWsKind, ClashWsPacket,
     ClashWsRecording, ClashWsSnapshot,
 };

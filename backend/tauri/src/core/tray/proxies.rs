@@ -2,15 +2,12 @@ use super::{
     Tray, TrayState, TrayWork,
     display::{Paint, ProxySection, Shown},
 };
-use crate::{
-    client::effects::plan::TrayView,
-    core::clash::proxies::{Proxies, ProxyGroup},
-    log_err,
-};
+use crate::{client::effects::plan::TrayView, log_err};
 use indexmap::IndexMap;
 use nyanpasu_config::{
     application::ProxiesSelectorMode, clash::config::overrides::Mode, profile::ProxyGroupLayout,
 };
+use nyanpasu_core::clash::proxies::{Proxies, ProxyGroup};
 use std::ops::ControlFlow;
 use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
@@ -548,7 +545,7 @@ fn clear_fixed(app_handle: &AppHandle, group: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::clash::proxies::{ProxyGroupCapabilities, ProxyGroupKind};
+    use nyanpasu_core::clash::proxies::{ProxyGroupCapabilities, ProxyGroupKind};
 
     fn selecting(now: Option<&str>) -> TrayProxies {
         TrayProxies::from([(

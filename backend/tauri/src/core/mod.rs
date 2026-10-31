@@ -1,4 +1,3 @@
-pub mod clash;
 pub mod manager;
 pub mod traffic;
 pub mod tray;

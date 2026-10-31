@@ -20,7 +20,7 @@ use super::{
     ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficStorage},
     source::frame_from_snapshot,
 };
-use crate::core::clash::ws::ClashConnectionsFrame;
+use nyanpasu_core::clash::ws::ClashConnectionsFrame;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 pub(super) enum Message {

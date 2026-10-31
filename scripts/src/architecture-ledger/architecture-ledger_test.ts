@@ -262,7 +262,7 @@ Deno.test("classification: bridge path boundaries", () => {
   assert(isBridgePath("backend/tauri/src/client/core_bridge.rs"));
   assert(isBridgePath("backend/tauri/src/enhance/artifact_bridge.rs"));
   assertFalse(isBridgePath("backend/tauri/src/client/mod.rs"));
-  assertFalse(isBridgePath("backend/tauri/src/core/clash/core.rs"));
+  assertFalse(isBridgePath("backend/nyanpasu-core/src/clash/core.rs"));
 });
 
 Deno.test("classification: dedicated test path boundaries", () => {

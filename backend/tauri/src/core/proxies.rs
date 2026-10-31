@@ -19,8 +19,10 @@ use seahash::SeaHasher;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::core::clash::proxies::{Proxies, ProxyProviderSummary};
-use nyanpasu_core::actor_v2::{CoreClient, api::ApiClient};
+use nyanpasu_core::{
+    actor_v2::{CoreClient, api::ApiClient},
+    clash::proxies::{Proxies, ProxyProviderSummary},
+};
 
 struct Snapshot {
     api: ApiClient,

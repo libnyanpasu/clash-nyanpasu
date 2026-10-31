@@ -149,7 +149,7 @@ pub(crate) enum SetupError {
     },
     #[snafu(display("failed to start streams"))]
     StartStreams {
-        source: crate::core::clash::ws::Error,
+        source: nyanpasu_core::clash::ws::Error,
     },
     #[snafu(display("failed to start app logs"))]
     StartAppLogs { source: nyanpasu_logging::LogError },
@@ -249,7 +249,7 @@ struct NyanpasuClientInner {
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
-    streams: crate::core::clash::ws::StreamsClient,
+    streams: nyanpasu_core::clash::ws::StreamsClient,
     traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
     core_versions: Arc<dyn nyanpasu_core::client::core_version::CoreVersionReader>,
@@ -433,7 +433,7 @@ impl NyanpasuClient {
         .await
         .context(StartCoreLogsSnafu)?;
         // Before the effects owner, which hands it the capture level.
-        let streams = crate::core::clash::ws::StreamsClient::spawn(
+        let streams = nyanpasu_core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),
             core_logs.clone(),
             clash_config.snapshot().state.overrides.log_level(),

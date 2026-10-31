@@ -1,4 +1,4 @@
-use crate::{client::ui_effects::ports::LogRotation, utils::profiling::Profilers};
+use crate::{client::effects::ports::LogRotation, utils::profiling::Profilers};
 use flexi_logger::{
     Age, Cleanup, Criterion, FileSpec, Naming,
     writers::{ArcFileLogWriter, FileLogWriter, FileLogWriterHandle},

@@ -14,14 +14,7 @@ use nyanpasu_config::{
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    adapters::TauriWidgetController,
-    ports::{
-        LocaleSink, LogRotation, LoggerError, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
-        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayError, TrayRefresher,
-        WidgetController, WidgetError,
-    },
-};
+use super::{adapters::TauriWidgetController, ports::MockWidgetRuntime};
 use crate::client::{
     effects::{
         executor::ApplicationEffectExecutor,
@@ -29,7 +22,11 @@ use crate::client::{
             ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
             TrayRefresh,
         },
-        ports::ApplicationEffectsPort,
+        ports::{
+            ApplicationEffectsPort, LocaleSink, LogRotation, LoggerError, LoggerRefresher,
+            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
+            TrayError, TrayRefresher, WidgetController, WidgetError,
+        },
         status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{

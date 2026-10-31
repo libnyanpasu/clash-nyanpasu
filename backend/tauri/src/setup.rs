@@ -333,30 +333,34 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 })
             },
             changelog_http: Arc::new(move |ports| {
-                Arc::new(crate::adapters::changelog_http::ReqwestChangelogHttp::new(
-                    ports,
-                    bundle_metadata,
-                ))
+                Arc::new(
+                    nyanpasu_platform::changelog_http::ReqwestChangelogHttp::new(
+                        ports,
+                        bundle_metadata,
+                    ),
+                )
             }),
-            runtime_build: Arc::new(crate::adapters::runtime_build::FsRuntimeBuildAdapter {
-                profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
-                core_specs: {
-                    let paths = paths.clone();
-                    Arc::new(move |core| {
-                        nyanpasu_core::actor_v2::local_host::core_spec(core, &paths)
-                    })
+            runtime_build: Arc::new(
+                nyanpasu_platform::enhance::runtime_build::FsRuntimeBuildAdapter {
+                    profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
+                    core_specs: {
+                        let paths = paths.clone();
+                        Arc::new(move |core| {
+                            nyanpasu_core::actor_v2::local_host::core_spec(core, &paths)
+                        })
+                    },
+                    paths: runtime_paths.clone(),
+                    scripts: nyanpasu_platform::enhance::ScriptDirs::new(
+                        paths.scripts_dir().into_std_path_buf(),
+                        paths.cache_dir().into_std_path_buf(),
+                    ),
                 },
-                paths: runtime_paths.clone(),
-                scripts: nyanpasu_platform::enhance::ScriptDirs::new(
-                    paths.scripts_dir().into_std_path_buf(),
-                    paths.cache_dir().into_std_path_buf(),
-                ),
-            }),
+            ),
             profile_files: Arc::new({
                 let paths = paths.clone();
                 move |ports| {
                     let service = Arc::new(
-                        crate::service::profile_file::fs_service::ProfileFileService::new(
+                        nyanpasu_platform::profiles::fs_service::ProfileFileService::new(
                             paths.clone(),
                             ports,
                             bundle_metadata,

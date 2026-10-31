@@ -19,9 +19,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
-use crate::service::profile_file::{
-    materialization, materialization::MATERIALIZATION_ROOT, subscription,
-};
+use crate::profiles::{materialization, materialization::MATERIALIZATION_ROOT, subscription};
 use nyanpasu_core::service::profile_file::ports::SelfProxyPortSource;
 
 use nyanpasu_core::{

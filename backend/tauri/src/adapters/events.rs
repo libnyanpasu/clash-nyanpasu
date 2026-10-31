@@ -1,9 +1,54 @@
-//! GUI event wrappers for core and service status projections.
+//! GUI event wrappers for application status, streams, and storage changes.
 
-use crate::core::actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus};
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use tauri_specta::Event;
+
+use crate::core::{
+    actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
+    clash::ws::{ClashWsPacket, ClashWsUpdate},
+    logs::CoreLogStatus,
+    storage::StorageRevision,
+};
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ServiceStatusChangedEvent(pub ServiceHostStatus);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+pub struct CoreLogsChanged {
+    pub status: CoreLogStatus,
+}
+
+#[derive(Debug, Clone, Type, Serialize, Deserialize, Event)]
+pub struct ClashWsEvent {
+    pub sequence: u64,
+    pub update: ClashWsUpdate,
+}
+
+impl From<ClashWsPacket> for ClashWsEvent {
+    fn from(packet: ClashWsPacket) -> Self {
+        Self {
+            sequence: packet.sequence,
+            update: packet.update,
+        }
+    }
+}
+
+/// Event emitted to all windows when storage changes were dropped, so every
+/// storage value must be read again.
+/// Event name: `storage-resync-event`
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct StorageResyncEvent {}
+
+/// Event emitted to all windows when a storage value changes.
+/// Event name: `storage-value-changed-event`
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct StorageValueChangedEvent {
+    pub key: String,
+    /// The new JSON-encoded value, or `None` if the key was removed.
+    pub value: Option<String>,
+    pub revision: StorageRevision,
+}

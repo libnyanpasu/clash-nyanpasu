@@ -6,7 +6,6 @@ use nyanpasu_config::clash::config::overrides::LogLevel;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri_specta::Event;
 use tokio::{
     sync::{broadcast, watch},
     task::JoinHandle,
@@ -145,8 +144,8 @@ pub struct ClashWsSnapshot {
     pub memory: Vec<ClashWsMemory>,
 }
 
-#[derive(Debug, Clone, Type, Serialize, Deserialize, Event)]
-pub struct ClashWsEvent {
+#[derive(Debug, Clone, Type, Serialize, Deserialize)]
+pub struct ClashWsPacket {
     pub sequence: u64,
     pub update: ClashWsUpdate,
 }
@@ -271,7 +270,7 @@ struct Args {
     log_level: LogLevel,
     shutdown: CancellationToken,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
-    events: broadcast::Sender<ClashWsEvent>,
+    events: broadcast::Sender<ClashWsPacket>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
@@ -316,7 +315,7 @@ impl State {
     }
     fn emit(&mut self, update: ClashWsUpdate) {
         self.sequence += 1;
-        let _ = self.args.events.send(ClashWsEvent {
+        let _ = self.args.events.send(ClashWsPacket {
             sequence: self.sequence,
             update,
         });
@@ -348,7 +347,7 @@ impl State {
             .connections
             .send(ClashConnectionsConnectorEvent::Update(Default::default()));
         self.sequence += 1;
-        let _ = self.args.events.send(ClashWsEvent {
+        let _ = self.args.events.send(ClashWsPacket {
             sequence: self.sequence,
             update: ClashWsUpdate::Reset(Box::new(self.snapshot())),
         });
@@ -867,7 +866,7 @@ struct Inner {
     #[cfg(test)]
     logs: crate::core::logs::CoreLogsClient,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
-    events: broadcast::Sender<ClashWsEvent>,
+    events: broadcast::Sender<ClashWsPacket>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
 impl Drop for Inner {
@@ -952,7 +951,7 @@ impl StreamsClient {
     pub fn subscribe(&self) -> broadcast::Receiver<ClashConnectionsConnectorEvent> {
         self.0.connections.subscribe()
     }
-    pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
+    pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsPacket> {
         self.0.events.subscribe()
     }
     /// The latest connection-detail frame, kept only while at least one
@@ -983,7 +982,7 @@ mod tests {
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {
         ws.on_upgrade(|mut socket| async move { while socket.recv().await.is_some() {} })
     }
-    async fn connected(events: &mut broadcast::Receiver<ClashWsEvent>) {
+    async fn connected(events: &mut broadcast::Receiver<ClashWsPacket>) {
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
                 if matches!(

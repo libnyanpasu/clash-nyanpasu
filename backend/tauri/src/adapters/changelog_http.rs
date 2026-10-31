@@ -3,8 +3,9 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 
-use crate::service::profile_file::ports::SelfProxyPortSource;
-use nyanpasu_core::client::bundle_metadata::BundleMetadata;
+use nyanpasu_core::{
+    client::bundle_metadata::BundleMetadata, service::profile_file::ports::SelfProxyPortSource,
+};
 
 pub(crate) struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,
@@ -21,7 +22,7 @@ impl ReqwestChangelogHttp {
 }
 
 #[async_trait]
-impl crate::client::app_update::changelog::ChangelogHttp for ReqwestChangelogHttp {
+impl nyanpasu_core::client::app_update::changelog::ChangelogHttp for ReqwestChangelogHttp {
     async fn get_text(&self, url: &url::Url) -> Result<String> {
         let mut builder = reqwest::Client::builder()
             .user_agent(format!(

@@ -15,7 +15,7 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientRequest};
 use tokio_util::sync::CancellationToken;
 
-use crate::client::debug_http::{DebugHttpControl, DebugHttpStatus, Error};
+use nyanpasu_core::client::debug_http::{DebugHttpControl, DebugHttpStatus, Error};
 
 /// Production assets are supplied by the composition root's Tauri adapter.
 pub trait FrontendAssets: Send + Sync + 'static {
@@ -539,7 +539,7 @@ pub(crate) mod tests {
     pub(crate) fn control_factory(
         frontend: Option<Frontend>,
         routes: Arc<dyn HttpRoutes>,
-    ) -> Arc<crate::client::host_adapters::DebugHttpFactory> {
+    ) -> Arc<nyanpasu_core::client::host_adapters::DebugHttpFactory> {
         Arc::new(move || {
             let (frontend, routes) = (frontend.clone(), routes.clone());
             Box::pin(async move {

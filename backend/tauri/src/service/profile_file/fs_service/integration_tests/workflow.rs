@@ -1,23 +1,22 @@
 //! Runtime transactions retaining persisted bytes and staging ownership.
 
-use crate::{
-    client::{
-        NyanpasuClient,
-        application_workflow::{mutation, startup::StartupOutcome},
-        test_support::{
-            self, TestControlEndpoint,
-            workflow::{
-                Fixture, ScriptedWaitEndpoint, WaitScript, aftermath, disable_mode_interruption,
-                override_patch, start_replacement,
-            },
-        },
-    },
-    service::profile_file::test_support::test_client_args_with_endpoint,
-};
+use crate::service::profile_file::test_support::test_client_args_with_endpoint;
 use futures_util::FutureExt;
 use nyanpasu_config::clash::config::{
     ClashConfig,
     clash_strategy::port::{PortStrategy, PortStrategyKind},
+};
+use nyanpasu_core::client::{
+    NyanpasuClient,
+    application_workflow::{mutation, startup::StartupOutcome},
+    test_support,
+    test_support::{
+        TestControlEndpoint,
+        workflow::{
+            Fixture, ScriptedWaitEndpoint, WaitScript, aftermath, disable_mode_interruption,
+            override_patch, start_replacement,
+        },
+    },
 };
 use nyanpasu_ipc::api::status::CoreStateDetail;
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -37,7 +36,7 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         },
         ..ClashConfig::default()
     };
-    crate::client::test_support::write_clash_config(args.paths.clash_config_path(), &clash);
+    nyanpasu_core::client::test_support::write_clash_config(args.paths.clash_config_path(), &clash);
     let files = [
         args.paths.application_config_path(),
         args.paths.clash_config_path(),
@@ -147,7 +146,7 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
         assert_eq!(outcome.degradations().len(), 1);
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+            nyanpasu_core::client::runtime::DegradationReason::RuntimeDeferred { .. }
         ));
         assert_eq!(
             client.configuration_status().runtime.health,
@@ -203,8 +202,8 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 serde_json::to_value(after.state).unwrap(),
                 serde_json::to_value(before.state).unwrap()
             );
-            let crate::client::ClientError::Config(
-                crate::state::config_error::ConfigError::Commit {
+            let nyanpasu_core::client::ClientError::Config(
+                nyanpasu_core::state::config_error::ConfigError::Commit {
                     domain: mutation::ConfigDomain::Clash,
                     source: aborted,
                 },
@@ -212,7 +211,8 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
             else {
                 panic!("{error:?}");
             };
-            let crate::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted else {
+            let nyanpasu_core::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted
+            else {
                 panic!("{aborted:?}");
             };
             assert!(
@@ -228,7 +228,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 assert!(
                     matches!(
                         aftermath(aborted),
-                        crate::state::mutation::RuntimeAftermath::RollbackFailed { .. }
+                        nyanpasu_core::state::mutation::RuntimeAftermath::RollbackFailed { .. }
                     ),
                     "{aborted:?}"
                 );
@@ -237,7 +237,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 assert!(
                     matches!(
                         aftermath(aborted),
-                        crate::state::mutation::RuntimeAftermath::RolledBack
+                        nyanpasu_core::state::mutation::RuntimeAftermath::RolledBack
                     ),
                     "{aborted:?}"
                 );

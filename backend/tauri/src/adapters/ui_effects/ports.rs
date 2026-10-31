@@ -5,7 +5,7 @@ use std::time::Duration;
 use nyanpasu_widget_protocol::{Logo, StatisticWidgetVariant};
 use tokio::time::Instant;
 
-use crate::client::effects::ports::WidgetError;
+use nyanpasu_core::client::effects::ports::WidgetError;
 
 /// How long a widget stop waits for the widget to leave before it reports the
 /// widget still owned (T10 §5.5).
@@ -13,7 +13,7 @@ pub const WIDGET_STOP_BOUND: Duration = Duration::from_secs(3);
 
 /// The widget process itself, as the controller uses it.
 ///
-/// Separate from [`WidgetController`](crate::client::effects::ports::WidgetController): the controller owns the lifecycle rules
+/// Separate from [`WidgetController`](nyanpasu_core::client::effects::ports::WidgetController): the controller owns the lifecycle rules
 /// (when a start is redundant, when a stop is a no-op) and this is the thing
 /// those rules drive, so the rules are testable without spawning a process.
 #[async_trait::async_trait]

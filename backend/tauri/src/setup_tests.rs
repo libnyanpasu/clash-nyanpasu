@@ -172,7 +172,7 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
                         cleanup: cleanup.clone(),
                     }),
                     &paths,
-                    crate::client::jobs::capture(),
+                    nyanpasu_core::client::jobs::capture(),
                 )
                 .await
                 .err()

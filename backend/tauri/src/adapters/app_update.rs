@@ -9,16 +9,18 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use tauri_specta::Event as _;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    adapters::events::AppUpdateStateChanged,
-    client::app_update::{
-        AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
-        AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
+use crate::adapters::events::AppUpdateStateChanged;
+use nyanpasu_config::application::UpdateSource;
+use nyanpasu_core::{
+    client::{
+        app_update::{
+            AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
+            AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
+        },
+        bundle_metadata::BundleMetadata,
     },
     service::profile_file::ports::SelfProxyPortSource,
 };
-use nyanpasu_config::application::UpdateSource;
-use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);
 

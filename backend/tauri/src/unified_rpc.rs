@@ -16,8 +16,7 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
 
-use crate::client::NyanpasuClient;
-use nyanpasu_core::storage::Storage;
+use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
@@ -486,7 +485,7 @@ mod tests {
         let args = tauri::async_runtime::block_on(
             crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::test_support::TestControlEndpoint::succeeding(),
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
             ),
         );
         std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
@@ -875,7 +874,7 @@ mod tests {
         let mut args = tauri::async_runtime::block_on(
             crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::test_support::TestControlEndpoint::succeeding(),
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
             ),
         );
         args.direct_egress = probe.clone();
@@ -1087,7 +1086,7 @@ mod tests {
         let mut args = tauri::async_runtime::block_on(
             crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::test_support::TestControlEndpoint::succeeding(),
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
             ),
         );
         let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
@@ -1151,7 +1150,7 @@ mod tests {
         let mut args = tauri::async_runtime::block_on(
             crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::test_support::TestControlEndpoint::succeeding(),
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
             ),
         );
         // The browser fixture uses English accessible names on every host locale.
@@ -1197,7 +1196,7 @@ mod tests {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
-        use crate::client::frontend_events::{FrontendLogSink, SanitizedEvent};
+        use nyanpasu_core::client::frontend_events::{FrontendLogSink, SanitizedEvent};
         #[derive(Default)]
         struct RecordingSink(std::sync::Mutex<Vec<(String, SanitizedEvent)>>);
         impl FrontendLogSink for RecordingSink {
@@ -1271,7 +1270,7 @@ mod tests {
                 .iter()
                 .filter(|(_, event)| event.event.message.contains("error reporting test"))
                 .collect();
-            use crate::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
+            use nyanpasu_core::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
             let kinds: Vec<_> = fixture
                 .iter()
                 .map(|(_, event)| (event.event.kind, event.event.level))

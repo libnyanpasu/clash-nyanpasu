@@ -4,3 +4,3576 @@ pub mod convergence;
 pub mod core_version;
 pub mod direct_egress;
 pub mod owner_shutdown;
+
+use crate::client::{
+    bundle_metadata::BundleMetadata,
+    clash_info::ClashInfo,
+    direct_egress::{DirectEgress, DirectEgressProbe},
+};
+use nyanpasu_paths::PathResolver;
+pub mod agent_skills;
+mod app_lifecycle;
+pub mod app_update;
+pub mod application;
+pub mod application_workflow;
+mod clash_api;
+mod clash_config;
+mod clash_streams;
+pub mod configuration_status;
+pub mod core_lifecycle;
+pub mod debug_http;
+pub mod effects;
+mod error;
+mod event_sink;
+pub mod frontend_events;
+pub mod host_adapters;
+pub mod hotkey;
+pub mod jobs;
+pub mod logs;
+pub mod main_thread;
+mod ports;
+pub mod profiles;
+pub mod runtime;
+pub mod runtime_error;
+pub mod runtime_inspection;
+pub mod runtime_recovery;
+mod session_state;
+#[cfg(test)]
+mod startup_recovery_tests;
+mod system_dns;
+pub mod system_proxy;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+mod traffic;
+
+use self::{
+    application::ApplicationClient,
+    clash_config::ClashConfigClient,
+    debug_http::{DebugHttpControl, DebugHttpStatus},
+    host_adapters::ClientHostAdapters,
+    session_state::SessionStateClient,
+};
+use crate::{
+    actor_v2::{
+        CoreClient as CoreClientV2, CoreStatusProjection,
+        facade::{ReconcileReport, StopReport},
+        service_actor::{ServiceClient, ServiceHostStatus},
+    },
+    backup,
+    backup::{
+        BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
+        StorageSource,
+    },
+    service::profile_file::ports::SelfProxyPortSource,
+    state::profiles::{
+        CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
+        ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
+        ReorderOp, ports::ProfileFsPort,
+    },
+    storage::Storage,
+};
+use nyanpasu_config::{
+    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
+    clash::{
+        config::{ClashConfig, ClashConfigPatch},
+        features::ConfigFeatures,
+    },
+    profile::{
+        FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
+        ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
+        RemoteProfileOptionsPatch, TransformKind,
+    },
+    runtime::executor::ResolvedPortBindings,
+};
+use snafu::{OptionExt as _, ResultExt as _};
+use std::{path::PathBuf, sync::Arc};
+use struct_patch::Patch as _;
+
+pub use error::{ClientError, Result};
+pub use event_sink::{StateChanged, UiEventSink};
+pub use main_thread::{MainThreadExecutor, MainThreadHandoff, MainThreadWork};
+pub use ports::SessionPortResolver;
+pub use runtime::RuntimePaths;
+pub use runtime_error::RuntimeError;
+#[cfg(any(test, feature = "test-support"))]
+pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
+pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
+pub struct ClientSetupArgs {
+    pub host_adapters: ClientHostAdapters,
+    pub jobs: nyanpasu_jobs::JobsClient,
+    pub bundle_metadata: BundleMetadata,
+    pub logging: logs::LoggingSetup,
+    pub paths: PathResolver,
+    /// Opened by the composition root, which also manages the same instance
+    /// for the storage commands.
+    pub storage: Storage,
+    pub runtime_paths: RuntimePaths,
+    pub ui_sink: Arc<dyn UiEventSink>,
+    /// Built after the active proxy-port source exists in the composition root.
+    pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
+    pub app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
+    pub core_v2: CoreClientV2,
+    pub service: ServiceClient,
+    pub system_dns: Arc<dyn SystemDnsCache>,
+    pub direct_egress: Arc<dyn DirectEgressProbe>,
+    pub geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+    pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
+    pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+    pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+    pub window: Arc<dyn hotkey::ports::WindowControl>,
+    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    /// `None` disables traffic recording: the store could not be opened.
+    pub traffic_store:
+        Option<Arc<dyn crate::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>>,
+    /// The root shutdown token. The composition root owns it because some
+    /// owners are spawned before the client; the client cancels it.
+    pub shutdown: tokio_util::sync::CancellationToken,
+    /// Every owner the shutdown waits for.
+    pub tasks: tokio_util::task::TaskTracker,
+}
+
+#[derive(Debug, snafu::Snafu)]
+pub enum SetupError {
+    #[snafu(display("failed to load application"))]
+    LoadApplication { source: application::Error },
+    #[snafu(display("failed to load session state"))]
+    LoadSessionState { source: session_state::Error },
+    #[snafu(display("failed to load clash config"))]
+    LoadClashConfig { source: clash_config::Error },
+    #[snafu(display("failed to load profiles"))]
+    LoadProfiles { source: profiles::Error },
+    #[snafu(display("failed to cleanup candidates"))]
+    CleanupCandidates { source: runtime::Error },
+    #[snafu(display("failed to start http server"))]
+    StartHttpServer { source: debug_http::Error },
+    #[snafu(display("failed to start core logs"))]
+    StartCoreLogs { source: crate::logs::SpawnError },
+    #[snafu(display("failed to start streams"))]
+    StartStreams { source: crate::clash::ws::Error },
+    #[snafu(display("failed to start app logs"))]
+    StartAppLogs { source: nyanpasu_logging::LogError },
+    #[snafu(display("failed to start effects"))]
+    StartEffects { source: effects::actor::Error },
+    #[snafu(display("failed to start workflow"))]
+    StartWorkflow { source: application_workflow::Error },
+    #[snafu(display("failed to start updater"))]
+    StartUpdater { source: crate::updater::Error },
+    #[snafu(display("failed to start app updater"))]
+    StartAppUpdater { source: app_update::Error },
+    #[snafu(display("failed to start proxies"))]
+    StartProxies { source: crate::proxies::Error },
+    #[snafu(display("failed to start geo index"))]
+    StartGeoIndex { source: crate::geo::SpawnError },
+    #[snafu(display("failed to locate executable"))]
+    LocateExecutable { source: std::io::Error },
+    #[snafu(display("executable has no parent directory"))]
+    LocateExecutableParent,
+}
+
+#[derive(Clone)]
+pub struct NyanpasuClient {
+    inner: Arc<NyanpasuClientInner>,
+}
+
+async fn new_typed_config_clients(
+    mutations: crate::state::mutation::MutationCoordinator,
+    build_channel: ReleaseChannel,
+    paths: PathResolver,
+    shutdown: &tokio_util::sync::CancellationToken,
+    tasks: &tokio_util::task::TaskTracker,
+) -> std::result::Result<(ApplicationClient, SessionStateClient, ClashConfigClient), SetupError> {
+    let application = ApplicationClient::new(
+        mutations.clone(),
+        build_channel,
+        paths.application_config_path(),
+        shutdown.child_token(),
+        tasks,
+    )
+    .await
+    .context(LoadApplicationSnafu)?;
+
+    let session_state =
+        SessionStateClient::new(paths.session_state_path(), shutdown.child_token(), tasks)
+            .await
+            .context(LoadSessionStateSnafu)?;
+
+    let clash_config = ClashConfigClient::new(
+        mutations.clone(),
+        paths.clash_config_path(),
+        shutdown.child_token(),
+        tasks,
+    )
+    .await
+    .context(LoadClashConfigSnafu)?;
+
+    Ok((application, session_state, clash_config))
+}
+
+/// Fallback name for an imported subscription with no caller-provided name:
+/// the url's last non-empty path segment (sans `.yaml`/`.yml`), else the host,
+/// else a constant. Kept separate so `import_profile` reads as orchestration.
+fn url_derived_name(url: &url::Url) -> String {
+    url.path_segments()
+        .and_then(|mut segments| segments.rfind(|segment| !segment.is_empty()))
+        .map(|segment| {
+            segment
+                .trim_end_matches(".yaml")
+                .trim_end_matches(".yml")
+                .to_string()
+        })
+        .filter(|name| !name.is_empty())
+        .or_else(|| url.host_str().map(str::to_string))
+        .unwrap_or_else(|| "Remote Profile".into())
+}
+
+struct NyanpasuClientInner {
+    debug_http: Arc<dyn DebugHttpControl>,
+    bundle_metadata: BundleMetadata,
+    core_logs: crate::logs::CoreLogsClient,
+    app_logs: nyanpasu_logging::LogsClient,
+    jobs: nyanpasu_jobs::JobsClient,
+    service_logs: Arc<dyn logs::ServiceLogsPort>,
+    frontend_log: Arc<dyn frontend_events::FrontendLogSink>,
+    application: ApplicationClient,
+    session_state: SessionStateClient,
+    clash_config: ClashConfigClient,
+    profiles: profiles::ProfilesClient,
+    fs: Arc<dyn ProfileFsPort>,
+    ports: Arc<SessionPortResolver>,
+    profiles_dir: PathBuf,
+    paths: PathResolver,
+    storage: Storage,
+    application_workflow: application_workflow::ApplicationWorkflowClient,
+    core_api: CoreClientV2,
+    proxies: crate::proxies::ProxiesClient,
+    streams: crate::clash::ws::StreamsClient,
+    traffic: Option<crate::traffic::TrafficClient>,
+    updater: crate::updater::UpdaterClient,
+    core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+    app_updater: app_update::AppUpdateClient,
+    changelog_http: Arc<dyn app_update::changelog::ChangelogHttp>,
+    system_dns: Arc<dyn SystemDnsCache>,
+    direct_egress: Arc<dyn DirectEgressProbe>,
+    local_source: Arc<traffic::LocalSourceCache>,
+    /// Held for its actor, which stops with the last handle; the traffic pump only holds the
+    /// index it publishes.
+    _geo_index: crate::geo::GeoIndexClient,
+    os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
+    effects: effects::actor::EffectsClient,
+    window: Arc<dyn hotkey::ports::WindowControl>,
+    /// The platform's accelerator rule, used to reject a hotkey list before it
+    /// is committed rather than after the effect has torn the old grabs down.
+    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    /// The root shutdown token; `request_shutdown` cancels it.
+    shutdown: tokio_util::sync::CancellationToken,
+    /// Every owner the shutdown waits for.
+    tasks: tokio_util::task::TaskTracker,
+}
+
+impl NyanpasuClient {
+    pub async fn try_new(args: ClientSetupArgs) -> std::result::Result<Self, SetupError> {
+        let ClientSetupArgs {
+            host_adapters,
+            jobs,
+            bundle_metadata,
+            logging,
+            paths,
+            storage,
+            runtime_paths,
+            ui_sink,
+            app_update_backend_factory,
+            app_update_event_sink,
+            core_v2,
+            service,
+            system_dns,
+            direct_egress,
+            geo_index,
+            os_proxy,
+            binary_installer,
+            core_versions,
+            effects,
+            window,
+            accelerators,
+            traffic_store,
+            shutdown,
+            tasks,
+        } = args;
+        let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
+        let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
+        let mutations = crate::state::mutation::MutationCoordinator::pending();
+        runtime_paths
+            .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
+            .await
+            .context(CleanupCandidatesSnafu)?;
+        let (application, session_state, clash_config) = new_typed_config_clients(
+            mutations.clone(),
+            bundle_metadata.release_channel,
+            paths.clone(),
+            &shutdown,
+            &tasks,
+        )
+        .await?;
+
+        // No eager resolution: a pick nothing has applied is a
+        // candidate, and a candidate must never be readable as the
+        // active binding. The first reconcile resolves and confirms.
+        let ports = Arc::new(SessionPortResolver::default());
+        let file_ports = (host_adapters.profile_files)(ports.clone());
+        let profiles = profiles::ProfilesClient::new_with_jobs(
+            mutations.clone(),
+            paths.profiles_path(),
+            jobs.clone(),
+            file_ports.fs.clone(),
+            file_ports.fetcher,
+            file_ports.materialization,
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await
+        .context(LoadProfilesSnafu)?;
+        Self::with_parts(
+            Some(mutations),
+            bundle_metadata,
+            logging,
+            jobs,
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            file_ports.fs,
+            ports,
+            profiles_dir,
+            instance_config_dir,
+            paths,
+            storage,
+            runtime_paths,
+            host_adapters,
+            ui_sink,
+            app_update_backend_factory,
+            app_update_event_sink,
+            core_v2,
+            service,
+            system_dns,
+            direct_egress,
+            geo_index,
+            os_proxy,
+            binary_installer,
+            core_versions,
+            effects,
+            window,
+            accelerators,
+            traffic_store,
+            shutdown,
+            tasks,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn with_parts(
+        mutations: Option<crate::state::mutation::MutationCoordinator>,
+        bundle_metadata: BundleMetadata,
+        logging: logs::LoggingSetup,
+        jobs: nyanpasu_jobs::JobsClient,
+        application: ApplicationClient,
+        session_state: SessionStateClient,
+        clash_config: ClashConfigClient,
+        profiles: profiles::ProfilesClient,
+        fs: Arc<dyn ProfileFsPort>,
+        ports: Arc<SessionPortResolver>,
+        profiles_dir: PathBuf,
+        instance_config_dir: PathBuf,
+        paths: PathResolver,
+        storage: Storage,
+        runtime_paths: RuntimePaths,
+        host_adapters: ClientHostAdapters,
+        ui_sink: Arc<dyn UiEventSink>,
+        app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
+        app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
+        core_v2: CoreClientV2,
+        service: ServiceClient,
+        system_dns: Arc<dyn SystemDnsCache>,
+        direct_egress: Arc<dyn DirectEgressProbe>,
+        geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+        os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
+        binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+        effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+        window: Arc<dyn hotkey::ports::WindowControl>,
+        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        traffic_store: Option<
+            Arc<dyn crate::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>,
+        >,
+        shutdown: tokio_util::sync::CancellationToken,
+        tasks: tokio_util::task::TaskTracker,
+    ) -> std::result::Result<Self, SetupError> {
+        let debug_http = (host_adapters.debug_http)()
+            .await
+            .context(StartHttpServerSnafu)?;
+        tasks.spawn({
+            let (http, token) = (debug_http.clone(), shutdown.child_token());
+            async move {
+                token.cancelled().await;
+                if let Err(error) = http.shutdown().await {
+                    tracing::warn!(%error, "debug HTTP server shutdown failed");
+                }
+            }
+        });
+        let core_logs = crate::logs::CoreLogsClient::spawn(
+            logging.core,
+            application.snapshot().state.core_logs,
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await
+        .context(StartCoreLogsSnafu)?;
+        // Before the effects owner, which hands it the capture level.
+        let streams = crate::clash::ws::StreamsClient::spawn(
+            core_v2.clone(),
+            core_logs.clone(),
+            clash_config.snapshot().state.overrides.log_level(),
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await
+        .context(StartStreamsSnafu)?;
+        let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock)
+            .await
+            .context(StartAppLogsSnafu)?;
+        // The log client exposes no actor cell, so a tracked task stops it.
+        tasks.spawn({
+            let (logs, token) = (app_logs.clone(), shutdown.child_token());
+            async move {
+                token.cancelled().await;
+                if let Err(error) = logs.shutdown().await {
+                    tracing::warn!("the application log did not shut down cleanly: {error}");
+                }
+            }
+        });
+        let service_logs = logging.service;
+        let frontend_log = logging.frontend;
+        let effects = effects::actor::EffectsClient::spawn(
+            effects::actor::EffectsArgs {
+                port: Arc::new(effects::executor::CoreLogCaptureEffects::new(
+                    effects,
+                    streams.clone(),
+                    core_logs.clone(),
+                )),
+                initial: effects::plan::ApplicationEffectInputs::project(
+                    &application.snapshot().state,
+                    &clash_config.snapshot().state,
+                    ports.confirmed(),
+                ),
+                shutdown: shutdown.child_token(),
+            },
+            &tasks,
+        )
+        .await
+        .context(StartEffectsSnafu)?;
+        let notifications: Arc<dyn effects::ports::CommitNotifications> =
+            Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
+        let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
+            application_workflow::ApplicationWorkflowArgs {
+                notifications: notifications.clone(),
+                application: application.snapshot_handle(),
+                clash: clash_config.snapshot_handle(),
+                profiles: profiles.snapshot_handle(),
+                core: core_v2.clone(),
+                service,
+                builder: host_adapters.runtime_build,
+                validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
+                    core_v2.clone(),
+                    runtime_paths,
+                )),
+                ports: ports.clone(),
+                installer: binary_installer,
+                ownership: core_lifecycle::Ownership::Unproven,
+                instance_config_dir,
+                shutdown: shutdown.child_token(),
+                tasks: tasks.clone(),
+            },
+        )
+        .await
+        .context(StartWorkflowSnafu)?;
+        if let Some(mutations) = mutations {
+            mutations.connect(application_workflow.clone(), notifications);
+        }
+        let updater = crate::updater::UpdaterClient::spawn(
+            Arc::new(crate::updater::HttpUpdaterBackend::new(
+                std::env::current_exe()
+                    .context(LocateExecutableSnafu)?
+                    .parent()
+                    .context(LocateExecutableParentSnafu)?
+                    .to_path_buf(),
+                paths.clone(),
+                ports.clone(),
+                bundle_metadata,
+            )),
+            Arc::new(application_workflow.clone()),
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await
+        .context(StartUpdaterSnafu)?;
+        let app_config = application.snapshot().state;
+        let app_update_settings = app_update::AppUpdateSettings {
+            channel: app_config
+                .release_channel
+                .unwrap_or(bundle_metadata.release_channel),
+            sources: app_config.update_sources.clone(),
+            auto_check: app_config.enable_auto_check_update,
+            auto_download: app_config.enable_auto_download_update,
+        };
+        let app_update_supported = app_update_backend_factory.is_some()
+            && !bundle_metadata.is_portable
+            && (cfg!(any(target_os = "windows", target_os = "macos"))
+                || (cfg!(target_os = "linux") && bundle_metadata.is_appimage));
+        let app_update_backend = app_update_backend_factory
+            .map(|factory| factory(ports.clone() as Arc<dyn SelfProxyPortSource>))
+            .unwrap_or_else(|| Arc::new(app_update::UnavailableAppUpdateBackend));
+        let app_update_events =
+            app_update_event_sink.unwrap_or_else(|| Arc::new(app_update::NoopAppUpdateEventSink));
+        let app_updater = app_update::AppUpdateClient::spawn(
+            app_update::AppUpdateArgs {
+                backend: app_update_backend,
+                events: app_update_events,
+                settings: app_update_settings,
+                supported: app_update_supported,
+                endpoints: app_update::endpoints::update_endpoints(
+                    app_config
+                        .release_channel
+                        .unwrap_or(bundle_metadata.release_channel),
+                    bundle_metadata.sourceforge_project,
+                ),
+                bundle_metadata,
+                shutdown: shutdown.child_token(),
+            },
+            &tasks,
+        )
+        .await
+        .context(StartAppUpdaterSnafu)?;
+        let changelog_http = (host_adapters.changelog_http)(ports.clone());
+        let mut application_settings = application.subscribe_settings_changes();
+        let settings_updater = app_updater.clone();
+        let settings_shutdown = shutdown.child_token();
+        let installed_channel = bundle_metadata.release_channel;
+        tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = settings_shutdown.cancelled() => break,
+                    changed = application_settings.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let config = application_settings.borrow_and_update().clone();
+                        settings_updater.configure(app_update::AppUpdateSettings {
+                            channel: config.release_channel.unwrap_or(installed_channel),
+                            sources: config.update_sources,
+                            auto_check: config.enable_auto_check_update,
+                            auto_download: config.enable_auto_download_update,
+                        });
+                    }
+                }
+            }
+        });
+        let proxies =
+            crate::proxies::ProxiesClient::spawn(core_v2.clone(), shutdown.child_token(), &tasks)
+                .await
+                .context(StartProxiesSnafu)?;
+        let geo_index = crate::geo::GeoIndexClient::spawn(
+            crate::geo::GeoIndexArgs {
+                source: geo_index,
+                core: core_v2.clone(),
+            },
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await
+        .context(StartGeoIndexSnafu)?;
+        let local_source = Arc::new(traffic::LocalSourceCache::new(
+            application.snapshot_handle(),
+            clash_config.snapshot_handle(),
+        ));
+        let traffic = match traffic_store {
+            Some(store) => {
+                match crate::traffic::TrafficClient::spawn(
+                    crate::traffic::TrafficArgs {
+                        storage: store,
+                        profile: nyanpasu_tsdb::Profile::desktop(),
+                        profiles: Arc::new(traffic::SelectedProfile::new(
+                            profiles.snapshot_handle(),
+                        )),
+                        retention: Arc::new(traffic::SettingsRetention::new(
+                            application.snapshot_handle(),
+                        )),
+                        clock: Arc::new(traffic::SystemClock),
+                        frames: streams.subscribe_connection_frames(),
+                        geo: geo_index.subscribe(),
+                        local_source: local_source.clone(),
+                    },
+                    shutdown.child_token(),
+                    &tasks,
+                )
+                .await
+                {
+                    Ok(client) => Some(client),
+                    // Recording is a side feature: an unreadable store disables it, not the app.
+                    Err(error) => {
+                        tracing::warn!("traffic recording is disabled: {error:#}");
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+        Ok(Self {
+            inner: Arc::new(NyanpasuClientInner {
+                debug_http,
+                bundle_metadata,
+                core_logs,
+                app_logs,
+                jobs,
+                service_logs,
+                frontend_log,
+                application,
+                session_state,
+                clash_config,
+                profiles,
+                fs,
+                ports,
+                profiles_dir,
+                paths,
+                storage,
+                application_workflow,
+                core_api: core_v2,
+                proxies,
+                streams,
+                traffic,
+                updater,
+                core_versions,
+                app_updater,
+                changelog_http,
+                system_dns,
+                direct_egress,
+                local_source,
+                _geo_index: geo_index,
+                os_proxy,
+                effects,
+                window,
+                accelerators,
+                shutdown,
+                tasks,
+            }),
+        })
+    }
+
+    pub async fn debug_http_status(&self) -> anyhow::Result<DebugHttpStatus> {
+        self.inner.debug_http.status().await
+    }
+    pub async fn set_debug_http_enabled(&self, enabled: bool) -> anyhow::Result<DebugHttpStatus> {
+        self.inner.debug_http.set_enabled(enabled).await
+    }
+    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
+        self.inner.debug_http.set_enabled(false).await?;
+        Ok(())
+    }
+
+    pub async fn release_channel(&self) -> Result<ReleaseChannel> {
+        Ok(self
+            .inner
+            .bundle_metadata
+            .release_channel
+            .resolve(self.inner.application.snapshot().state.release_channel))
+    }
+
+    pub fn installed_release_channel(&self) -> ReleaseChannel {
+        self.inner.bundle_metadata.release_channel
+    }
+
+    pub async fn get_app_update_state(&self) -> Result<app_update::AppUpdateSnapshot> {
+        Ok(self.inner.app_updater.state().await?)
+    }
+
+    pub async fn check_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
+        Ok(self.inner.app_updater.check().await?)
+    }
+
+    pub async fn download_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
+        Ok(self.inner.app_updater.download().await?)
+    }
+
+    pub async fn cancel_app_update_download(&self) -> Result<app_update::AppUpdateSnapshot> {
+        Ok(self.inner.app_updater.cancel_download().await?)
+    }
+
+    pub async fn install_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
+        Ok(self.inner.app_updater.install().await?)
+    }
+
+    pub async fn discard_app_update_package(&self) -> Result<app_update::AppUpdateSnapshot> {
+        Ok(self.inner.app_updater.discard().await?)
+    }
+
+    /// Release notes of the versions in `(from, to]`, newest first.
+    pub async fn get_app_update_changelog(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<app_update::changelog::AppUpdateChangelog> {
+        let sources = self
+            .inner
+            .application
+            .snapshot()
+            .state
+            .update_sources
+            .clone();
+        Ok(app_update::changelog::resolve_changelog(
+            self.inner.changelog_http.as_ref(),
+            &sources,
+            from,
+            to,
+        )
+        .await?)
+    }
+
+    pub async fn set_release_channel(
+        &self,
+        channel: ReleaseChannel,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.release_channel = Some(Some(channel));
+        self.patch_app_config(patch).await
+    }
+
+    /// Creates a manual backup and keeps the newest `KEEP_MANUAL_BACKUPS` of them.
+    /// A failed prune is logged and does not fail the backup it follows.
+    pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
+        let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
+        let bundle_metadata = self.inner.bundle_metadata;
+        crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                let info = backup::create_backup(&BackupRequest {
+                    bundle_metadata,
+                    paths: &paths,
+                    storage: StorageSource::Live(&storage),
+                    kind: BackupKind::Manual,
+                    now: time::OffsetDateTime::now_utc(),
+                })?;
+                if let Err(error) = backup::prune_backups(
+                    paths.backups_dir().as_std_path(),
+                    MANUAL_PREFIX,
+                    KEEP_MANUAL_BACKUPS,
+                ) {
+                    tracing::warn!(%error, "failed to prune old manual backups");
+                }
+                Ok(info)
+            })
+            .await,
+        )
+    }
+
+    /// `<data>/backups`, created when it does not exist yet.
+    pub fn backups_dir(&self) -> std::io::Result<PathBuf> {
+        let dir = self.inner.paths.backups_dir().into_std_path_buf();
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    /// The agent skills `core`'s release archive ships, which the core updater keeps
+    /// in the core's data directory for agents to link.
+    pub async fn core_agent_skills(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Vec<agent_skills::CoreAgentSkill> {
+        agent_skills::core_agent_skills(&self.inner.paths, core).await
+    }
+
+    pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
+        crate::utils::net::url_delay_test(
+            url,
+            expected_status,
+            self.clash_info().port,
+            &self.inner.bundle_metadata,
+        )
+        .await
+    }
+
+    pub async fn get_ipsb_asn(&self) -> anyhow::Result<serde_json::Value> {
+        crate::utils::net::get_ipsb_asn(self.clash_info().port, &self.inner.bundle_metadata).await
+    }
+
+    pub async fn get_cached_icon(
+        &self,
+        url: &str,
+        paths: &PathResolver,
+    ) -> anyhow::Result<(String, bytes::Bytes)> {
+        crate::service::icon::get_cached_icon(
+            url,
+            self.clash_info().port,
+            paths,
+            &self.inner.bundle_metadata,
+        )
+        .await
+    }
+
+    pub fn is_portable(&self) -> bool {
+        self.inner.bundle_metadata.is_portable
+    }
+
+    pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
+        Ok(self.inner.application.snapshot().state)
+    }
+
+    /// The committed application config, for boundary code that runs
+    /// synchronously (window creation, window event handlers) and cannot await.
+    pub fn app_config_snapshot(&self) -> NyanpasuAppConfig {
+        self.inner.application.snapshot().state
+    }
+
+    pub async fn reconcile_core(&self) -> std::result::Result<ReconcileReport, RuntimeError> {
+        self.inner.application_workflow.reconcile().await
+    }
+
+    // No UI entry issues an explicit stop yet; this is the facade entry to the
+    // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
+    #[allow(dead_code)]
+    pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
+        self.inner.application_workflow.stop_core().await
+    }
+
+    /// Select the core through the application source transaction.
+    pub async fn update_core(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.core = Some(core);
+        self.patch_app_config(patch).await
+    }
+    pub fn core_status(&self) -> CoreStatusProjection {
+        self.inner.application_workflow.core_status()
+    }
+    pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
+        self.inner.application_workflow.core_events()
+    }
+    pub fn service_status(&self) -> ServiceHostStatus {
+        self.inner.application_workflow.service_status()
+    }
+    pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
+        self.inner.application_workflow.service_events()
+    }
+    pub async fn install_service(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.install_service().await
+    }
+
+    pub async fn start_service(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.start_service().await
+    }
+
+    pub async fn stop_service(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.stop_service().await
+    }
+
+    pub async fn restart_service(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.restart_service().await
+    }
+
+    pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.uninstall_service().await
+    }
+
+    pub async fn get_core_version(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> std::result::Result<String, RuntimeError> {
+        snafu::ResultExt::context(
+            self.inner.core_versions.read(core).await,
+            runtime_error::ReadCoreVersionSnafu,
+        )
+    }
+
+    pub async fn fetch_latest_core_versions(
+        &self,
+    ) -> Result<crate::updater::ManifestVersionLatest> {
+        Ok(self.inner.updater.fetch_latest().await?)
+    }
+
+    pub async fn download_core_update(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Result<usize> {
+        Ok(self.inner.updater.update(core).await?)
+    }
+
+    pub async fn inspect_updater(&self, id: usize) -> Result<crate::updater::UpdaterSummary> {
+        Ok(self.inner.updater.inspect(id).await?)
+    }
+
+    /// The proxy settings the OS holds right now, whoever wrote them.
+    ///
+    /// Read straight from the port rather than through the system proxy
+    /// actor: its mailbox is held for the whole of a PAC download, which
+    /// would stall a status poll behind it.
+    pub async fn get_os_proxy(
+        &self,
+    ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
+    {
+        let os_proxy = self.inner.os_proxy.clone();
+        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+    }
+
+    pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
+        let system_dns = self.inner.system_dns.clone();
+        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+    }
+
+    /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.
+    pub async fn probe_direct_egress(&self) -> Result<DirectEgress> {
+        let cache = &self.inner.local_source;
+        if let Some(blocked) = cache.blocked() {
+            cache.set(&blocked);
+            return Ok(blocked);
+        }
+        let probe = &self.inner.direct_egress;
+        let (ipv4, ipv6) = tokio::join!(probe.ipv4(), probe.ipv6());
+        // Permission or TUN may change while the requests are in flight.
+        let result = cache
+            .blocked()
+            .unwrap_or(DirectEgress::Probed { ipv4, ipv6 });
+        cache.set(&result);
+        Ok(result)
+    }
+
+    pub async fn patch_app_config(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        if let Some(hotkeys) = patch.hotkeys.as_deref() {
+            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
+        }
+        let client = self.inner.application.clone();
+        Ok(client.patch(patch).await?.outcome())
+    }
+
+    pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.retry_runtime().await
+    }
+
+    pub fn retry_effect_now(
+        &self,
+        kind: effects::plan::EffectKind,
+    ) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.retry_now(kind)
+    }
+
+    pub fn request_tray_refresh(&self) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.request_tray_refresh()
+    }
+
+    /// Resolves the widget logo again after an icon file changed.
+    pub fn request_widget_logo_refresh(
+        &self,
+    ) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.request_widget_logo_refresh()
+    }
+
+    pub async fn save_main_window_geometry(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let snapshot = self.inner.session_state.save_main_window(geometry).await?;
+        Ok(
+            runtime::MutationOutcome::from_parts((), Vec::new()).with_commit(
+                runtime::CommitReceipt {
+                    operation_id: None,
+                    domain: "session".into(),
+                    source_version: snapshot.version,
+                    runtime: runtime::RuntimeCommitStatus::Unchanged,
+                },
+            ),
+        )
+    }
+
+    /// Queues a save of the main window's geometry; nothing waits for it.
+    pub fn queue_main_window_geometry_save(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<()> {
+        self.inner.session_state.queue_main_window_save(geometry)?;
+        Ok(())
+    }
+
+    /// The geometry the main window reopens with, as last saved.
+    pub fn main_window_geometry(&self) -> Option<nyanpasu_config::state::window::WindowState> {
+        self.inner
+            .session_state
+            .main_window_geometry(&self.inner.bundle_metadata)
+    }
+
+    pub async fn get_clash_config(&self) -> Result<ClashConfig> {
+        Ok(self.inner.clash_config.snapshot().state)
+    }
+
+    /// The config keys and values the selected core reads, for the settings
+    /// that only some cores support.
+    pub fn config_features(&self) -> ConfigFeatures {
+        self.inner
+            .application
+            .snapshot()
+            .state
+            .core
+            .config_features()
+    }
+
+    pub fn clash_info(&self) -> ClashInfo {
+        ClashInfo::derive(
+            self.session_ports().as_ref(),
+            &self.inner.clash_config.snapshot().state,
+        )
+    }
+
+    pub async fn patch_runtime_overrides(
+        &self,
+        patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let client = self.inner.clash_config.clone();
+        let outcome = client.patch_overrides(patch).await?.outcome();
+        self.request_proxy_refresh();
+        Ok(outcome)
+    }
+
+    pub async fn patch_clash_config(
+        &self,
+        patch: ClashConfigPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let client = self.inner.clash_config.clone();
+        Ok(client.patch(patch).await?.outcome())
+    }
+
+    // ---- profiles domain (PR-3 T07) ----
+
+    pub async fn get_profiles(&self) -> Result<Arc<Profiles>> {
+        Ok(self.inner.profiles.snapshot())
+    }
+
+    async fn collect_post_commit_degradations(
+        &self,
+        report: &CommitReport,
+    ) -> Vec<runtime::Degradation> {
+        // Post-commit side-effect failures are degraded results, not transaction
+        // failures (T04 contract): state is already persisted, so surface them.
+        let mut degradations: Vec<runtime::Degradation> = report
+            .degradations
+            .iter()
+            .map(|degradation| {
+                tracing::warn!(
+                    phase = ?degradation.phase,
+                    code = ?degradation.code,
+                    retryable = degradation.code.retryable(),
+                    message = %degradation.message,
+                    "profile commit completed with a degraded side effect",
+                );
+                application_workflow::profiles::map_profile_degradation(degradation)
+            })
+            .collect();
+        degradations.extend(report.runtime_degradations.clone());
+        degradations
+    }
+
+    async fn after_commit(&self, report: &CommitReport) -> runtime::MutationOutcome<()> {
+        runtime::MutationOutcome::from_parts(
+            (),
+            self.collect_post_commit_degradations(report).await,
+        )
+        .with_commit(report.receipt.clone())
+    }
+
+    /// Public wire for a post-commit auto-activation hard failure. Create/import
+    /// already committed the profile, so this must never become `Err` that erases
+    /// the `ProfileId`. VersionConflict is not special-cased as success.
+    fn auto_activation_failure_degradation(
+        profile: ProfileId,
+        error: ProfilesError,
+    ) -> runtime::Degradation {
+        tracing::warn!(
+            %error,
+            "profile auto-activation failed after commit; retaining committed profile id",
+        );
+        runtime::Degradation {
+            phase: runtime::DegradationPhase::SystemEffect,
+            message: error.to_string(),
+            reason: runtime::DegradationReason::ProfileAutoActivationFailed {
+                profile,
+                cause: Arc::new(error),
+            },
+            // Activation can be retried via activate_profile / set_current; even
+            // VersionConflict is a transient CAS race, not a permanent rejection.
+            retryable: true,
+        }
+    }
+
+    /// Shared create/import post-commit auto-activation protocol:
+    /// - `Ok(Some(report))` → merge report (and rebuild) degradations
+    /// - `Ok(None)` → existing current won; no degradation
+    /// - `Err(_)` → committed degradation, profile id retained by the caller
+    async fn try_auto_activate_if_none(&self, uid: ProfileId) -> runtime::MutationOutcome<()> {
+        // The conditional stays atomic inside the profiles actor: a facade-level
+        // read-then-write could lose a concurrent selection.
+        let report = match self.inner.profiles.set_current_if_none(uid.clone()).await {
+            Ok(None) => return runtime::MutationOutcome::from_parts((), Vec::new()),
+            Ok(Some(report)) => report,
+            Err(error) => {
+                return runtime::MutationOutcome::from_parts(
+                    (),
+                    vec![Self::auto_activation_failure_degradation(uid, error)],
+                );
+            }
+        };
+        self.after_commit(&report).await
+    }
+
+    /// Public facade entry for durable profile adds. Rejects remote definitions
+    /// here so callers cannot stage an empty remote shell and bypass the
+    /// fetch-before-commit import path. `ProfilesClient::add` stays available for
+    /// crate-internal actor tests and legacy internals.
+    pub async fn add_profile(
+        &self,
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+    ) -> Result<runtime::MutationOutcome<ProfileId>> {
+        // Create/add do not download: a remote source would be committed
+        // unmaterialized (and auto-activation would rebuild against a missing
+        // file). Remote subscriptions must use import_profile.
+        if matches!(request.definition.source(), Some(source) if source.is_remote()) {
+            return Err(RemoteProfileNeedsImportSnafu.build().into());
+        }
+        let report = self.inner.profiles.add(request, initial_file).await?;
+        let created = report
+            .created
+            .clone()
+            .expect("an add commits the uid it generated");
+        Ok(runtime::MutationOutcome::from_parts(
+            created,
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone()))
+    }
+
+    /// Create a profile from a fully-specified request and apply the design §9
+    /// auto-activation rule (activate a new Config profile when nothing is
+    /// current). Keeps the auto-activation policy in the facade so the command
+    /// stays a thin adapter. Remote rejection is owned by [`Self::add_profile`].
+    pub async fn create_profile(
+        &self,
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+    ) -> Result<runtime::MutationOutcome<ProfileId>> {
+        // Kind is fixed by the request; avoid a post-commit get() that could turn
+        // a successful add into a hard error and erase the committed ProfileId.
+        let is_config = matches!(request.definition, ProfileDefinition::Config { .. });
+        let mut outcome = self.add_profile(request, initial_file).await?;
+        // design §9: auto-activate a Config definition (File/Composition) when
+        // nothing is currently selected. set_current_if_none keeps the
+        // check-and-set atomic so a concurrent selection is not overwritten.
+        if is_config {
+            let uid = outcome.value().clone();
+            outcome = outcome.append_commit_result(self.try_auto_activate_if_none(uid).await);
+        }
+        Ok(outcome)
+    }
+
+    /// Downloads a profile URL with the import's options and suggests how to
+    /// import it. The user confirms the kind and whether to keep the URL;
+    /// nothing is written here.
+    pub async fn probe_profile_url(
+        &self,
+        url: url::Url,
+        options: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<profiles::ProfileUrlProbe> {
+        let mut option = RemoteProfileOptions::default();
+        if let Some(patch) = options {
+            option.apply(patch);
+        }
+        Ok(self.inner.profiles.probe(url, option).await?)
+    }
+
+    /// Import a remote subscription via actor-owned fetch-before-commit. A
+    /// `None` `transform` imports a Config File and auto-activates it when
+    /// nothing is current; `Some` imports a Transform of that kind, which is
+    /// never activatable.
+    ///
+    /// Naming: a non-empty caller-provided `name` (e.g. a deep-link `name=`
+    /// parameter) is user intent, so it is pinned (`custom_name = true`) and
+    /// never overwritten by later name-sync. Without one, the name is derived
+    /// from the url and left unpinned so the first import can adopt the
+    /// subscription's `profile-title` / `Content-Disposition` name.
+    ///
+    /// No durable placeholder/profile document/file is written until fetch and
+    /// validation succeed. Caller cancellation before durable commit begins
+    /// discards the download; a complete valid profile may remain only if
+    /// cancellation races after commit has already started.
+    pub async fn import_profile(
+        &self,
+        url: url::Url,
+        name: Option<String>,
+        options: Option<RemoteProfileOptionsPatch>,
+        transform: Option<TransformKind>,
+        folder: Option<FolderId>,
+    ) -> Result<runtime::MutationOutcome<ProfileId>> {
+        let update_interval_explicit = options
+            .as_ref()
+            .and_then(|patch| patch.update_interval_minutes)
+            .is_some();
+        let (name, custom_name) = match name {
+            Some(name) if !name.trim().is_empty() => (name, true),
+            _ => (url_derived_name(&url), false),
+        };
+        let mut option = RemoteProfileOptions::default();
+        if let Some(patch) = options {
+            option.apply(patch);
+        }
+        let report = self
+            .inner
+            .profiles
+            .import(
+                url,
+                transform,
+                ProfileMetadata {
+                    name,
+                    desc: None,
+                    custom_name,
+                },
+                option,
+                update_interval_explicit,
+                folder,
+            )
+            .await?;
+        let created = report
+            .created
+            .clone()
+            .expect("an import commits the uid it generated");
+        let outcome = runtime::MutationOutcome::from_parts(
+            created.clone(),
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone());
+        if transform.is_some() {
+            return Ok(outcome);
+        }
+        Ok(outcome.append_commit_result(self.try_auto_activate_if_none(created).await))
+    }
+
+    pub async fn delete_profile(&self, uid: ProfileId) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.delete(uid).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn reorder_profile(
+        &self,
+        active: ProfileId,
+        over: ProfileId,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self
+            .inner
+            .profiles
+            .reorder(ReorderOp::Move { active, over })
+            .await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn reorder_profiles_by_list(
+        &self,
+        list: Vec<ProfileId>,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.reorder(ReorderOp::ByList(list)).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// Replace the profile folders and the display order in one commit.
+    pub async fn set_profile_layout(
+        &self,
+        layout: ProfileLayout,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.set_layout(layout).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// Replace how `profile`'s proxy groups are arranged in the Proxies sidebar.
+    /// An empty layout removes the arrangement.
+    pub async fn set_proxy_group_layout(
+        &self,
+        profile: ProfileId,
+        layout: ProxyGroupLayout,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self
+            .inner
+            .profiles
+            .set_proxy_group_layout(profile, layout)
+            .await?;
+        self.inner.proxies.notify_rearranged();
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// How the proxy groups of the running profile are arranged, if the user
+    /// arranged them.
+    pub fn current_proxy_group_layout(&self) -> Option<ProxyGroupLayout> {
+        let profiles = self.inner.profiles.snapshot();
+        profiles
+            .current
+            .as_ref()
+            .and_then(|current| profiles.proxy_group_layouts.get(current))
+            .cloned()
+    }
+
+    /// Create a proxy group folder around `members`, which leave the places
+    /// they were in.
+    pub async fn create_proxy_group_folder(
+        &self,
+        profile: ProfileId,
+        name: String,
+        members: Vec<String>,
+    ) -> Result<runtime::MutationOutcome<FolderId>> {
+        let (report, folder) = self
+            .inner
+            .profiles
+            .create_proxy_group_folder(profile, name, members)
+            .await?;
+        self.inner.proxies.notify_rearranged();
+        Ok(runtime::MutationOutcome::from_parts(
+            folder,
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone()))
+    }
+
+    /// Create a folder around `members`, which leave the folders they were in.
+    pub async fn create_profile_folder(
+        &self,
+        name: String,
+        members: Vec<ProfileId>,
+    ) -> Result<runtime::MutationOutcome<FolderId>> {
+        let (report, folder) = self.inner.profiles.create_folder(name, members).await?;
+        Ok(runtime::MutationOutcome::from_parts(
+            folder,
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone()))
+    }
+
+    pub async fn refresh_profile(
+        &self,
+        uid: ProfileId,
+        patch: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.sync(uid, patch).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn patch_profile_metadata(
+        &self,
+        uid: ProfileId,
+        patch: ProfileMetadataPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.patch_metadata(uid, patch).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn patch_remote_profile_options(
+        &self,
+        uid: ProfileId,
+        patch: RemoteProfileOptionsPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.patch_remote_options(uid, patch).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn replace_profile_definition(
+        &self,
+        uid: ProfileId,
+        definition: ProfileDefinition,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self
+            .inner
+            .profiles
+            .replace_definition(uid, definition)
+            .await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn activate_profile(
+        &self,
+        uid: Option<ProfileId>,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.set_current(uid).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn set_global_transforms(
+        &self,
+        ids: Vec<ProfileId>,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.set_global_transforms(ids).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn set_profile_valid_fields(
+        &self,
+        fields: Vec<String>,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.set_valid_fields(fields).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    pub async fn get_profile_materialized_path(&self, uid: ProfileId) -> Result<PathBuf> {
+        let snapshot = self.inner.profiles.snapshot();
+        let item = snapshot
+            .items
+            .get(&uid)
+            .ok_or_else(|| ProfileNotFoundSnafu { uid: uid.clone() }.build())?;
+        let source = item
+            .definition
+            .source()
+            .ok_or_else(|| ProfileHasNoFileSnafu { uid }.build())?;
+        Ok(self
+            .inner
+            .profiles_dir
+            .join(source.materialized().file.as_path()))
+    }
+
+    pub async fn read_profile_file(&self, uid: ProfileId) -> Result<String> {
+        let snapshot = self.inner.profiles.snapshot();
+        let item = snapshot
+            .items
+            .get(&uid)
+            .ok_or_else(|| ProfileNotFoundSnafu { uid: uid.clone() }.build())?;
+        let source = item
+            .definition
+            .source()
+            .ok_or_else(|| ProfileHasNoFileSnafu { uid: uid.clone() }.build())?;
+        let raw = snafu::ResultExt::context(
+            self.inner.fs.read(&source.materialized().file),
+            ReadProfileFileSnafu { uid: uid.clone() },
+        )?;
+        match &item.definition {
+            ProfileDefinition::Config { .. } => Ok(snafu::ResultExt::context(
+                crate::service::profile_file::yaml::normalize_yaml_document(&raw),
+                ProfileFileNotYamlSnafu { uid },
+            )?),
+            ProfileDefinition::Transform { .. } => Ok(raw),
+        }
+    }
+
+    pub async fn save_profile_file(
+        &self,
+        uid: ProfileId,
+        data: String,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.save_file(uid, data).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// The confirmed port binding, or `None` when no instance is known to be
+    /// listening. A candidate resolution never shows up here.
+    pub fn session_ports(&self) -> Option<ResolvedPortBindings> {
+        self.inner.ports.confirmed()
+    }
+
+    pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
+        self.inner.application_workflow.runtime().promoted
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::updater::ports::CoreUpdateInstaller
+    for application_workflow::ApplicationWorkflowClient
+{
+    async fn install(
+        &self,
+        artifact: core_lifecycle::ports::PreparedCoreBinary,
+    ) -> anyhow::Result<()> {
+        Ok(self.replace_binary(artifact).await?)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::{
+        test_support::{
+            HostTransitionEndpoint, TestControlEndpoint, minimal_file_profile_request,
+            seed_test_clash_config, set_service_mode, temp_config_path, test_backup_deps,
+            test_client_args_with_endpoint, test_typed_config_clients,
+        },
+        *,
+    };
+    use crate::{
+        actor_v2::{
+            endpoint::ExecutionHost,
+            test_support::{HostTransitionServiceAdapter, test_idle_endpoint, test_v2_clients},
+        },
+        client::{
+            system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError},
+            test_support::facade::{
+                local_config_request, test_client, test_client_from_typed_clients,
+                test_client_with_direct_egress, test_client_with_fetcher, test_client_with_ports,
+                test_client_with_system_dns,
+            },
+        },
+        state::profiles::{error::SubscriptionFetchError, ports::MockSubscriptionFetcher},
+        utils::test_support::test_paths,
+    };
+    use nyanpasu_config::{
+        clash::config::ClashConfig,
+        profile::{
+            ConfigDefinition, FileConfig, ManagedProfilePath, MaterializedFile, ProfileDefinition,
+            ProfileMetadata, ProfileSource, RemoteSyncInterval, SubscriptionInfo,
+        },
+        state::window::WindowState,
+    };
+    use std::sync::Mutex as StdMutex;
+    use struct_patch::Patch;
+    use tempfile::{TempDir, tempdir};
+
+    /// The stamped file the application loads.
+    fn write_application_config(path: &camino::Utf8Path, config: &NyanpasuAppConfig) {
+        use crate::format::Format as _;
+
+        let mut content = Vec::new();
+        crate::migration::modules::application::ApplicationFormat::default()
+            .serialize(&mut content, config, None)
+            .unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
+    /// The application workflow applies committed state; it is not a second
+    /// commit point for a configuration domain (design D1/§3.1). Holding a
+    /// domain client, the facade that owns all three, or an actor's raw message
+    /// enum is what would make it one, so the production sources under the
+    /// workflow must not name any of them. Its `tests/` directories are skipped:
+    /// a fixture legitimately builds the real clients to seed a graph.
+    #[test]
+    fn application_workflow_sources_hold_no_source_config_client() {
+        // A domain client is the direct way to write a source domain. The facade
+        // reaches all three, and an actor's own message enum reaches one without
+        // its typed client, so naming any of them is a way to commit.
+        const FORBIDDEN: [&str; 10] = [
+            "ApplicationClient",
+            "ClashConfigClient",
+            "ProfilesClient",
+            "NyanpasuClient",
+            "ApplicationActorMessage",
+            "ClashConfigActorMessage",
+            "ProfilesActorMessage",
+            "SessionStateActorMessage",
+            "CoreActorMessage",
+            "ServiceActorMessage",
+        ];
+
+        fn collect(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("workflow sources should be readable") {
+                let path = entry.expect("directory entry should be readable").path();
+                if path.is_dir() {
+                    if path.file_name() != Some(std::ffi::OsStr::new("tests")) {
+                        collect(&path, files);
+                    }
+                } else if path.extension() == Some(std::ffi::OsStr::new("rs")) {
+                    files.push(path);
+                }
+            }
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/client");
+        let mut files = Vec::new();
+        collect(&root.join("application_workflow"), &mut files);
+        collect(&root.join("core_lifecycle"), &mut files);
+        assert!(!files.is_empty(), "the scan found no workflow sources");
+
+        let mut offenders = Vec::new();
+        for file in files {
+            let source = std::fs::read_to_string(&file).expect("workflow source should be UTF-8");
+            for (number, line) in source.lines().enumerate() {
+                for name in FORBIDDEN {
+                    if line.contains(name) {
+                        offenders.push(format!(
+                            "{}:{}: {}",
+                            file.display(),
+                            number + 1,
+                            line.trim()
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "the application workflow must read source config through StateSnapshot handles, \
+             reach the actors through their typed clients, and let the facade commit:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// Required subscriber that holds the transaction open inside `on_prepare`
+    /// until the test releases it, so the owning actor's mailbox is provably
+    /// blocked while the assertion runs.
+    struct ParkedPrepare {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::state::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
+        fn name(&self) -> crate::state::SubscriberName<'_> {
+            "test-parked-prepare".into()
+        }
+
+        async fn on_prepare(
+            &self,
+            _change: crate::state::StateChange<NyanpasuAppConfig>,
+        ) -> crate::state::Ack {
+            self.entered.notify_one();
+            self.release.notified().await;
+            crate::state::Ack::Ok
+        }
+    }
+
+    #[tokio::test]
+    async fn committed_config_reads_do_not_wait_for_a_parked_required_prepare() {
+        use futures_util::FutureExt;
+
+        let dir = tempdir().expect("tempdir should be created");
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut manager = crate::state::PersistentStateManagerSetup::<
+            NyanpasuAppConfig,
+            crate::migration::modules::application::ApplicationFormat,
+        >::builder()
+        .config_path(temp_config_path(&dir, "application.yaml"))
+        .assemble()
+        .from_state(NyanpasuAppConfig::default())
+        .await
+        .expect("application manager should initialize");
+        manager.add_subscriber(Box::new(ParkedPrepare {
+            entered: entered.clone(),
+            release: release.clone(),
+        }));
+        let application = ApplicationClient::from_manager(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            manager,
+            ReleaseChannel::Stable,
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("application client should be created");
+        let session_state = SessionStateClient::new(
+            temp_config_path(&dir, "session-state.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("session state client should be created");
+        seed_test_clash_config(dir.path().join("clash-config.yaml"));
+        let clash_config = ClashConfigClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_config_path(&dir, "clash-config.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("clash config client should be created");
+        let client = test_client_from_typed_clients(
+            &dir,
+            application,
+            session_state,
+            clash_config,
+            Arc::new(NoopSystemDnsCache),
+            Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::geo::NoopCountryIndexSource),
+            Arc::new(MockOsProxyPort::new()),
+        )
+        .await;
+
+        assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
+
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.enable_system_proxy = Some(true);
+        let patching = {
+            let client = client.clone();
+            tokio::spawn(async move { client.patch_app_config(patch).await })
+        };
+
+        // The transaction now owns the actor and is parked mid-prepare.
+        entered.notified().await;
+        let parked = client
+            .get_app_config()
+            .now_or_never()
+            .expect("a committed read must not await the parked actor")
+            .expect("committed read should succeed");
+        assert!(
+            !parked.enable_system_proxy,
+            "an unfinished transaction must not be visible as committed state"
+        );
+
+        release.notify_one();
+        patching
+            .await
+            .expect("patch task should join")
+            .expect("patch should commit");
+        assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+    }
+
+    #[tokio::test]
+    async fn flush_system_dns_cache_forwards_to_injected_adapter() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut system_dns = MockSystemDnsCache::new();
+        system_dns.expect_flush().times(1).returning(|| Ok(()));
+        let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
+
+        client
+            .flush_system_dns_cache()
+            .await
+            .expect("DNS cache flush should succeed");
+    }
+
+    #[tokio::test]
+    async fn get_os_proxy_reads_through_the_injected_port() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut os_proxy = MockOsProxyPort::new();
+        os_proxy.expect_get().times(1).returning(|| {
+            Ok(OsProxyConfig {
+                enable: true,
+                host: "127.0.0.1".into(),
+                port: 7890,
+                bypass: "localhost".into(),
+            })
+        });
+        let client =
+            test_client_with_ports(&dir, Arc::new(NoopSystemDnsCache), Arc::new(os_proxy)).await;
+
+        let read = client.get_os_proxy().await.expect("the port answers");
+        assert_eq!((read.enable, read.port), (true, 7890));
+    }
+
+    #[tokio::test]
+    async fn get_os_proxy_reports_the_port_failure_as_its_own_error() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut os_proxy = MockOsProxyPort::new();
+        os_proxy.expect_get().times(1).returning(|| {
+            Err(OsProxyError::ReadOsProxy {
+                source: "denied".into(),
+            })
+        });
+        let client =
+            test_client_with_ports(&dir, Arc::new(NoopSystemDnsCache), Arc::new(os_proxy)).await;
+
+        let error = client.get_os_proxy().await.unwrap_err();
+        assert!(matches!(error, OsProxyError::ReadOsProxy { .. }));
+    }
+
+    #[tokio::test]
+    async fn flush_system_dns_cache_propagates_adapter_failure() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut system_dns = MockSystemDnsCache::new();
+        system_dns.expect_flush().times(1).returning(|| {
+            Err(SystemDnsError::FlushRejected {
+                command: "ipconfig.exe",
+                code: Some(5),
+            })
+        });
+        let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
+
+        let error = client.flush_system_dns_cache().await.unwrap_err();
+        assert!(matches!(
+            error,
+            SystemDnsError::FlushRejected {
+                command: "ipconfig.exe",
+                code: Some(5)
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn probe_direct_egress_reports_each_family_from_the_injected_probe() {
+        let dir = tempdir().expect("tempdir should be created");
+        let address = std::net::Ipv4Addr::new(203, 0, 113, 7);
+        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        probe
+            .expect_ipv4()
+            .times(1)
+            .returning(move || Some(address));
+        probe.expect_ipv6().times(1).returning(|| None);
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::Probed {
+                ipv4: Some(address),
+                ipv6: None,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_direct_egress_does_not_probe_while_tun_mode_is_enabled() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        probe.expect_ipv4().never();
+        probe.expect_ipv6().never();
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.enable_tun_mode = Some(true);
+        client
+            .patch_clash_config(patch)
+            .await
+            .expect("clash patch should succeed");
+
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::TunEnabled
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
+        use crate::traffic::LocalSourceLocation;
+        let dir = tempdir().unwrap();
+        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut sequence = mockall::Sequence::new();
+        probe
+            .expect_ipv4()
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|| Some("203.0.113.7".parse().unwrap()));
+        probe
+            .expect_ipv4()
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|| None);
+        probe.expect_ipv6().times(2).returning(|| None);
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::Disabled
+        );
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+        client.probe_direct_egress().await.unwrap();
+        assert_eq!(
+            client.inner.local_source.addresses().ipv4,
+            Some("203.0.113.7".parse().unwrap())
+        );
+
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(false),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::Disabled
+        );
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        client.probe_direct_egress().await.unwrap();
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+    }
+
+    #[tokio::test]
+    async fn direct_egress_discards_an_answer_when_tun_is_enabled_during_the_request() {
+        use crate::traffic::LocalSourceLocation;
+        struct WaitingProbe {
+            started: tokio::sync::Notify,
+            release: tokio::sync::Notify,
+        }
+        #[async_trait::async_trait]
+        impl DirectEgressProbe for WaitingProbe {
+            async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
+                self.started.notify_one();
+                self.release.notified().await;
+                Some("203.0.113.7".parse().unwrap())
+            }
+            async fn ipv6(&self) -> Option<std::net::Ipv6Addr> {
+                None
+            }
+        }
+        let dir = tempdir().unwrap();
+        let probe = Arc::new(WaitingProbe {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let client = test_client_with_direct_egress(&dir, probe.clone()).await;
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        let request = tokio::spawn({
+            let client = client.clone();
+            async move { client.probe_direct_egress().await }
+        });
+        probe.started.notified().await;
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.enable_tun_mode = Some(true);
+        client.patch_clash_config(patch).await.unwrap();
+        probe.release.notify_one();
+        assert_eq!(request.await.unwrap().unwrap(), DirectEgress::TunEnabled);
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
+        let dir = tempdir().unwrap();
+        let mut reader = crate::client::core_version::MockCoreVersionReader::new();
+        reader
+            .expect_read()
+            .withf(|core| *core == nyanpasu_config::application::ClashCore::Meow)
+            .times(1)
+            .returning(|_| Ok("0.22.0".to_owned()));
+        reader
+            .expect_read()
+            .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
+            .times(1)
+            .returning(|core| {
+                Err(crate::client::core_version::CoreVersionError::CoreVersionNotReported { core })
+            });
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        args.core_versions = Arc::new(reader);
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
+            assert_eq!(
+                client
+                    .get_core_version(nyanpasu_config::application::ClashCore::Meow)
+                    .await
+                    .unwrap(),
+                "0.22.0"
+            );
+            assert!(matches!(
+                client
+                    .get_core_version(nyanpasu_config::application::ClashCore::ClashRs)
+                    .await,
+                Err(RuntimeError::ReadCoreVersion {
+                    source: crate::client::core_version::CoreVersionError::CoreVersionNotReported { .. }
+                })
+            ));
+        })
+        .await;
+    }
+
+    async fn host_transition_client(
+        dir: &TempDir,
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+    ) -> NyanpasuClient {
+        host_transition_client_seeded(dir, calls, false).await
+    }
+
+    /// Records "persisted" before every readiness probe that finds service
+    /// mode already saved, so a test can tell a probe taken before the commit
+    /// from one taken after it.
+    struct PersistedSwitchProbe {
+        delegate: HostTransitionServiceAdapter,
+        application_config: PathBuf,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
+        async fn probe(
+            &self,
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::service::control::ServiceCommandError,
+        > {
+            let persisted = std::fs::read(&self.application_config)
+                .ok()
+                .and_then(|bytes| serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes).ok())
+                .and_then(|config| config.get("enable_service_mode")?.as_bool())
+                .unwrap_or(false);
+            if persisted {
+                self.delegate.calls.lock().unwrap().push("persisted");
+            }
+            self.delegate.probe().await
+        }
+
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+            self.delegate.install().await
+        }
+
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+            self.delegate.uninstall().await
+        }
+
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+            self.delegate.start_daemon().await
+        }
+
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+            self.delegate.stop_daemon().await
+        }
+
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+            self.delegate.update().await
+        }
+
+        fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
+            self.delegate.endpoint()
+        }
+    }
+
+    async fn host_transition_client_seeded(
+        dir: &TempDir,
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+        service_seed: bool,
+    ) -> NyanpasuClient {
+        let mut args = test_client_args_with_endpoint(
+            dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(dir),
+        )
+        .await;
+        let local = HostTransitionEndpoint::stopped(ExecutionHost::Local, calls.clone());
+        let service_endpoint =
+            HostTransitionEndpoint::stopped(ExecutionHost::Service, calls.clone());
+        let adapter = Arc::new(PersistedSwitchProbe {
+            delegate: HostTransitionServiceAdapter {
+                endpoint: service_endpoint,
+                calls: calls.clone(),
+                stopped: std::sync::atomic::AtomicBool::new(false),
+                installed_for: args.paths.app_config_dir().as_std_path().to_path_buf(),
+            },
+            application_config: args.paths.application_config_path().into_std_path_buf(),
+        });
+        let core_v2 = CoreClientV2::spawn(local).await.unwrap();
+        let service = ServiceClient::spawn(adapter, 0).await.unwrap();
+        args.core_v2 = core_v2;
+        args.service = service;
+        if service_seed {
+            let seed = NyanpasuAppConfig {
+                enable_service_mode: true,
+                ..Default::default()
+            };
+            write_application_config(&args.paths.application_config_path(), &seed);
+        }
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        if !service_seed {
+            let report = client.startup_reconcile().await;
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
+                "{report:?}"
+            );
+        }
+        calls.lock().unwrap().clear();
+        client
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enabling_service_mode_ensures_runtime_before_commit() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone()).await;
+
+        (async {
+            let outcome = set_service_mode(&client, true).await.unwrap();
+            assert!(matches!(
+                outcome,
+                runtime::MutationOutcome::Committed { .. }
+            ));
+            assert!(client.get_app_config().await.unwrap().enable_service_mode);
+        })
+        .await;
+
+        let calls = calls.lock().unwrap();
+        let ensure = calls
+            .iter()
+            .position(|call| *call == "ensure_ready")
+            .unwrap();
+        assert!(
+            calls
+                .iter()
+                .position(|call| *call == "persisted")
+                .is_none_or(|persisted| ensure < persisted),
+            "service mode was saved before the daemon was ready: {calls:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disabling_service_mode_hands_off_before_stopping_the_daemon() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone()).await;
+
+        (async {
+            set_service_mode(&client, true).await.unwrap();
+            calls.lock().unwrap().clear();
+            let outcome = set_service_mode(&client, false).await.unwrap();
+            assert!(matches!(
+                outcome,
+                runtime::MutationOutcome::Committed { .. }
+            ));
+            assert!(!client.get_app_config().await.unwrap().enable_service_mode);
+        })
+        .await;
+
+        let calls = calls.lock().unwrap();
+        let handoff = calls
+            .iter()
+            .position(|call| *call == "handoff_to_local")
+            .unwrap();
+        let stop = calls
+            .iter()
+            .position(|call| *call == "stop_daemon")
+            .unwrap();
+        assert!(handoff < stop, "calls: {calls:?}");
+    }
+
+    /// A handoff adopts its target with the runtime stopped, so the switch is
+    /// only finished once the core is reconciled onto the new host. Without
+    /// that step both directions report success and leave nothing running.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enabling_service_mode_reconciles_onto_the_adopted_host() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone()).await;
+
+        (async {
+            set_service_mode(&client, true).await.unwrap();
+        })
+        .await;
+
+        let calls = calls.lock().unwrap();
+        let ensure = calls
+            .iter()
+            .position(|call| *call == "ensure_ready")
+            .unwrap();
+        let reconcile = calls
+            .iter()
+            .position(|call| *call == "reconcile_service")
+            .expect("the service host must be reconciled after adopting it");
+        assert!(ensure < reconcile, "calls: {calls:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disabling_service_mode_reconciles_local_before_stopping_the_daemon() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone()).await;
+
+        (async {
+            set_service_mode(&client, true).await.unwrap();
+            calls.lock().unwrap().clear();
+            set_service_mode(&client, false).await.unwrap();
+        })
+        .await;
+
+        let calls = calls.lock().unwrap();
+        let handoff = calls
+            .iter()
+            .position(|call| *call == "handoff_to_local")
+            .unwrap();
+        let reconcile = calls
+            .iter()
+            .position(|call| *call == "reconcile_local")
+            .expect("the local host must be reconciled after adopting it");
+        let stop = calls
+            .iter()
+            .position(|call| *call == "stop_daemon")
+            .unwrap();
+        assert!(
+            handoff < reconcile && reconcile < stop,
+            "the core has to be running locally before the daemon goes away: {calls:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn client_constructs_with_mandatory_typed_config_clients() {
+        let dir = tempdir().expect("tempdir should be created");
+
+        (async {
+            let client = test_client(&dir).await;
+            let _ = client.clone();
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn typed_config_facade_delegates_to_typed_clients() {
+        let dir = tempdir().expect("tempdir should be created");
+
+        (async {
+            let client = test_client(&dir).await;
+
+            let mut app_patch = NyanpasuAppConfig::new_empty_patch();
+            app_patch.enable_system_proxy = Some(true);
+            client
+                .patch_app_config(app_patch)
+                .await
+                .expect("app patch should succeed");
+            assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+
+            let window_state = WindowState {
+                width: 1024,
+                height: 768,
+                x: 10,
+                y: 20,
+                maximized: false,
+                fullscreen: false,
+            };
+            client
+                .save_main_window_geometry(window_state.clone())
+                .await
+                .expect("session save should succeed");
+            assert_eq!(client.main_window_geometry(), Some(window_state));
+
+            let mut clash_patch = ClashConfig::new_empty_patch();
+            clash_patch.enable_tun_mode = Some(true);
+            client
+                .patch_clash_config(clash_patch)
+                .await
+                .expect("clash patch should succeed");
+            assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn typed_setup_loads_persisted_state() {
+        let dir = tempdir().expect("tempdir should be created");
+
+        (async {
+            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.theme_color = Some(serde_yaml_ng::from_str("\"#123456\"").unwrap());
+            application
+                .patch(patch)
+                .await
+                .expect("typed application patch should persist");
+            drop(application);
+            drop(session_state);
+            drop(clash_config);
+
+            let paths = test_paths(dir.path(), dir.path().join("data"));
+            let (loaded, _session_state, _clash_config) = new_typed_config_clients(
+                crate::state::mutation::MutationCoordinator::isolated(),
+                ReleaseChannel::Stable,
+                paths,
+                &tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
+            )
+            .await
+            .expect("typed clients should load persisted state");
+
+            assert_eq!(loaded.snapshot().state.theme_color.to_string(), "#123456");
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn try_new_with_args_constructs_typed_config_facade() {
+        let dir = tempdir().expect("tempdir should be created");
+        let (paths, storage) = test_backup_deps(&dir);
+        let runtime_paths = RuntimePaths::from_resolver(&paths);
+        let (shutdown, tasks) = (
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
+        );
+        let (core_v2, service) = test_v2_clients().await;
+        let client = NyanpasuClient::try_new(ClientSetupArgs {
+            jobs: jobs::test_client_with_owner(shutdown.clone(), &tasks).await,
+            bundle_metadata: BundleMetadata {
+                is_portable: true,
+                is_fixed_webview: false,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
+                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            },
+            host_adapters: crate::client::test_support::profile_test_adapters(&dir),
+            logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
+            paths,
+            storage,
+            runtime_paths,
+            ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+            app_update_backend_factory: None,
+            app_update_event_sink: None,
+            core_v2,
+            service,
+            system_dns: Arc::new(NoopSystemDnsCache),
+            direct_egress: Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+            geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
+            os_proxy: Arc::new(MockOsProxyPort::new()),
+            binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            core_versions: Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+            effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
+            traffic_store: None,
+            shutdown,
+            tasks,
+        })
+        .await
+        .expect("client should construct with typed config actors");
+
+        assert!(client.is_portable());
+
+        (async {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.enable_system_proxy = Some(true);
+            client
+                .patch_app_config(patch)
+                .await
+                .expect("typed app patch should succeed");
+            assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runtime_lifecycle_is_empty_before_first_rebuild() {
+        let dir = tempdir().unwrap();
+        let client = test_client(&dir).await;
+        let promoted = client.promoted_runtime().await;
+        let lifecycle = client.inner.application_workflow.runtime();
+
+        assert!(promoted.is_none());
+        assert!(lifecycle.promoted.is_none());
+    }
+
+    #[tokio::test]
+    async fn runtime_inspection_tracks_promoted_builds() {
+        let dir = tempdir().unwrap();
+        let client = test_client(&dir).await;
+        assert!(client.inspect_runtime().await.is_none());
+        assert!(matches!(
+            client.runtime_yaml().await,
+            Err(RuntimeError::NoRuntimeConfig)
+        ));
+        assert!(client.runtime_config().await.unwrap().is_none());
+        assert!(matches!(
+            client.inspect_runtime_node("missing", 0).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        client.reconcile_core().await.unwrap();
+        let first = client.inspect_runtime().await.unwrap();
+        assert!(!first.nodes.is_empty());
+        // The tail is recorded last, so the built document is the last node
+        // before the core's own view.
+        let final_node = first
+            .nodes
+            .iter()
+            .rev()
+            .find(|node| {
+                !matches!(
+                    node.tag,
+                    nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
+                        step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::CoreController,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        assert_eq!(first.final_id, final_node.id);
+        let content = client
+            .inspect_runtime_node(&first.snapshot_id, final_node.id)
+            .await
+            .unwrap();
+        let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(&content.yaml).unwrap();
+        let mut expected = client.promoted_runtime().await.unwrap().config();
+        assert_ne!(
+            expected
+                .get("secret")
+                .and_then(serde_yaml_ng::Value::as_str),
+            Some("<redacted>")
+        );
+        expected.insert("secret".into(), "<redacted>".into());
+        assert_eq!(config, expected);
+        client.reconcile_core().await.unwrap();
+        let second = client.inspect_runtime().await.unwrap();
+        assert_ne!(first.snapshot_id, second.snapshot_id);
+        assert!(matches!(
+            client
+                .inspect_runtime_node(&first.snapshot_id, first.root_id)
+                .await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        assert!(matches!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, u32::MAX)
+                .await,
+            Err(RuntimeError::RuntimeNodeNotFound { node_id: u32::MAX })
+        ));
+        assert!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, second.root_id)
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_reconcile_advances_the_runtime_revision() {
+        let dir = tempdir().unwrap();
+        let client = test_client(&dir).await;
+        client.reconcile_core().await.unwrap();
+        let first = client.promoted_runtime().await.unwrap();
+        client.reconcile_core().await.unwrap();
+        let second = client.promoted_runtime().await.unwrap();
+        assert!(second.revision > first.revision);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeated_core_updates_advance_the_runtime_revision() {
+        use nyanpasu_config::application::ClashCore;
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint.clone(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        (async {
+            endpoint.prime(&client).await;
+            client.update_core(ClashCore::ClashRs).await.unwrap();
+            let first = client.promoted_runtime().await.unwrap();
+            client.update_core(ClashCore::Mihomo).await.unwrap();
+            let second = client.promoted_runtime().await.unwrap();
+            assert_eq!(first.target_core, ClashCore::ClashRs);
+            assert_eq!(second.target_core, ClashCore::Mihomo);
+            assert!(second.revision > first.revision);
+        })
+        .await;
+        assert_eq!(endpoint.submissions(), 2);
+    }
+
+    /// Each composition root builds its own graph: what one client commits
+    /// and submits never reaches another.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_client_graphs_are_independent() {
+        use nyanpasu_config::application::ClashCore;
+        let (dir_a, dir_b) = (tempdir().unwrap(), tempdir().unwrap());
+        let (endpoint_a, endpoint_b) = (
+            TestControlEndpoint::succeeding(),
+            TestControlEndpoint::succeeding(),
+        );
+        let client_a = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir_a,
+                endpoint_a.clone(),
+                crate::client::test_support::profile_test_adapters(&dir_a),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        let client_b = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir_b,
+                endpoint_b.clone(),
+                crate::client::test_support::profile_test_adapters(&dir_b),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        let default_core = NyanpasuAppConfig::default().core;
+        (async {
+            endpoint_a.prime(&client_a).await;
+            endpoint_b.prime(&client_b).await;
+            client_b.update_core(ClashCore::ClashRs).await.unwrap();
+            assert_eq!(client_a.get_app_config().await.unwrap().core, default_core);
+            assert_eq!(
+                client_a.promoted_runtime().await.unwrap().target_core,
+                default_core
+            );
+            assert_eq!(
+                client_b.get_app_config().await.unwrap().core,
+                ClashCore::ClashRs
+            );
+        })
+        .await;
+        assert_eq!(endpoint_a.submissions(), 0);
+        assert_eq!(endpoint_b.submissions(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn activation_requires_runtime_success_before_committing_selection() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::failing();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint.clone(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        (async {
+            endpoint.prime(&client).await;
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            let version = client.get_profiles().await.unwrap().revision();
+            assert!(client.activate_profile(Some(uid)).await.is_err());
+            let after = client.get_profiles().await.unwrap();
+            assert!(after.current.is_none());
+            assert_eq!(after.revision(), version);
+        })
+        .await;
+    }
+
+    /// S5 (the adopting half; `startup.rs` covers a residual core): the core
+    /// actor always spawns on Local, so startup hands the runtime to a
+    /// persisted Service host, and applies the configuration there.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn startup_adopts_a_ready_service_host_and_starts_the_core_there() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client_seeded(&dir, calls.clone(), true).await;
+
+        (async {
+            let report = client.startup_reconcile().await;
+
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
+                "{report:?}"
+            );
+            assert_eq!(client.core_status().host, ExecutionHost::Service);
+        })
+        .await;
+
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls
+                .iter()
+                .any(|call| *call == "install" || *call == "start_daemon"),
+            "adopting a ready daemon must not converge it: {calls:?}"
+        );
+        assert!(
+            calls.contains(&"reconcile_service") && !calls.contains(&"reconcile_local"),
+            "{calls:?}"
+        );
+    }
+
+    /// S8 (#5443, supersedes leader ruling R8): ...and only by adopting a
+    /// daemon that is already up. Converging one would install and start the
+    /// service, raising a UAC prompt at every launch for a user who merely
+    /// left the setting on. Service mode is a preference, so the core runs
+    /// locally instead.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn startup_never_converges_an_absent_daemon_and_runs_the_core_locally() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+            None,
+        );
+        let args = test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        let seed = NyanpasuAppConfig {
+            enable_service_mode: true,
+            ..Default::default()
+        };
+        write_application_config(&args.paths.application_config_path(), &seed);
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
+            let report = client.startup_reconcile().await;
+
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
+                "{report:?}"
+            );
+            assert_eq!(
+                client.core_status().host,
+                ExecutionHost::Local,
+                "an absent daemon must not be installed and started by startup"
+            );
+            assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
+            assert_eq!(
+                client.configuration_status().runtime.health,
+                crate::client::convergence::ConvergenceHealth::Healthy
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn inspection_recovers_a_successful_apply_without_reconciling_again() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint.clone(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        (async {
+            endpoint.prime(&client).await;
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            client.activate_profile(Some(uid)).await.unwrap();
+            endpoint.set_effective_enabled(true);
+            client.reconcile_core().await.unwrap();
+            let state = client.inner.application_workflow.runtime();
+            assert!(state.pending.is_some());
+            assert!(state.promoted.as_ref().unwrap().effective.is_none());
+            let submitted = endpoint.submissions();
+            let inspection = client.inspect_runtime().await.unwrap();
+            assert!(inspection.applied);
+            assert!(!inspection.effective_pending);
+            assert!(inspection.nodes.iter().any(|node| matches!(
+                node.tag,
+                nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
+                    step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::CoreController,
+                    ..
+                }
+            )));
+            assert_eq!(endpoint.submissions(), submitted);
+            assert!(
+                client
+                    .inner
+                    .application_workflow
+                    .runtime()
+                    .pending
+                    .is_none()
+            );
+            assert!(client.inspect_applied_runtime().await.unwrap().applied);
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rebuild_checks_and_promotes_before_core_apply() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint.clone(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        (async {
+            endpoint.prime(&client).await;
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .expect("add")
+                .into_value();
+            client.activate_profile(Some(uid)).await.expect("activate");
+            client.reconcile_core().await.expect("reconcile");
+            assert!(endpoint.submissions() >= 1);
+        })
+        .await;
+    }
+
+    /// F2 regression: `reconcile_core`'s CAS token must come from an
+    /// admission-time read of the endpoint, not the router's projection,
+    /// which the pump refreshes only every 2s. Two reconciles run back to
+    /// back with no sleep in between, so that pump cannot have ticked; the
+    /// fake enforces CAS the way the real runtime does, so a reconcile that
+    /// reads the stale cached revision submits a token one generation behind
+    /// and gets rejected.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_reconciles_in_one_pump_interval_both_get_a_fresh_cas_token() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint.clone(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        (async {
+            // Wait for the pump's very first read so the router's cached
+            // projection is seeded with the endpoint's revision before
+            // either reconcile below runs. Without this, both reconciles
+            // would submit `expected_applied: None` (no cached revision
+            // yet), which never conflicts, and the test could not tell a
+            // stale cached read from a fresh one.
+            //
+            // The pump publishes the refreshed projection as an event
+            // rather than on any fixed schedule this test can bound, so
+            // wait on that notification instead of a fixed number of
+            // yields: a bounded busy-wait can spuriously fail a correct
+            // implementation if the pump simply has not run yet. Subscribe
+            // before the first check -- a broadcast receiver only observes
+            // events sent after it subscribes, so checking first would risk
+            // missing the one update that seeds the projection.
+            let mut status_events = client.subscribe_core_events();
+            while client.core_status().snapshot.is_none() {
+                match status_events.recv().await {
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            assert!(
+                client.core_status().snapshot.is_some(),
+                "the pump never seeded the router's cached projection; without a baseline \
+                 revision both reconciles below submit expected_applied: None, which never \
+                 conflicts, and this test would pass without exercising the CAS check at all"
+            );
+            endpoint.prime(&client).await;
+
+            client
+                .reconcile_core()
+                .await
+                .expect("the first reconcile establishes a new revision");
+            // No sleep here: this relies on the second reconcile starting
+            // within one pump interval of the first, not on proof that the
+            // pump cannot have run -- the two calls run back to back with
+            // no await point that yields to the pump's 2s timer in between.
+            client.reconcile_core().await.expect(
+                "the second reconcile must re-read the endpoint's current revision rather than \
+                 the router's pump-refreshed cache; using the cache submits the revision from \
+                 before the first reconcile, and the fake endpoint rejects it exactly as the \
+                 real runtime would",
+            );
+        })
+        .await;
+        assert_eq!(endpoint.submissions(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn core_status_is_projected_from_the_control_endpoint() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint,
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+        (async {
+            for _ in 0..100 {
+                if client.core_status().snapshot.is_some() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(client.core_status().host, ExecutionHost::Local);
+        })
+        .await;
+    }
+
+    /// D5+P0-1 invariant: a failed reconcile must leave the promoted product
+    /// visible while the control endpoint reports the failure.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_reconcile_keeps_the_committed_product_visible() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::failing();
+        let args = test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        (async {
+            endpoint.prime(&client).await;
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .expect("add")
+                .into_value();
+            // A rejected activation keeps the last accepted product.
+            assert!(client.activate_profile(Some(uid)).await.is_err());
+            let lifecycle = client.inner.application_workflow.runtime();
+            assert!(client.promoted_runtime().await.is_some());
+            assert_eq!(lifecycle.promoted.unwrap().revision.get(), 1);
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_reconcile_still_advances_the_promoted_read_model() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::failing();
+        let client = NyanpasuClient::try_new(
+            test_client_args_with_endpoint(
+                &dir,
+                endpoint.clone(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
+        )
+        .await
+        .unwrap();
+
+        (async {
+            endpoint.prime(&client).await;
+            let first = client.reconcile_core().await.expect_err("reconcile fails");
+            assert!(first.to_string().contains("reconcile boom"));
+            let before = client.promoted_runtime().await.unwrap();
+            let _ = client.reconcile_core().await.expect_err("reconcile fails");
+            let after = client.promoted_runtime().await.unwrap();
+            assert!(after.revision > before.revision);
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_downloads_and_conditionally_activates() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                // No server name: exercises the url last-segment fallback below.
+                filename: None,
+                suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
+            })
+        });
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
+            let mut patch = RemoteProfileOptions::new_empty_patch();
+            patch.with_proxy = Some(false);
+            let uid = client
+                .import_profile(url, None, Some(patch), None, None)
+                .await
+                .expect("import")
+                .into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(
+                snapshot.current.as_ref(),
+                Some(&uid),
+                "empty current must auto-activate"
+            );
+            let item = &snapshot.items[&uid];
+            assert_eq!(item.metadata.name, "my-sub"); // url last-segment fallback naming
+            let source = item.definition.source().unwrap();
+            assert!(source.is_remote());
+            let ProfileSource::Remote { option, .. } = source else {
+                unreachable!()
+            };
+            assert_eq!(
+                option.update_interval_minutes,
+                RemoteSyncInterval::from_minutes(360)
+            );
+            assert!(!option.with_proxy);
+        })
+        .await;
+    }
+
+    /// R6/R7: a source receipt reaches the configuration status and its
+    /// change stream, the status sequence only grows, and deleting the
+    /// profile drops its row.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn configuration_status_projects_source_receipts_and_prunes_them() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::clone(&calls);
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(move |_, _| {
+            if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
+                Ok(crate::state::profiles::ports::FetchedSubscription {
+                    content: "proxies: []\n".into(),
+                    subscription: SubscriptionInfo::default(),
+                    filename: None,
+                    suggested_update_interval_minutes: None,
+                    content_type: None,
+                    file_name: None,
+                })
+            } else {
+                Err(SubscriptionFetchError::mock())
+            }
+        });
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let (_, _, sources) = client.subscribe_configuration_changes();
+            // The first import becomes current; the second stays deletable.
+            client
+                .import_profile(
+                    url::Url::parse("https://example.com/subs/current.yaml").unwrap(),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            let uid = client
+                .import_profile(
+                    url::Url::parse("https://example.com/subs/other.yaml").unwrap(),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .unwrap()
+                .into_value();
+            let before = client.configuration_status();
+            assert!(before.sources.is_empty());
+
+            assert!(client.refresh_profile(uid.clone(), None).await.is_err());
+            assert!(sources.has_changed().unwrap());
+            let failed = client.configuration_status();
+            assert!(failed.event_seq > before.event_seq);
+            // No source moved, so only the receipt advanced the sequence.
+            let (was, now) = (&before.source_versions, &failed.source_versions);
+            assert_eq!(
+                (was.application, was.clash, was.session, was.profiles),
+                (now.application, now.clash, now.session, now.profiles)
+            );
+            assert_eq!(failed.sources.len(), 1);
+            assert_eq!(failed.sources[0].profile, uid);
+            assert_eq!(
+                failed.sources[0].health,
+                crate::client::convergence::ConvergenceHealth::Blocked
+            );
+
+            client.delete_profile(uid).await.unwrap();
+            let pruned = client.configuration_status();
+            assert!(pruned.sources.is_empty());
+            assert!(pruned.event_seq > failed.event_seq);
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_keeps_explicit_interval_over_server_suggestion() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
+            })
+        });
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let mut patch = RemoteProfileOptions::new_empty_patch();
+            patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(45));
+            let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, Some(patch), None, None)
+                .await
+                .expect("import")
+                .into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            let ProfileSource::Remote { option, .. } =
+                snapshot.items[&uid].definition.source().unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(
+                option.update_interval_minutes,
+                RemoteSyncInterval::from_minutes(45)
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_keeps_explicit_zero_interval_as_auto_update_off() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
+            })
+        });
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let mut patch = RemoteProfileOptions::new_empty_patch();
+            patch.update_interval_minutes = Some(RemoteSyncInterval::DISABLED);
+            let url = url::Url::parse("https://example.com/subs/manual.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, Some(patch), None, None)
+                .await
+                .expect("import")
+                .into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            let ProfileSource::Remote { option, .. } =
+                snapshot.items[&uid].definition.source().unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(option.update_interval_minutes, RemoteSyncInterval::DISABLED);
+        })
+        .await;
+    }
+
+    fn remote_config_request() -> NewProfileRequest {
+        NewProfileRequest {
+            metadata: ProfileMetadata {
+                name: "remote".into(),
+                desc: None,
+                custom_name: true,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Remote {
+                        materialized: MaterializedFile {
+                            file: ManagedProfilePath::new("pending.yaml").unwrap(),
+                            updated_at: None,
+                        },
+                        url: url::Url::parse("https://example.com/sub").unwrap(),
+                        option: RemoteProfileOptions::default(),
+                        subscription: SubscriptionInfo::default(),
+                    },
+                    transforms: vec![],
+                }),
+            },
+            folder: None,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_failure_commits_nothing() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
+        // A failed import never reaches core apply, so the bridge expects nothing.
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
+            let result = client.import_profile(url, None, None, None, None).await;
+            assert!(
+                result.is_err(),
+                "import must fail when the first download fails"
+            );
+            let snapshot = client.get_profiles().await.unwrap();
+            assert!(
+                snapshot.items.is_empty(),
+                "fetch-before-commit must leave zero durable items on download failure"
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_add_profile_rejects_remote_before_persist() {
+        let dir = tempdir().unwrap();
+        // No fetcher/core activity: the remote shell must be rejected at the
+        // public facade boundary before ProfilesClient::add is reached.
+        let client = test_client(&dir).await;
+
+        (async {
+            let rejected = client.add_profile(remote_config_request(), None).await;
+            assert!(
+                matches!(
+                    rejected,
+                    Err(ClientError::Profiles(
+                        ProfilesError::RemoteProfileNeedsImport
+                    ))
+                ),
+                "remote profiles must be rejected before any write, got {rejected:?}"
+            );
+            let snapshot = client.get_profiles().await.unwrap();
+            assert!(
+                snapshot.items.is_empty(),
+                "direct remote add must leave zero durable items"
+            );
+            assert!(snapshot.current.is_none());
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_create_auto_activates_config_and_rejects_remote() {
+        let dir = tempdir().unwrap();
+        let fetcher = MockSubscriptionFetcher::new();
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+
+            // create_profile shares the public add_profile remote guard.
+            let rejected = client.create_profile(remote_config_request(), None).await;
+            assert!(
+                matches!(
+                    rejected,
+                    Err(ClientError::Profiles(
+                        ProfilesError::RemoteProfileNeedsImport
+                    ))
+                ),
+                "create must reject remote sources via the add_profile guard"
+            );
+            assert!(
+                client.get_profiles().await.unwrap().items.is_empty(),
+                "rejected remote create must not persist"
+            );
+
+            // A local Config with no current selection auto-activates (design §9).
+            let uid = client
+                .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
+                .await
+                .expect("create local config")
+                .into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(
+                snapshot.current.as_ref(),
+                Some(&uid),
+                "an empty current must auto-activate the new Config profile"
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_does_not_steal_existing_current() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
+            })
+        });
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+
+            // Establish a current selection via a local Config.
+            let local_uid = client
+                .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
+                .await
+                .expect("create local config")
+                .into_value();
+            assert_eq!(
+                client.get_profiles().await.unwrap().current.as_ref(),
+                Some(&local_uid)
+            );
+
+            // Import a remote subscription; current is already set, so import
+            // must NOT overwrite the selection made before it.
+            // Ok(None) from set_current_if_none remains non-degraded applied.
+            let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
+            let outcome = client
+                .import_profile(url, None, None, None, None)
+                .await
+                .expect("import");
+            assert!(
+                matches!(
+                    outcome,
+                    crate::client::runtime::MutationOutcome::Committed { .. }
+                ),
+                "skipped auto-activation (existing current) must stay applied"
+            );
+            let imported = outcome.into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(
+                snapshot.current.as_ref(),
+                Some(&local_uid),
+                "import must not overwrite an existing current selection"
+            );
+            assert!(snapshot.items.contains_key(&imported));
+            let ProfileSource::Remote { option, .. } =
+                snapshot.items[&imported].definition.source().unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(
+                option.update_interval_minutes,
+                RemoteSyncInterval::from_minutes(120)
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_create_skips_activation_as_applied_when_current_exists() {
+        let dir = tempdir().unwrap();
+        let fetcher = MockSubscriptionFetcher::new();
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let first = client
+                .create_profile(local_config_request("first"), Some("proxies: []\n".into()))
+                .await
+                .expect("first create")
+                .into_value();
+            let second = client
+                .create_profile(local_config_request("second"), Some("proxies: []\n".into()))
+                .await
+                .expect("second create");
+            assert!(
+                matches!(
+                    second,
+                    crate::client::runtime::MutationOutcome::Committed { .. }
+                ),
+                "Ok(None) auto-activation must not invent degradations"
+            );
+            let second_uid = second.into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(snapshot.current.as_ref(), Some(&first));
+            assert!(snapshot.items.contains_key(&second_uid));
+        })
+        .await;
+    }
+
+    /// create/import share try_auto_activate_if_none: an activation hard error
+    /// becomes committed_degraded and must retain the already-committed ProfileId.
+    /// VersionConflict is not special-cased as success.
+    #[test]
+    fn create_import_auto_activation_failure_retains_profile_id_as_committed_degraded() {
+        let uid = ProfileId("committed-uid".into());
+        for error in [
+            ProfilesError::ProfilesReplyDropped,
+            ProfilesError::VersionConflict {
+                expected: 1,
+                actual: 2,
+                cleanup_failures: Vec::new(),
+            },
+            ProfilesError::ProfilesActorStopped,
+        ] {
+            let degradation =
+                NyanpasuClient::auto_activation_failure_degradation(uid.clone(), error);
+            assert!(matches!(
+                degradation.reason,
+                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+            ));
+            assert_eq!(
+                degradation.phase,
+                crate::client::runtime::DegradationPhase::SystemEffect
+            );
+            assert!(degradation.retryable);
+            assert!(!degradation.message.is_empty());
+
+            // Protocol both create and import use after a successful durable commit.
+            let prior = vec![crate::client::runtime::Degradation {
+                phase: crate::client::runtime::DegradationPhase::ProfileMaterialization,
+                reason: crate::client::runtime::DegradationReason::CleanupDeferred,
+                message: "materialization cleanup deferred".into(),
+                retryable: true,
+            }];
+            let outcome = crate::client::runtime::MutationOutcome::from_parts(uid.clone(), prior)
+                .extend_degradations(vec![degradation]);
+            assert!(
+                matches!(
+                    outcome,
+                    crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                ),
+                "activation hard error after commit must be CommittedDegraded"
+            );
+            assert_eq!(outcome.value(), &uid);
+            assert!(
+                matches!(
+                    outcome.degradations(),
+                    [
+                        crate::client::runtime::Degradation {
+                            reason: crate::client::runtime::DegradationReason::CleanupDeferred,
+                            ..
+                        },
+                        crate::client::runtime::Degradation {
+                            reason:
+                                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. },
+                            ..
+                        },
+                    ]
+                ),
+                "prior commit degradations must merge with activation failure"
+            );
+        }
+    }
+
+    fn ok_fetch_without_name() -> MockSubscriptionFetcher {
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
+            })
+        });
+        fetcher
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_without_name_derives_url_name_and_leaves_it_unpinned() {
+        let dir = tempdir().unwrap();
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
+            let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, None, None, None)
+                .await
+                .expect("import")
+                .into_value();
+            let item = client.get_profiles().await.unwrap().items[&uid].clone();
+            assert_eq!(item.metadata.name, "my-sub");
+            assert!(
+                !item.metadata.custom_name,
+                "no caller name -> unpinned so refresh name-sync can adopt a server name"
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_with_name_uses_it_and_pins_custom_name() {
+        let dir = tempdir().unwrap();
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
+            let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
+            let uid = client
+                .import_profile(url, Some("My VPN".into()), None, None, None)
+                .await
+                .expect("import")
+                .into_value();
+            let item = client.get_profiles().await.unwrap().items[&uid].clone();
+            assert_eq!(item.metadata.name, "My VPN");
+            assert!(
+                item.metadata.custom_name,
+                "a caller-provided name is user intent and must be pinned"
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn facade_import_transform_creates_remote_transform_without_activating_it() {
+        let dir = tempdir().unwrap();
+        (async {
+            let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
+            let url = url::Url::parse("https://example.com/overlay.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, None, Some(TransformKind::Overlay), None)
+                .await
+                .expect("import")
+                .into_value();
+            let profiles = client.get_profiles().await.unwrap();
+            let item = &profiles.items[&uid];
+            assert!(matches!(
+                &item.definition,
+                ProfileDefinition::Transform { transform }
+                    if transform.kind() == TransformKind::Overlay
+                        && matches!(transform.source(), nyanpasu_config::profile::ProfileSource::Remote { .. })
+            ));
+            assert_eq!(profiles.current, None, "a transform is never activatable");
+        }).await;
+    }
+
+    /// Every committed configuration reaches the frontend as a state change,
+    /// and a profiles commit names the files it may have changed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn commits_tell_the_frontend_what_changed() {
+        #[derive(Default)]
+        struct Recorded(std::sync::Mutex<Vec<StateChanged>>);
+        impl UiEventSink for Recorded {
+            fn state_changed(&self, state: StateChanged) {
+                self.0.lock().unwrap().push(state);
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let ui = Arc::new(Recorded::default());
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        args.ui_sink = ui.clone();
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        let take = || std::mem::take(&mut *ui.0.lock().unwrap());
+        let files = |events: Vec<StateChanged>| -> Vec<Vec<ProfileId>> {
+            events
+                .into_iter()
+                .filter_map(|event| match event {
+                    StateChanged::Profiles { files } => Some(files),
+                    _ => None,
+                })
+                .collect()
+        };
+        (async {
+            endpoint.prime(&client).await;
+            take();
+
+            let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
+            patch.language = Some(nyanpasu_config::application::I18nLanguage::Korean);
+            client.patch_app_config(patch).await.unwrap();
+            assert!(
+                take()
+                    .iter()
+                    .any(|event| matches!(event, StateChanged::NyanpasuConfig))
+            );
+
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some(
+                        "proxies: []
+"
+                        .into(),
+                    ),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            assert_eq!(files(take()), [vec![uid.clone()]], "an import");
+            client
+                .save_profile_file(
+                    uid.clone(),
+                    "proxies: []
+mode: rule
+"
+                    .into(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(files(take()), [vec![uid.clone()]], "a saved file");
+            client
+                .reorder_profiles_by_list(vec![uid.clone()])
+                .await
+                .unwrap();
+            assert_eq!(files(take()), [Vec::<ProfileId>::new()], "the order alone");
+            client.delete_profile(uid.clone()).await.unwrap();
+            assert_eq!(files(take()), [vec![uid]], "a removed profile");
+
+            client.request_shutdown();
+            client.wait_shutdown().await;
+        })
+        .await;
+    }
+}
+
+#[cfg(test)]
+mod setup_error_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn corrupt_application_yaml_keeps_the_typed_load_source() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
+        paths.create_base_dirs().unwrap();
+        std::fs::write(paths.application_config_path(), "language: [broken").unwrap();
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let tasks = tokio_util::task::TaskTracker::new();
+        let result = new_typed_config_clients(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            nyanpasu_config::application::ReleaseChannel::Stable,
+            paths,
+            &shutdown,
+            &tasks,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SetupError::LoadApplication {
+                source: application::Error::LoadState {
+                    source: crate::state::error::LoadError::DeserializeConfig(_),
+                    ..
+                },
+            })
+        ));
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+}

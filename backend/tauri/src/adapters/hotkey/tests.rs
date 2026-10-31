@@ -2,8 +2,10 @@
 
 use std::sync::Arc;
 
-use crate::{
-    adapters::hotkey::PlatformAcceleratorValidator,
+use crate::adapters::hotkey::PlatformAcceleratorValidator;
+use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_core::{
+    actor_v2::{endpoint::EndpointHandle, test_support::test_idle_endpoint},
     client::{
         ClientError, ClientSetupArgs, NyanpasuClient,
         effects::ports::MockApplicationEffectsPort,
@@ -11,8 +13,6 @@ use crate::{
     },
     state::config_error::ConfigError,
 };
-use nyanpasu_config::application::NyanpasuAppConfig;
-use nyanpasu_core::actor_v2::{endpoint::EndpointHandle, test_support::test_idle_endpoint};
 use tempfile::{TempDir, tempdir};
 
 fn entries(raw: &[&str]) -> Vec<String> {

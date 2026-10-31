@@ -7,7 +7,7 @@ use snafu::{ResultExt as _, ensure};
 use tauri::Manager as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::client::{
+use nyanpasu_core::client::{
     MainThreadExecutor,
     hotkey::ports::{
         AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError,

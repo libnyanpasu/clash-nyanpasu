@@ -1,12 +1,12 @@
 //! Real content capture and script execution preserve lenient and strict build policies.
 
 use super::FsRuntimeBuildAdapter;
-use crate::client::{
-    application_workflow::{inputs, ports::RuntimeBuildPort},
-    runtime,
-};
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
+};
+use nyanpasu_core::client::{
+    application_workflow::{inputs, ports::RuntimeBuildPort},
+    runtime,
 };
 use std::sync::Arc;
 
@@ -59,7 +59,7 @@ async fn fixture() -> Fixture {
         builder: Builder {
             delegate: FsRuntimeBuildAdapter {
                 profiles_dir: profiles_dir.clone(),
-                core_specs: Arc::new(crate::client::test_support::runtime_core_spec),
+                core_specs: Arc::new(nyanpasu_core::client::test_support::runtime_core_spec),
                 paths,
                 scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
             },
@@ -71,9 +71,9 @@ async fn fixture() -> Fixture {
 
 #[tokio::test]
 async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
-    use crate::client::application_workflow::ports::RuntimeBuildPort;
+    use nyanpasu_core::client::application_workflow::ports::RuntimeBuildPort;
     let f = fixture().await;
-    let item = crate::enhance::test_support::overlay("missing", "missing.yaml");
+    let item = nyanpasu_core::enhance::test_support::overlay("missing", "missing.yaml");
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);
@@ -101,7 +101,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let build = |revision, strict| {
         f.builder.build(
             revision,
-            crate::client::application_workflow::inputs::RuntimeInputs {
+            nyanpasu_core::client::application_workflow::inputs::RuntimeInputs {
                 profiles: Arc::new(profiles.clone()),
                 clash: ClashConfig::default(),
                 app: NyanpasuAppConfig::default(),

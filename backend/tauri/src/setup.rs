@@ -21,6 +21,9 @@ use crate::{
             RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
     },
+    utils::init::logging::ReloadSignal,
+};
+use nyanpasu_core::{
     client::{
         ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
         StateChanged, UiEventSink,
@@ -30,9 +33,6 @@ use crate::{
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
-    utils::init::logging::ReloadSignal,
-};
-use nyanpasu_core::{
     storage::StorageNotification,
     traffic::{TrafficFileStorage, TrafficStorage},
 };
@@ -146,29 +146,33 @@ pub(crate) enum Error {
     #[snafu(display("failed to spawn service actor"))]
     SpawnServiceActor { source: ractor::SpawnErr },
     #[snafu(display("failed to start jobs"))]
-    StartJobs { source: crate::client::jobs::Error },
+    StartJobs {
+        source: nyanpasu_core::client::jobs::Error,
+    },
     #[snafu(display("failed to build auto launch"))]
     BuildAutoLaunch {
-        source: crate::client::system_proxy::ports::AutoLaunchError,
+        source: nyanpasu_core::client::system_proxy::ports::AutoLaunchError,
     },
     #[snafu(display("failed to build pac"))]
     BuildPac {
-        source: crate::client::system_proxy::ports::PacError,
+        source: nyanpasu_core::client::system_proxy::ports::PacError,
     },
     #[snafu(display("failed to spawn system proxy"))]
     SpawnSystemProxy {
-        source: crate::client::system_proxy::Error,
+        source: nyanpasu_core::client::system_proxy::Error,
     },
     #[snafu(display("failed to spawn hotkeys"))]
     SpawnHotkeys {
-        source: crate::client::hotkey::Error,
+        source: nyanpasu_core::client::hotkey::Error,
     },
     #[snafu(display("failed to open storage"))]
     OpenStorage {
         source: nyanpasu_core::storage::StorageOperationError,
     },
     #[snafu(display("failed to build client"))]
-    BuildClient { source: crate::client::SetupError },
+    BuildClient {
+        source: nyanpasu_core::client::SetupError,
+    },
     #[snafu(display("failed to install widget"))]
     InstallWidget {
         source: crate::adapters::ui_effects::adapters::InstallError,
@@ -193,7 +197,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(rpc_events);
     // Shared with the panic hook, which takes the main thread's work over
     // once the event loop is gone.
-    let main_thread_handoff = Arc::new(crate::client::MainThreadHandoff::default());
+    let main_thread_handoff = Arc::new(nyanpasu_core::client::MainThreadHandoff::default());
     app.manage(main_thread_handoff.clone());
     let main_thread: Arc<dyn MainThreadExecutor> = Arc::new(TauriMainThread::new(
         app_handle.clone(),
@@ -367,7 +371,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             }),
         },
         jobs,
-        logging: crate::client::logs::LoggingSetup {
+        logging: nyanpasu_core::client::logs::LoggingSetup {
             core: match nyanpasu_core::logs::RedbCoreLogStore::open(
                 paths.app_logs_dir().join("core").into_std_path_buf(),
             ) {
@@ -384,8 +388,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 "clash-nyanpasu".into(),
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
-            service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
-            frontend: Arc::new(crate::client::frontend_events::TracingFrontendLogSink),
+            service: Arc::new(nyanpasu_core::client::logs::IpcServiceLogs::new(
+                service_ipc,
+            )),
+            frontend: Arc::new(nyanpasu_core::client::frontend_events::TracingFrontendLogSink),
         },
         paths: paths.clone(),
         storage,
@@ -410,7 +416,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         direct_egress: Arc::new(HttpDirectEgressProbe::dnspod()),
         geo_index,
         os_proxy: os_proxy.clone(),
-        binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        binary_installer: Arc::new(
+            nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
+        ),
         core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),
@@ -485,7 +493,7 @@ async fn start_runtime_owners(
             .await
             .context(SpawnServiceActorSnafu)?;
     service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());
-    let jobs = crate::client::jobs::start(
+    let jobs = nyanpasu_core::client::jobs::start(
         paths.jobs_path().into_std_path_buf(),
         jobs_capture,
         owners.shutdown.child_token(),

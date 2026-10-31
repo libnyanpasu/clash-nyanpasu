@@ -1,7 +1,14 @@
 //! Managed profile files, external watchers and materialization failures.
 
-use crate::{
+use crate::service::profile_file::fs_service::ProfileFileService;
+use camino::Utf8PathBuf;
+use nyanpasu_config::profile::{
+    ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileId,
+    ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, TransformDefinition,
+};
+use nyanpasu_core::{
     client::{
+        convergence::ConvergenceHealth,
         profiles::ProfilesClient,
         test_support::{
             profiles::{
@@ -11,7 +18,8 @@ use crate::{
             startup_recovery::{evidence, migrate},
         },
     },
-    service::profile_file::{fs_service::ProfileFileService, ports::SelfProxyPortSource},
+    migration::modules::profiles::ProfilesFormat,
+    service::profile_file::ports::SelfProxyPortSource,
     state::{
         mutation::CommitAborted,
         profiles::{
@@ -25,14 +33,6 @@ use crate::{
             sources::{SourceOrigin, SourceOutcome, SourceStatus},
         },
     },
-};
-use camino::Utf8PathBuf;
-use nyanpasu_config::profile::{
-    ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileId,
-    ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, TransformDefinition,
-};
-use nyanpasu_core::{
-    client::convergence::ConvergenceHealth, migration::modules::profiles::ProfilesFormat,
 };
 use std::sync::{
     Arc,
@@ -146,7 +146,7 @@ impl ExternalFixture {
             nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
-            crate::state::mutation::MutationCoordinator::isolated(),
+            nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(MockSubscriptionFetcher::new()),
@@ -183,7 +183,7 @@ async fn refresh_downloads_writes_and_commits_subscription() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(ok_fetch("proxies: []\n")),
@@ -231,7 +231,7 @@ async fn external_mirror_change_syncs_copy_and_bumps_updated_at() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         std::sync::Arc::new(MockSubscriptionFetcher::new()),
@@ -283,7 +283,7 @@ async fn external_symlink_change_bumps_updated_at_without_copy() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         std::sync::Arc::new(MockSubscriptionFetcher::new()),
@@ -320,7 +320,7 @@ async fn external_background_commit_does_not_bypass_the_mutation_participant() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         std::sync::Arc::new(MockSubscriptionFetcher::new()),
@@ -360,7 +360,7 @@ async fn external_watcher_smoke_mirror_real_file_event() {
     let profiles_path =
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         profiles_path,
         fs.clone() as Arc<dyn ProfileFsPort>,
         std::sync::Arc::new(MockSubscriptionFetcher::new()),
@@ -409,7 +409,7 @@ async fn add_generates_uid_canonical_path_and_writes_initial_file() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(MockSubscriptionFetcher::new()),
@@ -471,7 +471,7 @@ async fn add_success_leaves_no_materialization_staging_leftovers() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(MockSubscriptionFetcher::new()),
@@ -515,7 +515,7 @@ async fn refresh_persist_failure_restores_previous_materialized_bytes() {
     let profiles_path =
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         profiles_path.clone(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(ok_fetch("proxies:\n  - name: new\n")),
@@ -560,7 +560,7 @@ async fn an_activation_that_does_not_commit_names_the_activated_profile() {
     let profiles_path =
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         profiles_path.clone(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(ok_fetch(
@@ -612,7 +612,7 @@ async fn delete_unreferenced_managed_profile_removes_file() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(MockSubscriptionFetcher::new()),
@@ -656,7 +656,7 @@ async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
         fs.clone() as Arc<dyn ProfileFsPort>,
         Arc::new(MockSubscriptionFetcher::new()),
@@ -812,14 +812,14 @@ async fn startup_client(
     paths: &nyanpasu_paths::PathResolver,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
-) -> std::result::Result<ProfilesClient, crate::client::profiles::Error> {
+) -> std::result::Result<ProfilesClient, nyanpasu_core::client::profiles::Error> {
     let service = Arc::new(ProfileFileService::new(
         paths.clone(),
         Arc::new(NoProxyPort),
         nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         paths.profiles_path(),
         service.clone(),
         service.clone(),
@@ -852,7 +852,7 @@ async fn current_not_config_still_fails_without_rewriting_profiles() {
     let tasks = TaskTracker::new();
     let result = startup_client(&paths, &shutdown, &tasks).await;
     assert!(
-        matches!(result, Err(crate::client::profiles::Error::ValidateProfiles { ref errors })
+        matches!(result, Err(nyanpasu_core::client::profiles::Error::ValidateProfiles { ref errors })
         if errors.iter().any(|error| matches!(error, ProfileValidationError::CurrentNotConfig(id) if id.0 == "ovl1")))
     );
     assert_eq!(std::fs::read(paths.profiles_path()).unwrap(), before);
@@ -884,7 +884,7 @@ async fn dangling_current_does_not_sanitize_invalid_global_transforms() {
     let tasks = TaskTracker::new();
     let result = startup_client(&paths, &shutdown, &tasks).await;
     assert!(
-        matches!(result, Err(crate::client::profiles::Error::ValidateProfiles { ref errors })
+        matches!(result, Err(nyanpasu_core::client::profiles::Error::ValidateProfiles { ref errors })
         if errors.iter().any(|error| matches!(error,
             ProfileValidationError::TransformTargetNotFound { target, .. } if target.0 == "missing-transform")))
     );
@@ -1016,7 +1016,7 @@ async fn materialization_directory_node_problems_rebuild_before_client_spawn() {
         let prepared = service
             .prepare_state_first(
                 &path,
-                crate::state::profiles::ports::MaterializationResource::File {
+                nyanpasu_core::state::profiles::ports::MaterializationResource::File {
                     content: "usable: true\n".into(),
                 },
                 client.snapshot().revision() + 1,
@@ -1048,9 +1048,9 @@ async fn materialization_preparation_failure_keeps_its_typed_source() {
     ));
     let shutdown = CancellationToken::new();
     let tasks = TaskTracker::new();
-    let jobs = crate::client::jobs::test_client_with_owner(shutdown.clone(), &tasks).await;
+    let jobs = nyanpasu_core::client::jobs::test_client_with_owner(shutdown.clone(), &tasks).await;
     let result = ProfilesClient::new_with_jobs(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
         paths.profiles_path(),
         jobs,
         service.clone(),
@@ -1062,12 +1062,14 @@ async fn materialization_preparation_failure_keeps_its_typed_source() {
     .await;
     assert!(matches!(
         result,
-        Err(crate::client::profiles::Error::PrepareMaterialization {
-            source: ProfileFileError::UnexpectedNode {
-                expected: crate::state::profiles::error::ExpectedNode::RealDirectory,
-                ..
-            },
-        })
+        Err(
+            nyanpasu_core::client::profiles::Error::PrepareMaterialization {
+                source: ProfileFileError::UnexpectedNode {
+                    expected: nyanpasu_core::state::profiles::error::ExpectedNode::RealDirectory,
+                    ..
+                },
+            }
+        )
     ));
     shutdown.cancel();
     tasks.close();

@@ -2,7 +2,7 @@
 
 use snafu::ResultExt as _;
 
-use crate::client::main_thread::{
+use nyanpasu_core::client::main_thread::{
     HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor, MainThreadHandoff, MainThreadTask,
 };
 

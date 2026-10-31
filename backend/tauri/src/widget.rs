@@ -1,5 +1,6 @@
-use crate::{
-    adapters::ui_effects::ports::WIDGET_STOP_BOUND,
+use crate::adapters::ui_effects::ports::WIDGET_STOP_BOUND;
+use nyanpasu_core::{
+    clash::ws::ClashConnectionsConnectorEvent,
     client::effects::{
         ports::{
             ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
@@ -9,7 +10,6 @@ use crate::{
         status::failure_text,
     },
 };
-use nyanpasu_core::clash::ws::ClashConnectionsConnectorEvent;
 
 use futures::future::BoxFuture;
 use nyanpasu_widget_protocol::{

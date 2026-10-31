@@ -2,12 +2,15 @@ use super::{
     Tray, TrayState, TrayWork,
     display::{Paint, ProxySection, Shown},
 };
-use crate::{client::effects::plan::TrayView, log_err};
+use crate::log_err;
 use indexmap::IndexMap;
 use nyanpasu_config::{
     application::ProxiesSelectorMode, clash::config::overrides::Mode, profile::ProxyGroupLayout,
 };
-use nyanpasu_core::clash::proxies::{Proxies, ProxyGroup};
+use nyanpasu_core::{
+    clash::proxies::{Proxies, ProxyGroup},
+    client::effects::plan::TrayView,
+};
 use std::ops::ControlFlow;
 use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
@@ -192,7 +195,7 @@ pub(super) fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies)
 #[instrument(skip(app_handle, client))]
 pub async fn proxies_updated_receiver(
     app_handle: AppHandle,
-    client: crate::client::NyanpasuClient,
+    client: nyanpasu_core::client::NyanpasuClient,
 ) {
     let mut rx = client.subscribe_proxy_changes();
     while rx.changed().await.is_ok() {
@@ -214,7 +217,7 @@ pub(super) fn repaint_proxies(
     if view.menu.selector_mode == ProxiesSelectorMode::Hidden {
         return Ok(ControlFlow::Continue(()));
     }
-    let client = app_handle.state::<crate::client::NyanpasuClient>();
+    let client = app_handle.state::<nyanpasu_core::client::NyanpasuClient>();
     let snapshot = client.proxies_snapshot();
     let current = to_tray_proxies(
         view.part.mode,
@@ -242,7 +245,7 @@ pub(super) fn repaint_proxies(
 
 pub fn setup_proxies(app_handle: &AppHandle) {
     let client = app_handle
-        .state::<crate::client::NyanpasuClient>()
+        .state::<nyanpasu_core::client::NyanpasuClient>()
         .inner()
         .clone();
     client.request_proxy_refresh();
@@ -254,8 +257,9 @@ mod platform_impl {
         Paint, ProxySection, ProxySelectAction, Shown, TrayGroup, group_menu_id, node_item_id,
         node_item_text, unfix_item_id,
     };
-    use crate::{client::effects::plan::TrayView, core::tray::TrayState};
+    use crate::core::tray::TrayState;
     use nyanpasu_config::application::ProxiesSelectorMode;
+    use nyanpasu_core::client::effects::plan::TrayView;
     use rust_i18n::t;
     use tauri::{
         AppHandle, Manager, Runtime,
@@ -348,7 +352,7 @@ mod platform_impl {
             ProxiesSelectorMode::Normal => menu.separator(),
             ProxiesSelectorMode::Submenu => menu,
         };
-        let client = app_handle.state::<crate::client::NyanpasuClient>();
+        let client = app_handle.state::<nyanpasu_core::client::NyanpasuClient>();
         let proxies = client.proxies_snapshot();
         let tray_proxies = super::to_tray_proxies(
             view.part.mode,
@@ -498,7 +502,7 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
         .clicked(group.clone(), name.clone());
 
     let client = app_handle
-        .state::<crate::client::NyanpasuClient>()
+        .state::<nyanpasu_core::client::NyanpasuClient>()
         .inner()
         .clone();
     let app_handle = app_handle.clone();
@@ -524,7 +528,7 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
 /// platform menu, so nothing is recorded as clicked.
 fn clear_fixed(app_handle: &AppHandle, group: String) {
     let client = app_handle
-        .state::<crate::client::NyanpasuClient>()
+        .state::<nyanpasu_core::client::NyanpasuClient>()
         .inner()
         .clone();
     let app_handle = app_handle.clone();

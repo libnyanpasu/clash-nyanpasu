@@ -4,12 +4,24 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::Event;
 
-use crate::core::{
-    actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
-    clash::ws::{ClashWsPacket, ClashWsUpdate},
-    logs::CoreLogStatus,
-    storage::StorageRevision,
+use crate::{
+    client::{StateChanged, app_update::AppUpdateSnapshot},
+    core::{
+        actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
+        clash::ws::{ClashWsPacket, ClashWsUpdate},
+        logs::CoreLogStatus,
+        storage::StorageRevision,
+    },
 };
+
+/// What changed in the state the frontend reads, so it refetches what depends
+/// on it.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct StateChangedEvent(pub StateChanged);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(transparent)]
+pub struct AppUpdateStateChanged(pub AppUpdateSnapshot);
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct CoreStatusChangedEvent(pub CoreStatusInfo);

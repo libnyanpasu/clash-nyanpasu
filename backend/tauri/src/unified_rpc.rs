@@ -26,7 +26,7 @@ pub struct RpcDependencies {
 }
 
 const EVENT_NAMES: &[&str] = &[
-    <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
+    <crate::adapters::events::AppUpdateStateChanged as tauri_specta::Event>::NAME,
     <crate::adapters::events::ClashWsEvent as tauri_specta::Event>::NAME,
     <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
@@ -36,7 +36,7 @@ const EVENT_NAMES: &[&str] = &[
     <crate::adapters::events::StorageValueChangedEvent as tauri_specta::Event>::NAME,
     <crate::adapters::events::StorageResyncEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    <crate::adapters::event_sink::StateChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
 
 #[derive(Clone)]
@@ -764,8 +764,7 @@ mod tests {
                 .unwrap();
             let mut stream = response.into_body().into_data_stream();
             stream.next().await.unwrap().unwrap();
-            let name =
-                <crate::adapters::event_sink::StateChangedEvent as tauri_specta::Event>::NAME;
+            let name = <crate::adapters::events::StateChangedEvent as tauri_specta::Event>::NAME;
             for sequence in 0..300 {
                 events.publish(name, serde_json::json!(sequence));
             }

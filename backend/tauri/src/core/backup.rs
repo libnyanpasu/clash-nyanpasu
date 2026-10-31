@@ -4,6 +4,7 @@
 //! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
 //! share it.
 
+use crate::client::bundle_metadata::BundleMetadata;
 use camino::Utf8PathBuf;
 use nyanpasu_paths::PathResolver;
 
@@ -63,6 +64,7 @@ pub enum StorageSource<'a> {
 
 pub struct BackupRequest<'a> {
     pub paths: &'a PathResolver,
+    pub bundle_metadata: BundleMetadata,
     pub storage: StorageSource<'a>,
     pub kind: BackupKind<'a>,
     pub now: OffsetDateTime,
@@ -316,7 +318,7 @@ fn manifest(req: &BackupRequest<'_>, symlinks: Vec<ManifestSymlink>) -> Manifest
     Manifest {
         kind,
         created_at: rfc3339(req.now),
-        app_version: crate::consts::BUILD_INFO.pkg_version,
+        app_version: req.bundle_metadata.app_version,
         from_version,
         target_version,
         sources: ManifestSources {
@@ -378,6 +380,7 @@ mod tests {
 
     fn manual<'a>(paths: &'a PathResolver, storage: StorageSource<'a>) -> BackupRequest<'a> {
         BackupRequest {
+            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
             paths,
             storage,
             kind: BackupKind::Manual,
@@ -409,6 +412,7 @@ mod tests {
         let target = Version::new(2, 0, 0);
 
         let backup = create_backup(&BackupRequest {
+            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
             paths: &paths,
             storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {
@@ -436,6 +440,7 @@ mod tests {
         );
 
         let manifest = read_manifest(&backup);
+        assert_eq!(manifest["app_version"], "2.0.0-test+host");
         assert_eq!(manifest["kind"], "migration");
         assert_eq!(manifest["created_at"], "2026-09-21T14:13:20Z");
         assert_eq!(manifest["from_version"], "1.6.1");
@@ -477,6 +482,7 @@ mod tests {
         let target = Version::new(2, 0, 0);
 
         let backup = create_backup(&BackupRequest {
+            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
             paths: &paths,
             storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {

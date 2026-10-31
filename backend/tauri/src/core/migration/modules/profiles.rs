@@ -1299,7 +1299,12 @@ items:
             .flush_atomic(&config_dir.join("migration-state.yaml"))
             .unwrap();
         let paths = crate::client::tests::test_paths(config_dir, data_dir);
-        let mut runner = crate::core::migration::Runner::with_paths(paths, false).unwrap();
+        let mut runner = crate::core::migration::Runner::with_paths(
+            paths,
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(
             runner.advice_step(&REPAIR_SCHEMA),

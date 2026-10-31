@@ -12,10 +12,14 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::{
-    config_error::{ConfigError, SessionStateStoppedSnafu},
-    session_state::{
-        SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
+use crate::{
+    client::bundle_metadata::BundleMetadata,
+    state::{
+        config_error::{ConfigError, SessionStateStoppedSnafu},
+        session_state::{
+            SessionStateActor, SessionStateActorArgs, SessionStateActorMessage,
+            SessionStateSnapshot,
+        },
     },
 };
 
@@ -95,8 +99,8 @@ impl SessionStateClient {
     }
 
     /// The geometry the main window reopens with.
-    pub fn main_window_geometry(&self) -> Option<WindowState> {
-        main_window_geometry(&self.snapshot().state)
+    pub fn main_window_geometry(&self, metadata: &BundleMetadata) -> Option<WindowState> {
+        main_window_geometry(&self.snapshot().state, metadata)
     }
 
     pub async fn save_main_window(
@@ -161,10 +165,10 @@ impl SessionStateClient {
 }
 
 /// The entry `save_main_window` writes: the one under the main window label.
-fn main_window_geometry(state: &PersistentState) -> Option<WindowState> {
+fn main_window_geometry(state: &PersistentState, metadata: &BundleMetadata) -> Option<WindowState> {
     state
         .window_state
-        .get(&WindowLabel(crate::consts::MAIN_WINDOW_LABEL.into()))
+        .get(&WindowLabel(metadata.main_window_label.into()))
         .cloned()
 }
 
@@ -177,6 +181,7 @@ impl Drop for SessionStateClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::bundle_metadata::TEST_BUNDLE_METADATA;
     use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
@@ -246,25 +251,40 @@ mod tests {
                 (WindowLabel("main".into()), geometry(2)),
             ]),
         };
-        assert_eq!(main_window_geometry(&state), Some(geometry(2)));
+        assert_eq!(
+            main_window_geometry(&state, &TEST_BUNDLE_METADATA),
+            Some(geometry(2))
+        );
+
+        let metadata = BundleMetadata {
+            main_window_label: "editor-css",
+            ..TEST_BUNDLE_METADATA
+        };
+        assert_eq!(main_window_geometry(&state, &metadata), Some(geometry(1)));
 
         let without_main = PersistentState {
             window_state: BTreeMap::from([(WindowLabel("editor-css".into()), geometry(1))]),
         };
-        assert_eq!(main_window_geometry(&without_main), None);
+        assert_eq!(
+            main_window_geometry(&without_main, &TEST_BUNDLE_METADATA),
+            None
+        );
     }
 
     #[tokio::test]
     async fn a_saved_main_window_geometry_is_what_the_window_restores() {
         let (client, _dir) = test_client().await;
-        assert_eq!(client.main_window_geometry(), None);
+        assert_eq!(client.main_window_geometry(&TEST_BUNDLE_METADATA), None);
 
         client
             .save_main_window(geometry(42))
             .await
             .expect("saving the main window geometry should succeed");
 
-        assert_eq!(client.main_window_geometry(), Some(geometry(42)));
+        assert_eq!(
+            client.main_window_geometry(&TEST_BUNDLE_METADATA),
+            Some(geometry(42))
+        );
     }
 
     #[tokio::test]
@@ -279,6 +299,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(client.main_window_geometry(), Some(geometry(7)));
+        assert_eq!(
+            client.main_window_geometry(&TEST_BUNDLE_METADATA),
+            Some(geometry(7))
+        );
     }
 }

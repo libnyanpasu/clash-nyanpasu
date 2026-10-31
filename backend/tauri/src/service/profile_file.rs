@@ -21,6 +21,7 @@ use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
 use crate::{
+    client::bundle_metadata::BundleMetadata,
     core::corrupt,
     state::profiles::{
         error::*,
@@ -49,14 +50,20 @@ pub struct ProfileFileService {
     paths: PathResolver,
     self_proxy_port: Arc<dyn SelfProxyPortSource>,
     http_timeout: Duration,
+    bundle_metadata: BundleMetadata,
 }
 
 impl ProfileFileService {
-    pub fn new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
+    pub fn new(
+        paths: PathResolver,
+        self_proxy_port: Arc<dyn SelfProxyPortSource>,
+        bundle_metadata: BundleMetadata,
+    ) -> Self {
         Self {
             paths,
             self_proxy_port,
             http_timeout: Duration::from_secs(30),
+            bundle_metadata,
         }
     }
 
@@ -2095,7 +2102,7 @@ impl SubscriptionFetcher for ProfileFileService {
         let user_agent = options
             .user_agent
             .clone()
-            .unwrap_or_else(|| format!("clash-nyanpasu/v{}", crate::utils::dirs::APP_VERSION));
+            .unwrap_or_else(|| format!("clash-nyanpasu/v{}", self.bundle_metadata.app_version));
         let client = builder
             .user_agent(user_agent)
             .build()
@@ -2306,7 +2313,14 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths =
             crate::client::tests::test_paths(temp.path().join("config"), temp.path().join("data"));
-        (temp, ProfileFileService::new(paths, self_proxy_port))
+        (
+            temp,
+            ProfileFileService::new(
+                paths,
+                self_proxy_port,
+                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            ),
+        )
     }
 
     fn managed(name: &str) -> ManagedProfilePath {
@@ -3756,7 +3770,7 @@ mod tests {
         let (ua, has_hwid) = seen.lock().unwrap().clone().unwrap();
         assert_eq!(
             ua,
-            format!("clash-nyanpasu/v{}", crate::utils::dirs::APP_VERSION)
+            format!("clash-nyanpasu/v{}", service.bundle_metadata.app_version)
         );
         assert!(has_hwid);
     }

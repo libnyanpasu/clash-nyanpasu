@@ -88,7 +88,11 @@ impl ClashConfigClient {
         .await
         .context(SpawnActorSnafu)?
         .0;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(
+            tasks,
+            shutdown,
+            actor_ref.get_cell(),
+        );
 
         Ok(Self {
             inner: Arc::new(ClashConfigClientInner {

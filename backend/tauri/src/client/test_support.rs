@@ -21,7 +21,6 @@ use super::{
     ClientSetupArgs, NoopSystemDnsCache, NyanpasuClient, Result, RuntimePaths,
     application::ApplicationClient,
     application_workflow,
-    bundle_metadata::BundleMetadata,
     clash_config::ClashConfigClient,
     core_lifecycle, core_version, direct_egress, effects,
     host_adapters::{ClientHostAdapters, ProfileFilePorts},
@@ -45,8 +44,8 @@ use crate::{
             PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
         },
     },
-    utils::test_support::test_paths,
 };
+use nyanpasu_core::{client::bundle_metadata::BundleMetadata, utils::test_support::test_paths};
 
 pub(crate) struct TestControlEndpoint {
     /// Which host this endpoint claims to be. A graph that moves the
@@ -750,7 +749,7 @@ pub(super) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
                 let service = Arc::new(ProfileFileService::new(
                     paths.clone(),
                     ports,
-                    crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                    nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
                 ));
                 ProfileFilePorts {
                     fs: service.clone(),
@@ -781,7 +780,7 @@ pub(crate) async fn test_client_args_with_endpoint(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
         },
         host_adapters: test_host_adapters(&paths),
         logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),

@@ -12,16 +12,13 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    client::bundle_metadata::BundleMetadata,
-    state::{
-        config_error::{ConfigError, SessionStateStoppedSnafu},
-        session_state::{
-            SessionStateActor, SessionStateActorArgs, SessionStateActorMessage,
-            SessionStateSnapshot,
-        },
+use crate::state::{
+    config_error::{ConfigError, SessionStateStoppedSnafu},
+    session_state::{
+        SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
     },
 };
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
@@ -61,7 +58,7 @@ impl SessionStateClient {
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
         let path = config_path.clone();
-        let state = crate::utils::blocking::join(
+        let state = nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || {
                 crate::core::session_state::read(path.as_std_path())
             })
@@ -82,7 +79,11 @@ impl SessionStateClient {
             .await
             .context(SpawnActorSnafu)?
             .0;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(
+            tasks,
+            shutdown,
+            actor_ref.get_cell(),
+        );
 
         Ok(Self {
             inner: Arc::new(SessionStateClientInner {
@@ -181,7 +182,7 @@ impl Drop for SessionStateClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::bundle_metadata::TEST_BUNDLE_METADATA;
+    use nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA;
     use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};

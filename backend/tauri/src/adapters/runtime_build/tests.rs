@@ -51,10 +51,9 @@ impl RuntimeBuildPort for Builder {
 
 async fn fixture() -> Fixture {
     let dir = tempfile::tempdir().expect("temporary runtime directory");
-    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
-        dir.path(),
-        dir.path().join("data"),
-    ));
+    let paths = runtime::RuntimePaths::from_resolver(
+        &nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data")),
+    );
     let profiles_dir = dir.path().join("profiles");
     Fixture {
         builder: Builder {

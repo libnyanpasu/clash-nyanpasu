@@ -1,7 +1,8 @@
-use crate::client::{app_update::endpoints, bundle_metadata::BundleMetadata};
+use crate::client::app_update::endpoints;
 
 use anyhow::{Result, bail};
 use nyanpasu_config::application::{ReleaseChannel, UpdateSource};
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 use std::path::{Path, PathBuf};
 use tauri::utils::config::{Config, WebviewInstallMode};
 

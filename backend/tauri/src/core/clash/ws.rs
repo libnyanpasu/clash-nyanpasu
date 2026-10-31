@@ -902,7 +902,7 @@ impl StreamsClient {
         )
         .await
         .map_err(|source| Error::SpawnActor { source })?;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner {
             actor,
             #[cfg(test)]

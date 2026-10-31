@@ -31,7 +31,7 @@ pub(super) fn parse_subscription_userinfo(
         return SubscriptionInfo::default();
     };
     let raw = value.to_str().unwrap_or("");
-    let field = |key: &str| crate::utils::key_value::parse_str::<u64>(raw, key);
+    let field = |key: &str| nyanpasu_core::utils::key_value::parse_str::<u64>(raw, key);
     SubscriptionInfo {
         upload: field("upload"),
         download: field("download"),

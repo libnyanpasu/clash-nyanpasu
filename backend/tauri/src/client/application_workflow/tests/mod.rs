@@ -353,10 +353,9 @@ async fn workflow_graph_with_clients(
     )
     .await
     .unwrap();
-    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
-        dir.path(),
-        dir.path().join("data"),
-    ));
+    let paths = runtime::RuntimePaths::from_resolver(
+        &nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data")),
+    );
     let validator_paths = paths.clone();
     let core_for_validator = core.clone();
     // The graph's router already drives the host it was built on, and these

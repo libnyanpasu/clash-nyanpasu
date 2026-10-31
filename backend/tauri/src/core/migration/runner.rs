@@ -3,13 +3,14 @@ use super::{
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::{
-    client::bundle_metadata::BundleMetadata,
-    core::backup::{
-        self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
+use crate::core::{
+    backup,
+    backup::{
+        BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
         StorageSource,
     },
 };
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 use semver::Version;
 use snafu::ResultExt as _;
@@ -732,7 +733,7 @@ mod tests {
             super::super::store::STORE_SCHEMA_VERSION - 1,
         ] {
             let root = tempfile::tempdir().unwrap();
-            let paths = crate::utils::test_support::test_paths(
+            let paths = nyanpasu_core::utils::test_support::test_paths(
                 root.path().join("config"),
                 root.path().join("data"),
             );
@@ -741,7 +742,7 @@ mod tests {
             std::fs::write(&path, format!("store_schema_version: {read}\n")).unwrap();
             let error = Runner::with_paths(
                 paths,
-                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
                 false,
             )
             .unwrap_err();

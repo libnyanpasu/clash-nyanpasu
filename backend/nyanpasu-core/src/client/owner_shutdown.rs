@@ -8,7 +8,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 /// Spawns the tracked task that drains `cell` once `token` is cancelled: what
 /// is already queued is still handled, anything sent later is refused, and the
 /// task ends once the actor, its `post_stop` included, has stopped.
-pub(crate) fn drain_on_shutdown(tasks: &TaskTracker, token: CancellationToken, cell: ActorCell) {
+pub fn drain_on_shutdown(tasks: &TaskTracker, token: CancellationToken, cell: ActorCell) {
     tasks.spawn(async move {
         token.cancelled().await;
         // An actor that has already stopped refuses the drain, and there is

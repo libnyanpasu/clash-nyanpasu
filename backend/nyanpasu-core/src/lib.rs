@@ -30,3 +30,5 @@ mod gxhash_smoke {
         );
     }
 }
+pub mod client;
+pub mod utils;

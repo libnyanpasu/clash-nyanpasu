@@ -162,7 +162,7 @@ async fn run_elevated(
     args: Vec<OsString>,
 ) -> Result<(), ServiceCommandError> {
     let service_binary = service_binary.to_path_buf();
-    let status = crate::utils::blocking::join(
+    let status = nyanpasu_core::utils::blocking::join(
         tokio::task::spawn_blocking(move || {
             #[cfg(not(target_os = "macos"))]
             {
@@ -174,7 +174,7 @@ async fn run_elevated(
             }
             #[cfg(target_os = "macos")]
             {
-                use crate::utils::sudo::sudo;
+                use nyanpasu_core::utils::sudo::sudo;
                 let args = args
                     .iter()
                     .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))

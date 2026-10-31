@@ -96,7 +96,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             )))
         })
         .await;
-        crate::utils::blocking::join(built)
+        nyanpasu_core::utils::blocking::join(built)
     }
 
     async fn publish(

@@ -194,8 +194,10 @@ mod tests {
     fn config_derived_paths_join_config_dir() {
         use nyanpasu_paths::{CLASH_CFG_GUARD_OVERRIDES, NYANPASU_CONFIG, PROFILE_YAML};
         use std::path::Path;
-        let r =
-            crate::utils::test_support::test_paths(PathBuf::from("/cfg"), PathBuf::from("/data"));
+        let r = nyanpasu_core::utils::test_support::test_paths(
+            PathBuf::from("/cfg"),
+            PathBuf::from("/data"),
+        );
         assert_eq!(r.profiles_path(), Path::new("/cfg").join(PROFILE_YAML));
         assert_eq!(
             r.nyanpasu_config_path(),

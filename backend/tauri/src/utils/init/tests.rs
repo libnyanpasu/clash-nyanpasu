@@ -244,7 +244,7 @@ fn migration_child_failure_file_round_trip() {
         FailureStage::Migration,
     ] {
         let root = tempfile::tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );
@@ -322,7 +322,7 @@ fn migration_child_failure_file_round_trip() {
 fn migration_child_failure_preserves_the_available_backup() {
     use crate::core::migration::child_result::FailureStage;
     let root = tempfile::tempdir().unwrap();
-    let paths = crate::utils::test_support::test_paths(
+    let paths = nyanpasu_core::utils::test_support::test_paths(
         root.path().join("config"),
         root.path().join("data"),
     );

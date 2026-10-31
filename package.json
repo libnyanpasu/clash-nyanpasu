@@ -78,7 +78,7 @@
     "@commitlint/config-conventional": "21.2.4",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.12.4",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/browser-playwright": "5.0.5",
     "knip": "6.44.0",

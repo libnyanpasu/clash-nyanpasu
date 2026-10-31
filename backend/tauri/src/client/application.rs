@@ -13,7 +13,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
-    core::migration::modules::application::ApplicationFormat,
     state::{
         application::{
             ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
@@ -21,6 +20,7 @@ use crate::{
         config_error::{ConfigError, OwnerStoppedSnafu},
     },
 };
+use nyanpasu_core::migration::modules::application::ApplicationFormat;
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {

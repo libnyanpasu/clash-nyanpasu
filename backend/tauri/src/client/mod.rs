@@ -47,17 +47,10 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
-    core::{
-        actor_v2::{
-            CoreClient as CoreClientV2, CoreStatusProjection,
-            facade::{ReconcileReport, StopReport},
-            service_actor::{ServiceClient, ServiceHostStatus},
-        },
-        backup::{
-            self, BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS,
-            MANUAL_PREFIX, StorageSource,
-        },
-        storage::Storage,
+    core::actor_v2::{
+        CoreClient as CoreClientV2, CoreStatusProjection,
+        facade::{ReconcileReport, StopReport},
+        service_actor::{ServiceClient, ServiceHostStatus},
     },
     service::profile_file::ports::SelfProxyPortSource,
     state::profiles::{
@@ -78,6 +71,14 @@ use nyanpasu_config::{
         RemoteProfileOptionsPatch, TransformKind,
     },
     runtime::executor::ResolvedPortBindings,
+};
+use nyanpasu_core::{
+    backup,
+    backup::{
+        BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
+        StorageSource,
+    },
+    storage::Storage,
 };
 use snafu::{OptionExt as _, ResultExt as _};
 use std::{path::PathBuf, sync::Arc};
@@ -1553,7 +1554,7 @@ pub(crate) mod tests {
         use nyanpasu_core::format::Format as _;
 
         let mut content = Vec::new();
-        crate::core::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_core::migration::modules::application::ApplicationFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -1858,7 +1859,7 @@ pub(crate) mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let mut manager = nyanpasu_core::state::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
-            crate::core::migration::modules::application::ApplicationFormat,
+            nyanpasu_core::migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()

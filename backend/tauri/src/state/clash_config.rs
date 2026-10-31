@@ -1,15 +1,16 @@
 use crate::{
     client::application_workflow::{
-        impact::{self, MutationHints, RequestedRuntimeFields},
+        impact,
+        impact::{MutationHints, RequestedRuntimeFields},
         mutation::ConfigDomain,
         policy::CommandClass,
     },
-    core::migration::modules::clash_config::ClashConfigFormat,
     state::{
         config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
         mutation::MutationCoordinator,
     },
 };
+use nyanpasu_core::migration::modules::clash_config::ClashConfigFormat;
 use nyanpasu_core_manager::OperationId;
 
 use nyanpasu_config::clash::config::{

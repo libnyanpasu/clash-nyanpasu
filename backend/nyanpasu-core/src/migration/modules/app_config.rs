@@ -1,20 +1,20 @@
 use super::super::{Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck};
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use snafu::{OptionExt as _, ResultExt as _};
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to read {path:?}"))]
     ReadFile {
         path: std::path::PathBuf,
         source: std::io::Error,
     },
     #[snafu(display("failed to parse YAML"))]
-    ParseYaml { source: serde_yaml::Error },
+    ParseYaml { source: serde_yaml_ng::Error },
     #[snafu(context(false), display("failed to serialize YAML"))]
-    SerializeYaml { source: serde_yaml::Error },
+    SerializeYaml { source: serde_yaml_ng::Error },
     #[snafu(context(false), display("failed to write migration output"))]
     WriteOutput { source: super::super::fs::Error },
     #[snafu(display("network_statistic_widget is not in the nested form"))]
@@ -58,7 +58,7 @@ impl ModuleMigrator for AppConfigMigrator {
 
             let raw = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let config: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+            let config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
             if needs_language_option_migration(&config)
                 || needs_theme_setting_migration(&config)
                 || needs_network_statistic_widget_migration(&config)
@@ -110,10 +110,10 @@ impl MigrationStep for MigrateLanguageOption {
             let config_path = ctx.nyanpasu_config_path();
             let config = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml::from_str(&config).context(ParseYamlSnafu)?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&config).context(ParseYamlSnafu)?;
             config.insert("language".into(), Value::from("zh-CN"));
-            let config = serde_yaml::to_string(&config)?;
-            crate::core::migration::fs::atomic_write(&config_path, config.as_bytes())?;
+            let config = serde_yaml_ng::to_string(&config)?;
+            crate::migration::fs::atomic_write(&config_path, config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -153,7 +153,8 @@ impl MigrationStep for MigrateThemeSetting {
             let config_path = ctx.nyanpasu_config_path();
             let raw_config = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml::from_str(&raw_config).context(ParseYamlSnafu)?;
+            let mut config: Mapping =
+                serde_yaml_ng::from_str(&raw_config).context(ParseYamlSnafu)?;
             if let Some(theme) = config.get("theme_setting")
                 && !theme.is_null()
                 && let Some(theme_obj) = theme.as_mapping()
@@ -163,8 +164,8 @@ impl MigrationStep for MigrateThemeSetting {
                 config.insert("theme_color".into(), color.clone());
             }
             config.remove("theme_setting");
-            let new_config = serde_yaml::to_string(&config)?;
-            crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -178,15 +179,16 @@ impl MigrationStep for MigrateThemeSetting {
             }
             let raw_config = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml::from_str(&raw_config).context(ParseYamlSnafu)?;
+            let mut config: Mapping =
+                serde_yaml_ng::from_str(&raw_config).context(ParseYamlSnafu)?;
             if let Some(color) = config.get("theme_color") {
                 let mut theme_obj = Mapping::new();
                 theme_obj.insert("primary_color".into(), color.clone());
                 config.insert("theme_setting".into(), Value::Mapping(theme_obj));
                 config.remove("theme_color");
             }
-            let new_config = serde_yaml::to_string(&config)?;
-            crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -226,14 +228,14 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
             let config_path = ctx.nyanpasu_config_path();
             let raw = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
             let flattened = config
                 .get(NETWORK_STATISTIC_WIDGET_KEY)
                 .and_then(flatten_value)
                 .context(FlattenWidgetSnafu)?;
             config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), flattened);
-            let new_config = serde_yaml::to_string(&config)?;
-            crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -247,7 +249,7 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
             }
             let raw = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
             let Some(value) = config.get(NETWORK_STATISTIC_WIDGET_KEY).cloned() else {
                 return Ok(());
             };
@@ -255,8 +257,8 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
                 return Ok(());
             };
             config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), expanded);
-            let new_config = serde_yaml::to_string(&config)?;
-            crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -296,14 +298,14 @@ impl MigrationStep for MigrateLanguageCase {
             let config_path = ctx.nyanpasu_config_path();
             let raw = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml::from_str(&raw).context(ParseYamlSnafu)?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
             let canonical = config
                 .get("language")
                 .and_then(canonical_language)
                 .context(CanonicalizeLanguageSnafu)?;
             config.insert("language".into(), Value::String(canonical.to_string()));
-            let new_config = serde_yaml::to_string(&config)?;
-            crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -316,7 +318,7 @@ fn check_config(
     needs: fn(&Mapping) -> bool,
 ) -> Result<Option<StepCheck>, MigrationCheckError> {
     let config: Option<Mapping> =
-        crate::core::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+        crate::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
     Ok(Some(StepCheck::from_needed(
         config.as_ref().is_some_and(needs),
     )))
@@ -407,7 +409,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     fn yaml(src: &str) -> Value {
-        serde_yaml::from_str(src).unwrap()
+        serde_yaml_ng::from_str(src).unwrap()
     }
 
     #[test]

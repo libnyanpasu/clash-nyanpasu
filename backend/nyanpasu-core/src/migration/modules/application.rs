@@ -2,14 +2,14 @@ use super::super::{
     Ctx, DocumentSpec, MigrationStep, ModuleKind, ModuleMigrator,
     fs::{read_document, write_document},
 };
-use nyanpasu_core::format::{StampedDocument, StampedYamlFormat};
+use crate::format::{StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use snafu::OptionExt as _;
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to inspect migration input"))]
     InspectInput {
         source: super::super::MigrationCheckError,
@@ -153,7 +153,7 @@ mod tests {
     use super::*;
 
     fn payload(src: &str) -> Mapping {
-        serde_yaml::from_str(src).unwrap()
+        serde_yaml_ng::from_str(src).unwrap()
     }
 
     #[test]

@@ -1,10 +1,10 @@
 use crate::{
     client::application_workflow::{
-        impact::{self, MutationHints, RequestedRuntimeFields},
+        impact,
+        impact::{MutationHints, RequestedRuntimeFields},
         mutation::ConfigDomain,
         policy::CommandClass,
     },
-    core::migration::modules::application::ApplicationFormat,
     state::{
         config_error::{
             ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
@@ -12,6 +12,7 @@ use crate::{
         mutation::MutationCoordinator,
     },
 };
+use nyanpasu_core::migration::modules::application::ApplicationFormat;
 use nyanpasu_core_manager::OperationId;
 
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};

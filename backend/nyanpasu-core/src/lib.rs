@@ -30,7 +30,13 @@ mod gxhash_smoke {
         );
     }
 }
+pub mod backup;
 pub mod client;
 pub mod download;
+pub mod migration;
 pub mod service;
+pub mod storage;
 pub mod utils;
+
+pub mod corrupt;
+pub mod session_state;

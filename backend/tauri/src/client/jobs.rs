@@ -36,7 +36,7 @@ pub(crate) async fn start(
             let journal = path.clone();
             nyanpasu_core::utils::blocking::join(
                 tokio::task::spawn_blocking(move || {
-                    crate::core::corrupt::preserve(&journal, &error)
+                    nyanpasu_core::corrupt::preserve(&journal, &error)
                 })
                 .await,
             )
@@ -84,7 +84,7 @@ async fn start_service(path: &Path, capture: LogCapture) -> Result<JobsService, 
 }
 
 fn open_store(path: &Path) -> Result<RedbJobStore, Error> {
-    use crate::core::corrupt;
+    use nyanpasu_core::corrupt;
     match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
         Ok(metadata) if !metadata.is_file() || corrupt::is_link(&metadata) => {
             return NotAFileSnafu { path }.fail();
@@ -155,7 +155,9 @@ pub(crate) enum Error {
     #[snafu(display("failed to start jobs owner"))]
     StartOwner { source: nyanpasu_jobs::Error },
     #[snafu(display("failed to preserve the unusable jobs journal"))]
-    PreserveStore { source: crate::core::corrupt::Error },
+    PreserveStore {
+        source: nyanpasu_core::corrupt::Error,
+    },
 }
 
 impl Error {

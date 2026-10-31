@@ -8,16 +8,16 @@ use nyanpasu_config::clash::config::{
         BreakConnectionStrategy, PortStrategy, PortStrategyKind, ProxyChangeBreakMode,
     },
 };
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use std::net::SocketAddr;
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to convert legacy YAML"))]
     ConvertYaml { source: super::ConversionError },
     #[snafu(context(false), display("failed to migrate clash overrides"))]
     MigrateOverrides {
-        source: crate::core::migration::modules::clash_config::Error,
+        source: crate::migration::modules::clash_config::Error,
     },
 }
 
@@ -26,7 +26,7 @@ pub(super) fn clash_config_from_legacy(
     legacy_clash: &Mapping,
 ) -> Result<ClashConfig, Error> {
     let mut legacy_clash = normalize_legacy_clash_overrides(legacy_clash);
-    crate::core::migration::modules::clash_config::manage_override_fields(&mut legacy_clash)?;
+    crate::migration::modules::clash_config::manage_override_fields(&mut legacy_clash)?;
     let mut next = ClashConfig {
         overrides: super::yaml_convert(&legacy_clash)?,
         ..ClashConfig::default()

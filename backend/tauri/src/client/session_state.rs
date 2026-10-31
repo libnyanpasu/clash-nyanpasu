@@ -24,7 +24,7 @@ use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 pub(crate) enum Error {
     #[snafu(display("failed to load session state"))]
     LoadState {
-        source: crate::core::session_state::Error,
+        source: nyanpasu_core::session_state::Error,
     },
     #[snafu(display("failed to initialize persistent state at {path}"))]
     InitializeState {
@@ -60,7 +60,7 @@ impl SessionStateClient {
         let path = config_path.clone();
         let state = nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || {
-                crate::core::session_state::read(path.as_std_path())
+                nyanpasu_core::session_state::read(path.as_std_path())
             })
             .await,
         )

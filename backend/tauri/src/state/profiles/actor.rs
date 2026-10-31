@@ -20,15 +20,16 @@ use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
 use crate::{
     client::application_workflow::{
+        impact,
         impact::{
-            self, ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
             StagedResourceToken, TouchedContent,
         },
         policy::CommandClass,
     },
-    core::migration::modules::profiles::ProfilesFormat,
     state::mutation::{CommitAborted, MutationCoordinator},
 };
+use nyanpasu_core::migration::modules::profiles::ProfilesFormat;
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;

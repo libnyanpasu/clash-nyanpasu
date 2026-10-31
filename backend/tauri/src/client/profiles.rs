@@ -23,16 +23,14 @@ use snafu::ResultExt as _;
 use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    core::migration::modules::profiles::ProfilesFormat,
-    state::profiles::{
-        CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
-        ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
-        ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
-        sources::SourcesSnapshot,
-    },
+use crate::state::profiles::{
+    CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
+    ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
+    ReorderOp,
+    ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+    sources::SourcesSnapshot,
 };
+use nyanpasu_core::migration::modules::profiles::ProfilesFormat;
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {
@@ -114,7 +112,7 @@ impl ProfilesClient {
     ) -> Result<Self, Error> {
         let jobs = crate::state::profiles::jobs::ProfileJobs::new(jobs);
         let should_load =
-            crate::core::corrupt::retry_async(|| tokio::fs::try_exists(&profiles_path))
+            nyanpasu_core::corrupt::retry_async(|| tokio::fs::try_exists(&profiles_path))
                 .await
                 .context(InspectStateSnafu {
                     path: &profiles_path,
@@ -850,7 +848,7 @@ mod tests {
             paths.create_base_dirs().unwrap();
             let legacy = "current: [missing]\nchain: []\nitems:\n  - {uid: cfg, type: local, name: CFG, file: cfg.yaml}\n";
             if let Some(revision) = revision {
-                crate::core::migration::fs::write_document(
+                nyanpasu_core::migration::fs::write_document(
                     paths.profiles_path().as_std_path(),
                     "profiles",
                     revision,

@@ -14,7 +14,7 @@ use snafu::{ResultExt as _, Snafu};
 use super::corrupt;
 
 #[derive(Debug, Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to read session state at {}", path.display()))]
     ReadState { path: PathBuf, source: io::Error },
     #[snafu(display("session state is not a regular file: {}", path.display()))]
@@ -22,12 +22,12 @@ pub(crate) enum Error {
     #[snafu(display("failed to preserve invalid session state"))]
     PreserveState { source: corrupt::Error },
     #[snafu(display("failed to serialize default session state"))]
-    SerializeDefault { source: serde_yaml::Error },
+    SerializeDefault { source: serde_yaml_ng::Error },
     #[snafu(display("failed to write default session state"))]
     WriteDefault { source: super::migration::fs::Error },
 }
 
-pub(crate) fn read(path: &Path) -> Result<Option<PersistentState>, Error> {
+pub fn read(path: &Path) -> Result<Option<PersistentState>, Error> {
     read_with(path, || std::fs::read(path), std::thread::sleep)
 }
 
@@ -59,7 +59,7 @@ fn read_with(
             });
         }
     };
-    match serde_yaml::from_slice(&bytes) {
+    match serde_yaml_ng::from_slice(&bytes) {
         Ok(state) => Ok(Some(state)),
         Err(error) => reset(path, &error).map(Some),
     }
@@ -68,7 +68,7 @@ fn read_with(
 fn reset(path: &Path, error: &(dyn std::error::Error + 'static)) -> Result<PersistentState, Error> {
     corrupt::preserve(path, error).context(PreserveStateSnafu)?;
     let state = PersistentState::default();
-    let bytes = serde_yaml::to_string(&state).context(SerializeDefaultSnafu)?;
+    let bytes = serde_yaml_ng::to_string(&state).context(SerializeDefaultSnafu)?;
     super::migration::fs::atomic_write(path, bytes.as_bytes()).context(WriteDefaultSnafu)?;
     Ok(state)
 }

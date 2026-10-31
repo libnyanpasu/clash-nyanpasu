@@ -22,7 +22,7 @@ use crate::{
         SessionPortResolver,
         core_lifecycle::ports::RuntimePreparationPort,
         runtime,
-        tests::{TestCheckAnswer, TestControlEndpoint},
+        test_support::{TestCheckAnswer, TestControlEndpoint},
     },
     core::actor_v2::{CoreClient, endpoint::ExecutionHost, facade::CoreFacade},
 };
@@ -39,7 +39,7 @@ struct Graph {
 
 async fn graph(dir: &tempfile::TempDir) -> Graph {
     use crate::{
-        client::tests::{test_materialization_port, test_typed_config_clients},
+        client::test_support::{test_materialization_port, test_typed_config_clients},
         state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
     };
     let (application, _, clash) = test_typed_config_clients(dir).await;
@@ -54,7 +54,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
     )
     .await
     .unwrap();
-    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
         dir.path(),
         dir.path().join("data"),
     ));
@@ -107,7 +107,7 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
     assert_eq!(outcome, RuntimeCheckOutcome::Passed);
 
     let service = crate::core::actor_v2::service_actor::ServiceClient::spawn(
-        Arc::new(crate::client::tests::IdleServiceAdapter),
+        Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
         0,
     )
     .await

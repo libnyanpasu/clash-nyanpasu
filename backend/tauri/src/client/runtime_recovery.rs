@@ -269,7 +269,7 @@ mod tests {
                 generation: 3,
             },
             ports: crate::client::ports::SessionPortResolver::default()
-                .resolve_candidate(&crate::client::tests::test_clash_config())
+                .resolve_candidate(&crate::client::test_support::test_clash_config())
                 .expect("default port strategies resolve"),
             target: None,
         }

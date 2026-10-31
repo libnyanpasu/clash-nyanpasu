@@ -580,7 +580,7 @@ mod tests {
             plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
             status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
         },
-        enhance::golden_support,
+        enhance::test_support,
     };
 
     /// `NyanpasuAppConfig::default()` reads the system locale and the platform
@@ -1358,10 +1358,10 @@ mod tests {
     /// is a document-level transform; `spare` is reachable from neither.
     fn profiles() -> Profiles {
         let mut profiles = Profiles::default();
-        profiles.append_item(golden_support::file_config("sel", "sel.yaml", &["scoped"]));
-        profiles.append_item(golden_support::overlay("scoped", "scoped.yaml"));
-        profiles.append_item(golden_support::overlay("global", "global.yaml"));
-        profiles.append_item(golden_support::file_config("spare", "spare.yaml", &[]));
+        profiles.append_item(test_support::file_config("sel", "sel.yaml", &["scoped"]));
+        profiles.append_item(test_support::overlay("scoped", "scoped.yaml"));
+        profiles.append_item(test_support::overlay("global", "global.yaml"));
+        profiles.append_item(test_support::file_config("spare", "spare.yaml", &[]));
         profiles.current = Some(ProfileId("sel".into()));
         profiles.global_transforms = vec![ProfileId("global".into())];
         profiles
@@ -1387,7 +1387,7 @@ mod tests {
             transform: TransformDefinition::Overlay(nyanpasu_config::profile::OverlayTransform {
                 source: ProfileSource::Local {
                     binding: nyanpasu_config::profile::LocalBinding::Managed {
-                        materialized: golden_support::managed(file),
+                        materialized: test_support::managed(file),
                     },
                 },
             }),
@@ -1418,7 +1418,7 @@ mod tests {
             config: ConfigDefinition::File(nyanpasu_config::profile::FileConfig {
                 source: ProfileSource::Local {
                     binding: nyanpasu_config::profile::LocalBinding::Managed {
-                        materialized: golden_support::managed("spare-v2.yaml"),
+                        materialized: test_support::managed("spare-v2.yaml"),
                     },
                 },
                 transforms: Vec::new(),
@@ -1476,7 +1476,7 @@ mod tests {
     #[test]
     fn reordering_the_global_transforms_affects_the_runtime() {
         let mut previous = profiles();
-        previous.append_item(golden_support::overlay("global2", "global2.yaml"));
+        previous.append_item(test_support::overlay("global2", "global2.yaml"));
         previous.global_transforms = vec![ProfileId("global".into()), ProfileId("global2".into())];
         let mut candidate = previous.clone();
         candidate.global_transforms.reverse();

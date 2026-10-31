@@ -186,9 +186,10 @@ mod tests {
     use std::sync::Arc;
     use tempfile::tempdir;
 
-    use super::super::{
-        NyanpasuClient,
-        tests::{test_client_args_with_endpoint, test_idle_endpoint},
+    use super::super::NyanpasuClient;
+    use crate::{
+        client::test_support::test_client_args_with_endpoint,
+        core::actor_v2::test_support::test_idle_endpoint,
     };
 
     fn everything() -> TrafficQuery {

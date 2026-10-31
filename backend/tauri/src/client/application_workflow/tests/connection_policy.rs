@@ -18,7 +18,7 @@ use crate::{
     adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         NyanpasuClient,
-        tests::{TestControlEndpoint, test_client_args_with_endpoint},
+        test_support::{TestControlEndpoint, test_client_args_with_endpoint},
     },
     core::actor_v2::endpoint::{
         ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
@@ -134,7 +134,7 @@ impl Fixture {
                     }),
                 )
                 .with_state(calls.clone());
-            crate::core::actor_v2::api::tests::server(router).await
+            crate::core::actor_v2::test_support::server(router).await
         })
         .await;
         let endpoint = Arc::new(Endpoint {
@@ -411,7 +411,7 @@ async fn controller_rotation_invalidates_source_without_closing_through_new_cred
 async fn add_profile(f: &Fixture) -> nyanpasu_config::profile::ProfileId {
     f.client
         .add_profile(
-            crate::client::tests::minimal_file_profile_request(),
+            crate::client::test_support::minimal_file_profile_request(),
             Some("proxies: []\n".into()),
         )
         .await
@@ -487,7 +487,7 @@ async fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_s
             let first = f
                 .client
                 .create_profile(
-                    crate::client::tests::minimal_file_profile_request(),
+                    crate::client::test_support::minimal_file_profile_request(),
                     Some("proxies: []\n".into()),
                 )
                 .await
@@ -504,7 +504,7 @@ async fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_s
             f.calls.events.lock().unwrap().clear();
             f.client
                 .create_profile(
-                    crate::client::tests::minimal_file_profile_request(),
+                    crate::client::test_support::minimal_file_profile_request(),
                     Some("proxies: []\n".into()),
                 )
                 .await
@@ -690,7 +690,7 @@ async fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
         f.client.activate_profile(Some(uid)).await.unwrap();
         f.client
             .create_profile(
-                crate::client::tests::minimal_file_profile_request(),
+                crate::client::test_support::minimal_file_profile_request(),
                 Some("proxies: []\n".into()),
             )
             .await
@@ -958,7 +958,7 @@ impl RecordingBuilder {
             delegate: FsRuntimeBuildAdapter {
                 core_specs: Arc::new(crate::client::runtime_core_spec),
                 profiles_dir: f.client.inner.profiles_dir.clone(),
-                paths: crate::client::tests::test_runtime_paths(&f._dir),
+                paths: crate::client::test_support::test_runtime_paths(&f._dir),
                 scripts: nyanpasu_platform::enhance::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),

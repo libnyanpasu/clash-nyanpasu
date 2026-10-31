@@ -976,7 +976,7 @@ impl StreamsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
+    use crate::core::actor_v2::test_support::{endpoint, server};
     use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
 
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {

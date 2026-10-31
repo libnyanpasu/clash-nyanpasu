@@ -10,10 +10,13 @@ use nyanpasu_paths::PathResolver;
 use redb::ReadableDatabase as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{new_typed_config_clients, tests::test_paths};
-use crate::core::{
-    migration::Runner,
-    storage::{Storage, WebStorage},
+use super::new_typed_config_clients;
+use crate::{
+    core::{
+        migration::Runner,
+        storage::{Storage, WebStorage},
+    },
+    utils::test_support::test_paths,
 };
 
 pub(super) fn evidence(path: &Path) -> Vec<PathBuf> {

@@ -1326,7 +1326,7 @@ mod tests {
         {
             self.calls.lock().unwrap().push("probe");
             if self.probe_fail.load(Ordering::SeqCst) {
-                return Err(crate::core::service::control::ServiceCommandError::mock(
+                return Err(crate::core::service::test_support::service_command_error(
                     "probe unreachable",
                 ));
             }
@@ -1391,7 +1391,7 @@ mod tests {
 
             self.installs.fetch_add(1, Ordering::SeqCst);
             if self.fail_install.load(Ordering::SeqCst) {
-                return Err(crate::core::service::control::ServiceCommandError::mock(
+                return Err(crate::core::service::test_support::service_command_error(
                     "install refused",
                 ));
             }
@@ -1416,7 +1416,7 @@ mod tests {
                 return std::future::pending().await;
             }
             if self.fail_start.load(Ordering::SeqCst) {
-                return Err(crate::core::service::control::ServiceCommandError::mock(
+                return Err(crate::core::service::test_support::service_command_error(
                     "start refused",
                 ));
             }
@@ -1430,7 +1430,7 @@ mod tests {
             // Like `nyanpasu-service stop`, which exits with an error for a
             // service that is already stopped.
             if !self.state.lock().unwrap().1 {
-                return Err(crate::core::service::control::ServiceCommandError::mock(
+                return Err(crate::core::service::test_support::service_command_error(
                     "service already stopped",
                 ));
             }
@@ -1691,7 +1691,7 @@ mod tests {
             async fn update(
                 &self,
             ) -> Result<(), crate::core::service::control::ServiceCommandError> {
-                Err(crate::core::service::control::ServiceCommandError::mock(
+                Err(crate::core::service::test_support::service_command_error(
                     "service upgrade failed",
                 ))
             }

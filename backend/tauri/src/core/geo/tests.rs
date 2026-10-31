@@ -31,7 +31,7 @@ fn source() -> MockCountryIndexSource {
 }
 
 async fn spawn(source: MockCountryIndexSource) -> GeoIndexClient {
-    let (core, _service) = crate::client::tests::test_v2_clients().await;
+    let (core, _service) = crate::core::actor_v2::test_support::test_v2_clients().await;
     GeoIndexClient::spawn(
         GeoIndexArgs {
             source: Arc::new(source),

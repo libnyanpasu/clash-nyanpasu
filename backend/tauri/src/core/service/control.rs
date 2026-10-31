@@ -102,17 +102,6 @@ pub enum ServiceCommandError {
     TaskCancelled,
 }
 
-#[cfg(test)]
-impl ServiceCommandError {
-    /// A stand-in for whatever a mocked service host fails with.
-    pub(crate) fn mock(reason: &'static str) -> Self {
-        Self::RunElevated {
-            command: ServiceCommand::Start,
-            source: std::io::Error::other(reason),
-        }
-    }
-}
-
 fn signal(status: &ExitStatus) -> Option<i32> {
     #[cfg(unix)]
     {
@@ -329,7 +318,7 @@ mod tests {
 
     #[test]
     fn the_io_error_stays_out_of_the_wire_form_but_in_the_message() {
-        let error = ServiceCommandError::mock("the user cancelled");
+        let error = crate::core::service::test_support::service_command_error("the user cancelled");
 
         assert_eq!(
             serde_json::to_value(&error).unwrap(),

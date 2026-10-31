@@ -1081,7 +1081,7 @@ pub(crate) mod tests {
             },
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
-                .resolve_candidate(&crate::client::tests::test_clash_config())
+                .resolve_candidate(&crate::client::test_support::test_clash_config())
                 .expect("default port strategies resolve"),
             target: None,
         }
@@ -1108,8 +1108,10 @@ pub(crate) mod tests {
     #[test]
     fn runtime_paths_are_derived_from_injected_config_root() {
         let dir = tempfile::tempdir().unwrap();
-        let resolver =
-            crate::client::tests::test_paths(dir.path().join("config"), dir.path().join("data"));
+        let resolver = crate::utils::test_support::test_paths(
+            dir.path().join("config"),
+            dir.path().join("data"),
+        );
         let paths = RuntimePaths::from_resolver(&resolver);
         assert_eq!(
             paths.product(),

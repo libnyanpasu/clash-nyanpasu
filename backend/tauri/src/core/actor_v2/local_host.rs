@@ -124,8 +124,10 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_spawns_under_a_temp_root() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
 
         let control = build(&paths, &root.path().join("helper.exe"))
             .await
@@ -138,7 +140,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths = crate::client::tests::test_paths(root.path(), root.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(root.path(), root.path().join("data"));
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 

@@ -2186,8 +2186,10 @@ mod tests {
         self_proxy_port: Arc<dyn SelfProxyPortSource>,
     ) -> (tempfile::TempDir, ProfileFileService) {
         let temp = tempfile::tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(temp.path().join("config"), temp.path().join("data"));
+        let paths = crate::utils::test_support::test_paths(
+            temp.path().join("config"),
+            temp.path().join("data"),
+        );
         (
             temp,
             ProfileFileService::new(

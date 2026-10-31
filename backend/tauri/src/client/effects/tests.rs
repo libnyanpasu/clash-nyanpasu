@@ -10,7 +10,7 @@ use super::{
 };
 use crate::client::{
     NyanpasuClient,
-    tests::{TestControlEndpoint, test_client_args_with_endpoint},
+    test_support::{TestControlEndpoint, test_client_args_with_endpoint},
 };
 use nyanpasu_config::{
     application::{I18nLanguage, NyanpasuAppConfig, ReleaseChannel},
@@ -509,7 +509,7 @@ async fn rejected_source_never_dispatches() {
 /// profiles commit asks the tray for a partial refresh.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
-    use crate::client::tests::minimal_file_profile_request;
+    use crate::client::test_support::minimal_file_profile_request;
     use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, Mode};
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
@@ -873,7 +873,7 @@ async fn core_log_level_reaches_only_the_streams_owner() {
     use nyanpasu_config::clash::config::overrides::LogLevel;
     let port = Arc::new(Port::default());
     let core = crate::core::actor_v2::CoreClient::spawn(
-        crate::core::actor_v2::api::tests::endpoint("http://127.0.0.1:9".into()),
+        crate::core::actor_v2::test_support::endpoint("http://127.0.0.1:9".into()),
     )
     .await
     .unwrap();

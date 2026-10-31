@@ -139,7 +139,7 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
     let _entered = runtime.enter();
     let dir = tempfile::tempdir().unwrap();
     let paths =
-        crate::client::tests::test_paths(dir.path().join("config"), dir.path().join("data"));
+        crate::utils::test_support::test_paths(dir.path().join("config"), dir.path().join("data"));
     paths.create_base_dirs().unwrap();
     // A real redb open failure: another handle holds the jobs database.
     let _held = redb::Database::create(paths.jobs_path()).unwrap();

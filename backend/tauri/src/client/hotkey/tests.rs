@@ -633,10 +633,10 @@ mod facade {
     use super::super::ports::{HotkeyAction, HotkeyParseError, MockWindowControl};
     use crate::{
         client::{
-            ClientError, NyanpasuClient,
-            effects::ports::MockApplicationEffectsPort,
-            tests::{test_client_args_with_endpoint, test_idle_endpoint},
+            ClientError, NyanpasuClient, effects::ports::MockApplicationEffectsPort,
+            test_support::test_client_args_with_endpoint,
         },
+        core::actor_v2::test_support::test_idle_endpoint,
         state::config_error::ConfigError,
     };
 

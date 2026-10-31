@@ -9,7 +9,8 @@ use nyanpasu_core::enhance::{
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 use snafu::ResultExt;
 
-use crate::{
+use nyanpasu_core::{
+    actor_v2::local_host::CoreSpecError,
     client::{
         application_workflow::{inputs, ports::RuntimeBuildPort},
         runtime,
@@ -17,7 +18,6 @@ use crate::{
     },
     enhance::runtime_snapshot_data_from_artifact,
 };
-use nyanpasu_core::actor_v2::local_host::CoreSpecError;
 
 pub(crate) type CoreSpecResolver = dyn Fn(
         &nyanpasu_config::application::ClashCore,
@@ -41,7 +41,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         use nyanpasu_config::runtime::executor::ProfileContentSource;
         let mut content = inputs::FrozenProfileContent::default();
         let source = FsProfileContentSource::new(self.profiles_dir.clone());
-        for uid in crate::state::profiles::ProfilesActor::current_closure(profiles) {
+        for uid in nyanpasu_core::state::profiles::ProfilesActor::current_closure(profiles) {
             if let Some(source_path) = profiles
                 .items
                 .get(&uid)

@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::Event;
 
-use crate::client::{StateChanged, app_update::AppUpdateSnapshot};
 use nyanpasu_core::{
     actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
     clash::ws::{ClashWsPacket, ClashWsUpdate},
+    client::{StateChanged, app_update::AppUpdateSnapshot},
     logs::CoreLogStatus,
     storage::StorageRevision,
 };

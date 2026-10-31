@@ -15,8 +15,10 @@ use nyanpasu_config::{
     runtime::executor::{ResolvedPortBindings, known_fields},
 };
 
-use crate::enhance::test_support::{composition, file_config, overlay};
-use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
+use nyanpasu_core::enhance::{
+    RuntimeBuildInput, RuntimeBuilder,
+    test_support::{composition, file_config, overlay},
+};
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
 const SUB_A: &str =

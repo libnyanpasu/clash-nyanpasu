@@ -1,11 +1,13 @@
 //! Real profile file capabilities for host integration tests.
-use crate::{
+use crate::service::profile_file::fs_service::ProfileFileService;
+use nyanpasu_core::{
     client::{
         ClientSetupArgs, NyanpasuClient,
         host_adapters::{ClientHostAdapters, ProfileFileFactory, ProfileFilePorts},
-        test_support::{self, runtime_build::TestRuntimeBuildPort},
+        test_support,
+        test_support::runtime_build::TestRuntimeBuildPort,
     },
-    service::profile_file::{fs_service::ProfileFileService, ports::SelfProxyPortSource},
+    service::profile_file::ports::SelfProxyPortSource,
     state::profiles::ports::SubscriptionFetcher,
 };
 use nyanpasu_paths::PathResolver;
@@ -36,7 +38,7 @@ pub(crate) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
         test_profile_file_factory(paths),
         Arc::new(TestRuntimeBuildPort::from_directory(
             paths.app_profiles_dir().into_std_path_buf(),
-            crate::client::RuntimePaths::from_resolver(paths),
+            nyanpasu_core::client::RuntimePaths::from_resolver(paths),
         )),
     )
 }

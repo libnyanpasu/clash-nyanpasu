@@ -1,9 +1,10 @@
-use crate::{client::effects::ports::LogRotation, utils::profiling::Profilers};
+use crate::utils::profiling::Profilers;
 use flexi_logger::{
     Age, Cleanup, Criterion, FileSpec, Naming,
     writers::{ArcFileLogWriter, FileLogWriter, FileLogWriterHandle},
 };
 use nyanpasu_config::application::LoggingLevel;
+use nyanpasu_core::client::effects::ports::LogRotation;
 use nyanpasu_paths::PathResolver;
 use snafu::ResultExt as _;
 use std::{
@@ -174,7 +175,7 @@ pub fn init(
     profilers: &mut Profilers,
     paths: &PathResolver,
 ) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture), Error> {
-    let jobs = crate::client::jobs::capture();
+    let jobs = nyanpasu_core::client::jobs::capture();
     let log_dir = paths.app_logs_dir();
     fs::create_dir_all(&log_dir).context(CreateDirectorySnafu {
         path: log_dir.as_std_path(),

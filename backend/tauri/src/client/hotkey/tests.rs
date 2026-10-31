@@ -8,13 +8,15 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     HotkeyArgs, HotkeyClient,
-    adapters::PlatformAcceleratorValidator,
     ports::{
         AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp,
         HotkeyParseError, MockHotkeyActionSink, ShortcutError, ShortcutRegistrar,
     },
 };
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
+use crate::{
+    adapters::hotkey::PlatformAcceleratorValidator,
+    client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision},
+};
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()

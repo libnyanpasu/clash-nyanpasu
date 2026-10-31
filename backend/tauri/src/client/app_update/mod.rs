@@ -124,7 +124,6 @@ pub trait AppUpdateEventSink: Send + Sync + 'static {
     fn publish(&self, snapshot: AppUpdateSnapshot);
 }
 
-pub(crate) mod adapters;
 pub mod changelog;
 pub(crate) mod endpoints;
 mod progress;

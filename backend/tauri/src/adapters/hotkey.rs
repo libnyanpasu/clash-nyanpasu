@@ -7,13 +7,15 @@ use snafu::{ResultExt as _, ensure};
 use tauri::Manager as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use super::ports::{
-    AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError, MissingSuperKeySnafu,
-    RegisterShortcutSnafu, ReleaseAllShortcutsSnafu, ReleaseShortcutSnafu, RunShortcutWorkSnafu,
-    ShortcutError, ShortcutRegistrar, UnsupportedAcceleratorSnafu, WindowControl, WindowError,
-    has_super_key,
+use crate::client::{
+    MainThreadExecutor,
+    hotkey::ports::{
+        AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError,
+        MissingSuperKeySnafu, RegisterShortcutSnafu, ReleaseAllShortcutsSnafu,
+        ReleaseShortcutSnafu, RunShortcutWorkSnafu, ShortcutError, ShortcutRegistrar,
+        UnsupportedAcceleratorSnafu, WindowControl, WindowError, has_super_key,
+    },
 };
-use crate::client::MainThreadExecutor;
 
 /// The accelerator rules the platform actually enforces: the shortcut plugin's
 /// own parser, plus the super-key requirement on top.

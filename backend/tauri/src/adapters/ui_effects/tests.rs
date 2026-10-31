@@ -15,33 +15,35 @@ use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{adapters::TauriWidgetController, ports::MockWidgetRuntime};
-use crate::client::{
-    effects::{
-        executor::ApplicationEffectExecutor,
-        plan::{
-            ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-            TrayRefresh,
+use crate::{
+    adapters::hotkey::PlatformAcceleratorValidator,
+    client::{
+        effects::{
+            executor::ApplicationEffectExecutor,
+            plan::{
+                ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
+                TrayRefresh,
+            },
+            ports::{
+                ApplicationEffectsPort, LocaleSink, LogRotation, LoggerError, LoggerRefresher,
+                MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
+                TrayError, TrayRefresher, WidgetController, WidgetError,
+            },
+            status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
         },
-        ports::{
-            ApplicationEffectsPort, LocaleSink, LogRotation, LoggerError, LoggerRefresher,
-            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
-            TrayError, TrayRefresher, WidgetController, WidgetError,
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            ports::{
+                HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
+                MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
+            },
         },
-        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
-    },
-    hotkey::{
-        HotkeyArgs, HotkeyClient,
-        adapters::PlatformAcceleratorValidator,
-        ports::{
-            HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-            MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
-        },
-    },
-    system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        ports::{
-            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
-            OsProxyPort, PacError, PacPort,
+        system_proxy::{
+            SystemProxyArgs, SystemProxyClient,
+            ports::{
+                MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
+                OsProxyPort, PacError, PacPort,
+            },
         },
     },
 };

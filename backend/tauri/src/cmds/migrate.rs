@@ -44,6 +44,8 @@ fn is_fresh_install_instance(paths: &PathResolver) -> bool {
 pub(crate) enum Error {
     #[snafu(display("specify only one migration or version"))]
     SelectTarget,
+    #[snafu(display("failed to resolve host build metadata"))]
+    ResolveBundleMetadata { source: crate::bundle::Error },
     #[snafu(display("invalid migration target version"))]
     ParseVersion { source: semver::Error },
     #[snafu(display("failed to resolve current migration version"))]
@@ -88,14 +90,16 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             !(args.migration.is_some() && args.version.is_some()),
             SelectTargetSnafu
         );
+        let bundle_metadata =
+            crate::bundle::compiled_metadata().context(ResolveBundleMetadataSnafu)?;
         let fresh_install = is_fresh_install_instance(paths);
         let target = match args.version.as_deref() {
             Some(version) => semver::Version::parse(version).context(ParseVersionSnafu)?,
-            None => current_version().context(ResolveVersionSnafu)?,
+            None => current_version(&bundle_metadata).context(ResolveVersionSnafu)?,
         };
         paths.create_base_dirs().context(CreateDirectoriesSnafu)?;
-        let runner =
-            Runner::with_target(target, paths.clone(), args.force).context(ConstructRunnerSnafu)?;
+        let runner = Runner::with_target(target, paths.clone(), bundle_metadata, args.force)
+            .context(ConstructRunnerSnafu)?;
         Ok((fresh_install, runner))
     })();
     let (fresh_install, mut runner) = construction.map_err(|error| {

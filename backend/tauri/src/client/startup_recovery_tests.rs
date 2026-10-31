@@ -38,10 +38,14 @@ fn fixture() -> (tempfile::TempDir, PathResolver) {
 }
 
 pub(super) fn migrate(paths: &PathResolver) {
-    Runner::with_paths(paths.clone(), false)
-        .unwrap()
-        .run_pending()
-        .unwrap();
+    Runner::with_paths(
+        paths.clone(),
+        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        false,
+    )
+    .unwrap()
+    .run_pending()
+    .unwrap();
 }
 
 #[tokio::test]
@@ -110,7 +114,12 @@ fn session_evidence_is_preserved_before_partial_config_rejection() {
     let (_temp, paths) = fixture();
     let path = paths.session_state_path();
     fs::write(&path, b"window_state: [invalid").unwrap();
-    let error = Runner::with_paths(paths.clone(), false).unwrap_err();
+    let error = Runner::with_paths(
+        paths.clone(),
+        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        false,
+    )
+    .unwrap_err();
     assert!(matches!(
         error,
         crate::core::migration::runner::Error::DetectBaseline { .. }
@@ -382,8 +391,12 @@ async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
             return;
         }
     }
-    let migration =
-        Runner::with_paths(paths.clone(), false).and_then(|mut runner| runner.run_pending());
+    let migration = Runner::with_paths(
+        paths.clone(),
+        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        false,
+    )
+    .and_then(|mut runner| runner.run_pending());
     let shutdown = CancellationToken::new();
     let tasks = TaskTracker::new();
     let client =

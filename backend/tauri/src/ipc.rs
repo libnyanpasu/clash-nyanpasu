@@ -811,7 +811,7 @@ pub async fn url_delay_test(
     url: String,
     expected_status: u16,
 ) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(&url, expected_status, client.clash_info().port).await)
+    Ok(client.url_delay_test(&url, expected_status).await)
 }
 
 #[nyanpasu_macro::rpc]
@@ -822,7 +822,7 @@ pub async fn url_delay_test(
 pub async fn get_ipsb_asn(
     client: State<'_, NyanpasuClient>,
 ) -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
+    let value = client.get_ipsb_asn().await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
@@ -1379,8 +1379,7 @@ pub async fn get_cached_icon(
     paths: State<'_, PathResolver>,
     url: String,
 ) -> Result<IconData> {
-    let (mime, bytes) =
-        crate::service::icon::get_cached_icon(&url, client.clash_info().port, paths).await?;
+    let (mime, bytes) = client.get_cached_icon(&url, paths).await?;
     Ok(IconData {
         data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
     })

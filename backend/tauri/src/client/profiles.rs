@@ -779,6 +779,7 @@ mod tests {
         let service = Arc::new(ProfileFileService::new(
             paths.clone(),
             Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -1008,7 +1009,11 @@ mod tests {
             let preserved = crate::client::startup_recovery_tests::evidence(blocked.as_std_path());
             assert_eq!(preserved.len(), 1);
             assert_eq!(std::fs::read(&preserved[0]).unwrap(), b"preserve this node");
-            let service = ProfileFileService::new(paths.clone(), Arc::new(NoProxyPort));
+            let service = ProfileFileService::new(
+                paths.clone(),
+                Arc::new(NoProxyPort),
+                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            );
             let path = ManagedProfilePath::new("usable.yaml").unwrap();
             let prepared = service
                 .prepare_state_first(
@@ -1080,6 +1085,7 @@ mod tests {
         let service = Arc::new(ProfileFileService::new(
             paths.clone(),
             Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let shutdown = CancellationToken::new();
         let tasks = TaskTracker::new();
@@ -1357,7 +1363,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
@@ -2103,6 +2113,7 @@ mod tests {
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2154,6 +2165,7 @@ mod tests {
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2190,6 +2202,7 @@ mod tests {
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2227,6 +2240,7 @@ mod tests {
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -2386,7 +2400,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
@@ -3180,7 +3198,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
@@ -3218,7 +3240,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
         let client = ProfilesClient::new(
@@ -3259,7 +3285,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
         let client = ProfilesClient::new(
@@ -3355,7 +3385,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
@@ -4243,7 +4277,11 @@ mod tests {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
-        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let fs = Arc::new(ProfileFileService::new(
+            paths,
+            Arc::new(NoProxyPort),
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
@@ -5834,6 +5872,7 @@ mod tests {
             let fs = Arc::new(ProfileFileService::new(
                 crate::client::tests::test_paths(config_dir.path(), data_dir.path()),
                 Arc::new(NoProxyPort),
+                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
             ));
             let client = ProfilesClient::new(
                 crate::state::mutation::MutationCoordinator::isolated(),

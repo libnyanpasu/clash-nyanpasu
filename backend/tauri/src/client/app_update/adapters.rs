@@ -14,7 +14,7 @@ use super::{
     AppUpdateSettings, AppUpdateSnapshot, AppUpdateStateChanged, PreparedAppUpdate,
     VerifiedAppUpdate,
 };
-use crate::service::profile_file::SelfProxyPortSource;
+use crate::{client::bundle_metadata::BundleMetadata, service::profile_file::SelfProxyPortSource};
 use nyanpasu_config::application::UpdateSource;
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);
@@ -22,11 +22,20 @@ struct DownloadCandidates(Vec<(UpdateSource, Update)>);
 pub(crate) struct TauriAppUpdateBackend {
     app: tauri::AppHandle,
     proxy_port: Arc<dyn SelfProxyPortSource>,
+    bundle_metadata: BundleMetadata,
 }
 
 impl TauriAppUpdateBackend {
-    pub fn new(app: tauri::AppHandle, proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
-        Self { app, proxy_port }
+    pub fn new(
+        app: tauri::AppHandle,
+        proxy_port: Arc<dyn SelfProxyPortSource>,
+        bundle_metadata: BundleMetadata,
+    ) -> Self {
+        Self {
+            app,
+            proxy_port,
+            bundle_metadata,
+        }
     }
 }
 
@@ -39,9 +48,9 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
     ) -> Result<Option<PreparedAppUpdate>> {
         let check = async {
             let channel = settings.channel;
-            let local = semver::Version::parse(crate::consts::BUILD_INFO.pkg_version)?;
+            let local = semver::Version::parse(self.bundle_metadata.app_version)?;
             let build_time = time::OffsetDateTime::parse(
-                crate::consts::BUILD_INFO.build_date,
+                self.bundle_metadata.build_date,
                 &time::format_description::well_known::Rfc3339,
             )?;
             let mut builder = self
@@ -218,11 +227,15 @@ where
 
 pub(crate) struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,
+    bundle_metadata: BundleMetadata,
 }
 
 impl ReqwestChangelogHttp {
-    pub fn new(proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
-        Self { proxy_port }
+    pub fn new(proxy_port: Arc<dyn SelfProxyPortSource>, bundle_metadata: BundleMetadata) -> Self {
+        Self {
+            proxy_port,
+            bundle_metadata,
+        }
     }
 }
 
@@ -230,7 +243,10 @@ impl ReqwestChangelogHttp {
 impl super::changelog::ChangelogHttp for ReqwestChangelogHttp {
     async fn get_text(&self, url: &url::Url) -> Result<String> {
         let mut builder = reqwest::Client::builder()
-            .user_agent(concat!("clash-nyanpasu/", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!(
+                "clash-nyanpasu/{}",
+                self.bundle_metadata.package_version
+            ))
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30));
         if let Some(port) = self.proxy_port.mixed_port() {

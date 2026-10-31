@@ -220,8 +220,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
-    let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
-        .context(PrepareMigrationsSnafu)?;
+    let mut migrations =
+        crate::core::migration::Runner::with_paths(paths.clone(), bundle_metadata, false)
+            .context(PrepareMigrationsSnafu)?;
     migrations.run_pending().context(RunMigrationsSnafu)?;
     crate::log_err!(crate::utils::init::init_resources(
         paths.app_data_dir().as_std_path(),
@@ -352,6 +353,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     crate::client::app_update::adapters::TauriAppUpdateBackend::new(
                         app_handle.clone(),
                         proxy_port,
+                        bundle_metadata,
                     ),
                 )
             }

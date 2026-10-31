@@ -2,6 +2,8 @@ use nyanpasu_paths::PathResolver;
 use semver::Version;
 use std::path::PathBuf;
 
+use crate::client::bundle_metadata::BundleMetadata;
+
 pub(crate) mod child_result;
 pub(crate) mod fs;
 mod legacy_schema;
@@ -80,17 +82,22 @@ impl std::fmt::Display for MigrationAdvice {
 #[derive(Debug, Clone)]
 pub struct Ctx {
     paths: PathResolver,
+    bundle_metadata: BundleMetadata,
 }
 
 impl Ctx {
-    pub fn from_paths(paths: PathResolver) -> Self {
-        Self { paths }
+    pub fn from_paths(paths: PathResolver, bundle_metadata: BundleMetadata) -> Self {
+        Self {
+            paths,
+            bundle_metadata,
+        }
     }
 
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
             paths: crate::client::tests::test_paths(app_config_dir, app_data_dir),
+            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         }
     }
 
@@ -267,7 +274,7 @@ pub(crate) enum VersionError {
     ParseBuildVersion { source: semver::Error },
 }
 
-pub fn current_version() -> Result<Version, VersionError> {
+pub fn current_version(metadata: &BundleMetadata) -> Result<Version, VersionError> {
     use snafu::ResultExt as _;
-    Version::parse(crate::consts::BUILD_INFO.pkg_version).context(ParseBuildVersionSnafu)
+    Version::parse(metadata.app_version).context(ParseBuildVersionSnafu)
 }

@@ -1776,8 +1776,8 @@ pub async fn get_clash_ws_snapshot(
 #[specta::specta]
 pub async fn query_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-    query: crate::core::logs::CoreLogQuery,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogPage> {
+    query: nyanpasu_core::logs::CoreLogQuery,
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
     client.query_core_logs(query).await
 }
 
@@ -1786,8 +1786,8 @@ pub async fn query_core_logs(
 #[specta::specta]
 pub async fn get_core_log(
     client: tauri::State<'_, NyanpasuClient>,
-    cursor: crate::core::logs::CoreLogCursor,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogRecord> {
+    cursor: nyanpasu_core::logs::CoreLogCursor,
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
     client.get_core_log(cursor).await
 }
 
@@ -1796,7 +1796,7 @@ pub async fn get_core_log(
 #[specta::specta]
 pub async fn get_core_log_status(
     client: tauri::State<'_, NyanpasuClient>,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogStatus> {
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
     client.get_core_log_status().await
 }
 
@@ -1805,7 +1805,7 @@ pub async fn get_core_log_status(
 #[specta::specta]
 pub async fn clear_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-) -> crate::core::logs::CoreLogResult<()> {
+) -> nyanpasu_core::logs::CoreLogResult<()> {
     client.clear_core_logs().await
 }
 

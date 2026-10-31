@@ -11,25 +11,25 @@ use crate::core::clash::ws::{
 impl NyanpasuClient {
     pub async fn query_core_logs(
         &self,
-        query: crate::core::logs::CoreLogQuery,
-    ) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogPage> {
+        query: nyanpasu_core::logs::CoreLogQuery,
+    ) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
         self.inner.core_logs.query(query).await
     }
     pub async fn get_core_log(
         &self,
-        cursor: crate::core::logs::CoreLogCursor,
-    ) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogRecord> {
+        cursor: nyanpasu_core::logs::CoreLogCursor,
+    ) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
         self.inner.core_logs.detail(cursor).await
     }
     pub async fn get_core_log_status(
         &self,
-    ) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogStatus> {
+    ) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
         self.inner.core_logs.status().await
     }
-    pub async fn clear_core_logs(&self) -> crate::core::logs::CoreLogResult<()> {
+    pub async fn clear_core_logs(&self) -> nyanpasu_core::logs::CoreLogResult<()> {
         self.inner.core_logs.clear().await
     }
-    pub fn subscribe_core_logs(&self) -> watch::Receiver<crate::core::logs::CoreLogStatus> {
+    pub fn subscribe_core_logs(&self) -> watch::Receiver<nyanpasu_core::logs::CoreLogStatus> {
         self.inner.core_logs.subscribe()
     }
     pub async fn start_clash_streams(&self) -> Result<()> {

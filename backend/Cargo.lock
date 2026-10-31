@@ -1825,7 +1825,6 @@ dependencies = [
  "itertools 0.15.0",
  "log",
  "md-5",
- "memmap2",
  "mime",
  "mockall",
  "nanoid",
@@ -1934,7 +1933,6 @@ dependencies = [
  "winreg 0.56.0",
  "zip 9.1.3",
  "zip-extensions",
- "zstd",
 ]
 
 [[package]]
@@ -6782,10 +6780,14 @@ dependencies = [
  "gxhash",
  "hex",
  "indexmap 2.14.2",
+ "memmap2",
  "mockall",
  "nix 0.31.3",
+ "notify-debouncer-full",
  "nyanpasu-config",
  "nyanpasu-core-manager",
+ "nyanpasu-diagnose",
+ "nyanpasu-geodata",
  "nyanpasu-ipc",
  "nyanpasu-macro",
  "nyanpasu-paths",
@@ -6821,6 +6823,7 @@ dependencies = [
  "uuid",
  "whoami",
  "winreg 0.56.0",
+ "zstd",
 ]
 
 [[package]]

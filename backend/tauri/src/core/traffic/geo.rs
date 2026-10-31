@@ -417,7 +417,7 @@ pub(crate) mod tests {
 
     #[test]
     fn an_index_reads_one_country_among_category_tags() {
-        let dat = crate::core::geo::fixtures::geoip_dat(&[
+        let dat = nyanpasu_core::geo::fixtures::geoip_dat(&[
             ("US", &["8.0.0.0/8"]),
             ("GOOGLE", &["8.8.8.0/24"]),
         ]);

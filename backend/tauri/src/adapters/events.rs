@@ -6,13 +6,11 @@ use tauri_specta::Event;
 
 use crate::{
     client::{StateChanged, app_update::AppUpdateSnapshot},
-    core::{
-        clash::ws::{ClashWsPacket, ClashWsUpdate},
-        logs::CoreLogStatus,
-    },
+    core::clash::ws::{ClashWsPacket, ClashWsUpdate},
 };
 use nyanpasu_core::{
     actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
+    logs::CoreLogStatus,
     storage::StorageRevision,
 };
 

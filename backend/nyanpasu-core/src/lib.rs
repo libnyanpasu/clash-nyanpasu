@@ -35,6 +35,8 @@ pub mod backup;
 pub mod client;
 pub mod connections;
 pub mod download;
+pub mod geo;
+pub mod logs;
 pub mod migration;
 pub mod service;
 pub mod storage;

@@ -304,7 +304,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         }),
     ));
     // The core runs with the app data dir as its home, where its geo databases live.
-    let geo_index = Arc::new(crate::core::geo::FsCountryIndexSource::new(
+    let geo_index = Arc::new(nyanpasu_core::geo::FsCountryIndexSource::new(
         paths.app_data_dir().as_std_path().to_owned(),
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
@@ -366,13 +366,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         },
         jobs,
         logging: crate::client::logs::LoggingSetup {
-            core: match crate::core::logs::RedbCoreLogStore::open(
+            core: match nyanpasu_core::logs::RedbCoreLogStore::open(
                 paths.app_logs_dir().join("core").into_std_path_buf(),
             ) {
                 Ok(store) => Box::new(store),
                 Err(error) => {
                     tracing::warn!(%error, "Core log storage unavailable");
-                    Box::new(crate::core::logs::UnavailableCoreLogStore(format!(
+                    Box::new(nyanpasu_core::logs::UnavailableCoreLogStore(format!(
                         "{error:#}"
                     )))
                 }

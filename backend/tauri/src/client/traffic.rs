@@ -211,7 +211,12 @@ mod tests {
     async fn disabled_recording_reports_unavailable() {
         let dir = tempdir().unwrap();
         let client = NyanpasuClient::try_new(
-            test_client_args_with_endpoint(&dir, test_idle_endpoint()).await,
+            test_client_args_with_endpoint(
+                &dir,
+                test_idle_endpoint(),
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await,
         )
         .await
         .unwrap();
@@ -279,7 +284,12 @@ mod tests {
     async fn an_unreadable_store_disables_recording_without_failing_the_client() {
         let dir = tempdir().unwrap();
         let store = Arc::new(UnreadableStore);
-        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
         args.traffic_store = Some(store.clone());
         let client = NyanpasuClient::try_new(args).await.unwrap();
         (async {
@@ -295,7 +305,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn injected_store_starts_an_empty_session() {
         let dir = tempdir().unwrap();
-        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
         args.traffic_store = Some(Arc::new(TrafficFileStorage::new(
             dir.path().join("traffic.tsdb"),
             Profile::desktop().backend_cache,

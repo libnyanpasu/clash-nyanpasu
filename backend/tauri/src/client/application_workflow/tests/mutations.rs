@@ -352,10 +352,7 @@ pub(super) async fn fixture_from(
         &nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data")),
     );
     let builder = Arc::new(ParkingBuilder {
-        delegate: TestRuntimeBuildPort {
-            profiles_dir: dir.path().join("profiles"),
-            paths: paths.clone(),
-        },
+        delegate: TestRuntimeBuildPort::from_directory(dir.path().join("profiles"), paths.clone()),
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
         release: Notify::new(),

@@ -1,6 +1,11 @@
 //! Application facade, configuration, and profile fixtures shared by application tests.
 
+pub(crate) mod facade;
+pub(crate) mod profile_files;
+pub(crate) mod profiles;
 pub(crate) mod runtime_build;
+pub(crate) mod startup_recovery;
+pub(crate) mod workflow;
 
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -19,17 +24,12 @@ use tempfile::TempDir;
 
 use super::{
     ClientSetupArgs, NoopSystemDnsCache, NyanpasuClient, Result, RuntimePaths,
-    application::ApplicationClient,
-    application_workflow,
-    clash_config::ClashConfigClient,
-    core_lifecycle, effects,
-    host_adapters::{ClientHostAdapters, ProfileFilePorts},
-    hotkey, jobs, logs, runtime,
+    application::ApplicationClient, application_workflow, clash_config::ClashConfigClient,
+    core_lifecycle, effects, host_adapters::ClientHostAdapters, hotkey, jobs, logs, runtime,
     session_state::SessionStateClient,
 };
 use crate::{
     client::system_proxy::ports::MockOsProxyPort,
-    service::profile_file::fs_service::ProfileFileService,
     state::profiles::{
         NewProfileRequest,
         ports::{
@@ -730,41 +730,10 @@ pub(crate) fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort>
     Arc::new(materialization)
 }
 
-pub(super) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
-    ClientHostAdapters {
-        debug_http: Arc::new(|| {
-            Box::pin(async {
-                Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)
-            })
-        }),
-        changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
-        runtime_build: Arc::new(
-            crate::client::test_support::runtime_build::TestRuntimeBuildPort {
-                profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
-                paths: RuntimePaths::from_resolver(paths),
-            },
-        ),
-        profile_files: Arc::new({
-            let paths = paths.clone();
-            move |ports| {
-                let service = Arc::new(ProfileFileService::new(
-                    paths.clone(),
-                    ports,
-                    nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
-                ));
-                ProfileFilePorts {
-                    fs: service.clone(),
-                    fetcher: service.clone(),
-                    materialization: service,
-                }
-            }
-        }),
-    }
-}
-
 pub(crate) async fn test_client_args_with_endpoint(
     dir: &TempDir,
     endpoint: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
+    host_adapters: ClientHostAdapters,
 ) -> ClientSetupArgs {
     let (paths, storage) = test_backup_deps(dir);
     seed_test_clash_config(paths.clash_config_path());
@@ -783,7 +752,7 @@ pub(crate) async fn test_client_args_with_endpoint(
             sourceforge_project: None,
             ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
         },
-        host_adapters: test_host_adapters(&paths),
+        host_adapters,
         logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
         paths,
         storage,
@@ -923,4 +892,56 @@ impl super::app_update::changelog::ChangelogHttp for UnconfiguredChangelogHttp {
     async fn get_text(&self, _url: &url::Url) -> anyhow::Result<String> {
         anyhow::bail!("changelog HTTP is not configured in this fixture")
     }
+}
+
+pub(crate) fn test_adapters(
+    profile_files: Arc<super::host_adapters::ProfileFileFactory>,
+    runtime_build: Arc<dyn super::application_workflow::ports::RuntimeBuildPort>,
+) -> ClientHostAdapters {
+    ClientHostAdapters {
+        debug_http: Arc::new(|| {
+            Box::pin(async {
+                Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)
+            })
+        }),
+        changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
+        runtime_build,
+        profile_files,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn workflow(client: &NyanpasuClient) -> application_workflow::ApplicationWorkflowClient {
+    client.inner.application_workflow.clone()
+}
+#[cfg(test)]
+pub(crate) fn clash_snapshot(
+    client: &NyanpasuClient,
+) -> crate::state::clash_config::ClashConfigSnapshot {
+    client.inner.clash_config.snapshot()
+}
+
+pub(crate) fn unused_test_adapters(paths: &PathResolver) -> ClientHostAdapters {
+    test_adapters(
+        profile_files::unused_profile_file_factory(),
+        Arc::new(runtime_build::TestRuntimeBuildPort::from_directory(
+            paths.app_profiles_dir().into_std_path_buf(),
+            RuntimePaths::from_resolver(paths),
+        )),
+    )
+}
+
+pub(crate) fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
+    let paths = test_paths(dir.path(), dir.path().join("data"));
+    let ports = profile_files::scripted_profile_file_ports(Arc::new(
+        crate::state::profiles::ports::MockSubscriptionFetcher::new(),
+    ));
+    let runtime_build = runtime_build::TestRuntimeBuildPort::from_profile_port(
+        ports.fs.clone(),
+        RuntimePaths::from_resolver(&paths),
+    );
+    test_adapters(
+        profile_files::fixed_profile_file_factory(ports),
+        Arc::new(runtime_build),
+    )
 }

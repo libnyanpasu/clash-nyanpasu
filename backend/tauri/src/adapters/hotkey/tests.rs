@@ -23,7 +23,9 @@ async fn test_client_args_with_endpoint(
     dir: &TempDir,
     endpoint: EndpointHandle,
 ) -> ClientSetupArgs {
-    let mut args = crate::client::test_support::test_client_args_with_endpoint(dir, endpoint).await;
+    let mut args =
+        crate::service::profile_file::test_support::test_client_args_with_endpoint(dir, endpoint)
+            .await;
     args.accelerators = Arc::new(PlatformAcceleratorValidator);
     args
 }

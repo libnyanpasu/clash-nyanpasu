@@ -10,9 +10,9 @@ use crate::{
         runtime_recovery::{
             ObservedRuntime, RecoveryMismatch, RecoveryVerification, verify_recovery_target,
         },
-        tests::{IdleServiceAdapter, TestControlEndpoint},
+        test_support::TestControlEndpoint,
     },
-    core::actor_v2::{CoreClient, service_actor::ServiceClient},
+    core::actor_v2::{CoreClient, service_actor::ServiceClient, test_support::IdleServiceAdapter},
 };
 
 /// The audited scenario: the app was running A, applied B, then asked to be
@@ -605,7 +605,7 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
 /// The ordinary daemon, except that its next stop can be held past the
 /// service actor's bound, so the workflow never hears how it ended.
 struct ParkedStop {
-    delegate: crate::client::tests::HostTransitionServiceAdapter,
+    delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter,
     park: std::sync::atomic::AtomicBool,
     parked: tokio::sync::Notify,
     release: tokio::sync::Notify,
@@ -653,7 +653,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
 async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
     use crate::core::actor_v2::endpoint::ExecutionHost;
     let daemon = Arc::new(ParkedStop {
-        delegate: crate::client::tests::HostTransitionServiceAdapter {
+        delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -753,7 +753,7 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
 /// A service daemon whose install is held at a barrier past the actor's
 /// bound, while its probe keeps answering `Ready`.
 struct ParkedInstall {
-    delegate: crate::client::tests::HostTransitionServiceAdapter,
+    delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter,
     parked: tokio::sync::Notify,
     release: tokio::sync::Notify,
 }
@@ -798,7 +798,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
 async fn a_service_command_still_running_keeps_the_domain_isolated() {
     let dir = tempfile::tempdir().unwrap();
     let daemon = Arc::new(ParkedInstall {
-        delegate: crate::client::tests::HostTransitionServiceAdapter {
+        delegate: crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(
                 crate::core::actor_v2::endpoint::ExecutionHost::Service,
             ),

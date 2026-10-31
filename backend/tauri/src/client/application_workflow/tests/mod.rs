@@ -7,17 +7,14 @@ mod service_recovery;
 mod startup;
 mod validation;
 
-use super::{
-    super::{
-        NyanpasuClient,
-        tests::{TestControlEndpoint, set_service_mode, test_client_args_with_endpoint},
-    },
-    *,
-};
+use super::{super::NyanpasuClient, *};
 use crate::{
     adapters::runtime_build::FsRuntimeBuildAdapter,
-    client::core_lifecycle::ports::{
-        BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+    client::{
+        core_lifecycle::ports::{
+            BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+        },
+        test_support::{TestControlEndpoint, set_service_mode, test_client_args_with_endpoint},
     },
 };
 use futures_util::FutureExt;
@@ -202,9 +199,12 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn(
+        Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
+        0,
+    )
+    .await
+    .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
     let (client, builder, _, clash) = workflow_graph_with_clients(
         &dir,
@@ -256,9 +256,12 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
     let core = CoreClient::spawn(TestControlEndpoint::succeeding())
         .await
         .unwrap();
-    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn(
+        Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
+        0,
+    )
+    .await
+    .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
     let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
@@ -303,9 +306,12 @@ async fn workflow_graph_with_store(
     let core = CoreClient::spawn(TestControlEndpoint::succeeding())
         .await
         .unwrap();
-    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn(
+        Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
+        0,
+    )
+    .await
+    .unwrap();
     workflow_graph_with_clients(
         dir,
         core,
@@ -333,8 +339,10 @@ async fn workflow_graph_with_clients(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    use super::super::tests::{test_materialization_port, test_typed_config_clients};
-    use crate::state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
+    use crate::{
+        client::test_support::{test_materialization_port, test_typed_config_clients},
+        state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
+    };
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
@@ -347,7 +355,7 @@ async fn workflow_graph_with_clients(
     )
     .await
     .unwrap();
-    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
         dir.path(),
         dir.path().join("data"),
     ));
@@ -662,7 +670,10 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
-    use super::super::tests::{HostTransitionEndpoint, HostTransitionServiceAdapter};
+    use crate::{
+        client::test_support::HostTransitionEndpoint,
+        core::actor_v2::test_support::HostTransitionServiceAdapter,
+    };
     let dir = tempfile::tempdir().unwrap();
     let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
     let endpoint = Arc::new(ParkedEndpoint {
@@ -1213,7 +1224,7 @@ async fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.snapshot();
-        endpoint.set_check_answer(crate::client::tests::TestCheckAnswer::Reject(
+        endpoint.set_check_answer(crate::client::test_support::TestCheckAnswer::Reject(
             nyanpasu_core_manager::CoreError::new(
                 nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed,
                 "candidate rejected",

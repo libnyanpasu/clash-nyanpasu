@@ -1,3 +1,5 @@
+//! Profile-model builders shared by enhance and application tests.
+
 use nyanpasu_config::profile::{
     CompositionConfig, ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath,
     MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata,

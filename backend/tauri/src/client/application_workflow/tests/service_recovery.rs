@@ -1,11 +1,9 @@
 use super::*;
-use crate::{
-    client::tests::HostTransitionServiceAdapter,
-    core::actor_v2::{
-        EndpointConnectivity,
-        endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
-        service_actor::ServiceHostAdapter,
-    },
+use crate::core::actor_v2::{
+    EndpointConnectivity,
+    endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
+    service_actor::ServiceHostAdapter,
+    test_support::HostTransitionServiceAdapter,
 };
 use nyanpasu_ipc::{
     api::{core::v2::OperationInfo, status::CoreStateDetail},
@@ -70,7 +68,7 @@ impl ServiceHostAdapter for RecoveringDaemon {
     ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.probe_fails.load(Ordering::SeqCst) {
-            return Err(crate::core::service::control::ServiceCommandError::mock(
+            return Err(crate::core::service::test_support::service_command_error(
                 "unknown OS status",
             ));
         }

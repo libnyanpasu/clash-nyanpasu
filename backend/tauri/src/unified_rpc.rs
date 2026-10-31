@@ -482,11 +482,12 @@ mod tests {
     #[test]
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
-        let args =
-            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+        let args = tauri::async_runtime::block_on(
+            crate::client::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::tests::TestControlEndpoint::succeeding(),
-            ));
+                crate::client::test_support::TestControlEndpoint::succeeding(),
+            ),
+        );
         std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
         std::fs::write(
             args.paths
@@ -870,11 +871,12 @@ mod tests {
         }
         let directory = tempfile::tempdir().unwrap();
         let probe = Arc::new(Probe(AtomicUsize::new(0)));
-        let mut args =
-            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+        let mut args = tauri::async_runtime::block_on(
+            crate::client::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::tests::TestControlEndpoint::succeeding(),
-            ));
+                crate::client::test_support::TestControlEndpoint::succeeding(),
+            ),
+        );
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -924,7 +926,7 @@ mod tests {
 
     #[test]
     fn provider_query_returns_summaries_over_http() {
-        use crate::core::actor_v2::api::tests::{endpoint, server};
+        use crate::core::actor_v2::test_support::{endpoint, server};
         use serde_json::json;
 
         let (url, core_server) = tauri::async_runtime::block_on(server(
@@ -959,7 +961,7 @@ mod tests {
         ));
         let directory = tempfile::tempdir().unwrap();
         let args = tauri::async_runtime::block_on(
-            crate::client::tests::test_client_args_with_endpoint(&directory, endpoint(url)),
+            crate::client::test_support::test_client_args_with_endpoint(&directory, endpoint(url)),
         );
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
@@ -1078,11 +1080,12 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args =
-            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+        let mut args = tauri::async_runtime::block_on(
+            crate::client::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::tests::TestControlEndpoint::succeeding(),
-            ));
+                crate::client::test_support::TestControlEndpoint::succeeding(),
+            ),
+        );
         let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
         args.host_adapters.debug_http =
@@ -1141,11 +1144,12 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args =
-            tauri::async_runtime::block_on(crate::client::tests::test_client_args_with_endpoint(
+        let mut args = tauri::async_runtime::block_on(
+            crate::client::test_support::test_client_args_with_endpoint(
                 &directory,
-                crate::client::tests::TestControlEndpoint::succeeding(),
-            ));
+                crate::client::test_support::TestControlEndpoint::succeeding(),
+            ),
+        );
         // The browser fixture uses English accessible names on every host locale.
         let config = nyanpasu_config::application::NyanpasuAppConfig {
             language: nyanpasu_config::application::I18nLanguage::English,

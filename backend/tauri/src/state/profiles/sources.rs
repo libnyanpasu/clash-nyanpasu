@@ -149,7 +149,7 @@ impl SourceLedger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enhance::golden_support::file_config;
+    use crate::enhance::test_support::file_config;
 
     fn profiles(uids: &[&str]) -> Profiles {
         let mut profiles = Profiles::default();

@@ -61,7 +61,7 @@ use crate::{
         convergence::ConvergenceHealth,
         core_lifecycle::{Ownership, ports::PreparedCoreBinary},
         runtime,
-        tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
+        test_support::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
     },
     core::{
         actor_v2::{
@@ -211,7 +211,7 @@ impl ServiceHostAdapter for FakeDaemon {
         if self.unreadable.load(Ordering::SeqCst)
             || probe >= self.unreadable_from.load(Ordering::SeqCst)
         {
-            return Err(crate::core::service::control::ServiceCommandError::mock(
+            return Err(crate::core::service::test_support::service_command_error(
                 "scripted: the daemon's status cannot be read",
             ));
         }
@@ -318,7 +318,7 @@ impl Default for Setup {
             service_mode: false,
             daemon: DaemonState::NotInstalled,
             residual: false,
-            clash: crate::client::tests::test_clash_config(),
+            clash: crate::client::test_support::test_clash_config(),
             version: "2.0.2",
             hold_update: false,
             command_timeout: Duration::from_secs(100),
@@ -397,7 +397,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     .await;
     let clash = manager(temp_path(&dir, "clash-config.yaml"), setup.clash).await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
-    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
         dir.path(),
         dir.path().join("data"),
     ));
@@ -619,7 +619,7 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         },
         ..ClashConfig::default()
     };
-    crate::client::tests::write_clash_config(args.paths.clash_config_path(), &clash);
+    crate::client::test_support::write_clash_config(args.paths.clash_config_path(), &clash);
     let files = [
         args.paths.application_config_path(),
         args.paths.clash_config_path(),

@@ -732,7 +732,7 @@ mod tests {
             super::super::store::STORE_SCHEMA_VERSION - 1,
         ] {
             let root = tempfile::tempdir().unwrap();
-            let paths = crate::client::tests::test_paths(
+            let paths = crate::utils::test_support::test_paths(
                 root.path().join("config"),
                 root.path().join("data"),
             );

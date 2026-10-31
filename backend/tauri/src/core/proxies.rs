@@ -595,7 +595,7 @@ impl ProxiesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
+    use crate::core::actor_v2::test_support::{endpoint, server};
     use axum::{
         Json, Router,
         extract::{Path, State as HttpState},
@@ -760,7 +760,7 @@ mod tests {
     async fn setup() -> (
         ProxiesClient,
         CoreClient,
-        Arc<crate::core::actor_v2::api::tests::Endpoint>,
+        Arc<crate::core::actor_v2::test_support::Endpoint>,
         Arc<Fixture>,
         tokio::task::JoinHandle<()>,
     ) {

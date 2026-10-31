@@ -96,7 +96,7 @@ impl Ctx {
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
-            paths: crate::client::tests::test_paths(app_config_dir, app_data_dir),
+            paths: crate::utils::test_support::test_paths(app_config_dir, app_data_dir),
             bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         }
     }

@@ -59,7 +59,7 @@ use crate::{
         core_lifecycle::Ownership,
         runtime,
         runtime_error::{RuntimeError, refusal_of},
-        tests::{TestCheckAnswer, TestControlEndpoint},
+        test_support::{TestCheckAnswer, TestControlEndpoint},
     },
     core::{
         actor_v2::{
@@ -227,7 +227,7 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
             generation: 0,
         },
         ports: SessionPortResolver::default()
-            .resolve_candidate(&crate::client::tests::test_clash_config())
+            .resolve_candidate(&crate::client::test_support::test_clash_config())
             .expect("the default port strategies resolve"),
         target: None,
     }
@@ -269,8 +269,8 @@ async fn fixture_with_hosts(
 /// that need to park one of its legs wrap instead of reimplementing.
 fn host_transition_daemon(
     endpoint: Arc<TestControlEndpoint>,
-) -> crate::client::tests::HostTransitionServiceAdapter {
-    crate::client::tests::HostTransitionServiceAdapter {
+) -> crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
+    crate::core::actor_v2::test_support::HostTransitionServiceAdapter {
         endpoint,
         calls: Arc::new(StdMutex::new(Vec::new())),
         stopped: AtomicBool::new(false),
@@ -300,9 +300,12 @@ async fn fixture_with_parts(
 ) -> Fixture {
     let service = match daemon {
         Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
-        None => ServiceClient::spawn(Arc::new(crate::client::tests::IdleServiceAdapter), 0)
-            .await
-            .unwrap(),
+        None => ServiceClient::spawn(
+            Arc::new(crate::core::actor_v2::test_support::IdleServiceAdapter),
+            0,
+        )
+        .await
+        .unwrap(),
     };
     fixture_from(
         confirmed_apply,
@@ -341,12 +344,12 @@ pub(super) async fn fixture_from(
     let application = application_manager(app_path.clone(), NyanpasuAppConfig::default()).await;
     let clash = manager(
         clash_path.clone(),
-        crate::client::tests::test_clash_config(),
+        crate::client::test_support::test_clash_config(),
     )
     .await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
 
-    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+    let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
         dir.path(),
         dir.path().join("data"),
     ));
@@ -730,7 +733,7 @@ fn on_mixed_port(start_port: u16) -> ClashConfig {
 
 pub(super) fn overrides(value: serde_json::Value) -> ClashConfig {
     use struct_patch::Patch;
-    let mut config = crate::client::tests::test_clash_config();
+    let mut config = crate::client::test_support::test_clash_config();
     config
         .overrides
         .apply(serde_json::from_value(value).unwrap());
@@ -3035,7 +3038,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
     // The document that selects the profile, committed unapplied. Its budget is
     // what everything below is measured against.
     let mut selected = Profiles::default();
-    selected.append_item(crate::enhance::golden_support::file_config(
+    selected.append_item(crate::enhance::test_support::file_config(
         "sel",
         "sel.yaml",
         &[],
@@ -3687,10 +3690,12 @@ impl ServiceHostAdapter for RefusedInstall {
         nyanpasu_ipc::types::StatusInfo<'static>,
         crate::core::service::control::ServiceCommandError,
     > {
-        crate::client::tests::IdleServiceAdapter.probe().await
+        crate::core::actor_v2::test_support::IdleServiceAdapter
+            .probe()
+            .await
     }
     async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
-        Err(crate::core::service::control::ServiceCommandError::mock(
+        Err(crate::core::service::test_support::service_command_error(
             "the user cancelled the elevation prompt",
         ))
     }
@@ -3755,7 +3760,7 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
     let mut f = fixture().await;
     std::fs::create_dir_all(&f.profiles_dir).unwrap();
     std::fs::write(f.profiles_dir.join("invalid.yaml"), "rules: [").unwrap();
-    let item = crate::enhance::golden_support::overlay("invalid", "invalid.yaml");
+    let item = crate::enhance::test_support::overlay("invalid", "invalid.yaml");
     let mut next = f.profiles.snapshot().as_ref().clone();
     next.global_transforms.push(item.uid.clone());
     next.items.insert(item.uid.clone(), item);
@@ -3772,7 +3777,7 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
 async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     use super::super::ports::RuntimeBuildPort;
     let f = fixture().await;
-    let item = crate::enhance::golden_support::overlay("missing", "missing.yaml");
+    let item = crate::enhance::test_support::overlay("missing", "missing.yaml");
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);

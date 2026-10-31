@@ -111,7 +111,7 @@ mod tests {
                     ShortcutError, ShortcutRegistrar,
                 },
             },
-            tests::{TestControlEndpoint, test_client_args_with_endpoint},
+            test_support::{TestControlEndpoint, test_client_args_with_endpoint},
         },
         core::actor_v2::endpoint::{
             CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,

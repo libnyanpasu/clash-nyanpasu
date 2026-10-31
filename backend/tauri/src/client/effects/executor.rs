@@ -16,7 +16,10 @@ use super::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
         SystemProxyDesired, TrayRefresh, TrayView, WidgetLogoDesired,
     },
-    ports::ApplicationEffectsPort,
+    ports::{
+        ApplicationEffectsPort, LocaleSink, LogRotation, LoggerRefresher, TrayRefresher,
+        WidgetController,
+    },
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 use crate::{
@@ -27,9 +30,6 @@ use crate::{
             ports::{AcceleratorValidator, HotkeyBindings},
         },
         system_proxy::SystemProxyClient,
-        ui_effects::ports::{
-            LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
-        },
     },
     core::{clash::ws::StreamsClient, logs::CoreLogsClient},
 };

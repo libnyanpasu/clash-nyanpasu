@@ -2,7 +2,8 @@
 //! change has on this process's own user interface.
 //!
 //! None of them owns long-lived state worth an actor, so each is a narrow
-//! adapter trait in [`ports`] with one boundary implementation in [`adapters`].
+//! boundary implementation in [`adapters`]. The consumed effect traits live in
+//! [`crate::client::effects::ports`]; [`ports`] owns the widget runtime contract.
 //! The fan-out lives in [`crate::client::effects::executor`], beside the actor
 //! clients that own the system-facing effects.
 

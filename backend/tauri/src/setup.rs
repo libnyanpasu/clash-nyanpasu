@@ -8,7 +8,7 @@ use crate::{
         OsSystemDnsCache, RuntimePaths, StateChanged, TauriMainThread, TauriUiEventSink,
         UiEventSink,
         bundle_metadata::BundleMetadata,
-        effects::executor::ApplicationEffectExecutor,
+        effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
         hotkey::{
             HotkeyArgs, HotkeyClient,
             adapters::{
@@ -23,12 +23,8 @@ use crate::{
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
             ports::OsProxyPort,
         },
-        ui_effects::{
-            adapters::{
-                RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,
-                TracingLoggerRefresher,
-            },
-            ports::LocaleSink,
+        ui_effects::adapters::{
+            RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
     },
     core::{

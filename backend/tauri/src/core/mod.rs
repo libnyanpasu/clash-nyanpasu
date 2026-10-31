@@ -1,5 +1,4 @@
 pub mod manager;
-pub mod traffic;
 pub mod tray;
 pub mod updater;
 pub mod widget_logo;

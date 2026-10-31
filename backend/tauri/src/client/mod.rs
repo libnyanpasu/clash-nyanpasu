@@ -120,7 +120,7 @@ pub struct ClientSetupArgs {
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<
-        Arc<dyn crate::core::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>,
+        Arc<dyn nyanpasu_core::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>,
     >,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
@@ -250,7 +250,7 @@ struct NyanpasuClientInner {
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
     streams: nyanpasu_core::clash::ws::StreamsClient,
-    traffic: Option<crate::core::traffic::TrafficClient>,
+    traffic: Option<nyanpasu_core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
     core_versions: Arc<dyn nyanpasu_core::client::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
@@ -406,7 +406,9 @@ impl NyanpasuClient {
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
         traffic_store: Option<
             Arc<
-                dyn crate::core::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>,
+                dyn nyanpasu_core::traffic::TrafficStorage<
+                        nyanpasu_tsdb::storage::redb::RedbStorage,
+                    >,
             >,
         >,
         shutdown: tokio_util::sync::CancellationToken,
@@ -604,8 +606,8 @@ impl NyanpasuClient {
         ));
         let traffic = match traffic_store {
             Some(store) => {
-                match crate::core::traffic::TrafficClient::spawn(
-                    crate::core::traffic::TrafficArgs {
+                match nyanpasu_core::traffic::TrafficClient::spawn(
+                    nyanpasu_core::traffic::TrafficArgs {
                         storage: store,
                         profile: nyanpasu_tsdb::Profile::desktop(),
                         profiles: Arc::new(traffic::SelectedProfile::new(
@@ -2084,7 +2086,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
-        use crate::core::traffic::LocalSourceLocation;
+        use nyanpasu_core::traffic::LocalSourceLocation;
         let dir = tempdir().unwrap();
         let mut probe = nyanpasu_core::client::direct_egress::MockDirectEgressProbe::new();
         let mut sequence = mockall::Sequence::new();
@@ -2143,7 +2145,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_discards_an_answer_when_tun_is_enabled_during_the_request() {
-        use crate::core::traffic::LocalSourceLocation;
+        use nyanpasu_core::traffic::LocalSourceLocation;
         struct WaitingProbe {
             started: tokio::sync::Notify,
             release: tokio::sync::Notify,

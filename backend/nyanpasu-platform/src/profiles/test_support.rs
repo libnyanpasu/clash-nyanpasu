@@ -1,14 +1,15 @@
 //! Real profile file capabilities for host integration tests.
-use crate::service::profile_file::fs_service::ProfileFileService;
+use crate::profiles::fs_service::ProfileFileService;
+#[cfg(test)]
+use nyanpasu_core::{client::NyanpasuClient, state::profiles::ports::SubscriptionFetcher};
 use nyanpasu_core::{
     client::{
-        ClientSetupArgs, NyanpasuClient,
+        ClientSetupArgs,
         host_adapters::{ClientHostAdapters, ProfileFileFactory, ProfileFilePorts},
         test_support,
         test_support::runtime_build::TestRuntimeBuildPort,
     },
     service::profile_file::ports::SelfProxyPortSource,
-    state::profiles::ports::SubscriptionFetcher,
 };
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
@@ -42,13 +43,14 @@ pub(crate) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
         )),
     )
 }
-pub(crate) async fn test_client_args_with_endpoint(
+pub async fn test_client_args_with_endpoint(
     dir: &TempDir,
     endpoint: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
 ) -> ClientSetupArgs {
     let paths = nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data"));
     test_support::test_client_args_with_endpoint(dir, endpoint, test_host_adapters(&paths)).await
 }
+#[cfg(test)]
 pub(crate) async fn test_client_with_fetcher(
     dir: &TempDir,
     fetcher: Arc<dyn SubscriptionFetcher>,

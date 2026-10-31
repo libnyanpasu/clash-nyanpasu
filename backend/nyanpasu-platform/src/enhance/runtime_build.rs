@@ -2,11 +2,11 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 use async_trait::async_trait;
 use nyanpasu_core::enhance::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
 };
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 use snafu::ResultExt;
 
 use nyanpasu_core::{
@@ -19,13 +19,13 @@ use nyanpasu_core::{
     enhance::runtime_snapshot_data_from_artifact,
 };
 
-pub(crate) type CoreSpecResolver = dyn Fn(
+pub type CoreSpecResolver = dyn Fn(
         &nyanpasu_config::application::ClashCore,
     ) -> Result<nyanpasu_core_manager::CoreSpec, CoreSpecError>
     + Send
     + Sync;
 
-pub(crate) struct FsRuntimeBuildAdapter {
+pub struct FsRuntimeBuildAdapter {
     pub profiles_dir: PathBuf,
     pub core_specs: Arc<CoreSpecResolver>,
     pub paths: runtime::RuntimePaths,

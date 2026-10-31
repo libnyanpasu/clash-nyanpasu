@@ -1,8 +1,6 @@
 //! Facade integration with real profile, log, backup and runtime files.
 
-use crate::service::profile_file::test_support::{
-    test_client_args_with_endpoint, test_client_with_fetcher,
-};
+use crate::profiles::test_support::{test_client_args_with_endpoint, test_client_with_fetcher};
 use nyanpasu_core::{
     client::{
         NyanpasuClient, test_support,

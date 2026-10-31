@@ -260,7 +260,11 @@ impl IVerge {
                 nyanpasu_config::clash::config::ClashControlChannel::default(),
             ),
             clash_ipc_disable_http_controller: Some(false),
-            language: Some(crate::utils::help::detect_system_i18n_key().into()),
+            language: Some(
+                nyanpasu_config::application::default_i18n_language()
+                    .as_str()
+                    .into(),
+            ),
             app_log_level: Some(LoggingLevel::default()),
             theme_mode: Some("system".into()),
             traffic_graph: Some(true),

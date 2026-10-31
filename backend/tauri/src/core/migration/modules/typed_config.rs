@@ -7,7 +7,7 @@ use super::{
     application::ApplicationFormat,
     clash_config::{self, ClashConfigFormat},
 };
-use crate::utils::help;
+use crate::utils::yaml;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
@@ -35,7 +35,7 @@ pub(crate) enum Error {
     },
     #[snafu(context(false), display("failed to read legacy overrides"))]
     ReadLegacyOverrides {
-        source: crate::utils::help::YamlError,
+        source: crate::utils::yaml::YamlError,
     },
     #[snafu(context(false), display("serialized config was not UTF-8"))]
     DecodeConfig { source: std::string::FromUtf8Error },
@@ -435,7 +435,7 @@ fn merge_legacy_clash_file(merged: &mut Mapping, path: &Path) -> Result<(), Erro
         return Ok(());
     }
 
-    let legacy = help::read_merge_mapping(&path.to_path_buf())?;
+    let legacy = yaml::read_merge_mapping(&path.to_path_buf())?;
     for (key, value) in legacy {
         if !matches!(value, Value::Null) {
             merged.insert(key, value);

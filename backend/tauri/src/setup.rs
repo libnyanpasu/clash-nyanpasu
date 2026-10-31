@@ -644,7 +644,7 @@ fn forward_actor_events(
         loop {
             match core_events.recv().await {
                 Ok(status) => {
-                    let _ = crate::core::actor_v2::CoreStatusChangedEvent(status.into())
+                    let _ = crate::adapters::events::CoreStatusChangedEvent(status.into())
                         .emit(&core_handle);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -664,7 +664,7 @@ fn forward_actor_events(
     tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
-            let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);
+            let _ = crate::adapters::events::ServiceStatusChangedEvent(status).emit(&app_handle);
         }
     }));
 }

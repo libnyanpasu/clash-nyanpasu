@@ -150,7 +150,7 @@ impl ClashConfig {
 
 - 存储能表示“选的是 gvisor、`tun_mips` 也有值”。这就是保留子配置的代价，类型不禁止这种状态。
 - 读取方只用视图，是靠约定保证的；兄弟字段为了 serde、specta 与 struct-patch 必须是 `pub`。评审时检查：除视图方法、默认值与迁移外，不直接读兄弟字段。
-- 判断“这次修改是否影响运行时”的输入（`backend/tauri/src/client/application_workflow/impact.rs:340`）同样用视图，因此修改未选中取值的子配置不会触发重建。
+- 判断“这次修改是否影响运行时”的输入（`backend/nyanpasu-core/src/client/application_workflow/impact.rs`）同样用视图，因此修改未选中取值的子配置不会触发重建。
 
 ### 5.3 方案对比与验证
 

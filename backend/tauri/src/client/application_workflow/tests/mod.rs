@@ -1,4 +1,10 @@
-use crate::client::UiEventSink;
+use crate::client::{
+    UiEventSink,
+    test_support::workflow::{
+        Fixture, Progress, ScriptedWaitEndpoint, WaitScript, aftermath, disable_mode_interruption,
+        override_patch, start_replacement,
+    },
+};
 mod closing;
 mod connection_policy;
 mod mutations;
@@ -9,7 +15,7 @@ mod validation;
 
 use super::{super::NyanpasuClient, *};
 use crate::client::{
-    core_lifecycle::ports::{BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary},
+    core_lifecycle::ports::BinaryInstallProgress,
     test_support::{
         TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
         test_client_args_with_endpoint,
@@ -41,20 +47,6 @@ fn refusals(
     match aborted {
         crate::state::mutation::CommitAborted::RuntimeRefused { errors, .. } => errors.clone(),
         other => panic!("expected a refusal, got {other:?}"),
-    }
-}
-
-/// What became of the runtime after the aborted commit.
-fn aftermath(
-    aborted: &crate::state::mutation::CommitAborted,
-) -> &crate::state::mutation::RuntimeAftermath {
-    use crate::state::mutation::CommitAborted::*;
-    match aborted {
-        WriteConfig { runtime, .. }
-        | RecoverAfterWriteFailure { runtime, .. }
-        | RuntimeRefused { runtime, .. }
-        | RuntimeFailed { runtime, .. } => runtime,
-        ValidateState { .. } => panic!("{aborted:?} has no runtime aftermath"),
     }
 }
 
@@ -364,10 +356,7 @@ async fn workflow_graph_with_clients(
         host: core.status().host,
     };
     let builder = Arc::new(BlockingBuilder {
-        delegate: TestRuntimeBuildPort {
-            profiles_dir: dir.path().join("profiles"),
-            paths,
-        },
+        delegate: TestRuntimeBuildPort::from_directory(dir.path().join("profiles"), paths),
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
         release: Notify::new(),
@@ -462,159 +451,6 @@ impl nyanpasu_core::actor_v2::endpoint::ControlEndpoint for ParkedEndpoint {
     }
 }
 
-/// How [`ScriptedWaitEndpoint`] answers the wait for one operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WaitScript {
-    /// The real terminal result.
-    Deliver,
-    /// The registry answers nothing: an admitted operation whose result is
-    /// lost.
-    Missing,
-    /// The operation is admitted and still running.
-    Running,
-    /// The real terminal result, held until the test releases it.
-    Held,
-}
-
-/// A control endpoint whose operation waits are scripted per operation.
-///
-/// Each submission takes the next queued script (`Deliver` once the queue is
-/// empty) and keeps it until a test rescripts that operation, so the one
-/// operation a test cares about can be lost or left running, and later
-/// delivered, while everything else is real.
-struct ScriptedWaitEndpoint {
-    delegate: Arc<TestControlEndpoint>,
-    queued: std::sync::Mutex<std::collections::VecDeque<WaitScript>>,
-    scripts: std::sync::Mutex<Vec<(OperationId, WaitScript)>>,
-    held: Notify,
-    release: Notify,
-}
-
-impl ScriptedWaitEndpoint {
-    fn new(delegate: Arc<TestControlEndpoint>) -> Arc<Self> {
-        Arc::new(Self {
-            delegate,
-            queued: std::sync::Mutex::new(std::collections::VecDeque::new()),
-            scripts: std::sync::Mutex::new(Vec::new()),
-            held: Notify::new(),
-            release: Notify::new(),
-        })
-    }
-
-    /// Resolves once a `Held` wait is holding its result.
-    async fn held(&self) {
-        self.held.notified().await;
-    }
-
-    /// Lets the held wait deliver.
-    fn release(&self) {
-        self.release.notify_one();
-    }
-
-    /// The script the next submission takes.
-    fn queue(&self, script: WaitScript) {
-        self.queued.lock().unwrap().push_back(script);
-    }
-
-    fn rescript(&self, operation: OperationId, script: WaitScript) {
-        let mut scripts = self.scripts.lock().unwrap();
-        let entry = scripts
-            .iter_mut()
-            .find(|(id, _)| *id == operation)
-            .expect("only a submitted operation is rescripted");
-        entry.1 = script;
-    }
-
-    fn submitted(&self) -> usize {
-        self.scripts.lock().unwrap().len()
-    }
-
-    /// Every submitted operation, in order.
-    fn operations(&self) -> Vec<OperationId> {
-        self.scripts
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(operation, _)| *operation)
-            .collect()
-    }
-}
-
-#[async_trait::async_trait]
-impl nyanpasu_core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
-    async fn effective_config(
-        &self,
-    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
-        self.delegate.effective_config().await
-    }
-    async fn api_connection(
-        &self,
-    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
-        self.delegate.api_connection().await
-    }
-    async fn api_changes(
-        &self,
-    ) -> Result<Option<nyanpasu_core::actor_v2::endpoint::ApiChanges>, CoreError> {
-        self.delegate.api_changes().await
-    }
-    fn host(&self) -> ExecutionHost {
-        self.delegate.host()
-    }
-    async fn check_config(
-        &self,
-        submission: nyanpasu_core::actor_v2::endpoint::CheckSubmission,
-    ) -> nyanpasu_core::actor_v2::endpoint::CheckSupport {
-        self.delegate.check_config(submission).await
-    }
-    async fn submit(
-        &self,
-        submission: nyanpasu_core::actor_v2::endpoint::CoreSubmission,
-    ) -> Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError> {
-        let operation = submission.envelope.operation_id;
-        let script = self
-            .queued
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or(WaitScript::Deliver);
-        self.scripts.lock().unwrap().push((operation, script));
-        self.delegate.submit(submission).await
-    }
-    async fn wait_operation(
-        &self,
-        id: OperationId,
-        timeout: Duration,
-    ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
-        let script = self
-            .scripts
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(operation, _)| *operation == id)
-            .map_or(WaitScript::Deliver, |(_, script)| *script);
-        match script {
-            WaitScript::Deliver => self.delegate.wait_operation(id, timeout).await,
-            WaitScript::Missing => None,
-            WaitScript::Running => Some(nyanpasu_ipc::api::core::v2::OperationInfo {
-                id: id.to_string(),
-                phase: nyanpasu_ipc::api::core::v2::OperationPhase::Running,
-                output: None,
-                error: None,
-            }),
-            WaitScript::Held => {
-                self.held.notify_one();
-                self.release.notified().await;
-                self.delegate.wait_operation(id, timeout).await
-            }
-        }
-    }
-    async fn status(
-        &self,
-    ) -> Result<nyanpasu_core::actor_v2::endpoint::CoreStatusSnapshot, CoreError> {
-        self.delegate.status().await
-    }
-}
-
 /// Commit notifications that count what the Runtime told them. The Runtime
 /// sends only its own slice; a source's slice here is a bug.
 #[derive(Default)]
@@ -695,7 +531,12 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         (core, service)
     })
     .await;
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.core_v2 = core;
     args.service = service;
     let client = NyanpasuClient::try_new(args).await.unwrap();
@@ -733,101 +574,6 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         assert!(reconcile < uninstall);
     })
     .await;
-}
-
-#[derive(Default)]
-struct Progress(AtomicBool, AtomicBool);
-impl BinaryInstallProgress for Progress {
-    fn restarting(&self) {
-        self.0.store(true, Ordering::SeqCst);
-    }
-    fn finished(&self, _error: Option<&str>) {
-        self.1.store(true, Ordering::SeqCst);
-    }
-}
-
-struct Installer {
-    endpoint: Arc<TestControlEndpoint>,
-    entered: Notify,
-    release: Notify,
-    park: bool,
-    fail: bool,
-    calls: AtomicUsize,
-    submissions_at_copy: AtomicUsize,
-}
-
-#[async_trait::async_trait]
-impl BinaryInstaller for Installer {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        self.submissions_at_copy
-            .store(self.endpoint.submissions(), Ordering::SeqCst);
-        self.entered.notify_one();
-        if self.park {
-            self.release.notified().await;
-        }
-        if self.fail {
-            return Err(InstallCoreBinaryError::ElevatedCopyFailed {
-                core: artifact.target,
-                destination: (&artifact.destination).into(),
-                exit_code: Some(1),
-            });
-        }
-        tokio::fs::copy(&artifact.source, &artifact.destination)
-            .await
-            .unwrap();
-        Ok(())
-    }
-}
-
-struct Fixture {
-    client: NyanpasuClient,
-    endpoint: Arc<TestControlEndpoint>,
-    installer: Arc<Installer>,
-    dir: tempfile::TempDir,
-}
-
-impl Fixture {
-    async fn new(park: bool, fail: bool) -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let installer = Arc::new(Installer {
-            endpoint: endpoint.clone(),
-            entered: Notify::new(),
-            release: Notify::new(),
-            park,
-            fail,
-            calls: AtomicUsize::new(0),
-            submissions_at_copy: AtomicUsize::new(0),
-        });
-        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
-        args.binary_installer = installer.clone();
-        let client = NyanpasuClient::try_new(args).await.unwrap();
-        Self {
-            client,
-            endpoint,
-            installer,
-            dir,
-        }
-    }
-
-    fn artifact(&self, target: ClashCore) -> (PreparedCoreBinary, Arc<Progress>) {
-        let staging = Arc::new(tempfile::tempdir().unwrap());
-        let source = staging.path().join("new-core");
-        std::fs::write(&source, b"new binary").unwrap();
-        let progress = Arc::new(Progress::default());
-        (
-            PreparedCoreBinary {
-                target,
-                source,
-                destination: self.dir.path().join("installed-core"),
-                staging,
-                progress: progress.clone(),
-                companion: None,
-            },
-            progress,
-        )
-    }
 }
 
 /// Which owner the idle workflow holds proven.
@@ -868,67 +614,6 @@ async fn barrier(client: &ApplicationWorkflowClient) {
             .unwrap(),
         CallResult::Success(())
     ));
-}
-
-async fn start_replacement(
-    f: &Fixture,
-) -> (
-    tokio::task::JoinHandle<Result<(), RuntimeError>>,
-    std::path::PathBuf,
-) {
-    let target = f.client.get_app_config().await.unwrap().core;
-    let (artifact, _) = f.artifact(target);
-    let staging_path = artifact.staging.path().to_owned();
-    let client = f.client.clone();
-    let task = tokio::spawn(async move {
-        client
-            .inner
-            .application_workflow
-            .replace_binary(artifact)
-            .await
-    });
-    f.installer.entered.notified().await;
-    (task, staging_path)
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
-    let f = Fixture::new(true, false).await;
-    (async {
-        f.endpoint.prime(&f.client).await;
-        let (task, staging) = start_replacement(&f).await;
-        assert_eq!(
-            f.endpoint.submissions(),
-            2,
-            "stop and death proof precede installation"
-        );
-        let active = f.client.inner.application_workflow.status().active.unwrap();
-        task.abort();
-        assert!(task.await.unwrap_err().is_cancelled());
-        assert!(staging.exists());
-        // Polling once sends the reconcile, so it waits behind the parked
-        // installation.
-        let mut reconcile = Box::pin(f.client.reconcile_core());
-        assert!(reconcile.as_mut().now_or_never().is_none());
-        assert_eq!(
-            f.client.inner.application_workflow.status().active,
-            Some(active)
-        );
-        assert_eq!(f.endpoint.submissions(), 2);
-        // Status reads stay responsive while the installer is parked.
-        let _ = f.client.core_status();
-        let _ = f.client.promoted_runtime().await;
-        f.installer.release.notify_one();
-        reconcile.await.unwrap();
-        assert_eq!(
-            f.endpoint.submissions(),
-            4,
-            "replacement restart followed by queued reconcile"
-        );
-        assert!(!staging.exists());
-        assert!(!f.client.inner.application_workflow.status().uncertain);
-    })
-    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1121,28 +806,20 @@ async fn a_reconcile_and_a_shutdown_stay_within_their_graph() {
     assert_eq!(build_b.calls.load(Ordering::SeqCst), 1);
 }
 
-fn override_patch(
-    value: serde_json::Value,
-) -> nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
-    serde_json::from_value(value).unwrap()
-}
-
-async fn disable_mode_interruption(client: &NyanpasuClient) {
-    let mut config = client.get_clash_config().await.unwrap();
-    config.break_connection.on_mode_change = false;
-    let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
-    patch.break_connection = config.break_connection.into_patch();
-    client.patch_clash_config(patch).await.unwrap();
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let client =
-        NyanpasuClient::try_new(test_client_args_with_endpoint(&dir, endpoint.clone()).await)
-            .await
-            .unwrap();
+    let client = NyanpasuClient::try_new(
+        test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await,
+    )
+    .await
+    .unwrap();
     (async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
@@ -1171,47 +848,15 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn config_reconcile_failure_reports_committed_state_without_replaying() {
-    let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::failing();
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
-    let config_path = args.paths.clash_config_path();
-    let client = NyanpasuClient::try_new(args).await.unwrap();
-    (async {
-        endpoint.prime(&client).await;
-        disable_mode_interruption(&client).await;
-        let outcome = client
-            .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"direct"})))
-            .await
-            .unwrap();
-        assert_eq!(outcome.degradations().len(), 1);
-        assert!(matches!(
-            outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
-        ));
-        assert_eq!(
-            client.configuration_status().runtime.health,
-            nyanpasu_core::client::convergence::ConvergenceHealth::RetryScheduled
-        );
-        assert_eq!(endpoint.submissions(), 1);
-        let persisted: nyanpasu_config::clash::config::ClashConfig =
-            serde_yaml::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
-        assert_eq!(
-            serde_json::to_value(persisted.overrides).unwrap()["mode"],
-            "direct"
-        );
-        assert_eq!(
-            serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
-            "direct"
-        );
-    }).await;
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let args = test_client_args_with_endpoint(
+        &dir,
+        endpoint.clone(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
         endpoint.prime(&client).await;
@@ -1250,87 +895,6 @@ async fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
         );
     })
     .await;
-}
-
-/// V08/V09 (U7): a save whose write fails after its Try applied is returned
-/// as an error that names the persistence cause and what became of the
-/// runtime: rolled back, or not, in which case the domain is isolated. The
-/// source keeps its version either way.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
-    for restore_lost in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
-        let args = test_client_args_with_endpoint(&dir, scripted.clone()).await;
-        let path = args.paths.clash_config_path();
-        let client = NyanpasuClient::try_new(args).await.unwrap();
-        (async {
-            endpoint.prime(&client).await;
-            disable_mode_interruption(&client).await;
-            let before = client.inner.clash_config.snapshot();
-            if path.exists() {
-                std::fs::remove_file(&path).unwrap();
-            }
-            std::fs::create_dir_all(&path).unwrap();
-            // The Try applies; the Cancel's restore may lose its answer.
-            scripted.queue(WaitScript::Deliver);
-            if restore_lost {
-                scripted.queue(WaitScript::Missing);
-            }
-            let error = client
-                .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
-                .await
-                .expect_err("the save failed");
-            let after = client.inner.clash_config.snapshot();
-            assert_eq!(after.version, before.version);
-            assert_eq!(
-                serde_json::to_value(after.state).unwrap(),
-                serde_json::to_value(before.state).unwrap()
-            );
-            let crate::client::ClientError::Config(
-                crate::state::config_error::ConfigError::Commit {
-                    domain: super::mutation::ConfigDomain::Clash,
-                    source: aborted,
-                },
-            ) = &error
-            else {
-                panic!("{error:?}");
-            };
-            let crate::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted else {
-                panic!("{aborted:?}");
-            };
-            assert!(
-                source.to_string().contains("failed to write config"),
-                "{source}"
-            );
-            assert_eq!(
-                endpoint.submissions(),
-                2,
-                "Try applied and Cancel resubmitted the baseline"
-            );
-            if restore_lost {
-                assert!(
-                    matches!(
-                        aftermath(aborted),
-                        crate::state::mutation::RuntimeAftermath::RollbackFailed { .. }
-                    ),
-                    "{aborted:?}"
-                );
-                assert!(client.inner.application_workflow.status().uncertain);
-            } else {
-                assert!(
-                    matches!(
-                        aftermath(aborted),
-                        crate::state::mutation::RuntimeAftermath::RolledBack
-                    ),
-                    "{aborted:?}"
-                );
-                assert!(!client.inner.application_workflow.status().uncertain);
-            }
-        })
-        .await;
-    }
 }
 
 /// An installation sent after the workflow has stopped never reaches it, so it
@@ -1442,7 +1006,12 @@ async fn an_override_patch_submits_once_and_notifies_the_ui() {
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        endpoint.clone(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.ui_sink = ui.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
@@ -1488,7 +1057,12 @@ async fn a_core_reconcile_notifies_the_ui() {
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        endpoint.clone(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.ui_sink = ui.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
@@ -1522,7 +1096,12 @@ async fn an_explicit_start_notifies_the_ui() {
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        endpoint.clone(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.ui_sink = ui.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {

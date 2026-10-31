@@ -484,7 +484,7 @@ mod tests {
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
         let args = tauri::async_runtime::block_on(
-            crate::client::test_support::test_client_args_with_endpoint(
+            crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
                 crate::client::test_support::TestControlEndpoint::succeeding(),
             ),
@@ -873,7 +873,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let probe = Arc::new(Probe(AtomicUsize::new(0)));
         let mut args = tauri::async_runtime::block_on(
-            crate::client::test_support::test_client_args_with_endpoint(
+            crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
                 crate::client::test_support::TestControlEndpoint::succeeding(),
             ),
@@ -962,7 +962,10 @@ mod tests {
         ));
         let directory = tempfile::tempdir().unwrap();
         let args = tauri::async_runtime::block_on(
-            crate::client::test_support::test_client_args_with_endpoint(&directory, endpoint(url)),
+            crate::service::profile_file::test_support::test_client_args_with_endpoint(
+                &directory,
+                endpoint(url),
+            ),
         );
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
@@ -1082,7 +1085,7 @@ mod tests {
         }
         let directory = tempfile::tempdir().unwrap();
         let mut args = tauri::async_runtime::block_on(
-            crate::client::test_support::test_client_args_with_endpoint(
+            crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
                 crate::client::test_support::TestControlEndpoint::succeeding(),
             ),
@@ -1146,7 +1149,7 @@ mod tests {
         }
         let directory = tempfile::tempdir().unwrap();
         let mut args = tauri::async_runtime::block_on(
-            crate::client::test_support::test_client_args_with_endpoint(
+            crate::service::profile_file::test_support::test_client_args_with_endpoint(
                 &directory,
                 crate::client::test_support::TestControlEndpoint::succeeding(),
             ),

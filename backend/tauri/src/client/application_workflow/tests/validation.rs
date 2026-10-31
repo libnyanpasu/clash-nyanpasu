@@ -60,10 +60,10 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         application.snapshot_handle(),
         clash.snapshot_handle(),
         profiles.snapshot_handle(),
-        Arc::new(TestRuntimeBuildPort {
-            profiles_dir: dir.path().join("profiles"),
-            paths: paths.clone(),
-        }),
+        Arc::new(TestRuntimeBuildPort::from_directory(
+            dir.path().join("profiles"),
+            paths.clone(),
+        )),
         Arc::new(SessionPortResolver::default()),
     );
     let validator = CoreCheckValidator::new(core.clone(), paths.clone());

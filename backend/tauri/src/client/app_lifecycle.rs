@@ -340,8 +340,12 @@ mod tests {
                 None,
             );
             let effects = Arc::new(HeldEffects::default());
-            let mut args =
-                test_client_args_with_endpoint(&dir, core.clone() as EndpointHandle).await;
+            let mut args = test_client_args_with_endpoint(
+                &dir,
+                core.clone() as EndpointHandle,
+                crate::client::test_support::profile_test_adapters(&dir),
+            )
+            .await;
             args.effects = effects.clone();
             let registrar = Arc::new(CountingRegistrar::default());
             let hotkeys = HotkeyClient::spawn(

@@ -1,52 +1,25 @@
 //! Recovery regressions in bootstrap order: pre-Tauri migration, setup
 //! migration, and typed client construction, all over temporary app paths.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
 
 use nyanpasu_paths::PathResolver;
 use redb::ReadableDatabase as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::new_typed_config_clients;
+use crate::client::test_support::startup_recovery::{evidence, migrate};
 use nyanpasu_core::{
     migration::Runner,
     storage::{Storage, WebStorage},
     utils::test_support::test_paths,
 };
 
-pub(super) fn evidence(path: &Path) -> Vec<PathBuf> {
-    let prefix = format!("{}.corrupt-", path.file_name().unwrap().to_string_lossy());
-    fs::read_dir(path.parent().unwrap())
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| {
-            path.file_name()
-                .unwrap()
-                .to_string_lossy()
-                .starts_with(&prefix)
-        })
-        .collect()
-}
-
 fn fixture() -> (tempfile::TempDir, PathResolver) {
     let temp = tempfile::tempdir().unwrap();
     let paths = test_paths(temp.path().join("config"), temp.path().join("data"));
     paths.create_base_dirs().unwrap();
     (temp, paths)
-}
-
-pub(super) fn migrate(paths: &PathResolver) {
-    Runner::with_paths(
-        paths.clone(),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
-        false,
-    )
-    .unwrap()
-    .run_pending()
-    .unwrap();
 }
 
 #[tokio::test]
@@ -352,7 +325,7 @@ fn read_only_database_permission_failure_preserves_original() {
 #[cfg(windows)]
 #[tokio::test]
 async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
-    use std::process::Command;
+    use std::{path::PathBuf, process::Command};
     let (_temp, paths) = fixture();
     migrate(&paths);
     let path = paths.session_state_path();

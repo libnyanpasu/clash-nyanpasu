@@ -4,7 +4,7 @@ use serde::Serialize;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CoreVersionError {
     #[snafu(display("could not run the {core} core to read its version: {source}"))]
@@ -26,13 +26,13 @@ pub enum CoreVersionError {
     },
 }
 
-#[cfg_attr(test, mockall::automock)]
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait]
 pub trait CoreVersionReader: Send + Sync + 'static {
     async fn read(&self, core: ClashCore) -> Result<String, CoreVersionError>;
 }
 
-pub(crate) fn parse_version(core: ClashCore, banner: &str) -> Result<String, CoreVersionError> {
+pub fn parse_version(core: ClashCore, banner: &str) -> Result<String, CoreVersionError> {
     for token in banner.split_whitespace() {
         let version = token.strip_prefix('v').unwrap_or(token);
         let release = semver::Version::parse(version).is_ok();

@@ -617,27 +617,31 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
         &self,
     ) -> Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         if self.park.swap(false, Ordering::SeqCst) {
             self.parked.notify_one();
             self.release.notified().await;
         }
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -764,25 +768,29 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
         &self,
     ) -> Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.parked.notify_one();
         self.release.notified().await;
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -979,7 +987,7 @@ async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
         .expect("the runtime still waits for a proven owner");
     assert_eq!(
         target.health,
-        crate::client::convergence::ConvergenceHealth::RecoveryRequired
+        nyanpasu_core::client::convergence::ConvergenceHealth::RecoveryRequired
     );
     assert_eq!(
         g.log(),

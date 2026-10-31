@@ -1060,7 +1060,7 @@ mod tests {
     impl ServiceHostAdapter for ReadyService {
         async fn probe(
             &self,
-        ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError>
+        ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError>
         {
             self.calls.lock().unwrap().push("ensure_ready");
             Ok(StatusInfo {
@@ -1092,25 +1092,27 @@ mod tests {
             })
         }
 
-        async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        async fn install(
+            &self,
+        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
         async fn uninstall(
             &self,
-        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
         async fn start_daemon(
             &self,
-        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
         async fn stop_daemon(
             &self,
-        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
         fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {

@@ -1,9 +1,7 @@
 use super::*;
-use crate::{
-    client::core_lifecycle::ports::PreparedCoreBinary,
-    core::download::{DownloadStatus, DownloaderState},
-};
+use crate::client::core_lifecycle::ports::PreparedCoreBinary;
 use async_trait::async_trait;
+use nyanpasu_core::download::{DownloadStatus, DownloaderState};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{Semaphore, mpsc};
 

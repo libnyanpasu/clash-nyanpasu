@@ -22,7 +22,7 @@ use super::{
     application::ApplicationClient,
     application_workflow,
     clash_config::ClashConfigClient,
-    core_lifecycle, core_version, direct_egress, effects,
+    core_lifecycle, effects,
     host_adapters::{ClientHostAdapters, ProfileFilePorts},
     hotkey, jobs, logs, runtime,
     session_state::SessionStateClient,
@@ -45,7 +45,10 @@ use crate::{
         },
     },
 };
-use nyanpasu_core::{client::bundle_metadata::BundleMetadata, utils::test_support::test_paths};
+use nyanpasu_core::{
+    client::{bundle_metadata::BundleMetadata, core_version, direct_egress},
+    utils::test_support::test_paths,
+};
 
 pub(crate) struct TestControlEndpoint {
     /// Which host this endpoint claims to be. A graph that moves the

@@ -6,7 +6,7 @@ use snafu::ResultExt as _;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum FailureStage {
+pub enum FailureStage {
     RunnerConstruction,
     Backup,
     Migration,
@@ -14,7 +14,7 @@ pub(crate) enum FailureStage {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum RevisionFailure {
+pub enum RevisionFailure {
     NewerStoreSchema {
         path: PathBuf,
         read: u64,
@@ -40,7 +40,7 @@ pub(crate) enum RevisionFailure {
 
 #[derive(Debug, Serialize, Deserialize, snafu::Snafu)]
 #[snafu(display("migration child failed during {stage:?}: {}", chain.join(": ")))]
-pub(crate) struct Failure {
+pub struct Failure {
     pub stage: FailureStage,
     pub config_dir: PathBuf,
     pub backups_dir: PathBuf,
@@ -53,7 +53,7 @@ pub(crate) struct Failure {
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to encode migration result"))]
     Encode { source: serde_json::Error },
     #[snafu(display("failed to write migration result {}", path.display()))]
@@ -144,8 +144,8 @@ impl Failure {
                     | super::MigrationCheckError::ReadSessionState { path, .. } => Some(path),
                     super::MigrationCheckError::Unrecognized(_) => None,
                 }
-            } else if let Some(crate::core::backup::BackupError::Io { path, .. }) =
-                error.downcast_ref::<crate::core::backup::BackupError>()
+            } else if let Some(crate::backup::BackupError::Io { path, .. }) =
+                error.downcast_ref::<crate::backup::BackupError>()
             {
                 Some(path)
             } else if let Some(error) = error.downcast_ref::<super::store::Error>() {
@@ -164,12 +164,12 @@ impl Failure {
                     | super::fs::Error::CreateDirectory { path, .. }
                     | super::fs::Error::WriteFile { path, .. } => Some(path),
                 }
-            } else if let Some(crate::core::session_state::Error::ReadState { path, .. }) =
-                error.downcast_ref::<crate::core::session_state::Error>()
+            } else if let Some(crate::session_state::Error::ReadState { path, .. }) =
+                error.downcast_ref::<crate::session_state::Error>()
             {
                 Some(path)
-            } else if let Some(crate::core::corrupt::Error::PreserveEvidence { path, .. }) =
-                error.downcast_ref::<crate::core::corrupt::Error>()
+            } else if let Some(crate::corrupt::Error::PreserveEvidence { path, .. }) =
+                error.downcast_ref::<crate::corrupt::Error>()
             {
                 Some(path)
             } else {
@@ -201,7 +201,7 @@ impl Failure {
             revision,
             chain,
             backup_available,
-            io_failure: crate::core::corrupt::error_io(error),
+            io_failure: crate::corrupt::error_io(error),
         }
     }
 

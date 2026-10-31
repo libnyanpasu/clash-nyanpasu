@@ -1,4 +1,4 @@
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use std::{net::SocketAddr, str::FromStr};
 
 #[derive(Default, Debug, Clone)]

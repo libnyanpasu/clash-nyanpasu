@@ -11,11 +11,11 @@ use redb::ReadableDatabase as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::new_typed_config_clients;
-use crate::core::{
+use nyanpasu_core::{
     migration::Runner,
     storage::{Storage, WebStorage},
+    utils::test_support::test_paths,
 };
-use nyanpasu_core::utils::test_support::test_paths;
 
 pub(super) fn evidence(path: &Path) -> Vec<PathBuf> {
     let prefix = format!("{}.corrupt-", path.file_name().unwrap().to_string_lossy());
@@ -123,7 +123,7 @@ fn session_evidence_is_preserved_before_partial_config_rejection() {
     .unwrap_err();
     assert!(matches!(
         error,
-        crate::core::migration::runner::Error::DetectBaseline { .. }
+        nyanpasu_core::migration::runner::Error::DetectBaseline { .. }
     ));
     assert_eq!(evidence(path.as_std_path()).len(), 1);
     let _: nyanpasu_config::state::PersistentState =
@@ -163,8 +163,8 @@ fn database_recovers_in_both_migrations_and_storage_construction() {
                     if boundary == 1 {
                         let state_path = paths
                             .app_config_dir()
-                            .join(crate::core::migration::store::STORE_FILE_NAME);
-                        let mut store = crate::core::migration::store::MigrationStore::load(
+                            .join(nyanpasu_core::migration::store::STORE_FILE_NAME);
+                        let mut store = nyanpasu_core::migration::store::MigrationStore::load(
                             state_path.as_std_path(),
                         )
                         .unwrap();
@@ -295,11 +295,11 @@ fn failed_session_evidence_rename_is_typed_and_keeps_original() {
         .share_mode(FILE_SHARE_READ)
         .open(&path)
         .unwrap();
-    let result = crate::core::session_state::read(path.as_std_path());
+    let result = nyanpasu_core::session_state::read(path.as_std_path());
     drop(held);
     assert!(
-        matches!(result, Err(crate::core::session_state::Error::PreserveState {
-        source: crate::core::corrupt::Error::PreserveEvidence { source, .. }
+        matches!(result, Err(nyanpasu_core::session_state::Error::PreserveState {
+        source: nyanpasu_core::corrupt::Error::PreserveEvidence { source, .. }
     }) if matches!(source.raw_os_error(), Some(32 | 33)))
     );
     assert!(evidence(path.as_std_path()).is_empty());
@@ -318,7 +318,7 @@ fn locked_database_is_returned_without_renaming_or_resetting() {
     };
     assert!(matches!(
         error,
-        crate::core::storage::StorageOperationError::OpenDatabase {
+        nyanpasu_core::storage::StorageOperationError::OpenDatabase {
             source: redb::DatabaseError::DatabaseAlreadyOpen,
             ..
         }
@@ -341,7 +341,7 @@ fn read_only_database_permission_failure_preserves_original() {
     let result = Storage::try_new(path.as_std_path());
     fs::set_permissions(&path, original_permissions).unwrap();
     assert!(
-        matches!(result, Err(crate::core::storage::StorageOperationError::OpenDatabase {
+        matches!(result, Err(nyanpasu_core::storage::StorageOperationError::OpenDatabase {
         source: redb::DatabaseError::Storage(redb::StorageError::Io(ref error)), ..
     }) if error.kind() == std::io::ErrorKind::PermissionDenied)
     );
@@ -407,21 +407,21 @@ async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
     let error = migration.unwrap_err();
     assert!(matches!(
         error,
-        crate::core::migration::runner::Error::InspectModule { .. }
+        nyanpasu_core::migration::runner::Error::InspectModule { .. }
     ));
     let denied = match &error {
-        crate::core::migration::runner::Error::InspectModule { source, .. } => {
+        nyanpasu_core::migration::runner::Error::InspectModule { source, .. } => {
             match source.as_ref() {
-                crate::core::migration::OperationError::TypedConfig { source } => {
+                nyanpasu_core::migration::OperationError::TypedConfig { source } => {
                     match source.as_ref() {
-                        crate::core::migration::modules::typed_config::Error::InspectInput {
+                        nyanpasu_core::migration::modules::typed_config::Error::InspectInput {
                             source:
-                                crate::core::migration::MigrationCheckError::ReadSessionState {
+                                nyanpasu_core::migration::MigrationCheckError::ReadSessionState {
                                     source,
                                     ..
                                 },
                         } => {
-                            matches!(source.as_ref(), crate::core::session_state::Error::ReadState { source, .. }
+                            matches!(source.as_ref(), nyanpasu_core::session_state::Error::ReadState { source, .. }
                     if source.kind() == std::io::ErrorKind::PermissionDenied)
                         }
                         _ => false,
@@ -438,7 +438,7 @@ async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
     );
     assert!(
         matches!(client, Err(super::session_state::Error::LoadState {
-        source: crate::core::session_state::Error::ReadState { source, .. }
+        source: nyanpasu_core::session_state::Error::ReadState { source, .. }
     }) if source.kind() == std::io::ErrorKind::PermissionDenied)
     );
     assert!(evidence(path.as_std_path()).is_empty());

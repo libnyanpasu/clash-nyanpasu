@@ -2,10 +2,10 @@ use nyanpasu_paths::PathResolver;
 use semver::Version;
 use std::path::PathBuf;
 
-use nyanpasu_core::client::bundle_metadata::BundleMetadata;
+use crate::client::bundle_metadata::BundleMetadata;
 
-pub(crate) mod child_result;
-pub(crate) mod fs;
+pub mod child_result;
+pub mod fs;
 mod legacy_schema;
 pub mod modules;
 pub mod registry;
@@ -15,7 +15,7 @@ pub mod store;
 pub use runner::Runner;
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum OperationError {
+pub enum OperationError {
     #[snafu(context(false), display("app_config migration failed"))]
     AppConfig {
         #[snafu(source(from(modules::app_config::Error, Box::new)))]
@@ -96,8 +96,8 @@ impl Ctx {
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
-            paths: nyanpasu_core::utils::test_support::test_paths(app_config_dir, app_data_dir),
-            bundle_metadata: nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            paths: crate::utils::test_support::test_paths(app_config_dir, app_data_dir),
+            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
         }
     }
 
@@ -174,19 +174,19 @@ pub enum MigrationCheckError {
     Parse {
         path: PathBuf,
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
     #[error("failed to read the key-value storage at {}", path.display())]
     Storage {
         path: PathBuf,
         #[source]
-        source: crate::core::storage::StorageOperationError,
+        source: crate::storage::StorageOperationError,
     },
     #[error("failed to read the stamp of {}", path.display())]
     Stamp {
         path: PathBuf,
         #[source]
-        source: nyanpasu_core::format::StampError,
+        source: crate::format::StampError,
     },
     #[error("failed to migrate clash overrides in {}", path.display())]
     MigrateClashOverrides {
@@ -198,7 +198,7 @@ pub enum MigrationCheckError {
     ReadSessionState {
         path: PathBuf,
         #[source]
-        source: Box<crate::core::session_state::Error>,
+        source: Box<crate::session_state::Error>,
     },
     /// Readable and well-formed, but in no shape the step knows.
     #[error("{0}")]
@@ -269,7 +269,7 @@ pub trait ModuleMigrator: Send + Sync {
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum VersionError {
+pub enum VersionError {
     #[snafu(display("failed to parse build version"))]
     ParseBuildVersion { source: semver::Error },
 }

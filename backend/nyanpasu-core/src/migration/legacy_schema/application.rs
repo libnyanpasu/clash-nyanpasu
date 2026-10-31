@@ -6,7 +6,7 @@ use nyanpasu_config::application::{
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to convert legacy YAML"))]
     ConvertYaml { source: super::ConversionError },
 }

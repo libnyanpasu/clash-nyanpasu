@@ -17,7 +17,7 @@ use snafu::{ResultExt as _, Snafu};
 use time::OffsetDateTime;
 
 /// Finds IO hidden by libraries whose error implementation does not expose it.
-pub(crate) fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFailure> {
+pub fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFailure> {
     if let Some(error) = error.downcast_ref::<io::Error>() {
         return Some(classify(error));
     }
@@ -44,7 +44,7 @@ pub(crate) fn error_io(error: &(dyn std::error::Error + 'static)) -> Option<IoFa
     error.source().and_then(error_io)
 }
 
-pub(crate) fn is_link(metadata: &std::fs::Metadata) -> bool {
+pub fn is_link(metadata: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt as _;
@@ -57,11 +57,11 @@ pub(crate) fn is_link(metadata: &std::fs::Metadata) -> bool {
     }
 }
 
-pub(crate) fn retry_io<T>(operation: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+pub fn retry_io<T>(operation: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     retry(operation, |error| classify(error) == IoFailure::Transient)
 }
 
-pub(crate) fn retry<T, E>(
+pub fn retry<T, E>(
     operation: impl FnMut() -> Result<T, E>,
     transient: impl Fn(&E) -> bool,
 ) -> Result<T, E> {
@@ -80,7 +80,7 @@ pub(crate) fn retry_with_delay<T, E>(
         .call()
 }
 
-pub(crate) async fn retry_async<T, F>(operation: impl FnMut() -> F) -> io::Result<T>
+pub async fn retry_async<T, F>(operation: impl FnMut() -> F) -> io::Result<T>
 where
     F: Future<Output = io::Result<T>>,
 {
@@ -91,7 +91,7 @@ where
 }
 
 #[derive(Debug, Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to preserve {} as {}", path.display(), evidence.display()))]
     PreserveEvidence {
         path: PathBuf,
@@ -102,10 +102,7 @@ pub(crate) enum Error {
 
 /// Moves a confirmed bad node to a sibling, never replacing earlier evidence.
 /// A failed rename is fatal; callers must not rebuild over the original node.
-pub(crate) fn preserve(
-    path: &Path,
-    cause: &(dyn std::error::Error + 'static),
-) -> Result<PathBuf, Error> {
+pub fn preserve(path: &Path, cause: &(dyn std::error::Error + 'static)) -> Result<PathBuf, Error> {
     preserve_at(path, cause, OffsetDateTime::now_utc())
 }
 

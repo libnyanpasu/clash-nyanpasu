@@ -2,16 +2,16 @@ use super::super::{
     Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator,
     fs::{read_document, write_document},
 };
+use crate::format::{Inspected, StampedDocument, StampedYamlFormat};
 use nyanpasu_config::clash::config::ClashConfig;
-use nyanpasu_core::format::{Inspected, StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use snafu::OptionExt as _;
 use std::path::Path;
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to inspect migration input"))]
     InspectInput {
         source: super::super::MigrationCheckError,
@@ -80,15 +80,13 @@ impl ModuleMigrator for ClashConfigMigrator {
 /// `typed_config` judges `clash-config.yaml` before this module runs, and
 /// repairs it from the older `clash.yaml`, so neither may read the file in the
 /// current shape alone.
-pub(in crate::core::migration) fn read_typed(
-    path: &Path,
-) -> Result<ClashConfig, MigrationCheckError> {
+pub(in crate::migration) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError> {
     let raw = std::fs::read_to_string(path).map_err(|source| MigrationCheckError::Io {
         path: path.to_path_buf(),
         source,
     })?;
     let (revision, mut payload) =
-        match nyanpasu_core::format::inspect(&raw).map_err(|source| MigrationCheckError::Stamp {
+        match crate::format::inspect(&raw).map_err(|source| MigrationCheckError::Stamp {
             path: path.to_path_buf(),
             source,
         })? {
@@ -109,9 +107,11 @@ pub(in crate::core::migration) fn read_typed(
     if revision < TUN_MIPS.revision() {
         add_tun_mips(&mut payload);
     }
-    serde_yaml::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
-        path: path.to_path_buf(),
-        source,
+    serde_yaml_ng::from_value(Value::Mapping(payload)).map_err(|source| {
+        MigrationCheckError::Parse {
+            path: path.to_path_buf(),
+            source,
+        }
     })
 }
 
@@ -182,9 +182,7 @@ fn manage_guard_fields(payload: &mut Mapping) -> Result<(), Error> {
 /// mapping itself, which the legacy conversion shares. A field already in the
 /// managed shape is left alone: `typed_config` may have written the file at
 /// head before this step runs on it.
-pub(in crate::core::migration) fn manage_override_fields(
-    overrides: &mut Mapping,
-) -> Result<(), Error> {
+pub(in crate::migration) fn manage_override_fields(overrides: &mut Mapping) -> Result<(), Error> {
     for key in MANAGEABLE_GUARD_KEYS {
         let Some(value) = overrides.get_mut(key) else {
             continue;
@@ -346,7 +344,7 @@ mod tests {
     }
 
     fn payload(src: &str) -> Mapping {
-        serde_yaml::from_str(src).unwrap()
+        serde_yaml_ng::from_str(src).unwrap()
     }
 
     #[test]
@@ -404,7 +402,7 @@ mod tests {
         add_tun_mips(&mut config);
         assert_eq!(config, payload("tun_stack: gvisor\ntun_mips: {}\n"));
         let options: nyanpasu_config::clash::config::tun_stack::MipsConfig =
-            serde_yaml::from_value(config["tun_mips"].clone()).unwrap();
+            serde_yaml_ng::from_value(config["tun_mips"].clone()).unwrap();
         assert_eq!(options.congestion_controller, None);
 
         let src = "tun_mips: {congestion_controller: bbr}\n";

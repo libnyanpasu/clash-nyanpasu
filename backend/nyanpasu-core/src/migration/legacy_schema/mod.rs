@@ -20,7 +20,7 @@ use nyanpasu_config::{
 use serde::{Serialize, de::DeserializeOwned};
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(context(false), display("failed to convert legacy application"))]
     BuildApplication { source: application::Error },
     #[snafu(context(false), display("failed to convert legacy session"))]
@@ -31,7 +31,7 @@ pub(crate) enum Error {
 
 pub fn typed_config_from_legacy_parts(
     legacy: &IVerge,
-    legacy_clash: &serde_yaml::Mapping,
+    legacy_clash: &serde_yaml_ng::Mapping,
 ) -> Result<(NyanpasuAppConfig, PersistentState, ClashConfig), Error> {
     Ok((
         application::application_from_legacy(legacy)?,
@@ -41,11 +41,11 @@ pub fn typed_config_from_legacy_parts(
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum ConversionError {
+pub enum ConversionError {
     #[snafu(display("failed to serialize legacy value"))]
-    SerializeValue { source: serde_yaml::Error },
+    SerializeValue { source: serde_yaml_ng::Error },
     #[snafu(display("failed to deserialize legacy value"))]
-    DeserializeValue { source: serde_yaml::Error },
+    DeserializeValue { source: serde_yaml_ng::Error },
 }
 
 fn yaml_convert<T, U>(value: T) -> Result<U, ConversionError>
@@ -54,8 +54,8 @@ where
     U: DeserializeOwned,
 {
     use snafu::ResultExt as _;
-    let value = serde_yaml::to_value(value).context(SerializeValueSnafu)?;
-    serde_yaml::from_value(value).context(DeserializeValueSnafu)
+    let value = serde_yaml_ng::to_value(value).context(SerializeValueSnafu)?;
+    serde_yaml_ng::from_value(value).context(DeserializeValueSnafu)
 }
 
 #[cfg(test)]
@@ -141,15 +141,19 @@ mod tests {
     }
 
     /// The application, session and clash documents one field converts to.
-    fn convert(field: &str, value: &str, clash: &serde_yaml::Mapping) -> [serde_yaml::Value; 3] {
-        let legacy: IVerge = serde_yaml::from_str(&format!("{field}: {value}"))
+    fn convert(
+        field: &str,
+        value: &str,
+        clash: &serde_yaml_ng::Mapping,
+    ) -> [serde_yaml_ng::Value; 3] {
+        let legacy: IVerge = serde_yaml_ng::from_str(&format!("{field}: {value}"))
             .unwrap_or_else(|error| panic!("{field}: {value} is not a legacy value: {error}"));
         let (application, session, clash) = typed_config_from_legacy_parts(&legacy, clash)
             .unwrap_or_else(|error| panic!("{field}: {value} does not convert: {error:#}"));
         [
-            serde_yaml::to_value(application).unwrap(),
-            serde_yaml::to_value(session).unwrap(),
-            serde_yaml::to_value(clash).unwrap(),
+            serde_yaml_ng::to_value(application).unwrap(),
+            serde_yaml_ng::to_value(session).unwrap(),
+            serde_yaml_ng::to_value(clash).unwrap(),
         ]
     }
 

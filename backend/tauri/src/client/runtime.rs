@@ -20,10 +20,11 @@ use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
 use crate::{
-    core::{actor_v2::api::ApiError, corrupt},
+    core::actor_v2::api::ApiError,
     enhance::PostProcessingOutput,
     state::profiles::{ErrorPath, ProfilesError},
 };
+use nyanpasu_core::corrupt;
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";

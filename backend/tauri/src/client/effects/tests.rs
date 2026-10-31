@@ -367,7 +367,12 @@ async fn source_commit_and_second_save_do_not_wait_for_gui() {
         block: Some(EffectKind::Tray),
         ..Default::default()
     });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.effects = port.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
@@ -405,7 +410,12 @@ async fn asynchronous_failure_is_status_and_never_cancels_source() {
         fail: AtomicBool::new(true),
         ..Default::default()
     });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.effects = port;
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
@@ -442,7 +452,12 @@ async fn asynchronous_failure_is_status_and_never_cancels_source() {
 async fn no_op_and_session_saves_do_not_dispatch() {
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.effects = port.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
@@ -472,7 +487,12 @@ async fn rejected_source_never_dispatches() {
     use crate::{client::ClientError, state::config_error::ConfigError};
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.effects = port.clone();
     args.bundle_metadata.release_channel = ReleaseChannel::Nightly;
     let client = NyanpasuClient::try_new(args).await.unwrap();
@@ -514,7 +534,12 @@ async fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
     let endpoint = TestControlEndpoint::succeeding();
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        endpoint.clone(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.effects = port.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
@@ -781,7 +806,12 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
         block: Some(EffectKind::Locale),
         ..Default::default()
     });
-    let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let mut args = test_client_args_with_endpoint(
+        &dir,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(&dir),
+    )
+    .await;
     args.effects = port.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     let before = client.configuration_status();

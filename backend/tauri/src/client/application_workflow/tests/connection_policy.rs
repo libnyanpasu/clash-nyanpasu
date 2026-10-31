@@ -153,7 +153,12 @@ impl Fixture {
             api_queries: AtomicUsize::new(0),
         });
         let dir = tempfile::tempdir().unwrap();
-        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
         args.binary_installer = installer;
         let client = NyanpasuClient::try_new(args).await.unwrap();
         endpoint.delegate.prime(&client).await;
@@ -954,10 +959,10 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
 impl RecordingBuilder {
     fn new(f: &Fixture, fail_build: bool, fail_publish: bool) -> Arc<Self> {
         Arc::new(Self {
-            delegate: TestRuntimeBuildPort {
-                profiles_dir: f.client.inner.profiles_dir.clone(),
-                paths: crate::client::test_support::test_runtime_paths(&f._dir),
-            },
+            delegate: TestRuntimeBuildPort::from_profile_port(
+                f.client.inner.fs.clone(),
+                crate::client::test_support::test_runtime_paths(&f._dir),
+            ),
             inputs: Mutex::new(Vec::new()),
             fail_build,
             fail_publish,

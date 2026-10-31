@@ -572,7 +572,12 @@ mod facade {
     use nyanpasu_core::actor_v2::test_support::test_idle_endpoint;
 
     async fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
-        let mut args = test_client_args_with_endpoint(dir, test_idle_endpoint()).await;
+        let mut args = test_client_args_with_endpoint(
+            dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(dir),
+        )
+        .await;
         args.window = Arc::new(window);
         NyanpasuClient::try_new(args)
             .await

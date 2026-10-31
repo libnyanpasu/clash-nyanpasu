@@ -3673,3 +3673,6 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(10));
     }
 }
+
+#[cfg(test)]
+mod integration_tests;

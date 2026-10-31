@@ -27,8 +27,10 @@ use crate::{
 };
 use nyanpasu_core::actor_v2::local_host::CoreSpecError;
 
+type CaptureContent = dyn Fn(&Profiles) -> FrozenProfileContent + Send + Sync;
+
 pub(crate) struct TestRuntimeBuildPort {
-    pub profiles_dir: PathBuf,
+    pub capture: Arc<CaptureContent>,
     pub paths: RuntimePaths,
 }
 
@@ -57,21 +59,7 @@ impl ScriptRunner for EchoScripts {
 #[async_trait]
 impl RuntimeBuildPort for TestRuntimeBuildPort {
     async fn capture_content(&self, profiles: &Profiles) -> FrozenProfileContent {
-        let mut content = FrozenProfileContent::default();
-        for uid in ProfilesActor::current_closure(profiles) {
-            if let Some(source) = profiles
-                .items
-                .get(&uid)
-                .and_then(|item| item.definition.source())
-            {
-                let file = &source.materialized().file;
-                let path = self.profiles_dir.join(file.as_path());
-                let text = std::fs::read_to_string(&path)
-                    .map_err(|error| format!("read profile content {}: {error}", path.display()));
-                content.0.insert(file.to_string(), text);
-            }
-        }
-        content
+        (self.capture)(profiles)
     }
 
     fn core_spec(&self, core: &ClashCore) -> Result<CoreSpec, CoreSpecError> {
@@ -112,5 +100,56 @@ impl RuntimeBuildPort for TestRuntimeBuildPort {
 
     async fn publish(&self, snapshot: &RuntimeSnapshot) -> Result<(), PublishRuntimeError> {
         runtime::write_product(self.paths.product().as_std_path(), snapshot.product_bytes()).await
+    }
+}
+
+impl TestRuntimeBuildPort {
+    pub(crate) fn from_directory(profiles_dir: PathBuf, paths: RuntimePaths) -> Self {
+        Self {
+            paths,
+            capture: Arc::new(move |profiles| {
+                let mut content = FrozenProfileContent::default();
+                for uid in ProfilesActor::current_closure(profiles) {
+                    if let Some(source) = profiles
+                        .items
+                        .get(&uid)
+                        .and_then(|item| item.definition.source())
+                    {
+                        let file = &source.materialized().file;
+                        let path = profiles_dir.join(file.as_path());
+                        let text = std::fs::read_to_string(&path).map_err(|error| {
+                            format!("read profile content {}: {error}", path.display())
+                        });
+                        content.0.insert(file.to_string(), text);
+                    }
+                }
+                content
+            }),
+        }
+    }
+    pub(crate) fn from_profile_port(
+        fs: Arc<dyn crate::state::profiles::ports::ProfileFsPort>,
+        paths: RuntimePaths,
+    ) -> Self {
+        Self {
+            paths,
+            capture: Arc::new(move |profiles| {
+                let mut content = FrozenProfileContent::default();
+                for uid in ProfilesActor::current_closure(profiles) {
+                    if let Some(source) = profiles
+                        .items
+                        .get(&uid)
+                        .and_then(|item| item.definition.source())
+                    {
+                        let file = &source.materialized().file;
+                        content.0.insert(
+                            file.to_string(),
+                            fs.read(file).map_err(|error| error.to_string()),
+                        );
+                    }
+                }
+                content
+            }),
+        }
     }
 }

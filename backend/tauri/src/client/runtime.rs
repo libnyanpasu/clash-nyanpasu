@@ -1228,8 +1228,9 @@ pub(crate) mod tests {
                 .unwrap(),
             0
         );
-        let evidence =
-            crate::client::startup_recovery_tests::evidence(paths.candidate_dir().as_std_path());
+        let evidence = crate::client::test_support::startup_recovery::evidence(
+            paths.candidate_dir().as_std_path(),
+        );
         assert_eq!(evidence.len(), 1);
         assert_eq!(std::fs::read(&evidence[0]).unwrap(), b"original node");
         let candidate = paths.create_candidate(b"usable").await.unwrap();
@@ -1325,8 +1326,9 @@ pub(crate) mod tests {
             .unwrap();
         let candidate = paths.create_candidate(b"usable").await.unwrap();
         assert_eq!(std::fs::read(candidate.path()).unwrap(), b"usable");
-        let evidence =
-            crate::client::startup_recovery_tests::evidence(paths.candidate_dir().as_std_path());
+        let evidence = crate::client::test_support::startup_recovery::evidence(
+            paths.candidate_dir().as_std_path(),
+        );
         assert_eq!(evidence.len(), 1);
         assert!(
             std::fs::symlink_metadata(&evidence[0])

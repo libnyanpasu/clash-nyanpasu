@@ -20,10 +20,7 @@ use std::{
 
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
-    clash::config::{
-        ClashConfig,
-        clash_strategy::port::{PortStrategy, PortStrategyKind},
-    },
+    clash::config::ClashConfig,
     profile::Profiles,
 };
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult};
@@ -55,13 +52,10 @@ use super::{
     ownership,
 };
 use crate::client::{
-    NyanpasuClient, SessionPortResolver,
+    SessionPortResolver,
     core_lifecycle::{Ownership, ports::PreparedCoreBinary},
     runtime,
-    test_support::{
-        TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
-        test_client_args_with_endpoint,
-    },
+    test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
 };
 use nyanpasu_core::{
     actor_v2::{
@@ -408,10 +402,10 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         runtime::RuntimeSnapshotStore::default(),
     ));
     let notifications = Arc::new(RecordingNotifications::default());
-    let builder = Arc::new(TestRuntimeBuildPort {
-        profiles_dir: dir.path().join("profiles"),
-        paths: paths.clone(),
-    });
+    let builder = Arc::new(TestRuntimeBuildPort::from_directory(
+        dir.path().join("profiles"),
+        paths.clone(),
+    ));
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
@@ -602,72 +596,6 @@ async fn a_clean_local_start_applies_once_under_a_proven_owner() {
         g.ports.confirmed().is_some(),
         "the apply confirmed its ports"
     );
-}
-
-/// S4 (random port): startup is not a source transaction. A randomly picked
-/// mixed port lands in the runtime binding, and none of the four source
-/// domains changes, neither its version nor its bytes.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
-    let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    endpoint.set_status(Some(STOPPED), None);
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
-    let clash = ClashConfig {
-        mixed_port: PortStrategy {
-            kind: PortStrategyKind::Random,
-            start_port: 7890,
-        },
-        ..ClashConfig::default()
-    };
-    crate::client::test_support::write_clash_config(args.paths.clash_config_path(), &clash);
-    let files = [
-        args.paths.application_config_path(),
-        args.paths.clash_config_path(),
-        args.paths.profiles_path(),
-        args.paths.session_state_path(),
-    ];
-    let bytes = || {
-        files
-            .iter()
-            .map(|path| std::fs::read(path).ok())
-            .collect::<Vec<_>>()
-    };
-    let client = NyanpasuClient::try_new(args).await.unwrap();
-    (async {
-        let versions = |client: &NyanpasuClient| {
-            let versions = client.configuration_status().source_versions;
-            (
-                versions.application,
-                versions.clash,
-                versions.session,
-                versions.profiles,
-            )
-        };
-        let (before_versions, before_bytes) = (versions(&client), bytes());
-
-        let report = client.startup_reconcile().await;
-
-        assert_eq!(report.outcome, StartupOutcome::Ready, "{report:?}");
-        assert_eq!(versions(&client), before_versions);
-        assert_eq!(bytes(), before_bytes);
-        assert_eq!(endpoint.submissions(), 1);
-        let submitted: serde_yaml::Value =
-            serde_yaml::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
-        let picked = submitted["mixed-port"]
-            .as_u64()
-            .expect("the submitted document carries its mixed port");
-        assert_eq!(
-            client
-                .inner
-                .ports
-                .confirmed()
-                .map(|ports| u64::from(ports.mixed_port)),
-            Some(picked),
-            "the binding is the port the build picked"
-        );
-    })
-    .await;
 }
 
 /// S5: a core an earlier session left running in the service, with Service

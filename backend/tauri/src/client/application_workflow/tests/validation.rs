@@ -17,12 +17,11 @@ use super::super::{
     preparation::RuntimePreparation,
 };
 use crate::{
-    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         SessionPortResolver,
         core_lifecycle::ports::RuntimePreparationPort,
         runtime,
-        test_support::{TestCheckAnswer, TestControlEndpoint},
+        test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
     core::actor_v2::{CoreClient, endpoint::ExecutionHost, facade::CoreFacade},
 };
@@ -64,11 +63,9 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         application.snapshot_handle(),
         clash.snapshot_handle(),
         profiles.snapshot_handle(),
-        Arc::new(FsRuntimeBuildAdapter {
-            core_specs: Arc::new(crate::client::runtime_core_spec),
+        Arc::new(TestRuntimeBuildPort {
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         }),
         Arc::new(SessionPortResolver::default()),
     );

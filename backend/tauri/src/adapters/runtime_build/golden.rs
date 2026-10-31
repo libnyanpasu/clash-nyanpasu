@@ -15,7 +15,7 @@ use nyanpasu_config::{
     runtime::executor::{ResolvedPortBindings, known_fields},
 };
 
-use super::test_support::{composition, file_config, overlay};
+use crate::enhance::test_support::{composition, file_config, overlay};
 use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
@@ -64,7 +64,8 @@ fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml
 }
 
 fn assert_matches_fixture(actual: &serde_yaml::Value, name: &str) {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/enhance/fixtures/golden");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src/adapters/runtime_build/fixtures/golden");
     let path = dir.join(name);
     let rendered = serde_yaml::to_string(actual).unwrap();
     if std::env::var_os("GOLDEN_BLESS").is_some() {

@@ -15,10 +15,12 @@ use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
 use crate::{
-    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         NyanpasuClient,
-        test_support::{TestControlEndpoint, test_client_args_with_endpoint},
+        test_support::{
+            TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
+            test_client_args_with_endpoint,
+        },
     },
     core::actor_v2::endpoint::{
         ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
@@ -893,7 +895,7 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
 }
 
 struct RecordingBuilder {
-    delegate: FsRuntimeBuildAdapter,
+    delegate: TestRuntimeBuildPort,
     inputs: Mutex<
         Vec<(
             Arc<nyanpasu_config::profile::Profiles>,
@@ -955,11 +957,9 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
 impl RecordingBuilder {
     fn new(f: &Fixture, fail_build: bool, fail_publish: bool) -> Arc<Self> {
         Arc::new(Self {
-            delegate: FsRuntimeBuildAdapter {
-                core_specs: Arc::new(crate::client::runtime_core_spec),
+            delegate: TestRuntimeBuildPort {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: crate::client::test_support::test_runtime_paths(&f._dir),
-                scripts: nyanpasu_platform::enhance::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,

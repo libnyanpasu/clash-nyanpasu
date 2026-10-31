@@ -106,3 +106,9 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         runtime::write_product(self.paths.product().as_std_path(), snapshot.product_bytes()).await
     }
 }
+
+#[cfg(test)]
+mod golden;
+
+#[cfg(test)]
+mod tests;

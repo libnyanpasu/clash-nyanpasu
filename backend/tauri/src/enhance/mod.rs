@@ -3,8 +3,6 @@ mod chain;
 mod utils;
 
 #[cfg(test)]
-mod golden;
-#[cfg(test)]
 pub(crate) mod test_support;
 
 pub use artifact_snapshot::runtime_snapshot_data_from_artifact;

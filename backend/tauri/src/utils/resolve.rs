@@ -52,7 +52,7 @@ pub fn resolve_setup(app: &mut App) {
     }
 
     log::trace!("init clash connection connector");
-    log_err!(crate::core::clash::setup(app));
+    log_err!(crate::adapters::clash_events::setup(app));
 
     log_err!(tauri::async_runtime::block_on(
         app.state::<crate::client::NyanpasuClient>()

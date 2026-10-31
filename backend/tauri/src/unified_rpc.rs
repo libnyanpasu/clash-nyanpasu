@@ -36,7 +36,7 @@ const EVENT_NAMES: &[&str] = &[
     <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
     <crate::core::storage::StorageResyncEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    <crate::client::StateChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::event_sink::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
 
 #[derive(Clone)]
@@ -764,7 +764,8 @@ mod tests {
                 .unwrap();
             let mut stream = response.into_body().into_data_stream();
             stream.next().await.unwrap().unwrap();
-            let name = <crate::client::StateChangedEvent as tauri_specta::Event>::NAME;
+            let name =
+                <crate::adapters::event_sink::StateChangedEvent as tauri_specta::Event>::NAME;
             for sequence in 0..300 {
                 events.publish(name, serde_json::json!(sequence));
             }

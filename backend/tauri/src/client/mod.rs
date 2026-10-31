@@ -21,7 +21,7 @@ pub mod frontend_events;
 pub mod hotkey;
 pub(crate) mod jobs;
 pub mod logs;
-mod main_thread;
+pub(crate) mod main_thread;
 pub(crate) mod owner_shutdown;
 mod ports;
 pub mod profiles;
@@ -82,11 +82,8 @@ use struct_patch::Patch as _;
 pub use clash_info::ClashInfo;
 pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
-pub use event_sink::{
-    MainThreadHandoff, MainThreadWork, StateChanged, StateChangedEvent, TauriMainThread,
-    TauriUiEventSink, UiEventSink,
-};
-pub use main_thread::MainThreadExecutor;
+pub use event_sink::{StateChanged, UiEventSink};
+pub use main_thread::{MainThreadExecutor, MainThreadHandoff, MainThreadWork};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 pub use runtime_error::RuntimeError;
@@ -303,7 +300,6 @@ struct NyanpasuClientInner {
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
     tasks: tokio_util::task::TaskTracker,
-    runtime: tokio::runtime::Handle,
 }
 
 impl NyanpasuClient {
@@ -746,7 +742,6 @@ impl NyanpasuClient {
                 accelerators,
                 shutdown,
                 tasks,
-                runtime: tokio::runtime::Handle::current(),
             }),
         })
     }

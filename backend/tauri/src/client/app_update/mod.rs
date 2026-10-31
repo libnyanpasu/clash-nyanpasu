@@ -10,7 +10,6 @@ use nyanpasu_config::application::{ReleaseChannel, UpdateSource};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Debug, snafu::Snafu)]
@@ -56,10 +55,6 @@ pub struct AppUpdateSnapshot {
     pub supported: bool,
     pub endpoints: Vec<String>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
-#[serde(transparent)]
-pub struct AppUpdateStateChanged(pub AppUpdateSnapshot);
 
 #[derive(Debug, Clone)]
 pub struct AppUpdateSettings {

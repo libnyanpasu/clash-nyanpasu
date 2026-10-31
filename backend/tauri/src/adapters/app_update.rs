@@ -10,11 +10,11 @@ use tauri_specta::Event as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    adapters::events::AppUpdateStateChanged,
     client::{
         app_update::{
             AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
-            AppUpdateSettings, AppUpdateSnapshot, AppUpdateStateChanged, PreparedAppUpdate,
-            VerifiedAppUpdate,
+            AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
         },
         bundle_metadata::BundleMetadata,
     },

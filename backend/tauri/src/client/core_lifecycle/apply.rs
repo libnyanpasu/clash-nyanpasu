@@ -1,7 +1,7 @@
 use nyanpasu_core_manager::OperationId;
 
 use super::CoreLifecycleWorkflow;
-use crate::core::{
+use nyanpasu_core::{
     actor_v2::api::{ApiClient, ApiError},
     connections::{ConnectionScope, interrupt_connections},
 };

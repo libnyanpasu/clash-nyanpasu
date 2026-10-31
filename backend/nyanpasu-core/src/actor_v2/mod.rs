@@ -291,7 +291,7 @@ pub enum CoreActorMessage {
     ApiClient {
         reply: RpcReplyPort<Result<api::ApiClient, api::ApiError>>,
     },
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     ReleaseApiForTest {
         reply: RpcReplyPort<()>,
     },
@@ -726,7 +726,7 @@ impl Actor for CoreActor {
                 };
                 let _ = reply.send(result);
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             CoreActorMessage::ReleaseApiForTest { reply } => {
                 if let Some(lease) = state.api.take() {
                     lease.stop_for_test().await;
@@ -1259,7 +1259,7 @@ pub struct CoreClient {
 
 /// Read-only projection access; carries no mutation capability.
 #[derive(Clone)]
-pub(crate) struct CoreObserver {
+pub struct CoreObserver {
     status: watch::Receiver<CoreStatusProjection>,
     events: broadcast::Sender<CoreStatusProjection>,
 }
@@ -1332,8 +1332,8 @@ impl CoreClient {
     }
 
     /// Drain the previous lease's monitor before counting workflow API acquisitions.
-    #[cfg(test)]
-    pub(crate) async fn release_api_for_test(&self) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn release_api_for_test(&self) {
         let reply = self
             .actor
             .call(|reply| CoreActorMessage::ReleaseApiForTest { reply }, None)
@@ -1342,7 +1342,7 @@ impl CoreClient {
         assert!(matches!(reply, ractor::rpc::CallResult::Success(())));
     }
 
-    pub(crate) fn observer(&self) -> CoreObserver {
+    pub fn observer(&self) -> CoreObserver {
         CoreObserver {
             status: self.status_rx.clone(),
             events: self.events_tx.clone(),
@@ -1357,8 +1357,8 @@ impl CoreClient {
     /// This client, giving up on a handoff after `handoff_budget`, as a
     /// caller queued behind other mailbox work does: the handoff runs on, and
     /// its answer goes unread.
-    #[cfg(test)]
-    pub(crate) fn impatient(mut self, handoff_budget: Duration) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn impatient(mut self, handoff_budget: Duration) -> Self {
         self.handoff_budget = handoff_budget;
         self
     }
@@ -1366,8 +1366,8 @@ impl CoreClient {
     /// Reports the current endpoint down, as its pump does once a status
     /// read fails. Mid-handoff that is the source going away under its stop
     /// leg; a test sends it rather than waiting out a pump interval.
-    #[cfg(test)]
-    pub(crate) fn report_endpoint_down(&self, reason: &str) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn report_endpoint_down(&self, reason: &str) {
         self.actor
             .cast(CoreActorMessage::EndpointDown {
                 generation: self.status().generation,
@@ -1474,7 +1474,7 @@ impl CoreClient {
         .await?
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub async fn change_host(&self, target: EndpointHandle) -> Result<HandoffReport, CoreError> {
         self.change_host_from(target, false).await
     }
@@ -1547,7 +1547,7 @@ impl CoreClient {
     /// Stops the core the way `NyanpasuClient::wait_shutdown` does, then
     /// waits for the router and its pump to stop, for a startup that failed
     /// before the client took the core over.
-    pub(crate) async fn finish_shutdown(&self) {
+    pub async fn finish_shutdown(&self) {
         let stop = self.shutdown().await.and_then(|report| report.stop);
         if let Err(error) = stop {
             tracing::warn!(%error, "the core was not proven stopped");
@@ -1580,7 +1580,7 @@ impl CoreClient {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 #[cfg(test)]
 mod tests;

@@ -38,7 +38,7 @@ fn delay_deadline(query: &DelayQuery) -> Duration {
 
 /// One read of the proxy view. `groups` is the core's own group list, or `None`
 /// when the instance offers none and groups must be inferred from `proxies`.
-pub(crate) struct ProxySnapshot {
+pub struct ProxySnapshot {
     pub proxies: clash_api::IndexMap<ProxyName, clash_api::Proxy>,
     pub providers: clash_api::IndexMap<ProviderName, clash_api::ProxyProvider>,
     pub groups: Option<clash_api::IndexMap<ProxyName, clash_api::Proxy>>,
@@ -140,19 +140,19 @@ impl ApiClient {
         }
     }
 
-    pub(crate) fn is_revoked(&self) -> bool {
+    pub fn is_revoked(&self) -> bool {
         self.revoked.is_cancelled()
     }
 
-    pub(crate) fn instance_id(&self) -> &str {
+    pub fn instance_id(&self) -> &str {
         &self.binding.instance_id
     }
 
-    pub(crate) fn same_instance(&self, other: &Self) -> bool {
+    pub fn same_instance(&self, other: &Self) -> bool {
         !self.is_revoked() && !other.is_revoked() && self.binding == other.binding
     }
 
-    pub(crate) async fn cancelled(&self) {
+    pub async fn cancelled(&self) {
         self.revoked.cancelled().await;
     }
 
@@ -185,7 +185,7 @@ impl ApiClient {
         Ok(ApiStream::new(self.clone(), stream))
     }
 
-    pub(crate) async fn proxy_snapshot(&self) -> Result<ProxySnapshot, ApiError> {
+    pub async fn proxy_snapshot(&self) -> Result<ProxySnapshot, ApiError> {
         self.execute(async {
             let (proxies, providers, groups) = tokio::try_join!(
                 self.client.proxies(),
@@ -426,7 +426,7 @@ impl ApiLease {
         Self { client, monitor }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) async fn stop_for_test(mut self) {
         self.client.revoke();
         self.monitor.abort();
@@ -452,7 +452,7 @@ pub(crate) mod tests {
     use tokio::sync::{Notify, watch};
 
     use super::*;
-    use crate::core::actor_v2::{
+    use crate::actor_v2::{
         CoreClient,
         endpoint::ExecutionHost,
         test_support::{Endpoint, endpoint, server},
@@ -721,7 +721,7 @@ pub(crate) mod tests {
 #[cfg(test)]
 mod stream_tests {
     use super::*;
-    use crate::core::actor_v2::{
+    use crate::actor_v2::{
         CoreClient,
         test_support::{endpoint, server},
     };
@@ -792,7 +792,7 @@ mod stream_tests {
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         let mut endpoint = endpoint("http://127.0.0.1:1/".into());
         std::sync::Arc::get_mut(&mut endpoint).unwrap().host =
-            crate::core::actor_v2::endpoint::ExecutionHost::Service;
+            crate::actor_v2::endpoint::ExecutionHost::Service;
         endpoint.binding.send_modify(|binding| {
             binding.as_mut().unwrap().controller = CoreControllerInfo::NamedPipe(path.into());
         });
@@ -865,7 +865,7 @@ mod stream_tests {
 #[cfg(test)]
 mod proxy_snapshot_tests {
     use super::*;
-    use crate::core::actor_v2::{
+    use crate::actor_v2::{
         CoreClient,
         test_support::{endpoint, server},
     };

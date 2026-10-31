@@ -12,7 +12,7 @@ use super::{
     endpoint::{EndpointHandle, ServiceEndpoint},
     service_actor::ServiceHostAdapter,
 };
-use nyanpasu_core::service::control::{ResolveServiceDirsSnafu, ServiceCommandError};
+use crate::service::control::{ResolveServiceDirsSnafu, ServiceCommandError};
 
 pub struct OsServiceHostAdapter {
     client: nyanpasu_ipc::client::Client,
@@ -37,7 +37,7 @@ impl OsServiceHostAdapter {
 #[async_trait::async_trait]
 impl ServiceHostAdapter for OsServiceHostAdapter {
     async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, ServiceCommandError> {
-        nyanpasu_core::service::control::status(&self.service_binary).await
+        crate::service::control::status(&self.service_binary).await
     }
 
     async fn install(&self) -> Result<(), ServiceCommandError> {
@@ -45,7 +45,7 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
             .paths
             .app_install_dir()
             .context(ResolveServiceDirsSnafu)?;
-        nyanpasu_core::service::control::install_service(
+        crate::service::control::install_service(
             &self.service_binary,
             self.paths.app_data_dir().as_std_path(),
             self.paths.app_config_dir().as_std_path(),
@@ -55,19 +55,19 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
     }
 
     async fn uninstall(&self) -> Result<(), ServiceCommandError> {
-        nyanpasu_core::service::control::uninstall_service(&self.service_binary).await
+        crate::service::control::uninstall_service(&self.service_binary).await
     }
 
     async fn start_daemon(&self) -> Result<(), ServiceCommandError> {
-        nyanpasu_core::service::control::start_service(&self.service_binary).await
+        crate::service::control::start_service(&self.service_binary).await
     }
 
     async fn stop_daemon(&self) -> Result<(), ServiceCommandError> {
-        nyanpasu_core::service::control::stop_service(&self.service_binary).await
+        crate::service::control::stop_service(&self.service_binary).await
     }
 
     async fn update(&self) -> Result<(), ServiceCommandError> {
-        nyanpasu_core::service::control::update_service(
+        crate::service::control::update_service(
             &self.service_binary,
             self.paths.app_data_dir().as_std_path(),
         )

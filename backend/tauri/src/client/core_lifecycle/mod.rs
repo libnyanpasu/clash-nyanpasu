@@ -4,9 +4,9 @@ pub(in crate::client) mod apply;
 pub mod ports;
 mod workflow;
 
-use crate::core::actor_v2::facade::{ReconcileReport, StopReport};
+use nyanpasu_core::actor_v2::facade::{ReconcileReport, StopReport};
 #[cfg(test)]
-use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
+use nyanpasu_core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
 use ports::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;

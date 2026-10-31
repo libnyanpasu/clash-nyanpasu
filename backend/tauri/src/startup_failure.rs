@@ -67,8 +67,8 @@ impl StartupFailure {
                 },
             ),
             Error::BuildCoreHost { source } => match source {
-                crate::core::actor_v2::local_host::Error::InspectConfig { path, .. }
-                | crate::core::actor_v2::local_host::Error::ReadCoreKind { path, .. } => {
+                nyanpasu_core::actor_v2::local_host::Error::InspectConfig { path, .. }
+                | nyanpasu_core::actor_v2::local_host::Error::ReadCoreKind { path, .. } => {
                     (FailureKind::UserConfig, Some(path.clone()))
                 }
                 _ => (

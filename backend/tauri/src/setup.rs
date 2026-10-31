@@ -50,7 +50,7 @@ mod tests;
 pub(crate) struct StartupOwners {
     shutdown: CancellationToken,
     tasks: TaskTracker,
-    core: Option<crate::core::actor_v2::CoreClient>,
+    core: Option<nyanpasu_core::actor_v2::CoreClient>,
 }
 
 impl StartupOwners {
@@ -137,7 +137,7 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to build core host"))]
     BuildCoreHost {
-        source: crate::core::actor_v2::local_host::Error,
+        source: nyanpasu_core::actor_v2::local_host::Error,
     },
     #[snafu(display("failed to spawn core actor"))]
     SpawnCoreActor { source: ractor::SpawnErr },
@@ -240,13 +240,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service, jobs) = tauri::async_runtime::block_on(async {
-        let control = crate::core::actor_v2::local_host::build(&paths, &service_binary)
+        let control = nyanpasu_core::actor_v2::local_host::build(&paths, &service_binary)
             .await
             .context(BuildCoreHostSnafu)?;
-        let local: crate::core::actor_v2::endpoint::EndpointHandle =
-            Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
+        let local: nyanpasu_core::actor_v2::endpoint::EndpointHandle = Arc::new(
+            nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
+        );
         let adapter = Arc::new(
-            crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
+            nyanpasu_core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
                 service_binary,
                 paths.clone(),
@@ -335,7 +336,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
                 core_specs: {
                     let paths = paths.clone();
-                    Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &paths))
+                    Arc::new(move |core| {
+                        nyanpasu_core::actor_v2::local_host::core_spec(core, &paths)
+                    })
                 },
                 paths: runtime_paths.clone(),
                 scripts: nyanpasu_platform::enhance::ScriptDirs::new(
@@ -459,24 +462,24 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 
 async fn start_runtime_owners(
     owners: &mut StartupOwners,
-    local: crate::core::actor_v2::endpoint::EndpointHandle,
-    adapter: Arc<dyn crate::core::actor_v2::service_actor::ServiceHostAdapter>,
+    local: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
+    adapter: Arc<dyn nyanpasu_core::actor_v2::service_actor::ServiceHostAdapter>,
     paths: &PathResolver,
     jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<
     (
-        crate::core::actor_v2::CoreClient,
-        crate::core::actor_v2::service_actor::ServiceClient,
+        nyanpasu_core::actor_v2::CoreClient,
+        nyanpasu_core::actor_v2::service_actor::ServiceClient,
         nyanpasu_jobs::JobsClient,
     ),
     Error,
 > {
-    let core = crate::core::actor_v2::CoreClient::spawn(local)
+    let core = nyanpasu_core::actor_v2::CoreClient::spawn(local)
         .await
         .context(SpawnCoreActorSnafu)?;
     owners.core = Some(core.clone());
     let service =
-        crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
+        nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
             .await
             .context(SpawnServiceActorSnafu)?;
     service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());

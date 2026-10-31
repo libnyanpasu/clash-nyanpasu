@@ -20,11 +20,12 @@ use crate::{
             inputs::{FrozenProfileContent, RuntimeInputs},
             ports::RuntimeBuildPort,
         },
-        runtime::{self, PublishRuntimeError, RuntimePaths, RuntimeRevision, RuntimeSnapshot},
+        runtime,
+        runtime::{PublishRuntimeError, RuntimePaths, RuntimeRevision, RuntimeSnapshot},
     },
-    core::actor_v2::local_host::CoreSpecError,
     state::profiles::ProfilesActor,
 };
+use nyanpasu_core::actor_v2::local_host::CoreSpecError;
 
 pub(crate) struct TestRuntimeBuildPort {
     pub profiles_dir: PathBuf,

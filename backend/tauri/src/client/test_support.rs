@@ -29,10 +29,6 @@ use super::{
 };
 use crate::{
     client::system_proxy::ports::MockOsProxyPort,
-    core::actor_v2::{
-        endpoint::ExecutionHost,
-        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
-    },
     service::profile_file::fs_service::ProfileFileService,
     state::profiles::{
         NewProfileRequest,
@@ -43,6 +39,10 @@ use crate::{
     },
 };
 use nyanpasu_core::{
+    actor_v2::{
+        endpoint::ExecutionHost,
+        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
+    },
     client::{bundle_metadata::BundleMetadata, core_version, direct_egress},
     storage::Storage,
     utils::test_support::test_paths,
@@ -99,7 +99,7 @@ pub(crate) struct TestControlEndpoint {
     result_missing: std::sync::atomic::AtomicBool,
     /// Every advisory check this endpoint was asked to run, so a test can
     /// compare what the check saw with what the reconcile submitted.
-    checks: StdMutex<Vec<crate::core::actor_v2::endpoint::CheckSubmission>>,
+    checks: StdMutex<Vec<nyanpasu_core::actor_v2::endpoint::CheckSubmission>>,
     /// What the next check answers. The default mirrors the in-process
     /// control plane accepting a document.
     check_answer: StdMutex<TestCheckAnswer>,
@@ -268,7 +268,7 @@ impl TestControlEndpoint {
     }
 
     /// The documents this endpoint was asked to check, in order.
-    pub(crate) fn checked(&self) -> Vec<crate::core::actor_v2::endpoint::CheckSubmission> {
+    pub(crate) fn checked(&self) -> Vec<nyanpasu_core::actor_v2::endpoint::CheckSubmission> {
         self.checks.lock().unwrap().clone()
     }
 
@@ -304,7 +304,7 @@ impl TestControlEndpoint {
     /// `revision_conflict`, and an accepted reconcile advances it.
     fn operation(
         &self,
-        submission: &crate::core::actor_v2::endpoint::CoreSubmission,
+        submission: &nyanpasu_core::actor_v2::endpoint::CoreSubmission,
     ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
         let id = submission.envelope.operation_id.to_string();
         if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
@@ -445,16 +445,16 @@ impl TestControlEndpoint {
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
+impl nyanpasu_core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
     fn host(&self) -> ExecutionHost {
         self.host
     }
 
     async fn check_config(
         &self,
-        submission: crate::core::actor_v2::endpoint::CheckSubmission,
-    ) -> crate::core::actor_v2::endpoint::CheckSupport {
-        use crate::core::actor_v2::endpoint::CheckSupport;
+        submission: nyanpasu_core::actor_v2::endpoint::CheckSubmission,
+    ) -> nyanpasu_core::actor_v2::endpoint::CheckSupport {
+        use nyanpasu_core::actor_v2::endpoint::CheckSupport;
         let answer = self.check_answer.lock().unwrap().clone();
         self.checks.lock().unwrap().push(submission);
         match answer {
@@ -469,7 +469,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
 
     async fn submit(
         &self,
-        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        submission: nyanpasu_core::actor_v2::endpoint::CoreSubmission,
     ) -> std::result::Result<
         nyanpasu_ipc::api::core::v2::OperationInfo,
         nyanpasu_core_manager::CoreError,
@@ -535,7 +535,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
     async fn status(
         &self,
     ) -> std::result::Result<
-        crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+        nyanpasu_core::actor_v2::endpoint::CoreStatusSnapshot,
         nyanpasu_core_manager::CoreError,
     > {
         self.status_reads
@@ -548,7 +548,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
             ));
         }
         let (state, applied_kind) = self.status_override.lock().unwrap().clone();
-        Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+        Ok(nyanpasu_core::actor_v2::endpoint::CoreStatusSnapshot {
             controller: None,
             state,
             state_changed_at: 0,
@@ -589,13 +589,13 @@ impl HostTransitionEndpoint {
     }
 }
 #[async_trait::async_trait]
-impl crate::core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
+impl nyanpasu_core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
     fn host(&self) -> ExecutionHost {
         self.host
     }
     async fn submit(
         &self,
-        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        submission: nyanpasu_core::actor_v2::endpoint::CoreSubmission,
     ) -> std::result::Result<
         nyanpasu_ipc::api::core::v2::OperationInfo,
         nyanpasu_core_manager::CoreError,
@@ -628,7 +628,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint
     async fn status(
         &self,
     ) -> std::result::Result<
-        crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+        nyanpasu_core::actor_v2::endpoint::CoreStatusSnapshot,
         nyanpasu_core_manager::CoreError,
     > {
         self.delegate.status().await
@@ -764,7 +764,7 @@ pub(super) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
 
 pub(crate) async fn test_client_args_with_endpoint(
     dir: &TempDir,
-    endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+    endpoint: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
 ) -> ClientSetupArgs {
     let (paths, storage) = test_backup_deps(dir);
     seed_test_clash_config(paths.clash_config_path());
@@ -855,7 +855,7 @@ pub(crate) fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
 ) -> std::result::Result<
     nyanpasu_core_manager::CoreSpec,
-    crate::core::actor_v2::local_host::CoreSpecError,
+    nyanpasu_core::actor_v2::local_host::CoreSpecError,
 > {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {

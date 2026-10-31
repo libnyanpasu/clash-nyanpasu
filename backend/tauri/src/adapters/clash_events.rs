@@ -3,8 +3,11 @@
 use tauri_specta::Event as _;
 
 use crate::{
-    adapters::events::{ClashWsEvent, CoreLogsChanged},
-    core::clash::{connection_details, ws},
+    adapters::{
+        connection_details,
+        events::{ClashWsEvent, CoreLogsChanged},
+    },
+    core::clash::ws,
 };
 
 // Tauri owns only event-forwarding tasks; stream state lives in StreamsActor.

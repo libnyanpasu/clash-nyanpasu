@@ -9,7 +9,7 @@ use std::sync::Arc;
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::{
-        config::{ClashConfig, tun_stack::TunStack},
+        config::{ClashConfig, tun_stack::SelectedTunStack},
         features::{FieldSupport, TunFeatures, UnsupportedConfigValue},
     },
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
@@ -111,20 +111,32 @@ pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
 }
 
 /// Only `ClashRs` (not Alpha) takes the ClashRs branch, a legacy quirk
-/// (enhance/tun.rs:47). The stack follows the core's config features.
-pub fn derive_tun_flavor(core: ClashCore, stack: TunStack) -> TunFlavor {
+/// (enhance/tun.rs:47). The stack and its options follow the core's config
+/// features.
+pub fn derive_tun_flavor(core: ClashCore, selected: SelectedTunStack<'_>) -> TunFlavor {
     if core == ClashCore::ClashRs {
         return TunFlavor::ClashRs;
     }
-    let stack = match core.config_features().tun.stack {
+    let features = core.config_features().tun;
+    let stack = match features.stack {
         FieldSupport::Ignored => TunStackWrite::Omitted,
-        support if support.supports(&stack) => TunStackWrite::Selected(stack),
+        support if support.supports(&selected.stack()) => TunStackWrite::Selected(selected.stack()),
         FieldSupport::Values(_) => TunStackWrite::Downgraded {
-            selected: stack,
+            selected: selected.stack(),
             written: TunFeatures::FALLBACK_STACK,
         },
     };
-    TunFlavor::Standard { stack }
+    // A downgraded stack drops the options of the stack that was selected.
+    let congestion_controller = match (stack, selected) {
+        (TunStackWrite::Selected(_), SelectedTunStack::Mips(mips)) => mips
+            .congestion_controller
+            .filter(|controller| features.congestion_controller.supports(controller)),
+        _ => None,
+    };
+    TunFlavor::Standard {
+        stack,
+        congestion_controller,
+    }
 }
 
 pub struct RuntimeBuilder;
@@ -185,7 +197,7 @@ impl RuntimeBuilder {
             tun: TunParams {
                 enable: input.clash.enable_tun_mode,
                 overrides: input.clash.tun,
-                flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
+                flavor: derive_tun_flavor(input.app.core, input.clash.selected_tun_stack()),
                 windows_fake_ip_filter: cfg!(windows),
             },
             expand_include_all: input.clash.expand_include_all,
@@ -209,7 +221,10 @@ impl RuntimeBuilder {
 mod tests {
     use super::*;
     use nyanpasu_config::{
-        clash::config::overrides::ManageableField,
+        clash::config::{
+            overrides::ManageableField,
+            tun_stack::{MipsConfig, TunCongestionController, TunStack},
+        },
         profile::{
             ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
             ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource,
@@ -328,8 +343,12 @@ mod tests {
 
     #[test]
     fn tun_flavor_follows_the_core_features() {
+        let standard = |stack, congestion_controller| TunFlavor::Standard {
+            stack,
+            congestion_controller,
+        };
         assert_eq!(
-            derive_tun_flavor(ClashCore::ClashRs, TunStack::Mixed),
+            derive_tun_flavor(ClashCore::ClashRs, SelectedTunStack::Mixed),
             TunFlavor::ClashRs
         );
         // Alpha keeps the Standard branch (tun.rs:47 legacy quirk), without a
@@ -340,28 +359,65 @@ mod tests {
             ClashCore::MeowAlpha,
         ] {
             assert_eq!(
-                derive_tun_flavor(core, TunStack::Mixed),
-                TunFlavor::Standard {
-                    stack: TunStackWrite::Omitted
-                },
+                derive_tun_flavor(core, SelectedTunStack::Mixed),
+                standard(TunStackWrite::Omitted, None),
                 "{core}"
             );
         }
         assert_eq!(
-            derive_tun_flavor(ClashCore::ClashPremium, TunStack::Mixed),
-            TunFlavor::Standard {
-                stack: TunStackWrite::Downgraded {
-                    selected: TunStack::Mixed,
-                    written: TunStack::Gvisor,
-                }
-            }
+            derive_tun_flavor(ClashCore::Mihomo, SelectedTunStack::System),
+            standard(TunStackWrite::Selected(TunStack::System), None)
+        );
+
+        let mips = MipsConfig {
+            congestion_controller: Some(TunCongestionController::Bbr),
+        };
+        assert_eq!(
+            derive_tun_flavor(ClashCore::MihomoAlpha, SelectedTunStack::Mips(&mips)),
+            standard(
+                TunStackWrite::Selected(TunStack::Mips),
+                Some(TunCongestionController::Bbr)
+            )
         );
         assert_eq!(
-            derive_tun_flavor(ClashCore::Mihomo, TunStack::System),
-            TunFlavor::Standard {
-                stack: TunStackWrite::Selected(TunStack::System)
-            }
+            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mips(&mips)),
+            standard(
+                TunStackWrite::Downgraded {
+                    selected: TunStack::Mips,
+                    written: TunStack::Gvisor,
+                },
+                None
+            )
         );
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mixed),
+            standard(
+                TunStackWrite::Downgraded {
+                    selected: TunStack::Mixed,
+                    written: TunStack::Gvisor,
+                },
+                None
+            )
+        );
+    }
+
+    #[test]
+    fn mips_options_reach_the_runtime_only_while_mips_is_selected() {
+        let mut input = profile_input(ClashCore::Mihomo);
+        input.clash.enable_tun_mode = true;
+        input.clash.tun_mips.congestion_controller = Some(TunCongestionController::Bbr3);
+        for (stack, expected) in [(TunStack::Mips, Some("bbr3")), (TunStack::Gvisor, None)] {
+            input.clash.tun_stack = stack;
+            let config = RuntimeBuilder::build(&input, &OneFile("proxies: []\n"), &EchoRunner)
+                .unwrap()
+                .final_config
+                .to_json();
+            assert_eq!(
+                config["tun"].get("congestion-controller"),
+                expected.map(serde_json::Value::from).as_ref(),
+                "{stack:?}"
+            );
+        }
     }
 
     #[test]

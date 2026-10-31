@@ -18,7 +18,7 @@ use nyanpasu_config::{
         ClashConfig, ClashConfigPatch, ClashControlChannel,
         clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
         overrides::{ClashGuardOverrides, ClashGuardOverridesPatch, TunOverrides},
-        tun_stack::TunStack,
+        tun_stack::SelectedTunStack,
     },
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
 };
@@ -177,6 +177,7 @@ impl RequestedRuntimeFields {
                 || patch.enable_tun_mode.is_some()
                 || !patch.tun.is_empty()
                 || patch.tun_stack.is_some()
+                || !patch.tun_mips.is_empty()
                 || !patch.mixed_port.is_empty()
                 || patch.socks_port.is_some()
                 || patch.http_port.is_some()
@@ -343,7 +344,7 @@ struct ClashRuntimeInputs<'a> {
     expand_include_all: bool,
     enable_tun_mode: bool,
     tun: TunOverrides,
-    tun_stack: TunStack,
+    tun_stack: SelectedTunStack<'a>,
     mixed_port: &'a PortStrategy,
     socks_port: Option<&'a PortStrategy>,
     http_port: Option<&'a PortStrategy>,
@@ -360,7 +361,7 @@ fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
         expand_include_all: clash.expand_include_all,
         enable_tun_mode: clash.enable_tun_mode,
         tun: clash.tun,
-        tun_stack: clash.tun_stack,
+        tun_stack: clash.selected_tun_stack(),
         mixed_port: &clash.mixed_port,
         socks_port: clash.socks_port.as_ref(),
         http_port: clash.http_port.as_ref(),
@@ -563,6 +564,7 @@ mod tests {
             overrides::{
                 ClashGuardOverridesPatch, LogLevel, ManageableField, Mode, TunOverridesPatch,
             },
+            tun_stack::{MipsConfig, MipsConfigPatch, TunCongestionController, TunStack},
         },
         profile::{
             ConfigDefinition, ProfileId, ProfileMetadata, ProfileSource, TransformDefinition,
@@ -1102,6 +1104,17 @@ mod tests {
             },
             impact: RuntimeImpact::Reconcile,
         },
+        // The options of a stack that is not selected are not built.
+        ClashCase {
+            field: "tun_mips",
+            candidate: || ClashConfig {
+                tun_mips: MipsConfig {
+                    congestion_controller: Some(TunCongestionController::Bbr),
+                },
+                ..base_clash()
+            },
+            impact: RuntimeImpact::None,
+        },
         ClashCase {
             field: "enable_clash_fields",
             candidate: || ClashConfig {
@@ -1211,6 +1224,24 @@ mod tests {
                 case.field
             );
         }
+    }
+
+    #[test]
+    fn mips_options_are_built_while_mips_is_selected() {
+        let previous = ClashConfig {
+            tun_stack: TunStack::Mips,
+            ..base_clash()
+        };
+        let candidate = ClashConfig {
+            tun_mips: MipsConfig {
+                congestion_controller: Some(TunCongestionController::Bbr),
+            },
+            ..previous.clone()
+        };
+        assert_eq!(
+            classify_clash(&previous, &candidate),
+            RuntimeImpact::Reconcile
+        );
     }
 
     /// Same guard for the clash table, overrides members included: the
@@ -1774,6 +1805,17 @@ mod tests {
         assert_eq!(
             RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 overrides: Some(base_clash().overrides),
+                ..ClashConfigPatch::default()
+            }),
+            RequestedRuntimeFields::runtime()
+        );
+        // Named whatever the stack, so resubmitting a controller that did not
+        // converge still owes the runtime a try.
+        assert_eq!(
+            RequestedRuntimeFields::of_clash(&ClashConfigPatch {
+                tun_mips: MipsConfigPatch {
+                    congestion_controller: Some(Some(TunCongestionController::Bbr)),
+                },
                 ..ClashConfigPatch::default()
             }),
             RequestedRuntimeFields::runtime()

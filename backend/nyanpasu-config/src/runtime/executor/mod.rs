@@ -29,7 +29,7 @@ use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 use crate::{
     clash::config::{
         overrides::{ClashGuardOverrides, TunOverrides},
-        tun_stack::TunStack,
+        tun_stack::{TunCongestionController, TunStack},
     },
     profile::{
         ProfileDefinition, ProfileId, Profiles, ScriptRuntime, TransformDefinition, TransformKind,
@@ -99,7 +99,13 @@ pub struct TunParams {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TunFlavor {
     ClashRs,
-    Standard { stack: TunStackWrite },
+    Standard {
+        stack: TunStackWrite,
+        /// Forced while set; the caller sets it only for a written mips stack.
+        /// Unset on a written mips stack, a profile's controller is removed so
+        /// the core uses its own default.
+        congestion_controller: Option<TunCongestionController>,
+    },
 }
 
 /// The `tun.stack` Nyanpasu forces, decided by the caller from what the core

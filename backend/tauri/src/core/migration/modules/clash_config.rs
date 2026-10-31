@@ -31,7 +31,8 @@ pub static MIGRATOR: ClashConfigMigrator = ClashConfigMigrator;
 static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
 static MANAGEABLE_GUARD_FIELDS: MigrateManageableGuardFields = MigrateManageableGuardFields;
 static TUN_OVERRIDES: MigrateTunOverrides = MigrateTunOverrides;
-static STEPS: [&dyn MigrationStep; 2] = [&MANAGEABLE_GUARD_FIELDS, &TUN_OVERRIDES];
+static TUN_MIPS: MigrateTunMips = MigrateTunMips;
+static STEPS: [&dyn MigrationStep; 3] = [&MANAGEABLE_GUARD_FIELDS, &TUN_OVERRIDES, &TUN_MIPS];
 
 /// Revisions up to here were written without a stamp. Frozen: nothing before
 /// this module changed the file's schema, so there is no shape to probe.
@@ -42,7 +43,7 @@ pub struct ClashConfigDocument;
 
 impl StampedDocument for ClashConfigDocument {
     const DOCUMENT: &'static str = "clash_config";
-    const SCHEMA_REVISION: u64 = 2;
+    const SCHEMA_REVISION: u64 = 3;
 }
 
 /// How the running app reads and writes `clash-config.yaml`.
@@ -104,6 +105,9 @@ pub(in crate::core::migration) fn read_typed(
     }
     if revision < TUN_OVERRIDES.revision() {
         add_tun_overrides(&mut payload);
+    }
+    if revision < TUN_MIPS.revision() {
+        add_tun_mips(&mut payload);
     }
     serde_yaml::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
         path: path.to_path_buf(),
@@ -268,6 +272,64 @@ fn add_tun_overrides(payload: &mut Mapping) {
     payload.insert(TUN_KEY.into(), Value::Mapping(tun));
 }
 
+const TUN_MIPS_KEY: &str = "tun_mips";
+
+/// Adds the mips stack options, empty, so that the core keeps its own
+/// defaults. The data needs no conversion; the revision exists so that a build
+/// from before the mips stack refuses the file instead of failing on
+/// `tun_stack: mips` or dropping `tun_mips` when it writes the file back.
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateTunMips;
+
+impl MigrationStep for MigrateTunMips {
+    fn id(&self) -> &'static str {
+        "clash_config/tun_mips"
+    }
+
+    fn module(&self) -> &'static str {
+        "clash_config"
+    }
+
+    fn revision(&self) -> u64 {
+        3
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateTunMips"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.clash_config_path();
+            let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            add_tun_mips(&mut payload);
+            write_document(
+                &path,
+                ClashConfigDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
+    }
+}
+
+/// Leaves existing options alone: `typed_config` may have written the file at
+/// head before this step runs on it.
+fn add_tun_mips(payload: &mut Mapping) {
+    if !payload.contains_key(TUN_MIPS_KEY) {
+        payload.insert(TUN_MIPS_KEY.into(), Value::Mapping(Mapping::new()));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,6 +396,21 @@ mod tests {
                  tun: {auto-route: {kind: managed, value: true}}\n"
             )
         );
+    }
+
+    #[test]
+    fn tun_mips_options_start_empty_and_existing_ones_are_left_alone() {
+        let mut config = payload("tun_stack: gvisor\n");
+        add_tun_mips(&mut config);
+        assert_eq!(config, payload("tun_stack: gvisor\ntun_mips: {}\n"));
+        let options: nyanpasu_config::clash::config::tun_stack::MipsConfig =
+            serde_yaml::from_value(config["tun_mips"].clone()).unwrap();
+        assert_eq!(options.congestion_controller, None);
+
+        let src = "tun_mips: {congestion_controller: bbr}\n";
+        let mut config = payload(src);
+        add_tun_mips(&mut config);
+        assert_eq!(config, payload(src));
     }
 
     #[test]

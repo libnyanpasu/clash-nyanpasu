@@ -13,7 +13,7 @@ use strum::VariantArray;
 
 use crate::{
     application::ClashCore,
-    clash::config::tun_stack::TunStack,
+    clash::config::tun_stack::{TunCongestionController, TunStack},
     runtime::value::{ConfigObject, ConfigValue},
 };
 
@@ -104,11 +104,25 @@ impl ConfigFeatures {
             .and_then(|root| root.get(TunKey::TABLE))
             .and_then(ConfigValue::as_object_arc)
             .map(Arc::as_ref);
-        self.tun
+        let mut values: Vec<UnsupportedConfigValue> = self
+            .tun
             .stack
             .check(TunKey::Stack, tun)
             .into_iter()
-            .collect()
+            .collect();
+        // mihomo reads the controller only on the mips stack.
+        let on_mips = matches!(
+            TunKey::Stack.get(tun),
+            Some(ConfigValue::String(stack)) if stack.parse() == Ok(TunStack::Mips)
+        );
+        if on_mips {
+            values.extend(
+                self.tun
+                    .congestion_controller
+                    .check(TunKey::CongestionController, tun),
+            );
+        }
+        values
     }
 }
 
@@ -117,6 +131,7 @@ impl ConfigFeatures {
 #[strum(serialize_all = "kebab-case")]
 pub enum TunKey {
     Stack,
+    CongestionController,
 }
 
 impl TunKey {
@@ -136,6 +151,8 @@ impl TunKey {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct TunFeatures {
     pub stack: FieldSupport<TunStack>,
+    /// Read only while the stack is mips.
+    pub congestion_controller: FieldSupport<TunCongestionController>,
 }
 
 impl TunFeatures {
@@ -150,25 +167,45 @@ impl ClashCore {
         ConfigFeatures {
             tun: TunFeatures {
                 stack: FieldSupport::from_matrix(|stack| reads_tun_stack(self, stack)),
+                congestion_controller: FieldSupport::from_matrix(|controller| {
+                    reads_tun_congestion_controller(self, controller)
+                }),
             },
         }
     }
 }
 
-/// mihomo parses `tun.stack` case-insensitively into gVisor, System, Mixed
-/// (`constant/tun.go`) and fails the whole config on anything else. Clash
-/// Premium is closed source; it never offered Mixed, which the legacy
-/// derivation downgraded. clash-rs has no `stack` key and ignores unknown keys
+/// mihomo parses `tun.stack` case-insensitively into gVisor, System, Mixed and
+/// Mips (`constant/tun.go`; Mips since v1.19.31, commit `ab405bad`) and fails
+/// the whole config on anything else. Clash Premium is closed source; it never
+/// offered Mixed, which the legacy derivation downgraded, and predates Mips.
+/// clash-rs has no `stack` key and ignores unknown keys
 /// (`clash-lib/src/config/def.rs`, `TunConfig`); meow-rs runs lwIP only and
 /// warns about `stack` before ignoring it (`meow-config/src/raw.rs`, `RawTun`).
 fn reads_tun_stack(core: ClashCore, stack: TunStack) -> bool {
     use ClashCore::*;
     use TunStack::*;
     match (core, stack) {
-        (Mihomo | MihomoAlpha, System | Gvisor | Mixed) => true,
+        (Mihomo | MihomoAlpha, System | Gvisor | Mixed | Mips) => true,
         (ClashPremium, System | Gvisor) => true,
-        (ClashPremium, Mixed) => false,
-        (ClashRs | ClashRsAlpha | Meow | MeowAlpha, System | Gvisor | Mixed) => false,
+        (ClashPremium, Mixed | Mips) => false,
+        (ClashRs | ClashRsAlpha | Meow | MeowAlpha, System | Gvisor | Mixed | Mips) => false,
+    }
+}
+
+/// mihomo added `tun.congestion-controller` in v1.19.32 (commit `63bd52ec`).
+/// Its mips stack lowercases the value and rejects any controller outside
+/// `mipstack.AvailableCongestionControls()` when the TUN starts
+/// (`metacubex/sing-tun` `stack_mipstack.go`); the other stacks never read it.
+/// No other core has the key.
+fn reads_tun_congestion_controller(core: ClashCore, controller: TunCongestionController) -> bool {
+    use ClashCore::*;
+    use TunCongestionController::*;
+    match (core, controller) {
+        (Mihomo | MihomoAlpha, Cubic | Reno | Bbr | Bbr3) => true,
+        (ClashPremium | ClashRs | ClashRsAlpha | Meow | MeowAlpha, Cubic | Reno | Bbr | Bbr3) => {
+            false
+        }
     }
 }
 
@@ -183,23 +220,34 @@ mod tests {
     }
 
     #[test]
-    fn every_core_has_its_tun_stack_support() {
+    fn every_core_has_its_tun_features() {
+        use TunCongestionController::*;
         use TunStack::*;
-        let all = FieldSupport::Values(vec![System, Gvisor, Mixed]);
+        let mihomo = TunFeatures {
+            stack: FieldSupport::Values(vec![System, Gvisor, Mixed, Mips]),
+            congestion_controller: FieldSupport::Values(vec![Cubic, Reno, Bbr, Bbr3]),
+        };
+        let ignored = TunFeatures {
+            stack: FieldSupport::Ignored,
+            congestion_controller: FieldSupport::Ignored,
+        };
         let cases = [
-            (ClashCore::Mihomo, all.clone()),
-            (ClashCore::MihomoAlpha, all),
+            (ClashCore::Mihomo, mihomo.clone()),
+            (ClashCore::MihomoAlpha, mihomo),
             (
                 ClashCore::ClashPremium,
-                FieldSupport::Values(vec![System, Gvisor]),
+                TunFeatures {
+                    stack: FieldSupport::Values(vec![System, Gvisor]),
+                    congestion_controller: FieldSupport::Ignored,
+                },
             ),
-            (ClashCore::ClashRs, FieldSupport::Ignored),
-            (ClashCore::ClashRsAlpha, FieldSupport::Ignored),
-            (ClashCore::Meow, FieldSupport::Ignored),
-            (ClashCore::MeowAlpha, FieldSupport::Ignored),
+            (ClashCore::ClashRs, ignored.clone()),
+            (ClashCore::ClashRsAlpha, ignored.clone()),
+            (ClashCore::Meow, ignored.clone()),
+            (ClashCore::MeowAlpha, ignored),
         ];
-        for (core, stack) in cases {
-            assert_eq!(core.config_features().tun.stack, stack, "{core}");
+        for (core, tun) in cases {
+            assert_eq!(core.config_features().tun, tun, "{core}");
         }
     }
 
@@ -253,14 +301,39 @@ mod tests {
     }
 
     #[test]
+    fn the_congestion_controller_is_checked_only_on_the_mips_stack() {
+        let features = ConfigFeatures {
+            tun: TunFeatures {
+                stack: FieldSupport::Values(vec![TunStack::Gvisor, TunStack::Mips]),
+                congestion_controller: FieldSupport::Values(vec![TunCongestionController::Cubic]),
+            },
+        };
+        let on = |stack: &str, controller: &str| {
+            features.unsupported_values(&config(json!({
+                "tun": { "stack": stack, "congestion-controller": controller },
+            })))
+        };
+        assert_eq!(
+            on("Mips", "BBR"),
+            vec![UnsupportedConfigValue {
+                path: "tun.congestion-controller".into(),
+                value: "BBR".into(),
+                supported: vec!["cubic".into()],
+            }]
+        );
+        assert!(on("mips", "cubic").is_empty());
+        assert!(on("mips", "future").is_empty());
+        assert!(on("gvisor", "bbr").is_empty());
+    }
+
+    #[test]
     fn support_serializes_adjacently_tagged() {
         assert_eq!(
             serde_json::to_value(ClashCore::ClashPremium.config_features()).unwrap(),
-            json!({ "tun": { "stack": { "kind": "values", "value": ["system", "gvisor"] } } })
-        );
-        assert_eq!(
-            serde_json::to_value(ClashCore::Meow.config_features()).unwrap(),
-            json!({ "tun": { "stack": { "kind": "ignored" } } })
+            json!({ "tun": {
+                "stack": { "kind": "values", "value": ["system", "gvisor"] },
+                "congestion_controller": { "kind": "ignored" },
+            } })
         );
     }
 }

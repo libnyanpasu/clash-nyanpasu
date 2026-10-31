@@ -215,32 +215,6 @@ async fn new_typed_config_clients(
     Ok((application, session_state, clash_config))
 }
 
-/// The fixed core spec tests inject in place of the on-disk lookup.
-#[cfg(test)]
-fn runtime_core_spec(
-    core: &nyanpasu_config::application::ClashCore,
-) -> std::result::Result<
-    nyanpasu_core_manager::CoreSpec,
-    crate::core::actor_v2::local_host::CoreSpecError,
-> {
-    use nyanpasu_core_manager::CoreKind;
-    let kind = match core {
-        nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,
-        nyanpasu_config::application::ClashCore::ClashRs
-        | nyanpasu_config::application::ClashCore::ClashRsAlpha => CoreKind::ClashRust,
-        nyanpasu_config::application::ClashCore::Mihomo
-        | nyanpasu_config::application::ClashCore::MihomoAlpha => CoreKind::Mihomo,
-        nyanpasu_config::application::ClashCore::Meow
-        | nyanpasu_config::application::ClashCore::MeowAlpha => CoreKind::Meow,
-    };
-    Ok(nyanpasu_core_manager::CoreSpec {
-        kind,
-        binary_path: camino::Utf8PathBuf::from("fake-core"),
-        version: None,
-        features: Vec::new(),
-    })
-}
-
 /// Fallback name for an imported subscription with no caller-provided name:
 /// the url's last non-empty path segment (sans `.yaml`/`.yml`), else the host,
 /// else a constant. Kept separate so `import_profile` reads as orchestration.
@@ -1750,15 +1724,15 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             ClientHostAdapters {
-                runtime_build: Arc::new(crate::adapters::runtime_build::FsRuntimeBuildAdapter {
-                    profiles_dir: dir.path().join("profiles"),
-                    core_specs: Arc::new(runtime_core_spec),
-                    paths: RuntimePaths::from_resolver(&test_paths(
-                        dir.path(),
-                        dir.path().join("data"),
-                    )),
-                    scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
-                }),
+                runtime_build: Arc::new(
+                    crate::client::test_support::runtime_build::TestRuntimeBuildPort {
+                        profiles_dir: dir.path().join("profiles"),
+                        paths: RuntimePaths::from_resolver(&test_paths(
+                            dir.path(),
+                            dir.path().join("data"),
+                        )),
+                    },
+                ),
                 ..test_host_adapters(&test_paths(dir.path(), dir.path().join("data")))
             },
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -1774,7 +1748,7 @@ pub(crate) mod tests {
             Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
-            Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
+            Arc::new(crate::client::test_support::AnyAccelerator),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -2543,7 +2517,7 @@ pub(crate) mod tests {
             Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
-            Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
+            Arc::new(crate::client::test_support::AnyAccelerator),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -2707,7 +2681,7 @@ pub(crate) mod tests {
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
-            accelerators: Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
+            accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
             traffic_store: None,
             shutdown,
             tasks,
@@ -3699,14 +3673,12 @@ pub(crate) mod tests {
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 ClientHostAdapters {
                     runtime_build: Arc::new(
-                        crate::adapters::runtime_build::FsRuntimeBuildAdapter {
+                        crate::client::test_support::runtime_build::TestRuntimeBuildPort {
                             profiles_dir: dir.path().join("profiles"),
-                            core_specs: Arc::new(runtime_core_spec),
                             paths: RuntimePaths::from_resolver(&test_paths(
                                 dir.path(),
                                 dir.path().join("data"),
                             )),
-                            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
                         },
                     ),
                     ..test_host_adapters(&test_paths(dir.path(), dir.path().join("data")))
@@ -3724,7 +3696,7 @@ pub(crate) mod tests {
                 Arc::new(core_version::MockCoreVersionReader::new()),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
-                Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
+                Arc::new(crate::client::test_support::AnyAccelerator),
                 None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),

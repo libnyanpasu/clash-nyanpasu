@@ -200,3 +200,6 @@ impl WindowControl for TauriWindowControl {
             })
     }
 }
+
+#[cfg(test)]
+mod tests;

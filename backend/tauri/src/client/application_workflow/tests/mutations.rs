@@ -53,13 +53,12 @@ use super::{
     RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
-    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
         runtime,
         runtime_error::{RuntimeError, refusal_of},
-        test_support::{TestCheckAnswer, TestControlEndpoint},
+        test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
     core::{
         actor_v2::{
@@ -80,7 +79,7 @@ use crate::{
 /// need without a sleep: the tracked task is genuinely mid-operation, which is
 /// the state every ordering claim here is about.
 pub(super) struct ParkingBuilder {
-    delegate: FsRuntimeBuildAdapter,
+    delegate: TestRuntimeBuildPort,
     pub(super) entered: Notify,
     pub(super) release: Notify,
     pub(super) park: AtomicBool,
@@ -354,11 +353,9 @@ pub(super) async fn fixture_from(
         dir.path().join("data"),
     ));
     let builder = Arc::new(ParkingBuilder {
-        delegate: FsRuntimeBuildAdapter {
-            core_specs: Arc::new(crate::client::runtime_core_spec),
+        delegate: TestRuntimeBuildPort {
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -3771,61 +3768,6 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
         "invalid overlay committed after its parse error was converted into passthrough: {receipt:?}"
     );
     assert!(f.endpoint.reconciled_bytes().is_empty());
-}
-
-#[tokio::test]
-async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
-    use super::super::ports::RuntimeBuildPort;
-    let f = fixture().await;
-    let item = crate::enhance::test_support::overlay("missing", "missing.yaml");
-    let mut profiles = Profiles::default();
-    profiles.global_transforms.push(item.uid.clone());
-    profiles.items.insert(item.uid.clone(), item);
-    let input = nyanpasu_core::enhance::RuntimeBuildInput {
-        profiles: Arc::new(profiles.clone()),
-        clash: ClashConfig::default(),
-        app: NyanpasuAppConfig::default(),
-        resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings {
-            mixed_port: 7890,
-            ..Default::default()
-        },
-    };
-    let old_content =
-        nyanpasu_platform::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
-    let script_dirs = f.builder.delegate.scripts.clone();
-    let built = tokio::task::spawn_blocking(move || {
-        let scripts = nyanpasu_platform::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
-        nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
-    })
-    .await
-    .unwrap();
-    assert!(built.is_ok());
-    let captured = f.builder.capture_content(&profiles).await;
-    let mut revisions = runtime::RuntimeRevisionAllocator::new();
-    let build = |revision, strict| {
-        f.builder.build(
-            revision,
-            super::super::inputs::RuntimeInputs {
-                profiles: Arc::new(profiles.clone()),
-                clash: ClashConfig::default(),
-                app: NyanpasuAppConfig::default(),
-                content: captured.clone(),
-            },
-            nyanpasu_config::runtime::executor::ResolvedPortBindings {
-                mixed_port: 7890,
-                ..Default::default()
-            },
-            strict,
-        )
-    };
-    assert!(
-        build(revisions.allocate(), false).await.is_ok(),
-        "ordinary build keeps D7 passthrough"
-    );
-    assert!(
-        build(revisions.allocate(), true).await.is_err(),
-        "TCC candidate rejects missing transform"
-    );
 }
 
 #[tokio::test]

@@ -55,13 +55,15 @@ use super::{
     ownership,
 };
 use crate::{
-    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         NyanpasuClient, SessionPortResolver,
         convergence::ConvergenceHealth,
         core_lifecycle::{Ownership, ports::PreparedCoreBinary},
         runtime,
-        test_support::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
+        test_support::{
+            TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
+            test_client_args_with_endpoint,
+        },
     },
     core::{
         actor_v2::{
@@ -405,11 +407,9 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         runtime::RuntimeSnapshotStore::default(),
     ));
     let notifications = Arc::new(RecordingNotifications::default());
-    let builder = Arc::new(FsRuntimeBuildAdapter {
-        core_specs: Arc::new(crate::client::runtime_core_spec),
+    let builder = Arc::new(TestRuntimeBuildPort {
         profiles_dir: dir.path().join("profiles"),
         paths: paths.clone(),
-        scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
     });
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(

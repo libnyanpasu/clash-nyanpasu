@@ -60,6 +60,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_core_version,
             ipc::get_app_config,
             ipc::get_clash_config,
+            ipc::get_config_features,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
             ipc::probe_profile_url,

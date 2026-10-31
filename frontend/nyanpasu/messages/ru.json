@@ -187,6 +187,8 @@
   "settings_clash_settings_managed_guard_field_enabled": "Всегда вкл.",
   "settings_clash_settings_managed_guard_field_disabled": "Всегда выкл.",
   "settings_clash_settings_tun_stack_label": "Стек TUN",
+  "settings_clash_settings_tun_congestion_controller_label": "Управление перегрузкой TCP",
+  "settings_clash_settings_tun_congestion_controller_core_default": "По умолчанию ядра",
   "settings_clash_settings_log_level_label": "Уровень журнала",
   "settings_clash_settings_core_log_shard_size_label": "Размер ротации журнала ядра",
   "settings_clash_settings_core_log_max_size_label": "Лимит хранения журнала ядра",

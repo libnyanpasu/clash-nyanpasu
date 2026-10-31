@@ -62,7 +62,10 @@ use crate::{
 };
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
-    clash::config::{ClashConfig, ClashConfigPatch},
+    clash::{
+        config::{ClashConfig, ClashConfigPatch},
+        features::ConfigFeatures,
+    },
     profile::{
         FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
         ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
@@ -1059,6 +1062,17 @@ impl NyanpasuClient {
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
         Ok(self.inner.clash_config.snapshot().state)
+    }
+
+    /// The config keys and values the selected core reads, for the settings
+    /// that only some cores support.
+    pub fn config_features(&self) -> ConfigFeatures {
+        self.inner
+            .application
+            .snapshot()
+            .state
+            .core
+            .config_features()
     }
 
     pub fn clash_info(&self) -> ClashInfo {

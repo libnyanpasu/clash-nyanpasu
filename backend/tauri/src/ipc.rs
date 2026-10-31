@@ -838,7 +838,10 @@ pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<Di
 
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch},
-    clash::config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+    clash::{
+        config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+        features::ConfigFeatures,
+    },
 };
 
 #[nyanpasu_macro::rpc(http)]
@@ -863,6 +866,13 @@ pub async fn patch_app_config(
 #[specta::specta]
 pub async fn get_clash_config(client: State<'_, NyanpasuClient>) -> Result<ClashConfig> {
     Ok(client.get_clash_config().await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_config_features(client: State<'_, NyanpasuClient>) -> Result<ConfigFeatures> {
+    Ok(client.config_features())
 }
 
 #[nyanpasu_macro::rpc(http)]

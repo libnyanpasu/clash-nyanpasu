@@ -2,9 +2,10 @@
 
 These rules apply to all contributors. Application services use explicit
 dependencies and serial state owners; global services and Tauri-coupled business
-logic have been removed. The application core lives in `nyanpasu-core`, with
-infrastructure in `nyanpasu-platform` and GUI adapters in Tauri ([Core and
-frontend separation](#core-and-frontend-separation)).
+logic have been removed. The application core lives in `nyanpasu-core` and GUI
+adapters live in Tauri. Package ownership for scripts, OS integration and
+infrastructure is being corrected ([Core and frontend
+separation](#core-and-frontend-separation)).
 For the development workflow, start with the [guide](README.md).
 
 ## Target architecture
@@ -33,7 +34,8 @@ Use these terms consistently:
 
 ## Core and frontend separation
 
-The core/GUI split is complete. The current layout is:
+The Tauri extraction baseline is complete: core no longer depends on Tauri. The
+ownership split is not finished. The current layout is:
 
 ```text
 backend/tauri/src/
@@ -54,7 +56,7 @@ backend/nyanpasu-core/src/
           v
 nyanpasu-config             domain models and pure runtime executor
 
-backend/nyanpasu-platform/src/  implements core/config ports
+backend/nyanpasu-platform/src/  implements core/config ports (transitional)
   profiles/                    profile filesystem and HTTP service
   enhance/                     content, script and runtime-build adapters
   changelog_http.rs            changelog HTTP adapter
@@ -74,9 +76,26 @@ desktop plugins and transport delivery stay in the host. Platform depends on
 core to implement its consumed ports; core does not depend on platform in
 production.
 
-The [extraction record](../design/application-platform-extraction.md) lists the
-delivered stack. The [OpenWrt reconciliation
-roadmap](../design/openwrt-roadmap.md) records the paused router work.
+`nyanpasu-platform` is not the target home for every concrete implementation.
+The [target ownership](../design/application-platform-extraction.md#target-ownership)
+separates four groups:
+
+- **Script runtimes** belong to profile enhancement: a script crate provides the
+  runners and extension definitions over the `nyanpasu-config` ports, and a
+  profile transform crate below core holds the runtime builder.
+- **Presentation capabilities** (hotkeys, windows, tray, widgets, dialogs,
+  notifications) vary with the host form. Each host implements them; core treats
+  them as optional.
+- **OS integration capabilities** (system proxy, autostart, service control,
+  DNS flush, device identity, elevation) vary with the operating system and
+  serve GUI and CLI hosts alike. They belong in an OS crate, not in core or the
+  GUI crate.
+- **Portable infrastructure** (profile files, HTTP, watchers, storage) stays in
+  the remaining platform crate, which is renamed later.
+
+The extraction record lists the known gaps and the order of the next stack. The
+[OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the
+paused router work.
 
 Rules for maintaining the separation:
 
@@ -145,8 +164,11 @@ If a mature ractor actor client already exists for a capability, use it instead 
 
 Shared backend code follows [Backend packages](backend-packages.md):
 `nyanpasu-core` owns use cases, typed actor clients and consumed ports;
-`nyanpasu-platform` implements infrastructure ports and may depend on core.
-Core must not depend on platform in production. Neither neutral crate nor
+implementation crates implement those ports and may depend on core. Core must
+not depend on an implementation crate in production. Do not add script runtime
+or OS integration code to `nyanpasu-platform`; see the [target
+ownership](../design/application-platform-extraction.md#target-ownership).
+Neither neutral crate nor
 `nyanpasu-config` may depend on Tauri, egui/eframe or Slint. Tauri is a host composition
 root and GUI/transport adapter; Tauri-specific implementations stay at that
 boundary. Move complete existing call paths and update callers without retaining

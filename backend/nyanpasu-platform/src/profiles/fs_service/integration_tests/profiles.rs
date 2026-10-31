@@ -1,6 +1,6 @@
 //! Managed profile files, external watchers and materialization failures.
 
-use crate::service::profile_file::fs_service::ProfileFileService;
+use crate::profiles::fs_service::ProfileFileService;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
     ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileId,

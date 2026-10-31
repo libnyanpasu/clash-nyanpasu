@@ -15,11 +15,11 @@ use nyanpasu_config::{
     runtime::executor::{ResolvedPortBindings, known_fields},
 };
 
+use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 use nyanpasu_core::enhance::{
     RuntimeBuildInput, RuntimeBuilder,
     test_support::{composition, file_config, overlay},
 };
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
 const SUB_A: &str =
     "proxies:\n  - name: a1\n    type: ss\n    server: a.example.com\n    port: 443\n";
@@ -66,8 +66,8 @@ fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml
 }
 
 fn assert_matches_fixture(actual: &serde_yaml::Value, name: &str) {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("src/adapters/runtime_build/fixtures/golden");
+    let dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/enhance/runtime_build/fixtures/golden");
     let path = dir.join(name);
     let rendered = serde_yaml::to_string(actual).unwrap();
     if std::env::var_os("GOLDEN_BLESS").is_some() {

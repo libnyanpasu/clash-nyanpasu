@@ -61,7 +61,7 @@ async fn fixture() -> Fixture {
                 profiles_dir: profiles_dir.clone(),
                 core_specs: Arc::new(nyanpasu_core::client::test_support::runtime_core_spec),
                 paths,
-                scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                scripts: crate::enhance::ScriptDirs::under(dir.path()),
             },
         },
         profiles_dir,
@@ -86,11 +86,10 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
             ..Default::default()
         },
     };
-    let old_content =
-        nyanpasu_platform::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+    let old_content = crate::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
     let script_dirs = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
-        let scripts = nyanpasu_platform::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
+        let scripts = crate::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
         nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
     })
     .await

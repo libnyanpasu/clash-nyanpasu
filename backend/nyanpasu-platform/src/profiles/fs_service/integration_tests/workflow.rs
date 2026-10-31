@@ -1,6 +1,6 @@
 //! Runtime transactions retaining persisted bytes and staging ownership.
 
-use crate::service::profile_file::test_support::test_client_args_with_endpoint;
+use crate::profiles::test_support::test_client_args_with_endpoint;
 use futures_util::FutureExt;
 use nyanpasu_config::clash::config::{
     ClashConfig,
@@ -87,7 +87,7 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
     let f = Fixture::with_adapters(true, false, |dir| {
-        crate::service::profile_file::test_support::test_host_adapters(
+        crate::profiles::test_support::test_host_adapters(
             &nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data")),
         )
     })

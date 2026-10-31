@@ -12,7 +12,6 @@ mod core;
 mod event_handler;
 mod ipc;
 mod server;
-mod service;
 mod setup;
 mod specta_export;
 mod startup_failure;

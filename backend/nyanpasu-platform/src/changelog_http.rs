@@ -7,7 +7,7 @@ use nyanpasu_core::{
     client::bundle_metadata::BundleMetadata, service::profile_file::ports::SelfProxyPortSource,
 };
 
-pub(crate) struct ReqwestChangelogHttp {
+pub struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,
     bundle_metadata: BundleMetadata,
 }

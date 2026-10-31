@@ -81,7 +81,7 @@
     "@types/node": "26.6.5",
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/browser-playwright": "5.0.5",
-    "knip": "6.44.0",
+    "knip": "6.44.1",
     "lint-staged": "17.6.0",
     "npm-run-all2": "9.0.4",
     "oxlint": "1.90.0",

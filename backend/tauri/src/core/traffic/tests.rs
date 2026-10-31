@@ -29,7 +29,7 @@ use super::{
     Clock, ProfileSelection, RetentionPolicy, TrafficArgs, TrafficClient,
     source::frame_from_snapshot,
 };
-use crate::core::clash::ws::ClashConnectionsFrame;
+use nyanpasu_core::clash::ws::ClashConnectionsFrame;
 
 const CORE: &str = "core-1";
 const A: &str = "11111111-1111-1111-1111-111111111111";

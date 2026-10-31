@@ -356,7 +356,7 @@ async fn http_connection_details(
 
 fn connection_detail_events(
     receiver: tokio::sync::watch::Receiver<
-        Option<Arc<crate::core::clash::ws::ClashConnectionDetails>>,
+        Option<Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>,
     >,
 ) -> impl futures::Stream<Item = Result<Event, Infallible>> {
     stream::unfold((receiver, true), |(mut receiver, mut first)| async move {
@@ -1035,11 +1035,11 @@ mod tests {
 
     #[tokio::test]
     async fn connection_details_send_current_and_new_frames_and_release_demand() {
-        use crate::core::clash::ws::ClashConnectionDetails;
+        use nyanpasu_core::clash::ws::ClashConnectionDetails;
         let frame = |sequence| {
             Some(Arc::new(ClashConnectionDetails {
                 sequence,
-                connections: crate::core::clash::connection_rates::ConnectionDetails::new(
+                connections: nyanpasu_core::clash::connection_rates::ConnectionDetails::new(
                     Arc::new(clash_api::ConnectionsSnapshot {
                         download_total: 0,
                         upload_total: 0,

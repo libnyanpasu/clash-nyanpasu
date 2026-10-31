@@ -21,7 +21,7 @@ impl BinaryInstaller for FsBinaryInstaller {
         if let Some(companion) = &artifact.companion
             && let Err(error) = {
                 let (staged, destination) = (companion.staged(), companion.destination.clone());
-                crate::utils::blocking::join(
+                nyanpasu_core::utils::blocking::join(
                     tokio::task::spawn_blocking(move || publish_companion(&staged, &destination))
                         .await,
                 )
@@ -55,7 +55,7 @@ async fn install_binary(artifact: &PreparedCoreBinary) -> Result<(), InstallCore
                 .context(PathNotUtf8Snafu { path: &destination })?
                 .to_owned(),
         );
-        let status = crate::utils::blocking::join(
+        let status = nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let _staging = staging;
                 #[cfg(target_os = "windows")]

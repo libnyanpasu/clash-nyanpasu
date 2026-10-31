@@ -7,11 +7,10 @@ use super::{
     application::ApplicationFormat,
     clash_config::{self, ClashConfigFormat},
 };
-use crate::utils::yaml;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
-use nyanpasu_core::format::Format as _;
+use nyanpasu_core::{format::Format as _, utils::yaml};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
@@ -35,7 +34,7 @@ pub(crate) enum Error {
     },
     #[snafu(context(false), display("failed to read legacy overrides"))]
     ReadLegacyOverrides {
-        source: crate::utils::yaml::YamlError,
+        source: nyanpasu_core::utils::yaml::YamlError,
     },
     #[snafu(context(false), display("serialized config was not UTF-8"))]
     DecodeConfig { source: std::string::FromUtf8Error },

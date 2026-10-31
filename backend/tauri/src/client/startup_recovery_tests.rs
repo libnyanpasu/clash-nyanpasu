@@ -11,13 +11,11 @@ use redb::ReadableDatabase as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::new_typed_config_clients;
-use crate::{
-    core::{
-        migration::Runner,
-        storage::{Storage, WebStorage},
-    },
-    utils::test_support::test_paths,
+use crate::core::{
+    migration::Runner,
+    storage::{Storage, WebStorage},
 };
+use nyanpasu_core::utils::test_support::test_paths;
 
 pub(super) fn evidence(path: &Path) -> Vec<PathBuf> {
     let prefix = format!("{}.corrupt-", path.file_name().unwrap().to_string_lossy());
@@ -43,7 +41,7 @@ fn fixture() -> (tempfile::TempDir, PathResolver) {
 pub(super) fn migrate(paths: &PathResolver) {
     Runner::with_paths(
         paths.clone(),
-        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
     )
     .unwrap()
@@ -119,7 +117,7 @@ fn session_evidence_is_preserved_before_partial_config_rejection() {
     fs::write(&path, b"window_state: [invalid").unwrap();
     let error = Runner::with_paths(
         paths.clone(),
-        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
     )
     .unwrap_err();
@@ -396,7 +394,7 @@ async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
     }
     let migration = Runner::with_paths(
         paths.clone(),
-        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
     )
     .and_then(|mut runner| runner.run_pending());

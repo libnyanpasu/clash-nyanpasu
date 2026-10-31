@@ -211,7 +211,7 @@ async fn test_client(
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             shutdown: shutdown.clone(),
         },

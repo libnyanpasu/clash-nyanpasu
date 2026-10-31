@@ -4,8 +4,8 @@
 //! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
 //! share it.
 
-use crate::client::bundle_metadata::BundleMetadata;
 use camino::Utf8PathBuf;
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 
 use crate::core::storage::{Storage, StorageOperationError};
@@ -369,7 +369,7 @@ mod tests {
     }
 
     fn paths(root: &Path) -> PathResolver {
-        crate::utils::test_support::test_paths(root.join("config"), root.join("data"))
+        nyanpasu_core::utils::test_support::test_paths(root.join("config"), root.join("data"))
     }
 
     fn write(path: &(impl AsRef<Path> + ?Sized), content: &str) {
@@ -380,7 +380,7 @@ mod tests {
 
     fn manual<'a>(paths: &'a PathResolver, storage: StorageSource<'a>) -> BackupRequest<'a> {
         BackupRequest {
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
             paths,
             storage,
             kind: BackupKind::Manual,
@@ -412,7 +412,7 @@ mod tests {
         let target = Version::new(2, 0, 0);
 
         let backup = create_backup(&BackupRequest {
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
             paths: &paths,
             storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {
@@ -482,7 +482,7 @@ mod tests {
         let target = Version::new(2, 0, 0);
 
         let backup = create_backup(&BackupRequest {
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
             paths: &paths,
             storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {
@@ -501,7 +501,7 @@ mod tests {
     fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        let paths = crate::utils::test_support::test_paths(config.clone(), config.clone());
+        let paths = nyanpasu_core::utils::test_support::test_paths(config.clone(), config.clone());
         write(&paths.profiles_path(), "profiles");
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");

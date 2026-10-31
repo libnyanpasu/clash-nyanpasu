@@ -1,6 +1,6 @@
-use crate::client::bundle_metadata::BundleMetadata;
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{borrow::Cow, path::Path, time::Duration};
@@ -64,7 +64,7 @@ pub async fn get_cached_icon(
         }
     }
 
-    let client = crate::utils::candy::get_reqwest_client(self_proxy_port, metadata)?;
+    let client = nyanpasu_core::utils::candy::get_reqwest_client(self_proxy_port, metadata)?;
     let response = client.get(url).send().await?.error_for_status()?;
     let mime = response
         .headers()

@@ -389,8 +389,8 @@ pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
 
 // #[tauri::command]
 // #[specta::specta]
-// pub fn get_device_info() -> Result<crate::utils::hwid::DeviceInfo> {
-//     Ok(crate::utils::hwid::get_device_info())
+// pub fn get_device_info() -> Result<nyanpasu_core::utils::hwid::DeviceInfo> {
+//     Ok(nyanpasu_core::utils::hwid::get_device_info())
 // }
 
 /// Rebuild-only command: there is no prior state commit, so a failure is a

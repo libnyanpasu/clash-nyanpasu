@@ -3,9 +3,8 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 
-use crate::{
-    client::bundle_metadata::BundleMetadata, service::profile_file::ports::SelfProxyPortSource,
-};
+use crate::service::profile_file::ports::SelfProxyPortSource;
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 
 pub(crate) struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,
@@ -32,11 +31,11 @@ impl crate::client::app_update::changelog::ChangelogHttp for ReqwestChangelogHtt
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30));
         if let Some(port) = self.proxy_port.mixed_port() {
-            builder = builder.proxy(reqwest::Proxy::all(crate::utils::config::get_self_proxy(
-                port,
-            ))?);
+            builder = builder.proxy(reqwest::Proxy::all(
+                nyanpasu_core::utils::config::get_self_proxy(port),
+            )?);
         }
-        if let Ok(Some(proxy)) = crate::utils::config::get_system_proxy() {
+        if let Ok(Some(proxy)) = nyanpasu_core::utils::config::get_system_proxy() {
             builder = builder.proxy(reqwest::Proxy::all(proxy).context("invalid system proxy")?);
         }
         Ok(builder

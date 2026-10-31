@@ -276,6 +276,7 @@ webview2-com = '0.39'
 
 [dev-dependencies]
 tauri = { version = '2.4', features = ['test'] }
+nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }
 http-body-util = '0.1'
 tower = { version = '0.5', features = ['util'] }
 axum = { version = '0.8', features = ['ws'] }
@@ -292,7 +293,7 @@ fake-core = { path = '../fake-core' }
 default = ['custom-protocol', 'default-meta', 'nesting']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
-verge-dev = []
+verge-dev = ['nyanpasu-core/verge-dev']
 default-meta = []
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']

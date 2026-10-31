@@ -121,7 +121,7 @@ fn metadata_selects_matching_update_downloads() {
                 is_fixed_webview: fixed,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
             };
             let target = updater_target(&metadata, &format!("windows-{arch}"));
             let variant = if fixed { "fixed" } else { "standard" };
@@ -407,7 +407,7 @@ fn release_channel_selects_feeds_without_changing_fixed_target() {
                 is_fixed_webview: fixed,
                 release_channel: channel,
                 sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
             };
             let mut config = config(false);
             setup(&metadata, &mut config).unwrap();

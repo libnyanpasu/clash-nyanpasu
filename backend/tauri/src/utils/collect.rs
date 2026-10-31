@@ -208,7 +208,7 @@ pub async fn logs_archive(
     paths: PathResolver,
     client: NyanpasuClient,
 ) -> anyhow::Result<std::path::PathBuf> {
-    super::blocking::join(
+    nyanpasu_core::utils::blocking::join(
         tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Handle::current();
             let steps: Vec<(Step, Action<'_>)> = vec![

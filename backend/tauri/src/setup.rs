@@ -1,4 +1,8 @@
 //! Setup logic for the app
+use nyanpasu_core::client::{
+    bundle_metadata::BundleMetadata, owner_shutdown::track_until_shutdown,
+};
+
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
@@ -19,12 +23,10 @@ use crate::{
     client::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
         OsSystemDnsCache, RuntimePaths, StateChanged, UiEventSink,
-        bundle_metadata::BundleMetadata,
         debug_http::DebugHttpControl,
         effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
-        owner_shutdown::track_until_shutdown,
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
     core::{

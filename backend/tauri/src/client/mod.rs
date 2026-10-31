@@ -1,10 +1,10 @@
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
 pub mod app_update;
 pub(crate) mod application;
 pub mod application_workflow;
-pub(crate) mod bundle_metadata;
 mod clash_api;
 mod clash_config;
 mod clash_info;
@@ -24,7 +24,6 @@ pub mod hotkey;
 pub(crate) mod jobs;
 pub mod logs;
 pub(crate) mod main_thread;
-pub(crate) mod owner_shutdown;
 mod ports;
 pub mod profiles;
 pub mod runtime;
@@ -42,7 +41,6 @@ mod traffic;
 
 use self::{
     application::ApplicationClient,
-    bundle_metadata::BundleMetadata,
     clash_config::ClashConfigClient,
     debug_http::{DebugHttpControl, DebugHttpStatus},
     host_adapters::ClientHostAdapters,
@@ -761,7 +759,7 @@ impl NyanpasuClient {
     pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
         let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
         let bundle_metadata = self.inner.bundle_metadata;
-        crate::utils::blocking::join(
+        nyanpasu_core::utils::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let info = backup::create_backup(&BackupRequest {
                     bundle_metadata,
@@ -800,7 +798,7 @@ impl NyanpasuClient {
     }
 
     pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
-        crate::utils::net::url_delay_test(
+        nyanpasu_core::utils::net::url_delay_test(
             url,
             expected_status,
             self.clash_info().port,
@@ -810,7 +808,8 @@ impl NyanpasuClient {
     }
 
     pub async fn get_ipsb_asn(&self) -> anyhow::Result<serde_json::Value> {
-        crate::utils::net::get_ipsb_asn(self.clash_info().port, &self.inner.bundle_metadata).await
+        nyanpasu_core::utils::net::get_ipsb_asn(self.clash_info().port, &self.inner.bundle_metadata)
+            .await
     }
 
     pub async fn get_cached_icon(
@@ -930,12 +929,16 @@ impl NyanpasuClient {
     ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
     {
         let os_proxy = self.inner.os_proxy.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+        nyanpasu_core::utils::blocking::join(
+            tokio::task::spawn_blocking(move || os_proxy.get()).await,
+        )
     }
 
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+        nyanpasu_core::utils::blocking::join(
+            tokio::task::spawn_blocking(move || system_dns.flush()).await,
+        )
     }
 
     /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.
@@ -1532,7 +1535,6 @@ pub(crate) mod tests {
                 PreparedMaterialization, ProfileMaterializationPort, SubscriptionFetcher,
             },
         },
-        utils::test_support::test_paths,
     };
     use nyanpasu_config::{
         clash::config::ClashConfig,
@@ -1543,6 +1545,7 @@ pub(crate) mod tests {
         },
         state::window::WindowState,
     };
+    use nyanpasu_core::utils::test_support::test_paths;
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
@@ -1704,7 +1707,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -2462,7 +2465,7 @@ pub(crate) mod tests {
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2484,7 +2487,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -2657,7 +2660,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
             host_adapters: test_host_adapters(&paths),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
@@ -3652,7 +3655,7 @@ pub(crate) mod tests {
                     is_fixed_webview: false,
                     release_channel: ReleaseChannel::Stable,
                     sourceforge_project: None,
-                    ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                    ..nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA
                 },
                 logs::test_setup(
                     test_paths(dir.path(), dir.path().join("data"))
@@ -4150,7 +4153,7 @@ mod setup_error_tests {
     #[tokio::test]
     async fn corrupt_application_yaml_keeps_the_typed_load_source() {
         let root = tempfile::tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             root.path().join("config"),
             root.path().join("data"),
         );

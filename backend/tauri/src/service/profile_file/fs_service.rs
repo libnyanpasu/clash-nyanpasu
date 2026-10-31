@@ -26,7 +26,6 @@ use super::{
 };
 
 use crate::{
-    client::bundle_metadata::BundleMetadata,
     core::corrupt,
     state::profiles::{
         error::*,
@@ -38,6 +37,7 @@ use crate::{
         },
     },
 };
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 
@@ -2064,7 +2064,7 @@ impl SubscriptionFetcher for ProfileFileService {
             }
         });
         if let Some(proxy_url) = proxy_url {
-            use crate::utils::config::NyanpasuReqwestProxyExt;
+            use nyanpasu_core::utils::config::NyanpasuReqwestProxyExt;
             builder = builder.swift_set_proxy(&proxy_url);
         }
 
@@ -2077,8 +2077,8 @@ impl SubscriptionFetcher for ProfileFileService {
             .build()
             .context(BuildHttpClientSnafu)?;
 
-        let device_info = crate::utils::hwid::get_device_info();
-        let sanitize = crate::utils::hwid::sanitize_for_header;
+        let device_info = nyanpasu_core::utils::hwid::get_device_info();
+        let sanitize = nyanpasu_core::utils::hwid::sanitize_for_header;
         let perform = || async {
             let resp = client
                 .get(url.as_str())
@@ -2186,7 +2186,7 @@ mod tests {
         self_proxy_port: Arc<dyn SelfProxyPortSource>,
     ) -> (tempfile::TempDir, ProfileFileService) {
         let temp = tempfile::tempdir().unwrap();
-        let paths = crate::utils::test_support::test_paths(
+        let paths = nyanpasu_core::utils::test_support::test_paths(
             temp.path().join("config"),
             temp.path().join("data"),
         );
@@ -2195,7 +2195,7 @@ mod tests {
             ProfileFileService::new(
                 paths,
                 self_proxy_port,
-                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
             ),
         )
     }

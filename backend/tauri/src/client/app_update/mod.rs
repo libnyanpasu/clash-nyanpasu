@@ -1,6 +1,6 @@
 //! Backend-owned application update state and task lifecycle.
 
-use crate::client::bundle_metadata::BundleMetadata;
+use nyanpasu_core::client::bundle_metadata::BundleMetadata;
 
 use std::{any::Any, sync::Arc};
 
@@ -1045,7 +1045,11 @@ impl AppUpdateClient {
         let (actor, _) = Actor::spawn(None, AppUpdateActor, args.clone())
             .await
             .map_err(|source| Error::SpawnActor { source })?;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
+        nyanpasu_core::client::owner_shutdown::drain_on_shutdown(
+            tasks,
+            args.shutdown,
+            actor.get_cell(),
+        );
         Ok(Self(Arc::new(Inner(actor))))
     }
 

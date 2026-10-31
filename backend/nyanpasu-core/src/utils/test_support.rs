@@ -5,7 +5,7 @@ use nyanpasu_paths::PathResolver;
 
 /// A resolver rooted at `config` and `data`, for tests that do not run from an installed
 /// executable.
-pub(crate) fn test_paths(
+pub fn test_paths(
     config: impl AsRef<std::path::Path>,
     data: impl AsRef<std::path::Path>,
 ) -> PathResolver {

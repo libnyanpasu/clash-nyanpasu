@@ -9,7 +9,7 @@ import type { ComponentProps } from 'react'
 import { cn } from '@nyanpasu/utils'
 import { MenuSurface } from './menu-surface'
 
-const menubarTriggerVariants = cva([
+export const menubarTriggerVariants = cva([
   'flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-3 py-2',
   'text-primary dark:text-primary text-sm font-medium outline-none select-none',
   'hover:bg-primary-container dark:hover:bg-on-primary',

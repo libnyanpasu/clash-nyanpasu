@@ -690,7 +690,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.core_v2 = core;
     args.service = service;
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     tauri::async_runtime::block_on(async {
         assert_eq!(
             client.startup_reconcile().await.outcome,
@@ -793,7 +793,7 @@ impl Fixture {
         });
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
         args.binary_installer = installer.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         Self {
             client,
             endpoint,
@@ -1124,9 +1124,10 @@ async fn disable_mode_interruption(client: &NyanpasuClient) {
 fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let client =
-        NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint.clone()))
-            .unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+        test_client_args_with_endpoint(&dir, endpoint.clone()),
+    ))
+    .unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
@@ -1159,7 +1160,7 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
     let endpoint = TestControlEndpoint::failing();
     let args = test_client_args_with_endpoint(&dir, endpoint.clone());
     let config_path = args.paths.clash_config_path();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
@@ -1195,7 +1196,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let args = test_client_args_with_endpoint(&dir, endpoint.clone());
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
@@ -1246,7 +1247,7 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
         let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
         let args = test_client_args_with_endpoint(&dir, scripted.clone());
         let path = args.paths.clash_config_path();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             disable_mode_interruption(&client).await;
@@ -1424,7 +1425,7 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
@@ -1469,7 +1470,7 @@ fn a_core_reconcile_notifies_the_ui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         until_notified(&client).await;
@@ -1502,7 +1503,7 @@ fn an_explicit_start_notifies_the_ui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     tauri::async_runtime::block_on(async {
         let workflow = &client.inner.application_workflow;
         assert_eq!(ownership(workflow).await, Ownership::Unproven);

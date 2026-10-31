@@ -20,7 +20,9 @@ use crate::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
         OsSystemDnsCache, RuntimePaths, StateChanged, UiEventSink,
         bundle_metadata::BundleMetadata,
+        debug_http::DebugHttpControl,
         effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
+        host_adapters::{ClientHostAdapters, ProfileFilePorts},
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         owner_shutdown::track_until_shutdown,
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
@@ -307,10 +309,49 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let span = tracing::info_span!("build_client").entered();
     let ui_sink: Arc<dyn UiEventSink> =
         Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
-    let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+    let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
         bundle_metadata,
-        http_frontend: Some(debug_http_frontend(&app_handle)),
-        http_routes,
+        host_adapters: ClientHostAdapters {
+            debug_http: {
+                let frontend = Some(debug_http_frontend(&app_handle));
+                Arc::new(move || {
+                    let (frontend, routes) = (frontend.clone(), http_routes.clone());
+                    Box::pin(async move {
+                        let server =
+                            crate::server::debug_http::HttpServerClient::spawn(frontend, routes)
+                                .await?;
+                        Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
+                    })
+                })
+            },
+            changelog_http: Arc::new(move |ports| {
+                Arc::new(crate::adapters::changelog_http::ReqwestChangelogHttp::new(
+                    ports,
+                    bundle_metadata,
+                ))
+            }),
+            script_dirs: nyanpasu_platform::enhance::ScriptDirs::new(
+                paths.scripts_dir().into_std_path_buf(),
+                paths.cache_dir().into_std_path_buf(),
+            ),
+            profile_files: Arc::new({
+                let paths = paths.clone();
+                move |ports| {
+                    let service = Arc::new(
+                        crate::service::profile_file::fs_service::ProfileFileService::new(
+                            paths.clone(),
+                            ports,
+                            bundle_metadata,
+                        ),
+                    );
+                    ProfileFilePorts {
+                        fs: service.clone(),
+                        fetcher: service.clone(),
+                        materialization: service,
+                    }
+                }
+            }),
+        },
         jobs,
         logging: crate::client::logs::LoggingSetup {
             core: match crate::core::logs::RedbCoreLogStore::open(
@@ -367,7 +408,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         traffic_store,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
-    })
+    }))
     .context(BuildClientSnafu)?;
     drop(span);
     // The tray menu and the first window render with the process locale, so

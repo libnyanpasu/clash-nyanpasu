@@ -771,13 +771,11 @@ impl PacPort for HeldPac {
 
 #[tokio::test(start_paused = true)]
 async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
-    use crate::client::{
-        convergence::ConvergenceHealth,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
 
     let pac = Arc::new(HeldPac::default());
     let shutdown = Shutdown::new();

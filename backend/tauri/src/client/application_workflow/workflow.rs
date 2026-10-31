@@ -144,7 +144,8 @@ impl ApplicationWorkflow {
             && let Some(deferred) = &mut self.deferred
             && matches!(deferred.origin, TargetOrigin::Mutation)
         {
-            deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+            deferred.health =
+                nyanpasu_core::client::convergence::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;
         }
         self.notify_bound(true);

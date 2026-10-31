@@ -162,7 +162,7 @@ enum Message {
     Progress(
         usize,
         UpdaterState,
-        Option<crate::core::download::DownloadStatus>,
+        Option<nyanpasu_core::download::DownloadStatus>,
     ),
     Finished(usize, Result<()>),
     Prune(Instant),
@@ -331,7 +331,7 @@ impl Actor for UpdaterActor {
                         summary: UpdaterSummary {
                             id,
                             state: UpdaterState::Idle,
-                            downloader: crate::core::download::DownloadStatus {
+                            downloader: nyanpasu_core::download::DownloadStatus {
                                 state: Default::default(),
                                 downloaded: 0,
                                 total: 0,

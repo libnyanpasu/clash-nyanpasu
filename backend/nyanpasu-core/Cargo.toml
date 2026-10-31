@@ -8,10 +8,22 @@ authors.workspace = true
 [features]
 default = []
 verge-dev = []
-test-support = ['dep:nyanpasu-paths']
+test-support = ['dep:mockall']
 
 [dependencies]
-nyanpasu-paths = { path = '../nyanpasu-paths', optional = true }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
+runas = { workspace = true }
+semver = '1.0'
+parking_lot = { version = '0.13.0' }
+bolt-load = { version = '0.1', default-features = false, features = [
+  'tokio',
+  'serde',
+  'tracing'
+] }
+smol-cancellation-token = '0.1'
+mockall = { version = '0.15', optional = true }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
 tokio-util = { version = '0.7', features = ['full'] }
 ractor = '0.16'
 futures = '0.3'
@@ -59,6 +71,8 @@ tempfile = '3.9.0'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+mockall = '0.15'
+axum = { version = '0.8', features = ['ws'] }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 serde_json = { version = '1', features = ['preserve_order'] }
 tokio = { workspace = true, features = ['full', 'test-util'] }

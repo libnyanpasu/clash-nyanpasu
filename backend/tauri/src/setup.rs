@@ -1,6 +1,7 @@
 //! Setup logic for the app
 use nyanpasu_core::client::{
-    bundle_metadata::BundleMetadata, owner_shutdown::track_until_shutdown,
+    bundle_metadata::BundleMetadata, direct_egress::HttpDirectEgressProbe,
+    owner_shutdown::track_until_shutdown,
 };
 
 use nyanpasu_paths::PathResolver;
@@ -21,8 +22,8 @@ use crate::{
         },
     },
     client::{
-        ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
-        OsSystemDnsCache, RuntimePaths, StateChanged, UiEventSink,
+        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
+        StateChanged, UiEventSink,
         debug_http::DebugHttpControl,
         effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
@@ -233,7 +234,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context(BuildServiceIpcSnafu)?;
-    let service_binary = crate::core::service::control::service_binary(
+    let service_binary = nyanpasu_core::service::control::service_binary(
         paths
             .app_install_dir()
             .context(LocateInstallDirectorySnafu)?

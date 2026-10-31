@@ -1193,7 +1193,7 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
         ));
         assert_eq!(
             client.configuration_status().runtime.health,
-            crate::client::convergence::ConvergenceHealth::RetryScheduled
+            nyanpasu_core::client::convergence::ConvergenceHealth::RetryScheduled
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =
@@ -1428,7 +1428,7 @@ async fn until_notified(client: &NyanpasuClient) {
         std::time::Duration::from_secs(5),
         effects.wait_for(|snapshot| {
             snapshot.effects.iter().all(|progress| {
-                progress.health != crate::client::convergence::ConvergenceHealth::Pending
+                progress.health != nyanpasu_core::client::convergence::ConvergenceHealth::Pending
             })
         }),
     )

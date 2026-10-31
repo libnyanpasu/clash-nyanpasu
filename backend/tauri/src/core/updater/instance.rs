@@ -21,13 +21,11 @@ use super::{
     ports::{UpdaterBackend, UpdaterProgress},
     shared::{self, CoreTypeMeta},
 };
-use crate::{
-    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
-    core::download::{DownloadSession, DownloadStatus},
-};
+use crate::client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion};
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core::{
     client::bundle_metadata::BundleMetadata,
+    download::{DownloadSession, DownloadStatus},
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_paths::PathResolver;
@@ -669,7 +667,7 @@ fn stage_companion(
 }
 
 fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
-    let parsed = crate::client::core_version::parse_version(core, banner)?;
+    let parsed = nyanpasu_core::client::core_version::parse_version(core, banner)?;
     let actual = semver::Version::parse(parsed.strip_prefix('v').unwrap_or(&parsed))?;
     match core {
         ClashCore::Meow => {

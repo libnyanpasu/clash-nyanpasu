@@ -65,25 +65,27 @@ struct RecoveringDaemon {
 impl ServiceHostAdapter for RecoveringDaemon {
     async fn probe(
         &self,
-    ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
+    ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.probe_fails.load(Ordering::SeqCst) {
-            return Err(crate::core::service::test_support::service_command_error(
+            return Err(nyanpasu_core::service::test_support::service_command_error(
                 "unknown OS status",
             ));
         }
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         panic!("recovery must not install")
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         panic!("recovery must not update")
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.start_entered.notify_one();
         if self.block_start.load(Ordering::SeqCst) {
             self.start_release.notified().await;
@@ -92,7 +94,9 @@ impl ServiceHostAdapter for RecoveringDaemon {
         self.endpoint.unavailable.store(false, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.stop_daemon().await?;
         self.endpoint.unavailable.store(true, Ordering::SeqCst);
         Ok(())

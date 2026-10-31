@@ -1,4 +1,5 @@
 use nyanpasu_paths::InstallDirError;
+#[cfg(not(target_os = "macos"))]
 use runas::Command as RunasCommand;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu, ensure};
@@ -45,7 +46,7 @@ type UserError = whoami::Error;
 /// the service actor puts on every call.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum ServiceCommandError {
     #[snafu(display("could not resolve the current user: {source}"))]
     ResolveServiceUser {
@@ -162,7 +163,7 @@ async fn run_elevated(
     args: Vec<OsString>,
 ) -> Result<(), ServiceCommandError> {
     let service_binary = service_binary.to_path_buf();
-    let status = nyanpasu_core::utils::blocking::join(
+    let status = crate::utils::blocking::join(
         tokio::task::spawn_blocking(move || {
             #[cfg(not(target_os = "macos"))]
             {
@@ -174,7 +175,7 @@ async fn run_elevated(
             }
             #[cfg(target_os = "macos")]
             {
-                use nyanpasu_core::utils::sudo::sudo;
+                use crate::utils::sudo::sudo;
                 let args = args
                     .iter()
                     .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
@@ -318,7 +319,7 @@ mod tests {
 
     #[test]
     fn the_io_error_stays_out_of_the_wire_form_but_in_the_message() {
-        let error = crate::core::service::test_support::service_command_error("the user cancelled");
+        let error = crate::service::test_support::service_command_error("the user cancelled");
 
         assert_eq!(
             serde_json::to_value(&error).unwrap(),

@@ -4,11 +4,9 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use super::{ManifestVersion, instance::UpdaterState, shared::CoreTypeMeta};
-use crate::{
-    client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary},
-    core::download::DownloadStatus,
-};
+use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_core::download::DownloadStatus;
 
 #[derive(Clone)]
 pub struct UpdaterProgress(Arc<dyn Fn(UpdaterState, Option<DownloadStatus>) + Send + Sync>);

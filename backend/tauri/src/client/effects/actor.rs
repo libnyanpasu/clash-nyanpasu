@@ -18,7 +18,7 @@ use super::{
     ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
-use crate::client::convergence::{ConvergenceHealth, RetryBudget};
+use nyanpasu_core::client::convergence::{ConvergenceHealth, RetryBudget};
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum Error {

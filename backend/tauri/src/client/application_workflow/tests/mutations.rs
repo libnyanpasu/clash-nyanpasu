@@ -3684,27 +3684,31 @@ impl ServiceHostAdapter for RefusedInstall {
         &self,
     ) -> Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         crate::core::actor_v2::test_support::IdleServiceAdapter
             .probe()
             .await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
-        Err(crate::core::service::test_support::service_command_error(
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        Err(nyanpasu_core::service::test_support::service_command_error(
             "the user cancelled the elevation prompt",
         ))
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -3981,7 +3985,7 @@ async fn native_store_failure_refuses_the_save_without_scheduling_retries() {
 
 #[tokio::test]
 async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;
     let source = f.clash.snapshot_handle().load().version;
     for remaining in [2, 1, 0] {
@@ -4024,7 +4028,7 @@ async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
 
 #[tokio::test]
 async fn runtime_retry_waits_for_check_dependency_without_spending_apply_budget() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;
     f.endpoint.set_failure(None);
     f.endpoint
@@ -4080,7 +4084,7 @@ async fn dependency_retries_count_waits_until_an_application_result() {
 /// user's back. It waits for the owner instead, and spends nothing.
 #[tokio::test]
 async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let service = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
     let mut f = fixture_with_hosts(true, Some(service.clone())).await;
     f.endpoint.set_failure(Some("queue_full"));
@@ -4130,7 +4134,7 @@ async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
 
 #[tokio::test]
 async fn stopped_runtime_is_not_started_by_retry_now() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::client::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;
     f.endpoint.set_failure(None);
     f.endpoint

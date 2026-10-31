@@ -1,8 +1,7 @@
 use crate::{
     client::{
-        ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
-        agent_skills::CoreAgentSkill, effects::error::EffectsError,
-        system_proxy::ports::OsProxyError,
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
+        effects::error::EffectsError, system_proxy::ports::OsProxyError,
     },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
@@ -10,19 +9,17 @@ use crate::{
         config_error::ConfigError,
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
-    utils::{
-        help,
-        proxy_env::{self, CopyEnvOption},
-    },
+    utils::{help, proxy_env, proxy_env::CopyEnvOption},
     window::{
-        WindowManager,
-        kinds::{self, EditorWindow, EditorWindowType, MainWindow},
+        WindowManager, kinds,
+        kinds::{EditorWindow, EditorWindowType, MainWindow},
     },
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_core::client::direct_egress::DirectEgress;
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
@@ -713,7 +710,9 @@ pub async fn save_profile_file(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client::ClashInfo> {
+pub fn get_clash_info(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_core::client::clash_info::ClashInfo> {
     Ok(client.clash_info())
 }
 
@@ -1546,7 +1545,7 @@ pub mod service {
         pub version: std::borrow::Cow<'static, str>,
         pub status: nyanpasu_ipc::types::ServiceStatus,
         pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
-        pub compat: crate::core::service::compat::ServiceCompat,
+        pub compat: nyanpasu_core::service::compat::ServiceCompat,
         pub phase: crate::core::actor_v2::service_actor::ServicePhase,
         pub restart_attempts: u8,
     }
@@ -1624,7 +1623,7 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
-    use crate::core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
+    use nyanpasu_core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
     use snafu::ResultExt;
 
     let args = async {

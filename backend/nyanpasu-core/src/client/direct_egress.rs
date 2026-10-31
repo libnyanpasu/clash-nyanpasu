@@ -23,7 +23,7 @@ pub enum DirectEgress {
 }
 
 /// Asks an echo service, past every proxy, which address a request came from.
-#[cfg_attr(test, mockall::automock)]
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
 pub trait DirectEgressProbe: Send + Sync + 'static {
     async fn ipv4(&self) -> Option<Ipv4Addr>;

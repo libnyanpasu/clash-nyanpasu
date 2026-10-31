@@ -15,16 +15,15 @@ use crate::{
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
         core_lifecycle::ports::InstallCoreBinaryError,
-        core_version::CoreVersionError,
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
-    core::{
-        actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
-        service::control::ServiceCommandError,
-    },
+    core::actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
 };
-use nyanpasu_core::enhance::RuntimeBuildError;
+use nyanpasu_core::{
+    client::core_version::CoreVersionError, enhance::RuntimeBuildError,
+    service::control::ServiceCommandError,
+};
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.

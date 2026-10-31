@@ -1,10 +1,10 @@
 //! Desktop adapters and composition for the shared diagnosis.
 use crate::{
-    client::{NyanpasuClient, core_version::CoreVersionReader},
+    client::NyanpasuClient,
     core::logs::{CoreLogExport, CoreLogStore, RedbCoreLogStore},
 };
 use nyanpasu_config::application::NyanpasuAppConfig;
-use nyanpasu_core::format::Format;
+use nyanpasu_core::{client::core_version::CoreVersionReader, format::Format};
 use nyanpasu_diagnose::{
     Action, Event, Step,
     archive::{Archive, LOG_CAP},

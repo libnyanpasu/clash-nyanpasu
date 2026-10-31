@@ -18,7 +18,7 @@ use tauri::Manager;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::clash::ws::ClashConnectionDetails;
+use nyanpasu_core::clash::ws::ClashConnectionDetails;
 
 /// Identifies one `subscribe_clash_connection_details` call, for a later
 /// `unsubscribe_clash_connection_details`.
@@ -158,7 +158,7 @@ mod tests {
     fn details(sequence: u64) -> Arc<ClashConnectionDetails> {
         Arc::new(ClashConnectionDetails {
             sequence,
-            connections: crate::core::clash::connection_rates::ConnectionDetails::new(
+            connections: nyanpasu_core::clash::connection_rates::ConnectionDetails::new(
                 Arc::new(clash_api::ConnectionsSnapshot {
                     download_total: 0,
                     upload_total: 0,

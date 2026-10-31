@@ -9,7 +9,7 @@ use nyanpasu_config::{
 use std::{collections::BTreeMap, sync::Arc};
 
 #[derive(Debug, Clone, Default)]
-pub(in crate::client) struct FrozenProfileContent(pub BTreeMap<String, Result<String, String>>);
+pub(crate) struct FrozenProfileContent(pub BTreeMap<String, Result<String, String>>);
 
 impl ProfileContentSource for FrozenProfileContent {
     fn read(&self, path: &ManagedProfilePath) -> Result<String, PortError> {
@@ -23,7 +23,7 @@ impl ProfileContentSource for FrozenProfileContent {
     }
 }
 
-pub(in crate::client) struct RuntimeInputs {
+pub(crate) struct RuntimeInputs {
     pub app: NyanpasuAppConfig,
     pub clash: ClashConfig,
     pub profiles: Arc<Profiles>,

@@ -3,11 +3,11 @@
 pub(crate) mod adapters;
 mod attempt;
 pub(crate) mod impact;
-pub(in crate::client) mod inputs;
+pub(crate) mod inputs;
 pub(crate) mod mutation;
 pub(crate) mod participant;
 pub(crate) mod policy;
-pub(in crate::client) mod ports;
+pub(crate) mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
 pub(crate) mod startup;

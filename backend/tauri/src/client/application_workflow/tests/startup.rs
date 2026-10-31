@@ -55,6 +55,7 @@ use super::{
     ownership,
 };
 use crate::{
+    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         NyanpasuClient, SessionPortResolver,
         convergence::ConvergenceHealth,
@@ -404,7 +405,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         runtime::RuntimeSnapshotStore::default(),
     ));
     let notifications = Arc::new(RecordingNotifications::default());
-    let builder = Arc::new(adapters::FsRuntimeBuildAdapter {
+    let builder = Arc::new(FsRuntimeBuildAdapter {
         core_specs: Arc::new(crate::client::runtime_core_spec),
         profiles_dir: dir.path().join("profiles"),
         paths: paths.clone(),

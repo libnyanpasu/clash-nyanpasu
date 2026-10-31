@@ -53,6 +53,7 @@ use super::{
     RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
+    adapters::runtime_build::FsRuntimeBuildAdapter,
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
@@ -79,7 +80,7 @@ use crate::{
 /// need without a sleep: the tracked task is genuinely mid-operation, which is
 /// the state every ordering claim here is about.
 pub(super) struct ParkingBuilder {
-    delegate: adapters::FsRuntimeBuildAdapter,
+    delegate: FsRuntimeBuildAdapter,
     pub(super) entered: Notify,
     pub(super) release: Notify,
     pub(super) park: AtomicBool,
@@ -350,7 +351,7 @@ pub(super) async fn fixture_from(
         dir.path().join("data"),
     ));
     let builder = Arc::new(ParkingBuilder {
-        delegate: adapters::FsRuntimeBuildAdapter {
+        delegate: FsRuntimeBuildAdapter {
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),

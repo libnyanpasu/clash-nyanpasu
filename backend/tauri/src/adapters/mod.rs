@@ -8,5 +8,6 @@ pub(crate) mod event_sink;
 pub(crate) mod events;
 pub(crate) mod hotkey;
 pub(crate) mod main_thread;
+pub(crate) mod runtime_build;
 pub(crate) mod system_proxy;
 pub(crate) mod ui_effects;

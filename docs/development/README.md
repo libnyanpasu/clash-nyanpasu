@@ -28,7 +28,8 @@ For package ownership, dependency directions, and source-only typechecking, see
 
 - Construct dependencies explicitly and keep long-lived mutable state with its actor owner.
 - Call application operations through `NyanpasuClient`; keep infrastructure behind adapters.
-- Keep `NyanpasuClient`, actors, and pure services free of new Tauri dependencies; application capabilities are moving to `nyanpasu-core`.
+- Keep `NyanpasuClient`, actors, and pure services free of new Tauri
+  dependencies; application capabilities live in `nyanpasu-core`.
 - Use the unified RPC surface for application APIs on both desktop and HTTP transports.
 - Wait for real in-process RPC results; a caller leaving does not cancel owner-started work.
 - Plan and write code to the [Rust](rust.md) and [TypeScript and React](typescript.md) guides; new code follows them even where nearby code does not.

@@ -2,8 +2,9 @@
 
 These rules apply to all contributors. Application services use explicit
 dependencies and serial state owners; global services and Tauri-coupled business
-logic have been removed. The current goal is to move the application core out of
-the Tauri GUI ([Core and frontend separation](#core-and-frontend-separation)).
+logic have been removed. The application core lives in `nyanpasu-core`, with
+infrastructure in `nyanpasu-platform` and GUI adapters in Tauri ([Core and
+frontend separation](#core-and-frontend-separation)).
 For the development workflow, start with the [guide](README.md).
 
 ## Target architecture
@@ -32,35 +33,52 @@ Use these terms consistently:
 
 ## Core and frontend separation
 
-The actor/dependency-injection migration is complete. The current architectural
-goal is to separate the application core from the Tauri GUI:
+The core/GUI split is complete. The current layout is:
 
 ```text
-Tauri GUI (backend/tauri)      nyanpasu-cli (planned)      mobile shells (later)
-  window / tray / webview        terminal adapters           platform adapters
-  Tauri IPC, HTTP RPC
-            \                         |                          /
-             +------ build the core with concrete adapters ------+
-                                      |
-                       backend/nyanpasu-core
-                         NyanpasuClient, typed clients, actors,
-                         workflows, pure services, consumed ports
-                                      |
-                       nyanpasu-config
-                         domain models and pure runtime executor
+backend/tauri/src/
+  setup.rs                 desktop composition root
+  adapters/                GUI adapters and frontend event delivery
+  ipc.rs, unified_rpc.rs   RPC transport adapters
+  server/                  HTTP transport
+          |
+          | constructs and injects dependencies
+          v
+backend/nyanpasu-core/src/
+  client/                  NyanpasuClient, typed clients and workflows
+  state/, enhance/         configuration transactions and runtime building
+  actor_v2/, clash/        core control and API streams
+  logs/, geo/, traffic/    log sessions, geodata and traffic accounting
+  service/, utils/         consumed ports, services and shared utilities
+          |
+          v
+nyanpasu-config             domain models and pure runtime executor
+
+backend/nyanpasu-platform/src/  implements core/config ports
+  profiles/                    profile filesystem and HTTP service
+  enhance/                     content, script and runtime-build adapters
+  changelog_http.rs            changelog HTTP adapter
 ```
 
-`NyanpasuClient` currently lives in `backend/tauri/src/client/` together with the
-actors, services, and ports it depends on. These application capabilities move into
-`backend/nyanpasu-core`, alongside its existing state transaction machinery.
-No separate application crate is required in the target layout. Concrete infrastructure belongs in
-`nyanpasu-platform`, injected by the host. Each frontend
-then supplies its concrete adapters and composes the core; the core never depends on
-a frontend. This split is the prerequisite for mobile support. The
-[OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the MVP
-dependency subset and how the concurrent extraction PRs fit this layout.
+`nyanpasu-cli` (planned) and mobile shells (later) will be frontends over the
+same core, each built with its own adapters.
 
-Rules while the split is in progress:
+`NyanpasuClient` and its actor/workflow graph live in
+`backend/nyanpasu-core/src/client/` and the domain modules beside it. Concrete
+profile file, runtime-build and changelog HTTP implementations live in
+`nyanpasu-platform`. The desktop composition root in
+`backend/tauri/src/setup.rs` constructs these implementations and the GUI
+adapters, injects them into the core and calls `NyanpasuClient::try_new`. GUI
+adapters remain in `backend/tauri/src/adapters/`; windows, tray, widgets,
+desktop plugins and transport delivery stay in the host. Platform depends on
+core to implement its consumed ports; core does not depend on platform in
+production.
+
+The [extraction record](../design/application-platform-extraction.md) lists the
+delivered stack. The [OpenWrt reconciliation
+roadmap](../design/openwrt-roadmap.md) records the paused router work.
+
+Rules for maintaining the separation:
 
 - Do not add `tauri` dependencies to `NyanpasuClient`, typed clients, actors, or pure
   services: no `AppHandle`, `tauri::State`, `tauri::async_runtime`, Tauri events,

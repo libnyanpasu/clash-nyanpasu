@@ -64,23 +64,15 @@ impl NyanpasuClient {
         self.inner.shutdown.child_token()
     }
 
-    /// Runs `producer` as tracked background work, the same way the
-    /// client's own owners do (see `track_until_shutdown`): it ends when
-    /// `token` is cancelled, and `wait_shutdown` waits for it. `token` must
-    /// be `shutdown_child_token()` or one of its descendants, so the root
-    /// shutdown still ends it.
-    pub(crate) fn spawn_tracked(
+    /// Registers `producer` before returning its future for the caller to spawn.
+    /// It ends when `token` is cancelled, and `wait_shutdown` waits for it.
+    /// `token` must be `shutdown_child_token()` or one of its descendants.
+    pub(crate) fn track_until_shutdown(
         &self,
         token: &CancellationToken,
         producer: impl Future<Output = ()> + Send + 'static,
-    ) {
-        self.inner
-            .runtime
-            .spawn(owner_shutdown::track_until_shutdown(
-                &self.inner.tasks,
-                token,
-                producer,
-            ));
+    ) -> impl Future<Output = ()> + Send + 'static {
+        owner_shutdown::track_until_shutdown(&self.inner.tasks, token, producer)
     }
 }
 

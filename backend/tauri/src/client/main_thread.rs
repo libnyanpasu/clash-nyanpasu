@@ -4,6 +4,62 @@
 use snafu::{ResultExt as _, Snafu};
 use tokio_util::sync::CancellationToken;
 
+pub(crate) type MainThreadTask = Box<dyn FnOnce() + Send + 'static>;
+
+/// What the main thread runs once [`MainThreadHandoff::take_over`] has
+/// replaced the event loop.
+pub enum MainThreadWork {
+    Run(MainThreadTask),
+    /// The taker can stop running work.
+    Done,
+}
+
+/// Main-thread work for when the event loop can no longer run it: a panic
+/// hook that holds the main thread takes it over and runs the work itself
+/// while it waits for the shutdown, which needs some of it (the hotkey
+/// release).
+#[derive(Default)]
+pub struct MainThreadHandoff {
+    taker: parking_lot::Mutex<Option<std::sync::mpsc::Sender<MainThreadWork>>>,
+    /// Cancelled by the take-over: what the event loop was given before it
+    /// never runs, or panicked running, so its waiters stop waiting.
+    lost: tokio_util::sync::CancellationToken,
+}
+
+impl MainThreadHandoff {
+    /// From now on, work for the main thread arrives on the receiver instead
+    /// of the event loop, until the receiver is dropped. The sender is for the
+    /// caller's own [`MainThreadWork::Done`].
+    pub fn take_over(
+        &self,
+    ) -> (
+        std::sync::mpsc::Sender<MainThreadWork>,
+        std::sync::mpsc::Receiver<MainThreadWork>,
+    ) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        *self.taker.lock() = Some(sender.clone());
+        self.lost.cancel();
+        (sender, receiver)
+    }
+
+    pub(crate) fn event_loop_lost(&self) -> tokio_util::sync::CancellationToken {
+        self.lost.clone()
+    }
+
+    /// Gives `task` to the taker, or back when there is none.
+    pub(crate) fn hand_over(&self, task: MainThreadTask) -> Result<(), MainThreadTask> {
+        match &*self.taker.lock() {
+            Some(taker) => taker.send(MainThreadWork::Run(task)).map_err(|error| {
+                let MainThreadWork::Run(task) = error.0 else {
+                    unreachable!("only a task was sent")
+                };
+                task
+            }),
+            None => Err(task),
+        }
+    }
+}
+
 /// Why work could not be run on the UI thread. The event loop's own error is
 /// boxed because this module does not name the Tauri runtime.
 #[derive(Debug, Snafu)]
@@ -70,11 +126,16 @@ impl MainThreadExecutor for InlineMainThread {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     use tokio_util::sync::CancellationToken;
 
-    use super::{InlineMainThread, MainThreadError, MainThreadExecutor};
+    use super::{
+        InlineMainThread, MainThreadError, MainThreadExecutor, MainThreadHandoff, MainThreadWork,
+    };
 
     /// Accepts a task and never runs it, like an event loop that shut down
     /// between the hand-off and its next turn.
@@ -147,5 +208,29 @@ mod tests {
             matches!(error, MainThreadError::AwaitTaskResult { .. }),
             "{error}"
         );
+    }
+
+    #[test]
+    fn work_goes_to_the_taker_only_once_it_has_taken_over() {
+        let handoff = MainThreadHandoff::default();
+        let ran = Arc::new(AtomicBool::new(false));
+        let task = {
+            let ran = ran.clone();
+            Box::new(move || ran.store(true, Ordering::SeqCst))
+        };
+
+        let task = handoff
+            .hand_over(task)
+            .expect_err("with no taker the work goes back to the event loop");
+        assert!(!handoff.lost.is_cancelled());
+
+        let (_done, work) = handoff.take_over();
+        assert!(handoff.lost.is_cancelled(), "the earlier work is lost");
+        assert!(handoff.hand_over(task).is_ok(), "the taker gets the work");
+        let Ok(MainThreadWork::Run(task)) = work.try_recv() else {
+            panic!("the taker received the work");
+        };
+        task();
+        assert!(ran.load(Ordering::SeqCst));
     }
 }

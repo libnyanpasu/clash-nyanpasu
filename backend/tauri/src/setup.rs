@@ -3,10 +3,10 @@ use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::{
+    adapters::{event_sink::TauriUiEventSink, main_thread::TauriMainThread},
     client::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
-        OsSystemDnsCache, RuntimePaths, StateChanged, TauriMainThread, TauriUiEventSink,
-        UiEventSink,
+        OsSystemDnsCache, RuntimePaths, StateChanged, UiEventSink,
         bundle_metadata::BundleMetadata,
         effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
         hotkey::{

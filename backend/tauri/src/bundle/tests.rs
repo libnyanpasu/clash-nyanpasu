@@ -33,10 +33,7 @@ fn resolves_portable_and_fixed_webview_independently() {
             }
             for windows in [false, true] {
                 let metadata =
-                    BundleMetadata::resolve(windows, &mut config(false), directory.path(), || {
-                        false
-                    })
-                    .unwrap();
+                    resolve(windows, &mut config(false), directory.path(), || false).unwrap();
                 assert_eq!(metadata.is_portable, windows && portable);
                 assert_eq!(metadata.is_fixed_webview, windows && fixed);
             }
@@ -53,13 +50,13 @@ fn compiled_runtime_path_takes_precedence_over_directory_detection() {
         path: "custom-runtime".into(),
     };
     assert!(matches!(
-        BundleMetadata::resolve(true, &mut config, directory.path(), || false),
+        resolve(true, &mut config, directory.path(), || false),
         Err(Error::ValidateWebview { path }) if path == directory.path().join("custom-runtime")
     ));
     add_runtime(&directory.path().join("custom-runtime"));
-    let metadata = BundleMetadata::resolve(true, &mut config, directory.path(), || false).unwrap();
+    let metadata = resolve(true, &mut config, directory.path(), || false).unwrap();
     assert!(metadata.is_fixed_webview);
-    metadata.setup(&mut config).unwrap();
+    setup(&metadata, &mut config).unwrap();
     assert!(matches!(
         config.bundle.windows.webview_install_mode,
         WebviewInstallMode::FixedRuntime { path } if path == directory.path().join("custom-runtime")
@@ -72,7 +69,7 @@ fn incomplete_runtime_fails_without_changing_configuration() {
     std::fs::create_dir(directory.path().join("WebView2")).unwrap();
     let mut config = config(false);
     let before = serde_json::to_value(&config).unwrap();
-    let error = BundleMetadata::resolve(true, &mut config, directory.path(), || false).unwrap_err();
+    let error = resolve(true, &mut config, directory.path(), || false).unwrap_err();
     assert!(
         matches!(error, Error::ValidateWebview { path } if path == directory.path().join("WebView2"))
     );
@@ -89,14 +86,13 @@ fn setup_injects_runtime_and_preserves_compiled_feeds() {
         for nightly in [false, true] {
             let mut config = config(nightly);
             let mut expected = serde_json::to_value(&config).unwrap();
-            let mut metadata =
-                BundleMetadata::resolve(true, &mut config, directory.path(), || false).unwrap();
+            let mut metadata = resolve(true, &mut config, directory.path(), || false).unwrap();
             metadata.release_channel = if nightly {
-                Channel::Nightly
+                ReleaseChannel::Nightly
             } else {
-                Channel::Stable
+                ReleaseChannel::Stable
             };
-            metadata.setup(&mut config).unwrap();
+            setup(&metadata, &mut config).unwrap();
             if fixed {
                 expected["bundle"]["windows"]["webviewInstallMode"] = json!({
                     "type": "fixedRuntime", "path": directory.path().join("WebView2"),
@@ -123,9 +119,10 @@ fn metadata_selects_matching_update_downloads() {
             let metadata = BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: fixed,
-                release_channel: crate::bundle::Channel::Stable,
+                release_channel: ReleaseChannel::Stable,
+                sourceforge_project: None,
             };
-            let target = metadata.updater_target(&format!("windows-{arch}"));
+            let target = updater_target(&metadata, &format!("windows-{arch}"));
             let variant = if fixed { "fixed" } else { "standard" };
             assert_eq!(
                 release.download_url(&target).unwrap().as_str(),
@@ -138,26 +135,32 @@ fn metadata_selects_matching_update_downloads() {
 
 #[test]
 fn release_channel_uses_compiled_feature_and_version() {
-    assert_eq!(compiled_channel(false, "2.0.0").unwrap(), Channel::Stable);
+    assert_eq!(
+        compiled_channel(false, "2.0.0").unwrap(),
+        ReleaseChannel::Stable
+    );
     assert_eq!(
         compiled_channel(false, "2.1.0-beta.2").unwrap(),
-        Channel::Beta
+        ReleaseChannel::Beta
     );
     assert_eq!(
         compiled_channel(false, "2.1.0-rc.1").unwrap(),
-        Channel::Beta
+        ReleaseChannel::Beta
     );
     for version in ["2.0.0", "2.0.0-alpha+hash", "2.0.0+alpha.hash"] {
-        assert_eq!(compiled_channel(true, version).unwrap(), Channel::Nightly);
+        assert_eq!(
+            compiled_channel(true, version).unwrap(),
+            ReleaseChannel::Nightly
+        );
     }
-    assert_eq!(Channel::Beta.resolve(None), Channel::Beta);
+    assert_eq!(ReleaseChannel::Beta.resolve(None), ReleaseChannel::Beta);
     assert_eq!(
-        Channel::Beta.resolve(Some(Channel::Stable)),
-        Channel::Stable
+        ReleaseChannel::Beta.resolve(Some(ReleaseChannel::Stable)),
+        ReleaseChannel::Stable
     );
     assert_eq!(
-        Channel::Nightly.resolve(Some(Channel::Stable)),
-        Channel::Nightly
+        ReleaseChannel::Nightly.resolve(Some(ReleaseChannel::Stable)),
+        ReleaseChannel::Nightly
     );
 }
 
@@ -383,13 +386,17 @@ fn sourceforge_download_rejects_untrusted_or_mutable_metadata() {
 
 #[test]
 fn release_channel_selects_feeds_without_changing_fixed_target() {
-    for channel in [Channel::Stable, Channel::Beta, Channel::Nightly] {
+    for channel in [
+        ReleaseChannel::Stable,
+        ReleaseChannel::Beta,
+        ReleaseChannel::Nightly,
+    ] {
         let endpoints = update_endpoints(channel);
         assert!(endpoints.len() >= 4);
         let suffix = match channel {
-            Channel::Stable => "",
-            Channel::Beta => "-beta",
-            Channel::Nightly => "-nightly",
+            ReleaseChannel::Stable => "",
+            ReleaseChannel::Beta => "-beta",
+            ReleaseChannel::Nightly => "-nightly",
         };
         assert!(endpoints[2].ends_with(&format!("/update{suffix}.json")));
         assert_eq!(endpoints[3], format!("https://ghfast.top/{}", endpoints[2]));
@@ -398,12 +405,13 @@ fn release_channel_selects_feeds_without_changing_fixed_target() {
                 is_portable: false,
                 is_fixed_webview: fixed,
                 release_channel: channel,
+                sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
             };
             let mut config = config(false);
-            metadata.setup(&mut config).unwrap();
+            setup(&metadata, &mut config).unwrap();
             assert_eq!(config.plugins.0["updater"]["endpoints"], json!(endpoints));
             assert_eq!(
-                metadata.updater_target("windows-aarch64"),
+                updater_target(&metadata, "windows-aarch64"),
                 if fixed {
                     "windows-aarch64-fixed-webview"
                 } else {
@@ -417,14 +425,15 @@ fn release_channel_selects_feeds_without_changing_fixed_target() {
 #[test]
 fn sourceforge_manifest_feed_is_optional_validated_and_appended_after_existing_feeds() {
     for (channel, suffix) in [
-        (Channel::Stable, ""),
-        (Channel::Beta, "-beta"),
-        (Channel::Nightly, "-nightly"),
+        (ReleaseChannel::Stable, ""),
+        (ReleaseChannel::Beta, "-beta"),
+        (ReleaseChannel::Nightly, "-nightly"),
     ] {
-        let base = update_endpoints_for_project(channel, None).unwrap();
-        let blank = update_endpoints_for_project(channel, Some("  ")).unwrap();
+        let base = endpoints::update_endpoints_for_project(channel, None).unwrap();
+        let blank = endpoints::update_endpoints_for_project(channel, Some("  ")).unwrap();
         assert_eq!(blank, base);
-        let configured = update_endpoints_for_project(channel, Some("nyanpasu-project")).unwrap();
+        let configured =
+            endpoints::update_endpoints_for_project(channel, Some("nyanpasu-project")).unwrap();
         assert_eq!(&configured[..base.len()], base.as_slice());
         assert_eq!(
             configured.last().unwrap(),
@@ -437,7 +446,7 @@ fn sourceforge_manifest_feed_is_optional_validated_and_appended_after_existing_f
             "-project",
             "project-",
         ] {
-            assert!(update_endpoints_for_project(channel, Some(invalid)).is_err());
+            assert!(endpoints::update_endpoints_for_project(channel, Some(invalid)).is_err());
         }
     }
 }
@@ -484,13 +493,13 @@ fn release_channel_never_downgrades_beta_when_returning_to_stable() {
         )
         .unwrap();
         assert_eq!(
-            is_newer_release(Channel::Stable, &local, &remote, now),
+            is_newer_release(ReleaseChannel::Stable, &local, &remote, now),
             expected,
             "{version}"
         );
     }
     let remote = serde_json::from_value(json!({ "version": "2.1.0-beta.10", "url": "https://example.com/app.zip", "signature": "sig" })).unwrap();
-    assert!(is_newer_release(Channel::Beta, &local, &remote, now));
+    assert!(is_newer_release(ReleaseChannel::Beta, &local, &remote, now));
 }
 
 #[test]
@@ -503,7 +512,7 @@ fn release_channel_only_nightly_accepts_newer_build_of_same_version() {
         let remote = serde_json::from_value(json!({ "version": "2.1.0-alpha+new", "pub_date": date, "url": "https://example.com/app.zip", "signature": "sig" })).unwrap();
         assert_eq!(
             is_newer_release(
-                Channel::Nightly,
+                ReleaseChannel::Nightly,
                 &local,
                 &remote,
                 time::OffsetDateTime::UNIX_EPOCH
@@ -511,7 +520,7 @@ fn release_channel_only_nightly_accepts_newer_build_of_same_version() {
             expected
         );
         assert!(!is_newer_release(
-            Channel::Beta,
+            ReleaseChannel::Beta,
             &local,
             &remote,
             time::OffsetDateTime::UNIX_EPOCH
@@ -529,7 +538,7 @@ fn portable_incomplete_runtime_never_uses_system_webview() {
         path: "WebView2".into(),
     };
     let before = serde_json::to_value(&config).unwrap();
-    let error = BundleMetadata::resolve(true, &mut config, directory.path(), || {
+    let error = resolve(true, &mut config, directory.path(), || {
         panic!("portable startup must not probe system WebView2")
     })
     .unwrap_err();
@@ -554,7 +563,7 @@ async fn installed_webview_fallback_configures_runtime_and_selects_fixed_update_
             };
         }
         let mut probed = false;
-        let metadata = BundleMetadata::resolve(true, &mut config, directory.path(), || {
+        let metadata = resolve(true, &mut config, directory.path(), || {
             probed = true;
             true
         })
@@ -562,7 +571,7 @@ async fn installed_webview_fallback_configures_runtime_and_selects_fixed_update_
         assert!(probed);
         assert!(!metadata.is_portable);
         assert!(metadata.is_fixed_webview);
-        let updater = metadata.setup(&mut config).unwrap();
+        let updater = setup(&metadata, &mut config).unwrap();
         assert!(!matches!(
             config.bundle.windows.webview_install_mode,
             WebviewInstallMode::FixedRuntime { .. }

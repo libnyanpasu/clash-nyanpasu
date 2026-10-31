@@ -1,7 +1,7 @@
-pub use nyanpasu_config::application::ReleaseChannel as Channel;
+use crate::client::{app_update::endpoints, bundle_metadata::BundleMetadata};
 
 use anyhow::{Result, bail};
-use nyanpasu_config::application::UpdateSource;
+use nyanpasu_config::application::{ReleaseChannel, UpdateSource};
 use std::path::{Path, PathBuf};
 use tauri::utils::config::{Config, WebviewInstallMode};
 
@@ -22,87 +22,78 @@ pub(crate) enum Error {
     ResolveUpdaterTarget,
     #[snafu(context(false), display("failed to serialize updater endpoints"))]
     SerializeUpdaterEndpoints { source: serde_json::Error },
-    #[snafu(display("invalid SourceForge project slug: {project}"))]
-    ValidateSourceforgeProject { project: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BundleMetadata {
-    pub is_portable: bool,
-    pub is_fixed_webview: bool,
-    pub release_channel: Channel,
-}
-
-impl BundleMetadata {
-    pub fn resolve(
-        windows: bool,
-        config: &mut Config,
-        executable_dir: &Path,
-        system_webview_available: impl FnOnce() -> bool,
-    ) -> std::result::Result<Self, Error> {
-        use snafu::ResultExt as _;
-        let release_channel =
-            compiled_channel(cfg!(feature = "nightly"), env!("NYANPASU_VERSION"))?;
-        if !windows {
-            return Ok(Self {
-                release_channel,
-                is_portable: false,
-                is_fixed_webview: false,
-            });
-        }
-
-        let runtime_dir = fixed_runtime_dir(config, executable_dir);
-        let is_fixed_webview = matches!(
-            config.bundle.windows.webview_install_mode,
-            WebviewInstallMode::FixedRuntime { .. }
-        ) || runtime_dir
-            .try_exists()
-            .context(InspectWebviewSnafu { path: &runtime_dir })?;
-        let is_portable = is_portable(executable_dir);
-        if is_fixed_webview {
-            if runtime_dir.join("msedgewebview2.exe").is_file() {
-                config.bundle.windows.webview_install_mode =
-                    WebviewInstallMode::FixedRuntime { path: runtime_dir };
-            } else if !is_portable && system_webview_available() {
-                tracing::warn!(path = %runtime_dir.display(), "fixed WebView2 incomplete; using system WebView2; reinstall to restore the bundled runtime");
-                config.bundle.windows.webview_install_mode = WebviewInstallMode::default();
-            } else {
-                return ValidateWebviewSnafu { path: runtime_dir }.fail();
-            }
-        }
-
-        Ok(Self {
+pub fn resolve(
+    windows: bool,
+    config: &mut Config,
+    executable_dir: &Path,
+    system_webview_available: impl FnOnce() -> bool,
+) -> std::result::Result<BundleMetadata, Error> {
+    use snafu::ResultExt as _;
+    let release_channel = compiled_channel(cfg!(feature = "nightly"), env!("NYANPASU_VERSION"))?;
+    if !windows {
+        return Ok(BundleMetadata {
             release_channel,
-            is_portable,
-            is_fixed_webview,
-        })
+            sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
+            is_portable: false,
+            is_fixed_webview: false,
+        });
     }
 
-    pub fn setup(
-        &self,
-        config: &mut Config,
-    ) -> std::result::Result<tauri_plugin_updater::Builder, Error> {
-        use snafu::OptionExt as _;
-        config
-            .plugins
-            .0
-            .get_mut("updater")
-            .context(LocateUpdaterConfigurationSnafu)?["endpoints"] =
-            serde_json::to_value(update_endpoints(self.release_channel))?;
-        let mut updater = tauri_plugin_updater::Builder::new();
-        if self.is_fixed_webview {
-            let target = tauri_plugin_updater::target().context(ResolveUpdaterTargetSnafu)?;
-            updater = updater.target(self.updater_target(&target));
-        }
-        Ok(updater)
-    }
-
-    fn updater_target(&self, target: &str) -> String {
-        if self.is_fixed_webview {
-            format!("{target}-fixed-webview")
+    let runtime_dir = fixed_runtime_dir(config, executable_dir);
+    let is_fixed_webview = matches!(
+        config.bundle.windows.webview_install_mode,
+        WebviewInstallMode::FixedRuntime { .. }
+    ) || runtime_dir
+        .try_exists()
+        .context(InspectWebviewSnafu { path: &runtime_dir })?;
+    let is_portable = is_portable(executable_dir);
+    if is_fixed_webview {
+        if runtime_dir.join("msedgewebview2.exe").is_file() {
+            config.bundle.windows.webview_install_mode =
+                WebviewInstallMode::FixedRuntime { path: runtime_dir };
+        } else if !is_portable && system_webview_available() {
+            tracing::warn!(path = %runtime_dir.display(), "fixed WebView2 incomplete; using system WebView2; reinstall to restore the bundled runtime");
+            config.bundle.windows.webview_install_mode = WebviewInstallMode::default();
         } else {
-            target.to_owned()
+            return ValidateWebviewSnafu { path: runtime_dir }.fail();
         }
+    }
+
+    Ok(BundleMetadata {
+        release_channel,
+        sourceforge_project: option_env!("NYANPASU_SOURCEFORGE_PROJECT"),
+        is_portable,
+        is_fixed_webview,
+    })
+}
+
+pub fn setup(
+    metadata: &BundleMetadata,
+    config: &mut Config,
+) -> std::result::Result<tauri_plugin_updater::Builder, Error> {
+    use snafu::OptionExt as _;
+    config
+        .plugins
+        .0
+        .get_mut("updater")
+        .context(LocateUpdaterConfigurationSnafu)?["endpoints"] = serde_json::to_value(
+        endpoints::update_endpoints(metadata.release_channel, metadata.sourceforge_project),
+    )?;
+    let mut updater = tauri_plugin_updater::Builder::new();
+    if metadata.is_fixed_webview {
+        let target = tauri_plugin_updater::target().context(ResolveUpdaterTargetSnafu)?;
+        updater = updater.target(updater_target(metadata, &target));
+    }
+    Ok(updater)
+}
+
+fn updater_target(metadata: &BundleMetadata, target: &str) -> String {
+    if metadata.is_fixed_webview {
+        format!("{target}-fixed-webview")
+    } else {
+        target.to_owned()
     }
 }
 
@@ -118,57 +109,18 @@ fn fixed_runtime_dir(config: &Config, executable_dir: &Path) -> PathBuf {
     executable_dir.join(path)
 }
 
-fn compiled_channel(nightly: bool, version: &str) -> std::result::Result<Channel, Error> {
+fn compiled_channel(nightly: bool, version: &str) -> std::result::Result<ReleaseChannel, Error> {
     if nightly {
-        Ok(Channel::Nightly)
+        Ok(ReleaseChannel::Nightly)
     } else if semver::Version::parse(version)?.pre.is_empty() {
-        Ok(Channel::Stable)
+        Ok(ReleaseChannel::Stable)
     } else {
-        Ok(Channel::Beta)
+        Ok(ReleaseChannel::Beta)
     }
 }
 
-pub fn update_endpoints(channel: Channel) -> Vec<String> {
-    match update_endpoints_for_project(channel, option_env!("NYANPASU_SOURCEFORGE_PROJECT")) {
-        Ok(endpoints) => endpoints,
-        Err(error) => {
-            tracing::warn!(%error, "ignoring invalid SourceForge updater manifest project");
-            update_endpoints_for_project(channel, None)
-                .expect("the updater endpoints without SourceForge are valid")
-        }
-    }
-}
-
-fn update_endpoints_for_project(
-    channel: Channel,
-    project: Option<&str>,
-) -> std::result::Result<Vec<String>, Error> {
-    let suffix = match channel {
-        Channel::Stable => "",
-        Channel::Beta => "-beta",
-        Channel::Nightly => "-nightly",
-    };
-    let mut endpoints = vec![
-        format!(
-            "https://nyanpasu-script.majokeiko.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update{suffix}-proxy.json"
-        ),
-        format!("https://nyanpasu.surge.sh/updater/update{suffix}-proxy.json"),
-        format!(
-            "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update{suffix}.json"
-        ),
-        format!(
-            "https://ghfast.top/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update{suffix}.json"
-        ),
-    ];
-    if let Some(project) = project.filter(|project| !project.trim().is_empty()) {
-        if !is_valid_sourceforge_project(project) {
-            return ValidateSourceforgeProjectSnafu { project }.fail();
-        }
-        endpoints.push(format!(
-            "https://{project}.sourceforge.io/updater/update{suffix}.json"
-        ));
-    }
-    Ok(endpoints)
+pub fn update_endpoints(channel: ReleaseChannel) -> Vec<String> {
+    endpoints::update_endpoints(channel, option_env!("NYANPASU_SOURCEFORGE_PROJECT"))
 }
 
 pub fn update_download_urls(
@@ -278,7 +230,7 @@ fn sourceforge_download_url(
         .map(|segment| decode_path_component(segment, "artifact name"))
         .transpose()?;
     let announced_asset = decode_path_component(announced_asset, "artifact name")?;
-    let project_is_canonical = is_valid_sourceforge_project(&project);
+    let project_is_canonical = endpoints::is_valid_sourceforge_project(&project);
     let build_id_is_canonical = !build_id.is_empty()
         && !matches!(
             build_id.as_str(),
@@ -301,18 +253,6 @@ fn sourceforge_download_url(
     Ok(Some(url))
 }
 
-fn is_valid_sourceforge_project(project: &str) -> bool {
-    !project.is_empty()
-        && project
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        && project.as_bytes()[0].is_ascii_alphanumeric()
-        && project
-            .as_bytes()
-            .last()
-            .is_some_and(u8::is_ascii_alphanumeric)
-}
-
 fn decode_path_component(segment: &str, description: &str) -> Result<String> {
     use anyhow::Context as _;
     let decoded = percent_encoding::percent_decode_str(segment)
@@ -330,20 +270,20 @@ fn decode_path_component(segment: &str, description: &str) -> Result<String> {
 }
 
 pub fn is_newer_release(
-    channel: Channel,
+    channel: ReleaseChannel,
     local: &semver::Version,
     remote: &tauri_plugin_updater::RemoteRelease,
     build_time: time::OffsetDateTime,
 ) -> bool {
     use std::cmp::Ordering;
-    if channel == Channel::Stable && !remote.version.pre.is_empty() {
+    if channel == ReleaseChannel::Stable && !remote.version.pre.is_empty() {
         return false;
     }
     match local.cmp_precedence(&remote.version) {
         Ordering::Less => true,
         Ordering::Greater => false,
         Ordering::Equal => {
-            channel == Channel::Nightly
+            channel == ReleaseChannel::Nightly
                 && !local.build.is_empty()
                 && !remote.version.build.is_empty()
                 && local.build != remote.version.build

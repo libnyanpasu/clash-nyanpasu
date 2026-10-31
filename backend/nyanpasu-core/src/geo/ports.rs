@@ -73,10 +73,10 @@ pub trait CountryIndexSource: Send + Sync + 'static {
 }
 
 /// A home without databases, for tests whose subject is not the index.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub struct NoopCountryIndexSource;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl CountryIndexSource for NoopCountryIndexSource {
     fn load(&self, _: GeodataMode, _: Option<IndexKey>) -> Result<Loaded, GeoIndexError> {
         Ok(Loaded::Missing)

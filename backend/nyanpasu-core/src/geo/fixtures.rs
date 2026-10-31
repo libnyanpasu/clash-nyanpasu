@@ -16,7 +16,7 @@ fn bytes_field(out: &mut Vec<u8>, field: u64, bytes: &[u8]) {
 }
 
 /// A V2Ray `GeoIPList` with one entry per `(code, cidrs)`.
-pub(crate) fn geoip_dat(entries: &[(&str, &[&str])]) -> Vec<u8> {
+pub fn geoip_dat(entries: &[(&str, &[&str])]) -> Vec<u8> {
     let mut list = Vec::new();
     for (code, cidrs) in entries {
         let mut entry = Vec::new();

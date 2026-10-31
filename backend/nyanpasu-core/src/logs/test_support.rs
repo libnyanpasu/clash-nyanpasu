@@ -40,7 +40,7 @@ impl CoreLogStore for TestStore {
     }
 }
 impl CoreLogsClient {
-    pub(crate) async fn test_client() -> Self {
+    pub async fn test_client() -> Self {
         let directory = TempDir::new().unwrap();
         let store = TestStore {
             inner: RedbCoreLogStore::open(directory.path().into()).unwrap(),

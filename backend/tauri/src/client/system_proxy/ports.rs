@@ -2,7 +2,7 @@
 //!
 //! Each trait is narrow and task-oriented so the actor can be exercised with
 //! plain fakes: nothing here mentions `sysproxy`, `auto_launch`, `reqwest` or
-//! Tauri. The concrete implementations live in [`super::adapters`].
+//! Tauri. The concrete implementations live in [`crate::adapters::system_proxy`].
 
 use std::path::PathBuf;
 

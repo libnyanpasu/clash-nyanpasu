@@ -9,7 +9,7 @@ use snafu::{OptionExt as _, ResultExt as _, ensure};
 use sysproxy::{Autoproxy, Sysproxy};
 use tokio_util::sync::CancellationToken;
 
-use super::ports::{
+use crate::client::system_proxy::ports::{
     AutoLaunchError, AutoLaunchPort, BuildHttpClientSnafu, BuildRegistrationSnafu,
     CanonicalizeExecutableSnafu, ClearPacSnafu, DownloadCancelledSnafu, ExecutableNameSnafu,
     ExecutablePathNotUtf8Snafu, InstallPacSnafu, LocateExecutableSnafu, MissingEntryPointSnafu,

@@ -2,7 +2,7 @@
 //!
 //! Nothing here names Tauri or the global-shortcut plugin: parsing, validation
 //! and diffing are plain value work, and the platform registration lives behind
-//! [`ShortcutRegistrar`] in [`super::adapters`].
+//! [`ShortcutRegistrar`] in [`crate::adapters::hotkey`].
 
 use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 

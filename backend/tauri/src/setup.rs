@@ -3,29 +3,26 @@ use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::{
-    adapters::{event_sink::TauriUiEventSink, main_thread::TauriMainThread},
+    adapters::{
+        event_sink::TauriUiEventSink,
+        hotkey::{
+            ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
+            TauriWindowControl,
+        },
+        main_thread::TauriMainThread,
+        system_proxy::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
+        ui_effects::adapters::{
+            RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
+        },
+    },
     client::{
         ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
         OsSystemDnsCache, RuntimePaths, StateChanged, UiEventSink,
         bundle_metadata::BundleMetadata,
         effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
-        hotkey::{
-            HotkeyArgs, HotkeyClient,
-            adapters::{
-                ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
-                TauriWindowControl,
-            },
-            ports::HotkeyAction,
-        },
+        hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         owner_shutdown::track_until_shutdown,
-        system_proxy::{
-            SystemProxyArgs, SystemProxyClient,
-            adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
-            ports::OsProxyPort,
-        },
-        ui_effects::adapters::{
-            RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
-        },
+        system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
     core::{
         storage::{StorageNotification, StorageResyncEvent, StorageValueChangedEvent},
@@ -168,7 +165,7 @@ pub(crate) enum Error {
     BuildClient { source: crate::client::SetupError },
     #[snafu(display("failed to install widget"))]
     InstallWidget {
-        source: crate::client::ui_effects::adapters::InstallError,
+        source: crate::adapters::ui_effects::adapters::InstallError,
     },
 }
 
@@ -345,17 +342,15 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         app_update_backend_factory: Some(Arc::new({
             let app_handle = app_handle.clone();
             move |proxy_port| {
-                Arc::new(
-                    crate::client::app_update::adapters::TauriAppUpdateBackend::new(
-                        app_handle.clone(),
-                        proxy_port,
-                        bundle_metadata,
-                    ),
-                )
+                Arc::new(crate::adapters::app_update::TauriAppUpdateBackend::new(
+                    app_handle.clone(),
+                    proxy_port,
+                    bundle_metadata,
+                ))
             }
         })),
         app_update_event_sink: Some(Arc::new(
-            crate::client::app_update::adapters::TauriAppUpdateEventSink::new(app_handle.clone()),
+            crate::adapters::app_update::TauriAppUpdateEventSink::new(app_handle.clone()),
         )),
         core_v2,
         service,

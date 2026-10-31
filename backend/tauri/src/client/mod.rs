@@ -35,7 +35,6 @@ mod startup_recovery_tests;
 mod system_dns;
 pub mod system_proxy;
 mod traffic;
-pub mod ui_effects;
 
 use self::{
     application::ApplicationClient, bundle_metadata::BundleMetadata,
@@ -625,7 +624,7 @@ impl NyanpasuClient {
         )
         .await
         .context(StartAppUpdaterSnafu)?;
-        let changelog_http = Arc::new(app_update::adapters::ReqwestChangelogHttp::new(
+        let changelog_http = Arc::new(crate::adapters::changelog_http::ReqwestChangelogHttp::new(
             ports.clone() as Arc<dyn SelfProxyPortSource>,
             bundle_metadata,
         ));
@@ -2730,7 +2729,7 @@ pub(crate) mod tests {
             Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
-            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
             None,
             Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
@@ -3256,7 +3255,7 @@ pub(crate) mod tests {
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
-            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            accelerators: Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
             traffic_store: None,
             shutdown,
             tasks,
@@ -3604,7 +3603,7 @@ pub(crate) mod tests {
             Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
-            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
             None,
             Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
@@ -3778,7 +3777,7 @@ pub(crate) mod tests {
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
-            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            accelerators: Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
             traffic_store: None,
             shutdown,
             tasks,
@@ -4789,7 +4788,7 @@ pub(crate) mod tests {
                 Arc::new(core_version::MockCoreVersionReader::new()),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
-                Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+                Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
                 None,
                 Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
                 None,

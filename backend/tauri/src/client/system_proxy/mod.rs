@@ -4,7 +4,6 @@
 //! values in, and get one [`EffectStatus`] per effect back.
 
 mod actor;
-pub mod adapters;
 mod error;
 pub mod ports;
 

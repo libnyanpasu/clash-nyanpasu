@@ -1933,7 +1933,7 @@ dependencies = [
  "windows-registry 0.6.1",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
- "zip 9.1.3",
+ "zip 9.2.0",
  "zip-extensions",
  "zstd",
 ]
@@ -2359,7 +2359,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -6859,7 +6859,7 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "windows-registry 0.6.1",
- "zip 9.1.3",
+ "zip 9.2.0",
 ]
 
 [[package]]
@@ -11539,7 +11539,7 @@ dependencies = [
  "tokio",
  "url",
  "windows-sys 0.61.2",
- "zip 9.1.3",
+ "zip 9.2.0",
 ]
 
 [[package]]
@@ -11701,7 +11701,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.5",
  "windows-sys 0.60.2",
@@ -14692,9 +14692,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.1.3"
+version = "9.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1156b39d142a34b999c2310a50455e0cb3760bf7efad0122f796d813bee26ccb"
+checksum = "3f5b58784007ff6e5f280ec82c8596686a3b9b5dd5836c63288d4479f84728b9"
 dependencies = [
  "aes",
  "bzip2",

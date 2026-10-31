@@ -643,7 +643,8 @@ mod facade {
     fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
         let mut args = test_client_args_with_endpoint(dir, test_idle_endpoint());
         args.window = Arc::new(window);
-        NyanpasuClient::try_new_with_args(args).expect("client should construct")
+        tauri::async_runtime::block_on(NyanpasuClient::try_new(args))
+            .expect("client should construct")
     }
 
     fn client(dir: &TempDir) -> NyanpasuClient {
@@ -774,7 +775,8 @@ mod facade {
         effects.expect_apply().never();
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.effects = Arc::new(effects);
-        let client = NyanpasuClient::try_new_with_args(args).expect("client should construct");
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args))
+            .expect("client should construct");
 
         tauri::async_runtime::block_on(async {
             let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();

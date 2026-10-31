@@ -496,7 +496,7 @@ mod tests {
         .unwrap();
         let paths = args.paths.clone();
         let logs_dir = paths.app_logs_dir();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client,
@@ -876,7 +876,7 @@ mod tests {
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
-            client: NyanpasuClient::try_new_with_args(args).unwrap(),
+            client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
             events: EventBus::new(),
@@ -958,7 +958,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let args = crate::client::tests::test_client_args_with_endpoint(&directory, endpoint(url));
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1078,11 +1078,12 @@ mod tests {
             &directory,
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
-        args.http_frontend = Some(Frontend::Embedded(Arc::new(Assets)));
+        let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.http_routes = routes.clone();
+        args.host_adapters.debug_http =
+            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1176,7 +1177,7 @@ mod tests {
                 .collect();
             args.logging.core.append(&batch).unwrap();
         }
-        args.http_frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
+        let frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
             Ok(url) => Frontend::Dev(url.parse().unwrap()),
             Err(_) => Frontend::Embedded(Arc::new(Dist(
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
@@ -1197,9 +1198,10 @@ mod tests {
         let frontend_events = Arc::new(RecordingSink::default());
         args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.http_routes = routes.clone();
+        args.host_adapters.debug_http =
+            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),

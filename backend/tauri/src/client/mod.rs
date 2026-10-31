@@ -13,11 +13,13 @@ pub mod configuration_status;
 pub mod convergence;
 pub mod core_lifecycle;
 pub mod core_version;
+pub(crate) mod debug_http;
 mod direct_egress;
 pub(crate) mod effects;
 mod error;
 mod event_sink;
 pub mod frontend_events;
+pub(crate) mod host_adapters;
 pub mod hotkey;
 pub(crate) mod jobs;
 pub mod logs;
@@ -37,8 +39,12 @@ pub mod system_proxy;
 mod traffic;
 
 use self::{
-    application::ApplicationClient, bundle_metadata::BundleMetadata,
-    clash_config::ClashConfigClient, session_state::SessionStateClient,
+    application::ApplicationClient,
+    bundle_metadata::BundleMetadata,
+    clash_config::ClashConfigClient,
+    debug_http::{DebugHttpControl, DebugHttpStatus},
+    host_adapters::ClientHostAdapters,
+    session_state::SessionStateClient,
 };
 use crate::{
     core::{
@@ -53,12 +59,11 @@ use crate::{
         },
         storage::Storage,
     },
-    service::profile_file::{fs_service::ProfileFileService, ports::SelfProxyPortSource},
+    service::profile_file::ports::SelfProxyPortSource,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+        ReorderOp, ports::ProfileFsPort,
     },
 };
 use nyanpasu_config::{
@@ -90,11 +95,10 @@ pub use runtime_error::RuntimeError;
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
+    pub host_adapters: ClientHostAdapters,
     pub jobs: nyanpasu_jobs::JobsClient,
     pub bundle_metadata: BundleMetadata,
     pub logging: logs::LoggingSetup,
-    pub http_frontend: Option<crate::server::debug_http::Frontend>,
-    pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
     /// Opened by the composition root, which also manages the same instance
     /// for the storage commands.
@@ -142,9 +146,7 @@ pub(crate) enum SetupError {
     #[snafu(display("failed to cleanup candidates"))]
     CleanupCandidates { source: runtime::Error },
     #[snafu(display("failed to start http server"))]
-    StartHttpServer {
-        source: crate::server::debug_http::Error,
-    },
+    StartHttpServer { source: debug_http::Error },
     #[snafu(display("failed to start core logs"))]
     StartCoreLogs {
         source: crate::core::logs::SpawnError,
@@ -258,7 +260,7 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
-    debug_http: crate::server::debug_http::HttpServerClient,
+    debug_http: Arc<dyn DebugHttpControl>,
     bundle_metadata: BundleMetadata,
     core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
@@ -302,13 +304,12 @@ struct NyanpasuClientInner {
 }
 
 impl NyanpasuClient {
-    pub fn try_new_with_args(args: ClientSetupArgs) -> std::result::Result<Self, SetupError> {
+    pub async fn try_new(args: ClientSetupArgs) -> std::result::Result<Self, SetupError> {
         let ClientSetupArgs {
+            host_adapters,
             jobs,
             bundle_metadata,
             logging,
-            http_frontend,
-            http_routes,
             paths,
             storage,
             runtime_paths,
@@ -332,66 +333,40 @@ impl NyanpasuClient {
             tasks,
         } = args;
         let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
-        let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
-        let script_dirs = nyanpasu_platform::enhance::ScriptDirs::new(
-            paths.scripts_dir().into_std_path_buf(),
-            paths.cache_dir().into_std_path_buf(),
-        );
-        let profiles_path = paths.profiles_path();
-        let runtime_paths_for_setup = runtime_paths.clone();
-        let jobs_for_setup = jobs.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
-        let wiring = mutations.clone();
-        let (owner_shutdown, owner_tasks) = (shutdown.clone(), tasks.clone());
-        let (application, session_state, clash_config, profiles, ports, fs) =
-            tauri::async_runtime::block_on(async move {
-                runtime_paths_for_setup
-                    .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
-                    .await
-                    .context(CleanupCandidatesSnafu)?;
-                let (application, session_state, clash_config) = new_typed_config_clients(
-                    mutations.clone(),
-                    bundle_metadata.release_channel,
-                    paths.clone(),
-                    &owner_shutdown,
-                    &owner_tasks,
-                )
-                .await?;
+        runtime_paths
+            .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
+            .await
+            .context(CleanupCandidatesSnafu)?;
+        let (application, session_state, clash_config) = new_typed_config_clients(
+            mutations.clone(),
+            bundle_metadata.release_channel,
+            paths.clone(),
+            &shutdown,
+            &tasks,
+        )
+        .await?;
 
-                // No eager resolution: a pick nothing has applied is a
-                // candidate, and a candidate must never be readable as the
-                // active binding. The first reconcile resolves and confirms.
-                let ports = Arc::new(SessionPortResolver::default());
-
-                let file_service = Arc::new(ProfileFileService::new(
-                    paths,
-                    ports.clone() as Arc<dyn SelfProxyPortSource>,
-                    bundle_metadata,
-                ));
-                let profiles = profiles::ProfilesClient::new_with_jobs(
-                    mutations.clone(),
-                    profiles_path,
-                    jobs_for_setup,
-                    file_service.clone() as Arc<dyn ProfileFsPort>,
-                    file_service.clone() as Arc<dyn SubscriptionFetcher>,
-                    file_service.clone() as Arc<dyn ProfileMaterializationPort>,
-                    owner_shutdown.child_token(),
-                    &owner_tasks,
-                )
-                .await
-                .context(LoadProfilesSnafu)?;
-                Ok::<_, SetupError>((
-                    application,
-                    session_state,
-                    clash_config,
-                    profiles,
-                    ports,
-                    file_service as Arc<dyn ProfileFsPort>,
-                ))
-            })?;
-        tauri::async_runtime::block_on(Self::with_parts(
-            Some(wiring),
+        // No eager resolution: a pick nothing has applied is a
+        // candidate, and a candidate must never be readable as the
+        // active binding. The first reconcile resolves and confirms.
+        let ports = Arc::new(SessionPortResolver::default());
+        let file_ports = (host_adapters.profile_files)(ports.clone());
+        let profiles = profiles::ProfilesClient::new_with_jobs(
+            mutations.clone(),
+            paths.profiles_path(),
+            jobs.clone(),
+            file_ports.fs.clone(),
+            file_ports.fetcher,
+            file_ports.materialization,
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await
+        .context(LoadProfilesSnafu)?;
+        Self::with_parts(
+            Some(mutations),
             bundle_metadata,
             logging,
             jobs,
@@ -399,15 +374,15 @@ impl NyanpasuClient {
             session_state,
             clash_config,
             profiles,
-            fs,
+            file_ports.fs,
             ports,
             profiles_dir,
             instance_config_dir,
-            backup_paths,
+            paths,
             storage,
             runtime_paths,
             core_specs,
-            script_dirs,
+            host_adapters,
             ui_sink,
             app_update_backend_factory,
             app_update_event_sink,
@@ -422,12 +397,11 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
-            http_frontend,
-            http_routes,
             traffic_store,
             shutdown,
             tasks,
-        ))
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -448,7 +422,7 @@ impl NyanpasuClient {
         storage: Storage,
         runtime_paths: RuntimePaths,
         core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
-        script_dirs: nyanpasu_platform::enhance::ScriptDirs,
+        host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -463,8 +437,6 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-        http_frontend: Option<crate::server::debug_http::Frontend>,
-        http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
         traffic_store: Option<
             Arc<
                 dyn crate::core::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>,
@@ -473,10 +445,9 @@ impl NyanpasuClient {
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
-        let debug_http =
-            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes)
-                .await
-                .context(StartHttpServerSnafu)?;
+        let debug_http = (host_adapters.debug_http)()
+            .await
+            .context(StartHttpServerSnafu)?;
         tasks.spawn({
             let (http, token) = (debug_http.clone(), shutdown.child_token());
             async move {
@@ -551,7 +522,7 @@ impl NyanpasuClient {
                     profiles_dir: profiles_dir.clone(),
                     core_specs,
                     paths: runtime_paths.clone(),
-                    scripts: script_dirs,
+                    scripts: host_adapters.script_dirs,
                 }),
                 validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
                     core_v2.clone(),
@@ -624,10 +595,7 @@ impl NyanpasuClient {
         )
         .await
         .context(StartAppUpdaterSnafu)?;
-        let changelog_http = Arc::new(crate::adapters::changelog_http::ReqwestChangelogHttp::new(
-            ports.clone() as Arc<dyn SelfProxyPortSource>,
-            bundle_metadata,
-        ));
+        let changelog_http = (host_adapters.changelog_http)(ports.clone());
         let mut application_settings = application.subscribe_settings_changes();
         let settings_updater = app_updater.clone();
         let settings_shutdown = shutdown.child_token();
@@ -745,15 +713,10 @@ impl NyanpasuClient {
         })
     }
 
-    pub async fn debug_http_status(
-        &self,
-    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+    pub async fn debug_http_status(&self) -> anyhow::Result<DebugHttpStatus> {
         self.inner.debug_http.status().await
     }
-    pub async fn set_debug_http_enabled(
-        &self,
-        enabled: bool,
-    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+    pub async fn set_debug_http_enabled(&self, enabled: bool) -> anyhow::Result<DebugHttpStatus> {
         self.inner.debug_http.set_enabled(enabled).await
     }
     pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
@@ -1582,14 +1545,18 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 pub(crate) mod tests {
     use super::*;
     use crate::{
-        client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
+        client::{
+            host_adapters::ProfileFilePorts,
+            system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
+        },
         core::actor_v2::endpoint::ExecutionHost,
+        service::profile_file::fs_service::ProfileFileService,
         state::profiles::{
             error::SubscriptionFetchError,
             ports::{
                 CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
                 MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-                PreparedMaterialization, ProfileMaterializationPort,
+                PreparedMaterialization, ProfileMaterializationPort, SubscriptionFetcher,
             },
         },
     };
@@ -2715,7 +2682,10 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             Arc::new(runtime_core_spec),
-            nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            ClientHostAdapters {
+                script_dirs: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                ..test_host_adapters(&test_paths(dir.path(), dir.path().join("data")))
+            },
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -2730,8 +2700,6 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
-            None,
-            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3180,7 +3148,7 @@ pub(crate) mod tests {
             .returning(|core| Err(core_version::CoreVersionError::CoreVersionNotReported { core }));
         let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint));
         args.core_versions = Arc::new(reader);
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         tauri::async_runtime::block_on(async {
             assert_eq!(
                 client
@@ -3198,6 +3166,40 @@ pub(crate) mod tests {
                 })
             ));
         });
+    }
+
+    fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
+        ClientHostAdapters {
+            debug_http: crate::server::debug_http::tests::control_factory(
+                None,
+                Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+            ),
+            changelog_http: Arc::new(|ports| {
+                Arc::new(crate::adapters::changelog_http::ReqwestChangelogHttp::new(
+                    ports,
+                    crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                ))
+            }),
+            script_dirs: nyanpasu_platform::enhance::ScriptDirs::new(
+                paths.scripts_dir().into_std_path_buf(),
+                paths.cache_dir().into_std_path_buf(),
+            ),
+            profile_files: Arc::new({
+                let paths = paths.clone();
+                move |ports| {
+                    let service = Arc::new(ProfileFileService::new(
+                        paths.clone(),
+                        ports,
+                        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                    ));
+                    ProfileFilePorts {
+                        fs: service.clone(),
+                        fetcher: service.clone(),
+                        materialization: service,
+                    }
+                }
+            }),
+        }
     }
 
     pub(crate) fn test_client_args_with_endpoint(
@@ -3231,9 +3233,8 @@ pub(crate) mod tests {
                 sourceforge_project: None,
                 ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
+            host_adapters: test_host_adapters(&paths),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
-            http_frontend: None,
-            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             storage,
             runtime_paths,
@@ -3367,7 +3368,7 @@ pub(crate) mod tests {
             };
             write_application_config(&args.paths.application_config_path(), &seed);
         }
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         if !service_seed {
             let report = tauri::async_runtime::block_on(client.startup_reconcile());
             assert_eq!(
@@ -3586,10 +3587,7 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&paths),
             Arc::new(runtime_core_spec),
-            nyanpasu_platform::enhance::ScriptDirs::new(
-                paths.scripts_dir().into_std_path_buf(),
-                paths.cache_dir().into_std_path_buf(),
-            ),
+            test_host_adapters(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -3604,8 +3602,6 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
-            None,
-            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3734,7 +3730,7 @@ pub(crate) mod tests {
             tokio_util::task::TaskTracker::new(),
         );
         let (core_v2, service) = test_v2_clients();
-        let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
             jobs: std::thread::scope(|scope| {
                 scope
                     .spawn(|| {
@@ -3753,9 +3749,8 @@ pub(crate) mod tests {
                 sourceforge_project: None,
                 ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
             },
+            host_adapters: test_host_adapters(&paths),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
-            http_frontend: None,
-            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             storage,
             runtime_paths,
@@ -3781,7 +3776,7 @@ pub(crate) mod tests {
             traffic_store: None,
             shutdown,
             tasks,
-        })
+        }))
         .expect("client should construct with typed config actors");
 
         assert!(client.is_portable());
@@ -3919,9 +3914,8 @@ pub(crate) mod tests {
         use nyanpasu_config::application::ClashCore;
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -3947,14 +3941,12 @@ pub(crate) mod tests {
             TestControlEndpoint::succeeding(),
             TestControlEndpoint::succeeding(),
         );
-        let client_a = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir_a,
-            endpoint_a.clone(),
+        let client_a = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir_a, endpoint_a.clone()),
         ))
         .unwrap();
-        let client_b = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir_b,
-            endpoint_b.clone(),
+        let client_b = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir_b, endpoint_b.clone()),
         ))
         .unwrap();
         let default_core = NyanpasuAppConfig::default().core;
@@ -4052,9 +4044,8 @@ pub(crate) mod tests {
     fn activation_requires_runtime_success_before_committing_selection() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -4127,7 +4118,7 @@ pub(crate) mod tests {
             ..Default::default()
         };
         write_application_config(&args.paths.application_config_path(), &seed);
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         tauri::async_runtime::block_on(async {
             let report = client.startup_reconcile().await;
 
@@ -4154,9 +4145,8 @@ pub(crate) mod tests {
         use std::sync::atomic::Ordering;
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -4203,9 +4193,8 @@ pub(crate) mod tests {
     fn rebuild_checks_and_promotes_before_core_apply() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -4235,9 +4224,8 @@ pub(crate) mod tests {
     fn two_reconciles_in_one_pump_interval_both_get_a_fresh_cas_token() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -4294,9 +4282,10 @@ pub(crate) mod tests {
     fn core_status_is_projected_from_the_control_endpoint() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let client =
-            NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint))
-                .unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint),
+        ))
+        .unwrap();
         tauri::async_runtime::block_on(async {
             for _ in 0..100 {
                 if client.core_status().snapshot.is_some() {
@@ -4315,7 +4304,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let args = test_client_args_with_endpoint(&dir, endpoint.clone());
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             let uid = client
@@ -4338,9 +4327,8 @@ pub(crate) mod tests {
     fn failed_reconcile_still_advances_the_promoted_read_model() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
 
@@ -4774,7 +4762,10 @@ pub(crate) mod tests {
                 storage,
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 Arc::new(runtime_core_spec),
-                nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                ClientHostAdapters {
+                    script_dirs: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                    ..test_host_adapters(&test_paths(dir.path(), dir.path().join("data")))
+                },
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,
                 None,
@@ -4789,8 +4780,6 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(crate::adapters::hotkey::PlatformAcceleratorValidator),
-                None,
-                Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
                 None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),
@@ -5084,9 +5073,8 @@ pub(crate) mod tests {
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
             Some(nyanpasu_core_manager::CoreKind::Mihomo),
         );
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, endpoint.clone()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -5168,7 +5156,7 @@ pub(crate) mod tests {
         let ui = Arc::new(Recorded::default());
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
         args.ui_sink = ui.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let take = || std::mem::take(&mut *ui.0.lock().unwrap());
         let files = |events: Vec<StateChanged>| -> Vec<Vec<ProfileId>> {
             events

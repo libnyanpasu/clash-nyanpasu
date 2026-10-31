@@ -211,9 +211,8 @@ mod tests {
     #[test]
     fn disabled_recording_reports_unavailable() {
         let dir = tempdir().unwrap();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            test_idle_endpoint(),
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(
+            test_client_args_with_endpoint(&dir, test_idle_endpoint()),
         ))
         .unwrap();
         tauri::async_runtime::block_on(async {
@@ -281,7 +280,7 @@ mod tests {
         let store = Arc::new(UnreadableStore);
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.traffic_store = Some(store.clone());
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         tauri::async_runtime::block_on(async {
             assert_eq!(
                 client.traffic_summary().await.unwrap_err().to_string(),
@@ -299,7 +298,7 @@ mod tests {
             dir.path().join("traffic.tsdb"),
             Profile::desktop().backend_cache,
         )));
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         tauri::async_runtime::block_on(async {
             let summary = client.traffic_summary().await.unwrap();
             assert_eq!(summary.active_connections, 0);

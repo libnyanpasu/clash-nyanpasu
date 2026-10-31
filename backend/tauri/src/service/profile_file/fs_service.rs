@@ -13,12 +13,17 @@ use std::{
 
 use atomicwrites::{AtomicFile, OverwriteBehavior, replace_atomic};
 use nyanpasu_config::profile::{
-    ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,
+    ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
+
+use super::{
+    materialization::{self, MATERIALIZATION_ROOT},
+    ports::SelfProxyPortSource,
+    subscription,
+};
 
 use crate::{
     client::bundle_metadata::BundleMetadata,
@@ -36,15 +41,7 @@ use crate::{
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 
-const MATERIALIZATION_ROOT: &str = ".profile-materialization-v1";
 const ABSENT_HASH: &str = "b7c03610089b9f660990ee7db3290cc8d8564161b079319c9c7ba1f19dc2e190";
-
-/// Where the fetcher looks up the app's own mixed port when `self_proxy` is
-/// requested. Wired at the composition root (T07); tests inject a constant.
-#[cfg_attr(test, mockall::automock)]
-pub trait SelfProxyPortSource: Send + Sync + 'static {
-    fn mixed_port(&self) -> Option<u16>;
-}
 
 pub struct ProfileFileService {
     paths: PathResolver,
@@ -75,10 +72,9 @@ impl ProfileFileService {
 
     fn resolve(&self, path: &ManagedProfilePath) -> Result<PathBuf> {
         ensure!(
-            !path
-                .as_path()
-                .components()
-                .any(|component| is_materialization_root_name(component.as_os_str())),
+            !path.as_path().components().any(|component| {
+                materialization::is_materialization_root_name(component.as_os_str())
+            }),
             ReservedPathSnafu { path }
         );
 
@@ -406,7 +402,7 @@ enum StoredResource {
 
 fn ensure_real_directory(path: &Path, metadata: &std::fs::Metadata) -> Result<()> {
     ensure!(
-        !is_symlink_or_reparse(metadata) && metadata.is_dir(),
+        !materialization::is_symlink_or_reparse(metadata) && metadata.is_dir(),
         UnexpectedNodeSnafu {
             path,
             expected: ExpectedNode::RealDirectory
@@ -465,38 +461,6 @@ fn set_private_file_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
-    metadata.file_type().is_symlink()
-}
-
-#[cfg(windows)]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt;
-    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-}
-
-#[cfg(not(any(unix, windows)))]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
-    metadata.file_type().is_symlink()
-}
-
-fn is_materialization_root_name(name: &std::ffi::OsStr) -> bool {
-    let Some(name) = name.to_str() else {
-        return false;
-    };
-    #[cfg(windows)]
-    {
-        name.trim_end_matches(['.', ' '])
-            .eq_ignore_ascii_case(MATERIALIZATION_ROOT)
-    }
-    #[cfg(not(windows))]
-    {
-        name == MATERIALIZATION_ROOT
-    }
-}
-
 fn create_file_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
@@ -514,21 +478,6 @@ fn create_file_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
             "file symlinks are unsupported on this platform",
         ))
     }
-}
-
-fn hash_tagged(tag: &[u8], content: &[u8]) -> String {
-    let mut digest = Sha256::new();
-    digest.update(tag);
-    digest.update([0]);
-    digest.update(content);
-    hex::encode(digest.finalize())
-}
-
-fn valid_operation_id(operation_id: &str) -> bool {
-    operation_id.len() == 16
-        && operation_id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 #[cfg(unix)]
@@ -621,7 +570,7 @@ impl ProfileFileService {
     fn read_journal(path: &Path, operation_id: &str) -> Result<MaterializationJournal> {
         let metadata = std::fs::symlink_metadata(path).context(InspectPathSnafu { path })?;
         ensure!(
-            !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+            !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
             UnexpectedNodeSnafu {
                 path,
                 expected: ExpectedNode::RegularFile
@@ -631,7 +580,8 @@ impl ProfileFileService {
         let journal: MaterializationJournal =
             serde_yaml::from_str(&content).context(ParseJournalSnafu { path })?;
         ensure!(
-            journal.operation_id == operation_id && valid_operation_id(&journal.operation_id),
+            journal.operation_id == operation_id
+                && materialization::valid_operation_id(&journal.operation_id),
             JournalOperationIdMismatchSnafu
         );
         ensure!(
@@ -639,7 +589,9 @@ impl ProfileFileService {
                 .managed_path
                 .as_path()
                 .components()
-                .any(|component| is_materialization_root_name(component.as_os_str())),
+                .any(|component| materialization::is_materialization_root_name(
+                    component.as_os_str()
+                )),
             ReservedPathSnafu {
                 path: &journal.managed_path
             }
@@ -653,7 +605,9 @@ impl ProfileFileService {
 
     fn remove_nofollow(path: &Path) -> Result<()> {
         match std::fs::symlink_metadata(path) {
-            Ok(metadata) if metadata.is_dir() && !is_symlink_or_reparse(&metadata) => {
+            Ok(metadata)
+                if metadata.is_dir() && !materialization::is_symlink_or_reparse(&metadata) =>
+            {
                 UnexpectedNodeSnafu {
                     path,
                     expected: ExpectedNode::RemovableResource,
@@ -671,7 +625,9 @@ impl ProfileFileService {
 
     fn remove_private_regular(path: &Path) -> Result<()> {
         match std::fs::symlink_metadata(path) {
-            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => {
+            Ok(metadata)
+                if materialization::is_symlink_or_reparse(&metadata) || !metadata.is_file() =>
+            {
                 UnexpectedNodeSnafu {
                     path,
                     expected: ExpectedNode::RegularFile,
@@ -689,9 +645,11 @@ impl ProfileFileService {
 
     fn resource_hash(resource: &MaterializationResource) -> String {
         match resource {
-            MaterializationResource::File { content } => hash_tagged(b"file", content.as_bytes()),
+            MaterializationResource::File { content } => {
+                materialization::hash_tagged(b"file", content.as_bytes())
+            }
             MaterializationResource::Symlink { target } => {
-                hash_tagged(b"symlink", target.as_str().as_bytes())
+                materialization::hash_tagged(b"symlink", target.as_str().as_bytes())
             }
         }
     }
@@ -703,16 +661,18 @@ impl ProfileFileService {
                 let target = target
                     .to_str()
                     .context(SymlinkTargetNotUtf8Snafu { path })?;
-                Ok(hash_tagged(b"symlink", target.as_bytes()))
+                Ok(materialization::hash_tagged(b"symlink", target.as_bytes()))
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) => UnexpectedNodeSnafu {
-                path,
-                expected: ExpectedNode::HashableTarget,
+            Ok(metadata) if materialization::is_symlink_or_reparse(&metadata) => {
+                UnexpectedNodeSnafu {
+                    path,
+                    expected: ExpectedNode::HashableTarget,
+                }
+                .fail()
             }
-            .fail(),
             Ok(metadata) if metadata.is_file() => {
                 let content = std::fs::read(path).context(ReadFileSnafu { path })?;
-                Ok(hash_tagged(b"file", &content))
+                Ok(materialization::hash_tagged(b"file", &content))
             }
             Ok(_) => UnexpectedNodeSnafu {
                 path,
@@ -783,7 +743,7 @@ impl ProfileFileService {
         );
         if let Some(metadata) = file_metadata {
             ensure!(
-                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
                 UnexpectedNodeSnafu {
                     path: &file_path,
                     expected: ExpectedNode::RegularFile
@@ -791,14 +751,14 @@ impl ProfileFileService {
             );
             let content = std::fs::read(&file_path).context(ReadFileSnafu { path: &file_path })?;
             ensure!(
-                hash_tagged(b"file", &content) == expected_hash,
+                materialization::hash_tagged(b"file", &content) == expected_hash,
                 StagedHashMismatchSnafu
             );
             return Ok(Some(StoredResource::File { path: file_path }));
         }
         if let Some(metadata) = link_metadata {
             ensure!(
-                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
                 UnexpectedNodeSnafu {
                     path: &link_path,
                     expected: ExpectedNode::RegularFile
@@ -807,7 +767,7 @@ impl ProfileFileService {
             let target =
                 std::fs::read_to_string(&link_path).context(ReadFileSnafu { path: &link_path })?;
             ensure!(
-                hash_tagged(b"symlink", target.as_bytes()) == expected_hash,
+                materialization::hash_tagged(b"symlink", target.as_bytes()) == expected_hash,
                 StagedHashMismatchSnafu
             );
             return Ok(Some(StoredResource::Symlink {
@@ -830,11 +790,13 @@ impl ProfileFileService {
                     link_target.as_bytes(),
                 )
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) => UnexpectedNodeSnafu {
-                path: target,
-                expected: ExpectedNode::HashableTarget,
+            Ok(metadata) if materialization::is_symlink_or_reparse(&metadata) => {
+                UnexpectedNodeSnafu {
+                    path: target,
+                    expected: ExpectedNode::HashableTarget,
+                }
+                .fail()
             }
-            .fail(),
             Ok(metadata) if metadata.is_file() => {
                 let content = std::fs::read(target).context(ReadFileSnafu { path: target })?;
                 Self::write_private_file_new(&Self::backup_file_path(root, operation_id), &content)
@@ -872,7 +834,7 @@ impl ProfileFileService {
         );
         if let Some(metadata) = file_metadata {
             ensure!(
-                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
                 UnexpectedNodeSnafu {
                     path: &file_path,
                     expected: ExpectedNode::RegularFile
@@ -882,7 +844,7 @@ impl ProfileFileService {
         }
         if let Some(metadata) = link_metadata {
             ensure!(
-                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
                 UnexpectedNodeSnafu {
                     path: &link_path,
                     expected: ExpectedNode::RegularFile
@@ -982,11 +944,12 @@ impl ProfileFileService {
         match Self::read_backup_resource(root, operation_id)? {
             Some(StoredResource::File { path }) => {
                 let content = std::fs::read(&path).context(ReadFileSnafu { path: &path })?;
-                Ok(hash_tagged(b"file", &content))
+                Ok(materialization::hash_tagged(b"file", &content))
             }
-            Some(StoredResource::Symlink { target }) => {
-                Ok(hash_tagged(b"symlink", target.as_str().as_bytes()))
-            }
+            Some(StoredResource::Symlink { target }) => Ok(materialization::hash_tagged(
+                b"symlink",
+                target.as_str().as_bytes(),
+            )),
             None => Ok(ABSENT_HASH.to_owned()),
         }
     }
@@ -1135,14 +1098,17 @@ impl ProfileFileService {
         root: &Path,
         operation_id: &str,
     ) -> Result<Option<(JournalLocation, MaterializationJournal)>> {
-        ensure!(valid_operation_id(operation_id), OperationIdInvalidSnafu);
+        ensure!(
+            materialization::valid_operation_id(operation_id),
+            OperationIdInvalidSnafu
+        );
         let mut found = Vec::new();
         for location in JournalLocation::ALL {
             let path = Self::journal_path(root, location, operation_id);
             match std::fs::symlink_metadata(&path) {
                 Ok(metadata) => {
                     ensure!(
-                        !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                        !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
                         UnexpectedNodeSnafu {
                             path: &path,
                             expected: ExpectedNode::RegularFile
@@ -1193,7 +1159,7 @@ impl ProfileFileService {
         let metadata =
             std::fs::symlink_metadata(source).context(InspectPathSnafu { path: source })?;
         ensure!(
-            !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+            !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file(),
             UnexpectedNodeSnafu {
                 path: source,
                 expected: ExpectedNode::RegularFile
@@ -1247,7 +1213,9 @@ impl ProfileFileService {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Self::advance_journal_phase(&source, &destination, &source_journal)
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => {
+            Ok(metadata)
+                if materialization::is_symlink_or_reparse(&metadata) || !metadata.is_file() =>
+            {
                 UnexpectedNodeSnafu {
                     path: &destination,
                     expected: ExpectedNode::RegularFile,
@@ -1278,7 +1246,9 @@ impl ProfileFileService {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Self::advance_journal_phase(&source, &destination, &source_journal)
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => {
+            Ok(metadata)
+                if materialization::is_symlink_or_reparse(&metadata) || !metadata.is_file() =>
+            {
                 UnexpectedNodeSnafu {
                     path: &destination,
                     expected: ExpectedNode::RegularFile,
@@ -1318,7 +1288,7 @@ impl ProfileFileService {
             let Ok(metadata) = std::fs::symlink_metadata(&path) else {
                 continue;
             };
-            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
+            if materialization::is_symlink_or_reparse(&metadata) || !metadata.is_file() {
                 continue;
             }
             let Ok(filename) = entry.file_name().into_string() else {
@@ -1327,7 +1297,7 @@ impl ProfileFileService {
             let Some(operation_id) = filename.strip_suffix(".yaml") else {
                 continue;
             };
-            if !valid_operation_id(operation_id) {
+            if !materialization::valid_operation_id(operation_id) {
                 continue;
             }
             operation_ids.push(operation_id.to_owned());
@@ -1352,11 +1322,16 @@ impl ProfileFileService {
         root: &Path,
         operation_id: &str,
     ) -> Result<Option<(CleanupPhase, MaterializationJournal)>> {
-        ensure!(valid_operation_id(operation_id), OperationIdInvalidSnafu);
+        ensure!(
+            materialization::valid_operation_id(operation_id),
+            OperationIdInvalidSnafu
+        );
         let pending_path = Self::cleanup_path(root, CleanupPhase::Pending, operation_id);
         let ready_path = Self::cleanup_path(root, CleanupPhase::Ready, operation_id);
         let pending = match std::fs::symlink_metadata(&pending_path) {
-            Ok(metadata) if !is_symlink_or_reparse(&metadata) && metadata.is_file() => {
+            Ok(metadata)
+                if !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file() =>
+            {
                 Some(Self::read_journal(&pending_path, operation_id)?)
             }
             Ok(_) => {
@@ -1374,7 +1349,9 @@ impl ProfileFileService {
             }
         };
         let ready = match std::fs::symlink_metadata(&ready_path) {
-            Ok(metadata) if !is_symlink_or_reparse(&metadata) && metadata.is_file() => {
+            Ok(metadata)
+                if !materialization::is_symlink_or_reparse(&metadata) && metadata.is_file() =>
+            {
                 Some(Self::read_journal(&ready_path, operation_id)?)
             }
             Ok(_) => {
@@ -1446,7 +1423,7 @@ impl ProfileFileService {
                 let Ok(operation_id) = entry.file_name().into_string() else {
                     continue;
                 };
-                if valid_operation_id(&operation_id)
+                if materialization::valid_operation_id(&operation_id)
                     && !Self::has_cleanup_journal(root, &operation_id)
                 {
                     Self::remove_nofollow(&path)?;
@@ -1483,7 +1460,7 @@ impl ProfileFileService {
                     continue;
                 };
                 let is_ready_link = permits_symlink && metadata.file_type().is_symlink();
-                if (!is_ready_link && is_symlink_or_reparse(&metadata))
+                if (!is_ready_link && materialization::is_symlink_or_reparse(&metadata))
                     || (!is_ready_link && !metadata.is_file())
                 {
                     continue;
@@ -1492,7 +1469,7 @@ impl ProfileFileService {
                     continue;
                 };
                 let operation_id = name.strip_suffix(".restore").unwrap_or(&name);
-                if valid_operation_id(operation_id)
+                if materialization::valid_operation_id(operation_id)
                     && !Self::has_materialization_journal(root, operation_id)
                 {
                     Self::remove_private_artifacts(root, operation_id)?;
@@ -1550,14 +1527,6 @@ impl ProfileFileService {
     }
 }
 
-/// Parse and reserialize a YAML mapping so editor saves and File-config reads
-/// share one canonical shape (legacy `read_profile_file` normalization).
-pub fn normalize_yaml_document(content: &str) -> Result<String, ProfileContentError> {
-    let mapping: serde_yaml::Mapping =
-        serde_yaml::from_str(content).context(NotYamlMappingSnafu)?;
-    serde_yaml::to_string(&mapping).context(ReserializeYamlSnafu)
-}
-
 impl ProfileFsPort for ProfileFileService {
     fn read(&self, path: &ManagedProfilePath) -> Result<String> {
         let full = self.resolve(path)?;
@@ -1587,7 +1556,7 @@ impl ProfileFsPort for ProfileFileService {
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> Result<()> {
         let full = self.resolve(path)?;
         match std::fs::symlink_metadata(&full) {
-            Ok(meta) if is_symlink_or_reparse(&meta) => {
+            Ok(meta) if materialization::is_symlink_or_reparse(&meta) => {
                 UnexpectedSymlinkSnafu { path: &full }.fail()
             }
             Ok(_) => Ok(()),
@@ -2141,11 +2110,12 @@ impl SubscriptionFetcher for ProfileFileService {
             })
             .await?;
 
-        let subscription = parse_subscription_userinfo(resp.headers());
-        let filename = parse_profile_title(resp.headers());
-        let suggested_update_interval_minutes = parse_suggested_update_interval(resp.headers());
-        let content_type = parse_media_type(resp.headers());
-        let file_name = parse_filename_from_content_disposition(resp.headers());
+        let subscription = subscription::parse_subscription_userinfo(resp.headers());
+        let filename = subscription::parse_profile_title(resp.headers());
+        let suggested_update_interval_minutes =
+            subscription::parse_suggested_update_interval(resp.headers());
+        let content_type = subscription::parse_media_type(resp.headers());
+        let file_name = subscription::parse_filename_from_content_disposition(resp.headers());
         let content = resp
             .text_with_charset("utf-8")
             .await
@@ -2164,101 +2134,6 @@ impl SubscriptionFetcher for ProfileFileService {
             file_name,
         })
     }
-}
-
-fn parse_media_type(headers: &reqwest::header::HeaderMap) -> Option<String> {
-    let value = headers
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())?;
-    let media_type = value.split(';').next()?.trim().to_ascii_lowercase();
-    (!media_type.is_empty()).then_some(media_type)
-}
-
-fn parse_suggested_update_interval(headers: &reqwest::header::HeaderMap) -> Option<u64> {
-    let hours = headers
-        .get("profile-update-interval")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .filter(|hours| *hours > 0)?;
-    let minutes = hours.checked_mul(60)?;
-    minutes.checked_mul(60)?;
-    Some(minutes)
-}
-
-fn parse_subscription_userinfo(headers: &reqwest::header::HeaderMap) -> SubscriptionInfo {
-    let Some(value) = headers
-        .get("subscription-userinfo")
-        .or_else(|| headers.get("Subscription-Userinfo"))
-    else {
-        return SubscriptionInfo::default();
-    };
-    let raw = value.to_str().unwrap_or("");
-    let field = |key: &str| crate::utils::key_value::parse_str::<u64>(raw, key);
-    SubscriptionInfo {
-        upload: field("upload"),
-        download: field("download"),
-        total: field("total"),
-        expire: field("expire")
-            .filter(|secs| *secs != 0)
-            .and_then(|secs| i64::try_from(secs).ok())
-            .and_then(|secs| time::OffsetDateTime::from_unix_timestamp(secs).ok()),
-    }
-}
-
-fn parse_profile_title(headers: &reqwest::header::HeaderMap) -> Option<String> {
-    if let Some(value) = headers.get("profile-title").and_then(|v| v.to_str().ok()) {
-        if value.trim().is_empty() {
-            return parse_filename_from_content_disposition(headers);
-        }
-        if let Some(encoded) = value.strip_prefix("base64:") {
-            use base64::Engine;
-            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded)
-                && let Ok(decoded) = String::from_utf8(bytes)
-                && !decoded.trim().is_empty()
-            {
-                return Some(decoded);
-            }
-        } else {
-            return Some(value.to_owned());
-        }
-    }
-
-    parse_filename_from_content_disposition(headers)
-}
-
-fn parse_filename_from_content_disposition(headers: &reqwest::header::HeaderMap) -> Option<String> {
-    let value = headers
-        .get(reqwest::header::CONTENT_DISPOSITION)
-        .and_then(|v| v.to_str().ok())?;
-
-    value
-        .split(';')
-        .map(str::trim)
-        .filter_map(|part| part.split_once('='))
-        .find_map(|(name, value)| {
-            let name = name.trim();
-            let value = value.trim();
-            if name.eq_ignore_ascii_case("filename*") {
-                decode_rfc5987_filename(value)
-            } else if name.eq_ignore_ascii_case("filename") {
-                Some(value.trim_matches(['"', '\'']).to_owned())
-            } else {
-                None
-            }
-        })
-        .filter(|filename| !filename.is_empty())
-}
-
-fn decode_rfc5987_filename(value: &str) -> Option<String> {
-    let value = value.trim().trim_matches(['"', '\'']);
-    let encoded = value
-        .split_once('\'')
-        .and_then(|(_, rest)| rest.split_once('\'').map(|(_, encoded)| encoded))
-        .unwrap_or(value);
-    percent_encoding::percent_decode(encoded.as_bytes())
-        .decode_utf8()
-        .ok()
-        .map(|decoded| decoded.into_owned())
 }
 
 #[cfg(test)]
@@ -3595,106 +3470,6 @@ mod tests {
 
         service.ensure_symlink(&link, &equivalent_target).unwrap();
         assert_eq!(std::fs::read_link(&link_path).unwrap(), before);
-    }
-
-    #[test]
-    fn normalize_yaml_document_round_trips_mappings_and_rejects_garbage() {
-        let normalized = normalize_yaml_document("b: 2\na: 1\n").unwrap();
-        let value: serde_yaml::Mapping = serde_yaml::from_str(&normalized).unwrap();
-        assert_eq!(value.len(), 2);
-        assert!(normalize_yaml_document(": not yaml [").is_err());
-    }
-
-    #[test]
-    fn media_type_parsing_drops_parameters_and_case() {
-        let mut headers = reqwest::header::HeaderMap::new();
-        assert_eq!(parse_media_type(&headers), None);
-
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            reqwest::header::HeaderValue::from_static("Text/JavaScript; charset=utf-8"),
-        );
-        assert_eq!(
-            parse_media_type(&headers).as_deref(),
-            Some("text/javascript")
-        );
-
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            reqwest::header::HeaderValue::from_static(" ; charset=utf-8"),
-        );
-        assert_eq!(parse_media_type(&headers), None);
-    }
-
-    #[test]
-    fn content_disposition_filename_parsing_matches_legacy_variants() {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::CONTENT_DISPOSITION,
-            reqwest::header::HeaderValue::from_static("attachment; Filename=\"a.yaml\""),
-        );
-        assert_eq!(
-            parse_filename_from_content_disposition(&headers).as_deref(),
-            Some("a.yaml")
-        );
-
-        headers.insert(
-            reqwest::header::CONTENT_DISPOSITION,
-            reqwest::header::HeaderValue::from_static(
-                "attachment; filename*=UTF-8'en'my%20cfg.yaml",
-            ),
-        );
-        assert_eq!(
-            parse_filename_from_content_disposition(&headers).as_deref(),
-            Some("my cfg.yaml")
-        );
-
-        headers.insert(
-            "profile-title",
-            reqwest::header::HeaderValue::from_static("   "),
-        );
-        headers.insert(
-            reqwest::header::CONTENT_DISPOSITION,
-            reqwest::header::HeaderValue::from_static("attachment; filename=fallback.yaml"),
-        );
-        assert_eq!(
-            parse_profile_title(&headers).as_deref(),
-            Some("fallback.yaml")
-        );
-    }
-
-    #[test]
-    fn subscription_expire_ignores_absurd_overflow_values() {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "subscription-userinfo",
-            reqwest::header::HeaderValue::from_static(
-                "upload=1; download=2; total=3; expire=18446744073709551615",
-            ),
-        );
-        let parsed = parse_subscription_userinfo(&headers);
-        assert_eq!(parsed.upload, Some(1));
-        assert!(parsed.expire.is_none());
-    }
-
-    #[test]
-    fn suggested_update_interval_parses_hours_and_ignores_invalid_values() {
-        let mut headers = reqwest::header::HeaderMap::new();
-        assert_eq!(parse_suggested_update_interval(&headers), None);
-
-        headers.insert(
-            "profile-update-interval",
-            reqwest::header::HeaderValue::from_static("2"),
-        );
-        assert_eq!(parse_suggested_update_interval(&headers), Some(120));
-
-        for invalid in ["not-a-number", "0", "18446744073709551615"] {
-            headers.insert(
-                "profile-update-interval",
-                reqwest::header::HeaderValue::from_str(invalid).unwrap(),
-            );
-            assert_eq!(parse_suggested_update_interval(&headers), None);
-        }
     }
 
     #[tokio::test]

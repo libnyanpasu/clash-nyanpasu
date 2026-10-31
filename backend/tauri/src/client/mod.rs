@@ -53,7 +53,7 @@ use crate::{
         },
         storage::Storage,
     },
-    service::profile_file::{ProfileFileService, SelfProxyPortSource},
+    service::profile_file::{fs_service::ProfileFileService, ports::SelfProxyPortSource},
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
@@ -1539,7 +1539,7 @@ impl NyanpasuClient {
         )?;
         match &item.definition {
             ProfileDefinition::Config { .. } => Ok(snafu::ResultExt::context(
-                crate::service::profile_file::normalize_yaml_document(&raw),
+                crate::service::profile_file::yaml::normalize_yaml_document(&raw),
                 ProfileFileNotYamlSnafu { uid },
             )?),
             ProfileDefinition::Transform { .. } => Ok(raw),

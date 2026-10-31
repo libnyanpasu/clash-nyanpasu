@@ -19,7 +19,7 @@ use snafu::{ResultExt, Snafu};
 
 #[cfg(test)]
 use super::runtime::RuntimeApplyReceipt;
-use crate::service::profile_file::SelfProxyPortSource;
+use crate::service::profile_file::ports::SelfProxyPortSource;
 
 /// The port a resolution was picking for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]

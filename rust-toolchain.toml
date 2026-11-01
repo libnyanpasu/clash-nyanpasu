@@ -1,2 +1,4 @@
 [toolchain]
-channel = 'nightly'
+# Pinned until rust-lang/rust#165263 is fixed: the next nightly fails with
+# E0391 "needs async drop" cycles (zvariant_utils, serde_yaml_ng).
+channel = 'nightly-2026-10-31'

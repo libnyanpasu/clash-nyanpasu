@@ -5,6 +5,7 @@ use nyanpasu_core::client::{
 };
 
 use nyanpasu_paths::PathResolver;
+use nyanpasu_platform::session_end::ShutdownCompletion;
 use std::sync::Arc;
 
 use crate::{
@@ -51,7 +52,7 @@ mod tests;
 #[derive(Clone, Default)]
 pub(crate) struct StartupOwners {
     pub(crate) session_end: nyanpasu_core::client::session_end::SessionEndSource,
-    pub(crate) completion: crate::utils::session_end::ShutdownCompletion,
+    pub(crate) completion: ShutdownCompletion,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     core: Option<nyanpasu_core::actor_v2::CoreClient>,
@@ -221,9 +222,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
-        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(
+        if let Err(error) = nyanpasu_platform::session_end::windows::setup_shutdown_hook(
             owners.session_end.clone(),
             owners.completion.clone(),
+            std::time::Duration::from_secs(30),
             move || {
                 tracing::info!("Shutdown hook triggered, exiting app...");
                 shutdown_handle.exit(0);

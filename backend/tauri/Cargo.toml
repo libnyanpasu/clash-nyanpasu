@@ -53,7 +53,6 @@ nyanpasu-panics = { path = '../nyanpasu-panics' }
 # Common Utilities
 tokio = { workspace = true, features = ['test-util'] }
 tokio-util = { version = '0.7', features = ['full'] }
-oneshot = '0.2'
 futures = '0.3'
 futures-util = '0.3'
 glob = '0.3.1'
@@ -242,13 +241,9 @@ deelevate = '0.2.0'
 winreg = { version = '0.56', features = ['transactions'] }
 windows-registry = '0.6.0'
 windows-sys = { version = '0.61', features = [
-  'Win32_System_LibraryLoader',
   'Win32_System_SystemInformation',
   'Win32_System_Threading',
-  'Win32_UI_WindowsAndMessaging',
-  'Win32_System_Shutdown',
   'Win32_Graphics_Dwm',
-  'Win32_Graphics_Gdi',
 ] }
 # windows-core and webview2-com must stay in lockstep with the versions used
 # by tauri/wry, since we cast COM interfaces obtained from tauri's webview.

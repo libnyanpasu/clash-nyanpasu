@@ -253,7 +253,7 @@ async fn cleanup_completion_waits_for_partial_owners_and_handles_no_owner() {
     send.send(()).unwrap();
     drain.await;
     assert!(completion.wait_until(std::time::Instant::now()));
-    let completion = crate::utils::session_end::ShutdownCompletion::default();
+    let completion = nyanpasu_platform::session_end::ShutdownCompletion::default();
     crate::utils::exit::drain_shutdown_owners(None, None, completion.clone()).await;
     assert!(completion.wait_until(std::time::Instant::now()));
 }

@@ -1,6 +1,6 @@
 //! The hidden Windows window that receives session-end messages.
 
-use std::{cell::RefCell, sync::mpsc};
+use std::{cell::RefCell, sync::mpsc, time::Duration};
 
 use snafu::ResultExt as _;
 use windows_core::{Error as WindowsError, PCWSTR, w};
@@ -21,12 +21,11 @@ use windows_sys::Win32::{
 
 use nyanpasu_core::client::session_end::SessionEndSource;
 
-use crate::utils::session_end::{
-    SessionAction, SessionEndHook, SessionMessage, ShutdownCompletion,
-};
+use super::protocol::{SessionAction, SessionEndHook, SessionMessage, ShutdownCompletion};
 
+/// A failure to initialize the session-end window or its worker threads.
 #[derive(Debug, snafu::Snafu)]
-pub(crate) enum Error {
+pub enum Error {
     #[snafu(display("failed to start shutdown hook window thread"))]
     StartWindowThread { source: std::io::Error },
     #[snafu(display("failed to start shutdown hook callback thread"))]
@@ -41,15 +40,21 @@ pub(crate) enum Error {
     SendInitialized,
 }
 
-pub(crate) fn setup_shutdown_hook(
+/// Installs a hidden window that requests host shutdown on session confirmation.
+/// The first confirmation fixes the deadline using `wait`; later messages retain it.
+///
+/// # Errors
+/// Returns an error if its threads or hidden window cannot be initialized.
+pub fn setup_shutdown_hook(
     source: SessionEndSource,
     completion: ShutdownCompletion,
+    wait: Duration,
     f: impl Fn() + Send + Sync + 'static,
 ) -> Result<(), Error> {
     let (initd_tx, initd_rx) = oneshot::channel();
     let handle = std::thread::Builder::new()
         .name("shutdown-hook-window".into())
-        .spawn(move || setup_shutdown_hook_inner(source, completion, f, initd_tx))
+        .spawn(move || setup_shutdown_hook_inner(source, completion, wait, f, initd_tx))
         .context(StartWindowThreadSnafu)?;
     if let Err(oneshot::RecvError) = initd_rx.recv() {
         handle
@@ -167,7 +172,7 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                         return 0;
                     }
                     if !context.completion.wait_until(deadline) {
-                        tracing::warn!("session-end cleanup exceeded its 30 second wait");
+                        tracing::warn!(?deadline, "session-end cleanup exceeded its wait deadline");
                     }
                     return 0;
                 }
@@ -214,6 +219,7 @@ fn create_hidden_window(
 fn setup_shutdown_hook_inner(
     source: SessionEndSource,
     completion: ShutdownCompletion,
+    wait: Duration,
     f: impl Fn() + Send + Sync + 'static,
     initd_tx: oneshot::Sender<()>,
 ) -> Result<(), Error> {
@@ -251,7 +257,7 @@ fn setup_shutdown_hook_inner(
         class_name,
         h_instance,
         Box::new(HookContext {
-            protocol: RefCell::new(SessionEndHook::new(source)),
+            protocol: RefCell::new(SessionEndHook::new(source, wait)),
             completion,
             sender,
         }),
@@ -304,7 +310,7 @@ mod tests {
             class_name,
             instance,
             Box::new(HookContext {
-                protocol: RefCell::new(SessionEndHook::new(source)),
+                protocol: RefCell::new(SessionEndHook::new(source, Duration::from_secs(30))),
                 completion: completion.clone(),
                 sender,
             }),
@@ -365,7 +371,7 @@ mod tests {
             w!("NYANPASU_UNREGISTERED_TEST_CLASS"),
             std::ptr::null_mut(),
             Box::new(HookContext {
-                protocol: RefCell::new(SessionEndHook::new(source)),
+                protocol: RefCell::new(SessionEndHook::new(source, Duration::from_secs(30))),
                 completion: ShutdownCompletion::default(),
                 sender,
             }),

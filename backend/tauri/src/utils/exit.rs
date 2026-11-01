@@ -5,7 +5,7 @@ use tauri::{AppHandle, ExitRequestApi, Manager, RESTART_EXIT_CODE, process::curr
 
 use nyanpasu_core::client::{NyanpasuClient, session_end::SessionEnding};
 
-use super::session_end::ShutdownCompletion;
+use nyanpasu_platform::session_end::ShutdownCompletion;
 
 /// What the app does once its owners have shut down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

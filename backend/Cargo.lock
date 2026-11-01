@@ -1846,7 +1846,6 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "once_cell",
- "oneshot",
  "open",
  "os_pipe",
  "parking_lot 0.13.0",
@@ -7078,12 +7077,14 @@ dependencies = [
  "nyanpasu-log-preview",
  "nyanpasu-logging",
  "nyanpasu-paths",
+ "oneshot",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
  "oxc_parser",
  "oxc_span",
  "oxc_syntax",
+ "parking_lot 0.13.0",
  "percent-encoding",
  "reqwest 0.13.5",
  "serde",
@@ -7100,6 +7101,8 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+ "windows-core 0.62.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

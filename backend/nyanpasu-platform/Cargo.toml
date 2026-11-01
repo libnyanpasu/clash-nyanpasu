@@ -25,6 +25,7 @@ backon = { version = '1.0.1', features = ['tokio-sleep'] }
 base64 = '0.23'
 hex = '0.4'
 nanoid = '0.5.0'
+parking_lot = { version = '0.13.0' }
 percent-encoding = '2.3.1'
 reqwest = { workspace = true }
 serde = { version = '1.0', features = ['derive', 'rc'] }
@@ -60,6 +61,17 @@ serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://githu
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+oneshot = '0.2'
+windows-core = '0.62'
+windows-sys = { version = '0.61', features = [
+  'Win32_Foundation',
+  'Win32_Graphics_Gdi',
+  'Win32_System_LibraryLoader',
+  'Win32_System_Shutdown',
+  'Win32_UI_WindowsAndMessaging',
+] }
 
 [dev-dependencies]
 nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }

@@ -10,6 +10,7 @@ use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
 use nyanpasu_paths::PathResolver;
+use nyanpasu_utils::process::AtomicStopStrategy;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -29,9 +30,14 @@ pub enum Error {
     },
 }
 
+/// Builds the local core host with the stop strategy shared by its process supervisors.
+///
+/// # Errors
+/// Returns an error if configuration inspection or core manager construction fails.
 pub async fn build(
     paths: &PathResolver,
     shutdown_helper: &std::path::Path,
+    stop_strategy: Arc<AtomicStopStrategy>,
 ) -> Result<CoreControl, Error> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
@@ -56,7 +62,9 @@ pub async fn build(
             path: config_path.as_std_path(),
         })?,
     ));
-    let manager = CoreManager::builder(options).native_store(native_store);
+    let manager = CoreManager::builder(options)
+        .native_store(native_store)
+        .stop_strategy(stop_strategy);
 
     #[cfg(target_os = "macos")]
     let manager = manager.dns_controller(Arc::new(
@@ -120,6 +128,7 @@ fn core_spec_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nyanpasu_utils::process::StopStrategy;
 
     #[tokio::test]
     async fn the_local_host_spawns_under_a_temp_root() {
@@ -129,9 +138,13 @@ mod tests {
             root.path().join("data"),
         );
 
-        let control = build(&paths, &root.path().join("helper.exe"))
-            .await
-            .unwrap();
+        let control = build(
+            &paths,
+            &root.path().join("helper.exe"),
+            Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
+        )
+        .await
+        .unwrap();
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
@@ -144,16 +157,24 @@ mod tests {
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 
-        let control = build(&paths, &root.path().join("helper.exe"))
-            .await
-            .unwrap();
+        let control = build(
+            &paths,
+            &root.path().join("helper.exe"),
+            Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
+        )
+        .await
+        .unwrap();
         assert!(!control.executor_is_closed());
 
         std::fs::remove_file(paths.application_config_path()).unwrap();
         assert!(
-            build(&paths, &root.path().join("helper.exe"))
-                .await
-                .is_err()
+            build(
+                &paths,
+                &root.path().join("helper.exe"),
+                Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
+            )
+            .await
+            .is_err()
         );
     }
 

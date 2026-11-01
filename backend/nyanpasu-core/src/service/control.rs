@@ -48,6 +48,8 @@ type UserError = whoami::Error;
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum ServiceCommandError {
+    #[snafu(display("Windows is ending the session; service commands are unavailable"))]
+    SessionEnding,
     #[snafu(display("could not resolve the current user: {source}"))]
     ResolveServiceUser {
         #[serde(skip)]
@@ -162,9 +164,13 @@ async fn run_elevated(
     service_binary: &Path,
     args: Vec<OsString>,
 ) -> Result<(), ServiceCommandError> {
+    #[cfg(windows)]
+    ensure_session_active()?;
     let service_binary = service_binary.to_path_buf();
     let status = crate::utils::blocking::join(
         tokio::task::spawn_blocking(move || {
+            #[cfg(windows)]
+            ensure_session_active()?;
             #[cfg(not(target_os = "macos"))]
             {
                 RunasCommand::new(service_binary.as_path())
@@ -172,6 +178,7 @@ async fn run_elevated(
                     .gui(true)
                     .show(true)
                     .status()
+                    .context(RunElevatedSnafu { command })
             }
             #[cfg(target_os = "macos")]
             {
@@ -187,11 +194,11 @@ async fn run_elevated(
                         Err(e)
                     }
                 }
+                .context(RunElevatedSnafu { command })
             }
         })
         .await,
-    )
-    .context(RunElevatedSnafu { command })?;
+    )?;
     ensure!(
         status.success(),
         ServiceCommandExitSnafu {
@@ -263,6 +270,8 @@ pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommand
 pub async fn status<'a>(
     service_binary: &Path,
 ) -> Result<nyanpasu_ipc::types::StatusInfo<'a>, ServiceCommandError> {
+    #[cfg(windows)]
+    ensure_session_active()?;
     let mut cmd = tokio::process::Command::new(service_binary);
     cmd.args(["status", "--json"]);
     #[cfg(windows)]
@@ -278,6 +287,18 @@ pub async fn status<'a>(
     let status = String::from_utf8(output.stdout).context(ServiceStatusNotUtf8Snafu)?;
     tracing::trace!("service status: {}", status);
     serde_json::from_str(&status).context(ParseServiceStatusSnafu)
+}
+
+#[cfg(windows)]
+fn ensure_session_active() -> Result<(), ServiceCommandError> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SHUTTINGDOWN};
+
+    // SAFETY: GetSystemMetrics reads an OS metric and takes no pointers.
+    ensure!(
+        unsafe { GetSystemMetrics(SM_SHUTTINGDOWN) } == 0,
+        SessionEndingSnafu
+    );
+    Ok(())
 }
 
 #[cfg(test)]

@@ -54,6 +54,7 @@ pub struct ExitGate {
     code: i32,
     /// A restart was asked for and no relauncher has been started for it.
     restart: bool,
+    session_ending: bool,
 }
 
 impl Default for ExitGate {
@@ -62,6 +63,7 @@ impl Default for ExitGate {
             phase: ExitPhase::Running,
             code: 0,
             restart: false,
+            session_ending: false,
         }
     }
 }
@@ -74,7 +76,7 @@ impl ExitGate {
                 ExitDecision::Allow { relaunch: false }
             }
             (ExitPhase::Finished, Some(_)) => ExitDecision::Allow {
-                relaunch: std::mem::take(&mut self.restart),
+                relaunch: std::mem::take(&mut self.restart) && !self.session_ending,
             },
             (_, Some(RESTART_EXIT_CODE)) => ExitDecision::AllowUncleaned,
             (ExitPhase::Stopping, Some(_)) => ExitDecision::Prevent,
@@ -91,11 +93,17 @@ impl ExitGate {
         self.restart = true;
     }
 
+    /// Suppresses relaunching for the rest of this process's lifetime.
+    #[cfg(any(windows, test))]
+    pub fn mark_session_end(&mut self) {
+        self.session_ending = true;
+    }
+
     /// The shutdown has ended and the app is about to exit: takes what it
     /// ends with.
     pub fn finish(&mut self) -> ExitIntent {
         self.phase = ExitPhase::Finished;
-        match std::mem::take(&mut self.restart) {
+        match std::mem::take(&mut self.restart) && !self.session_ending {
             true => ExitIntent::Restart,
             false => ExitIntent::Exit(self.code),
         }
@@ -121,6 +129,11 @@ pub struct ExitBoundary {
 impl ExitBoundary {
     pub fn request_restart(&self) {
         self.gate.lock().request_restart();
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn mark_session_end(&self) {
+        self.gate.lock().mark_session_end();
     }
 }
 
@@ -391,5 +404,24 @@ mod tests {
             gate.on_exit_requested(Some(0)),
             ExitDecision::Allow { relaunch: false }
         );
+    }
+
+    #[test]
+    fn a_session_end_suppresses_restart_before_and_during_shutdown() {
+        for session_first in [false, true] {
+            let mut gate = ExitGate::default();
+            if session_first {
+                gate.mark_session_end();
+            }
+            gate.request_restart();
+            assert_eq!(gate.on_exit_requested(Some(0)), ExitDecision::Shutdown);
+            gate.mark_session_end();
+            assert_eq!(gate.finish(), ExitIntent::Exit(0));
+            gate.request_restart();
+            assert_eq!(
+                gate.on_exit_requested(Some(0)),
+                ExitDecision::Allow { relaunch: false }
+            );
+        }
     }
 }

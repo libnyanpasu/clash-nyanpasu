@@ -207,12 +207,25 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // system proxy, hotkey and widget owners are built outside it.
     let shutdown = owners.shutdown.clone();
     let tasks = owners.tasks.clone();
+    let stop_strategy = Arc::new(nyanpasu_utils::process::AtomicStopStrategy::new(
+        nyanpasu_utils::process::StopStrategy::default(),
+    ));
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
-        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(move || {
-            tracing::info!("Shutdown hook triggered, exiting app...");
-            shutdown_handle.exit(0);
+        let stop_strategy = Arc::clone(&stop_strategy);
+        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(move |trigger| {
+            use tauri::Manager as _;
+
+            trigger.request_exit(
+                &stop_strategy,
+                || {
+                    shutdown_handle
+                        .state::<crate::utils::exit::ExitBoundary>()
+                        .mark_session_end()
+                },
+                || shutdown_handle.exit(0),
+            );
         }) {
             tracing::warn!(error = %snafu::Report::from_error(&error), "shutdown hook unavailable; continuing without it");
         }
@@ -246,9 +259,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service, jobs) = tauri::async_runtime::block_on(async {
-        let control = nyanpasu_core::actor_v2::local_host::build(&paths, &service_binary)
-            .await
-            .context(BuildCoreHostSnafu)?;
+        let control =
+            nyanpasu_core::actor_v2::local_host::build(&paths, &service_binary, stop_strategy)
+                .await
+                .context(BuildCoreHostSnafu)?;
         let local: nyanpasu_core::actor_v2::endpoint::EndpointHandle = Arc::new(
             nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
         );

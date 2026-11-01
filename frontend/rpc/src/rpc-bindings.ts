@@ -5069,6 +5069,7 @@ export type ServiceCommand =
  *  the service actor puts on every call.
  */
 export type ServiceCommandError =
+  | { kind: 'session_ending' }
   | { kind: 'resolve_service_user' }
   | { kind: 'resolve_service_dirs' }
   | { kind: 'run_elevated'; command: ServiceCommand }

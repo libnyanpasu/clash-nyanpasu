@@ -35,7 +35,7 @@
     "@nyanpasu/utils": "workspace:^",
     "@tailwindcss/postcss": "4.3.3",
     "@tanstack/react-table": "9.3.1",
-    "@tanstack/react-virtual": "3.14.24",
+    "@tanstack/react-virtual": "3.14.25",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.12.4",
     "@uidotdev/usehooks": "2.4.1",

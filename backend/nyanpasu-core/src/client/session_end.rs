@@ -1,14 +1,21 @@
 //! Revocable session-end input supplied by the application composition root.
 
+use nyanpasu_utils::process::{ProcessActivity, ProcessActivitySource, ProcessActivityState};
 use tokio::sync::watch;
 
 /// Publishes whether the operating system is preparing to end the session.
 #[derive(Clone, Debug)]
-pub struct SessionEndSource(watch::Sender<bool>);
+pub struct SessionEndSource {
+    activity: ProcessActivitySource,
+    lifetime: watch::Sender<()>,
+}
 
 /// Reads session-end intent without cancelling work already owned by an actor.
 #[derive(Clone, Debug)]
-pub struct SessionEnding(watch::Receiver<bool>);
+pub struct SessionEnding {
+    activity: ProcessActivity,
+    lifetime: watch::Receiver<()>,
+}
 
 impl Default for SessionEndSource {
     fn default() -> Self {
@@ -19,36 +26,47 @@ impl Default for SessionEndSource {
 impl SessionEndSource {
     /// Creates an independent session signal, initially inactive.
     pub fn new() -> Self {
-        Self(watch::channel(false).0)
+        Self {
+            activity: ProcessActivitySource::new(),
+            lifetime: watch::channel(()).0,
+        }
     }
 
     /// Changes the session intent, retaining it even before a reader subscribes.
     pub fn set_pending(&self, pending: bool) {
-        self.0.send_if_modified(|current| {
-            if *current == pending {
-                false
-            } else {
-                *current = pending;
-                true
-            }
+        self.activity.set(if pending {
+            ProcessActivityState::Quiescing
+        } else {
+            ProcessActivityState::Active
         });
     }
 
     /// Creates a reader of this source's current and future intent.
     pub fn subscribe(&self) -> SessionEnding {
-        SessionEnding(self.0.subscribe())
+        SessionEnding {
+            activity: self.activity.subscribe(),
+            lifetime: self.lifetime.subscribe(),
+        }
     }
 }
 
 impl SessionEnding {
     /// Whether a session-end query is pending or has been confirmed.
     pub fn is_pending(&self) -> bool {
-        *self.0.borrow()
+        self.activity.state() == ProcessActivityState::Quiescing
     }
 
     /// Waits for a change; false means the source has been dropped.
     pub async fn changed(&mut self) -> bool {
-        self.0.changed().await.is_ok()
+        tokio::select! {
+            biased;
+            _ = self.activity.changed() => true,
+            _ = self.lifetime.changed() => false,
+        }
+    }
+
+    pub(crate) fn process_activity(&self) -> ProcessActivity {
+        self.activity.clone()
     }
 }
 
@@ -58,6 +76,8 @@ mod tests {
 
     #[tokio::test]
     async fn signal_is_revocable_and_instance_local() {
+        use futures_util::FutureExt;
+
         let source = SessionEndSource::new();
         let other = SessionEndSource::new();
         let mut reader = source.subscribe();
@@ -69,12 +89,21 @@ mod tests {
         source.set_pending(false);
         assert!(reader.changed().await);
         assert!(!reader.is_pending());
+        assert!(reader.changed().now_or_never().is_none());
+        drop(source);
+        assert!(!reader.changed().await);
     }
 
     #[test]
     fn publishing_before_subscription_is_retained() {
         let source = SessionEndSource::new();
         source.set_pending(true);
-        assert!(source.subscribe().is_pending());
+        let reader = source.subscribe();
+        let activity = reader.process_activity();
+        assert!(reader.is_pending());
+        assert_eq!(activity.state(), ProcessActivityState::Quiescing);
+        source.set_pending(false);
+        assert!(!reader.is_pending());
+        assert_eq!(activity.state(), ProcessActivityState::Active);
     }
 }

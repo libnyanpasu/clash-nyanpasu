@@ -137,10 +137,11 @@ fn run_start() -> ExitCode {
     // Successful long-running start requires barrier mode.
     let Some(ready_addr) = ready_addr else {
         eprintln!(
-            "fake-core: long-running start requires {} control barrier \
-             (or {} for immediate exit)",
+            "Error: fake-core: long-running start requires {} control barrier \
+             (or {} for immediate exit); pid={}",
             env_keys::READY_ADDR,
-            env_keys::START_EXIT
+            env_keys::START_EXIT,
+            std::process::id()
         );
         return ExitCode::from(2);
     };

@@ -261,9 +261,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service, jobs) = tauri::async_runtime::block_on(async {
-        let control = nyanpasu_core::actor_v2::local_host::build(&paths, &service_binary)
-            .await
-            .context(BuildCoreHostSnafu)?;
+        let control = nyanpasu_core::actor_v2::local_host::build(
+            &paths,
+            &service_binary,
+            owners.session_end.subscribe(),
+        )
+        .await
+        .context(BuildCoreHostSnafu)?;
         let local: nyanpasu_core::actor_v2::endpoint::EndpointHandle = Arc::new(
             nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
         );

@@ -11,6 +11,8 @@ use snafu::{ResultExt, Snafu};
 
 use nyanpasu_paths::PathResolver;
 
+use crate::client::session_end::SessionEnding;
+
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("failed to inspect {}", path.display()))]
@@ -32,6 +34,7 @@ pub enum Error {
 pub async fn build(
     paths: &PathResolver,
     shutdown_helper: &std::path::Path,
+    session_ending: SessionEnding,
 ) -> Result<CoreControl, Error> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
@@ -56,7 +59,9 @@ pub async fn build(
             path: config_path.as_std_path(),
         })?,
     ));
-    let manager = CoreManager::builder(options).native_store(native_store);
+    let manager = CoreManager::builder(options)
+        .native_store(native_store)
+        .process_activity(session_ending.process_activity());
 
     #[cfg(target_os = "macos")]
     let manager = manager.dns_controller(Arc::new(
@@ -119,7 +124,104 @@ fn core_spec_with(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use nyanpasu_core_manager::{
+        ConfigInput, CoreCommand, CoreCommandEnvelope, CoreState, InstanceOptions, OperationId,
+        ReconcileRequest,
+    };
+    use nyanpasu_utils::process::{Backoff, BackoffRange, RestartPolicy, read_epoch_pid_file};
+
     use super::*;
+
+    #[tokio::test]
+    async fn revoking_session_restores_normal_supervision() {
+        let root = tempfile::TempDir::new().unwrap();
+        let paths = crate::utils::test_support::test_paths(
+            root.path().join("config"),
+            root.path().join("data"),
+        );
+        let session = crate::client::session_end::SessionEndSource::new();
+        std::fs::create_dir_all(paths.app_data_dir()).unwrap();
+        let control = build(&paths, &root.path().join("helper.exe"), session.subscribe())
+            .await
+            .unwrap();
+        let mut starts = control.subscribe_logs();
+        let executable = std::env::current_exe()
+            .unwrap()
+            .ancestors()
+            .skip(1)
+            .map(|directory| directory.join(format!("fake-core{}", std::env::consts::EXE_SUFFIX)))
+            .find(|path| path.is_file())
+            .expect(
+                "build the fake with cargo build --manifest-path backend/Cargo.toml -p fake-core",
+            );
+        session.set_pending(true);
+        let operation = control
+            .submit(CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+                    core: CoreSpec {
+                        kind: CoreKind::Mihomo,
+                        binary_path: Utf8PathBuf::from_path_buf(executable).unwrap(),
+                        version: Some("1.18.9".into()),
+                        features: vec![],
+                    },
+                    config: ConfigInput::inline(b"external-controller: 127.0.0.1:0\n".to_vec()),
+                    options: InstanceOptions {
+                        restart_policy: RestartPolicy::OnFailure { max_restarts: 2 },
+                        backoff: Backoff::exponential(BackoffRange {
+                            initial: Duration::ZERO,
+                            max: Duration::ZERO,
+                        }),
+                        ..InstanceOptions::default()
+                    },
+                    expected_applied: None,
+                })),
+            })
+            .unwrap();
+        let first_start = tokio::time::timeout(Duration::from_secs(30), starts.recv())
+            .await
+            .expect("the first failed start must publish its termination record")
+            .unwrap();
+        let first_pid: u32 = first_start
+            .message
+            .rsplit_once("; pid=")
+            .unwrap()
+            .1
+            .parse()
+            .unwrap();
+        let active = read_epoch_pid_file(paths.app_data_dir().join("native-store/active"))
+            .await
+            .expect("pending session end must prevent preparing another attempt")
+            .expect("the first attempt must remain recorded while paused");
+        assert_eq!(
+            active.pid, first_pid,
+            "the local supervisor started another attempt while session end was pending"
+        );
+        assert!(matches!(
+            starts.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        session.set_pending(false);
+        let error = tokio::time::timeout(Duration::from_secs(30), operation.wait())
+            .await
+            .expect("revocation must resume the deferred retries")
+            .expect_err("the fake core exits without its required start barrier");
+        assert!(error.message.contains("FAKE_CORE_READY_ADDR"), "{error}");
+        let mut resumed_starts = 0;
+        while let Ok(start) = starts.try_recv() {
+            assert!(start.message.contains("; pid="), "{start:?}");
+            resumed_starts += 1;
+        }
+        assert_eq!(
+            resumed_starts, 2,
+            "revocation must resume exactly two retries"
+        );
+        control.shutdown().await.unwrap();
+        assert!(matches!(control.status().state, CoreState::Stopped { .. }));
+    }
 
     #[tokio::test]
     async fn the_local_host_spawns_under_a_temp_root() {
@@ -129,9 +231,13 @@ mod tests {
             root.path().join("data"),
         );
 
-        let control = build(&paths, &root.path().join("helper.exe"))
-            .await
-            .unwrap();
+        let control = build(
+            &paths,
+            &root.path().join("helper.exe"),
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
@@ -144,16 +250,24 @@ mod tests {
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 
-        let control = build(&paths, &root.path().join("helper.exe"))
-            .await
-            .unwrap();
+        let control = build(
+            &paths,
+            &root.path().join("helper.exe"),
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         assert!(!control.executor_is_closed());
 
         std::fs::remove_file(paths.application_config_path()).unwrap();
         assert!(
-            build(&paths, &root.path().join("helper.exe"))
-                .await
-                .is_err()
+            build(
+                &paths,
+                &root.path().join("helper.exe"),
+                crate::client::session_end::SessionEndSource::new().subscribe(),
+            )
+            .await
+            .is_err()
         );
     }
 

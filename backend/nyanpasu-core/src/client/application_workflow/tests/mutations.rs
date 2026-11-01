@@ -128,6 +128,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
 }
 
 pub(super) struct Fixture {
+    pub(super) session_end: crate::client::session_end::SessionEndSource,
     pub(super) client: ApplicationWorkflowClient,
     pub(super) endpoint: Arc<TestControlEndpoint>,
     pub(super) builder: Arc<ParkingBuilder>,
@@ -295,10 +296,17 @@ async fn fixture_with_parts(
     scripted: bool,
 ) -> Fixture {
     let service = match daemon {
-        Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
+        Some(daemon) => ServiceClient::spawn(
+            daemon,
+            0,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap(),
         None => ServiceClient::spawn(
             Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
             0,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap(),
@@ -371,9 +379,11 @@ pub(super) async fn fixture_from(
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
     );
+    let session_end = crate::client::session_end::SessionEndSource::new();
     let notifications = Arc::new(RecordingNotifications::default());
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            session_ending: session_end.subscribe(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -394,6 +404,7 @@ pub(super) async fn fixture_from(
     .await
     .unwrap();
     Fixture {
+        session_end,
         client,
         endpoint,
         builder,

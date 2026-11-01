@@ -1121,6 +1121,7 @@ mod tests {
                 endpoint: service_endpoint,
             }),
             1,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap();

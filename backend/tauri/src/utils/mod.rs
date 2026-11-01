@@ -8,6 +8,7 @@ pub mod main_thread;
 pub mod profiling;
 pub mod proxy_env;
 pub mod resolve;
+pub(crate) mod session_end;
 // mod winhelp;
 
 pub mod collect;

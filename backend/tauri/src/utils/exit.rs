@@ -3,7 +3,9 @@
 //! and asks Tauri to exit again once every owner has finished.
 use tauri::{AppHandle, ExitRequestApi, Manager, RESTART_EXIT_CODE, process::current_binary};
 
-use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_core::client::{NyanpasuClient, session_end::SessionEnding};
+
+use super::session_end::ShutdownCompletion;
 
 /// What the app does once its owners have shut down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +51,7 @@ enum ExitPhase {
 /// decisions.
 #[derive(Debug)]
 pub struct ExitGate {
+    session_ending: SessionEnding,
     phase: ExitPhase,
     /// The code the shutdown started with.
     code: i32,
@@ -56,9 +59,10 @@ pub struct ExitGate {
     restart: bool,
 }
 
-impl Default for ExitGate {
-    fn default() -> Self {
+impl ExitGate {
+    fn new(session_ending: SessionEnding) -> Self {
         Self {
+            session_ending,
             phase: ExitPhase::Running,
             code: 0,
             restart: false,
@@ -74,7 +78,7 @@ impl ExitGate {
                 ExitDecision::Allow { relaunch: false }
             }
             (ExitPhase::Finished, Some(_)) => ExitDecision::Allow {
-                relaunch: std::mem::take(&mut self.restart),
+                relaunch: std::mem::take(&mut self.restart) && !self.session_ending.is_pending(),
             },
             (_, Some(RESTART_EXIT_CODE)) => ExitDecision::AllowUncleaned,
             (ExitPhase::Stopping, Some(_)) => ExitDecision::Prevent,
@@ -87,15 +91,19 @@ impl ExitGate {
     }
 
     /// Records that the app should relaunch once it has shut down.
-    pub fn request_restart(&mut self) {
+    pub fn request_restart(&mut self) -> bool {
+        if self.session_ending.is_pending() {
+            return false;
+        }
         self.restart = true;
+        true
     }
 
     /// The shutdown has ended and the app is about to exit: takes what it
     /// ends with.
     pub fn finish(&mut self) -> ExitIntent {
         self.phase = ExitPhase::Finished;
-        match std::mem::take(&mut self.restart) {
+        match std::mem::take(&mut self.restart) && !self.session_ending.is_pending() {
             true => ExitIntent::Restart,
             false => ExitIntent::Exit(self.code),
         }
@@ -113,14 +121,22 @@ impl ExitGate {
 }
 
 /// The exit boundary's state, managed by Tauri.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ExitBoundary {
+    completion: ShutdownCompletion,
     gate: parking_lot::Mutex<ExitGate>,
 }
 
 impl ExitBoundary {
-    pub fn request_restart(&self) {
-        self.gate.lock().request_restart();
+    pub(crate) fn new(session_ending: SessionEnding, completion: ShutdownCompletion) -> Self {
+        Self {
+            gate: parking_lot::Mutex::new(ExitGate::new(session_ending)),
+            completion,
+        }
+    }
+
+    pub fn request_restart(&self) -> bool {
+        self.gate.lock().request_restart()
     }
 }
 
@@ -153,13 +169,15 @@ pub fn on_exit_requested(app_handle: &AppHandle, code: Option<i32>, api: &ExitRe
 /// exits again, and that exit goes through.
 fn start_shutdown(app_handle: &AppHandle) {
     let (client, partial) = prepare_shutdown(app_handle);
-    let drain = drain_shutdown_owners(client, partial);
+    let drain = drain_shutdown_owners(
+        client,
+        partial,
+        app_handle.state::<ExitBoundary>().completion.clone(),
+    );
     let app_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         drain.await;
         let intent = app_handle.state::<ExitBoundary>().gate.lock().finish();
-        #[cfg(windows)]
-        crate::shutdown_hook::set_ready_for_shutdown();
         if intent == ExitIntent::Restart {
             spawn_relauncher(&app_handle);
         }
@@ -172,7 +190,12 @@ fn start_shutdown(app_handle: &AppHandle) {
 /// Tauri's exit: the updater's installer.
 pub async fn shutdown_before_exit(app_handle: &AppHandle) {
     let (client, partial) = prepare_shutdown(app_handle);
-    drain_shutdown_owners(client, partial).await;
+    drain_shutdown_owners(
+        client,
+        partial,
+        app_handle.state::<ExitBoundary>().completion.clone(),
+    )
+    .await;
     app_handle.state::<ExitBoundary>().gate.lock().cleaned_up();
 }
 
@@ -181,23 +204,34 @@ pub async fn shutdown_before_exit(app_handle: &AppHandle) {
 /// runs here instead, until every owner has finished. The final window
 /// geometry is not saved, since reading it is work for that event loop.
 pub fn shutdown_on_main_thread(app_handle: &AppHandle) {
-    let Some(client) = app_handle
+    let client = app_handle
         .try_state::<NyanpasuClient>()
-        .map(|state| state.inner().clone())
-    else {
-        return;
-    };
-    let (done, work) = app_handle
-        .state::<std::sync::Arc<nyanpasu_core::client::MainThreadHandoff>>()
-        .take_over();
-    client.request_shutdown();
-    tauri::async_runtime::spawn(async move {
-        client.wait_shutdown().await;
-        let _ = done.send(nyanpasu_core::client::MainThreadWork::Done);
-    });
-    while let Ok(nyanpasu_core::client::MainThreadWork::Run(task)) = work.recv() {
-        task();
+        .map(|state| state.inner().clone());
+    let partial = app_handle
+        .try_state::<crate::setup::StartupOwners>()
+        .map(|state| state.inner().clone());
+    let handoff = app_handle
+        .try_state::<std::sync::Arc<nyanpasu_core::client::MainThreadHandoff>>()
+        .map(|handoff| handoff.take_over());
+    let drain = drain_shutdown_owners(
+        client,
+        partial,
+        app_handle.state::<ExitBoundary>().completion.clone(),
+    );
+    if let Some((done, work)) = handoff {
+        tauri::async_runtime::spawn(async move {
+            drain.await;
+            let _ = done.send(nyanpasu_core::client::MainThreadWork::Done);
+        });
+        while let Ok(nyanpasu_core::client::MainThreadWork::Run(task)) = work.recv() {
+            task();
+        }
+    } else if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| tauri::async_runtime::block_on(drain));
+    } else {
+        tauri::async_runtime::block_on(drain);
     }
+    app_handle.state::<ExitBoundary>().gate.lock().cleaned_up();
     app_handle.cleanup_before_exit();
 }
 
@@ -252,6 +286,7 @@ fn prepare_shutdown(
 pub(crate) fn drain_shutdown_owners(
     client: Option<NyanpasuClient>,
     partial: Option<crate::setup::StartupOwners>,
+    completion: ShutdownCompletion,
 ) -> impl Future<Output = ()> + Send + 'static {
     let owner = match client {
         Some(client) => Some(ShutdownOwner::Client(client)),
@@ -266,6 +301,7 @@ pub(crate) fn drain_shutdown_owners(
         if let Some(owner) = owner {
             owner.wait_shutdown().await;
         }
+        completion.complete();
     }
 }
 
@@ -295,12 +331,26 @@ fn spawn_relauncher(app_handle: &AppHandle) {
         args.extend(arg.iter().skip(1).cloned());
     }
     tracing::info!("restart app: {:#?} with args: {:#?}", path, args);
-    // Detached on purpose: the relauncher outlives this process.
-    #[allow(clippy::zombie_processes)]
-    std::process::Command::new(path)
-        .args(args)
-        .spawn()
-        .expect("application failed to start");
+    let session = app_handle
+        .state::<ExitBoundary>()
+        .gate
+        .lock()
+        .session_ending
+        .clone();
+    launch_relauncher(&session, || {
+        // Detached on purpose: the relauncher outlives this process.
+        #[allow(clippy::zombie_processes)]
+        std::process::Command::new(path)
+            .args(args)
+            .spawn()
+            .expect("application failed to start");
+    });
+}
+
+fn launch_relauncher(session: &SessionEnding, launch: impl FnOnce()) {
+    if !session.is_pending() {
+        launch();
+    }
 }
 
 #[cfg(test)]
@@ -308,7 +358,8 @@ mod tests {
     use super::*;
 
     fn stopping() -> ExitGate {
-        let mut gate = ExitGate::default();
+        let mut gate =
+            ExitGate::new(nyanpasu_core::client::session_end::SessionEndSource::new().subscribe());
         assert_eq!(gate.on_exit_requested(Some(0)), ExitDecision::Shutdown);
         gate
     }
@@ -322,7 +373,8 @@ mod tests {
     /// V30: the §3.4 table, state by state.
     #[test]
     fn each_request_goes_where_the_table_says() {
-        let mut running = ExitGate::default();
+        let mut running =
+            ExitGate::new(nyanpasu_core::client::session_end::SessionEndSource::new().subscribe());
         assert_eq!(running.on_exit_requested(None), ExitDecision::Prevent);
         assert_eq!(
             running.on_exit_requested(Some(RESTART_EXIT_CODE)),
@@ -352,7 +404,8 @@ mod tests {
 
     #[test]
     fn the_shutdown_ends_with_the_code_that_started_it() {
-        let mut gate = ExitGate::default();
+        let mut gate =
+            ExitGate::new(nyanpasu_core::client::session_end::SessionEndSource::new().subscribe());
         assert_eq!(gate.on_exit_requested(Some(1)), ExitDecision::Shutdown);
         assert_eq!(gate.on_exit_requested(Some(0)), ExitDecision::Prevent);
         assert_eq!(gate.finish(), ExitIntent::Exit(1));
@@ -360,7 +413,8 @@ mod tests {
 
     #[test]
     fn a_restart_asked_for_before_the_end_relaunches_once() {
-        let mut gate = ExitGate::default();
+        let mut gate =
+            ExitGate::new(nyanpasu_core::client::session_end::SessionEndSource::new().subscribe());
         gate.request_restart();
         assert_eq!(gate.on_exit_requested(Some(0)), ExitDecision::Shutdown);
         assert_eq!(gate.finish(), ExitIntent::Restart);
@@ -377,7 +431,8 @@ mod tests {
 
     #[test]
     fn a_restart_after_a_clean_up_relaunches_as_the_exit_goes_through() {
-        let mut gate = ExitGate::default();
+        let mut gate =
+            ExitGate::new(nyanpasu_core::client::session_end::SessionEndSource::new().subscribe());
         assert!(!gate.has_shut_down());
         gate.cleaned_up();
         assert!(gate.has_shut_down());
@@ -391,5 +446,61 @@ mod tests {
             gate.on_exit_requested(Some(0)),
             ExitDecision::Allow { relaunch: false }
         );
+    }
+    #[test]
+    fn session_end_wins_over_recorded_restart() {
+        let source = nyanpasu_core::client::session_end::SessionEndSource::new();
+        for finished in [false, true] {
+            let mut gate = ExitGate::new(source.subscribe());
+            if finished {
+                gate.cleaned_up();
+            }
+            gate.request_restart();
+            source.set_pending(true);
+            if finished {
+                assert_eq!(
+                    gate.on_exit_requested(Some(0)),
+                    ExitDecision::Allow { relaunch: false }
+                );
+            } else {
+                gate.on_exit_requested(Some(0));
+                assert_eq!(gate.finish(), ExitIntent::Exit(0));
+            }
+            source.set_pending(false);
+        }
+    }
+
+    #[test]
+    fn cancelled_session_end_preserves_restart_intent() {
+        let source = nyanpasu_core::client::session_end::SessionEndSource::new();
+        let mut gate = ExitGate::new(source.subscribe());
+        gate.request_restart();
+        source.set_pending(true);
+        source.set_pending(false);
+        gate.on_exit_requested(Some(0));
+        assert_eq!(gate.finish(), ExitIntent::Restart);
+    }
+
+    #[test]
+    fn restart_requested_while_pending_is_refused() {
+        let source = nyanpasu_core::client::session_end::SessionEndSource::new();
+        let mut gate = ExitGate::new(source.subscribe());
+        source.set_pending(true);
+        assert!(!gate.request_restart());
+        source.set_pending(false);
+        gate.on_exit_requested(Some(0));
+        assert_eq!(gate.finish(), ExitIntent::Exit(0));
+    }
+    #[test]
+    fn session_end_at_spawn_suppresses_relauncher() {
+        let source = nyanpasu_core::client::session_end::SessionEndSource::new();
+        let session = source.subscribe();
+        let launches = std::cell::Cell::new(0);
+        source.set_pending(true);
+        launch_relauncher(&session, || launches.set(launches.get() + 1));
+        assert_eq!(launches.get(), 0);
+        source.set_pending(false);
+        launch_relauncher(&session, || launches.set(launches.get() + 1));
+        assert_eq!(launches.get(), 1);
     }
 }

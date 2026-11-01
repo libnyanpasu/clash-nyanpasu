@@ -295,14 +295,18 @@ enum Error {
 }
 
 /// Waits only for the dialog. Owner cleanup begins after setup returns to Tauri.
-pub(crate) fn show(report: &Report) {
+pub(crate) fn show(
+    report: &Report,
+    session: Option<&nyanpasu_core::client::session_end::SessionEnding>,
+) {
     show_with(
         report,
+        session,
         || {
             let exe = tauri::utils::platform::current_exe().context(LocateExecutableSnafu)?;
             let mut command = Command::new(exe);
             command.args(["startup-failed", "--language", rust_i18n::locale().as_ref()]);
-            run_child(command, report)
+            run_child(command, report, session)
         },
         crate::utils::dialog::error_dialog,
     );
@@ -313,6 +317,7 @@ pub(crate) fn show_internal(
     error: &(dyn StdError + 'static),
     paths: &PathResolver,
     logging: &crate::utils::init::logging::LoggingShutdown,
+    session: &nyanpasu_core::client::session_end::SessionEnding,
 ) {
     let failure = StartupFailure {
         kind: FailureKind::Internal,
@@ -320,7 +325,7 @@ pub(crate) fn show_internal(
         detail: snafu::Report::from_error(error).to_string(),
     };
     logging.record_startup_failure(failure.detail.clone());
-    show(&Report::new(failure, paths));
+    show(&Report::new(failure, paths), Some(session));
     logging.finish_blocking();
 }
 
@@ -363,13 +368,20 @@ fn one_shot_message(failure: &StartupFailure, locale: &str, recovery_key: Option
 
 fn show_with(
     report: &Report,
+    session: Option<&nyanpasu_core::client::session_end::SessionEnding>,
     child: impl FnOnce() -> Result<(), Error>,
     fallback: impl FnOnce(String),
 ) {
+    if session.is_some_and(|session| session.is_pending()) {
+        return;
+    }
     if let Err(error) = child() {
         tracing::error!(error = %snafu::Report::from_error(&error), "startup reporter unavailable");
         let text =
             crate::cmds::startup_failed::text(report.failure.kind, rust_i18n::locale().as_ref());
+        if session.is_some_and(|session| session.is_pending()) {
+            return;
+        }
         fallback(format!(
             "{}\n\n{}\n\n{}\n\n{}",
             text.heading,
@@ -380,8 +392,15 @@ fn show_with(
     }
 }
 
-fn run_child(mut command: Command, report: &Report) -> Result<(), Error> {
+fn run_child(
+    mut command: Command,
+    report: &Report,
+    session: Option<&nyanpasu_core::client::session_end::SessionEnding>,
+) -> Result<(), Error> {
     let json = serde_json::to_vec(report).context(EncodeSnafu)?;
+    if session.is_some_and(|session| session.is_pending()) {
+        return Ok(());
+    }
     let mut child = command.stdin(Stdio::piped()).spawn().context(SpawnSnafu)?;
     let mut stdin = child.stdin.take().expect("the reporter stdin is piped");
     let written = stdin.write_all(&json).context(WriteSnafu);

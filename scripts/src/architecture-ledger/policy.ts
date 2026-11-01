@@ -200,20 +200,6 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: "AppKit main-thread marker, bound to the thread by the OS API",
   },
   {
-    path: "backend/tauri/src/shutdown_hook.rs",
-    name: "SHUTDOWN_HOOK_INSTANCE",
-    category: "external",
-    reason:
-      "set once by setup_shutdown_hook, read by a Win32 window procedure, which has no closure state",
-  },
-  {
-    path: "backend/tauri/src/shutdown_hook.rs",
-    name: "SHUTDOWN_STATE",
-    category: "external",
-    reason:
-      "read by the Win32 window procedure; written by set_ready_for_shutdown from the exit boundary in utils::exit",
-  },
-  {
     path: "backend/tauri/src/utils/main_thread.rs",
     name: "MAIN_THREAD_ID",
     category: "external",

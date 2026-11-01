@@ -144,6 +144,7 @@ pub(crate) async fn test_client_from_typed_clients(
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap()
@@ -234,6 +235,7 @@ pub async fn test_client_with_profile_ports(
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap();
@@ -354,6 +356,7 @@ pub async fn test_client_with_materialization(
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap()

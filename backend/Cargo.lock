@@ -1787,7 +1787,6 @@ dependencies = [
  "ansi-str",
  "anyhow",
  "async-trait",
- "atomic_enum",
  "atomicwrites",
  "auto-launch",
  "axum",
@@ -6825,7 +6824,7 @@ dependencies = [
  "uuid",
  "whoami",
  "winreg 0.56.0",
- "zip 9.1.3",
+ "zip 9.2.0",
  "zstd",
 ]
 

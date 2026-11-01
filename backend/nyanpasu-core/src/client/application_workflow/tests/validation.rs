@@ -106,6 +106,7 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
     let service = crate::actor_v2::service_actor::ServiceClient::spawn(
         Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
         0,
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap();

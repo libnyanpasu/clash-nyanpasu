@@ -255,9 +255,13 @@ pub async fn test_v2_clients_with_endpoint(
     endpoint: crate::actor_v2::endpoint::EndpointHandle,
 ) -> (CoreClientV2, ServiceClient) {
     let core = CoreClientV2::spawn(endpoint).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn(
+        Arc::new(IdleServiceAdapter),
+        0,
+        crate::client::session_end::SessionEndSource::new().subscribe(),
+    )
+    .await
+    .unwrap();
     (core, service)
 }
 

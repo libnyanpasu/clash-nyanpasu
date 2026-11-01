@@ -112,6 +112,7 @@ enum Message {
     /// A mutation's Try, sent during the source transaction's prepare. A
     /// refusal at entry refuses the whole mutation.
     BeginMutation(Box<MutationRequest>),
+    SessionEndingChanged,
     RecoveryTick,
     /// The daemon became ready, a new daemon became ready, or it stopped
     /// being ready. The handler reads the current status itself.
@@ -174,6 +175,7 @@ struct PublishedView {
 }
 
 pub(super) struct ApplicationWorkflowArgs {
+    pub session_ending: super::session_end::SessionEnding,
     pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
     /// Read-only committed state. The workflow reads the three source domains
     /// and writes none of them.
@@ -217,7 +219,9 @@ impl ApplicationWorkflowState {
 
     /// Automatic work runs only while the domain is open and settled.
     fn automatic_work_allowed(&self) -> bool {
-        !self.closing() && !self.workflow.isolated()
+        !self.closing()
+            && !self.workflow.lifecycle.session_ending.is_pending()
+            && !self.workflow.isolated()
     }
 
     async fn request(&mut self, Request { command, response }: Request) {
@@ -344,6 +348,8 @@ impl ApplicationWorkflowState {
     /// tick bounds that. Tests that drive ticks by hand leave it off.
     fn sync_health_check(&mut self) {
         let wanted = self.schedule_ticks
+            && !self.closing()
+            && !self.workflow.lifecycle.session_ending.is_pending()
             && self
                 .workflow
                 .lifecycle
@@ -357,6 +363,18 @@ impl ApplicationWorkflowState {
                 .lifecycle
                 .core
                 .set_service_health_check(wanted);
+        }
+    }
+
+    fn sync_recovery_timer(&mut self, myself: &ActorRef<Message>) {
+        let wanted = self.schedule_ticks
+            && !self.closing()
+            && !self.workflow.lifecycle.session_ending.is_pending();
+        if wanted && self.recovery_timer.is_none() {
+            self.recovery_timer =
+                Some(myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick));
+        } else if !wanted && let Some(timer) = self.recovery_timer.take() {
+            timer.abort();
         }
     }
 
@@ -437,12 +455,14 @@ impl Actor for ApplicationWorkflowActor {
         myself: ActorRef<Message>,
         args: ActorArgs,
     ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
+        let recovery_timer = (args.schedule_ticks
+            && !args.workflow.lifecycle.closing.is_cancelled()
+            && !args.workflow.lifecycle.session_ending.is_pending())
+        .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick));
         Ok(ApplicationWorkflowState {
             closing_token: args.workflow.lifecycle.closing.clone(),
             workflow: args.workflow,
-            recovery_timer: args
-                .schedule_ticks
-                .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
+            recovery_timer,
             convergence_timer: None,
             schedule_ticks: args.schedule_ticks,
             health_check: false,
@@ -474,8 +494,10 @@ impl Actor for ApplicationWorkflowActor {
             message => message,
         };
         state.sync_health_check();
+        state.sync_recovery_timer(&myself);
         match message {
             Message::ScheduledConvergenceTick(_) => unreachable!(),
+            Message::SessionEndingChanged => state.follow_service().await,
             Message::Request(request) => {
                 state.request(request).await;
                 state.follow_service().await;
@@ -537,6 +559,8 @@ impl Actor for ApplicationWorkflowActor {
                 let _ = reply.send(state.readiness_seen);
             }
         }
+        state.sync_health_check();
+        state.sync_recovery_timer(&myself);
         state.arm_convergence(&myself);
         Ok(())
     }
@@ -622,6 +646,8 @@ impl ApplicationWorkflowClient {
             args.builder,
             args.ports.clone(),
         );
+        let mut session = args.session_ending.clone();
+        let mut session_open = true;
         let workflow = ApplicationWorkflow {
             notifications: args.notifications,
             profiles: args.profiles,
@@ -634,6 +660,7 @@ impl ApplicationWorkflowClient {
             live: None,
             startup: None,
             lifecycle: CoreLifecycleWorkflow {
+                session_ending: args.session_ending,
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
                 installer: args.installer,
@@ -668,12 +695,20 @@ impl ApplicationWorkflowClient {
         let shutdown = args.shutdown.clone();
         args.tasks.spawn(async move {
             loop {
-                tokio::select! {
+                let message = tokio::select! {
+                    biased;
                     () = shutdown.cancelled() => break,
-                    changed = readiness.changed() => if changed.is_err() { break },
-                }
-                readiness.mark_unchanged();
-                if forward.cast(Message::ServiceReadiness).is_err() {
+                    changed = session.changed(), if session_open => {
+                        if !changed { session_open = false; continue; }
+                        Message::SessionEndingChanged
+                    },
+                    changed = readiness.changed() => {
+                        if changed.is_err() { break; }
+                        readiness.mark_unchanged();
+                        Message::ServiceReadiness
+                    },
+                };
+                if forward.cast(message).is_err() {
                     break;
                 }
             }

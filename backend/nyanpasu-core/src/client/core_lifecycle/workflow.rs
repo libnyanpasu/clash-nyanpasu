@@ -30,6 +30,7 @@ use crate::actor_v2::{
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
+    pub session_ending: super::super::session_end::SessionEnding,
     /// Committed application config, read-only: the core lifecycle applies the
     /// facade's commits and never writes the domain itself.
     pub application: StateSnapshot<NyanpasuAppConfig>,
@@ -401,6 +402,7 @@ impl CoreLifecycleWorkflow {
         !self.recovery.suppressed
             && self.recovery.attempts < RECOVERY_BUDGET
             && !self.closing.is_cancelled()
+            && !self.session_ending.is_pending()
             && self
                 .recovery
                 .next_attempt
@@ -447,7 +449,10 @@ impl CoreLifecycleWorkflow {
                 .context(RecoverServiceEndpointSnafu)?;
             self.note_interrupted_core(report.interrupted_running());
         }
-        if self.closing.is_cancelled() || self.recovery.intent != CoreIntent::Restore {
+        if self.closing.is_cancelled()
+            || self.session_ending.is_pending()
+            || self.recovery.intent != CoreIntent::Restore
+        {
             return Ok(());
         }
         // A transport-only outage must not reapply or stop an already live
@@ -467,7 +472,9 @@ impl CoreLifecycleWorkflow {
             // Restoring the interrupted core is a start, and only a proven
             // owner of the desired host may make it (T10 §1.7 #6).
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-                if !self.closing.is_cancelled() && self.start_permitted() =>
+                if !self.closing.is_cancelled()
+                    && !self.session_ending.is_pending()
+                    && self.start_permitted() =>
             {
                 // Every phase boundary this workflow owns is checked, but a
                 // cancel landing inside the build or the submission still

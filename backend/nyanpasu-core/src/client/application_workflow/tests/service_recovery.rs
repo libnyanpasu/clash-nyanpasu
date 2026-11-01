@@ -103,6 +103,7 @@ impl ServiceHostAdapter for RecoveringDaemon {
 }
 
 struct RecoveryGraph {
+    session_end: crate::client::session_end::SessionEndSource,
     _dir: tempfile::TempDir,
     client: ApplicationWorkflowClient,
     daemon: Arc<RecoveringDaemon>,
@@ -148,7 +149,10 @@ impl RecoveryGraph {
             .unwrap();
         core.change_host(endpoint).await.unwrap();
         core.refresh_status().await.unwrap();
-        let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
+        let session_end = crate::client::session_end::SessionEndSource::new();
+        let service = ServiceClient::spawn(daemon.clone(), 3, session_end.subscribe())
+            .await
+            .unwrap();
         let shutdown = CancellationToken::new();
         let (client, builder, application, _) = workflow_graph_with_clients(
             &dir,
@@ -157,6 +161,7 @@ impl RecoveryGraph {
             schedule_ticks,
             Arc::new(crate::client::SessionPortResolver::default()),
             shutdown.clone(),
+            session_end.subscribe(),
         )
         .await;
         // The Service host these tests recover is the one the configuration
@@ -166,6 +171,7 @@ impl RecoveryGraph {
         application.patch(service_mode).await.unwrap();
         builder.release.notify_one();
         Self {
+            session_end,
             _dir: dir,
             client,
             daemon,
@@ -665,6 +671,24 @@ async fn production_timer_recovers_without_a_user_request() {
         graph.client.core_status().connectivity,
         EndpointConnectivity::Connected
     );
+    assert_eq!(graph.starts(), 1);
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+}
+
+#[tokio::test]
+async fn session_end_pauses_recovery_until_revoked() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    graph.session_end.set_pending(true);
+    let probes = graph.daemon.probes.load(Ordering::SeqCst);
+    for _ in 0..4 {
+        graph.attempt().await;
+    }
+    assert_eq!(graph.starts(), 0);
+    assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+    graph.session_end.set_pending(false);
+    graph.attempt().await;
     assert_eq!(graph.starts(), 1);
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
 }

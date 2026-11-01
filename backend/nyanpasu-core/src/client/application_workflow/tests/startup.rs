@@ -287,6 +287,7 @@ impl ServiceHostAdapter for FakeDaemon {
 }
 
 pub(super) struct Setup {
+    pub(super) session_end: crate::client::session_end::SessionEndSource,
     pub(super) schedule_ticks: bool,
     pub(super) service_mode: bool,
     pub(super) daemon: DaemonState,
@@ -308,6 +309,7 @@ pub(super) struct Setup {
 impl Default for Setup {
     fn default() -> Self {
         Self {
+            session_end: crate::client::session_end::SessionEndSource::new(),
             schedule_ticks: false,
             service_mode: false,
             daemon: DaemonState::NotInstalled,
@@ -324,6 +326,7 @@ impl Default for Setup {
 }
 
 pub(super) struct Graph {
+    pub(super) session_end: crate::client::session_end::SessionEndSource,
     pub(super) client: ApplicationWorkflowClient,
     pub(super) local: Arc<HostEndpoint>,
     pub(super) service_host: Arc<HostEndpoint>,
@@ -378,9 +381,14 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         core.change_host(service_host.clone()).await.unwrap();
         log.lock().unwrap().clear();
     }
-    let service = ServiceClient::spawn_bounded(daemon.clone(), 0, setup.command_timeout)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn_bounded(
+        daemon.clone(),
+        0,
+        setup.command_timeout,
+        setup.session_end.subscribe(),
+    )
+    .await
+    .unwrap();
     let application = application_manager(
         temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig {
@@ -406,6 +414,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            session_ending: setup.session_end.subscribe(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -429,6 +438,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     .await
     .unwrap();
     Graph {
+        session_end: setup.session_end,
         client,
         local,
         service_host,
@@ -493,7 +503,7 @@ impl Graph {
     /// workflow has handled the readiness notification that probe caused. The
     /// notification reaches it through a forwarding task, so the count it
     /// answers with is what says it arrived.
-    async fn publish_readiness(&self) {
+    pub(super) async fn publish_readiness(&self) {
         let seen = super::readiness_seen(&self.client).await;
         self.service.probe().await.unwrap();
         tokio::time::timeout(Duration::from_secs(5), async {

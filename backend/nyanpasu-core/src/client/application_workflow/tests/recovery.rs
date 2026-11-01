@@ -33,9 +33,13 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
     );
     endpoint.set_source_hash("source-a");
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn(
+        Arc::new(IdleServiceAdapter),
+        0,
+        crate::client::session_end::SessionEndSource::new().subscribe(),
+    )
+    .await
+    .unwrap();
     let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core.clone(),
@@ -43,6 +47,7 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
         false,
         Arc::new(crate::client::SessionPortResolver::new(store.clone())),
         tokio_util::sync::CancellationToken::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await;
     builder.release.notify_one();
@@ -663,10 +668,14 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
         parked: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
     });
-    let service =
-        ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
-            .await
-            .unwrap();
+    let service = ServiceClient::spawn_bounded(
+        daemon.clone(),
+        0,
+        std::time::Duration::from_millis(50),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
+    )
+    .await
+    .unwrap();
     let mut f = super::mutations::fixture_from(
         true,
         service,
@@ -815,10 +824,14 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         None,
     );
     let core = CoreClient::spawn(local.clone()).await.unwrap();
-    let service =
-        ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
-            .await
-            .unwrap();
+    let service = ServiceClient::spawn_bounded(
+        daemon.clone(),
+        0,
+        std::time::Duration::from_millis(50),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
+    )
+    .await
+    .unwrap();
     let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core,
@@ -826,6 +839,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         false,
         Arc::new(crate::client::SessionPortResolver::default()),
         tokio_util::sync::CancellationToken::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await;
     builder.release.notify_one();

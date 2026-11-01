@@ -274,6 +274,7 @@ fn report_buttons_follow_kind_and_fallback_keeps_path_and_logs() {
         let mut fallback = None;
         show_with(
             &report,
+            None,
             || {
                 Err(Error::Write {
                     source: io::ErrorKind::BrokenPipe.into(),
@@ -302,7 +303,7 @@ fn child_protocol_closes_stdin_before_waiting_and_rejects_nonzero_exit() {
     for code in [0, 7] {
         let mut command = Command::new("powershell.exe");
         command.args(["-NoProfile", "-NonInteractive", "-Command", &format!("$inputJson = [Console]::In.ReadToEnd(); if (!$inputJson.Contains('internal')) {{ exit 9 }}; exit {code}")]);
-        let result = run_child(command, &report);
+        let result = run_child(command, &report, None);
         if code == 0 {
             assert!(result.is_ok());
         } else {
@@ -350,4 +351,78 @@ fn one_shot_environment_messages_keep_actual_paths_and_localized_recovery() {
             rust_i18n::t!("dialog.startup_failure.unresolved_path", locale = locale).as_ref()
         ));
     }
+}
+
+#[test]
+fn session_end_suppresses_startup_reporter_and_fallback() {
+    use nyanpasu_core::client::session_end::SessionEndSource;
+    use std::cell::Cell;
+    let report = Report::new(
+        StartupFailure {
+            kind: FailureKind::Internal,
+            path: None,
+            detail: "failed".into(),
+        },
+        &paths(),
+    );
+    let source = SessionEndSource::new();
+    let session = source.subscribe();
+    let launched = Cell::new(0);
+    let fallback = Cell::new(0);
+    source.set_pending(true);
+    show_with(
+        &report,
+        Some(&session),
+        || {
+            launched.set(launched.get() + 1);
+            Err(Error::Write {
+                source: io::ErrorKind::BrokenPipe.into(),
+            })
+        },
+        |_| fallback.set(fallback.get() + 1),
+    );
+    assert_eq!(launched.get(), 0);
+    assert_eq!(fallback.get(), 0);
+    source.set_pending(false);
+    show_with(
+        &report,
+        Some(&session),
+        || {
+            launched.set(launched.get() + 1);
+            Err(Error::Write {
+                source: io::ErrorKind::BrokenPipe.into(),
+            })
+        },
+        |_| fallback.set(fallback.get() + 1),
+    );
+    assert_eq!(launched.get(), 1);
+    assert_eq!(fallback.get(), 1);
+}
+
+#[test]
+fn session_end_during_startup_reporter_launch_suppresses_fallback() {
+    use nyanpasu_core::client::session_end::SessionEndSource;
+    use std::cell::Cell;
+    let report = Report::new(
+        StartupFailure {
+            kind: FailureKind::Internal,
+            path: None,
+            detail: "failed".into(),
+        },
+        &paths(),
+    );
+    let source = SessionEndSource::new();
+    let fallback = Cell::new(false);
+    show_with(
+        &report,
+        Some(&source.subscribe()),
+        || {
+            source.set_pending(true);
+            Err(Error::Write {
+                source: io::ErrorKind::BrokenPipe.into(),
+            })
+        },
+        |_| fallback.set(true),
+    );
+    assert!(!fallback.get());
 }

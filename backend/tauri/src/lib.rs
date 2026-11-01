@@ -58,7 +58,10 @@ fn deadlock_detection() {
 
 /// Shows a panic dialog and saves logs, then exits once the app has shut down
 /// when a handle exists, or at once otherwise.
-fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
+fn install_panic_hook(
+    app_handle: Option<tauri::AppHandle>,
+    session_ending: nyanpasu_core::client::session_end::SessionEnding,
+) {
     nyanpasu_panics::setup_panic_hook(move |report| {
         let nyanpasu_panics::PanicReport {
             payload,
@@ -94,24 +97,28 @@ backtrace:
             location: location.clone(),
             backtrace: backtrace.to_string(),
         };
-        let child = (|| -> anyhow::Result<()> {
-            use std::io::Write as _;
+        show_panic_report(
+            &session_ending,
+            || -> anyhow::Result<()> {
+                use std::io::Write as _;
 
-            // The reporter outlives the panicking parent. Closing stdin after
-            // the synchronous write lets it read the entire JSON before UI setup.
-            #[allow(clippy::zombie_processes)]
-            let mut child = std::process::Command::new(tauri::utils::platform::current_exe()?)
-                .args(["panic-dialog", "--language", rust_i18n::locale().as_ref()])
-                .stdin(std::process::Stdio::piped())
-                .spawn()?;
-            let mut stdin = child.stdin.take().expect("the child's stdin is piped");
-            stdin.write_all(&serde_json::to_vec(&details)?)?;
-            Ok(())
-        })();
-        // fallback to show a dialog directly
-        if child.is_err() {
-            utils::dialog::panic_dialog(msg.as_str());
-        }
+                // The reporter outlives the panicking parent. Closing stdin after
+                // the synchronous write lets it read the entire JSON before UI setup.
+                let executable = tauri::utils::platform::current_exe()?;
+                if session_ending.is_pending() {
+                    return Ok(());
+                }
+                #[allow(clippy::zombie_processes)]
+                let mut child = std::process::Command::new(executable)
+                    .args(["panic-dialog", "--language", rust_i18n::locale().as_ref()])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()?;
+                let mut stdin = child.stdin.take().expect("the child's stdin is piped");
+                stdin.write_all(&serde_json::to_vec(&details)?)?;
+                Ok(())
+            },
+            || utils::dialog::panic_dialog(msg.as_str()),
+        );
 
         match &app_handle {
             // The event loop that would run the exit is the one panicking, so
@@ -127,6 +134,16 @@ backtrace:
             None => std::process::exit(1),
         }
     });
+}
+
+fn show_panic_report<E>(
+    session: &nyanpasu_core::client::session_end::SessionEnding,
+    child: impl FnOnce() -> Result<(), E>,
+    fallback: impl FnOnce(),
+) {
+    if !session.is_pending() && child().is_err() && !session.is_pending() {
+        fallback();
+    }
 }
 
 /// Queues a deep link for the frontend, then pokes any listening frontend to
@@ -245,7 +262,7 @@ pub fn run() -> std::process::ExitCode {
                 None,
             );
         } else {
-            startup_failure::show(&startup_failure::Report::migration(&e, &paths));
+            startup_failure::show(&startup_failure::Report::migration(&e, &paths), None);
         }
         return std::process::ExitCode::FAILURE;
     }
@@ -276,7 +293,9 @@ pub fn run() -> std::process::ExitCode {
     crate::log_err!(init::init_config(&paths));
 
     // Until setup hands over an app handle, a panic can only end the process.
-    install_panic_hook(None);
+    let owners = setup::StartupOwners::new();
+    let session_ending = owners.session_end.subscribe();
+    install_panic_hook(None, session_ending.clone());
 
     // Keep the Tauri transport surface separate from the RPC schema.
     let transport_builder = specta_export::build_transport_builder();
@@ -293,7 +312,7 @@ pub fn run() -> std::process::ExitCode {
             Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
             SPECTA_BINDINGS_PATH,
         ) {
-            startup_failure::show_internal(&error, &paths, &startup_logging);
+            startup_failure::show_internal(&error, &paths, &startup_logging, &session_ending);
             return std::process::ExitCode::FAILURE;
         }
         match rpc_schema_builder.export(
@@ -302,13 +321,18 @@ pub fn run() -> std::process::ExitCode {
         ) {
             Ok(_) => {
                 if let Err(e) = specta_export::adapt_rpc_bindings(RPC_BINDINGS_PATH) {
-                    startup_failure::show_internal(&e, &paths, &startup_logging);
+                    startup_failure::show_internal(&e, &paths, &startup_logging, &session_ending);
                     return std::process::ExitCode::FAILURE;
                 }
                 if let Err(error) =
                     specta_export::adapt_query_bindings(QUERY_BINDINGS_PATH, &query_bindings)
                 {
-                    startup_failure::show_internal(&error, &paths, &startup_logging);
+                    startup_failure::show_internal(
+                        &error,
+                        &paths,
+                        &startup_logging,
+                        &session_ending,
+                    );
                     return std::process::ExitCode::FAILURE;
                 }
                 let prettier_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -336,7 +360,7 @@ pub fn run() -> std::process::ExitCode {
                 log::debug!("Exported typescript bindings, path: {SPECTA_BINDINGS_PATH}");
             }
             Err(e) => {
-                startup_failure::show_internal(&e, &paths, &startup_logging);
+                startup_failure::show_internal(&e, &paths, &startup_logging, &session_ending);
                 return std::process::ExitCode::FAILURE;
             }
         };
@@ -398,10 +422,15 @@ pub fn run() -> std::process::ExitCode {
     );
     // The setup closure owns its copy; build failures still need paths for the reporter.
     let failure_paths = paths.clone();
+    let failure_session = session_ending.clone();
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
-        .manage(utils::exit::ExitBoundary::default())
+        .manage(utils::exit::ExitBoundary::new(
+            session_ending.clone(),
+            owners.completion.clone(),
+        ))
+        .manage(session_ending.clone())
         .manage(init::logging::LoggingShutdown(logger_reload.clone()))
         .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
@@ -426,7 +455,7 @@ pub fn run() -> std::process::ExitCode {
                 paths: paths.clone(),
             };
             setup::run_setup(
-                setup::StartupOwners::default(),
+                owners,
                 |owners| {
                     transport_builder.mount_events(app);
                     setup::setup(
@@ -462,7 +491,7 @@ pub fn run() -> std::process::ExitCode {
                         }
                     }
 
-                    install_panic_hook(Some(app.handle().clone()));
+                    install_panic_hook(Some(app.handle().clone()), session_ending.clone());
                     resolve::resolve_setup(app);
                     setup::setup_unified_rpc(app)
                         .map_err(|error| startup_failure::StartupFailure::from_rpc(&error))?;
@@ -505,7 +534,12 @@ pub fn run() -> std::process::ExitCode {
     let app = match builder.build(context) {
         Ok(app) => app,
         Err(error) => {
-            startup_failure::show_internal(&error, &failure_paths, &startup_logging);
+            startup_failure::show_internal(
+                &error,
+                &failure_paths,
+                &startup_logging,
+                &failure_session,
+            );
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -551,4 +585,56 @@ pub fn run() -> std::process::ExitCode {
     });
 
     std::process::ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::show_panic_report;
+    use nyanpasu_core::client::session_end::SessionEndSource;
+    use std::cell::Cell;
+
+    #[test]
+    fn pending_session_suppresses_panic_reporter_and_fallback() {
+        let source = SessionEndSource::new();
+        let session = source.subscribe();
+        source.set_pending(true);
+        let launched = Cell::new(0);
+        let fallback = Cell::new(0);
+        show_panic_report(
+            &session,
+            || {
+                launched.set(launched.get() + 1);
+                Err(())
+            },
+            || fallback.set(fallback.get() + 1),
+        );
+        assert_eq!(launched.get(), 0);
+        assert_eq!(fallback.get(), 0);
+        source.set_pending(false);
+        show_panic_report(
+            &session,
+            || {
+                launched.set(launched.get() + 1);
+                Err(())
+            },
+            || fallback.set(fallback.get() + 1),
+        );
+        assert_eq!(launched.get(), 1);
+        assert_eq!(fallback.get(), 1);
+    }
+
+    #[test]
+    fn session_end_during_reporter_launch_suppresses_fallback() {
+        let source = SessionEndSource::new();
+        let fallback = Cell::new(false);
+        show_panic_report(
+            &source.subscribe(),
+            || {
+                source.set_pending(true);
+                Err(())
+            },
+            || fallback.set(true),
+        );
+        assert!(!fallback.get());
+    }
 }

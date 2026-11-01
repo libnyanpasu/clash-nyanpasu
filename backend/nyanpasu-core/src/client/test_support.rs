@@ -762,6 +762,7 @@ pub async fn test_client_args_with_endpoint(
     );
     let (core_v2, service) = test_v2_clients_with_endpoint(endpoint).await;
     ClientSetupArgs {
+        session_ending: crate::client::session_end::SessionEndSource::new().subscribe(),
         jobs: jobs::test_client_with_owner(shutdown.clone(), &tasks).await,
         bundle_metadata: BundleMetadata {
             is_portable: false,

@@ -192,7 +192,11 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
     );
     let owners = host.owners.take().unwrap();
     runtime.block_on(async {
-        let drain = crate::utils::exit::drain_shutdown_owners(None, Some(owners.clone()));
+        let drain = crate::utils::exit::drain_shutdown_owners(
+            None,
+            Some(owners.clone()),
+            owners.completion.clone(),
+        );
         assert!(
             owners.shutdown.is_cancelled(),
             "the exit boundary selects partial startup owners"
@@ -232,4 +236,24 @@ fn rpc_failure_uses_the_same_dialog_and_exit_boundary() {
         host.failure.borrow().as_ref().unwrap().kind,
         FailureKind::Internal
     );
+}
+
+#[tokio::test]
+async fn cleanup_completion_waits_for_partial_owners_and_handles_no_owner() {
+    let owners = crate::setup::StartupOwners::new();
+    let (send, receive) = tokio::sync::oneshot::channel::<()>();
+    owners.tasks.spawn(async {
+        receive.await.unwrap();
+    });
+    let completion = owners.completion.clone();
+    let drain =
+        crate::utils::exit::drain_shutdown_owners(None, Some(owners.clone()), completion.clone());
+    assert!(owners.shutdown.is_cancelled());
+    assert!(!completion.wait_until(std::time::Instant::now()));
+    send.send(()).unwrap();
+    drain.await;
+    assert!(completion.wait_until(std::time::Instant::now()));
+    let completion = crate::utils::session_end::ShutdownCompletion::default();
+    crate::utils::exit::drain_shutdown_owners(None, None, completion.clone()).await;
+    assert!(completion.wait_until(std::time::Instant::now()));
 }

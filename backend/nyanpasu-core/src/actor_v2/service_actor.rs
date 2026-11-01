@@ -131,6 +131,9 @@ pub enum ServiceCommandKind {
 }
 
 pub enum ServiceActorMessage {
+    SessionEndingChanged {
+        shutdown: tokio_util::sync::CancellationToken,
+    },
     /// Idempotent convergence to `Ready`: install → start → probe → gate, as
     /// needed. The reply carries the endpoint the CoreActor will route to.
     EnsureReady {
@@ -209,6 +212,7 @@ const DEFAULT_SERVICE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration
 const HEALTH_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub struct ServiceActorArgs {
+    pub session_ending: crate::client::session_end::SessionEnding,
     pub adapter: Arc<dyn ServiceHostAdapter>,
     pub status_tx: watch::Sender<ServiceHostStatus>,
     /// Auto-restart attempts before the exhaustion latch (design OQ-6; the
@@ -221,6 +225,7 @@ pub struct ServiceActorArgs {
 }
 
 pub struct ServiceActorState {
+    session_ending: crate::client::session_end::SessionEnding,
     adapter: Arc<dyn ServiceHostAdapter>,
     status_tx: watch::Sender<ServiceHostStatus>,
     restart_budget: u8,
@@ -245,6 +250,8 @@ pub struct ServiceActorState {
     /// in the mailbox.
     health_round: Option<u64>,
     health_rounds: u64,
+    health_requested: bool,
+    startup_pending: bool,
     health_timer:
         Option<tokio::task::JoinHandle<Result<(), ractor::MessagingErr<ServiceActorMessage>>>>,
 }
@@ -467,6 +474,9 @@ impl ServiceActorState {
     /// when what the daemon is has changed, so a steady daemon does not wake
     /// every subscriber on each tick.
     async fn health_check(&mut self) {
+        if self.session_ending.is_pending() {
+            return;
+        }
         if !self.reap_outstanding().await {
             return;
         }
@@ -499,6 +509,48 @@ impl ServiceActorState {
                 ServiceActorMessage::HealthCheck { round }
             })
         });
+    }
+
+    fn sync_health_check(&mut self, myself: &ActorRef<ServiceActorMessage>) {
+        let enabled = self.health_requested && !self.session_ending.is_pending();
+        if enabled == self.health_round.is_some() {
+            return;
+        }
+        if let Some(timer) = self.health_timer.take() {
+            timer.abort();
+        }
+        self.health_round = enabled.then(|| {
+            self.health_rounds += 1;
+            self.health_rounds
+        });
+        self.arm_health_check(myself);
+    }
+
+    async fn reconcile_startup(&mut self) {
+        if !self.startup_pending || self.session_ending.is_pending() {
+            return;
+        }
+        self.startup_pending = false;
+        let (_, compat, phase) = self.probe_and_publish().await;
+        if phase == ServicePhase::Incompatible {
+            if self.session_ending.is_pending() {
+                self.startup_pending = true;
+                return;
+            }
+            tracing::info!(
+                ?compat,
+                "daemon incompatible at startup; attempting one update"
+            );
+            if let Err(error) = self
+                .tracked(ServiceCommandKind::Update, |adapter| {
+                    Box::pin(async move { adapter.update().await })
+                })
+                .await
+            {
+                tracing::warn!(%error, "startup daemon update failed");
+            }
+            let _ = self.probe_and_publish().await;
+        }
     }
 
     async fn recover_endpoint(&mut self) -> Result<EndpointHandle, CoreError> {
@@ -622,6 +674,7 @@ impl Actor for ServiceActor {
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         let mut state = ServiceActorState {
+            session_ending: args.session_ending,
             adapter: args.adapter,
             status_tx: args.status_tx,
             restart_budget: args.restart_budget,
@@ -632,29 +685,11 @@ impl Actor for ServiceActor {
             health_interval: args.health_interval,
             health_round: None,
             health_rounds: 0,
+            health_requested: false,
+            startup_pending: true,
             health_timer: None,
         };
-        // Startup version reconcile: an outdated-but-running daemon is
-        // upgraded once, preserving the product's auto `update_service`
-        // (UAC prompt) semantic. Fail-closed either way — a still-incompatible
-        // daemon never passes the gate.
-        let (_, compat, phase) = state.probe_and_publish().await;
-        if phase == ServicePhase::Incompatible {
-            tracing::info!("daemon incompatible at startup ({compat:?}); attempting one update");
-            // Tracked like every other mutating call: this runs before any
-            // facade exists, so an update that outlives its bound is known
-            // only to `outstanding`, and nothing can adopt the daemon until
-            // it ends.
-            if let Err(error) = state
-                .tracked(ServiceCommandKind::Update, |adapter| {
-                    Box::pin(async move { adapter.update().await })
-                })
-                .await
-            {
-                tracing::warn!("startup daemon update failed: {error}");
-            }
-            let _ = state.probe_and_publish().await;
-        }
+        state.reconcile_startup().await;
         Ok(state)
     }
 
@@ -676,7 +711,43 @@ impl Actor for ServiceActor {
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        state.sync_health_check(&myself);
+        let message = if state.session_ending.is_pending() {
+            let refusal = || {
+                CoreError::new(
+                    CoreErrorKind::BackendUnavailable,
+                    "the operating system is ending the session",
+                    true,
+                )
+            };
+            match message {
+                ServiceActorMessage::EnsureReady { reply }
+                | ServiceActorMessage::RecoverEndpoint { reply } => {
+                    let _ = reply.send(Err(refusal()));
+                    return Ok(());
+                }
+                ServiceActorMessage::Install { reply }
+                | ServiceActorMessage::Update { reply }
+                | ServiceActorMessage::Uninstall { reply }
+                | ServiceActorMessage::StartDaemon { reply }
+                | ServiceActorMessage::StopDaemon { reply } => {
+                    let _ = reply.send(Err(refusal()));
+                    return Ok(());
+                }
+                message => message,
+            }
+        } else {
+            message
+        };
         match message {
+            ServiceActorMessage::SessionEndingChanged { shutdown } => {
+                if shutdown.is_cancelled() {
+                    state.health_requested = false;
+                } else {
+                    state.reconcile_startup().await;
+                }
+                state.sync_health_check(&myself);
+            }
             ServiceActorMessage::EnsureReady { reply } => {
                 if let Some(refusal) = state.refuse_while_running().await {
                     let _ = reply.send(Err(refusal));
@@ -899,17 +970,8 @@ impl Actor for ServiceActor {
                 let _ = reply.send(not_running);
             }
             ServiceActorMessage::SetHealthCheck { enabled } => {
-                if enabled == state.health_round.is_some() {
-                    return Ok(());
-                }
-                if let Some(timer) = state.health_timer.take() {
-                    timer.abort();
-                }
-                state.health_round = enabled.then(|| {
-                    state.health_rounds += 1;
-                    state.health_rounds
-                });
-                state.arm_health_check(&myself);
+                state.health_requested = enabled;
+                state.sync_health_check(&myself);
             }
             ServiceActorMessage::HealthCheck { round } => {
                 // A tick from a check turned off since is dropped.
@@ -977,6 +1039,7 @@ fn ensure_ready_budget(command_timeout: std::time::Duration) -> std::time::Durat
 /// Typed wrapper; callers never hold the raw `ActorRef`.
 #[derive(Clone)]
 pub struct ServiceClient {
+    session_ending: crate::client::session_end::SessionEnding,
     actor: ActorRef<ServiceActorMessage>,
     status_rx: watch::Receiver<ServiceHostStatus>,
     /// Per-message caller bounds derived from the injected `command_timeout`
@@ -998,14 +1061,41 @@ impl ServiceClient {
         tasks: &tokio_util::task::TaskTracker,
         shutdown: tokio_util::sync::CancellationToken,
     ) {
+        let mut session = self.session_ending.clone();
+        let actor = self.actor.clone();
+        let closing = shutdown.clone();
+        tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    () = closing.cancelled() => break,
+                    changed = session.changed() => if !changed { break; },
+                }
+                if actor
+                    .cast(ServiceActorMessage::SessionEndingChanged {
+                        shutdown: closing.clone(),
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
     }
 
     pub async fn spawn(
         adapter: Arc<dyn ServiceHostAdapter>,
         restart_budget: u8,
+        session_ending: crate::client::session_end::SessionEnding,
     ) -> Result<Self, ractor::SpawnErr> {
-        Self::spawn_with_bounds(adapter, restart_budget, DEFAULT_SERVICE_COMMAND_TIMEOUT).await
+        Self::spawn_with_bounds(
+            adapter,
+            restart_budget,
+            DEFAULT_SERVICE_COMMAND_TIMEOUT,
+            session_ending,
+        )
+        .await
     }
 
     /// Turns the periodic health check on or off. Best effort: an actor that
@@ -1047,6 +1137,7 @@ impl ServiceClient {
         adapter: Arc<dyn ServiceHostAdapter>,
         restart_budget: u8,
         command_timeout: std::time::Duration,
+        session_ending: crate::client::session_end::SessionEnding,
     ) -> Result<Self, ractor::SpawnErr> {
         let (status_tx, status_rx) = watch::channel(ServiceHostStatus {
             name: std::borrow::Cow::Borrowed("nyanpasu-service"),
@@ -1063,6 +1154,7 @@ impl ServiceClient {
             None,
             ServiceActor,
             ServiceActorArgs {
+                session_ending: session_ending.clone(),
                 adapter,
                 status_tx,
                 restart_budget,
@@ -1072,6 +1164,7 @@ impl ServiceClient {
         )
         .await?;
         Ok(Self {
+            session_ending,
             actor,
             status_rx,
             probe_budget: probe_budget(command_timeout),
@@ -1088,8 +1181,9 @@ impl ServiceClient {
         adapter: Arc<dyn ServiceHostAdapter>,
         restart_budget: u8,
         command_timeout: std::time::Duration,
+        session_ending: crate::client::session_end::SessionEnding,
     ) -> Result<Self, ractor::SpawnErr> {
-        Self::spawn_with_bounds(adapter, restart_budget, command_timeout).await
+        Self::spawn_with_bounds(adapter, restart_budget, command_timeout, session_ending).await
     }
 
     pub fn status(&self) -> ServiceHostStatus {
@@ -1456,6 +1550,120 @@ mod tests {
             .count()
     }
 
+    #[tokio::test]
+    async fn session_end_pauses_health_check_and_revocation_resumes_it() {
+        let source = crate::client::session_end::SessionEndSource::new();
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
+        let client = ServiceClient::spawn(daemon.clone(), 2, source.subscribe())
+            .await
+            .unwrap();
+        client.set_health_check(true);
+        source.set_pending(true);
+        let before = probes(&daemon);
+        client
+            .actor
+            .cast(ServiceActorMessage::HealthCheck { round: 1 })
+            .unwrap();
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before);
+        source.set_pending(false);
+        client
+            .actor
+            .cast(ServiceActorMessage::HealthCheck { round: 1 })
+            .unwrap();
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before + 1);
+    }
+
+    #[tokio::test]
+    async fn session_end_refuses_new_service_launches_without_spending_budget() {
+        let source = crate::client::session_end::SessionEndSource::new();
+        let daemon = FakeDaemon::new(true, false, "2.0.2");
+        let client = ServiceClient::spawn(daemon.clone(), 2, source.subscribe())
+            .await
+            .unwrap();
+        source.set_pending(true);
+        let before = probes(&daemon);
+        for result in [
+            client.install().await,
+            client.start_daemon().await,
+            client.update().await,
+            client.stop_daemon().await,
+            client.uninstall().await,
+        ] {
+            let error = result.unwrap_err();
+            assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+            assert!(error.retryable);
+        }
+        for result in [client.ensure_ready().await, client.recover_endpoint().await] {
+            let error = result
+                .err()
+                .expect("pending session refuses service launch");
+            assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+            assert!(error.retryable);
+        }
+        assert_eq!(probes(&daemon), before);
+        assert_eq!(client.status().restart_attempts, 0);
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 0);
+        assert_eq!(daemon.installs.load(Ordering::SeqCst), 0);
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 0);
+        assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 0);
+        source.set_pending(false);
+        client.start_daemon().await.unwrap();
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn session_end_defers_startup_upgrade_until_revoked() {
+        let source = crate::client::session_end::SessionEndSource::new();
+        source.set_pending(true);
+        let daemon = FakeDaemon::new(true, true, "1.4.5");
+        let client = ServiceClient::spawn(daemon.clone(), 2, source.subscribe())
+            .await
+            .unwrap();
+        assert_eq!(probes(&daemon), 0);
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 0);
+        let tasks = tokio_util::task::TaskTracker::new();
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        client.drain_on_shutdown(&tasks, shutdown.clone());
+        let mut status = client.subscribe();
+        source.set_pending(false);
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while status.borrow_and_update().phase != ServicePhase::Ready {
+                status.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[tokio::test]
+    async fn session_end_does_not_cancel_an_admitted_service_command() {
+        let source = crate::client::session_end::SessionEndSource::new();
+        let daemon = FakeDaemon::new(false, false, "2.0.2");
+        daemon.park_install.store(true, Ordering::SeqCst);
+        let client = ServiceClient::spawn(daemon.clone(), 2, source.subscribe())
+            .await
+            .unwrap();
+        let install = {
+            let client = client.clone();
+            tokio::spawn(async move { client.install().await })
+        };
+        daemon.parked.notified().await;
+        source.set_pending(true);
+        daemon.release.notify_one();
+        install.await.unwrap().unwrap();
+        let error = client.start_daemon().await.unwrap_err();
+        assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+        assert!(error.retryable);
+        assert_eq!(daemon.installs.load(Ordering::SeqCst), 1);
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 0);
+    }
+
     /// Retries `adopt_if_ready` until the released helper has ended and is
     /// reaped. The helper ends on its own task, so the first tries can race
     /// it; each is a real mailbox round trip, not a timed guess. A refusal
@@ -1494,6 +1702,7 @@ mod tests {
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap();
@@ -1549,6 +1758,7 @@ mod tests {
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap();
@@ -1580,6 +1790,7 @@ mod tests {
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap();
@@ -1612,7 +1823,13 @@ mod tests {
     #[tokio::test]
     async fn ensure_ready_converges_from_not_installed_through_the_gate() {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let endpoint = client.ensure_ready().await.unwrap();
         assert_eq!(endpoint.host(), ExecutionHost::Service);
@@ -1628,7 +1845,13 @@ mod tests {
     async fn an_outdated_daemon_is_upgraded_once_at_startup() {
         for version in ["1.4.5", "2.0.0", "2.0.1"] {
             let daemon = FakeDaemon::new(true, true, version);
-            let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+            let client = ServiceClient::spawn(
+                daemon.clone(),
+                2,
+                crate::client::session_end::SessionEndSource::new().subscribe(),
+            )
+            .await
+            .unwrap();
             // pre_start already reconciled: one update, then the gate passes.
             assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
             assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
@@ -1638,7 +1861,13 @@ mod tests {
     #[tokio::test]
     async fn rc7_is_upgraded_before_serving_core_requests() {
         let daemon = FakeDaemon::new(true, true, "2.0.0-rc.7");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
         assert_eq!(
             client.ensure_ready().await.unwrap().host(),
@@ -1686,9 +1915,13 @@ mod tests {
                 self.0.endpoint()
             }
         }
-        let client = ServiceClient::spawn(Arc::new(StubbornDaemon(daemon)), 2)
-            .await
-            .unwrap();
+        let client = ServiceClient::spawn(
+            Arc::new(StubbornDaemon(daemon)),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         let error = client
             .ensure_ready()
             .await
@@ -1702,7 +1935,13 @@ mod tests {
     async fn uninstall_refuses_while_the_daemon_owns_a_running_core() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
@@ -1719,7 +1958,13 @@ mod tests {
     async fn uninstall_stops_the_daemon_before_removing_it() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         daemon.calls.lock().unwrap().clear();
 
         client.uninstall().await.unwrap();
@@ -1733,7 +1978,13 @@ mod tests {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
         daemon.stop_succeeds.store(false, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         daemon.calls.lock().unwrap().clear();
 
         let error = client.uninstall().await.unwrap_err();
@@ -1745,7 +1996,13 @@ mod tests {
     #[tokio::test]
     async fn explicit_start_rearms_an_exhausted_daemon() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
-        let client = ServiceClient::spawn(daemon, 0).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon,
+            0,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         assert!(client.recover_endpoint().await.is_err());
         assert_eq!(client.status().phase, ServicePhase::Exhausted);
         client.start_daemon().await.unwrap();
@@ -1763,6 +2020,7 @@ mod tests {
                 daemon.clone(),
                 3,
                 std::time::Duration::from_millis(50),
+                crate::client::session_end::SessionEndSource::new().subscribe(),
             )
             .await
             .unwrap();
@@ -1787,7 +2045,13 @@ mod tests {
     #[tokio::test]
     async fn recovery_retries_a_live_daemon_without_a_status_response() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            3,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         daemon.probe_blind.store(true, Ordering::SeqCst);
         let error = client.recover_endpoint().await.err().unwrap();
         assert!(error.retryable);
@@ -1799,7 +2063,13 @@ mod tests {
     #[tokio::test]
     async fn endpoint_down_restarts_within_budget_then_latches_exhausted() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 1).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            1,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         // Daemon dies; the first report restarts it within budget.
         daemon.state.lock().unwrap().1 = false;
@@ -1837,7 +2107,13 @@ mod tests {
     async fn uninstall_refuses_on_transitional_detail() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Starting { epoch: 3 }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
@@ -1850,7 +2126,13 @@ mod tests {
     async fn uninstall_refuses_when_the_running_daemon_cannot_be_probed() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_blind.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(
@@ -1872,7 +2154,13 @@ mod tests {
     async fn uninstall_refuses_when_detail_is_missing() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(None);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(
@@ -1893,7 +2181,13 @@ mod tests {
     async fn uninstall_proceeds_when_the_daemon_is_stopped() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         daemon.calls.lock().unwrap().clear();
 
@@ -1911,7 +2205,13 @@ mod tests {
     #[tokio::test]
     async fn exhausted_survives_probes_until_an_explicit_ensure_ready() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            0,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         daemon.state.lock().unwrap().1 = false;
         let _ = client.recover_endpoint().await;
@@ -1950,7 +2250,13 @@ mod tests {
     async fn a_failed_install_leaves_the_probed_phase_not_the_transitional_one() {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.fail_install.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client
             .ensure_ready()
@@ -1969,7 +2275,13 @@ mod tests {
     async fn a_failed_start_leaves_the_probed_phase_not_the_transitional_one() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
         daemon.fail_start.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client
             .ensure_ready()
@@ -1995,7 +2307,13 @@ mod tests {
     async fn uninstall_refuses_when_the_probe_fails_outright() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(
@@ -2020,7 +2338,13 @@ mod tests {
     async fn ensure_ready_reports_a_retryable_error_when_the_probe_fails() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         // `EndpointHandle` is a trait object and has no `Debug`, so the error
         // has to be taken by match rather than `unwrap_err`.
@@ -2042,7 +2366,13 @@ mod tests {
     async fn endpoint_down_does_not_start_when_the_probe_fails() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
 
         let starts = daemon.starts.load(Ordering::SeqCst);
         let _ = client.recover_endpoint().await;
@@ -2065,6 +2395,7 @@ mod tests {
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap();
@@ -2129,9 +2460,13 @@ mod tests {
                 self.0.endpoint()
             }
         }
-        let client = ServiceClient::spawn(Arc::new(StubbornDaemon(daemon.clone())), 2)
-            .await
-            .unwrap();
+        let client = ServiceClient::spawn(
+            Arc::new(StubbornDaemon(daemon.clone())),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         assert_eq!(client.status().phase, ServicePhase::Incompatible);
 
         let starts = daemon.starts.load(Ordering::SeqCst);
@@ -2204,7 +2539,13 @@ mod tests {
     #[tokio::test]
     async fn the_health_check_probes_while_on_and_publishes_only_changes() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         let mut status = client.subscribe();
         status.mark_unchanged();
         // Rounds start at 1, so round 1 is the one turning the check on arms.
@@ -2261,7 +2602,13 @@ mod tests {
     #[tokio::test]
     async fn only_a_settled_restart_makes_a_new_ready_generation() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         let first = client.status();
         assert_eq!(first.phase, ServicePhase::Ready);
 
@@ -2285,7 +2632,13 @@ mod tests {
     #[tokio::test]
     async fn daemon_not_running_answers_from_the_os_state() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(
+            daemon.clone(),
+            2,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         assert!(!client.daemon_not_running().await.unwrap());
 
         daemon.state.lock().unwrap().1 = false;

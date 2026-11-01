@@ -10,6 +10,7 @@ mod connection_policy;
 mod mutations;
 mod recovery;
 mod service_recovery;
+mod session_end;
 mod startup;
 mod validation;
 
@@ -191,6 +192,7 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
     let service = ServiceClient::spawn(
         Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
         0,
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap();
@@ -202,6 +204,7 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
         false,
         ports.clone(),
         CancellationToken::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await;
     builder.release.notify_one();
@@ -248,6 +251,7 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
     let service = ServiceClient::spawn(
         Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
         0,
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap();
@@ -259,6 +263,7 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
         false,
         ports.clone(),
         CancellationToken::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await;
     builder.release.notify_one();
@@ -298,6 +303,7 @@ async fn workflow_graph_with_store(
     let service = ServiceClient::spawn(
         Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
         0,
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
     .unwrap();
@@ -308,6 +314,7 @@ async fn workflow_graph_with_store(
         false,
         Arc::new(super::super::SessionPortResolver::new(snapshots)),
         CancellationToken::new(),
+        crate::client::session_end::SessionEndSource::new().subscribe(),
     )
     .await
 }
@@ -322,6 +329,7 @@ async fn workflow_graph_with_clients(
     ports: Arc<super::super::SessionPortResolver>,
     // Cancelling it closes the workflow the way the root shutdown does.
     shutdown: CancellationToken,
+    session_ending: crate::client::session_end::SessionEnding,
 ) -> (
     ApplicationWorkflowClient,
     Arc<BlockingBuilder>,
@@ -364,6 +372,7 @@ async fn workflow_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            session_ending,
             notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -525,6 +534,7 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
                 installed_for: dir.path().into(),
             }),
             0,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
         )
         .await
         .unwrap();

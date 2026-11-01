@@ -50,12 +50,17 @@ mod tests;
 /// The composition root retains these owners even when construction stops early.
 #[derive(Clone, Default)]
 pub(crate) struct StartupOwners {
+    pub(crate) session_end: nyanpasu_core::client::session_end::SessionEndSource,
+    pub(crate) completion: crate::utils::session_end::ShutdownCompletion,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     core: Option<nyanpasu_core::actor_v2::CoreClient>,
 }
 
 impl StartupOwners {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
     pub(crate) fn request_shutdown(&self) {
         self.shutdown.cancel();
         self.tasks.close();
@@ -106,7 +111,13 @@ impl StartupFailureHost for TauriStartupFailureHost {
         {
             logging.record_startup_failure(failure.detail.clone());
         }
-        crate::startup_failure::show(&crate::startup_failure::Report::new(failure, &self.paths));
+        let session = self
+            .handle
+            .state::<nyanpasu_core::client::session_end::SessionEnding>();
+        crate::startup_failure::show(
+            &crate::startup_failure::Report::new(failure, &self.paths),
+            Some(&session),
+        );
     }
 
     fn retain(&self, owners: StartupOwners) {
@@ -210,10 +221,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
-        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(move || {
-            tracing::info!("Shutdown hook triggered, exiting app...");
-            shutdown_handle.exit(0);
-        }) {
+        if let Err(error) = super::shutdown_hook::setup_shutdown_hook(
+            owners.session_end.clone(),
+            owners.completion.clone(),
+            move || {
+                tracing::info!("Shutdown hook triggered, exiting app...");
+                shutdown_handle.exit(0);
+            },
+        ) {
             tracing::warn!(error = %snafu::Report::from_error(&error), "shutdown hook unavailable; continuing without it");
         }
     }
@@ -318,6 +333,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let ui_sink: Arc<dyn UiEventSink> =
         Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
+        session_ending: owners.session_end.subscribe(),
         bundle_metadata,
         host_adapters: ClientHostAdapters {
             debug_http: {
@@ -492,10 +508,13 @@ async fn start_runtime_owners(
         .await
         .context(SpawnCoreActorSnafu)?;
     owners.core = Some(core.clone());
-    let service =
-        nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
-            .await
-            .context(SpawnServiceActorSnafu)?;
+    let service = nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(
+        adapter,
+        RESTART_BUDGET,
+        owners.session_end.subscribe(),
+    )
+    .await
+    .context(SpawnServiceActorSnafu)?;
     service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());
     let jobs = nyanpasu_core::client::jobs::start(
         paths.jobs_path().into_std_path_buf(),

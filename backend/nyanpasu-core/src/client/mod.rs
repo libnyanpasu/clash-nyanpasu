@@ -4,6 +4,7 @@ pub mod convergence;
 pub mod core_version;
 pub mod direct_egress;
 pub mod owner_shutdown;
+pub mod session_end;
 
 use crate::client::{
     bundle_metadata::BundleMetadata,
@@ -99,6 +100,7 @@ pub use runtime_error::RuntimeError;
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
+    pub session_ending: session_end::SessionEnding,
     pub host_adapters: ClientHostAdapters,
     pub jobs: nyanpasu_jobs::JobsClient,
     pub bundle_metadata: BundleMetadata,
@@ -274,6 +276,7 @@ struct NyanpasuClientInner {
 impl NyanpasuClient {
     pub async fn try_new(args: ClientSetupArgs) -> std::result::Result<Self, SetupError> {
         let ClientSetupArgs {
+            session_ending,
             host_adapters,
             jobs,
             bundle_metadata,
@@ -366,6 +369,7 @@ impl NyanpasuClient {
             traffic_store,
             shutdown,
             tasks,
+            session_ending,
         )
         .await
     }
@@ -407,6 +411,7 @@ impl NyanpasuClient {
         >,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
+        session_ending: session_end::SessionEnding,
     ) -> std::result::Result<Self, SetupError> {
         let debug_http = (host_adapters.debug_http)()
             .await
@@ -475,6 +480,7 @@ impl NyanpasuClient {
             Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
+                session_ending,
                 notifications: notifications.clone(),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
@@ -2088,7 +2094,13 @@ pub(crate) mod tests {
             application_config: args.paths.application_config_path().into_std_path_buf(),
         });
         let core_v2 = CoreClientV2::spawn(local).await.unwrap();
-        let service = ServiceClient::spawn(adapter, 0).await.unwrap();
+        let service = ServiceClient::spawn(
+            adapter,
+            0,
+            crate::client::session_end::SessionEndSource::new().subscribe(),
+        )
+        .await
+        .unwrap();
         args.core_v2 = core_v2;
         args.service = service;
         if service_seed {
@@ -2323,6 +2335,7 @@ pub(crate) mod tests {
         );
         let (core_v2, service) = test_v2_clients().await;
         let client = NyanpasuClient::try_new(ClientSetupArgs {
+            session_ending: session_end::SessionEndSource::new().subscribe(),
             jobs: jobs::test_client_with_owner(shutdown.clone(), &tasks).await,
             bundle_metadata: BundleMetadata {
                 is_portable: true,

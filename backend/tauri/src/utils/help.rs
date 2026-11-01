@@ -183,10 +183,12 @@ pub fn quit_application(app_handle: &AppHandle) {
 /// owner has shut down.
 #[instrument(skip(app_handle))]
 pub fn restart_application(app_handle: &AppHandle) {
-    app_handle
+    if app_handle
         .state::<super::exit::ExitBoundary>()
-        .request_restart();
-    app_handle.exit(0);
+        .request_restart()
+    {
+        app_handle.exit(0);
+    }
 }
 
 #[macro_export]

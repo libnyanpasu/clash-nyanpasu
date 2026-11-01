@@ -244,6 +244,7 @@ winreg = { version = '0.56', features = ['transactions'] }
 windows-registry = '0.6.0'
 windows-sys = { version = '0.61', features = [
   'Win32_System_LibraryLoader',
+  'Win32_System_Console',
   'Win32_System_SystemInformation',
   'Win32_System_Threading',
   'Win32_UI_WindowsAndMessaging',
@@ -257,6 +258,10 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+windows-sys = { version = '0.61', features = [
+  'Win32_System_Console',
+  'Win32_UI_WindowsAndMessaging',
+] }
 atomicwrites = '0.4.4'
 redb = '4.0.0'
 tauri = { version = '2.4', features = ['test'] }

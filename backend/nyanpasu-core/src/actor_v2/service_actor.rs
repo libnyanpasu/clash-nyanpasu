@@ -1250,6 +1250,7 @@ mod tests {
         /// F5: the probe call itself fails -- not "answered Stopped", not
         /// "answered Running without a server body", but no answer at all.
         probe_fail: AtomicBool,
+        session_ending: AtomicBool,
         /// F6: `install` never resolves, so only the actor's own bound can
         /// end it.
         hang_install: AtomicBool,
@@ -1278,6 +1279,7 @@ mod tests {
                 fail_install: AtomicBool::new(false),
                 fail_start: AtomicBool::new(false),
                 probe_fail: AtomicBool::new(false),
+                session_ending: AtomicBool::new(false),
                 hang_install: AtomicBool::new(false),
                 hang_start: AtomicBool::new(false),
                 park_install: AtomicBool::new(false),
@@ -1324,6 +1326,9 @@ mod tests {
             &self,
         ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("probe");
+            if self.session_ending.load(Ordering::SeqCst) {
+                return Err(ServiceCommandError::SessionEnding);
+            }
             if self.probe_fail.load(Ordering::SeqCst) {
                 return Err(crate::service::test_support::service_command_error(
                     "probe unreachable",
@@ -2049,6 +2054,19 @@ mod tests {
         let status = client.probe().await.unwrap();
         assert_eq!(status.phase, ServicePhase::Unknown);
         assert_eq!(daemon.starts.load(Ordering::SeqCst), starts);
+    }
+
+    #[tokio::test]
+    async fn session_end_probe_publishes_unknown_without_starting_the_daemon() {
+        let daemon = FakeDaemon::new(true, false, "2.0.2");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        assert_eq!(client.status().phase, ServicePhase::DaemonStopped);
+        daemon.session_ending.store(true, Ordering::SeqCst);
+
+        let error = client.recover_endpoint().await.err().unwrap();
+        assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+        assert_eq!(client.status().phase, ServicePhase::Unknown);
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 0);
     }
 
     /// F6: every adapter call the actor makes is bounded, `install` included.

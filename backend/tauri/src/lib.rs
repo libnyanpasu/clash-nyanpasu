@@ -18,7 +18,7 @@ mod startup_failure;
 mod unified_rpc;
 
 mod host_paths;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 mod shutdown_hook;
 mod utils;
 mod widget;

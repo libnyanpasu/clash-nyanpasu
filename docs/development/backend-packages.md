@@ -25,30 +25,37 @@ cycle. Tauri-specific adapters remain in the host, outside neutral platform.
 
 ## Target packages
 
-`nyanpasu-platform` currently mixes script runtimes and portable infrastructure,
-while OS integration code sits in core and in the Tauri crate. The target
-ownership in the [extraction
-plan](../design/application-platform-extraction.md#target-ownership) splits
-them. Names are working names until the PR that creates each crate.
+The [target
+ownership](../design/application-platform-extraction.md#target-ownership)
+replaces `nyanpasu-platform` and splits `nyanpasu-core` into a package family.
+Names are working names until the PR that creates each crate.
 
-| Package (planned)            | Owns                                                                                                                                  | Depends on                                                  |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `nyanpasu-profile-transform` | Runtime builder, builtin transforms and artifact snapshots, moved from `nyanpasu-core::enhance`                                       | `nyanpasu-config`; not core, not the script crate           |
-| `nyanpasu-scripts`           | JavaScript and Lua runners and their extension definitions, implementing the config `ScriptRunner` port                               | `nyanpasu-config` ports only                                |
-| `nyanpasu-os`                | OS integration: system proxy, PAC, autostart, service install and control, DNS flush, device identity, core binary install, elevation | Core or contract ports; not Tauri or presentation libraries |
-| `nyanpasu-io`                | Portable infrastructure: profile files, subscription and changelog HTTP, egress probes, updater downloads, watchers, storage backends | Core or contract ports; renamed from `nyanpasu-platform`    |
+| Group                 | Packages (planned)                                                                                                           | Depends on                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Shells                | `backend/tauri` (desktop GUI), `nyanpasu-server` (headless), mobile shell (later)                                            | Anything below; only shells construct `NyanpasuClient`                     |
+| CLI                   | `nyanpasu-cli`, a client of a running shell over the local socket                                                            | `nyanpasu-rpc-protocol` and the local-socket client; not core              |
+| RPC                   | `nyanpasu-rpc-protocol`, `nyanpasu-rpc`, the WebUI (HTTP) and local-socket transports                                        | Protocol: config and contracts. Registry: core                             |
+| Target crates         | `nyanpasu-desktop` (desktop interaction), `nyanpasu-os` (OS integration), `nyanpasu-openwrt` (on resume)                     | Contracts and config; never core. The server never uses `nyanpasu-desktop` |
+| Core package family   | `nyanpasu-core` facade, application, core control, log/traffic/geodata owners, updater, state engine, migration, persistence | Downward only, ending at `nyanpasu-contracts`                              |
+| Profile enhancement   | `nyanpasu-profile-transform` (runtime builder), `nyanpasu-scripts` (JS and Lua runners)                                      | Config; the transform does not depend on the script crate                  |
+| Implementation crates | `nyanpasu-profile-io`, `nyanpasu-net`, storage backends                                                                      | Contracts and config; never core                                           |
 
 Presentation capabilities (hotkeys, windows, tray, widgets, dialogs,
-notifications, clipboard, opener) have no shared implementation crate. Each
-host implements them, and core treats them as optional capabilities with an
-explicit unsupported outcome.
+notifications, clipboard, opener, deep links, single instance) belong to the
+shell. A Tauri-free mechanism that several desktop shells can share goes into
+the desktop interaction crate; a Tauri-bound one stays in `backend/tauri`. Core
+treats presentation capabilities as optional, with an explicit unsupported
+outcome.
 
 Until a target crate exists:
 
-- Do not add script runtime or OS integration code to `nyanpasu-platform`.
+- Do not add script runtime, OS integration or interaction code to
+  `nyanpasu-platform`.
 - Do not add a mandatory presentation capability to `ClientSetupArgs`.
 - Keep new OS integration code behind a consumer-owned port next to its current
   consumer, so moving it later does not change callers.
+- Expose a new command to WebUI (`rpc(http)`) only after reviewing its effects
+  for a browser caller; CLI exposure will be a separate opt-in.
 
 Domain configuration must not import a GUI package merely for a wire enum. Put
 such a type in an appropriate neutral owner and preserve its schema and public
@@ -78,6 +85,7 @@ import core directly. The former `nyanpasu-application` crate and its
 workspace/dependency entries have been removed.
 
 This is a baseline, not the target. The runtime builder moves to
-`nyanpasu-profile-transform`, and the script runners move out of platform into
-the script crate. `FsRuntimeBuildAdapter` will receive its script runner from
-the host instead of constructing it.
+`nyanpasu-profile-transform`, the script runners move out of platform into
+the script crate, and artifact-to-snapshot conversion stays in the application
+layer. `FsRuntimeBuildAdapter` will receive its script runner from the shell
+instead of constructing it.

@@ -18,12 +18,14 @@ Do not create an OpenWrt-specific facade, persistence protocol or compatibility
 layer to bypass unfinished upstream work. Do not reorganize or extend upstream
 PRs merely to implement this roadmap.
 
-The current upstream plan moves NyanpasuClient, shared use cases, typed clients,
-actors, workflows and consumed ports into `nyanpasu-core`. No separate
-`nyanpasu-application` layer is required in the target. Concrete reusable adapters
-remain in platform or existing infrastructure crates, injected by the host;
-core must not depend on platform or a frontend. Config retains its domain models
-and pure executor. Tauri/shell remains the desktop host and presentation boundary.
+NyanpasuClient, shared use cases, typed clients, actors, workflows and consumed
+ports live in `nyanpasu-core`, which the
+[target ownership](application-platform-extraction.md#target-ownership) splits
+into a package family without a second facade. Concrete adapters live in
+implementation and target crates injected by the shell; core must not depend on
+them or on a frontend. Config retains its domain models and pure executor.
+Tauri remains the desktop shell; the router uses `nyanpasu-server` and
+`nyanpasu-cli`.
 
 The runtime behavior delivered by #5652 now lives in `nyanpasu-core::enhance`,
 with platform/desktop consumers migrated and the former application crate removed.
@@ -47,7 +49,7 @@ Snapshot verified on 2026-10-08; refresh on resume.
 | [#5645](https://github.com/libnyanpasu/clash-nyanpasu/pull/5645)                                                                   | Merged frontend-independent path resolution                                                                                                           | Reuse explicit path inputs; this does not prove complete shell separation.                                                 |
 | Local application-facade WIP                                                                                                       | Historical unfinished extraction                                                                                                                      | Preserve as reference. Do not replay its old commits into a moving main or implement its contracts in advance.             |
 
-Paused work includes daemon composition, native ubus, procd endpoints, LuCI/ACL,
+Paused work includes server assembly, the CLI, procd endpoints, LuCI/ACL,
 feed packaging, and OpenWrt-specific musl/SDK acceptance. Existing generic
 backend/shell work remains separate and may proceed under its own authorization.
 There is no date estimate or active OpenWrt PR queue.
@@ -85,7 +87,7 @@ neither accelerates it nor reduces it to a few OpenWrt-required file moves.
 | Baseline reassessment | Refresh main/PRs and the completed shell architecture; map each MVP operation to accepted APIs and ports     | A concrete dependency/API mapping, target SDK/release tuples and revised implementation units; no duplicate application behavior.                                        |
 | Headless feasibility  | Compose a minimal router host using the accepted shared graph; verify target dependencies and resource costs | Import/select/build/persist/core control/shutdown through real shared APIs; dependency tree excludes GUI; JS/Lua size/RSS and generic CPU/musl risks measured.           |
 | Router backend        | Implement router paths/storage wiring, fixed procd control and lifecycle recovery                            | Real Mihomo validation, start/stop/status; durable profiles/scripts; preserved transaction failure semantics; crash policy tested.                                       |
-| Native management     | Add explicit ubus methods with a narrow native bridge, then LuCI and per-method ACL                          | Native calls plus authenticated LuCI loop; unauthorized mutations denied; errors, pending actions and status observable.                                                 |
+| Native management     | Add the CLI allowlist over the local socket, then LuCI through rpcd with per-method ACL                      | CLI calls plus authenticated LuCI loop; unauthorized mutations denied; errors, pending actions and status observable.                                                    |
 | Package acceptance    | Target-specific SDK/feed builds and installation in the chosen test environment                              | Both aarch64/x86_64 results recorded; native library ABI, package install, procd and LuCI verified. Physical-router support remains unclaimed without hardware evidence. |
 
 These are future milestones, not fixed PR counts or frozen interfaces. Split
@@ -96,13 +98,13 @@ Select the thinnest adapter consistent with the completed shared application.
 
 ## Decisions deliberately deferred
 
-Before lifecycle/authorization implementation, resolve daemon-crash/core retention
+Before lifecycle/authorization implementation, resolve server-crash/core retention
 and read-only access to runtime YAML containing credentials. These questions are
 not blockers for pausing and must not be answered by silence. Also finalize
 script capability/resource limits, payload limits, SDK/release targets and
 profile-to-runtime apply semantics using the upstream APIs and target evidence.
 
-The first product remains a native ubus daemon with native LuCI for small local
+The first product remains a server driven through the CLI by native LuCI for small local
 profiles, ordered JS/Lua transforms and Mihomo lifecycle. Transparent proxy,
 firewall/DNS/TUN takeover, remote subscriptions, updater, traffic history and
 full React embedding remain later work. No router networking changes are part
@@ -119,7 +121,7 @@ Use these sources to plan host integration after upstream completion:
 
 - [Backend package](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/nikki/Makefile): package installation, conffiles and upgrade retention. Nikki separates backend, LuCI and Mihomo packages; evaluate the same separation for our feed, with dependencies limited to actual MVP capabilities.
 - [procd init](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/nikki/files/nikki.init): instance setup, config-file tracking, optional reload signal, respawn and process resource controls. Our shared application must retain config/lifecycle decisions; do not copy init-script orchestration as a second workflow.
-- [rpcd ucode](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/luci-app-nikki/root/usr/share/rpcd/ucode/luci.nikki) and [ACL](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/luci-app-nikki/root/usr/share/rpcd/acl.d/luci-app-nikki.json): native LuCI integration reference. Its ucode RPC and wildcard/file permissions are not our fixed Rust-daemon ubus contract; retain explicit method permissions and shared facade calls.
+- [rpcd ucode](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/luci-app-nikki/root/usr/share/rpcd/ucode/luci.nikki) and [ACL](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/luci-app-nikki/root/usr/share/rpcd/acl.d/luci-app-nikki.json): native LuCI integration reference. Its ucode RPC and wildcard/file permissions are not our CLI and server contract; retain explicit method permissions and shared facade calls.
 - [SDK workflow](https://github.com/nikkinikki-org/OpenWrt-nikki/blob/7b203f6c4c5e94c6c0026acb301090aa1d310e7f/.github/workflows/build-packages.yml): release/architecture matrix and separate package artifacts. Start with the agreed two targets, and select opkg/apk packaging by the chosen release rather than assuming one package manager universally.
 
 Nikki's networking/transparent-proxy integration is a later reference track,

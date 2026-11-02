@@ -16,7 +16,7 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
 
-use crate::{client::NyanpasuClient, core::storage::Storage};
+use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
@@ -26,17 +26,17 @@ pub struct RpcDependencies {
 }
 
 const EVENT_NAMES: &[&str] = &[
-    <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
-    <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
-    <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
+    <crate::adapters::events::AppUpdateStateChanged as tauri_specta::Event>::NAME,
+    <crate::adapters::events::ClashWsEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
-    <crate::core::actor_v2::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
-    <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
-    <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
-    <crate::core::storage::StorageResyncEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::StorageValueChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::StorageResyncEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    <crate::client::StateChangedEvent as tauri_specta::Event>::NAME,
+    <crate::adapters::events::StateChangedEvent as tauri_specta::Event>::NAME,
 ];
 
 #[derive(Clone)]
@@ -150,7 +150,7 @@ impl RpcError {
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
             }
-            if let Some(log) = error.downcast_ref::<crate::core::logs::CoreLogError>() {
+            if let Some(log) = error.downcast_ref::<nyanpasu_core::logs::CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -210,11 +210,20 @@ pub struct UnifiedRpc {
 /// A weak dependency graph avoids an idle HTTP actor retaining its own client.
 #[derive(Default)]
 pub struct RpcHttpRoutes(std::sync::OnceLock<(std::sync::Weak<RpcDependencies>, CommandHandlers)>);
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum SetupError {
+    #[snafu(display("HTTP routes already installed"))]
+    InstallRoutes,
+    #[snafu(display("duplicate RPC command: {name}"))]
+    RegisterCommand { name: &'static str },
+}
+
 impl RpcHttpRoutes {
-    pub fn install(&self, rpc: &UnifiedRpc) -> anyhow::Result<()> {
+    pub fn install(&self, rpc: &UnifiedRpc) -> Result<(), SetupError> {
         self.0
             .set((Arc::downgrade(&rpc.dependencies), rpc.commands.clone()))
-            .map_err(|_| anyhow::anyhow!("HTTP routes already installed"))
+            .map_err(|_| SetupError::InstallRoutes)
     }
 }
 impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
@@ -234,16 +243,15 @@ impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
 }
 
 impl UnifiedRpc {
-    pub fn new(dependencies: RpcDependencies) -> anyhow::Result<Self> {
+    pub fn new(dependencies: RpcDependencies) -> Result<Self, SetupError> {
         let mut commands = HashMap::new();
         for entry in inventory::iter::<CommandEntry> {
-            anyhow::ensure!(
-                commands
-                    .insert(entry.name, (entry.http_handler, entry.tauri_handler))
-                    .is_none(),
-                "duplicate unified RPC command {}",
-                entry.name,
-            );
+            if commands
+                .insert(entry.name, (entry.http_handler, entry.tauri_handler))
+                .is_some()
+            {
+                return Err(SetupError::RegisterCommand { name: entry.name });
+            }
         }
         Ok(Self {
             dependencies: Arc::new(dependencies),
@@ -347,7 +355,7 @@ async fn http_connection_details(
 
 fn connection_detail_events(
     receiver: tokio::sync::watch::Receiver<
-        Option<Arc<crate::core::clash::ws::ClashConnectionDetails>>,
+        Option<Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>,
     >,
 ) -> impl futures::Stream<Item = Result<Event, Infallible>> {
     stream::unfold((receiver, true), |(mut receiver, mut first)| async move {
@@ -474,9 +482,11 @@ mod tests {
     #[test]
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
-        let args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
+        let args = tauri::async_runtime::block_on(
+            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            ),
         );
         std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
         std::fs::write(
@@ -488,7 +498,7 @@ mod tests {
         .unwrap();
         let paths = args.paths.clone();
         let logs_dir = paths.app_logs_dir();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client,
@@ -756,7 +766,7 @@ mod tests {
                 .unwrap();
             let mut stream = response.into_body().into_data_stream();
             stream.next().await.unwrap().unwrap();
-            let name = <crate::client::StateChangedEvent as tauri_specta::Event>::NAME;
+            let name = <crate::adapters::events::StateChangedEvent as tauri_specta::Event>::NAME;
             for sequence in 0..300 {
                 events.publish(name, serde_json::json!(sequence));
             }
@@ -795,7 +805,7 @@ mod tests {
                     .unwrap()
                     .contains("\"sequence\":1")
             );
-            let name = <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME;
+            let name = <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME;
             let response = app
                 .oneshot(
                     Request::get(format!("/bridge/events?name={name}"))
@@ -850,7 +860,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         struct Probe(AtomicUsize);
         #[async_trait::async_trait]
-        impl crate::client::DirectEgressProbe for Probe {
+        impl nyanpasu_core::client::direct_egress::DirectEgressProbe for Probe {
             async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Some("203.0.113.7".parse().unwrap())
@@ -861,14 +871,16 @@ mod tests {
         }
         let directory = tempfile::tempdir().unwrap();
         let probe = Arc::new(Probe(AtomicUsize::new(0)));
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
+        let mut args = tauri::async_runtime::block_on(
+            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            ),
         );
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
-            client: NyanpasuClient::try_new_with_args(args).unwrap(),
+            client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
             events: EventBus::new(),
@@ -914,7 +926,7 @@ mod tests {
 
     #[test]
     fn provider_query_returns_summaries_over_http() {
-        use crate::core::actor_v2::api::tests::{endpoint, server};
+        use nyanpasu_core::actor_v2::test_support::{endpoint, server};
         use serde_json::json;
 
         let (url, core_server) = tauri::async_runtime::block_on(server(
@@ -948,9 +960,14 @@ mod tests {
                 ),
         ));
         let directory = tempfile::tempdir().unwrap();
-        let args = crate::client::tests::test_client_args_with_endpoint(&directory, endpoint(url));
+        let args = tauri::async_runtime::block_on(
+            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+                &directory,
+                endpoint(url),
+            ),
+        );
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1020,11 +1037,11 @@ mod tests {
 
     #[tokio::test]
     async fn connection_details_send_current_and_new_frames_and_release_demand() {
-        use crate::core::clash::ws::ClashConnectionDetails;
+        use nyanpasu_core::clash::ws::ClashConnectionDetails;
         let frame = |sequence| {
             Some(Arc::new(ClashConnectionDetails {
                 sequence,
-                connections: crate::core::clash::connection_rates::ConnectionDetails::new(
+                connections: nyanpasu_core::clash::connection_rates::ConnectionDetails::new(
                     Arc::new(clash_api::ConnectionsSnapshot {
                         download_total: 0,
                         upload_total: 0,
@@ -1066,15 +1083,18 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
+        let mut args = tauri::async_runtime::block_on(
+            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            ),
         );
-        args.http_frontend = Some(Frontend::Embedded(Arc::new(Assets)));
+        let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.http_routes = routes.clone();
+        args.host_adapters.debug_http =
+            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1127,9 +1147,11 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
-            &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
+        let mut args = tauri::async_runtime::block_on(
+            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            ),
         );
         // The browser fixture uses English accessible names on every host locale.
         let config = nyanpasu_config::application::NyanpasuAppConfig {
@@ -1138,7 +1160,7 @@ mod tests {
         };
         let mut application = Vec::new();
         nyanpasu_core::format::Format::serialize(
-            &crate::core::migration::modules::application::ApplicationFormat::default(),
+            &nyanpasu_core::migration::modules::application::ApplicationFormat::default(),
             &mut application,
             &config,
             None,
@@ -1148,8 +1170,8 @@ mod tests {
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
-                    crate::core::logs::PreparedCoreLog::new(&crate::core::logs::CoreLogRecord {
-                        source: crate::core::logs::CoreLogSource {
+                    nyanpasu_core::logs::PreparedCoreLog::new(&nyanpasu_core::logs::CoreLogRecord {
+                        source: nyanpasu_core::logs::CoreLogSource {
                             capture: "http-fixture".into(),
                             instance_id: "instance".into(),
                             core_kind: Some("Mihomo".into()),
@@ -1168,13 +1190,13 @@ mod tests {
                 .collect();
             args.logging.core.append(&batch).unwrap();
         }
-        args.http_frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
+        let frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
             Ok(url) => Frontend::Dev(url.parse().unwrap()),
             Err(_) => Frontend::Embedded(Arc::new(Dist(
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
-        use crate::client::frontend_events::{FrontendLogSink, SanitizedEvent};
+        use nyanpasu_core::client::frontend_events::{FrontendLogSink, SanitizedEvent};
         #[derive(Default)]
         struct RecordingSink(std::sync::Mutex<Vec<(String, SanitizedEvent)>>);
         impl FrontendLogSink for RecordingSink {
@@ -1189,9 +1211,10 @@ mod tests {
         let frontend_events = Arc::new(RecordingSink::default());
         args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.http_routes = routes.clone();
+        args.host_adapters.debug_http =
+            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
@@ -1208,8 +1231,8 @@ mod tests {
                 while logs.changed().await.is_ok() {
                     let status = logs.borrow_and_update().clone();
                     events.publish(
-                        <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
-                        serde_json::to_value(crate::core::logs::CoreLogsChanged { status })
+                        <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
+                        serde_json::to_value(crate::adapters::events::CoreLogsChanged { status })
                             .unwrap(),
                     );
                 }
@@ -1247,7 +1270,7 @@ mod tests {
                 .iter()
                 .filter(|(_, event)| event.event.message.contains("error reporting test"))
                 .collect();
-            use crate::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
+            use nyanpasu_core::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
             let kinds: Vec<_> = fixture
                 .iter()
                 .map(|(_, event)| (event.event.kind, event.event.level))

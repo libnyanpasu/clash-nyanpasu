@@ -33,7 +33,7 @@ generators.
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Prefer small crates; flat `rust_library` layout [chrome]                      | Conventional Cargo layout. Crates follow ownership and dependency boundaries ([Backend packages](backend-packages.md)), not size.                                                   |
 | Import at `Module` granularity                                                | Keep rustfmt's `imports_granularity = 'Crate'`. A workspace-wide import rewrite does not justify its churn.                                                                         |
-| Don't implement APIs in non-leaf modules                                      | A capability's `mod.rs` may also hold its typed client (for example `SystemProxyClient` in `client/system_proxy/mod.rs`), because that client is the capability's public interface. |
+| Don't implement APIs in non-leaf modules                                      | A capability's `mod.rs` may hold its typed client (such as `SystemProxyClient` in `nyanpasu-core/src/client/system_proxy/mod.rs`), because it is the capability's public interface. |
 | No `async`/`.await`; no `std` threads; `fuchsia_sync`; gtest [chrome/Fuchsia] | Tokio and ractor are the runtime. `std::thread` is allowed for a stated reason. Tests use `#[test]` and `#[tokio::test]`.                                                           |
 | Prefer generics over `dyn Trait`                                              | Injected ports use `dyn Trait`; generics stay for reusable computation (section 5.3).                                                                                               |
 | Never reach inside a poisoned mutex; no `catch_unwind`                        | Poison recovery is prohibited without exception (section 7.4). `catch_unwind` is prohibited except through the conditional use in section 7.3.                                      |
@@ -103,7 +103,8 @@ not build it (`backend/tauri/Cargo.toml`).
 
 - Give a leaf module one responsibility, and name it after its primary item or, inside
   a capability directory, after its role: `actor.rs`, `ports.rs`, `adapters.rs`,
-  `error.rs`, `tests.rs` (see `client/system_proxy/` and `client/hotkey/`).
+  `error.rs`, `tests.rs` (see `nyanpasu-core/src/client/system_proxy/` and
+  `nyanpasu-core/src/client/hotkey/`).
 - Non-leaf modules contain declarations, re-exports, a small amount of wiring, and the
   typed client exception in section 2. Split a `mod.rs` that grows beyond that.
 - Use the narrowest visibility that serves real consumers: private, then `pub(super)`
@@ -144,8 +145,10 @@ APIs for callers that do not exist.
 - Avoid `impl Into<T>` parameters in application code unless several real call sites
   pass different types.
 - Replace a `bool` parameter whose meaning is unclear at the call site with an enum.
-  Opposing conventions such as `automatic: bool` (`client/app_update/`) and
-  `explicit: bool` (`application_workflow/tcc.rs`) for the same idea should share one
+  Opposing conventions such as `automatic: bool`
+  (`nyanpasu-core/src/client/app_update/`) and
+  `explicit: bool` (`nyanpasu-core/src/client/application_workflow/tcc.rs`) for
+  the same idea should share one
   enum. A clear binary setting, such as `set_debug_http_enabled(enabled: bool)` or a
   serialized `enabled` field, stays a `bool`.
 - Use a newtype when values with the same representation mean different things:
@@ -197,7 +200,7 @@ deep copy; do not deep-clone only to silence the borrow checker, especially in
   handled.
 - When matching a foreign non-exhaustive enum, list the known variants and give the
   wildcard arm conservative, deliberate behavior (`CoreState` in
-  `core/actor_v2/endpoint.rs`).
+  `nyanpasu-core/src/actor_v2/endpoint.rs`).
 - Use `#[must_use]` on pure functions, builders, guards, and results that the caller
   must act on (`WindowTable::set_watchdog`). `Result` and futures already have it.
 - Mark a public function `const` only when it can reasonably stay `const`.
@@ -415,7 +418,7 @@ behavior verification; do not mix it into feature work.
 6. **Failure contracts.** Replace production bare `unwrap()` and check-then-unwrap
    with pattern matching, `Result`, or an `expect()` that states the invariant.
 7. **Module dependencies.** Qualify non-local free functions and move substantial
-   implementations out of non-leaf modules (`tauri/src/client/mod.rs`,
+   implementations out of non-leaf modules (`nyanpasu-core/src/client/mod.rs`,
    `use crate::core::*` in `tauri/src/ipc.rs`).
 8. **Logging and errors.** Replace remaining `log` macros with `tracing`, and replace
    string-bucket error variants with domain variants.

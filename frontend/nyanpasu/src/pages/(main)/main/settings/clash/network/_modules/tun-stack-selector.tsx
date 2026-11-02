@@ -1,5 +1,5 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
@@ -10,7 +10,11 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useClashSetting, useRuntimeProfile, useSetting } from '@nyanpasu/query'
+import {
+  useClashSetting,
+  useConfigFeatures,
+  useRuntimeProfile,
+} from '@nyanpasu/query'
 import { TunStack } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
@@ -21,8 +25,16 @@ import {
   SettingsCardContent,
 } from '../../../../_modules/settings-card'
 
+const TUN_STACK_LABELS: Record<TunStack, string> = {
+  system: 'System',
+  gvisor: 'gVisor',
+  mixed: 'Mixed',
+  // mihomo's own stack, not the MIPS processor architecture.
+  mips: 'Mips (Mihomo IP Stack)',
+}
+
 export default function TunStackSelector() {
-  const coreType = useSetting('core')
+  const features = useConfigFeatures()
 
   const tunStack = useClashSetting('tun_stack')
 
@@ -30,31 +42,12 @@ export default function TunStackSelector() {
 
   const runtimeProfile = useRuntimeProfile()
 
-  const tunStackOptions = useMemo(() => {
-    const options: {
-      [key: string]: string
-    } = {
-      system: 'System',
-      gvisor: 'gVisor',
-      mixed: 'Mixed',
-    }
-
-    // clash not support mixed
-    if (coreType.value === 'clash') {
-      delete options.mixed
-    }
-    return options
-  }, [coreType.value])
-
-  const currentTunStack = useMemo(() => {
-    const stack = tunStack.value || 'gvisor'
-    return stack in tunStackOptions ? stack : 'gvisor'
-  }, [tunStackOptions, tunStack.value])
+  const stacks = features.data?.tun.stack
 
   const handleTunStackChange = useCallback(
-    async (value: string) => {
+    async (value: TunStack) => {
       try {
-        await tunStack.upsert(value as TunStack)
+        await tunStack.upsert(value)
 
         if (enableTunMode.value) {
           // just to reload clash config
@@ -74,6 +67,11 @@ export default function TunStackSelector() {
     [tunStack, enableTunMode, runtimeProfile],
   )
 
+  // A core that does not read the stack has nothing to choose.
+  if (stacks?.kind !== 'values') {
+    return null
+  }
+
   return (
     <SettingsCard data-slot="tun-stack-selector-card">
       <DropdownMenu align="end">
@@ -87,7 +85,7 @@ export default function TunStackSelector() {
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {currentTunStack ? tunStackOptions[currentTunStack] : null}
+                    {tunStack.value ? TUN_STACK_LABELS[tunStack.value] : null}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -98,13 +96,13 @@ export default function TunStackSelector() {
         </DropdownMenuTrigger>
 
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
-          {Object.entries(tunStackOptions).map(([key, message]) => (
+          {stacks.value.map((stack) => (
             <DropdownMenuCheckboxItem
-              checked={tunStack.value === key}
-              key={key}
-              onSelect={() => handleTunStackChange(key)}
+              checked={tunStack.value === stack}
+              key={stack}
+              onSelect={() => handleTunStackChange(stack)}
             >
-              {message}
+              {TUN_STACK_LABELS[stack]}
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>

@@ -1,6 +1,5 @@
 import { ComponentProps } from 'react'
-import { Button } from '@nyanpasu/ui/button'
-import { Menubar } from '@nyanpasu/ui/menubar'
+import { Menubar, menubarTriggerVariants } from '@nyanpasu/ui/menubar'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
@@ -18,16 +17,14 @@ const UpdateButton = () => {
 
   return (
     <div className="relative">
-      <Button
-        className="hover:bg-primary-container dark:hover:bg-on-primary h-8 min-w-0 px-3"
-        asChild
+      <Link
+        to="/main/settings/nyanpasu/updates"
+        className={cn(menubarTriggerVariants(), 'min-h-8 py-1')}
       >
-        <Link to="/main/settings/nyanpasu/updates">
-          {isReady
-            ? m.settings_about_update_ready_header()
-            : m.header_new_version()}
-        </Link>
-      </Button>
+        {isReady
+          ? m.settings_about_update_ready_header()
+          : m.header_new_version()}
+      </Link>
 
       <span className="bg-on-error-container absolute top-1 right-0.5 size-1.5 rounded-full" />
 

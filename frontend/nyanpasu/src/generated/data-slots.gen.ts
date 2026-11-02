@@ -303,6 +303,8 @@ export const DATA_SLOTS = [
   'menubar-sub-content',
   'menubar-sub-trigger',
   'menubar-trigger',
+  'mips-congestion-controller-selector-card',
+  'mips-congestion-controller-selector-trigger',
   'mixed-port-config-card',
   'mobile-navbar-container',
   'modal-content',

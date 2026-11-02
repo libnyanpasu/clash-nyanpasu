@@ -165,6 +165,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getClashConfig', ...args],
         queryFn: () => commands.getClashConfig(...args),
       }),
+    getConfigFeatures: (
+      ...args: Parameters<typeof commands.getConfigFeatures>
+    ) =>
+      queryOptions({
+        queryKey: ['getConfigFeatures', ...args],
+        queryFn: () => commands.getConfigFeatures(...args),
+      }),
     getHotkeyFunctions: (
       ...args: Parameters<typeof commands.getHotkeyFunctions>
     ) =>

@@ -259,8 +259,8 @@ test('classification: bridge path boundaries', () => {
   assert(isBridgePath('backend/tauri/src/bridge/mod.rs'))
   assert(isBridgePath('backend/tauri/src/client/core_bridge.rs'))
   assert(isBridgePath('backend/tauri/src/enhance/artifact_bridge.rs'))
-  assertFalse(isBridgePath('backend/tauri/src/client/mod.rs'))
-  assertFalse(isBridgePath('backend/tauri/src/core/clash/core.rs'))
+  assertFalse(isBridgePath('backend/nyanpasu-core/src/client/mod.rs'))
+  assertFalse(isBridgePath('backend/nyanpasu-core/src/clash/core.rs'))
 })
 
 test('classification: dedicated test path boundaries', () => {
@@ -268,7 +268,7 @@ test('classification: dedicated test path boundaries', () => {
   assert(isDedicatedTestPath('backend/tauri/src/foo_test.rs'))
   assert(isDedicatedTestPath('backend/tauri/src/test.rs'))
   assert(isDedicatedTestPath('backend/tauri/src/utils/tests.rs'))
-  assertFalse(isDedicatedTestPath('backend/tauri/src/client/mod.rs'))
+  assertFalse(isDedicatedTestPath('backend/nyanpasu-core/src/client/mod.rs'))
   assertFalse(isDedicatedTestPath('backend/tauri/src/testing_helpers.rs'))
   assertFalse(isDedicatedTestPath('backend/tauri/src/contest.rs'))
 })
@@ -441,7 +441,7 @@ fn guard(_: &IClashTemp) {}
 `
   const schema = createBuckets()
   scanFile(
-    'backend/tauri/src/core/migration/legacy_schema/verge.rs',
+    'backend/nyanpasu-core/src/migration/legacy_schema/verge.rs',
     source,
     schema,
   )
@@ -449,7 +449,7 @@ fn guard(_: &IClashTemp) {}
 
   // Only that directory: look-alike paths still count.
   for (const relPath of [
-    'backend/tauri/src/core/migration/legacy_schema.rs',
+    'backend/nyanpasu-core/src/migration/legacy_schema.rs',
     'backend/tauri/src/client/legacy_schema/verge.rs',
   ]) {
     assertFalse(isLegacyDtoAllowlisted(relPath), relPath)
@@ -466,7 +466,7 @@ fn read(_: &IVerge) {}
 `
   const reader = createBuckets()
   scanFile(
-    'backend/tauri/src/core/migration/modules/typed_config.rs',
+    'backend/nyanpasu-core/src/migration/modules/typed_config.rs',
     source,
     reader,
   )
@@ -475,9 +475,9 @@ fn read(_: &IVerge) {}
   // A file entry covers exactly that file: sibling modules and paths that
   // merely start with its name still count.
   for (const relPath of [
-    'backend/tauri/src/core/migration/modules/app_config.rs',
-    'backend/tauri/src/core/migration/modules/typed_config.rs.orig',
-    'backend/tauri/src/core/migration/modules/typed_config/mod.rs',
+    'backend/nyanpasu-core/src/migration/modules/app_config.rs',
+    'backend/nyanpasu-core/src/migration/modules/typed_config.rs.orig',
+    'backend/nyanpasu-core/src/migration/modules/typed_config/mod.rs',
   ]) {
     assertFalse(isLegacyDtoAllowlisted(relPath), relPath)
     const buckets = createBuckets()
@@ -956,7 +956,7 @@ test('scanFile: the static allowlist matches path and name exactly, and other li
 })
 
 test('scanFile: an entry covers no static once its name is declared twice in the file', () => {
-  const path = 'backend/tauri/src/core/migration/modules/app_config.rs'
+  const path = 'backend/nyanpasu-core/src/migration/modules/app_config.rs'
   const key = staticAllowlistKey(path, 'VERSION_2_0_0')
   const buckets = createBuckets()
   scanFile(

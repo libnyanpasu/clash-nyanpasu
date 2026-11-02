@@ -1,0 +1,212 @@
+//! The concrete boundary implementations. This is the only file in the module
+//! allowed to name Tauri.
+
+use std::sync::Arc;
+
+use nyanpasu_config::application::{
+    I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NetworkStatisticWidgetLogoSource,
+};
+use nyanpasu_paths::PathResolver;
+use nyanpasu_widget_protocol::{Logo, StatisticWidgetVariant};
+use snafu::{OptionExt as _, ResultExt as _};
+
+use super::ports::{WIDGET_STOP_BOUND, WidgetRuntime};
+use crate::{
+    core::tray::{Tray, TrayWork, icon::TrayIcon},
+    utils::init::logging::ReloadSignal,
+};
+use nyanpasu_core::client::effects::{
+    plan::{TrayView, WidgetLogoState},
+    ports::{
+        LocaleSink, LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu,
+        ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WidgetController, WidgetError,
+    },
+};
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum InstallError {
+    #[snafu(display("the widget runtime was installed twice"))]
+    AlreadyInstalled,
+}
+
+/// The `rust_i18n` locale.
+///
+/// It is a crate-level process global with no injection point of its own, so
+/// the honest thing is to name it once, here, and let every caller depend on
+/// the port instead.
+#[derive(Debug, Default)]
+pub struct RustI18nLocaleSink;
+
+impl LocaleSink for RustI18nLocaleSink {
+    fn set_locale(&self, language: I18nLanguage) {
+        rust_i18n::set_locale(language.as_str());
+    }
+}
+
+/// The system tray, through the handle that owns it.
+///
+/// Each refresh first stores its view in the tray's managed state: every build
+/// and repaint renders from that cached view, including the rebuilds the tray
+/// starts on its own when the proxy list changes. It then requests the work,
+/// which the tray runs on the main thread (GTK) on its own; the effect
+/// executor only asked for a refresh.
+pub struct TauriTrayRefresher<R: tauri::Runtime = tauri::Wry> {
+    app_handle: tauri::AppHandle<R>,
+}
+
+impl<R: tauri::Runtime> TauriTrayRefresher<R> {
+    pub fn new(app_handle: tauri::AppHandle<R>) -> Self {
+        Self { app_handle }
+    }
+}
+
+// Wry only: the tray publishes Wry menus. A refresh only queues its work, so
+// the effect degrades only when queueing fails. A failure while the tray
+// applies the work is logged there, and a menu it left unknown heals itself:
+// the next request of any kind rebuilds it.
+#[async_trait::async_trait]
+impl TrayRefresher for TauriTrayRefresher<tauri::Wry> {
+    async fn refresh_full(&self, view: TrayView) -> Result<(), TrayError> {
+        Tray::store_view(&self.app_handle, view);
+        Tray::request(&self.app_handle, TrayWork::REBUILD)
+            .boxed()
+            .context(ScheduleTrayWorkSnafu)
+    }
+
+    async fn refresh_part(&self, view: TrayView) -> Result<(), TrayError> {
+        Tray::store_view(&self.app_handle, view);
+        Tray::request(&self.app_handle, TrayWork::PART)
+            .boxed()
+            .context(ScheduleTrayWorkSnafu)
+    }
+}
+
+/// The running `tracing` subscriber, through the reload channel that
+/// initializing it returned.
+#[derive(Debug)]
+pub struct TracingLoggerRefresher {
+    reload: std::sync::mpsc::Sender<ReloadSignal>,
+}
+
+impl TracingLoggerRefresher {
+    pub fn new(reload: std::sync::mpsc::Sender<ReloadSignal>) -> Self {
+        Self { reload }
+    }
+}
+
+impl LoggerRefresher for TracingLoggerRefresher {
+    fn refresh(
+        &self,
+        level: Option<LoggingLevel>,
+        rotation: Option<LogRotation>,
+    ) -> Result<(), LoggerError> {
+        self.reload
+            .send(ReloadSignal::Reload(level, rotation))
+            .ok()
+            .context(ReloadThreadStoppedSnafu)
+    }
+}
+
+/// The network statistic widget, bound after the client exists.
+///
+/// The widget needs a subscription to the client's connection stream, and the
+/// client needs this controller — the two cannot both be built first. The
+/// composition root therefore builds this empty, hands it to the executor, and
+/// fills it in once the widget is up. It is a one-shot cell owned by the
+/// composition root, not a global: nothing can look it up.
+pub struct TauriWidgetController {
+    /// Where the icons the logo shows are stored.
+    paths: PathResolver,
+    runtime: tokio::sync::OnceCell<Arc<dyn WidgetRuntime>>,
+    /// The variant this controller last started. Narrow implementation detail,
+    /// not shared state: only `apply` touches it, and it exists so a repeated
+    /// configuration does not tear the widget down and build it again.
+    started: tokio::sync::Mutex<Option<StatisticWidgetVariant>>,
+}
+
+impl TauriWidgetController {
+    pub fn new(paths: PathResolver) -> Self {
+        Self {
+            paths,
+            runtime: tokio::sync::OnceCell::new(),
+            started: tokio::sync::Mutex::new(None),
+        }
+    }
+
+    /// Called once by the composition root, after the widget is running.
+    pub fn install(&self, runtime: Arc<dyn WidgetRuntime>) -> Result<(), InstallError> {
+        self.runtime
+            .set(runtime)
+            .map_err(|_| InstallError::AlreadyInstalled)
+    }
+
+    fn runtime(&self) -> Result<&Arc<dyn WidgetRuntime>, WidgetError> {
+        self.runtime.get().ok_or(WidgetError::Unavailable)
+    }
+}
+
+#[async_trait::async_trait]
+impl WidgetController for TauriWidgetController {
+    async fn apply(&self, config: NetworkStatisticWidgetConfig) -> Result<(), WidgetError> {
+        let runtime = self.runtime()?;
+        let mut started = self.started.lock().await;
+        match config {
+            NetworkStatisticWidgetConfig::Disabled => {
+                // Unconditional: a start that failed and could not clean up
+                // keeps its widget owned without running. With nothing owned
+                // the stop is a no-op.
+                runtime
+                    .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+                    .await?;
+                *started = None;
+            }
+            NetworkStatisticWidgetConfig::Enabled(variant) => {
+                // A reconcile repeats the whole desired state, so the same
+                // variant arrives on every unrelated settings change. Starting
+                // it again would stop and respawn a widget the user is looking
+                // at.
+                if *started == Some(variant) && runtime.is_running().await {
+                    return Ok(());
+                }
+                runtime.start(variant).await?;
+                *started = Some(variant);
+            }
+        }
+        Ok(())
+    }
+
+    async fn show_logo(
+        &self,
+        source: NetworkStatisticWidgetLogoSource,
+        state: WidgetLogoState,
+    ) -> Result<(), WidgetError> {
+        let runtime = self.runtime()?;
+        let state = match state {
+            WidgetLogoState::Normal => TrayIcon::Normal,
+            WidgetLogoState::Tun => TrayIcon::Tun,
+            WidgetLogoState::SystemProxy => TrayIcon::SystemProxy,
+        };
+        let logo = crate::core::widget_logo::resolve(&self.paths, source, state);
+        runtime.set_logo(logo).await;
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl WidgetRuntime for crate::widget::WidgetManager {
+    async fn start(&self, variant: StatisticWidgetVariant) -> Result<(), WidgetError> {
+        crate::widget::WidgetManager::start(self, variant).await
+    }
+
+    async fn stop(&self, deadline: tokio::time::Instant) -> Result<(), WidgetError> {
+        crate::widget::WidgetManager::stop(self, deadline).await
+    }
+
+    async fn is_running(&self) -> bool {
+        crate::widget::WidgetManager::is_running(self).await
+    }
+
+    async fn set_logo(&self, logo: Logo) {
+        crate::widget::WidgetManager::set_logo(self, logo).await
+    }
+}

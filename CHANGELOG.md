@@ -1,3 +1,51 @@
+## [2.0.1] - 2026-10-31
+
+### ✨ Features
+
+- **config:** Add the mips TUN stack and its congestion controller (#6098) by @greenhat616 in [#6098](https://github.com/libnyanpasu/clash-nyanpasu/pull/6098)
+
+- **config:** Decide the TUN stack from each core's config features (#6097) by @greenhat616 in [#6097](https://github.com/libnyanpasu/clash-nyanpasu/pull/6097)
+
+- **settings:** Offer the TUN stacks and mips options the core reads (#6099) by @greenhat616 in [#6099](https://github.com/libnyanpasu/clash-nyanpasu/pull/6099)
+
+- **startup:** Report failures in a dialog instead of panicking (#6063) by @greenhat616 in [#6063](https://github.com/libnyanpasu/clash-nyanpasu/pull/6063)
+
+- **windows:** Bundle the Windows App SDK bootstrapper with enableLoopback (#6043) by @greenhat616 in [#6043](https://github.com/libnyanpasu/clash-nyanpasu/pull/6043)
+
+### 🐛 Bug Fixes
+
+- **jobs:** Rebuild an unusable jobs journal instead of failing to start (#6069) by @greenhat616 in [#6069](https://github.com/libnyanpasu/clash-nyanpasu/pull/6069)
+
+- **service:** Require service 2.0.2 (#6045) by @greenhat616 in [#6045](https://github.com/libnyanpasu/clash-nyanpasu/pull/6045)
+
+- **startup:** Handle environment failures before and around setup (#6064) by @greenhat616 in [#6064](https://github.com/libnyanpasu/clash-nyanpasu/pull/6064)
+
+- **startup:** Rebuild corrupt local data instead of failing to start (#6062) by @greenhat616 in [#6062](https://github.com/libnyanpasu/clash-nyanpasu/pull/6062)
+
+- Align update link with header menu (#6109) by @keiko233 in [#6109](https://github.com/libnyanpasu/clash-nyanpasu/pull/6109)
+
+- Prevent logo animation edge artifacts (#6041) by @keiko233 in [#6041](https://github.com/libnyanpasu/clash-nyanpasu/pull/6041)
+
+- Prevent page title artifacts while scrolling (#6040) by @keiko233 in [#6040](https://github.com/libnyanpasu/clash-nyanpasu/pull/6040)
+
+- Prevent sparkline stretching on new peaks (#6039) by @keiko233 in [#6039](https://github.com/libnyanpasu/clash-nyanpasu/pull/6039)
+
+### 📚 Documentation
+
+- **config:** Design core feature queries and the TUN mips stack (#6096) by @greenhat616 in [#6096](https://github.com/libnyanpasu/clash-nyanpasu/pull/6096)
+
+- **design:** Add domain error design notes (#6083) by @greenhat616 in [#6083](https://github.com/libnyanpasu/clash-nyanpasu/pull/6083)
+
+- Plan startup failure handling without setup panics (#6060) by @greenhat616 in [#6060](https://github.com/libnyanpasu/clash-nyanpasu/pull/6060)
+
+### 🔨 Refactor
+
+- **setup:** Report startup failures as domain errors (#6061) by @greenhat616 in [#6061](https://github.com/libnyanpasu/clash-nyanpasu/pull/6061)
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0...v2.0.1
+
 ## [2.0.0] - 2026-10-27
 
 ### ⚡ Performance Improvements

@@ -1,10 +1,10 @@
 //! Desktop adapters and composition for the shared diagnosis.
-use crate::{
-    client::{NyanpasuClient, core_version::CoreVersionReader},
-    core::logs::{CoreLogExport, CoreLogStore, RedbCoreLogStore},
-};
 use nyanpasu_config::application::NyanpasuAppConfig;
-use nyanpasu_core::format::Format;
+use nyanpasu_core::{
+    client::{NyanpasuClient, core_version::CoreVersionReader},
+    format::Format,
+    logs::{CoreLogExport, CoreLogStore, RedbCoreLogStore},
+};
 use nyanpasu_diagnose::{
     Action, Event, Step,
     archive::{Archive, LOG_CAP},
@@ -42,7 +42,7 @@ fn core_from_config(
     // The same typed formatter as ApplicationClient's persistence; no ad hoc YAML parser.
     let file = std::fs::File::open(paths.application_config_path()).map_err(|e| e.to_string())?;
     let config: NyanpasuAppConfig =
-        crate::core::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_core::migration::modules::application::ApplicationFormat::default()
             .deserialize(file)
             .map_err(|e| e.to_string())?;
     let version = runtime.block_on(super::core_version::SidecarCoreVersionReader.read(config.core));
@@ -208,7 +208,7 @@ pub async fn logs_archive(
     paths: PathResolver,
     client: NyanpasuClient,
 ) -> anyhow::Result<std::path::PathBuf> {
-    super::blocking::join(
+    nyanpasu_core::utils::blocking::join(
         tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Handle::current();
             let steps: Vec<(Step, Action<'_>)> = vec![

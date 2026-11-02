@@ -67,14 +67,6 @@
       "show_in_folder": "フォルダーに表示"
     },
     "panic": "この問題を GitHub の Issue トラッカーに報告してください。",
-    "migration_failed": {
-      "open_backups": "バックアップフォルダーを開く",
-      "open_log": "移行ログを開く",
-      "exit": "終了",
-      "backup_kept": "移行の前に、設定を %{path} にバックアップしました。そのフォルダー内の最新の `migration-*` フォルダーが、今回の実行前に取得されたバックアップです。",
-      "recovery": "復旧するには、アプリを終了し、バックアップの `config` フォルダーを設定ディレクトリに上書きコピーして、`data/storage.db` をデータディレクトリ内の同名ファイルに上書きコピーしてください。その後、以前使用していたバージョンをインストールするか、migration.log を添えて新しい Issue を提出してください。",
-      "not_modified": "バックアップを作成できなかったため、設定ファイルは変更されていません。空きディスク容量とフォルダーの権限を確認してから再試行するか、migration.log を添えて新しい Issue を提出してください。"
-    },
     "migrate": "古いバージョンの設定ファイルが見つかりました。新しいバージョンに移行しますか？\n警告：既存の設定がある場合は、現在の設定が上書きされます",
     "custom_app_dir_migrate": "アプリのディレクトリを %{path} に設定します。\n現在のアプリのディレクトリを新しい場所に移動しますか？",
     "warning": {
@@ -82,6 +74,66 @@
     },
     "info": {
       "grant_core_permission": "TUN モードを正しく動作させるには、Clash コアに管理者権限が必要です。権限を付与しますか？\nこの操作にはパスワードの入力が必要です。"
+    },
+    "startup_failure": {
+      "unresolved_path": "パスを解決できませんでした。以下の詳細を確認してください。",
+      "heading": "起動できませんでした",
+      "path": "パス",
+      "details": "詳細",
+      "open_containing": "ファイルの場所を開く",
+      "open_backups": "バックアップフォルダーを開く",
+      "open_logs": "ログフォルダーを開く",
+      "copy": "詳細をコピー",
+      "copied": "コピーしました",
+      "copy_failed": "コピーできませんでした",
+      "open_failed": "フォルダーを開けませんでした",
+      "exit": "終了",
+      "directories": {
+        "description": "アプリのディレクトリを使用できません。",
+        "recovery": "権限とディスクの空き容量を確認してください。ポータブル版は書き込み可能な場所に移動してください。"
+      },
+      "migration_failed": {
+        "description": "設定の移行を完了できませんでした。",
+        "recovery": "表示された問題を修正するか、利用可能なバックアップから設定を復元してください。"
+      },
+      "newer_version": {
+        "description": "これらのファイルは新しいバージョンで作成されました。",
+        "recovery": "新しいバージョンの Clash Nyanpasu をインストールするか、互換性のあるバックアップを復元してください。"
+      },
+      "user_config": {
+        "description": "設定ファイルの読み込みまたは検証に失敗しました。",
+        "recovery": "以下のファイルを修正するか、バックアップフォルダーから復元してください。"
+      },
+      "core_runtime_directory": {
+        "description": "コアの実行ディレクトリを使用できません。",
+        "recovery": "まず権限を確認してください。すべての Clash Nyanpasu プロセスを終了してから、このディレクトリを削除して再起動できます。"
+      },
+      "jobs_database": {
+        "description": "タスクデータベースを使用できません。",
+        "recovery": "このファイルにはタスク履歴のみが保存されています。jobs.redb を削除または移動してから再起動できます。"
+      },
+      "web_view2": {
+        "description": "WebView2 ランタイムを使用できません。",
+        "recovery": "ポータブル版を再ダウンロードするか、Clash Nyanpasu を再インストールしてください。",
+        "portable_recovery": "ポータブル版パッケージを再ダウンロードしてください。",
+        "installed_recovery": "Clash Nyanpasu を再インストールしてください。"
+      },
+      "logging": {
+        "description": "アプリのログを使用できません。",
+        "recovery": "ログ保存先の権限とディスクの空き容量を確認してください。"
+      },
+      "permission": {
+        "description": "必要なファイルまたはディレクトリへのアクセスが拒否されました。",
+        "recovery": "以下のパスの権限を確認し、現在のアカウントで読み書きできるようにしてください。"
+      },
+      "busy": {
+        "description": "必要なファイルまたはディレクトリが使用中です。",
+        "recovery": "他の Clash Nyanpasu プロセスを終了し、ファイルのロックを解除してから再起動してください。"
+      },
+      "internal": {
+        "description": "内部エラーにより起動できませんでした。",
+        "recovery": "詳細をコピーし、バージョンとログを添えて問題を報告してください。"
+      }
     }
   },
   "setting": {

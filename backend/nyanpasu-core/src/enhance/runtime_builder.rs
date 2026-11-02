@@ -8,16 +8,19 @@ use std::sync::Arc;
 
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
-    clash::config::{ClashConfig, tun_stack::TunStack},
+    clash::{
+        config::{ClashConfig, tun_stack::SelectedTunStack},
+        features::{FieldSupport, TunFeatures, UnsupportedConfigValue},
+    },
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
         BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
         RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, StepLogEntry,
-        TransformFailure, TunFlavor, TunParams, execute,
+        TransformFailure, TunFlavor, TunParams, TunStackWrite, execute,
     },
 };
 use serde::Serialize;
-use snafu::{ResultExt, Snafu};
+use snafu::{ResultExt, Snafu, ensure};
 
 #[derive(Debug, Serialize, specta::Type)]
 pub struct RuntimeBuildLog {
@@ -51,6 +54,9 @@ pub enum RuntimeBuildError {
     },
     #[snafu(display("the final config is not a mapping"))]
     ConfigNotMapping,
+    /// The profiles or transforms wrote values the selected core rejects.
+    #[snafu(display("the selected core does not support {values:?}"))]
+    UnsupportedConfigValues { values: Vec<UnsupportedConfigValue> },
 }
 
 pub struct RuntimeBuildInput {
@@ -104,18 +110,33 @@ pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
         .collect()
 }
 
-/// Legacy tun derivation (enhance/tun.rs:47-60), quirks preserved: only
-/// `ClashRs` (not Alpha) takes the ClashRs branch; Premium+Mixed → Gvisor.
-pub fn derive_tun_flavor(core: ClashCore, stack: TunStack) -> TunFlavor {
+/// Only `ClashRs` (not Alpha) takes the ClashRs branch, a legacy quirk
+/// (enhance/tun.rs:47). The stack and its options follow the core's config
+/// features.
+pub fn derive_tun_flavor(core: ClashCore, selected: SelectedTunStack<'_>) -> TunFlavor {
     if core == ClashCore::ClashRs {
         return TunFlavor::ClashRs;
     }
-    let stack = if core == ClashCore::ClashPremium && stack == TunStack::Mixed {
-        TunStack::Gvisor
-    } else {
-        stack
+    let features = core.config_features().tun;
+    let stack = match features.stack {
+        FieldSupport::Ignored => TunStackWrite::Omitted,
+        support if support.supports(&selected.stack()) => TunStackWrite::Selected(selected.stack()),
+        FieldSupport::Values(_) => TunStackWrite::Downgraded {
+            selected: selected.stack(),
+            written: TunFeatures::FALLBACK_STACK,
+        },
     };
-    TunFlavor::Standard { stack }
+    // A downgraded stack drops the options of the stack that was selected.
+    let congestion_controller = match (stack, selected) {
+        (TunStackWrite::Selected(_), SelectedTunStack::Mips(mips)) => mips
+            .congestion_controller
+            .filter(|controller| features.congestion_controller.supports(controller)),
+        _ => None,
+    };
+    TunFlavor::Standard {
+        stack,
+        congestion_controller,
+    }
 }
 
 pub struct RuntimeBuilder;
@@ -176,13 +197,23 @@ impl RuntimeBuilder {
             tun: TunParams {
                 enable: input.clash.enable_tun_mode,
                 overrides: input.clash.tun,
-                flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
+                flavor: derive_tun_flavor(input.app.core, input.clash.selected_tun_stack()),
                 windows_fake_ip_filter: cfg!(windows),
             },
             expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,
         };
-        execute(&inputs, content, scripts).context(RunPipelineSnafu)
+        let artifact = execute(&inputs, content, scripts).context(RunPipelineSnafu)?;
+
+        // The core parses these keys whether TUN is on or not, and rejects the
+        // whole config on a value it does not know.
+        let values = input
+            .app
+            .core
+            .config_features()
+            .unsupported_values(&artifact.final_config);
+        ensure!(values.is_empty(), UnsupportedConfigValuesSnafu { values });
+        Ok(artifact)
     }
 }
 
@@ -190,10 +221,17 @@ impl RuntimeBuilder {
 mod tests {
     use super::*;
     use nyanpasu_config::{
-        clash::config::overrides::ManageableField,
-        profile::{ManagedProfilePath, ProfileId, ScriptRuntime},
+        clash::config::{
+            overrides::ManageableField,
+            tun_stack::{MipsConfig, TunCongestionController, TunStack},
+        },
+        profile::{
+            ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+            ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource,
+            ScriptRuntime,
+        },
         runtime::{
-            executor::{PortError, StepLogEntry},
+            executor::{PortError, StepLogEntry, StepLogLevel},
             value::ConfigValue,
         },
     };
@@ -259,39 +297,175 @@ mod tests {
         );
     }
 
+    /// Serves one profile file whatever path is asked for.
+    struct OneFile(&'static str);
+    impl ProfileContentSource for OneFile {
+        fn read(&self, _: &ManagedProfilePath) -> Result<String, PortError> {
+            Ok(self.0.to_owned())
+        }
+    }
+
+    /// `base_input` with one selected config profile and no builtin
+    /// transforms.
+    fn profile_input(core: ClashCore) -> RuntimeBuildInput {
+        let uid = ProfileId("p".into());
+        let item = ProfileItem {
+            uid: uid.clone(),
+            metadata: ProfileMetadata {
+                name: "p".into(),
+                desc: None,
+                custom_name: true,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Local {
+                        binding: LocalBinding::Managed {
+                            materialized: MaterializedFile {
+                                file: ManagedProfilePath::new("p.yaml").unwrap(),
+                                updated_at: None,
+                            },
+                        },
+                    },
+                    transforms: Vec::new(),
+                }),
+            },
+        };
+        let mut profiles = Profiles::default();
+        profiles.items.insert(uid.clone(), item);
+        profiles.current = Some(uid);
+
+        let mut input = base_input();
+        input.profiles = Arc::new(profiles);
+        input.app.core = core;
+        input.app.enable_builtin_enhanced = false;
+        input
+    }
+
     #[test]
-    fn tun_flavor_derivation_matches_legacy_quirks() {
+    fn tun_flavor_follows_the_core_features() {
+        let standard = |stack, congestion_controller| TunFlavor::Standard {
+            stack,
+            congestion_controller,
+        };
         assert_eq!(
-            derive_tun_flavor(ClashCore::ClashRs, TunStack::Mixed),
+            derive_tun_flavor(ClashCore::ClashRs, SelectedTunStack::Mixed),
             TunFlavor::ClashRs
         );
-        // Alpha 走 Standard 分支(tun.rs:47 legacy 怪癖)
+        // Alpha keeps the Standard branch (tun.rs:47 legacy quirk), without a
+        // stack it does not read.
+        for core in [
+            ClashCore::ClashRsAlpha,
+            ClashCore::Meow,
+            ClashCore::MeowAlpha,
+        ] {
+            assert_eq!(
+                derive_tun_flavor(core, SelectedTunStack::Mixed),
+                standard(TunStackWrite::Omitted, None),
+                "{core}"
+            );
+        }
         assert_eq!(
-            derive_tun_flavor(ClashCore::ClashRsAlpha, TunStack::Mixed),
-            TunFlavor::Standard {
-                stack: TunStack::Mixed
-            }
+            derive_tun_flavor(ClashCore::Mihomo, SelectedTunStack::System),
+            standard(TunStackWrite::Selected(TunStack::System), None)
         );
-        // Premium + Mixed → Gvisor 降级(tun.rs:58-60)
+
+        let mips = MipsConfig {
+            congestion_controller: Some(TunCongestionController::Bbr),
+        };
         assert_eq!(
-            derive_tun_flavor(ClashCore::ClashPremium, TunStack::Mixed),
-            TunFlavor::Standard {
-                stack: TunStack::Gvisor
-            }
+            derive_tun_flavor(ClashCore::MihomoAlpha, SelectedTunStack::Mips(&mips)),
+            standard(
+                TunStackWrite::Selected(TunStack::Mips),
+                Some(TunCongestionController::Bbr)
+            )
         );
         assert_eq!(
-            derive_tun_flavor(ClashCore::Mihomo, TunStack::System),
-            TunFlavor::Standard {
-                stack: TunStack::System
-            }
+            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mips(&mips)),
+            standard(
+                TunStackWrite::Downgraded {
+                    selected: TunStack::Mips,
+                    written: TunStack::Gvisor,
+                },
+                None
+            )
         );
-        // meow-rs uses standard TUN path (mihomo-compatible)
         assert_eq!(
-            derive_tun_flavor(ClashCore::Meow, TunStack::Mixed),
-            TunFlavor::Standard {
-                stack: TunStack::Mixed
-            }
+            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mixed),
+            standard(
+                TunStackWrite::Downgraded {
+                    selected: TunStack::Mixed,
+                    written: TunStack::Gvisor,
+                },
+                None
+            )
         );
+    }
+
+    #[test]
+    fn mips_options_reach_the_runtime_only_while_mips_is_selected() {
+        let mut input = profile_input(ClashCore::Mihomo);
+        input.clash.enable_tun_mode = true;
+        input.clash.tun_mips.congestion_controller = Some(TunCongestionController::Bbr3);
+        for (stack, expected) in [(TunStack::Mips, Some("bbr3")), (TunStack::Gvisor, None)] {
+            input.clash.tun_stack = stack;
+            let config = RuntimeBuilder::build(&input, &OneFile("proxies: []\n"), &EchoRunner)
+                .unwrap()
+                .final_config
+                .to_json();
+            assert_eq!(
+                config["tun"].get("congestion-controller"),
+                expected.map(serde_json::Value::from).as_ref(),
+                "{stack:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_profile_stack_the_core_rejects_fails_the_build_while_tun_is_off() {
+        let input = profile_input(ClashCore::ClashPremium);
+        let error = RuntimeBuilder::build(
+            &input,
+            &OneFile(
+                "tun: { enable: false, stack: Mixed }
+",
+            ),
+            &EchoRunner,
+        )
+        .unwrap_err();
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "unsupported_config_values",
+                "values": [{ "path": "tun.stack", "value": "Mixed", "supported": ["system", "gvisor"] }],
+            })
+        );
+    }
+
+    #[test]
+    fn the_selected_stack_overrides_the_profile_stack_while_tun_is_on() {
+        let mut input = profile_input(ClashCore::ClashPremium);
+        input.clash.enable_tun_mode = true;
+        input.clash.tun_stack = TunStack::Mixed;
+        let artifact = RuntimeBuilder::build(
+            &input,
+            &OneFile(
+                "tun: { stack: mixed }
+",
+            ),
+            &EchoRunner,
+        )
+        .unwrap();
+        assert_eq!(
+            artifact.final_config.to_json()["tun"]["stack"],
+            serde_json::json!("gvisor")
+        );
+        let warnings: Vec<_> = artifact
+            .step_logs
+            .iter()
+            .flat_map(|log| &log.entries)
+            .filter(|entry| entry.level == StepLogLevel::Warn)
+            .collect();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
     }
 
     #[test]

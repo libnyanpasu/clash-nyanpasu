@@ -4,6 +4,6 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-fn main() {
-    clash_nyanpasu_lib::run().unwrap();
+fn main() -> std::process::ExitCode {
+    clash_nyanpasu_lib::run()
 }

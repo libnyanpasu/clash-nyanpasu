@@ -152,6 +152,8 @@ export function createRpcClient(
       ),
     getClashConfig: () =>
       typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
+    getConfigFeatures: () =>
+      typedError<ConfigFeatures, IpcError>(__RPC_INVOKE('get_config_features')),
     getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
     getProfiles: () =>
       typedError<ProfileDocument_Serialize, IpcError>(
@@ -918,6 +920,8 @@ export type ClashConfig = {
   break_connection: BreakConnectionStrategy
   /**  Tun 堆栈选择 */
   tun_stack: TunStack
+  /**  The options of the mips stack, kept while another stack is selected. */
+  tun_mips?: MipsConfig
 }
 
 export type ClashConfigPatch =
@@ -938,6 +942,7 @@ export type ClashConfigPatch_Deserialize = {
   http_port?: PortStrategy | null
   break_connection?: BreakConnectionStrategyPatch_Deserialize
   tun_stack?: TunStack | null
+  tun_mips?: MipsConfigPatch_Deserialize
 }
 
 export type ClashConfigPatch_Serialize = {
@@ -955,6 +960,7 @@ export type ClashConfigPatch_Serialize = {
   http_port?: PortStrategy | null
   break_connection: BreakConnectionStrategyPatch_Serialize
   tun_stack?: TunStack | null
+  tun_mips: MipsConfigPatch_Serialize
 }
 
 /**
@@ -1350,6 +1356,11 @@ export type ConfigExecutionRole =
         contributor_index: number
       }
     }
+
+/**  What the selected core reads, by config domain. */
+export type ConfigFeatures = {
+  tun: TunFeatures
+}
 
 /**
  *  Identity of the config the running core actually adopted.
@@ -2209,6 +2220,13 @@ export type ExternalMode = 'symlink' | 'mirror'
 /**  An absolute path outside the managed profile directory. */
 export type ExternalProfilePath = string
 
+/**  Whether a core reads one config key, and which values it accepts there. */
+export type FieldSupport<T> =
+  /**  The core does not read the key: Nyanpasu writes none and checks none. */
+  | { kind: 'ignored' }
+  /**  The core reads the key and fails on any value outside this list. */
+  | { kind: 'values'; value: T[] }
+
 export type FileConfig = FileConfig_Serialize | FileConfig_Deserialize
 
 export type FileConfig_Deserialize = {
@@ -2715,6 +2733,27 @@ export type MaterializedFile_Serialize = {
 
 /**  What a topology orders and merges its nodes by. */
 export type Metric = 'bytes' | 'connections'
+
+/**
+ *  The options of the mips stack. Kept while another stack is selected, so
+ *  switching back restores them; read them through
+ *  `ClashConfig::selected_tun_stack`.
+ */
+export type MipsConfig = {
+  /**  `None` writes no key, so the core uses its own default. */
+  congestion_controller?: TunCongestionController | null
+}
+
+export type MipsConfigPatch =
+  MipsConfigPatch_Serialize | MipsConfigPatch_Deserialize
+
+export type MipsConfigPatch_Deserialize = {
+  congestion_controller?: TunCongestionController | null
+}
+
+export type MipsConfigPatch_Serialize = {
+  congestion_controller?: TunCongestionController | null
+}
 
 export type Mode = 'rule' | 'global' | 'direct' | 'script'
 
@@ -3322,6 +3361,7 @@ export type ProfileDocument_Serialize = {
  *  materialization port, whose implementations share their helpers.
  */
 export type ProfileFileError =
+  | { kind: 'preserve_derived_directory' }
   | { kind: 'inspect_path'; path: ErrorPath }
   | { kind: 'read_file'; path: ErrorPath }
   | { kind: 'read_link'; path: ErrorPath }
@@ -4819,6 +4859,8 @@ export type RuntimeBuildError =
     }
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
+  /**  The profiles or transforms wrote values the selected core rejects. */
+  | { kind: 'unsupported_config_values'; values: UnsupportedConfigValue[] }
 
 export type RuntimeBuildLog = {
   tag: OperatorTag
@@ -5027,6 +5069,7 @@ export type ServiceCommand =
  *  the service actor puts on every call.
  */
 export type ServiceCommandError =
+  | { kind: 'session_ending' }
   | { kind: 'resolve_service_user' }
   | { kind: 'resolve_service_dirs' }
   | { kind: 'run_elevated'; command: ServiceCommand }
@@ -5297,6 +5340,8 @@ export type StorageItem<T> = {
  */
 export type StorageOperationError =
   | { kind: 'open_database'; path: string }
+  | { kind: 'inspect_database'; path: string }
+  | { kind: 'preserve_database' }
   | { kind: 'begin_transaction' }
   | { kind: 'open_table' }
   | { kind: 'read_item'; key: string }
@@ -5517,6 +5562,16 @@ export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
  */
 export type TrayMenuMode = 'native' | 'webview'
 
+/**  mihomo `tun.congestion-controller`, read only by the mips stack. */
+export type TunCongestionController = 'cubic' | 'reno' | 'bbr' | 'bbr3'
+
+/**  What the selected core reads under `tun`. */
+export type TunFeatures = {
+  stack: FieldSupport<TunStack>
+  /**  Read only while the stack is mips. */
+  congestion_controller: FieldSupport<TunCongestionController>
+}
+
 /**
  *  The `tun` keys Nyanpasu may force while TUN mode is on. The TUN switch and
  *  the stack stay separate settings.
@@ -5540,7 +5595,25 @@ export type TunOverridesPatch_Serialize = {
   'auto-route'?: ManageableField<boolean> | null
 }
 
-export type TunStack = 'system' | 'gvisor' | 'mixed'
+export type TunStack =
+  | 'system'
+  | 'gvisor'
+  | 'mixed'
+  /**
+   *  mihomo's own user-space network stack (Mihomo IP Stack), not the MIPS
+   *  processor architecture.
+   */
+  | 'mips'
+
+/**  A value in the final runtime config that the selected core rejects. */
+export type UnsupportedConfigValue = {
+  /**  Dotted path in the final config, such as `tun.stack`. */
+  path: string
+  /**  The value as written in the config. */
+  value: string
+  /**  The values the core accepts at `path`. */
+  supported: string[]
+}
 
 export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
 

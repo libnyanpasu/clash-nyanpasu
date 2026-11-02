@@ -9,12 +9,31 @@ authors.workspace = true
 [lib]
 name = 'nyanpasu_platform'
 
+[features]
+test-support = ['nyanpasu-core/test-support', 'dep:tempfile']
+
 [dependencies]
 nyanpasu-core = { path = '../nyanpasu-core' }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-core-manager = { workspace = true }
 nyanpasu-config = { path = '../nyanpasu-config' }
 boa_utils = { path = '../boa_utils' }
 nyanpasu-log-preview = { workspace = true }
 
+atomicwrites = '0.4.4'
+backon = { version = '1.0.1', features = ['tokio-sleep'] }
+base64 = '0.23'
+hex = '0.4'
+nanoid = '0.5.0'
+percent-encoding = '2.3.1'
+reqwest = { workspace = true }
+serde = { version = '1.0', features = ['derive', 'rc'] }
+sha2 = '0.11'
+snafu = { workspace = true }
+sysproxy = { workspace = true }
+tempfile = { version = '3', optional = true }
+time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
+url = '2'
 anyhow = '1'
 async-trait = '0.1'
 boa_engine = { workspace = true, features = ['annex-b'] }
@@ -43,5 +62,14 @@ tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
+  'specta'
+] }
+axum = { version = '0.8', features = ['ws'] }
+camino = { version = '1.1.9', features = ['serde1'] }
+futures-util = '0.3'
+tokio-util = { version = '0.7', features = ['full'] }
 tempfile = '3'
 test-log = { workspace = true }

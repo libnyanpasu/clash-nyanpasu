@@ -1,0 +1,1875 @@
+use std::collections::HashSet;
+
+use super::super::{
+    Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator, StepCheck,
+    fs,
+};
+use crate::format::{StampedDocument, StampedYamlFormat};
+use once_cell::sync::Lazy;
+use semver::Version;
+use serde_yaml_ng::{
+    Mapping, Value,
+    value::{Tag, TaggedValue},
+};
+use snafu::{OptionExt as _, ResultExt as _};
+
+#[derive(Debug, snafu::Snafu)]
+pub enum Error {
+    #[snafu(display("failed to read {path:?}"))]
+    ReadFile {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to parse YAML"))]
+    ParseYaml { source: serde_yaml_ng::Error },
+    #[snafu(context(false), display("failed to serialize YAML"))]
+    SerializeYaml { source: serde_yaml_ng::Error },
+    #[snafu(context(false), display("failed to inspect migration input"))]
+    InspectInput {
+        source: super::super::MigrationCheckError,
+    },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: super::super::fs::Error },
+    #[snafu(display("migration document is missing: {}", path.display()))]
+    FindDocument { path: std::path::PathBuf },
+    #[snafu(context(false), display("failed to convert profile schema"))]
+    ConvertSchema { source: CleanSchemaError },
+    #[snafu(display("profiles validation failed: {errors:?}"))]
+    ValidateProfiles {
+        errors: Vec<nyanpasu_config::profile::ProfileValidationError>,
+    },
+    #[snafu(display("profiles did not serialize to a mapping"))]
+    SerializeMapping,
+}
+
+pub static MIGRATOR: ProfilesMigrator = ProfilesMigrator;
+
+static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
+static NULL_VALUE: MigrateProfilesNullValue = MigrateProfilesNullValue;
+static SCRIPT_NEWTYPE: MigrateProfileScriptNewtype = MigrateProfileScriptNewtype;
+static CLEAN_SCHEMA: MigrateProfilesCleanSchema = MigrateProfilesCleanSchema;
+static REPAIR_SCHEMA: MigrateProfilesRepairSchema = MigrateProfilesRepairSchema;
+static STEPS: [&dyn MigrationStep; 4] =
+    [&NULL_VALUE, &SCRIPT_NEWTYPE, &CLEAN_SCHEMA, &REPAIR_SCHEMA];
+
+/// Revisions up to here were written without a stamp. Frozen: the shape
+/// probes below only ever have to recognise these.
+const UNSTAMPED_CEILING: u64 = 4;
+
+/// `profiles.yaml`, stamped with the schema revision of its content.
+pub struct ProfilesDocument;
+
+impl StampedDocument for ProfilesDocument {
+    const DOCUMENT: &'static str = "profiles";
+    const SCHEMA_REVISION: u64 = 4;
+}
+
+/// How the running app reads and writes `profiles.yaml`.
+pub type ProfilesFormat = StampedYamlFormat<ProfilesDocument>;
+
+pub struct ProfilesMigrator;
+
+impl ModuleMigrator for ProfilesMigrator {
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Document(DocumentSpec {
+            document: ProfilesDocument::DOCUMENT,
+            path: Ctx::profiles_path,
+            unstamped_ceiling: UNSTAMPED_CEILING,
+        })
+    }
+
+    fn detect_baseline(&self, ctx: &Ctx) -> Result<u64, super::super::OperationError> {
+        detect_unstamped_revision(ctx).map_err(Into::into)
+    }
+
+    fn steps(&self) -> &'static [&'static dyn MigrationStep] {
+        &STEPS
+    }
+
+    fn files_behind(
+        &self,
+        ctx: &Ctx,
+        applied: u64,
+    ) -> Result<Option<String>, super::super::OperationError> {
+        (|| -> Result<Option<String>, Error> {
+            // A stamped file has already been checked against `applied` by the
+            // runner. Of an unstamped one, only the clean schema is observable on
+            // disk; the earlier revisions leave no marker to check against.
+            let stamped = fs::read_document(&ctx.profiles_path(), ProfilesDocument::DOCUMENT)?
+                .is_some_and(|file| file.schema_revision.is_some());
+            let behind = !stamped
+                && applied >= CLEAN_SCHEMA.revision()
+                && detect_unstamped_revision(ctx)? < applied;
+            Ok(behind.then(|| {
+                format!(
+                    "{} still uses the legacy profile schema",
+                    ctx.profiles_path().display()
+                )
+            }))
+        })()
+        .map_err(Into::into)
+    }
+}
+
+fn detect_unstamped_revision(ctx: &Ctx) -> Result<u64, Error> {
+    let profiles_path = ctx.profiles_path();
+    if !profiles_path.exists() {
+        return Ok(UNSTAMPED_CEILING);
+    }
+
+    let raw = std::fs::read_to_string(&profiles_path).context(ReadFileSnafu {
+        path: &profiles_path,
+    })?;
+    let profiles: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+    if is_clean_schema(&profiles) {
+        return Ok(UNSTAMPED_CEILING);
+    }
+    Ok(0)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateProfilesNullValue;
+
+impl MigrationStep for MigrateProfilesNullValue {
+    fn id(&self) -> &'static str {
+        "profiles/null_value"
+    }
+
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn revision(&self) -> u64 {
+        1
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateProfilesNullValue"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, |profiles| profiles.values().any(Value::is_null))
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            let mut profiles = read_profiles(&profiles_path)?.payload;
+
+            profiles.iter_mut().for_each(|(key, value)| {
+                if value.is_null() {
+                    println!("detected null value in profiles {key:?} should be migrated");
+                    *value = serde_yaml_ng::Value::Sequence(Vec::new());
+                }
+            });
+            write_profiles_atomic(&profiles_path, profiles, None, self.revision())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            if !profiles_path.exists() {
+                return Ok(());
+            }
+            let mut profiles = read_profiles(&profiles_path)?.payload;
+
+            profiles.iter_mut().for_each(|(key, value)| {
+                if key.is_string() && key.as_str().unwrap() == "chain" && value.is_sequence() {
+                    println!("detected sequence value in profiles {key:?} should be migrated");
+                    *value = serde_yaml_ng::Value::Null;
+                }
+                if key.is_string() && key.as_str().unwrap() == "current" && value.is_sequence() {
+                    println!("detected sequence value in profiles {key:?} should be migrated");
+                    *value = serde_yaml_ng::Value::Null;
+                }
+            });
+            write_profiles_atomic(&profiles_path, profiles, None, self.revision() - 1)?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateProfileScriptNewtype;
+
+impl MigrationStep for MigrateProfileScriptNewtype {
+    fn id(&self) -> &'static str {
+        "profiles/script_newtype"
+    }
+
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn revision(&self) -> u64 {
+        2
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateProfileScriptNewtype"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, has_script_newtype)
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            eprintln!("Trying to read profiles files...");
+            let profiles = read_profiles(&profiles_path)?.payload;
+            eprintln!("Trying to migrate profiles files...");
+            let profiles = migrate_profile_data(profiles);
+            eprintln!("Trying to write profiles files...");
+            write_profiles_atomic(
+                &profiles_path,
+                profiles,
+                Some("# Profiles Config for Clash Nyanpasu"),
+                self.revision(),
+            )?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let profiles_path = ctx.profiles_path();
+            if !profiles_path.exists() {
+                eprintln!("profiles dir not found, skipping discard");
+                return Ok(());
+            }
+            eprintln!("Trying to read profiles files...");
+            let profiles = read_profiles(&profiles_path)?.payload;
+            eprintln!("Trying to discard profiles files...");
+            let profiles = discard_profile_data(profiles);
+            eprintln!("Trying to write profiles files...");
+            write_profiles_atomic(
+                &profiles_path,
+                profiles,
+                Some("# Profiles Config for Clash Nyanpasu"),
+                self.revision() - 1,
+            )?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateProfilesCleanSchema;
+
+impl MigrationStep for MigrateProfilesCleanSchema {
+    fn id(&self) -> &'static str {
+        "profiles/clean_schema"
+    }
+
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn revision(&self) -> u64 {
+        3
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateProfilesCleanSchema"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, |profiles| !is_clean_schema(profiles))
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        run_clean_schema(ctx).map_err(Into::into)
+    }
+
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        rollback_clean_schema(ctx).map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateProfilesRepairSchema;
+
+impl MigrationStep for MigrateProfilesRepairSchema {
+    fn id(&self) -> &'static str {
+        "profiles/repair_schema"
+    }
+
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn revision(&self) -> u64 {
+        4
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateProfilesRepairSchema"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, |profiles| !is_clean_schema(profiles))
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.profiles_path();
+            let fs::DocumentFile { raw, payload, .. } = read_profiles(&path)?;
+            // Stamped at `clean_schema`'s revision, the file is already clean and
+            // only its stamp has to advance.
+            if is_clean_schema(&payload) {
+                return write_profiles_atomic(
+                    &path,
+                    payload,
+                    Some("# Profiles Config for Clash Nyanpasu"),
+                    self.revision(),
+                );
+            }
+            let repaired = migrate_clean_schema(payload)?;
+            let mut profiles: nyanpasu_config::profile::Profiles =
+                serde_yaml_ng::from_value(Value::Mapping(repaired)).context(ParseYamlSnafu)?;
+            let dangling_current = profiles.clear_dangling_current();
+            profiles
+                .validate()
+                .map_err(|errors| Error::ValidateProfiles { errors })?;
+            let backup = path.with_extension("yaml.recovery.bak");
+            if !backup.exists() {
+                fs::atomic_write(&backup, raw.as_bytes())?;
+            }
+            write_profiles_atomic(
+                &path,
+                profiles_mapping(&profiles)?,
+                Some("# Profiles Config for Clash Nyanpasu"),
+                self.revision(),
+            )?;
+            warn_cleared_current(&path, dangling_current.as_ref());
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+fn warn_cleared_current(
+    path: &std::path::Path,
+    current: Option<&nyanpasu_config::profile::ProfileId>,
+) {
+    if let Some(id) = current {
+        tracing::warn!(original_id = %id, path = %path.display(), action = "clear_dangling_current",
+            "cleared missing selected profile during migration");
+    }
+}
+
+/// New-schema marker: every item is a `config`/`transform` definition. A doc
+/// with zero legacy markers (no legacy item types, no top-level `chain`) has
+/// nothing to migrate and counts as clean.
+fn is_clean_schema(doc: &Mapping) -> bool {
+    if doc.contains_key("chain") {
+        return false;
+    }
+    match doc.get("items").and_then(Value::as_sequence) {
+        None => true,
+        Some(items) => items.iter().all(|item| {
+            item.as_mapping()
+                .and_then(|item| item.get("type"))
+                .and_then(Value::as_str)
+                .is_some_and(|ty| matches!(ty, "config" | "transform"))
+        }),
+    }
+}
+
+fn run_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
+    let path = ctx.profiles_path();
+    let fs::DocumentFile {
+        raw, payload: doc, ..
+    } = read_profiles(&path)?;
+
+    // R15: backup first, then transform (D3: mandatory .bak)
+    let bak = path.with_extension("yaml.bak");
+    fs::atomic_write(&bak, raw.as_bytes())?;
+
+    let migrated = migrate_clean_schema(doc)?;
+
+    // Typed round-trip: the only accepted output is a document the new domain
+    // model can load AND validate (design §14.4). Duplicate uids are rejected
+    // here by the items deserializer (R13).
+    let mut profiles: nyanpasu_config::profile::Profiles =
+        serde_yaml_ng::from_value(Value::Mapping(migrated)).context(ParseYamlSnafu)?;
+    let dangling_current = profiles.clear_dangling_current();
+    profiles
+        .validate()
+        .map_err(|errors| Error::ValidateProfiles { errors })?;
+
+    write_profiles_atomic(
+        &path,
+        profiles_mapping(&profiles)?,
+        Some("# Profiles Config for Clash Nyanpasu"),
+        CLEAN_SCHEMA.revision(),
+    )?;
+    warn_cleared_current(&path, dangling_current.as_ref());
+    Ok(())
+}
+
+fn rollback_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
+    let path = ctx.profiles_path();
+    let bak = path.with_extension("yaml.bak");
+    if !bak.exists() {
+        eprintln!("profiles.yaml.bak not found, nothing to roll back");
+        return Ok(());
+    }
+    let raw = std::fs::read(&bak).context(ReadFileSnafu { path: &bak })?;
+    fs::atomic_write(&path, &raw).map_err(Into::into)
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("profiles clean-schema migration failed (uid={uid:?}, field={field_path}): {reason}")]
+pub struct CleanSchemaError {
+    pub uid: Option<String>,
+    pub field_path: String,
+    pub reason: String,
+}
+
+impl CleanSchemaError {
+    fn new(uid: Option<&str>, field_path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            uid: uid.map(str::to_owned),
+            field_path: field_path.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
+fn str_value(v: &Value) -> Option<&str> {
+    v.as_str()
+}
+
+fn filter_dangling_transform_targets(
+    targets: &[Value],
+    item_uids: &HashSet<String>,
+    owner: &str,
+) -> Vec<Value> {
+    targets
+        .iter()
+        .filter(|target| {
+            let Some(uid) = target.as_str() else {
+                return true;
+            };
+            if item_uids.contains(uid) {
+                return true;
+            }
+            eprintln!(
+                "profiles/clean_schema ignored dangling legacy transform reference: owner={owner}, target={uid}"
+            );
+            false
+        })
+        .cloned()
+        .collect()
+}
+
+fn migrate_item(item: Mapping, item_uids: &HashSet<String>) -> Result<Mapping, CleanSchemaError> {
+    let uid = item
+        .get("uid")
+        .and_then(str_value)
+        .map(str::to_owned)
+        .ok_or_else(|| CleanSchemaError::new(None, "uid", "missing item uid"))?;
+    let fail = |field: &str, reason: &str| CleanSchemaError::new(Some(&uid), field, reason);
+
+    let ty = item
+        .get("type")
+        .and_then(str_value)
+        .ok_or_else(|| fail("type", "missing or non-string legacy type"))?
+        .to_owned();
+
+    let name = item
+        .get("name")
+        .and_then(str_value)
+        .ok_or_else(|| fail("name", "missing profile name"))?
+        .to_owned();
+    let desc = match item.get("desc") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(_) => return Err(fail("desc", "desc must be a string or null")),
+    };
+    let file = item
+        .get("file")
+        .and_then(str_value)
+        .ok_or_else(|| fail("file", "missing materialized file"))?
+        .to_owned();
+    let updated = item.get("updated").cloned();
+
+    let allowed: &[&str] = match ty.as_str() {
+        "remote" => &[
+            "uid", "type", "name", "desc", "file", "updated", "url", "extra", "option", "chain",
+            "chains",
+        ],
+        "local" => &[
+            "uid", "type", "name", "desc", "file", "updated", "symlinks", "chain", "chains",
+        ],
+        "merge" => &["uid", "type", "name", "desc", "file", "updated"],
+        "script" => &[
+            "uid",
+            "type",
+            "name",
+            "desc",
+            "file",
+            "updated",
+            "script_type",
+        ],
+        other => return Err(fail("type", &format!("unknown legacy type `{other}`"))),
+    };
+    for key in item.keys() {
+        let Some(key) = key.as_str() else {
+            return Err(fail("<non-string key>", "item keys must be strings"));
+        };
+        if !allowed.contains(&key) {
+            return Err(fail(
+                key,
+                "unknown legacy field; refusing to drop it silently",
+            ));
+        }
+    }
+
+    let transform_owner = format!("config:{uid}");
+    let transforms = match (item.get("chain"), item.get("chains")) {
+        (Some(_), Some(_)) => return Err(fail("chain", "both `chain` and alias `chains` present")),
+        (Some(v), None) | (None, Some(v)) => match v {
+            Value::Sequence(seq) => Some(filter_dangling_transform_targets(
+                seq,
+                item_uids,
+                &transform_owner,
+            )),
+            Value::Null => None,
+            _ => return Err(fail("chain", "chain must be a sequence")),
+        },
+        (None, None) => None,
+    };
+
+    let is_url = file.starts_with("http://") || file.starts_with("https://");
+    let materialized_file = if is_url {
+        let ext = match ty.as_str() {
+            "script" => match item.get("script_type").and_then(str_value) {
+                Some("lua") => "lua",
+                _ => "js",
+            },
+            _ => "yaml",
+        };
+        format!("{uid}.{ext}")
+    } else {
+        validate_managed_relative(&uid, &file)?;
+        file.clone()
+    };
+
+    let mut materialized = Mapping::new();
+    materialized.insert("file".into(), Value::String(materialized_file));
+    if let Some(updated) = updated {
+        match &updated {
+            Value::Number(_) => {
+                materialized.insert("updated_at".into(), updated);
+            }
+            Value::Null => {}
+            _ => return Err(fail("updated", "updated must be an integer timestamp")),
+        }
+    }
+
+    let source = if ty == "remote" || is_url {
+        if ty == "local" && item.get("symlinks").is_some_and(|value| !value.is_null()) {
+            return Err(fail(
+                "symlinks",
+                "remote source cannot preserve external symlink binding",
+            ));
+        }
+        let url = if ty == "remote" {
+            item.get("url")
+                .and_then(str_value)
+                .ok_or_else(|| fail("url", "missing subscription url"))?
+                .to_owned()
+        } else {
+            file.clone()
+        };
+        let option_value = if ty == "remote" {
+            item.get("option")
+        } else {
+            None
+        };
+        let option = migrate_remote_options(&uid, option_value)?;
+        let subscription = if ty == "remote" {
+            migrate_subscription(&uid, item.get("extra"))?
+        } else {
+            None
+        };
+
+        let mut source = Mapping::new();
+        source.insert("type".into(), "remote".into());
+        for (key, value) in materialized {
+            source.insert(key, value);
+        }
+        source.insert("url".into(), Value::String(url));
+        source.insert("option".into(), Value::Mapping(option));
+        if let Some(subscription) = subscription {
+            source.insert("subscription".into(), Value::Mapping(subscription));
+        }
+        source
+    } else {
+        let mut binding = Mapping::new();
+        match item.get("symlinks") {
+            Some(Value::String(target)) => {
+                let is_absolute =
+                    std::path::Path::new(target).is_absolute() || target.starts_with('/');
+                if !is_absolute {
+                    return Err(fail("symlinks", "external symlink target must be absolute"));
+                }
+                binding.insert("type".into(), "external".into());
+                for (key, value) in materialized {
+                    binding.insert(key, value);
+                }
+                binding.insert("target".into(), Value::String(target.clone()));
+                binding.insert("mode".into(), "symlink".into());
+            }
+            None | Some(Value::Null) => {
+                binding.insert("type".into(), "managed".into());
+                for (key, value) in materialized {
+                    binding.insert(key, value);
+                }
+            }
+            Some(_) => return Err(fail("symlinks", "symlinks must be a string path")),
+        }
+        let mut source = Mapping::new();
+        source.insert("type".into(), "local".into());
+        source.insert("binding".into(), Value::Mapping(binding));
+        source
+    };
+
+    let mut out = Mapping::new();
+    out.insert("uid".into(), Value::String(uid.clone()));
+    out.insert("name".into(), Value::String(name));
+    if let Some(desc) = desc {
+        out.insert("desc".into(), Value::String(desc));
+    }
+    match ty.as_str() {
+        "remote" | "local" => {
+            let mut config = Mapping::new();
+            config.insert("type".into(), "file".into());
+            config.insert("source".into(), Value::Mapping(source));
+            if let Some(transforms) = transforms.filter(|targets| !targets.is_empty()) {
+                config.insert("transforms".into(), Value::Sequence(transforms));
+            }
+            out.insert("type".into(), "config".into());
+            out.insert("config".into(), Value::Mapping(config));
+        }
+        "merge" | "script" => {
+            let mut transform = Mapping::new();
+            if ty == "merge" {
+                transform.insert("type".into(), "overlay".into());
+                transform.insert("source".into(), Value::Mapping(source));
+            } else {
+                let runtime = item
+                    .get("script_type")
+                    .and_then(str_value)
+                    .ok_or_else(|| fail("script_type", "missing script runtime"))?;
+                if !matches!(runtime, "javascript" | "lua") {
+                    return Err(fail("script_type", "unknown script runtime"));
+                }
+                transform.insert("type".into(), "script".into());
+                transform.insert("source".into(), Value::Mapping(source));
+                transform.insert("runtime".into(), runtime.into());
+            }
+            out.insert("type".into(), "transform".into());
+            out.insert("transform".into(), Value::Mapping(transform));
+        }
+        _ => unreachable!("validated above"),
+    }
+    Ok(out)
+}
+
+fn validate_managed_relative(uid: &str, file: &str) -> Result<(), CleanSchemaError> {
+    use std::path::{Component, Path};
+    let path = Path::new(file);
+    let bad = file.is_empty()
+        || file.contains("://")
+        || path.is_absolute()
+        || file.starts_with('/')
+        || path.components().any(|c| {
+            matches!(
+                c,
+                Component::Prefix(_)
+                    | Component::RootDir
+                    | Component::ParentDir
+                    | Component::CurDir
+            )
+        });
+    if bad {
+        return Err(CleanSchemaError::new(
+            Some(uid),
+            "file",
+            "materialized file must be a plain relative path",
+        ));
+    }
+    Ok(())
+}
+
+fn migrate_remote_options(uid: &str, option: Option<&Value>) -> Result<Mapping, CleanSchemaError> {
+    let fail = |field: &str, reason: &str| CleanSchemaError::new(Some(uid), field, reason);
+    let mut out = Mapping::new();
+    match option {
+        None => {
+            out.insert("with_proxy".into(), Value::Bool(false));
+            out.insert("self_proxy".into(), Value::Bool(true));
+            out.insert("update_interval_minutes".into(), Value::from(120u64));
+        }
+        Some(Value::Null) => return Err(fail("option", "option must be a mapping")),
+        Some(Value::Mapping(option)) => {
+            for key in option.keys() {
+                let Some(key) = key.as_str() else {
+                    return Err(fail("option", "option keys must be strings"));
+                };
+                if !["user_agent", "with_proxy", "self_proxy", "update_interval"].contains(&key) {
+                    return Err(fail(
+                        &format!("option.{key}"),
+                        "unknown legacy option field",
+                    ));
+                }
+            }
+            if let Some(user_agent) = option.get("user_agent")
+                && !user_agent.is_null()
+            {
+                out.insert("user_agent".into(), user_agent.clone());
+            }
+            let flag = |key: &str| -> Result<bool, CleanSchemaError> {
+                match option.get(key) {
+                    None | Some(Value::Null) => Ok(false),
+                    Some(Value::Bool(value)) => Ok(*value),
+                    Some(_) => Err(fail(&format!("option.{key}"), "must be a boolean")),
+                }
+            };
+            out.insert("with_proxy".into(), Value::Bool(flag("with_proxy")?));
+            out.insert("self_proxy".into(), Value::Bool(flag("self_proxy")?));
+            let interval = match option.get("update_interval") {
+                None | Some(Value::Null) => 120,
+                Some(Value::Number(n)) => n.as_u64().ok_or_else(|| {
+                    fail("option.update_interval", "must be a non-negative integer")
+                })?,
+                Some(_) => return Err(fail("option.update_interval", "must be an integer")),
+            };
+            out.insert("update_interval_minutes".into(), Value::from(interval));
+        }
+        Some(_) => return Err(fail("option", "option must be a mapping")),
+    }
+    Ok(out)
+}
+
+fn migrate_subscription(
+    uid: &str,
+    extra: Option<&Value>,
+) -> Result<Option<Mapping>, CleanSchemaError> {
+    let fail = |field: &str, reason: &str| CleanSchemaError::new(Some(uid), field, reason);
+    match extra {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Mapping(extra)) => {
+            let mut out = Mapping::new();
+            for (key, value) in extra {
+                let Some(key) = key.as_str() else {
+                    return Err(fail("extra", "extra keys must be strings"));
+                };
+                match key {
+                    "upload" | "download" | "total" => {
+                        out.insert(key.into(), value.clone());
+                    }
+                    "expire" => {
+                        if value.as_u64() != Some(0) && !value.is_null() {
+                            out.insert("expire".into(), value.clone());
+                        }
+                    }
+                    other => {
+                        return Err(fail(
+                            &format!("extra.{other}"),
+                            "unknown legacy extra field",
+                        ));
+                    }
+                }
+            }
+            Ok((!out.is_empty()).then_some(out))
+        }
+        Some(_) => Err(fail("extra", "extra must be a mapping")),
+    }
+}
+
+/// R7/R10/R11/R12: whole-document mapping. Input is the post-rev2 doc.
+fn migrate_clean_schema(doc: Mapping) -> Result<Mapping, CleanSchemaError> {
+    for key in doc.keys() {
+        let Some(key) = key.as_str() else {
+            return Err(CleanSchemaError::new(
+                None,
+                "<non-string key>",
+                "top-level keys must be strings",
+            ));
+        };
+        if !["current", "chain", "valid", "items"].contains(&key) {
+            return Err(CleanSchemaError::new(
+                None,
+                key,
+                "unknown legacy top-level field",
+            ));
+        }
+    }
+
+    let items: Vec<Mapping> = match doc.get("items") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Sequence(seq)) => seq
+            .iter()
+            .map(|v| {
+                v.as_mapping().cloned().ok_or_else(|| {
+                    CleanSchemaError::new(None, "items", "every item must be a mapping")
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => {
+            return Err(CleanSchemaError::new(
+                None,
+                "items",
+                "items must be a sequence",
+            ));
+        }
+    };
+
+    let item_uids: HashSet<String> = items
+        .iter()
+        .filter_map(|item| item.get("uid").and_then(str_value).map(str::to_owned))
+        .collect();
+    let mut new_items: Vec<Value> = Vec::with_capacity(items.len() + 1);
+    let mut uids: Vec<String> = Vec::with_capacity(items.len());
+    let mut direct_file_config: Vec<String> = Vec::new();
+    for item in items {
+        let migrated = migrate_item(item, &item_uids)?;
+        let uid = migrated["uid"]
+            .as_str()
+            .expect("set by migrate_item")
+            .to_owned();
+        if migrated.get("type") == Some(&Value::from("config")) {
+            direct_file_config.push(uid.clone());
+        }
+        uids.push(uid);
+        new_items.push(Value::Mapping(migrated));
+    }
+
+    // R10: current forms
+    let old_current: Vec<String> = match doc.get("current") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::String(s)) => vec![s.clone()],
+        Some(Value::Sequence(seq)) => seq
+            .iter()
+            .map(|v| {
+                v.as_str().map(str::to_owned).ok_or_else(|| {
+                    CleanSchemaError::new(None, "current", "current entries must be strings")
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => {
+            return Err(CleanSchemaError::new(
+                None,
+                "current",
+                "current must be a string or sequence",
+            ));
+        }
+    };
+
+    let current: Option<String> = match old_current.len() {
+        0 => None,
+        1 => Some(old_current[0].clone()),
+        _ => {
+            for member in &old_current {
+                if !uids.contains(member) {
+                    return Err(CleanSchemaError::new(
+                        Some(member),
+                        "current",
+                        "current member does not exist",
+                    ));
+                }
+                if !direct_file_config.contains(member) {
+                    return Err(CleanSchemaError::new(
+                        Some(member),
+                        "current",
+                        "multi-current member cannot be represented as a direct FileConfig",
+                    ));
+                }
+            }
+            let uid = {
+                let mut candidate = "combined-profile".to_owned();
+                let mut n = 1;
+                while uids.contains(&candidate) {
+                    n += 1;
+                    candidate = format!("combined-profile-{n}");
+                }
+                candidate
+            };
+            let mut config = Mapping::new();
+            config.insert("type".into(), "composition".into());
+            config.insert("base".into(), Value::String(old_current[0].clone()));
+            config.insert(
+                "extend_proxies_from".into(),
+                Value::Sequence(
+                    old_current[1..]
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+            let mut combined = Mapping::new();
+            combined.insert("uid".into(), Value::String(uid.clone()));
+            combined.insert("name".into(), "Combined Profile".into());
+            combined.insert("type".into(), "config".into());
+            combined.insert("config".into(), Value::Mapping(config));
+            new_items.push(Value::Mapping(combined));
+            Some(uid)
+        }
+    };
+
+    let mut out = Mapping::new();
+    if let Some(current) = current {
+        out.insert("current".into(), Value::String(current));
+    }
+    match doc.get("chain") {
+        None | Some(Value::Null) => {}
+        Some(Value::Sequence(seq)) if seq.is_empty() => {}
+        Some(Value::Sequence(seq)) => {
+            let targets = filter_dangling_transform_targets(seq, &item_uids, "global");
+            if !targets.is_empty() {
+                out.insert("global_transforms".into(), Value::Sequence(targets));
+            }
+        }
+        Some(_) => {
+            return Err(CleanSchemaError::new(
+                None,
+                "chain",
+                "chain must be a sequence",
+            ));
+        }
+    }
+    if let Some(valid) = doc.get("valid")
+        && !valid.is_null()
+    {
+        out.insert("valid".into(), valid.clone());
+    }
+    out.insert("items".into(), Value::Sequence(new_items));
+    Ok(out)
+}
+
+/// The profiles file with its stamp, if any, taken out of the content.
+fn read_profiles(path: &std::path::Path) -> Result<fs::DocumentFile, Error> {
+    fs::read_document(path, ProfilesDocument::DOCUMENT)?.context(FindDocumentSnafu { path })
+}
+
+/// Atomically persist a profiles mapping stamped at `revision`, so a crash
+/// mid-write can never truncate the user's `profiles.yaml` or separate its
+/// content from its revision.
+fn write_profiles_atomic(
+    path: &std::path::Path,
+    profiles: Mapping,
+    prefix: Option<&str>,
+    revision: u64,
+) -> Result<(), Error> {
+    fs::write_document(path, ProfilesDocument::DOCUMENT, revision, profiles, prefix)
+        .map_err(Into::into)
+}
+
+fn profiles_mapping(profiles: &nyanpasu_config::profile::Profiles) -> Result<Mapping, Error> {
+    match serde_yaml_ng::to_value(profiles)? {
+        Value::Mapping(mapping) => Ok(mapping),
+        _ => SerializeMappingSnafu.fail(),
+    }
+}
+
+/// A missing profiles file has nothing to migrate.
+fn check_profiles(
+    ctx: &Ctx,
+    needs: fn(&Mapping) -> bool,
+) -> Result<Option<StepCheck>, MigrationCheckError> {
+    let profiles: Option<Mapping> = fs::read_yaml_if_exists(&ctx.profiles_path())?;
+    Ok(Some(StepCheck::from_needed(
+        profiles.as_ref().is_some_and(needs),
+    )))
+}
+
+/// Whether any item still carries the `!script <kind>` tagged type that
+/// [`migrate_profile_data`] splits into `type` and `script_type`.
+fn has_script_newtype(profiles: &Mapping) -> bool {
+    profiles
+        .get("items")
+        .and_then(Value::as_sequence)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.as_mapping()
+                    .and_then(|item| item.get("type"))
+                    .is_some_and(|ty| {
+                        matches!(ty, Value::Tagged(tag) if tag.tag == "script" && tag.value.is_string())
+                    })
+            })
+        })
+}
+
+fn migrate_profile_data(mut mapping: Mapping) -> Mapping {
+    if let Some(items) = mapping.get_mut("items")
+        && let Some(items) = items.as_sequence_mut()
+    {
+        for item in items {
+            if let Some(item) = item.as_mapping_mut()
+                && let Some(ty) = item.get("type").cloned()
+                && let Value::Tagged(tag) = ty
+                && tag.tag == "script"
+                && let Some(script_kind) = tag.value.as_str()
+            {
+                item.insert(
+                    "type".into(),
+                    serde_yaml_ng::Value::String("script".to_string()),
+                );
+                item.insert(
+                    "script_type".into(),
+                    serde_yaml_ng::Value::String(script_kind.to_string()),
+                );
+            }
+        }
+    }
+
+    mapping
+}
+
+fn discard_profile_data(mut mapping: Mapping) -> Mapping {
+    if let Some(items) = mapping.get_mut("items")
+        && let Some(items) = items.as_sequence_mut()
+    {
+        for item in items {
+            if let Some(item) = item.as_mapping_mut()
+                && let Some(ty) = item.get("type").cloned()
+                && let Value::String(ty) = ty
+                && ty == "script"
+                && let Some(script_kind) = item.get("script_type").cloned()
+            {
+                item.insert(
+                    "type".into(),
+                    serde_yaml_ng::Value::Tagged(Box::new(TaggedValue {
+                        tag: Tag::new("script"),
+                        value: script_kind,
+                    })),
+                );
+                item.remove("script_type");
+            }
+        }
+    }
+
+    mapping
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_str_eq;
+
+    const ORIGINAL_SAMPLE: &str = r#"current:
+- rIWXPHuafvEM
+chain: []
+valid:
+- dns
+- unified-delay
+- tcp-concurrent
+- tun
+- profile
+items:
+- uid: rIWXPHuafvEM
+  type: remote
+  name: 🌸云
+  file: rIWXPHuafvEM.yaml
+  desc: null
+  updated: 1758110672
+  url: https://example.com
+  extra:
+    upload: 3641183914
+    download: 39111158992
+    total: 42946719600
+    expire: 1769123200
+  option:
+    with_proxy: false
+    self_proxy: true
+    update_interval: 1440
+  chain:
+  - siL1cvjnvLB6
+  - sxI0dHKeqSNg
+- uid: siL1cvjnvLB6
+  type: !script javascript
+  name: 花☁️处理
+  file: siL1cvjnvLB6.js
+  desc: ''
+  updated: 1720954186
+- uid: sxI0dHKeqSNg
+  type: !script javascript
+  name: 🌸☁️图标
+  file: sxI0dHKeqSNg.js
+  desc: ''
+  updated: 1722656540
+- uid: sZYZe33w7RKV
+  type: !script lua
+  name: 图标
+  file: sZYZe33w7RKV.lua
+  desc: ''
+  updated: 1724082226
+- uid: lkvV5JXfzO34
+  type: local
+  name: New Profile
+  file: lkvV5JXfzO34.yaml
+  desc: ''
+  updated: 1725587682
+  chain: []
+- uid: lJynXCoMMIUd
+  type: local
+  name: New Profile
+  file: lJynXCoMMIUd.yaml
+  desc: ''
+  updated: 1726252304
+  chain: []
+- uid: lBtaVEaMAR97
+  type: local
+  name: Test
+  file: lBtaVEaMAR97.yaml
+  desc: ''
+  updated: 1727621893
+  chain: []
+"#;
+
+    const MIGRATED_SAMPLE: &str = r#"current:
+- rIWXPHuafvEM
+chain: []
+valid:
+- dns
+- unified-delay
+- tcp-concurrent
+- tun
+- profile
+items:
+- uid: rIWXPHuafvEM
+  type: remote
+  name: 🌸云
+  file: rIWXPHuafvEM.yaml
+  desc: null
+  updated: 1758110672
+  url: https://example.com
+  extra:
+    upload: 3641183914
+    download: 39111158992
+    total: 42946719600
+    expire: 1769123200
+  option:
+    with_proxy: false
+    self_proxy: true
+    update_interval: 1440
+  chain:
+  - siL1cvjnvLB6
+  - sxI0dHKeqSNg
+- uid: siL1cvjnvLB6
+  type: script
+  name: 花☁️处理
+  file: siL1cvjnvLB6.js
+  desc: ''
+  updated: 1720954186
+  script_type: javascript
+- uid: sxI0dHKeqSNg
+  type: script
+  name: 🌸☁️图标
+  file: sxI0dHKeqSNg.js
+  desc: ''
+  updated: 1722656540
+  script_type: javascript
+- uid: sZYZe33w7RKV
+  type: script
+  name: 图标
+  file: sZYZe33w7RKV.lua
+  desc: ''
+  updated: 1724082226
+  script_type: lua
+- uid: lkvV5JXfzO34
+  type: local
+  name: New Profile
+  file: lkvV5JXfzO34.yaml
+  desc: ''
+  updated: 1725587682
+  chain: []
+- uid: lJynXCoMMIUd
+  type: local
+  name: New Profile
+  file: lJynXCoMMIUd.yaml
+  desc: ''
+  updated: 1726252304
+  chain: []
+- uid: lBtaVEaMAR97
+  type: local
+  name: Test
+  file: lBtaVEaMAR97.yaml
+  desc: ''
+  updated: 1727621893
+  chain: []
+"#;
+
+    const CLEAN_SAMPLE: &str = r#"valid:
+- dns
+items:
+- uid: aaa
+  name: A
+  type: config
+  config:
+    type: file
+    source:
+      type: local
+      binding:
+        type: managed
+        file: aaa.yaml
+"#;
+
+    #[test]
+    fn the_app_reads_profiles_at_the_head_revision() {
+        assert_eq!(
+            ProfilesDocument::SCHEMA_REVISION,
+            STEPS.last().unwrap().revision()
+        );
+    }
+
+    #[test]
+    fn clean_schema_detection() {
+        let clean: Mapping = serde_yaml_ng::from_str(CLEAN_SAMPLE).unwrap();
+        assert!(is_clean_schema(&clean));
+        let legacy: Mapping = serde_yaml_ng::from_str(MIGRATED_SAMPLE).unwrap();
+        assert!(!is_clean_schema(&legacy));
+        assert!(is_clean_schema(&Mapping::new()));
+    }
+
+    #[test]
+    fn completed_clean_schema_state_can_repair_legacy_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let path = config_dir.join("profiles.yaml");
+        let original = "current: [a]\nitems:\n- {uid: a, type: local, name: A, file: a.yaml}\n";
+        std::fs::write(&path, original).unwrap();
+        let mut state = crate::migration::store::MigrationStore::default();
+        state.modules.insert(
+            "profiles".to_owned(),
+            crate::migration::store::ModuleState {
+                applied_revision: 3,
+                baseline_revision: 2,
+                stamped: false,
+            },
+        );
+        state.tasks.insert(
+            "profiles/clean_schema".to_owned(),
+            crate::migration::store::TaskRecord {
+                module: "profiles".to_owned(),
+                revision: 3,
+                introduced_in: (*VERSION_2_0_0).clone(),
+                state: crate::migration::MigrationState::Completed,
+                started_at: None,
+                finished_at: None,
+                error: None,
+            },
+        );
+        state
+            .flush_atomic(&config_dir.join("migration-state.yaml"))
+            .unwrap();
+        let paths = crate::utils::test_support::test_paths(config_dir, data_dir);
+        let mut runner = crate::migration::Runner::with_paths(
+            paths,
+            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            runner.advice_step(&REPAIR_SCHEMA),
+            crate::migration::MigrationAdvice::Pending
+        );
+        runner.run_migration(&REPAIR_SCHEMA).unwrap();
+        let state = crate::migration::store::MigrationStore::load(
+            &path.parent().unwrap().join("migration-state.yaml"),
+        )
+        .unwrap();
+        assert_eq!(state.module_state("profiles").applied_revision, 4);
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = serde_yaml_ng::from_str(&raw).unwrap();
+        assert_eq!(profiles.current.unwrap().0, "a");
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("yaml.recovery.bak")).unwrap(),
+            original
+        );
+    }
+
+    fn item(yaml: &str) -> Mapping {
+        serde_yaml_ng::from_str(yaml).unwrap()
+    }
+
+    fn migrate_item_for_test(item: Mapping) -> Result<Mapping, CleanSchemaError> {
+        let mut item_uids = HashSet::new();
+        if let Some(uid) = item.get("uid").and_then(str_value) {
+            item_uids.insert(uid.to_owned());
+        }
+        for key in ["chain", "chains"] {
+            if let Some(targets) = item.get(key).and_then(Value::as_sequence) {
+                item_uids.extend(targets.iter().filter_map(str_value).map(str::to_owned));
+            }
+        }
+        migrate_item(item, &item_uids)
+    }
+
+    fn migrated(yaml: &str) -> Mapping {
+        migrate_item_for_test(item(yaml)).unwrap()
+    }
+
+    fn yaml_eq(actual: &Mapping, expected: &str) {
+        let expected: Mapping = serde_yaml_ng::from_str(expected).unwrap();
+        pretty_assertions::assert_eq!(
+            serde_yaml_ng::to_value(actual).unwrap(),
+            serde_yaml_ng::to_value(&expected).unwrap()
+        );
+    }
+
+    #[test]
+    fn remote_item_full_mapping() {
+        let out = migrated(
+            r#"uid: r1
+type: remote
+name: Cloud
+file: r1.yaml
+desc: hello
+updated: 1758110672
+url: https://example.com
+extra: {upload: 1, download: 2, total: 3, expire: 1769123200}
+option: {with_proxy: false, self_proxy: true, update_interval: 1440, user_agent: ua}
+chain: [t1, t2]
+"#,
+        );
+        yaml_eq(
+            &out,
+            r#"uid: r1
+name: Cloud
+desc: hello
+type: config
+config:
+  type: file
+  source:
+    type: remote
+    file: r1.yaml
+    updated_at: 1758110672
+    url: https://example.com
+    option: {user_agent: ua, with_proxy: false, self_proxy: true, update_interval_minutes: 1440}
+    subscription: {upload: 1, download: 2, total: 3, expire: 1769123200}
+  transforms: [t1, t2]
+"#,
+        );
+    }
+
+    #[test]
+    fn remote_option_absent_defaults_to_legacy_effective_values() {
+        let out = migrated("uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\n");
+        let option = out["config"]["source"]["option"].as_mapping().unwrap();
+        assert_eq!(option["with_proxy"], Value::Bool(false));
+        assert_eq!(option["self_proxy"], Value::Bool(true));
+        assert_eq!(option["update_interval_minutes"], Value::from(120));
+    }
+
+    #[test]
+    fn remote_option_partial_uses_apply_default_semantics() {
+        let out = migrated(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: 60}\n",
+        );
+        let option = out["config"]["source"]["option"].as_mapping().unwrap();
+        assert_eq!(option["with_proxy"], Value::Bool(false));
+        assert_eq!(option["self_proxy"], Value::Bool(false));
+        assert_eq!(option["update_interval_minutes"], Value::from(60));
+    }
+
+    #[test]
+    fn remote_option_zero_interval_keeps_auto_update_off() {
+        let out = migrated(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: 0}\n",
+        );
+        let option = out["config"]["source"]["option"].as_mapping().unwrap();
+        assert_eq!(option["update_interval_minutes"], Value::from(0));
+    }
+
+    #[test]
+    fn remote_option_null_fails_explicitly() {
+        let err = migrate_item_for_test(item(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: null\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("r1"));
+        assert_eq!(err.field_path, "option");
+        assert_eq!(err.reason, "option must be a mapping");
+    }
+
+    #[test]
+    fn remote_extra_expire_zero_becomes_absent() {
+        let out = migrated(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\nextra: {upload: 0, download: 0, total: 0, expire: 0}\n",
+        );
+        let subscription = out["config"]["source"]["subscription"]
+            .as_mapping()
+            .unwrap();
+        assert!(!subscription.contains_key("expire"));
+        assert_eq!(subscription["upload"], Value::from(0));
+    }
+
+    #[test]
+    fn remote_failures_carry_uid_and_field() {
+        let err = migrate_item_for_test(item("uid: r1\ntype: remote\nname: A\nfile: r1.yaml\n"))
+            .unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("r1"));
+        assert_eq!(err.field_path, "url");
+
+        let err = migrate_item_for_test(item(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: -1}\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "option.update_interval");
+
+        let err = migrate_item_for_test(item(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {bogus: 1}\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "option.bogus");
+
+        let err = migrate_item_for_test(item(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\nwhatever: 1\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "whatever");
+    }
+
+    #[test]
+    fn local_item_managed_mapping() {
+        let out =
+            migrated("uid: l1\ntype: local\nname: L\nfile: l1.yaml\nupdated: 5\nchains: [t1]\n");
+        yaml_eq(
+            &out,
+            r#"uid: l1
+name: L
+type: config
+config:
+  type: file
+  source:
+    type: local
+    binding: {type: managed, file: l1.yaml, updated_at: 5}
+  transforms: [t1]
+"#,
+        );
+    }
+
+    #[test]
+    fn local_symlinks_becomes_external_symlink_binding() {
+        let out = migrated(
+            "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nsymlinks: /outside/real.yaml\n",
+        );
+        yaml_eq(
+            &out,
+            r#"uid: l1
+name: L
+type: config
+config:
+  type: file
+  source:
+    type: local
+    binding: {type: external, file: l1.yaml, target: /outside/real.yaml, mode: symlink}
+"#,
+        );
+        // 相对 target 显式失败
+        let err = migrate_item_for_test(item(
+            "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nsymlinks: not/absolute.yaml\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "symlinks");
+    }
+
+    #[test]
+    fn merge_and_script_become_transforms() {
+        let out = migrated("uid: m1\ntype: merge\nname: M\nfile: m1.yaml\n");
+        yaml_eq(
+            &out,
+            r#"uid: m1
+name: M
+type: transform
+transform:
+  type: overlay
+  source:
+    type: local
+    binding: {type: managed, file: m1.yaml}
+"#,
+        );
+        let out = migrated("uid: s1\ntype: script\nname: S\nfile: s1.lua\nscript_type: lua\n");
+        yaml_eq(
+            &out,
+            r#"uid: s1
+name: S
+type: transform
+transform:
+  type: script
+  source:
+    type: local
+    binding: {type: managed, file: s1.lua}
+  runtime: lua
+"#,
+        );
+    }
+
+    #[test]
+    fn url_in_file_converts_to_remote_source_per_legacy_type() {
+        // design §14.2: 定义按旧 type,Source 改 Remote,file 重新生成
+        let out = migrated("uid: l1\ntype: local\nname: L\nfile: https://e.com/sub.yaml\n");
+        assert_eq!(out["type"], Value::from("config"));
+        let source = out["config"]["source"].as_mapping().unwrap();
+        assert_eq!(source["type"], Value::from("remote"));
+        assert_eq!(source["url"], Value::from("https://e.com/sub.yaml"));
+        assert_eq!(source["file"], Value::from("l1.yaml"));
+        let option = source["option"].as_mapping().unwrap();
+        assert_eq!(option["self_proxy"], Value::Bool(true)); // R5 absent 语义
+
+        let err = migrate_item_for_test(item(
+            "uid: l1\ntype: local\nname: L\nfile: https://e.com/sub.yaml\nsymlinks: /outside/real.yaml\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("l1"));
+        assert_eq!(err.field_path, "symlinks");
+
+        let out = migrated(
+            "uid: s1\ntype: script\nname: S\nfile: https://e.com/x.js\nscript_type: javascript\n",
+        );
+        assert_eq!(out["transform"]["source"]["file"], Value::from("s1.js"));
+    }
+
+    #[test]
+    fn item_failures_for_non_remote_kinds() {
+        // merge/script 不允许 chain(R8 → 未知键)
+        let err = migrate_item_for_test(item(
+            "uid: m1\ntype: merge\nname: M\nfile: m1.yaml\nchain: []\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "chain");
+        // 未知 type(R1)
+        let err = migrate_item_for_test(item("uid: x\ntype: banana\nname: X\nfile: x.yaml\n"))
+            .unwrap_err();
+        assert_eq!(err.field_path, "type");
+        // 路径穿越(R3)
+        let err = migrate_item_for_test(item("uid: l1\ntype: local\nname: L\nfile: ../up.yaml\n"))
+            .unwrap_err();
+        assert_eq!(err.field_path, "file");
+        // chain 与 chains 同存(R8)
+        let err = migrate_item_for_test(item(
+            "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nchain: []\nchains: []\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "chain");
+    }
+
+    #[test]
+    fn top_level_current_forms() {
+        // 缺失/[] → 无 current 键
+        let out = migrate_clean_schema(item("items: []\n")).unwrap();
+        assert!(!out.contains_key("current"));
+        let out = migrate_clean_schema(item("current: []\nitems: []\n")).unwrap();
+        assert!(!out.contains_key("current"));
+
+        // 标量与单元素(rev1 前旧数据可能是标量,防御性支持)
+        let doc = "current: l1\nitems:\n- {uid: l1, type: local, name: L, file: l1.yaml}\n";
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("l1"));
+        let doc = "current: [l1]\nitems:\n- {uid: l1, type: local, name: L, file: l1.yaml}\n";
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("l1"));
+    }
+
+    #[test]
+    fn multi_current_synthesizes_composition() {
+        let doc = r#"current: [a, b, c]
+items:
+- {uid: a, type: local, name: A, file: a.yaml}
+- {uid: b, type: remote, name: B, file: b.yaml, url: "https://e.com"}
+- {uid: c, type: local, name: C, file: c.yaml}
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("combined-profile"));
+        let items = out["items"].as_sequence().unwrap();
+        let combined = items
+            .iter()
+            .find(|i| i["uid"] == Value::from("combined-profile"))
+            .expect("synthesized composition present");
+        assert_eq!(combined["name"], Value::from("Combined Profile"));
+        yaml_eq(
+            combined["config"].as_mapping().unwrap(),
+            "type: composition\nbase: a\nextend_proxies_from: [b, c]\n",
+        );
+    }
+
+    #[test]
+    fn combined_profile_uid_is_collision_safe_and_deterministic() {
+        let doc = r#"current: [a, b]
+items:
+- {uid: a, type: local, name: A, file: a.yaml}
+- {uid: b, type: local, name: B, file: b.yaml}
+- {uid: combined-profile, type: local, name: Taken, file: t.yaml}
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("combined-profile-2"));
+    }
+
+    #[test]
+    fn multi_current_with_transform_member_fails() {
+        let doc = r#"current: [a, s]
+items:
+- {uid: a, type: local, name: A, file: a.yaml}
+- {uid: s, type: script, name: S, file: s.js, script_type: javascript}
+"#;
+        let err = migrate_clean_schema(item(doc)).unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("s"));
+        assert_eq!(err.field_path, "current");
+    }
+
+    #[test]
+    fn chain_becomes_global_transforms_and_unknown_top_level_fails() {
+        let doc = r#"chain: [t1]
+items:
+- {uid: t1, type: merge, name: T, file: t1.yaml}
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["global_transforms"], item("x: [t1]")["x"]);
+
+        let err = migrate_clean_schema(item("bogus: 1\nitems: []\n")).unwrap_err();
+        assert_eq!(err.field_path, "bogus");
+        assert!(err.uid.is_none());
+    }
+
+    #[test]
+    fn dangling_legacy_transform_targets_are_filtered_in_all_scopes() {
+        let doc = r#"chain: [t1, missing-global, t1]
+items:
+- uid: l1
+  type: local
+  name: Local
+  file: l1.yaml
+  chain: [missing-local, t1]
+- uid: r1
+  type: remote
+  name: Remote
+  file: r1.yaml
+  url: https://example.com
+  chains: [t1, missing-remote]
+- uid: t1
+  type: merge
+  name: Transform
+  file: t1.yaml
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["global_transforms"], item("x: [t1, t1]")["x"]);
+
+        let items = out["items"].as_sequence().unwrap();
+        let local = items
+            .iter()
+            .find(|item| item["uid"].as_str() == Some("l1"))
+            .unwrap();
+        assert_eq!(local["config"]["transforms"], item("x: [t1]")["x"]);
+        let remote = items
+            .iter()
+            .find(|item| item["uid"].as_str() == Some("r1"))
+            .unwrap();
+        assert_eq!(remote["config"]["transforms"], item("x: [t1]")["x"]);
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn valid_carries_verbatim() {
+        let doc = "valid: [dns, tun]\nitems: []\n";
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["valid"], item("x: [dns, tun]")["x"]);
+    }
+
+    fn temp_ctx() -> (tempfile::TempDir, Ctx) {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("config");
+        let data = temp.path().join("data");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        let ctx = Ctx::new(config, data);
+        (temp, ctx)
+    }
+
+    #[test]
+    fn clean_schema_run_writes_bak_and_validated_new_schema() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        std::fs::write(&path, MIGRATED_SAMPLE).unwrap();
+
+        run_clean_schema(&mut ctx).unwrap();
+
+        // .bak = 迁移前原文
+        let bak = std::fs::read_to_string(path.with_extension("yaml.bak")).unwrap();
+        assert_eq!(bak, MIGRATED_SAMPLE);
+
+        // 输出带头注释,且能被新类型加载并通过 validate
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.starts_with("# Profiles Config for Clash Nyanpasu\n\n"));
+        let profiles: nyanpasu_config::profile::Profiles = serde_yaml_ng::from_str(&raw).unwrap();
+        profiles.validate().unwrap();
+        assert_eq!(profiles.items.len(), 7);
+        assert!(profiles.current.is_some());
+
+        // 幂等重入:check 判定已满足,runner 不会再跑
+        assert_eq!(
+            CLEAN_SCHEMA.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
+    }
+
+    #[test]
+    fn clean_schema_run_prunes_dangling_global_transforms() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        let legacy = r#"current: [l1]
+chain: [mz6Qo0SW3P1D, m61x700ZoTpv, my3iK4i9abgA]
+items:
+- uid: l1
+  type: local
+  name: Local
+  file: l1.yaml
+"#;
+        std::fs::write(&path, legacy).unwrap();
+
+        run_clean_schema(&mut ctx).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("yaml.bak")).unwrap(),
+            legacy
+        );
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = serde_yaml_ng::from_str(&raw).unwrap();
+        profiles.validate().unwrap();
+        assert!(profiles.global_transforms.is_empty());
+        assert_eq!(profiles.items.len(), 1);
+
+        assert_eq!(
+            CLEAN_SCHEMA.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
+    }
+
+    #[test]
+    fn clean_schema_with_null_current_baselines_to_head_and_is_satisfied() {
+        let (_temp, ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        let clean = r#"current: null
+items:
+  - uid: l1
+    name: L
+    type: config
+    config:
+      type: file
+      source:
+        type: local
+        binding:
+          type: managed
+          file: l1.yaml
+"#;
+        std::fs::write(&path, clean).unwrap();
+
+        assert_eq!(MIGRATOR.detect_baseline(&ctx).unwrap(), UNSTAMPED_CEILING);
+        assert_eq!(
+            CLEAN_SCHEMA.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
+    }
+
+    #[test]
+    fn clean_schema_run_failure_leaves_file_untouched() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        // 引用存在但不是 transform 的 chain 仍由新领域模型拒绝
+        let bad = r#"chain: [l1]
+items:
+- uid: l1
+  type: local
+  name: Local
+  file: l1.yaml
+"#;
+        std::fs::write(&path, bad).unwrap();
+        let err = run_clean_schema(&mut ctx).unwrap_err();
+        assert!(err.to_string().contains("TransformTargetNotTransform"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), bad);
+    }
+
+    #[test]
+    fn clean_schema_run_rejects_duplicate_item_uid() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        let duplicate = r#"items:
+  - uid: same
+    type: local
+    name: A
+    file: a.yaml
+  - uid: same
+    type: local
+    name: B
+    file: b.yaml
+"#;
+        std::fs::write(&path, duplicate).unwrap();
+
+        let err = run_clean_schema(&mut ctx).unwrap_err();
+        assert!(matches!(err, Error::ParseYaml { .. }));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), duplicate);
+    }
+
+    #[test]
+    fn clean_schema_rollback_restores_bak() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        std::fs::write(&path, MIGRATED_SAMPLE).unwrap();
+        run_clean_schema(&mut ctx).unwrap();
+        rollback_clean_schema(&mut ctx).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), MIGRATED_SAMPLE);
+    }
+
+    #[test]
+    fn test_migrate_existing_data() {
+        let original_data = serde_yaml_ng::from_str::<Mapping>(ORIGINAL_SAMPLE).unwrap();
+        let migrated_data = migrate_profile_data(original_data);
+        let output_data = serde_yaml_ng::to_string(&migrated_data).unwrap();
+        assert_str_eq!(output_data, MIGRATED_SAMPLE);
+    }
+
+    #[test]
+    fn test_discard_existing_data() {
+        let migrated_data = serde_yaml_ng::from_str::<Mapping>(MIGRATED_SAMPLE).unwrap();
+        let original_data = discard_profile_data(migrated_data);
+        let output_data = serde_yaml_ng::to_string(&original_data).unwrap();
+        assert_str_eq!(output_data, ORIGINAL_SAMPLE);
+    }
+}

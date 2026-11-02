@@ -1,55 +1,18 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
     images::{Image, ImageRef},
 };
-use fs_err as fs;
 use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::de::DeserializeOwned;
-use serde_yaml::{Mapping, Value};
 use std::{
     io::{BufWriter, Cursor},
-    path::{Path, PathBuf},
-    str::FromStr,
+    path::Path,
 };
 use tauri::{AppHandle, Manager};
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
-
-/// read data from yaml as struct T
-pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
-    let path = path.as_ref();
-    if !path.exists() {
-        bail!("file not found \"{}\"", path.display());
-    }
-
-    let yaml_str = fs::read_to_string(path)
-        .with_context(|| format!("failed to read the file \"{}\"", path.display()))?;
-
-    serde_yaml::from_str::<T>(&yaml_str).with_context(|| {
-        format!(
-            "failed to read the file with yaml format \"{}\"",
-            path.display()
-        )
-    })
-}
-
-/// read mapping from yaml fix #165
-pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
-    let mut val: Value = read_yaml(path)?;
-    val.apply_merge()
-        .with_context(|| format!("failed to apply merge \"{}\"", path.display()))?;
-
-    Ok(val
-        .as_mapping()
-        .ok_or(anyhow!(
-            "failed to transform to yaml mapping \"{}\"",
-            path.display()
-        ))?
-        .to_owned())
-}
 
 const ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
@@ -62,18 +25,6 @@ const ALPHABET: [char; 62] = [
 pub fn get_uid(prefix: &str) -> String {
     let id = nanoid!(11, &ALPHABET);
     format!("{prefix}{id}")
-}
-
-/// parse the string
-/// xxx=123123; => 123123
-pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
-    target.split(';').map(str::trim).find_map(|s| {
-        let mut parts = s.splitn(2, '=');
-        match (parts.next(), parts.next()) {
-            (Some(k), Some(v)) if k == key => v.parse::<T>().ok(),
-            _ => None,
-        }
-    })
 }
 
 type Opener = fn(&Path) -> std::io::Result<()>;
@@ -168,6 +119,7 @@ pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
     let width = img.width();
     let height = img.height();
     let src_pixels = img.into_rgba8().into_raw();
+    use anyhow::Context as _;
     let src_image = ImageRef::new(width, height, &src_pixels, PixelType::U8x4)
         .context("failed to parse image")?;
 
@@ -281,24 +233,4 @@ macro_rules! trace_err {
             log::trace!(target: "app", "{}, err {:?}", $err_str, err);
         }
     }
-}
-
-#[test]
-fn test_parse_value() {
-    let test_1 = "upload=111; download=2222; total=3333; expire=444";
-    let test_2 = "attachment; filename=Clash.yaml";
-
-    assert_eq!(parse_str::<usize>(test_1, "upload").unwrap(), 111);
-    assert_eq!(parse_str::<usize>(test_1, "download").unwrap(), 2222);
-    assert_eq!(parse_str::<usize>(test_1, "total").unwrap(), 3333);
-    assert_eq!(parse_str::<usize>(test_1, "expire").unwrap(), 444);
-    assert_eq!(
-        parse_str::<String>(test_2, "filename").unwrap(),
-        format!("Clash.yaml")
-    );
-
-    assert_eq!(parse_str::<usize>(test_1, "aaa"), None);
-    assert_eq!(parse_str::<usize>(test_1, "upload1"), None);
-    assert_eq!(parse_str::<usize>(test_1, "expire1"), None);
-    assert_eq!(parse_str::<usize>(test_2, "attachment"), None);
 }

@@ -1,11 +1,12 @@
-use crate::{client::ui_effects::ports::LogRotation, utils::profiling::Profilers};
-use anyhow::{Result, anyhow};
+use crate::utils::profiling::Profilers;
 use flexi_logger::{
     Age, Cleanup, Criterion, FileSpec, Naming,
     writers::{ArcFileLogWriter, FileLogWriter, FileLogWriterHandle},
 };
 use nyanpasu_config::application::LoggingLevel;
+use nyanpasu_core::client::effects::ports::LogRotation;
 use nyanpasu_paths::PathResolver;
+use snafu::ResultExt as _;
 use std::{
     fs,
     io::IsTerminal,
@@ -18,14 +19,84 @@ use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuar
 use tracing_log::log_tracer;
 use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberExt, reload};
 
-pub type ReloadSignal = (Option<LoggingLevel>, Option<LogRotation>);
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum Error {
+    #[snafu(display("failed to create logging directory {}", path.display()))]
+    CreateDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to start logging thread"))]
+    StartReloadThread { source: std::io::Error },
+    #[snafu(display("failed to create log writer in {}", path.display()))]
+    CreateWriter {
+        path: PathBuf,
+        source: flexi_logger::FlexiLoggerError,
+    },
+    #[snafu(display("failed to install log tracer"))]
+    InstallLogTracer { source: log::SetLoggerError },
+    #[snafu(display("failed to install tracing subscriber"))]
+    InstallSubscriber {
+        source: tracing::subscriber::SetGlobalDefaultError,
+    },
+}
+
+#[derive(Debug)]
+pub enum ReloadSignal {
+    Reload(Option<LoggingLevel>, Option<LogRotation>),
+    StartupFailure { detail: String, done: Sender<()> },
+    Finish(Sender<()>),
+}
+
+/// Acknowledges startup failure records and pre-Tauri logging cleanup.
+pub(crate) struct LoggingShutdown(pub Sender<ReloadSignal>);
+
+impl LoggingShutdown {
+    pub(crate) fn record_startup_failure(&self, detail: String) {
+        let (done, completed) = mpsc::channel();
+        if self
+            .0
+            .send(ReloadSignal::StartupFailure { detail, done })
+            .is_ok()
+        {
+            let _ = completed.recv();
+        }
+    }
+
+    /// Pre-Tauri failures have no event loop to keep responsive while flushing.
+    pub(crate) fn finish_blocking(&self) {
+        let (done, completed) = mpsc::channel();
+        if self.0.send(ReloadSignal::Finish(done)).is_ok() {
+            let _ = completed.recv();
+        }
+    }
+}
 
 /// Keeps the file writer alive. Fields drop in declaration order: the guard
 /// flushes the non-blocking queue into the file writer before the handle shuts
 /// that writer down.
 struct FileAppenderGuard {
     _worker: WorkerGuard,
+    direct: ArcFileLogWriter,
     _writer: FileLogWriterHandle,
+}
+
+impl FileAppenderGuard {
+    /// WorkerGuard's Drop has a bounded flush. Record this fatal startup event
+    /// synchronously on the reload thread so that bound cannot lose its cause.
+    fn record_startup_failure(&mut self, detail: &str) -> std::io::Result<()> {
+        use std::io::Write as _;
+        let writer = self.direct.clone();
+        let subscriber = fmt::Subscriber::builder()
+            .json()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::error!(error = detail, "application startup failed");
+        });
+        self.direct.flush()
+    }
 }
 
 /// Every file is named after the local time it was opened at, to the second,
@@ -35,10 +106,10 @@ struct FileAppenderGuard {
 fn file_log_writer(
     log_dir: PathBuf,
     rotation: LogRotation,
-) -> Result<(ArcFileLogWriter, FileLogWriterHandle)> {
-    Ok(FileLogWriter::builder(
+) -> Result<(ArcFileLogWriter, FileLogWriterHandle), Error> {
+    FileLogWriter::builder(
         FileSpec::default()
-            .directory(log_dir)
+            .directory(&log_dir)
             .basename("clash-nyanpasu")
             .suffix("log"),
     )
@@ -51,21 +122,23 @@ fn file_log_writer(
         },
         Cleanup::KeepLogFiles(rotation.max_files),
     )
-    .try_build_with_handle()?)
+    .try_build_with_handle()
+    .context(CreateWriterSnafu { path: log_dir })
 }
 
 fn get_file_appender(
     logs_dir: PathBuf,
     rotation: LogRotation,
-) -> Result<(NonBlocking, FileAppenderGuard)> {
+) -> Result<(NonBlocking, FileAppenderGuard), Error> {
     let (writer, handle) = file_log_writer(logs_dir, rotation)?;
     let (appender, worker) = NonBlockingBuilder::default()
         .buffered_lines_limit(4096)
-        .finish(writer);
+        .finish(writer.clone());
     Ok((
         appender,
         FileAppenderGuard {
             _worker: worker,
+            direct: writer,
             _writer: handle,
         },
     ))
@@ -84,8 +157,16 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
             std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
         )
         .from_env_lossy()
-        .add_directive(format!("nyanpasu={level}").parse().unwrap())
-        .add_directive(format!("clash_nyanpasu={level}").parse().unwrap())
+        .add_directive(
+            format!("nyanpasu={level}")
+                .parse()
+                .expect("the static crate name and LevelFilter form a valid directive"),
+        )
+        .add_directive(
+            format!("clash_nyanpasu={level}")
+                .parse()
+                .expect("the static crate name and LevelFilter form a valid directive"),
+        )
 }
 
 /// initial instance global logger, returning the channel that reloads it; the
@@ -93,12 +174,12 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
 pub fn init(
     profilers: &mut Profilers,
     paths: &PathResolver,
-) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
-    let jobs = crate::client::jobs::capture();
+) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture), Error> {
+    let jobs = nyanpasu_core::client::jobs::capture();
     let log_dir = paths.app_logs_dir();
-    if !log_dir.exists() {
-        let _ = fs::create_dir_all(&log_dir);
-    }
+    fs::create_dir_all(&log_dir).context(CreateDirectorySnafu {
+        path: log_dir.as_std_path(),
+    })?;
     // This is intended to capture config loading errors
     let (log_level, log_rotation) = (
         LoggingLevel::Debug,
@@ -123,40 +204,61 @@ pub fn init(
     // spawn a thread to handle the reload signal
     let (sender, receiver) = mpsc::channel::<ReloadSignal>();
     let paths = paths.clone();
-    thread::spawn(move || {
-        let mut _guard = _guard; // just hold here to keep the file open
-        let mut current_rotation = log_rotation;
-        while let Ok(signal) = receiver.recv() {
-            if let Some(level) = signal.0 {
-                filter_handle.reload(app_filter(level)).unwrap(); // panic if error
-            }
-
-            // Rebuilding the writer opens a new file, so an unchanged rotation
-            // (such as the startup effect replaying the defaults) keeps the
-            // current one.
-            if let Some(rotation) = signal.1.filter(|r| *r != current_rotation) {
-                let (appender, guard) =
-                    match get_file_appender(paths.app_logs_dir().into_std_path_buf(), rotation) {
-                        Ok(x) => x,
-                        Err(e) => {
-                            error!("failed to create file appender: {}", e);
-                            continue;
+    thread::Builder::new()
+        .name("logging-reload".into())
+        .spawn(move || {
+            let mut _guard = _guard; // just hold here to keep the file open
+            let mut current_rotation = log_rotation;
+            while let Ok(signal) = receiver.recv() {
+                let (level, rotation) = match signal {
+                    ReloadSignal::Reload(level, rotation) => (level, rotation),
+                    ReloadSignal::StartupFailure { detail, done } => {
+                        if let Err(error) = _guard.record_startup_failure(&detail) {
+                            eprintln!("failed to flush startup error to disk: {error}\n{detail}");
                         }
-                    };
-                if let Err(e) = file_handle.modify(|layer| *layer.writer_mut() = appender) {
-                    error!("failed to modify file appender: {}", e);
-                    continue;
+                        let _ = done.send(());
+                        continue;
+                    }
+                    ReloadSignal::Finish(done) => {
+                        drop(_guard);
+                        let _ = done.send(());
+                        return;
+                    }
+                };
+                if let Some(level) = level {
+                    filter_handle
+                        .reload(app_filter(level))
+                        .expect("the global subscriber outlives its logging reload thread");
                 }
-                _guard = guard;
-                current_rotation = rotation;
+
+                // Rebuilding the writer opens a new file, so an unchanged rotation
+                // (such as the startup effect replaying the defaults) keeps the
+                // current one.
+                if let Some(rotation) = rotation.filter(|r| *r != current_rotation) {
+                    let (appender, guard) =
+                        match get_file_appender(paths.app_logs_dir().into_std_path_buf(), rotation)
+                        {
+                            Ok(x) => x,
+                            Err(e) => {
+                                error!("failed to create file appender: {}", e);
+                                continue;
+                            }
+                        };
+                    if let Err(e) = file_handle.modify(|layer| *layer.writer_mut() = appender) {
+                        error!("failed to modify file appender: {}", e);
+                        continue;
+                    }
+                    _guard = guard;
+                    current_rotation = rotation;
+                }
             }
-        }
-        // Every sender is gone, so no reload can come, but the guard still has
-        // to outlive every log line the process writes.
-        loop {
-            thread::park();
-        }
-    });
+            // Every sender is gone, so no reload can come, but the guard still has
+            // to outlive every log line the process writes.
+            loop {
+                thread::park();
+            }
+        })
+        .context(StartReloadThreadSnafu)?;
 
     // if debug build, log to stdout and stderr with all levels
     #[cfg(debug_assertions)]
@@ -176,9 +278,14 @@ pub fn init(
         .with(jobs.layer())
         .with(profilers.trace_layer(log_dir.as_std_path()));
 
-    log_tracer::LogTracer::init()?;
-    tracing::subscriber::set_global_default(subscriber)
-        .map_err(|x| anyhow!("setup logging error: {}", x))?;
+    let installed = (|| {
+        log_tracer::LogTracer::init().context(InstallLogTracerSnafu)?;
+        tracing::subscriber::set_global_default(subscriber).context(InstallSubscriberSnafu)
+    })();
+    if let Err(error) = installed {
+        LoggingShutdown(sender).finish_blocking();
+        return Err(error);
+    }
     Ok((sender, jobs))
 }
 
@@ -187,6 +294,46 @@ mod tests {
     use super::*;
     use nyanpasu_logging::{FsLogFiles, LogFiles};
     use std::io::Write;
+
+    #[test]
+    fn logging_init_reports_the_unwritable_directory_before_installing_globals() {
+        let directory = tempfile::tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            directory.path().join("config").try_into().unwrap(),
+            directory.path().join("data").try_into().unwrap(),
+        );
+        let logs = paths.app_logs_dir();
+        fs::create_dir_all(logs.parent().unwrap()).unwrap();
+        fs::write(&logs, b"not a directory").unwrap();
+        let error = init(&mut Profilers::default(), &paths).err().unwrap();
+        assert!(matches!(error, Error::CreateDirectory { path, .. } if path == logs));
+    }
+
+    #[test]
+    fn startup_failure_is_on_disk_before_the_logging_guard_drops() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_appender, mut guard) = get_file_appender(
+            dir.path().into(),
+            LogRotation {
+                max_files: 3,
+                max_file_size: 1,
+            },
+        )
+        .unwrap();
+        guard
+            .record_startup_failure("setup -> application.yaml -> line 18 column 7")
+            .unwrap();
+        let catalog = FsLogFiles::new(dir.path().into(), "clash-nyanpasu".into())
+            .catalog()
+            .unwrap();
+        let content = fs::read_to_string(dir.path().join(&catalog[0].name)).unwrap();
+        let record: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(
+            record["fields"]["error"],
+            "setup -> application.yaml -> line 18 column 7"
+        );
+        assert_eq!(record["level"], "ERROR");
+    }
 
     /// Every level the settings offer, `silent` included, sets both of the
     /// app's own crates to the level `tracing` knows it by.

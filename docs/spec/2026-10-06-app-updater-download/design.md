@@ -30,7 +30,7 @@
 
 | 事实                                                                                                      | 证据                                                                                                                             |
 | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 应用更新调用 Tauri `Update::download()`，将每个 chunk 长度累加成 `downloaded`                             | [app_update/adapters.rs](../../../backend/tauri/src/client/app_update/adapters.rs)，`TauriAppUpdateBackend::download`            |
+| 应用更新调用 Tauri `Update::download()`，将每个 chunk 长度累加成 `downloaded`                             | [adapters/app_update.rs](../../../backend/tauri/src/adapters/app_update.rs)，`TauriAppUpdateBackend::download`                   |
 | 适配器每次尝试发两次 `Source`：开始时 `content_length: None`，首个 chunk 时带长度；`Chunk` 本身也携带总长 | 同文件                                                                                                                           |
 | operation callback 在新增不足 256 KiB **且**间隔不足 250ms 时才丢弃进度；新增达到阈值便可立即发送         | [app_update/mod.rs](../../../backend/tauri/src/client/app_update/mod.rs)，`OperationActor::handle`                               |
 | 速度用 actor **处理消息时**的 `Instant::now()` 计算，分母下限为 1ms                                       | 同文件，`Message::Progress`                                                                                                      |

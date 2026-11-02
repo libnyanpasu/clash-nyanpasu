@@ -27,12 +27,12 @@ impl StateChangedError {
 
 #[derive(thiserror::Error)]
 pub enum LoadError<Manager = ()> {
-    #[error("failed to read the config file: {0}")]
-    ReadConfig(anyhow::Error),
+    #[error("failed to read the config file")]
+    ReadConfig(#[source] anyhow::Error),
     #[error("failed to upsert the state: {0}")]
     Upsert(StateChangedError),
-    #[error("failed to deserialize the config file: {0}")]
-    DeserializeConfig(anyhow::Error),
+    #[error("failed to deserialize the config file")]
+    DeserializeConfig(#[source] anyhow::Error),
     #[error("state manager initialization ACK failed: {0}")]
     Init(Box<ManagerInitError<Manager>>),
 }

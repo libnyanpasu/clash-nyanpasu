@@ -5,7 +5,7 @@
 use tauri_specta::{collect_commands, collect_events};
 use tauri_specta_query::{CommandSet, TanstackQueryFramework};
 
-use crate::{core, ipc, unified_rpc, window};
+use crate::{adapters::events, ipc, unified_rpc, window};
 
 pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
@@ -14,17 +14,17 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         // in the schema builder below and dispatch through call_rpc.
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
-            crate::client::app_update::AppUpdateStateChanged,
-            core::logs::CoreLogsChanged,
-            core::clash::ws::ClashWsEvent,
+            events::AppUpdateStateChanged,
+            events::CoreLogsChanged,
+            events::ClashWsEvent,
             window::WindowMessageEvent,
-            core::storage::StorageValueChangedEvent,
-            core::storage::StorageResyncEvent,
+            events::StorageValueChangedEvent,
+            events::StorageResyncEvent,
             ipc::SchemeRequestReceivedEvent,
-            core::actor_v2::CoreStatusChangedEvent,
+            events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
-            core::actor_v2::ServiceStatusChangedEvent,
-            crate::client::StateChangedEvent
+            events::ServiceStatusChangedEvent,
+            events::StateChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -60,6 +60,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_core_version,
             ipc::get_app_config,
             ipc::get_clash_config,
+            ipc::get_config_features,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
             ipc::probe_profile_url,
@@ -197,17 +198,17 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
-        crate::client::app_update::AppUpdateStateChanged,
-        core::logs::CoreLogsChanged,
-        core::clash::ws::ClashWsEvent,
+        events::AppUpdateStateChanged,
+        events::CoreLogsChanged,
+        events::ClashWsEvent,
         window::WindowMessageEvent,
-        core::storage::StorageValueChangedEvent,
-        core::storage::StorageResyncEvent,
+        events::StorageValueChangedEvent,
+        events::StorageResyncEvent,
         ipc::SchemeRequestReceivedEvent,
-        core::actor_v2::CoreStatusChangedEvent,
+        events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
-        core::actor_v2::ServiceStatusChangedEvent,
-        crate::client::StateChangedEvent
+        events::ServiceStatusChangedEvent,
+        events::StateChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the

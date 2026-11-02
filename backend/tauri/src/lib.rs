@@ -4,33 +4,27 @@
 )]
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
+mod adapters;
 mod bundle;
-mod client;
 mod cmds;
 mod consts;
 mod core;
-mod enhance;
 mod event_handler;
 mod ipc;
 mod server;
-mod service;
 mod setup;
 mod specta_export;
-mod state;
+mod startup_failure;
 mod unified_rpc;
 
 mod host_paths;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 mod shutdown_hook;
 mod utils;
 mod widget;
 mod window;
 
-use crate::{
-    core::backup::BACKUP_FAILED_EXIT_CODE,
-    utils::{init, resolve},
-};
-use anyhow::Context;
+use crate::utils::{init, resolve};
 use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::Event;
@@ -147,18 +141,31 @@ fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() -> std::io::Result<()> {
+pub fn run() -> std::process::ExitCode {
     // Nothing before the logger reaches a trace, so its share is logged.
     let started = std::time::Instant::now();
+    rust_i18n::set_locale(utils::help::detect_system_i18n_key());
     // The one resolver: every later stage is given it, none looks the directories up again.
     // Every stage needs both roots, so a host that has none ends the process here.
-    let paths = host_paths::discover().unwrap_or_else(|error| {
-        utils::dialog::panic_dialog(&format!(
-            "Failed to resolve the application directories: {}",
-            snafu::Report::from_error(&error)
-        ));
-        std::process::exit(1);
-    });
+    let paths = match host_paths::discover() {
+        Ok(paths) => paths,
+        Err(error) => {
+            let path = match &error {
+                nyanpasu_paths::DiscoverError::NotUtf8 { path, .. } => Some(path.clone()),
+                nyanpasu_paths::DiscoverError::PortableInstallDir {
+                    source: nyanpasu_paths::InstallDirError::NotUtf8 { path },
+                } => Some(path.clone()),
+                _ => None,
+            };
+            startup_failure::show_one_shot(
+                startup_failure::FailureKind::Directories,
+                path,
+                &error,
+                None,
+            );
+            return std::process::ExitCode::FAILURE;
+        }
+    };
     let mut profilers = utils::profiling::Profilers::default();
     #[cfg(feature = "dhat-heap")]
     profilers.start_heap(&paths);
@@ -179,7 +186,14 @@ pub fn run() -> std::io::Result<()> {
 
     if custom_scheme.is_none() {
         // Parse commands
-        cmds::parse(&paths).unwrap();
+        match cmds::parse(&paths) {
+            Ok(true) => return std::process::ExitCode::SUCCESS,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("{}", snafu::Report::from_error(&error));
+                return std::process::ExitCode::FAILURE;
+            }
+        }
     };
     // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
     // Only the GUI needs it: the subcommands above exit without it, and building
@@ -199,23 +213,23 @@ pub fn run() -> std::io::Result<()> {
         }
         Ok(None) => {
             tracing::warn!(target: "app", "Another instance is running; exiting");
-            std::process::exit(0);
+            return std::process::ExitCode::SUCCESS;
         }
         Err(e) => {
             tracing::error!(target: "app", "Failed to check single-instance lock: {e:?}");
             // Policy: continue startup in best-effort mode
         }
     }
-    // Use system locale as default
-    rust_i18n::set_locale(utils::help::detect_system_i18n_key());
 
     // Past the single-instance lock, which a losing process never reaches, so it creates nothing.
     if let Err(error) = paths.create_base_dirs() {
-        utils::dialog::panic_dialog(&format!(
-            "Failed to create the application directories: {}",
-            snafu::Report::from_error(&error)
-        ));
-        std::process::exit(1);
+        startup_failure::show_one_shot(
+            startup_failure::FailureKind::Directories,
+            Some(error.path.clone().into_std_path_buf()),
+            &error,
+            None,
+        );
+        return std::process::ExitCode::FAILURE;
     }
 
     if single_instance_result
@@ -223,16 +237,37 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
         && let Err(e) = init::run_pending_migrations(&paths)
     {
-        let backup_failed = e
-            .downcast_ref::<init::MigrationChildFailed>()
-            .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
-        let message = format!("Failed to finish migration event: {e}");
-        utils::dialog::migration_failed_dialog(&message, &paths, backup_failed);
-        std::process::exit(1);
+        if let init::Error::OpenMigrationLog { path, .. } = &e {
+            startup_failure::show_one_shot(
+                startup_failure::FailureKind::Logging,
+                Some(path.clone()),
+                &e,
+                None,
+            );
+        } else {
+            startup_failure::show(&startup_failure::Report::migration(&e, &paths));
+        }
+        return std::process::ExitCode::FAILURE;
     }
 
-    let (logger_reload, jobs_capture) =
-        init::logging::init(&mut profilers, &paths).expect("failed to initialize logging");
+    let (logger_reload, jobs_capture) = match init::logging::init(&mut profilers, &paths) {
+        Ok(logging) => logging,
+        Err(error) => {
+            let path = match &error {
+                init::logging::Error::CreateWriter { path, .. }
+                | init::logging::Error::CreateDirectory { path, .. } => path.clone(),
+                _ => paths.app_logs_dir().into_std_path_buf(),
+            };
+            startup_failure::show_one_shot(
+                startup_failure::FailureKind::Logging,
+                Some(path),
+                &error,
+                None,
+            );
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let startup_logging = init::logging::LoggingShutdown(logger_reload.clone());
     tracing::info!(
         pre_logging_ms = started.elapsed().as_millis(),
         "logging initialized"
@@ -254,22 +289,28 @@ pub fn run() -> std::io::Result<()> {
         const RPC_BINDINGS_PATH: &str = "../../frontend/rpc/src/rpc-bindings.ts";
         const QUERY_BINDINGS_PATH: &str = "../../frontend/query/src/query-bindings.ts";
 
-        transport_builder
-            .export(
-                Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
-                SPECTA_BINDINGS_PATH,
-            )
-            .expect("Failed to export Tauri transport bindings");
+        if let Err(error) = transport_builder.export(
+            Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
+            SPECTA_BINDINGS_PATH,
+        ) {
+            startup_failure::show_internal(&error, &paths, &startup_logging);
+            return std::process::ExitCode::FAILURE;
+        }
         match rpc_schema_builder.export(
             Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
             RPC_BINDINGS_PATH,
         ) {
             Ok(_) => {
                 if let Err(e) = specta_export::adapt_rpc_bindings(RPC_BINDINGS_PATH) {
-                    panic!("Failed to generate RPC bindings: {e}");
+                    startup_failure::show_internal(&e, &paths, &startup_logging);
+                    return std::process::ExitCode::FAILURE;
                 }
-                specta_export::adapt_query_bindings(QUERY_BINDINGS_PATH, &query_bindings)
-                    .expect("Failed to generate query bindings");
+                if let Err(error) =
+                    specta_export::adapt_query_bindings(QUERY_BINDINGS_PATH, &query_bindings)
+                {
+                    startup_failure::show_internal(&error, &paths, &startup_logging);
+                    return std::process::ExitCode::FAILURE;
+                }
                 let prettier_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../node_modules/.bin")
                     .join(if cfg!(target_os = "windows") {
@@ -295,7 +336,8 @@ pub fn run() -> std::io::Result<()> {
                 log::debug!("Exported typescript bindings, path: {SPECTA_BINDINGS_PATH}");
             }
             Err(e) => {
-                panic!("Failed to export typescript bindings: {e}");
+                startup_failure::show_internal(&e, &paths, &startup_logging);
+                return std::process::ExitCode::FAILURE;
             }
         };
     }
@@ -308,19 +350,59 @@ pub fn run() -> std::io::Result<()> {
     };
 
     let mut context = tauri::generate_context!();
-    let executable_dir = paths
-        .app_install_dir()
-        .expect("failed to locate the application directory")
-        .as_std_path();
-    let metadata = bundle::BundleMetadata::resolve(cfg!(windows), context.config(), executable_dir)
-        .expect("failed to resolve bundle metadata");
-    let updater = metadata
-        .setup(context.config_mut(), executable_dir)
-        .expect("failed to configure bundle startup");
+    let executable_dir = match paths.app_install_dir() {
+        Ok(directory) => directory.as_std_path(),
+        Err(error) => {
+            let path = match &error {
+                nyanpasu_paths::InstallDirError::NotUtf8 { path } => Some(path.clone()),
+                _ => None,
+            };
+            startup_failure::show_one_shot(
+                startup_failure::FailureKind::Directories,
+                path,
+                &error,
+                None,
+            );
+            startup_logging.finish_blocking();
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let metadata =
+        match bundle::resolve(cfg!(windows), context.config_mut(), executable_dir, || {
+            tauri::webview_version().is_ok()
+        }) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let path = match &error {
+                    bundle::Error::InspectWebview { path, .. }
+                    | bundle::Error::ValidateWebview { path } => Some(path.clone()),
+                    _ => None,
+                };
+                let recovery = if bundle::is_portable(executable_dir) {
+                    "web_view2.portable_recovery"
+                } else {
+                    "web_view2.installed_recovery"
+                };
+                startup_failure::show_one_shot(
+                    startup_failure::FailureKind::WebView2,
+                    path,
+                    &error,
+                    Some(recovery),
+                );
+                startup_logging.finish_blocking();
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+    let updater = bundle::setup(&metadata, context.config_mut()).expect(
+        "the embedded bundle configuration has valid updater endpoints and a supported target",
+    );
+    // The setup closure owns its copy; build failures still need paths for the reporter.
+    let failure_paths = paths.clone();
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .manage(utils::exit::ExitBoundary::default())
+        .manage(init::logging::LoggingShutdown(logger_reload.clone()))
         .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
@@ -335,74 +417,98 @@ pub fn run() -> std::io::Result<()> {
             // A reloaded page keeps the same webview, so `Channel::send`
             // cannot tell its old connection-detail subscriptions are gone.
             if payload.event() == tauri::webview::PageLoadEvent::Started {
-                core::clash::connection_details::cancel_for_webview(webview, webview.label());
+                adapters::connection_details::cancel_for_webview(webview, webview.label());
             }
         })
         .setup(move |app| {
-            transport_builder.mount_events(app);
-            setup::setup(app, metadata, logger_reload, jobs_capture, paths)
-                .context("Failed to setup the app")
-                .inspect_err(|e| {
-                    tracing::error!("Failed to setup the app: {:#?}", e);
-                })?;
+            let failure_host = setup::TauriStartupFailureHost {
+                handle: app.handle().clone(),
+                paths: paths.clone(),
+            };
+            setup::run_setup(
+                setup::StartupOwners::default(),
+                |owners| {
+                    transport_builder.mount_events(app);
+                    setup::setup(
+                        app,
+                        metadata,
+                        logger_reload,
+                        jobs_capture,
+                        paths.clone(),
+                        owners,
+                    )
+                    .map_err(|error| startup_failure::StartupFailure::from_setup(&error, &paths))?;
 
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::menu::{MenuBuilder, SubmenuBuilder};
-                let submenu = SubmenuBuilder::new(app, "Edit")
-                    .undo()
-                    .redo()
-                    .copy()
-                    .paste()
-                    .cut()
-                    .select_all()
-                    .close_window()
-                    .quit()
-                    .build()
-                    .unwrap();
-                let menu = MenuBuilder::new(app).item(&submenu).build().unwrap();
-                app.set_menu(menu).unwrap();
-            }
+                    #[cfg(target_os = "macos")]
+                    {
+                        use tauri::menu::{MenuBuilder, SubmenuBuilder};
+                        let menu = (|| -> tauri::Result<()> {
+                            let submenu = SubmenuBuilder::new(app, "Edit")
+                                .undo()
+                                .redo()
+                                .copy()
+                                .paste()
+                                .cut()
+                                .select_all()
+                                .close_window()
+                                .quit()
+                                .build()?;
+                            let menu = MenuBuilder::new(app).item(&submenu).build()?;
+                            app.set_menu(menu)?;
+                            Ok(())
+                        })();
+                        if let Err(error) = menu {
+                            tracing::warn!(%error, "Edit menu unavailable; continuing without it");
+                        }
+                    }
 
-            install_panic_hook(Some(app.handle().clone()));
-            resolve::resolve_setup(app);
-            setup::setup_unified_rpc(app).context("Failed to initialize unified RPC")?;
+                    install_panic_hook(Some(app.handle().clone()));
+                    resolve::resolve_setup(app);
+                    setup::setup_unified_rpc(app)
+                        .map_err(|error| startup_failure::StartupFailure::from_rpc(&error))?;
 
-            // setup custom scheme
-            let handle = app.handle().clone();
-            // Deep links wait here until a frontend takes them.
-            app.manage(crate::ipc::PendingDeepLinks::default());
-            // For start new app from schema
-            #[cfg(not(target_os = "macos"))]
-            if let Some(url) = custom_scheme {
-                log::info!(target: "app", "started with schema");
-                queue_deep_link(&handle, url.to_string());
-                log_err!(
-                    handle
-                        .state::<window::WindowManager>()
-                        .open(&window::kinds::MainWindow, None)
-                );
-            }
-            // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
-            log_err!(tauri_plugin_deep_link::register(
-                &["clash-nyanpasu", "clash"],
-                move |request| {
-                    log::info!(target: "app", "scheme request received: {:?}", request);
-                    // create window if not exists
-                    log_err!(
-                        handle
-                            .state::<window::WindowManager>()
-                            .open(&window::kinds::MainWindow, None)
-                    );
-                    queue_deep_link(&handle, request);
-                }
-            ));
-            Ok(())
+                    // setup custom scheme
+                    let handle = app.handle().clone();
+                    // Deep links wait here until a frontend takes them.
+                    app.manage(crate::ipc::PendingDeepLinks::default());
+                    // For start new app from schema
+                    #[cfg(not(target_os = "macos"))]
+                    if let Some(url) = custom_scheme {
+                        log::info!(target: "app", "started with schema");
+                        queue_deep_link(&handle, url.to_string());
+                        log_err!(
+                            handle
+                                .state::<window::WindowManager>()
+                                .open(&window::kinds::MainWindow, None)
+                        );
+                    }
+                    // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
+                    log_err!(tauri_plugin_deep_link::register(
+                        &["clash-nyanpasu", "clash"],
+                        move |request| {
+                            log::info!(target: "app", "scheme request received: {:?}", request);
+                            // create window if not exists
+                            log_err!(
+                                handle
+                                    .state::<window::WindowManager>()
+                                    .open(&window::kinds::MainWindow, None)
+                            );
+                            queue_deep_link(&handle, request);
+                        }
+                    ));
+                    Ok(())
+                },
+                &failure_host,
+            )
         });
 
-    let app = builder
-        .build(context)
-        .expect("error while running tauri application");
+    let app = match builder.build(context) {
+        Ok(app) => app,
+        Err(error) => {
+            startup_failure::show_internal(&error, &failure_paths, &startup_logging);
+            return std::process::ExitCode::FAILURE;
+        }
+    };
     drop(prepare_span);
     app.run(move |app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, code, .. } => {
@@ -430,7 +536,7 @@ pub fn run() -> std::io::Result<()> {
             // Every webview's connection-detail subscriptions must end on
             // destroy, not just "main"'s: `Channel::send` cannot detect it.
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                core::clash::connection_details::cancel_for_webview(app_handle, &label);
+                adapters::connection_details::cancel_for_webview(app_handle, &label);
             }
         }
         #[cfg(target_os = "macos")]
@@ -444,5 +550,5 @@ pub fn run() -> std::io::Result<()> {
         _ => {}
     });
 
-    Ok(())
+    std::process::ExitCode::SUCCESS
 }

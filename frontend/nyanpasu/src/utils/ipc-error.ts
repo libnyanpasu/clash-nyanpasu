@@ -288,6 +288,8 @@ function hotkeyActionName(action: HotkeyAction): string {
 export function storageErrorMessage(error: StorageOperationError): string {
   switch (error.kind) {
     case 'open_database':
+    case 'inspect_database':
+    case 'preserve_database':
       return m.error_storage_open()
     case 'begin_transaction':
     case 'open_table':
@@ -589,6 +591,16 @@ function buildRuntimeMessage(
     case 'serialize_final_config':
     case 'config_not_mapping':
       return m.error_runtime_render_runtime_config()
+    case 'unsupported_config_values':
+      return error.values
+        .map((value) =>
+          m.error_runtime_build_unsupported_config_value({
+            path: value.path,
+            value: value.value,
+            supported: value.supported.join(', '),
+          }),
+        )
+        .join('\n')
   }
 }
 

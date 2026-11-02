@@ -67,14 +67,6 @@
       "show_in_folder": "在資料夾中顯示"
     },
     "panic": "請將此問題回報至 Nyanpasu 的 GitHub Issues。",
-    "migration_failed": {
-      "open_backups": "開啟備份資料夾",
-      "open_log": "開啟遷移日誌",
-      "exit": "結束",
-      "backup_kept": "遷移前已將設定備份到 %{path}。其中最新的 `migration-*` 資料夾即為本次遷移前的備份。",
-      "recovery": "還原步驟：結束應用程式，用備份中的 `config` 資料夾覆蓋設定目錄，用 `data/storage.db` 覆蓋資料目錄中的同名檔案，然後安裝遷移前使用的版本，或將 migration.log 附在新 issue 中提交。",
-      "not_modified": "備份未能建立，因此設定檔沒有被修改。請檢查磁碟剩餘空間與資料夾權限後重試，或將 migration.log 附在新 issue 中提交。"
-    },
     "migrate": "檢測到舊版本設定，是否遷移到新版本？\n警告：此操作會覆蓋掉現有設定。",
     "custom_app_dir_migrate": "你將要更改 App 目錄至 %{path}。\n需要將現有資料遷移到新目錄嗎？",
     "warning": {
@@ -82,6 +74,66 @@
     },
     "info": {
       "grant_core_permission": "Clash 核心需要系統管理員權限才能使 TUN 模式正常工作，是否授予？\n請注意：此操作需要輸入密碼。"
+    },
+    "startup_failure": {
+      "unresolved_path": "無法解析路徑，請查看下方詳細資訊。",
+      "heading": "啟動失敗",
+      "path": "路徑",
+      "details": "詳細資訊",
+      "open_containing": "開啟所在目錄",
+      "open_backups": "開啟備份目錄",
+      "open_logs": "開啟日誌目錄",
+      "copy": "複製詳細資訊",
+      "copied": "已複製",
+      "copy_failed": "無法複製詳細資訊",
+      "open_failed": "無法開啟目錄",
+      "exit": "結束",
+      "directories": {
+        "description": "應用程式目錄無法使用。",
+        "recovery": "請檢查權限和剩餘磁碟空間。可攜版可移至可寫入的位置。"
+      },
+      "migration_failed": {
+        "description": "設定遷移未能完成。",
+        "recovery": "請修正回報的問題，或從可用備份還原設定。"
+      },
+      "newer_version": {
+        "description": "這些檔案由較新版本寫入。",
+        "recovery": "請安裝較新版本的 Clash Nyanpasu，或還原相容的備份。"
+      },
+      "user_config": {
+        "description": "無法讀取或驗證設定檔。",
+        "recovery": "請修正下方檔案，或從備份目錄還原。"
+      },
+      "core_runtime_directory": {
+        "description": "核心執行目錄無法使用。",
+        "recovery": "請先檢查目錄權限。結束所有 Clash Nyanpasu 程序後，可刪除此目錄並重新啟動。"
+      },
+      "jobs_database": {
+        "description": "工作資料庫無法使用。",
+        "recovery": "此檔案僅儲存工作歷程。可刪除或移走 jobs.redb 後重新啟動。"
+      },
+      "web_view2": {
+        "description": "WebView2 執行階段無法使用。",
+        "recovery": "請重新下載可攜版，或重新安裝 Clash Nyanpasu。",
+        "portable_recovery": "請重新下載可攜式套件。",
+        "installed_recovery": "請重新安裝 Clash Nyanpasu。"
+      },
+      "logging": {
+        "description": "應用程式日誌無法使用。",
+        "recovery": "請檢查日誌位置的權限和剩餘磁碟空間。"
+      },
+      "permission": {
+        "description": "存取所需檔案或目錄遭拒。",
+        "recovery": "請檢查下方路徑的權限，確保目前帳戶可以讀寫。"
+      },
+      "busy": {
+        "description": "所需檔案或目錄正被佔用。",
+        "recovery": "請結束其他 Clash Nyanpasu 程序並解除檔案佔用，然後重新啟動。"
+      },
+      "internal": {
+        "description": "內部錯誤導致應用程式無法啟動。",
+        "recovery": "請複製詳細資訊，並附上版本與日誌回報問題。"
+      }
     }
   },
   "setting": {

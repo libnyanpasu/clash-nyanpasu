@@ -1,10 +1,13 @@
-use super::core::clash::ws::ClashConnectionsConnectorEvent;
-use crate::client::{
-    effects::status::failure_text,
-    ui_effects::ports::{
-        ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
-        ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu,
-        WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
+use crate::adapters::ui_effects::ports::WIDGET_STOP_BOUND;
+use nyanpasu_core::{
+    clash::ws::ClashConnectionsConnectorEvent,
+    client::effects::{
+        ports::{
+            ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
+            ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu,
+            WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
+        },
+        status::failure_text,
     },
 };
 
@@ -432,10 +435,10 @@ pub async fn setup(
     ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
     shutdown: CancellationToken,
     tasks: &TaskTracker,
-) -> anyhow::Result<WidgetManager> {
+) -> WidgetManager {
     let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost), shutdown, tasks);
     widget_manager.register_listener(ws_connections_receiver);
-    Ok(widget_manager)
+    widget_manager
 }
 
 #[cfg(test)]

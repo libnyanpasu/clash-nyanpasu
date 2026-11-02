@@ -9,6 +9,7 @@ import {
 } from '../../../_modules/settings-card'
 import AllowLanSwitch from './_modules/allow-lan-switch'
 import IPv6Switch from './_modules/ipv6-switch'
+import MipsCongestionControllerSelector from './_modules/mips-congestion-controller-selector'
 import {
   MixedPortConfig,
   OptionalPortConfig,
@@ -64,6 +65,8 @@ const TunSettings = () => {
 
       <SettingsGroup>
         <TunStackSelector />
+
+        <MipsCongestionControllerSelector />
       </SettingsGroup>
     </div>
   )

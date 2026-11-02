@@ -67,14 +67,6 @@
       "show_in_folder": "Show in folder"
     },
     "panic": "Please report this issue to Github issue tracker.",
-    "migration_failed": {
-      "open_backups": "Open backups folder",
-      "open_log": "Open migration log",
-      "exit": "Exit",
-      "backup_kept": "Your config was backed up to %{path} before the migration. The newest `migration-*` folder there is the backup taken before this run.",
-      "recovery": "To recover: exit the app, copy the backup's `config` folder over your config directory and `data/storage.db` over the one in your data directory, then install the version you used before, or submit migration.log with a new issue.",
-      "not_modified": "The backup could not be created, so your config files were not modified. Check the free disk space and folder permissions, then try again, or submit migration.log with a new issue."
-    },
     "migrate": "Old version config file detected. Migrate to new version or not?\nWARNING: This will override your current config if exists",
     "custom_app_dir_migrate": "You will set custom app dir to %{path}\nShall we move the current app dir to the new one?",
     "warning": {
@@ -82,6 +74,66 @@
     },
     "info": {
       "grant_core_permission": "Clash core needs admin permission to make TUN mode work properly, grant it?\nPlease note that this operation requires password input."
+    },
+    "startup_failure": {
+      "unresolved_path": "Path could not be resolved; see details below.",
+      "heading": "Startup failed",
+      "path": "Path",
+      "details": "Details",
+      "open_containing": "Open containing folder",
+      "open_backups": "Open backups folder",
+      "open_logs": "Open logs folder",
+      "copy": "Copy details",
+      "copied": "Copied",
+      "copy_failed": "Could not copy details",
+      "open_failed": "Could not open folder",
+      "exit": "Exit",
+      "directories": {
+        "description": "An application directory is unavailable.",
+        "recovery": "Check permissions and free disk space. Move a portable installation to a writable location."
+      },
+      "migration_failed": {
+        "description": "The configuration migration could not finish.",
+        "recovery": "Correct the reported problem, or restore your configuration from an available backup."
+      },
+      "newer_version": {
+        "description": "These files were written by a newer version.",
+        "recovery": "Install a newer version of Clash Nyanpasu, or restore a compatible backup."
+      },
+      "user_config": {
+        "description": "A configuration file could not be read or validated.",
+        "recovery": "Correct the file shown below, or restore it from the backups folder."
+      },
+      "core_runtime_directory": {
+        "description": "The core runtime directory is unavailable.",
+        "recovery": "Exit all Clash Nyanpasu processes before removing this directory, then restart. Check its permissions first."
+      },
+      "jobs_database": {
+        "description": "The jobs database is unavailable.",
+        "recovery": "This file stores only task history. You can delete or move jobs.redb, then restart."
+      },
+      "web_view2": {
+        "description": "The WebView2 runtime is unavailable.",
+        "recovery": "Download the portable package again, or reinstall Clash Nyanpasu.",
+        "portable_recovery": "Download the portable package again.",
+        "installed_recovery": "Reinstall Clash Nyanpasu."
+      },
+      "logging": {
+        "description": "Application logging is unavailable.",
+        "recovery": "Check permissions and free disk space at the log location."
+      },
+      "permission": {
+        "description": "Access to a required file or directory was denied.",
+        "recovery": "Check permissions for the path below and ensure your account can read and write it."
+      },
+      "busy": {
+        "description": "A required file or directory is busy.",
+        "recovery": "Exit other Clash Nyanpasu processes and release the file lock, then restart."
+      },
+      "internal": {
+        "description": "An internal error prevented startup.",
+        "recovery": "Copy the details and submit an issue with the version and logs."
+      }
     }
   },
   "setting": {

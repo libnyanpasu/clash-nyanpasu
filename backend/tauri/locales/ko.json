@@ -67,14 +67,6 @@
       "show_in_folder": "폴더에서 보기"
     },
     "panic": "이 문제를 Github 이슈 트래커에 신고해 주세요.",
-    "migration_failed": {
-      "open_backups": "백업 폴더 열기",
-      "open_log": "마이그레이션 로그 열기",
-      "exit": "종료",
-      "backup_kept": "마이그레이션 전에 설정이 %{path}에 백업되었습니다. 그 안에서 가장 최근의 `migration-*` 폴더가 이번 실행 전에 만든 백업입니다.",
-      "recovery": "복구 방법: 앱을 종료하고, 백업의 `config` 폴더를 설정 디렉터리에 덮어쓰고 `data/storage.db`를 데이터 디렉터리의 같은 이름 파일에 덮어쓴 뒤, 이전에 사용하던 버전을 설치하거나 migration.log를 새 이슈에 첨부해 제출해 주세요.",
-      "not_modified": "백업을 만들지 못해 설정 파일은 수정되지 않았습니다. 디스크 여유 공간과 폴더 권한을 확인한 뒤 다시 시도하거나 migration.log를 새 이슈에 첨부해 제출해 주세요."
-    },
     "migrate": "이전 버전의 설정 파일이 감지되었습니다. 새 버전으로 마이그레이션하시겠습니까?\n경고: 기존 설정이 있는 경우 덮어쓰게 됩니다",
     "custom_app_dir_migrate": "앱 디렉터리를 %{path}(으)로 지정합니다\n현재 앱 디렉터리를 새 위치로 이동할까요?",
     "warning": {
@@ -82,6 +74,66 @@
     },
     "info": {
       "grant_core_permission": "TUN 모드가 정상적으로 작동하려면 Clash 코어에 관리자 권한이 필요합니다. 권한을 부여하시겠습니까?\n이 작업에는 비밀번호 입력이 필요합니다."
+    },
+    "startup_failure": {
+      "unresolved_path": "경로를 확인할 수 없습니다. 아래 세부 정보를 확인하세요.",
+      "heading": "시작하지 못했습니다",
+      "path": "경로",
+      "details": "세부 정보",
+      "open_containing": "상위 폴더 열기",
+      "open_backups": "백업 폴더 열기",
+      "open_logs": "로그 폴더 열기",
+      "copy": "세부 정보 복사",
+      "copied": "복사됨",
+      "copy_failed": "복사하지 못했습니다",
+      "open_failed": "폴더를 열지 못했습니다",
+      "exit": "종료",
+      "directories": {
+        "description": "앱 디렉터리를 사용할 수 없습니다.",
+        "recovery": "권한과 디스크 여유 공간을 확인하세요. 포터블 버전은 쓰기 가능한 위치로 옮기세요."
+      },
+      "migration_failed": {
+        "description": "설정 마이그레이션을 완료하지 못했습니다.",
+        "recovery": "보고된 문제를 수정하거나 사용 가능한 백업에서 설정을 복원하세요."
+      },
+      "newer_version": {
+        "description": "이 파일은 더 새로운 버전에서 작성되었습니다.",
+        "recovery": "더 새로운 Clash Nyanpasu 버전을 설치하거나 호환되는 백업을 복원하세요."
+      },
+      "user_config": {
+        "description": "설정 파일을 읽거나 검증하지 못했습니다.",
+        "recovery": "아래 파일을 수정하거나 백업 폴더에서 복원하세요."
+      },
+      "core_runtime_directory": {
+        "description": "코어 런타임 디렉터리를 사용할 수 없습니다.",
+        "recovery": "먼저 권한을 확인하세요. 모든 Clash Nyanpasu 프로세스를 종료한 뒤 이 디렉터리를 삭제하고 다시 시작할 수 있습니다."
+      },
+      "jobs_database": {
+        "description": "작업 데이터베이스를 사용할 수 없습니다.",
+        "recovery": "이 파일에는 작업 기록만 저장됩니다. jobs.redb를 삭제하거나 옮긴 뒤 다시 시작할 수 있습니다."
+      },
+      "web_view2": {
+        "description": "WebView2 런타임을 사용할 수 없습니다.",
+        "recovery": "포터블 패키지를 다시 다운로드하거나 Clash Nyanpasu를 다시 설치하세요.",
+        "portable_recovery": "포터블 패키지를 다시 다운로드하세요.",
+        "installed_recovery": "Clash Nyanpasu를 다시 설치하세요."
+      },
+      "logging": {
+        "description": "앱 로그를 사용할 수 없습니다.",
+        "recovery": "로그 위치의 권한과 디스크 여유 공간을 확인하세요."
+      },
+      "permission": {
+        "description": "필요한 파일 또는 디렉터리에 대한 접근이 거부되었습니다.",
+        "recovery": "아래 경로의 권한을 확인하고 현재 계정으로 읽고 쓸 수 있도록 하세요."
+      },
+      "busy": {
+        "description": "필요한 파일 또는 디렉터리가 사용 중입니다.",
+        "recovery": "다른 Clash Nyanpasu 프로세스를 종료하고 파일 잠금을 해제한 뒤 다시 시작하세요."
+      },
+      "internal": {
+        "description": "내부 오류로 인해 시작하지 못했습니다.",
+        "recovery": "세부 정보를 복사하고 버전 및 로그와 함께 문제를 제출하세요."
+      }
     }
   },
   "setting": {

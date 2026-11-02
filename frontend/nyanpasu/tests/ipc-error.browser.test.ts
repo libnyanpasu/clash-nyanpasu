@@ -340,6 +340,29 @@ test('a failed build names the profile or the transform', () => {
       }),
     ),
   ).toBe(m.error_runtime_build_transforms_failed({ names: 't1, config_fixer' }))
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: {
+          kind: 'unsupported_config_values',
+          values: [
+            {
+              path: 'tun.stack',
+              value: 'mixed',
+              supported: ['system', 'gvisor'],
+            },
+          ],
+        },
+      }),
+    ),
+  ).toBe(
+    m.error_runtime_build_unsupported_config_value({
+      path: 'tun.stack',
+      value: 'mixed',
+      supported: 'system, gvisor',
+    }),
+  )
 })
 
 test('a port in use names the port, and a missing one names the field', () => {
@@ -485,6 +508,12 @@ test('a storage failure tells an unopenable database from unreadable data', () =
   expect(
     ipcErrorMessage(storage({ kind: 'open_database', path: 'storage.redb' })),
   ).toBe(m.error_storage_open())
+  expect(
+    ipcErrorMessage(storage({ kind: 'inspect_database', path: 'storage.db' })),
+  ).toBe(m.error_storage_open())
+  expect(ipcErrorMessage(storage({ kind: 'preserve_database' }))).toBe(
+    m.error_storage_open(),
+  )
   expect(
     ipcErrorMessage(storage({ kind: 'read_item', key: 'web:theme' })),
   ).toBe(m.error_storage_access())

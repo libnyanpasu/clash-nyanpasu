@@ -14,6 +14,8 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
     (): Record<StateChanged['kind'], QueryKey[]> => ({
       nyanpasu_config: [
         api.queries.getAppConfig().queryKey,
+        // Follows the selected core.
+        api.queries.getConfigFeatures().queryKey,
         api.queries.getSysProxy().queryKey,
         // The proxies snapshot is trimmed to the default latency test URL.
         api.queries.getProxies().queryKey,
@@ -40,6 +42,7 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
   const keptKeys = useMemo(
     () => [
       api.queries.getAppConfig().queryKey,
+      api.queries.getConfigFeatures().queryKey,
       api.queries.getClashConfig().queryKey,
       api.queries.clashApiGetVersion().queryKey,
       api.queries.getProfiles().queryKey,

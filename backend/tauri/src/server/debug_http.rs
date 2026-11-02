@@ -15,6 +15,8 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientRequest};
 use tokio_util::sync::CancellationToken;
 
+use nyanpasu_core::client::debug_http::{DebugHttpControl, DebugHttpStatus, Error};
+
 /// Production assets are supplied by the composition root's Tauri adapter.
 pub trait FrontendAssets: Send + Sync + 'static {
     fn get(&self, path: &str) -> Option<(String, Vec<u8>)>;
@@ -24,12 +26,6 @@ pub trait FrontendAssets: Send + Sync + 'static {
 pub enum Frontend {
     Embedded(Arc<dyn FrontendAssets>),
     Dev(url::Url),
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, specta::Type, PartialEq, Eq)]
-pub struct DebugHttpStatus {
-    pub enabled: bool,
-    pub url: Option<String>,
 }
 
 /// Infrastructure is assembled by the composition root, never by an enable command.
@@ -207,10 +203,14 @@ struct HttpServerClientInner {
     actor: ActorRef<Message>,
 }
 impl HttpServerClient {
-    pub async fn spawn(frontend: Option<Frontend>, routes: Arc<dyn HttpRoutes>) -> Result<Self> {
+    pub async fn spawn(
+        frontend: Option<Frontend>,
+        routes: Arc<dyn HttpRoutes>,
+    ) -> std::result::Result<Self, Error> {
         Ok(Self(Arc::new(HttpServerClientInner {
             actor: Actor::spawn(None, HttpServerActor, HttpServerArgs { frontend, routes })
-                .await?
+                .await
+                .map_err(|source| Error::SpawnActor { source })?
                 .0,
         })))
     }
@@ -239,6 +239,21 @@ impl HttpServerClient {
         }
     }
 }
+#[async_trait::async_trait]
+impl DebugHttpControl for HttpServerClient {
+    async fn status(&self) -> Result<DebugHttpStatus> {
+        Self::status(self).await
+    }
+
+    async fn set_enabled(&self, enabled: bool) -> Result<DebugHttpStatus> {
+        Self::set_enabled(self, enabled).await
+    }
+
+    async fn shutdown(&self) -> Result<()> {
+        Self::shutdown(self).await
+    }
+}
+
 impl Drop for HttpServerClientInner {
     fn drop(&mut self) {
         self.actor.stop(None);
@@ -516,10 +531,23 @@ async fn proxy(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use axum::{body::to_bytes, http::Request as HttpRequest, routing::get};
     use tower::ServiceExt;
+
+    pub(crate) fn control_factory(
+        frontend: Option<Frontend>,
+        routes: Arc<dyn HttpRoutes>,
+    ) -> Arc<nyanpasu_core::client::host_adapters::DebugHttpFactory> {
+        Arc::new(move || {
+            let (frontend, routes) = (frontend.clone(), routes.clone());
+            Box::pin(async move {
+                let server = HttpServerClient::spawn(frontend, routes).await?;
+                Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
+            })
+        })
+    }
 
     async fn cookie_from_entry(entry: &str) -> String {
         let response = reqwest::Client::builder()

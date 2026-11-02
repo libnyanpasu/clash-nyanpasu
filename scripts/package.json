@@ -6,7 +6,7 @@
   "dependencies": {
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
-    "consola": "3.4.0",
+    "consola": "3.4.2",
     "d3": "7.9.0",
     "es-toolkit": "1.52.0",
     "figlet": "1.11.0",

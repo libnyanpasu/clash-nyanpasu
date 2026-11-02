@@ -85,10 +85,18 @@ jobs:
           path: downloaded-build-artifacts
           merge-multiple: false
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
 
       - name: Validate six targets and prepare shared-timestamp manifests
         id: prepare
@@ -102,7 +110,7 @@ jobs:
           ARGS=(--channel "$CHANNEL" --artifacts-dir downloaded-build-artifacts --output-dir central-publication --commit "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --item-prefix "${IA_ITEM_PREFIX:-sourceforge-only}")
           if [[ "$CHANNEL" == 'release' ]]; then ARGS+=(--tag "$RELEASE_TAG"); fi
           if [[ -n "$PUBLISHED_AT" ]]; then ARGS+=(--published-at "$PUBLISHED_AT"); fi
-          deno task prepare:central-publication "${ARGS[@]}"
+          pnpm run prepare:central-publication "${ARGS[@]}"
 
       - name: Restore receipts before retrying a Telegram publication job
         if: ${{ inputs.backend == 'telegram' && github.run_attempt > 1 }}
@@ -119,7 +127,7 @@ jobs:
 
       - name: Check Telegram publication configuration
         if: ${{ inputs.backend == 'telegram' }}
-        run: deno task storage:preflight
+        run: pnpm run storage:preflight
         env:
           TELEGRAM_ARCHIVE_CHANNEL: ${{ vars.TELEGRAM_ARCHIVE_CHANNEL }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
@@ -150,14 +158,14 @@ jobs:
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
           if [[ "$STORAGE_BACKEND" == 'telegram' ]]; then
-            deno task telegram:publish --publication-dir central-publication --report publication-reports-central/telegram-report.json
+            pnpm run telegram:publish --publication-dir central-publication --report publication-reports-central/telegram-report.json
             exit 0
           fi
           ARGS=(--mode upload --backend "$STORAGE_BACKEND" --target all --publication-dir central-publication --reports-dir publication-reports-central)
           if [[ "$STORAGE_BACKEND" == 'sourceforge' ]]; then
             ARGS+=(--defer-sourceforge-verification)
           fi
-          deno task storage:recover "${ARGS[@]}"
+          pnpm run storage:recover "${ARGS[@]}"
 
       - name: Preserve central upload reports for independent gates
         if: ${{ always() }}

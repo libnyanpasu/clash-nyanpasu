@@ -52,7 +52,7 @@ alias, repository-root `@root` alias, and a `~icons` test stub. Other package
 imports use package exports; do not add aliases into sibling package source or
 `node_modules` internals.
 
-`deno task lint:frontend-boundaries` checks source exports, declared workspace
+`pnpm run lint:frontend-boundaries` checks source exports, declared workspace
 imports, dependency cycles, reverse app dependencies, and package responsibilities.
 It also rejects reintroducing the retired `interface` package. The root
 `lint:frontend-boundaries` script includes this gate in the normal lint pipeline.

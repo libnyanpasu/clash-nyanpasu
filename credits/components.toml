@@ -1,5 +1,5 @@
 # Third-party components the app ships without a package manager: downloaded
-# sidecars and resources, and bundled data. `deno task generate:credits` merges
+# sidecars and resources, and bundled data. `pnpm run generate:credits` merges
 # them with the scanned cargo and npm dependencies.
 #
 # [[component]] fields:

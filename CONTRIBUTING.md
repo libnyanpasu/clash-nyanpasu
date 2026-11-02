@@ -48,7 +48,6 @@ To ensure the project runs correctly locally, the following dependencies are req
 | Rust    | Nightly | [Official Install](https://www.rust-lang.org/tools/install) | Install via `rustup`; the root `rust-toolchain.toml` selects nightly automatically; use MSVC on Windows |
 | Node.js | 24      | [Official Site](https://nodejs.org/)                        | Matches `engines.node` in `package.json`                                                                |
 | pnpm    | 12      | [Official Documentation](https://pnpm.io/)                  | Pinned by `packageManager` in `package.json`; Corepack can install the exact version                    |
-| Deno    | 2.x     | [Official Site](https://deno.com/)                          | Runs repository automation (`deno task ...`)                                                            |
 | git     | Latest  | [Official Site](https://git-scm.com/)                       | Version control                                                                                         |
 
 ### 2. Build Dependencies
@@ -75,7 +74,7 @@ See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for oth
 
 ## 3. Pre-Development Setup
 
-Before starting development, install Deno 2 for repository automation, initialize the environment and download required resources.
+Before starting development, initialize the environment and download required resources.
 
 ### 1. Install Frontend Dependencies
 
@@ -89,13 +88,13 @@ pnpm i
 ### 2. Download Core & Resource Files
 
 ```
-deno task prepare:check
+pnpm run prepare:check
 ```
 
 If files are missing or you want to force update:
 
 ```
-deno task prepare:check --force
+pnpm run prepare:check --force
 ```
 
 > [!TIP]

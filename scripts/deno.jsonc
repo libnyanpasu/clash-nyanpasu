@@ -1,7 +1,0 @@
-{
-  "nodeModulesDir": "auto",
-  "allowScripts": [
-    "npm:bufferutil@4.1.0",
-    "npm:utf-8-validate@5.0.10"
-  ]
-}

@@ -93,8 +93,8 @@ pnpm fmt:backend
 
 Rust files are excluded from Prettier. Staged backend files run Clippy and Rustfmt
 through `.lintstagedrc.js`; tests are separate. After package-boundary changes, run
-`deno task lint:backend-boundaries`; after architecture static-policy changes, run
-`deno task lint:architecture-ledger`. Tauri checks also require the
+`pnpm run lint:backend-boundaries`; after architecture static-policy changes, run
+`pnpm run lint:architecture-ledger`. Tauri checks also require the
 [gitignored build prerequisites](workflow.md#gitignored-build-prerequisites-a-fresh-worktree-lacks).
 Process-lifecycle tests need the `fake-core` binary built; a dev-dependency alone does
 not build it (`backend/tauri/Cargo.toml`).

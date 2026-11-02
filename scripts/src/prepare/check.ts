@@ -1,123 +1,125 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import * as path from "jsr:@std/path";
-// @ts-types="npm:@types/figlet"
-import figlet from "npm:figlet";
-import { colorize, consola } from "../shared/logger.ts";
-import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
-import { createBinaryResolvers } from "./binaries.ts";
-import { getEnableLoopbackInfo } from "./enable-loopback.ts";
-import { normalizeArch, normalizePlatform } from "./platform.ts";
+import { readFile } from 'node:fs/promises'
+import * as path from 'node:path'
+import { parseArgs } from 'node:util'
+import figlet from 'figlet'
+import { runCommand } from '../shared/command.ts'
+import { colorize, consola } from '../shared/logger.ts'
+import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
+import { createBinaryResolvers } from './binaries.ts'
+import { getEnableLoopbackInfo } from './enable-loopback.ts'
+import { normalizeArch, normalizePlatform } from './platform.ts'
 import {
   formatProgressSize,
   formatResolveInfo,
   formatSpeed,
   ProgressRenderer,
-} from "./progress.ts";
+} from './progress.ts'
 import {
   resolveEnableLoopback,
   resolveEnableLoopbackBootstrapper,
   resolveResource,
   resolveSidecar,
   resolveWintun,
-} from "./resources.ts";
-import { normalizeVersion } from "./versions.ts";
-import type {
-  DownloadProgress,
-  ResolveInfo,
-  VersionManifest,
-} from "./types.ts";
+} from './resources.ts'
+import type { DownloadProgress, ResolveInfo, VersionManifest } from './types.ts'
+import { normalizeVersion } from './versions.ts'
 
 interface CheckArgs {
-  force?: boolean;
-  arch?: string;
-  "sidecar-host"?: string;
+  force?: boolean
+  arch?: string
+  'sidecar-host'?: string
 }
 
 interface Task {
-  name: string;
-  version?: string;
+  name: string
+  version?: string
   func: (
     onProgress?: (progress: DownloadProgress) => void,
-  ) => Promise<ResolveInfo>;
-  retry: number;
-  winOnly?: boolean;
+  ) => Promise<ResolveInfo>
+  retry: number
+  winOnly?: boolean
 }
 
 async function runTask(
   queue: Task[],
   progress: ProgressRenderer,
 ): Promise<void> {
-  const task = queue.shift();
-  if (!task) return;
+  const task = queue.shift()
+  if (!task) return
 
   for (let attempt = 0; attempt < task.retry; attempt++) {
     try {
       progress.update(
         task.name,
-        "Pulling",
+        'Pulling',
         task.version ? { version: task.version } : {},
-      );
+      )
       const info = await task.func((download) => {
-        progress.update(task.name, "Pulling", {
+        progress.update(task.name, 'Pulling', {
           version: normalizeVersion(download.version) ?? task.version,
           size: formatProgressSize(download.downloaded, download.total),
           speed: formatSpeed(download.speed),
-        });
-      });
-      progress.update(task.name, "Done", formatResolveInfo(info));
-      break;
+        })
+      })
+      progress.update(task.name, 'Done', formatResolveInfo(info))
+      break
     } catch (err) {
       if (attempt === task.retry - 1) {
-        progress.update(task.name, "Failed");
-        progress.finish();
-        consola.fatal(`task::${task.name} failed`, err);
-        Deno.exit(1);
+        progress.update(task.name, 'Failed')
+        progress.finish()
+        consola.fatal(`task::${task.name} failed`, err)
+        process.exit(1)
       }
-      progress.update(task.name, "Retrying", {
+      progress.update(task.name, 'Retrying', {
         note: `${attempt + 1}/${task.retry}`,
         version: task.version,
-      });
+      })
     }
   }
 
-  return runTask(queue, progress);
+  return runTask(queue, progress)
 }
 
 async function resolveSidecarHost(
   hostOverride?: string,
 ): Promise<string | undefined> {
-  if (hostOverride) return hostOverride;
-  const cmd = new Deno.Command("rustc", { args: ["-vV"], stdout: "piped" });
-  const { stdout } = await cmd.output();
-  const output = new TextDecoder().decode(stdout);
-  return output.match(/host: (.+)/)?.[1]?.trim();
+  if (hostOverride) return hostOverride
+  const { stdout } = await runCommand('rustc', { args: ['-vV'] })
+  const output = stdout.toString('utf8')
+  return output.match(/host: (.+)/)?.[1]?.trim()
 }
 
-async function main(args = parseArgs(Deno.args, {
-  boolean: ["force"],
-  string: ["arch", "sidecar-host"],
-}) as CheckArgs): Promise<void> {
-  const force = args.force;
-  const arch = args.arch ?? normalizeArch(Deno.build.arch);
-  const platform = normalizePlatform(Deno.build.os);
-  const debug = Deno.env.get("LOG_LEVEL") !== undefined;
+async function main(
+  args = parseArgs({
+    options: {
+      force: { type: 'boolean' },
+      arch: { type: 'string' },
+      'sidecar-host': { type: 'string' },
+    },
+    strict: false,
+  }).values as CheckArgs,
+): Promise<void> {
+  const force = args.force
+  const arch = args.arch ?? normalizeArch(process.arch)
+  const platform = normalizePlatform(process.platform)
+  const debug = process.env['LOG_LEVEL'] !== undefined
   const debugLog = (message: string) => {
-    if (debug) consola.debug(message);
-  };
-
-  const sidecarHost = await resolveSidecarHost(args["sidecar-host"]);
-  if (!sidecarHost) {
-    consola.fatal(colorize`{red.bold SIDECAR_HOST} not found`);
-    Deno.exit(1);
+    if (debug) consola.debug(message)
   }
 
-  debugLog(colorize`sidecar-host {yellow ${sidecarHost}}`);
-  debugLog(colorize`platform {yellow ${platform}}`);
-  debugLog(colorize`arch {yellow ${arch}}`);
+  const sidecarHost = await resolveSidecarHost(args['sidecar-host'])
+  if (!sidecarHost) {
+    consola.fatal(colorize`{red.bold SIDECAR_HOST} not found`)
+    process.exit(1)
+  }
+
+  debugLog(colorize`sidecar-host {yellow ${sidecarHost}}`)
+  debugLog(colorize`platform {yellow ${platform}}`)
+  debugLog(colorize`arch {yellow ${arch}}`)
 
   const versionManifest = JSON.parse(
-    await Deno.readTextFile(path.join(WORKSPACE_ROOT, "manifest/version.json")),
-  ) as VersionManifest;
+    await readFile(path.join(WORKSPACE_ROOT, 'manifest/version.json'), 'utf8'),
+  ) as VersionManifest
   const binary = createBinaryResolvers({
     versionManifest,
     sidecarHost,
@@ -125,32 +127,32 @@ async function main(args = parseArgs(Deno.args, {
     arch,
     workspaceRoot: WORKSPACE_ROOT,
     debugLog,
-  });
+  })
   const resourceContext = {
-    resourcesDir: path.join(WORKSPACE_ROOT, "backend/tauri/resources"),
-    sidecarDir: path.join(WORKSPACE_ROOT, "backend/tauri/sidecar"),
-    tempRoot: path.join(WORKSPACE_ROOT, "node_modules/.verge"),
+    resourcesDir: path.join(WORKSPACE_ROOT, 'backend/tauri/resources'),
+    sidecarDir: path.join(WORKSPACE_ROOT, 'backend/tauri/sidecar'),
+    tempRoot: path.join(WORKSPACE_ROOT, 'node_modules/.verge'),
     platform,
     arch,
     debugLog,
-  };
+  }
   const tasks: Task[] = [
     {
-      name: "clash",
+      name: 'clash',
       version: versionManifest.latest.clash_premium,
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.clash(), { force, onProgress }),
       retry: 5,
     },
     {
-      name: "mihomo",
+      name: 'mihomo',
       version: versionManifest.latest.mihomo,
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.mihomo(), { force, onProgress }),
       retry: 5,
     },
     {
-      name: "mihomo-alpha",
+      name: 'mihomo-alpha',
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.mihomoAlpha(), {
           force,
@@ -159,7 +161,7 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
     },
     {
-      name: "clash-rs",
+      name: 'clash-rs',
       version: versionManifest.latest.clash_rs,
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.clashRs(), {
@@ -169,7 +171,7 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
     },
     {
-      name: "clash-rs-alpha",
+      name: 'clash-rs-alpha',
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.clashRsAlpha(), {
           force,
@@ -178,14 +180,14 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
     },
     {
-      name: "meow",
+      name: 'meow',
       version: versionManifest.latest.meow,
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.meow(), { force, onProgress }),
       retry: 5,
     },
     {
-      name: "meow-alpha",
+      name: 'meow-alpha',
       version: versionManifest.latest.meow_alpha,
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.meowAlpha(), {
@@ -195,14 +197,14 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
     },
     {
-      name: "wintun",
+      name: 'wintun',
       func: (onProgress) =>
         resolveWintun(resourceContext, force ?? false, onProgress),
       retry: 5,
       winOnly: true,
     },
     {
-      name: "nyanpasu-service",
+      name: 'nyanpasu-service',
       func: (onProgress) =>
         resolveSidecar(resourceContext, binary.nyanpasuService(), {
           force,
@@ -211,49 +213,49 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
     },
     {
-      name: "mmdb",
+      name: 'mmdb',
       func: (onProgress) =>
         resolveResource(
           resourceContext,
           {
-            file: "Country.mmdb",
+            file: 'Country.mmdb',
             downloadURL:
-              "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb",
+              'https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb',
           },
           { force, onProgress },
         ),
       retry: 5,
     },
     {
-      name: "geoip",
+      name: 'geoip',
       func: (onProgress) =>
         resolveResource(
           resourceContext,
           {
-            file: "geoip.dat",
+            file: 'geoip.dat',
             downloadURL:
-              "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
+              'https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat',
           },
           { force, onProgress },
         ),
       retry: 5,
     },
     {
-      name: "geosite",
+      name: 'geosite',
       func: (onProgress) =>
         resolveResource(
           resourceContext,
           {
-            file: "geosite.dat",
+            file: 'geosite.dat',
             downloadURL:
-              "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat",
+              'https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat',
           },
           { force, onProgress },
         ),
       retry: 5,
     },
     {
-      name: "enableLoopback",
+      name: 'enableLoopback',
       func: (onProgress) =>
         resolveEnableLoopback(
           resourceContext,
@@ -264,7 +266,7 @@ async function main(args = parseArgs(Deno.args, {
       winOnly: true,
     },
     {
-      name: "enableLoopbackBootstrapper",
+      name: 'enableLoopbackBootstrapper',
       func: (onProgress) =>
         resolveEnableLoopbackBootstrapper(
           resourceContext,
@@ -274,31 +276,31 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
       winOnly: true,
     },
-  ];
+  ]
 
-  const activeTasks = tasks.filter((task) =>
-    !task.winOnly || platform === "win32"
-  );
+  const activeTasks = tasks.filter(
+    (task) => !task.winOnly || platform === 'win32',
+  )
   const progress = new ProgressRenderer(
     activeTasks.map((task) => task.name),
     consola,
-    Deno.stdout.isTerminal() && !Deno.env.get("CI") && !debug,
-    (text) => Deno.stdout.writeSync(new TextEncoder().encode(text)),
-  );
-  progress.start();
+    process.stdout.isTTY && !process.env['CI'] && !debug,
+    (text) => process.stdout.write(text),
+  )
+  progress.start()
 
-  const concurrency = Math.ceil(navigator.hardwareConcurrency / 2) || 2;
-  const queue = [...activeTasks];
+  const concurrency = Math.ceil(navigator.hardwareConcurrency / 2) || 2
+  const queue = [...activeTasks]
   await Promise.all(
     Array.from({ length: concurrency }, () => runTask(queue, progress)),
-  );
-  progress.finish();
+  )
+  progress.finish()
 
-  console.log(figlet.textSync("Clash Nyanpasu", { whitespaceBreak: true }));
-  consola.success("all resources download finished\n");
-  consola.log("  next command:\n");
-  consola.log("    pnpm dev - development");
-  consola.log("    pnpm dev:diff - deadlock development (recommend)");
+  console.log(figlet.textSync('Clash Nyanpasu', { whitespaceBreak: true }))
+  consola.success('all resources download finished\n')
+  consola.log('  next command:\n')
+  consola.log('    pnpm dev - development')
+  consola.log('    pnpm dev:diff - deadlock development (recommend)')
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) await main()

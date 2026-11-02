@@ -10,16 +10,12 @@ frontend/nyanpasu/src/route-tree.gen.ts
 frontend/nyanpasu/auto-imports.d.ts
 frontend/nyanpasu/src/paraglide/
 frontend/nyanpasu/project.inlang/
-scripts/
 backend/tauri/gen/schemas/
 backend/tauri/tmp/
 # upstream submodule — formatting is owned by libnyanpasu/nyanpasu-runtime
 backend/nyanpasu-runtime/
 # upstream submodule — formatting is owned by libnyanpasu/enable-loopback
 backend/enable-loopback/
-
-# Deno task catalog uses the same formatter as repository scripts.
-deno.jsonc
 
 # Byte-exact oracle output of the old traffic store; the migration test compares bytes.
 backend/nyanpasu-traffic/tests/legacy_v3/expected.json

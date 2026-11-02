@@ -1,11 +1,12 @@
 # Repository scripts
 
-Repository automation uses Deno TypeScript. Run public script entrypoints from
-the repository root through `deno task <name>`; list the available commands with
-`deno task`. The root `deno.jsonc` is the only task catalog. It delegates runtime
-configuration and dependency locking to `scripts/deno.jsonc` and
-`scripts/deno.lock`, keeping Deno's installed dependencies inside `scripts/`
-separate from the pnpm workspace.
+Repository automation is TypeScript that runs directly on Node.js, which strips
+types at load time, so there is no build step. Run public script entrypoints
+from the repository root through `pnpm run <name>`; list the available commands
+with `pnpm run`. The root `package.json` is the only task catalog. The scripts
+are the `@nyanpasu/scripts` pnpm workspace package in `scripts/`, which owns the
+script dependencies in `scripts/package.json` and the type-check configuration in
+`scripts/tsconfig.json`; the shared `pnpm-lock.yaml` locks them.
 
 ## Layout and responsibilities
 
@@ -27,8 +28,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | `ci/`                  | Pull request change classification for CI                                           |
 | `shared/`              | Small modules reused across script categories, such as logging and repository paths |
 
-Keep Deno configuration, its lockfile, script documentation and editor configuration
-at `scripts/`; non-source fixtures belong in `scripts/fixtures/`. Co-locate
+Keep `package.json`, `tsconfig.json` and the script documentation at `scripts/`; non-source fixtures belong in `scripts/fixtures/`. Co-locate
 `*_test.ts` files with their domain modules. The upstream `backend/nyanpasu-runtime`
 and `backend/enable-loopback` submodules own their tooling outside this layout.
 
@@ -40,33 +40,37 @@ wrappers or compatibility exports merely to avoid updating callers.
 
 ## Task entrypoints
 
-CI, package scripts, hooks, current documentation and application tests launching
-repository tooling must use named Deno tasks. Keep existing pnpm commands as thin
-`deno task` delegates where they remain useful; do not duplicate execution logic.
-Do not introduce direct `deno run`, `node`, `tsx` or file-path-based script calls
-outside the task catalog. Calls to external tools such as Git, tar, rustc or the
-Tauri signing CLI remain implementation details inside scripts. Script unit tests
-may launch a specific implementation with an injected temporary working directory
-to test filesystem behavior without touching the checkout; these are not public
-entrypoints. Historical plans and reports retain the commands they originally ran.
+CI, hooks, current documentation and application tests launching repository
+tooling must use named tasks from the root `package.json`, run as
+`pnpm run <name>` (never bare `pnpm <name>`, because names such as `publish`
+collide with pnpm built-ins). A task is `node scripts/src/<category>/<file>.ts`;
+keep the execution logic in the script and do not duplicate it in the task. Do
+not call `tsx` or other file-path-based runners outside the task catalog. Where a
+program cannot depend on pnpm being on `PATH` (for example a Windows `.cmd` shim
+under a process spawner), launch the task with `node --run <name> -- <args>`.
+Calls to external tools such as Git, tar, rustc or the Tauri signing CLI remain
+implementation details inside scripts. Script unit tests may launch a specific
+implementation with an injected temporary working directory to test filesystem
+behavior without touching the checkout; these are not public entrypoints.
+Historical plans and reports retain the commands they originally ran.
 
 Name tasks after the operation, using colon-separated groups already used by the
 package scripts (`prepare:check`, `generate:git-info`, `test:scripts`). Declare a
-task for every public CLI and a description explaining its result. Forward arguments
-without an extra separator, for example:
+task for every public CLI and describe its result in the task table in
+`scripts/README.md`. `pnpm run` forwards arguments without an extra separator,
+for example:
 
 ```sh
-deno task prepare:check --force --arch arm64
-deno task prepare:release --linux
-deno task architecture-ledger --help
-deno task generate:topology-map
-deno task test:http-ui <running-debug-http-server-url>
+pnpm run prepare:check --force --arch arm64
+pnpm run prepare:release --linux
+pnpm run architecture-ledger --help
+pnpm run generate:topology-map
+pnpm run test:http-ui <running-debug-http-server-url>
 ```
 
-Tasks run from the root configuration's directory. From a subdirectory, select
-that configuration explicitly (`deno task --config ../../deno.jsonc <name>`, with
-the appropriate relative path), since a nearer package or runtime configuration
-can shadow the root tasks. Use `shared/repo-paths.ts` for source-location-based repository
+`pnpm run` finds the root `package.json` from any subdirectory, but scripts
+resolve relative command-line paths against the invocation directory, so run
+them from the repository root. Use `shared/repo-paths.ts` for source-location-based repository
 paths; never calculate the root by counting parents in each moved source file.
 Operations that intentionally act on a supplied workspace must accept that path
 explicitly rather than changing a shared root or process working directory.
@@ -76,26 +80,30 @@ reorganizing tasks. Never put credentials in the task catalog.
 
 ## Dependencies and verification
 
-Use Deno-compatible imports (`jsr:`, `npm:`, or supported `node:` APIs). Pin new npm
-imports and type declarations and commit the updated Deno lockfile. Browser tooling
-uses Playwright through Deno and still requires its Chromium binary; it does not
-require Node to launch the repository script. The Tauri signing CLI may still use
-Node as its own runtime.
+Use `node:` APIs and npm packages declared in `scripts/package.json`. Pin each
+dependency and its `@types/*` package to an exact version and commit the updated
+`pnpm-lock.yaml`. Import local modules with their `.ts` extension, and write only
+erasable TypeScript syntax (no enums, namespaces or constructor parameter
+properties), which `erasableSyntaxOnly` enforces. Tests use `node:test` and
+`node:assert/strict`, co-located as `*_test.ts`. Browser tooling uses Playwright
+and still requires its Chromium binary. The Tauri signing CLI runs through Node
+as well.
 
 Do not pass native file system paths as glob patterns: globby treats backslashes as
 escapes, so an absolute Windows path matches nothing. Glob names relative to a `cwd`
 or use the exact paths. Tests that compare paths normalize separators first, and a
 script change is verified on Windows CI as well as Linux.
 
-Deno formatting and type checking cover script sources recursively; frontend
-Prettier conventions do not replace the existing Deno formatter for these files.
+Prettier formats the script sources with the repository configuration, and
+`tsc --noEmit` against `scripts/tsconfig.json` type-checks them.
 
 ```sh
-deno task lint:deno
-deno task test:scripts
-deno task lint:frontend-boundaries
-deno task lint:architecture-ledger
-deno task lint:backend-boundaries
+pnpm run lint:ts:scripts
+pnpm run lint:prettier
+pnpm run test:scripts
+pnpm run lint:frontend-boundaries
+pnpm run lint:architecture-ledger
+pnpm run lint:backend-boundaries
 ```
 
 Use the narrower test tasks for the affected category when appropriate. For a

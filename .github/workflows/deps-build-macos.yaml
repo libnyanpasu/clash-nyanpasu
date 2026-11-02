@@ -82,18 +82,10 @@ jobs:
         with:
           node-version: latest
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
-
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
 
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
@@ -108,16 +100,16 @@ jobs:
 
       - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
-        run: pnpm prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
+        run: pnpm run prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
 
       - name: Download Sidecars x64
         if: ${{ inputs.aarch64 == false }}
-        run: pnpm prepare:check --arch x64 --sidecar-host x86_64-apple-darwin
+        run: pnpm run prepare:check --arch x64 --sidecar-host x86_64-apple-darwin
 
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
-          pnpm prepare:nightly
+          pnpm run prepare:nightly
 
       - name: Build Clash Nyanpasu (Stable)
         if: ${{ inputs.nightly == false }}
@@ -145,7 +137,7 @@ jobs:
 
       - name: Rename updater files
         run: |
-          deno task upload-macos-updater
+          pnpm run upload-macos-updater
         env:
           TARGET_ARCH: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
 
@@ -177,7 +169,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          deno task upload-build-artifacts \
+          pnpm run upload-build-artifacts \
             "backend/target/**/*.dmg"
         env:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}

@@ -37,9 +37,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
 
       - name: Send Release Notification
         run: |
@@ -47,7 +56,7 @@ jobs:
           if [ "$NIGHTLY" = "true" ]; then
             ARGS="--nightly"
           fi
-          deno task telegram-notify $ARGS
+          pnpm run telegram-notify $ARGS
         env:
           NIGHTLY: ${{ inputs.nightly }}
           RELEASE_TAG: ${{ inputs.tag }}

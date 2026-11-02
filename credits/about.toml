@@ -1,5 +1,5 @@
 # cargo-about configuration for the open source credits; see
-# docs/plan/2026-10-21-open-source-credits.md. `deno task generate:credits`
+# docs/plan/2026-10-21-open-source-credits.md. `pnpm run generate:credits`
 # applies the same `accepted` list to npm packages, so a dependency update that
 # brings in any other license fails until it is reviewed and added here.
 

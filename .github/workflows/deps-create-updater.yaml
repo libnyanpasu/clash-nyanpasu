@@ -73,23 +73,19 @@ jobs:
         with:
           run_install: false
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Test unified updater manifest
-        run: deno task test:updater
+        run: pnpm run test:updater
 
       - name: Update Nightly Updater
         if: ${{ inputs.nightly == true }}
-        run: deno task updater:nightly
+        run: pnpm run updater:nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCEFORGE_MIRRORS_JSON: ${{ inputs.sourceforge_mirrors_json }}
 
       - name: Update Stable and Beta Updaters
         if: ${{ inputs.nightly == false }}
-        run: deno task updater
+        run: pnpm run updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCEFORGE_MIRRORS_JSON: ${{ inputs.sourceforge_mirrors_json }}
@@ -114,7 +110,7 @@ jobs:
 
       - name: Publish updater manifests to SourceForge Project Web
         if: ${{ vars.SOURCEFORGE_PROJECT != '' && inputs.sourceforge_mirrors_json != '' }}
-        run: deno task sourceforge:web-publish manifest/site/updater ${{ inputs.nightly == true && 'nightly' || 'release' }} sourceforge-web-report.json
+        run: pnpm run sourceforge:web-publish manifest/site/updater ${{ inputs.nightly == true && 'nightly' || 'release' }} sourceforge-web-report.json
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}

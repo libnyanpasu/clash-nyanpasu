@@ -1,7 +1,5 @@
 {
-  "roots": [
-    "backend"
-  ],
+  "roots": ["backend"],
   "metrics": {
     "config_calls": {
       "total": 0,

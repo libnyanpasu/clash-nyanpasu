@@ -28,7 +28,6 @@
     "node_modules/",
     "backend/",
     "backend/**/target",
-    "scripts/deno/**",
     ".lintstagedrc.js",
     "commitlint.config.js"
   ],

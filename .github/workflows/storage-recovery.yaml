@@ -78,10 +78,18 @@ jobs:
       - name: Checkout current recovery scripts
         uses: actions/checkout@v7
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
 
       - name: Check selected backend configuration and connectivity
         run: |
@@ -89,7 +97,7 @@ jobs:
             echo 'SOURCEFORGE_PROJECT must be configured for SourceForge recovery' >&2
             exit 1
           fi
-          deno task storage:preflight
+          pnpm run storage:preflight
 
       - name: Read source run provenance
         if: ${{ inputs.mode != 'preflight' }}
@@ -121,7 +129,7 @@ jobs:
       - name: Recover original identity and compare every retained file hash
         if: ${{ inputs.mode != 'preflight' }}
         run: |
-          deno task recover:central-publication \
+          pnpm run recover:central-publication \
             --source-run source-run.json \
             --artifacts-dir downloaded-build-artifacts \
             --previous-dir previous-publication/central-publication \
@@ -153,7 +161,7 @@ jobs:
       - name: Run selected recovery operation
         if: ${{ inputs.mode != 'preflight' }}
         run: |
-          deno task storage:recover --mode "$RECOVERY_MODE" \
+          pnpm run storage:recover --mode "$RECOVERY_MODE" \
             --backend "$RECOVERY_BACKEND" --target "$RECOVERY_TARGET" \
             --publication-dir central-publication --reports-dir recovery-reports
 

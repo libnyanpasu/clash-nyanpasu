@@ -36,9 +36,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - uses: denoland/setup-deno@v2
+      - name: Install Node
+        uses: actions/setup-node@v7
         with:
-          deno-version: v2.x
+          node-version: latest
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install script dependencies
+        run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
 
       - name: Download assets from the selected GitHub Release
         shell: bash
@@ -61,7 +70,7 @@ jobs:
             echo "SOURCEFORGE_PROJECT must be configured with the registered project slug" >&2
             exit 1
           fi
-          deno task prepare:publication-manifest \
+          pnpm run prepare:publication-manifest \
             --channel release \
             --target release-backfill \
             --build-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}-release-backfill" \
@@ -73,7 +82,7 @@ jobs:
             --pattern 'release-assets/*'
 
       - name: Upload the complete release inventory to SourceForge
-        run: deno task sourceforge:upload publication-manifest.json publication-reports/sourceforge-report.json
+        run: pnpm run sourceforge:upload publication-manifest.json publication-reports/sourceforge-report.json
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
@@ -85,7 +94,7 @@ jobs:
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
       - name: Verify every public release asset by SHA-256
-        run: deno task sourceforge:verify publication-reports verified-sourceforge-mirrors.json release release-backfill
+        run: pnpm run sourceforge:verify publication-reports verified-sourceforge-mirrors.json release release-backfill
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
 

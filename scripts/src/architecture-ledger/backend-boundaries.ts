@@ -1,11 +1,12 @@
-import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
+import { runCommand } from '../shared/command.ts'
+import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 
 const NEUTRAL_PACKAGES = [
-  "nyanpasu-core",
-  "nyanpasu-platform",
-  "nyanpasu-config",
-  "nyanpasu-diagnose",
-];
+  'nyanpasu-core',
+  'nyanpasu-platform',
+  'nyanpasu-config',
+  'nyanpasu-diagnose',
+]
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */
 export function dependencyViolations(
@@ -13,69 +14,79 @@ export function dependencyViolations(
   cargoTree: string,
 ): string[] {
   const names = new Set(
-    cargoTree.split("\n").map((line) => line.trim().split(/\s+/)[0]).filter(
-      Boolean,
-    ),
-  );
-  return [...names].filter((name) =>
-    name === "clash-nyanpasu" || name === "nyanpasu-egui" ||
-    name === "nyanpasu-widget" || name === "nyanpasu-crash-reporter" ||
-    name === "slint" ||
-    name.startsWith("slint-") || name.startsWith("i-slint-") ||
-    name === "winit" ||
-    name === "eframe" || name === "egui" || name === "gtk" ||
-    name === "webkit2gtk" || name === "tauri" ||
-    name.startsWith("tauri-") ||
-    (owner === "nyanpasu-core" && name === "nyanpasu-platform") ||
-    (owner === "nyanpasu-diagnose" &&
-      (name === "nyanpasu-core" || name === "nyanpasu-platform"))
-  ).map((name) => `${owner} must not depend on ${name}`);
+    cargoTree
+      .split('\n')
+      .map((line) => line.trim().split(/\s+/)[0])
+      .filter(Boolean),
+  )
+  return [...names]
+    .filter(
+      (name) =>
+        name === 'clash-nyanpasu' ||
+        name === 'nyanpasu-egui' ||
+        name === 'nyanpasu-widget' ||
+        name === 'nyanpasu-crash-reporter' ||
+        name === 'slint' ||
+        name.startsWith('slint-') ||
+        name.startsWith('i-slint-') ||
+        name === 'winit' ||
+        name === 'eframe' ||
+        name === 'egui' ||
+        name === 'gtk' ||
+        name === 'webkit2gtk' ||
+        name === 'tauri' ||
+        name.startsWith('tauri-') ||
+        (owner === 'nyanpasu-core' && name === 'nyanpasu-platform') ||
+        (owner === 'nyanpasu-diagnose' &&
+          (name === 'nyanpasu-core' || name === 'nyanpasu-platform')),
+    )
+    .map((name) => `${owner} must not depend on ${name}`)
 }
 
 export async function main(): Promise<number> {
-  const problems: string[] = [];
+  const problems: string[] = []
   for (const owner of NEUTRAL_PACKAGES) {
-    const result = await new Deno.Command("cargo", {
+    const result = await runCommand('cargo', {
       cwd: WORKSPACE_ROOT,
       args: [
-        "tree",
-        "--locked",
-        "--all-features",
-        "--manifest-path",
-        "backend/Cargo.toml",
-        "--package",
+        'tree',
+        '--locked',
+        '--all-features',
+        '--manifest-path',
+        'backend/Cargo.toml',
+        '--package',
         owner,
-        "--target",
-        "all",
-        "--edges",
-        "normal,build",
-        "--prefix",
-        "none",
-        "--format",
-        "{p}",
+        '--target',
+        'all',
+        '--edges',
+        'normal,build',
+        '--prefix',
+        'none',
+        '--format',
+        '{p}',
       ],
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
+    })
     if (!result.success) {
-      console.error(new TextDecoder().decode(result.stderr));
-      return result.code || 1;
+      console.error(result.stderr.toString('utf8'))
+      return result.code || 1
     }
     problems.push(
-      ...dependencyViolations(owner, new TextDecoder().decode(result.stdout)),
-    );
+      ...dependencyViolations(owner, result.stdout.toString('utf8')),
+    )
   }
   if (problems.length > 0) {
-    console.error(problems.join("\n"));
-    return 1;
+    console.error(problems.join('\n'))
+    return 1
   }
-  console.log("Backend core/platform/config boundaries passed.");
-  return 0;
+  console.log('Backend core/platform/config boundaries passed.')
+  return 0
 }
 
 if (import.meta.main) {
-  main().then((code) => Deno.exit(code)).catch((error) => {
-    console.error(error);
-    Deno.exit(1);
-  });
+  main()
+    .then((code) => process.exit(code))
+    .catch((error) => {
+      console.error(error)
+      process.exit(1)
+    })
 }

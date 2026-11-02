@@ -1,0 +1,35 @@
+{
+  "name": "@nyanpasu/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "adm-zip": "0.5.16",
+    "colorize-template": "1.0.0",
+    "consola": "3.4.0",
+    "d3": "7.9.0",
+    "es-toolkit": "1.52.0",
+    "figlet": "1.11.0",
+    "globby": "14.1.0",
+    "grammy": "1.40.0",
+    "koffi": "3.3.3",
+    "octokit": "5.0.5",
+    "picocolors": "1.1.1",
+    "playwright": "1.63.0",
+    "prettier": "3.9.9",
+    "semver": "7.7.4",
+    "smol-toml": "1.9.1",
+    "spdx-expression-parse": "5.0.0",
+    "spdx-license-list": "6.12.0",
+    "telegram": "2.26.22",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "0.5.7",
+    "@types/d3": "7.4.3",
+    "@types/figlet": "1.7.0",
+    "@types/node": "24.19.2",
+    "@types/semver": "7.7.1",
+    "@types/spdx-expression-parse": "3.0.5"
+  }
+}

@@ -549,8 +549,8 @@ importers:
         specifier: 17.6.1
         version: 17.6.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       semver:
-        specifier: 7.8.5
-        version: 7.8.5
+        specifier: 7.8.6
+        version: 7.8.6
     devDependencies:
       '@types/semver':
         specifier: 7.8.0
@@ -6038,13 +6038,8 @@ packages:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
     hasBin: true
 
-  semver@7.7.3:
-    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
-    engines: {node: '>=10'}
-    hasBin: true
-
-  semver@7.8.5:
-    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+  semver@7.8.6:
+    resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -7605,7 +7600,7 @@ snapshots:
   '@commitlint/is-ignored@21.2.3':
     dependencies:
       '@commitlint/types': 21.2.3
-      semver: 7.8.5
+      semver: 7.8.6
 
   '@commitlint/lint@21.2.4':
     dependencies:
@@ -7676,7 +7671,7 @@ snapshots:
     dependencies:
       '@simple-libs/child-process-utils': 2.0.0
       '@simple-libs/stream-utils': 2.0.0
-      semver: 7.8.5
+      semver: 7.8.6
     optionalDependencies:
       conventional-commits-parser: 7.1.2
 
@@ -7836,7 +7831,7 @@ snapshots:
       '@babel/traverse': 7.29.0(supports-color@10.2.2)
       '@babel/types': 7.29.0
       prettier: 3.9.10
-      semver: 7.7.3
+      semver: 7.8.6
     optionalDependencies:
       content-tag: 4.2.0
       prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.10)(supports-color@10.2.2)
@@ -12239,9 +12234,7 @@ snapshots:
 
   semver@6.3.1: {}
 
-  semver@7.7.3: {}
-
-  semver@7.8.5: {}
+  semver@7.8.6: {}
 
   seroval-plugins@1.6.7(seroval@1.6.7):
     dependencies:

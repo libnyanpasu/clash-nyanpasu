@@ -13,26 +13,31 @@ test('runCommand captures output and a non-zero exit without throwing', async ()
 })
 
 test('runCommand merges env into the parent environment unless cleared', async () => {
-  // eslint-disable-next-line no-template-curly-in-string -- shell parameter expansion
-  const print = ['-c', 'printf "%s|%s" "$NYANPASU_A" "${HOME:-unset}"']
-  const merged = await runCommand('sh', {
-    args: print,
-    env: { NYANPASU_A: 'a' },
-  })
-  assert.deepStrictEqual(
-    new TextDecoder().decode(merged.stdout).startsWith('a|'),
-    true,
-  )
-  assert.deepStrictEqual(
-    new TextDecoder().decode(merged.stdout).endsWith('|unset'),
-    false,
-  )
-  const cleared = await runCommand('sh', {
-    args: print,
-    env: { NYANPASU_A: 'a' },
-    clearEnv: true,
-  })
-  assert.deepStrictEqual(new TextDecoder().decode(cleared.stdout), 'a|unset')
+  const print = [
+    '-e',
+    'process.stdout.write(JSON.stringify([process.env.NYANPASU_A, process.env.NYANPASU_INHERITED]))',
+  ]
+  const previous = process.env.NYANPASU_INHERITED
+  process.env.NYANPASU_INHERITED = 'parent'
+  try {
+    const merged = await runCommand(process.execPath, {
+      args: print,
+      env: { NYANPASU_A: 'a' },
+    })
+    assert.deepStrictEqual(JSON.parse(merged.stdout.toString()), [
+      'a',
+      'parent',
+    ])
+    const cleared = await runCommand(process.execPath, {
+      args: print,
+      env: { NYANPASU_A: 'a' },
+      clearEnv: true,
+    })
+    assert.deepStrictEqual(JSON.parse(cleared.stdout.toString()), ['a', null])
+  } finally {
+    if (previous === undefined) delete process.env.NYANPASU_INHERITED
+    else process.env.NYANPASU_INHERITED = previous
+  }
 })
 
 test('runCommand rejects when the program does not exist', async () => {
@@ -55,7 +60,16 @@ test('runCommand writes input to stdin and captures the output', async () => {
   assert.deepStrictEqual(result.stdout.toString('utf8'), 'ping\n')
 })
 
-test('exitStatus maps a signal exit to 128 plus the signal number', async () => {
-  const child = spawnCommand('sh', { args: ['-c', 'kill -TERM $$'] })
-  assert.deepStrictEqual(await exitStatus(child), { success: false, code: 143 })
-})
+test(
+  'exitStatus maps a signal exit to 128 plus the signal number',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const child = spawnCommand(process.execPath, {
+      args: ['-e', "process.kill(process.pid, 'SIGTERM')"],
+    })
+    assert.deepStrictEqual(await exitStatus(child), {
+      success: false,
+      code: 143,
+    })
+  },
+)

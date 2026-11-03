@@ -39,6 +39,7 @@ pub mod download;
 pub mod geo;
 pub mod logs;
 pub mod migration;
+pub mod owner_shutdown;
 pub mod service;
 pub mod storage;
 pub mod traffic;

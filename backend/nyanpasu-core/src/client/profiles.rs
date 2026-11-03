@@ -29,10 +29,12 @@ use crate::{
     state::profiles::{
         CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
         ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
-        ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
-        sources::SourcesSnapshot,
+        ReorderOp, sources::SourcesSnapshot,
     },
+};
+use nyanpasu_contracts::profiles::{
+    error::ProfileFileError,
+    ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
 };
 
 #[derive(Debug, snafu::Snafu)]
@@ -65,9 +67,7 @@ pub enum Error {
         errors: Vec<nyanpasu_config::profile::ProfileValidationError>,
     },
     #[snafu(display("failed to prepare profile materialization"))]
-    PrepareMaterialization {
-        source: crate::state::profiles::ProfileFileError,
-    },
+    PrepareMaterialization { source: ProfileFileError },
 }
 
 #[derive(Clone)]
@@ -614,16 +614,7 @@ mod tests {
         state::{
             ReplaceIfVersionError,
             mutation::CommitAborted,
-            profiles::{
-                RefreshOrigin,
-                error::{MaterializationOperation, ProfileFileError, SubscriptionFetchError},
-                ports::{
-                    CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-                    MockProfileFsPort, MockProfileMaterializationPort, MockSubscriptionFetcher,
-                    PreparedCleanup, PreparedMaterialization, ProfileDegradationCode,
-                    ProfileDegradationPhase, ProfileMaterializationPort,
-                },
-            },
+            profiles::{RefreshOrigin, error::MaterializationOperation},
         },
     };
     use nyanpasu_config::profile::{
@@ -632,6 +623,15 @@ mod tests {
         ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, ProxyGroupFolder,
         ProxyGroupLayout, RemoteProfileOptions, RemoteSyncInterval, ScriptRuntime, ScriptTransform,
         SubscriptionInfo, TransformDefinition,
+    };
+    use nyanpasu_contracts::profiles::{
+        error::{ProfileFileError, SubscriptionFetchError},
+        ports::{
+            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport, MockProfileFsPort,
+            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+            PreparedMaterialization, ProfileDegradationCode, ProfileDegradationPhase,
+            ProfileMaterializationPort,
+        },
     };
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};

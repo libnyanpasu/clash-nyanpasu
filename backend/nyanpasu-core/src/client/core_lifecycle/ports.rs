@@ -10,8 +10,8 @@ use super::super::runtime;
 use crate::{
     actor_v2::local_host::CoreSpecError,
     client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
-    state::profiles::ErrorPath,
 };
+use nyanpasu_contracts::profiles::error::ErrorPath;
 
 /// Owns the staging directory until installation and its restart have finished.
 pub struct PreparedCoreBinary {

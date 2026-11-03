@@ -40,15 +40,15 @@ use crate::{
         test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
     client::{core_version, direct_egress, system_proxy::ports::MockOsProxyPort},
-    state::profiles::{
-        NewProfileRequest,
-        ports::{
-            CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
-        },
-    },
+    state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
+};
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
+use nyanpasu_contracts::profiles::ports::{
+    CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
+    PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
 };
 
 pub struct TestControlEndpoint {
@@ -947,9 +947,8 @@ pub(crate) fn unused_test_adapters(paths: &PathResolver) -> ClientHostAdapters {
 #[cfg(test)]
 pub(crate) fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
     let paths = test_paths(dir.path(), dir.path().join("data"));
-    let ports = profile_files::scripted_profile_file_ports(Arc::new(
-        crate::state::profiles::ports::MockSubscriptionFetcher::new(),
-    ));
+    let ports =
+        profile_files::scripted_profile_file_ports(Arc::new(MockSubscriptionFetcher::new()));
     let runtime_build = runtime_build::TestRuntimeBuildPort::from_profile_port(
         ports.fs.clone(),
         RuntimePaths::from_resolver(&paths),

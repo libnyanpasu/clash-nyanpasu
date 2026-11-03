@@ -1,7 +1,7 @@
 //! Profile filesystem, materialization transactions, and subscription fetches
 //! over injected paths/network state. Tauri-free and legacy-Config-free.
 
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{BoxedCause, bundle_metadata::BundleMetadata};
 use nyanpasu_paths::PathResolver;
 
 use std::{
@@ -23,18 +23,37 @@ use url::Url;
 use crate::profiles::{materialization, materialization::MATERIALIZATION_ROOT, subscription};
 use nyanpasu_core::service::profile_file::ports::SelfProxyPortSource;
 
-use nyanpasu_core::{
-    corrupt,
-    state::profiles::{
-        error::*,
-        ports::{
-            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
-            ProfileMaterializationPort, SubscriptionFetcher,
-        },
+#[cfg(windows)]
+use nyanpasu_contracts::profiles::error::{CanonicalizePathSnafu, CleanupTombstoneExistsSnafu};
+#[cfg(unix)]
+use nyanpasu_contracts::profiles::error::{SetPermissionsSnafu, SyncDirectorySnafu};
+use nyanpasu_contracts::profiles::{
+    error::{
+        AtomicWriteSnafu, BuildHttpClientSnafu, CleanupAlreadyActivatedSnafu,
+        CompensatingCannotPromoteSnafu, CompensationFencedSnafu, ConflictingCleanupPayloadsSnafu,
+        ConflictingJournalPayloadsSnafu, CreateDirectorySnafu, CreateSymlinkSnafu,
+        DivergedBeforeRecoverySnafu, ExistingFileBlocksSymlinkSnafu, ExpectedNode,
+        InspectPathSnafu, InvalidExternalPathSnafu, JournalDestinationDiffersSnafu,
+        JournalHashInvalidSnafu, JournalNotFoundSnafu, JournalOperationIdMismatchSnafu,
+        ListDirectorySnafu, MixedTransactionFamiliesSnafu, MultipleBackupsSnafu,
+        MultipleStagedResourcesSnafu, NoParentDirectorySnafu, NotCompletableSnafu,
+        OperationIdExhaustedSnafu, OperationIdInvalidSnafu, ParseJournalSnafu,
+        PathEscapesProfilesDirSnafu, PreserveDerivedDirectorySnafu, ProfileFileError,
+        PromotedHashMismatchSnafu, ReadExternalTargetSnafu, ReadFileSnafu, ReadLinkSnafu,
+        ReadSubscriptionBodySnafu, ReadySymlinkMismatchSnafu, RemoveFileSnafu, ReplaceFileSnafu,
+        RequestSubscriptionSnafu, ReservedPathSnafu, SerializeJournalSnafu,
+        StagedHashMismatchSnafu, StagedResourceMissingSnafu, SubscriptionFetchError,
+        SubscriptionHttpStatusSnafu, SymlinkTargetNotUtf8Snafu, TargetHashMismatchSnafu,
+        UnexpectedNodeSnafu, UnexpectedSymlinkSnafu, WriteFileSnafu,
+    },
+    ports::{
+        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+        SubscriptionFetcher,
     },
 };
+use nyanpasu_core::corrupt;
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 
@@ -211,6 +230,7 @@ impl ProfileFileService {
                     Ok(()) => false,
                     Err(error) if private => {
                         corrupt::preserve(&current, &error)
+                            .map_err(BoxedCause::from)
                             .context(PreserveDerivedDirectorySnafu)?;
                         corrupt::retry_io(|| std::fs::create_dir(&current))
                             .context(CreateDirectorySnafu { path: &current })?;
@@ -556,9 +576,12 @@ impl ProfileFileService {
     }
 
     fn write_journal_new(path: &Path, journal: &MaterializationJournal) -> Result<()> {
-        let content = serde_yaml::to_string(journal).context(SerializeJournalSnafu)?;
+        let content = serde_yaml::to_string(journal)
+            .map_err(BoxedCause::from)
+            .context(SerializeJournalSnafu)?;
         AtomicFile::new(path, OverwriteBehavior::DisallowOverwrite)
             .write(|file| file.write_all(content.as_bytes()))
+            .map_err(BoxedCause::from)
             .context(AtomicWriteSnafu { path })?;
         set_private_file_permissions(path)?;
         sync_directory(path.parent().expect("journal has parent"))
@@ -574,8 +597,9 @@ impl ProfileFileService {
             }
         );
         let content = std::fs::read_to_string(path).context(ReadFileSnafu { path })?;
-        let journal: MaterializationJournal =
-            serde_yaml::from_str(&content).context(ParseJournalSnafu { path })?;
+        let journal: MaterializationJournal = serde_yaml::from_str(&content)
+            .map_err(BoxedCause::from)
+            .context(ParseJournalSnafu { path })?;
         ensure!(
             journal.operation_id == operation_id
                 && materialization::valid_operation_id(&journal.operation_id),
@@ -1536,6 +1560,7 @@ impl ProfileFsPort for ProfileFileService {
         self.ensure_not_symlink(path)?;
         AtomicFile::new(&full, OverwriteBehavior::AllowOverwrite)
             .write(|file| file.write_all(content.as_bytes()))
+            .map_err(BoxedCause::from)
             .context(AtomicWriteSnafu { path: &full })
     }
 
@@ -2072,6 +2097,7 @@ impl SubscriptionFetcher for ProfileFileService {
         let client = builder
             .user_agent(user_agent)
             .build()
+            .map_err(BoxedCause::from)
             .context(BuildHttpClientSnafu)?;
 
         let device_info = nyanpasu_core::utils::hwid::get_device_info();
@@ -2085,6 +2111,7 @@ impl SubscriptionFetcher for ProfileFileService {
                 .header("x-device-model", sanitize(&device_info.device_model))
                 .send()
                 .await
+                .map_err(BoxedCause::from)
                 .context(RequestSubscriptionSnafu)?;
             let status = resp.status();
             ensure!(
@@ -2116,6 +2143,7 @@ impl SubscriptionFetcher for ProfileFileService {
         let content = resp
             .text_with_charset("utf-8")
             .await
+            .map_err(BoxedCause::from)
             .context(ReadSubscriptionBodySnafu)?;
         let content = if let Some(content) = content.strip_prefix('\u{feff}') {
             content.to_owned()
@@ -2147,7 +2175,7 @@ mod tests {
         ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource, Profiles,
         RemoteProfileOptions, RemoteSyncInterval,
     };
-    use nyanpasu_core::state::profiles::ports::SubscriptionFetcher;
+    use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
     use std::{
         sync::{
             Arc, Mutex,
@@ -3676,3 +3704,6 @@ mod tests {
 
 #[cfg(test)]
 mod integration_tests;
+
+#[cfg(test)]
+mod error_contract_tests;

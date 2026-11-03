@@ -4,10 +4,6 @@ use super::{
     temp_config_path, test_backup_deps, test_materialization_port, test_typed_config_clients,
     unused_test_adapters,
 };
-#[cfg(unix)]
-use crate::state::profiles::ports::ProfileMaterializationPort;
-#[cfg(test)]
-use crate::state::profiles::ports::SubscriptionFetcher;
 use crate::{
     actor_v2::test_support::test_v2_clients,
     client::{
@@ -22,10 +18,7 @@ use crate::{
         session_state::SessionStateClient,
         system_proxy::ports::{MockOsProxyPort, OsProxyPort},
     },
-    state::profiles::{
-        NewProfileRequest,
-        ports::{MockProfileFsPort, MockSubscriptionFetcher},
-    },
+    state::profiles::NewProfileRequest,
     utils::test_support::test_paths,
 };
 use nyanpasu_config::{
@@ -35,7 +28,14 @@ use nyanpasu_config::{
         ProfileDefinition, ProfileMetadata, ProfileSource,
     },
 };
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+#[cfg(unix)]
+use nyanpasu_contracts::profiles::ports::ProfileMaterializationPort;
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
+};
 use std::{path::PathBuf, sync::Arc};
 use tempfile::TempDir;
 pub async fn test_client(dir: &TempDir) -> NyanpasuClient {

@@ -11,6 +11,8 @@ use nyanpasu_config::{
         value::ConfigValue,
     },
 };
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::ProfileFsPort;
 use nyanpasu_core_manager::CoreSpec;
 use nyanpasu_profile_transform::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 
@@ -128,10 +130,7 @@ impl TestRuntimeBuildPort {
         }
     }
     #[cfg(test)]
-    pub(crate) fn from_profile_port(
-        fs: Arc<dyn crate::state::profiles::ports::ProfileFsPort>,
-        paths: RuntimePaths,
-    ) -> Self {
+    pub(crate) fn from_profile_port(fs: Arc<dyn ProfileFsPort>, paths: RuntimePaths) -> Self {
         Self {
             paths,
             capture: Arc::new(move |profiles| {

@@ -1,6 +1,6 @@
 //! Setup logic for the app
-use nyanpasu_core::client::{
-    bundle_metadata::BundleMetadata, direct_egress::HttpDirectEgressProbe,
+use nyanpasu_core::{
+    client::{bundle_metadata::BundleMetadata, direct_egress::HttpDirectEgressProbe},
     owner_shutdown::track_until_shutdown,
 };
 

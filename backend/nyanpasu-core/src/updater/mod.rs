@@ -442,7 +442,7 @@ impl UpdaterClient {
         )
         .await
         .map_err(|source| Error::SpawnActor { source })?;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner(actor))))
     }
     async fn call<T: Send + 'static>(

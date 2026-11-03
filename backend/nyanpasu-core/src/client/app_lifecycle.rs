@@ -6,7 +6,7 @@ use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
 use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
-use crate::client::owner_shutdown;
+use crate::owner_shutdown;
 
 impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,

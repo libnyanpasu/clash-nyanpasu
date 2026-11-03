@@ -76,8 +76,8 @@ and desktop consumer checks as well: a dependency gate does not prove behavior.
 
 ## Consolidated runtime baseline
 
-The runtime builder, builtin transforms and script descriptor types live in
-`nyanpasu-core::enhance`, alongside the facade and its dependent actor/workflow
+The runtime builder and builtin transforms live in `nyanpasu-core::enhance`,
+alongside the facade and its dependent actor/workflow
 graph. Platform's `enhance::runtime_build` implements the core-owned
 `RuntimeBuildPort`; `profiles::fs_service` implements profile file access, and
 `changelog_http` implements changelog fetching. Platform and desktop consumers

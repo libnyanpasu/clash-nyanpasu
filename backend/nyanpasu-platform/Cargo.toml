@@ -10,13 +10,18 @@ authors.workspace = true
 name = 'nyanpasu_platform'
 
 [features]
+default = ['default-meta', 'nesting']
+default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
+nesting = ['nyanpasu-core/nesting', 'nyanpasu-config/nesting']
 test-support = ['nyanpasu-core/test-support', 'dep:tempfile']
 
 [dependencies]
-nyanpasu-core = { path = '../nyanpasu-core' }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-core-manager = { workspace = true }
-nyanpasu-config = { path = '../nyanpasu-config' }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
 boa_utils = { path = '../boa_utils' }
 nyanpasu-log-preview = { workspace = true }
 
@@ -62,7 +67,9 @@ tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-ipc = { workspace = true }
 nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
   'specta'

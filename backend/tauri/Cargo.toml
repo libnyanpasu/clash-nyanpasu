@@ -36,10 +36,12 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 nyanpasu-core-manager = { workspace = true }
 clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
-nyanpasu-core = { path = '../nyanpasu-core' }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
-nyanpasu-config = { path = '../nyanpasu-config' }
-nyanpasu-platform = { path = '../nyanpasu-platform' }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
+nyanpasu-platform = { path = '../nyanpasu-platform', default-features = false }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }
@@ -265,10 +267,14 @@ windows-sys = { version = '0.61', features = [
 atomicwrites = '0.4.4'
 redb = '4.0.0'
 tauri = { version = '2.4', features = ['test'] }
-nyanpasu-platform = { path = '../nyanpasu-platform', features = ['test-support'] }
+nyanpasu-platform = { path = '../nyanpasu-platform', default-features = false, features = [
+  'test-support'
+] }
 struct-patch = '0.14'
 zip = '9.0.0'
-nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'test-support'
+] }
 http-body-util = '0.1'
 tower = { version = '0.5', features = ['util'] }
 axum = { version = '0.8', features = ['ws'] }
@@ -286,7 +292,11 @@ default = ['custom-protocol', 'default-meta', 'nesting']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = ['nyanpasu-core/verge-dev']
-default-meta = ['nyanpasu-core/default-meta']
+default-meta = [
+  'nyanpasu-core/default-meta',
+  'nyanpasu-config/default-meta',
+  'nyanpasu-platform/default-meta'
+]
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see
@@ -296,4 +306,8 @@ trace-chrome = ['dep:tracing-chrome']
 # logs directory.
 dhat-heap = ['dep:dhat']
 # Keep the configuration and application patch derives on the same feature.
-nesting = ['nyanpasu-config/nesting', 'nyanpasu-core/nesting']
+nesting = [
+  'nyanpasu-config/nesting',
+  'nyanpasu-core/nesting',
+  'nyanpasu-platform/nesting'
+]

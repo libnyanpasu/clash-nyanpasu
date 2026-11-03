@@ -7,7 +7,9 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-nyanpasu-config = { path = '../nyanpasu-config' }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
 serde = { version = '1', features = ['derive'] }
 specta = { version = '^2.0.0-rc.25' }
 sysinfo = '0.39'

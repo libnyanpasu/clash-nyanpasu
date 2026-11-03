@@ -3,7 +3,7 @@
 Use this guide when adding or changing an application command, frontend call, or
 shared event. See [architecture](architecture.md) for dependency and actor rules.
 
-Application commands use the unified RPC framework, with Tauri IPC and HTTP as transport adapters. Commands should be thin adapters. They should:
+Application commands use the unified RPC framework, with Tauri IPC and HTTP as transport adapters. The [target RPC layer](../design/application-platform-extraction.md#rpc-targets) adds a third target, the CLI over a local socket, and moves the registry out of the Tauri crate; until it lands, the rules below cover Tauri IPC and HTTP (WebUI). Commands should be thin adapters. They should:
 
 - parse request DTOs;
 - call `NyanpasuClient`;

@@ -1,6 +1,6 @@
 //! Backend-owned application update state and task lifecycle.
 
-use crate::client::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 
 use std::{any::Any, sync::Arc};
 

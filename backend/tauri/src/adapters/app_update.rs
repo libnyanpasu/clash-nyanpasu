@@ -11,13 +11,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::adapters::events::AppUpdateStateChanged;
 use nyanpasu_config::application::UpdateSource;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_core::{
-    client::{
-        app_update::{
-            AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
-            AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
-        },
-        bundle_metadata::BundleMetadata,
+    client::app_update::{
+        AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
+        AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
     },
     service::profile_file::ports::SelfProxyPortSource,
 };

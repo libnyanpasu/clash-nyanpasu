@@ -143,7 +143,7 @@ impl ExternalFixture {
         let fs = Arc::new(ProfileFileService::new(
             nyanpasu_core::utils::test_support::test_paths(config_dir.path(), data_dir.path()),
             Arc::new(NoProxyPort),
-            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         ));
         let client = ProfilesClient::new(
             nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -180,7 +180,7 @@ async fn refresh_downloads_writes_and_commits_subscription() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -228,7 +228,7 @@ async fn external_mirror_change_syncs_copy_and_bumps_updated_at() {
     let fs = std::sync::Arc::new(ProfileFileService::new(
         paths,
         std::sync::Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -280,7 +280,7 @@ async fn external_symlink_change_bumps_updated_at_without_copy() {
     let fs = std::sync::Arc::new(ProfileFileService::new(
         paths,
         std::sync::Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -317,7 +317,7 @@ async fn external_background_commit_does_not_bypass_the_mutation_participant() {
     let fs = std::sync::Arc::new(ProfileFileService::new(
         paths,
         std::sync::Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -355,7 +355,7 @@ async fn external_watcher_smoke_mirror_real_file_event() {
     let fs = std::sync::Arc::new(ProfileFileService::new(
         paths,
         std::sync::Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let profiles_path =
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -406,7 +406,7 @@ async fn add_generates_uid_canonical_path_and_writes_initial_file() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -468,7 +468,7 @@ async fn add_success_leaves_no_materialization_staging_leftovers() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -510,7 +510,7 @@ async fn refresh_persist_failure_restores_previous_materialized_bytes() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let profiles_path =
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -555,7 +555,7 @@ async fn an_activation_that_does_not_commit_names_the_activated_profile() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let profiles_path =
         Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -609,7 +609,7 @@ async fn delete_unreferenced_managed_profile_removes_file() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -653,7 +653,7 @@ async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
     let fs = Arc::new(ProfileFileService::new(
         paths,
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let client = ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -816,7 +816,7 @@ async fn startup_client(
     let service = Arc::new(ProfileFileService::new(
         paths.clone(),
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     ProfilesClient::new(
         nyanpasu_core::state::mutation::MutationCoordinator::isolated(),
@@ -1010,7 +1010,7 @@ async fn materialization_directory_node_problems_rebuild_before_client_spawn() {
         let service = ProfileFileService::new(
             paths.clone(),
             Arc::new(NoProxyPort),
-            nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         );
         let path = ManagedProfilePath::new("usable.yaml").unwrap();
         let prepared = service
@@ -1044,7 +1044,7 @@ async fn materialization_preparation_failure_keeps_its_typed_source() {
     let service = Arc::new(ProfileFileService::new(
         paths.clone(),
         Arc::new(NoProxyPort),
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     let shutdown = CancellationToken::new();
     let tasks = TaskTracker::new();

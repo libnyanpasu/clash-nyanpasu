@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::candy;
-use crate::client::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 
 #[tracing_attributes::instrument]
 pub async fn url_delay_test(

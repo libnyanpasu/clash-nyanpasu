@@ -77,10 +77,11 @@ export const STATIC_KEYWORD_RE = /(?<![\w'#$])static(?!\w)/g
 export const STATIC_ITEM_RE =
   /static\s+(?:(?:mut|ref)\s+)?((?:r#)?[A-Za-z_][A-Za-z0-9_]*)\s*:/y
 
-/** Gate the GUI and application core sources, not other backend libraries. */
+/** Gate the host, application core and extracted contracts sources. */
 export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
+  'backend/nyanpasu-contracts/src/',
 ]
 
 /**

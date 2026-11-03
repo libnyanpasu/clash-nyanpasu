@@ -8,18 +8,15 @@ use nyanpasu_config::state::{
     PersistentState, PersistentStatePatch,
     window::{WindowLabel, WindowState},
 };
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    client::bundle_metadata::BundleMetadata,
-    state::{
-        config_error::{ConfigError, SessionStateStoppedSnafu},
-        session_state::{
-            SessionStateActor, SessionStateActorArgs, SessionStateActorMessage,
-            SessionStateSnapshot,
-        },
+use crate::state::{
+    config_error::{ConfigError, SessionStateStoppedSnafu},
+    session_state::{
+        SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
     },
 };
 
@@ -177,7 +174,7 @@ impl Drop for SessionStateClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::bundle_metadata::TEST_BUNDLE_METADATA;
+    use nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA;
     use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};

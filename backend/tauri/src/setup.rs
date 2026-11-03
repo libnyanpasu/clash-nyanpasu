@@ -1,9 +1,9 @@
 //! Setup logic for the app
 use nyanpasu_core::{
-    client::{bundle_metadata::BundleMetadata, direct_egress::NetworkDirectEgressProbe},
-    owner_shutdown::track_until_shutdown,
+    client::direct_egress::NetworkDirectEgressProbe, owner_shutdown::track_until_shutdown,
 };
 
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 

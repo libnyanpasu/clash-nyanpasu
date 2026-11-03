@@ -46,7 +46,10 @@ test('core must not depend on platform implementations', () => {
 
 test('core may depend on foundation packages', () => {
   assert.deepStrictEqual(
-    dependencyViolations('nyanpasu-core', 'nyanpasu-config v0.1.0\n'),
+    dependencyViolations(
+      'nyanpasu-core',
+      'nyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\n',
+    ),
     [],
   )
 })
@@ -56,6 +59,7 @@ test('neutral packages cannot depend on the crash reporter frontend', () => {
     'nyanpasu-core',
     'nyanpasu-platform',
     'nyanpasu-config',
+    'nyanpasu-contracts',
     'nyanpasu-diagnose',
   ]) {
     assert.deepStrictEqual(
@@ -114,25 +118,74 @@ test('the root package itself is not a violation', () => {
   )
 })
 
-test('forbidding nyanpasu-local-channel catches the widget ipc feature', () => {
-  const rules = [
-    { package: 'nyanpasu-config', forbids: ['nyanpasu-local-channel'] },
-  ]
+test('foundation packages must not depend on application or platform packages', () => {
+  for (const owner of ['nyanpasu-config', 'nyanpasu-contracts']) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        owner,
+        'nyanpasu-core v0.1.0\nnyanpasu-platform v0.1.0\n',
+      ),
+      [
+        `${owner} must not depend on nyanpasu-core`,
+        `${owner} must not depend on nyanpasu-platform`,
+      ],
+    )
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-paths v0.1.0\nserde v1.0\n'),
+      [],
+    )
+  }
+})
+
+test('config must not depend on other foundation packages', () => {
+  assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-config', 'nyanpasu-contracts v0.1.0\n'),
+    ['nyanpasu-config must not depend on nyanpasu-contracts'],
+  )
   assert.deepStrictEqual(
     dependencyViolations(
       'nyanpasu-config',
-      'nyanpasu-config v0.1.0\nnyanpasu-widget-protocol v0.1.0\n',
-      rules,
+      'nyanpasu-config v0.1.0\nnyanpasu-paths v0.1.0\n',
+    ),
+    [],
+  )
+})
+
+test('contracts excludes actor, HTTP, database and core-control dependencies', () => {
+  for (const dependency of [
+    'ractor',
+    'reqwest',
+    'redb',
+    'nyanpasu-core-manager',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-contracts', `${dependency} v0.1.0\n`),
+      [`nyanpasu-contracts must not depend on ${dependency}`],
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-contracts',
+      'nyanpasu-contracts v0.1.0\nnyanpasu-config v0.1.0\nserde v1.0\n',
+    ),
+    [],
+  )
+})
+
+test('forbidding nyanpasu-local-channel catches the widget ipc feature', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-contracts',
+      'nyanpasu-contracts v0.1.0\nnyanpasu-widget-protocol v0.1.0\n',
     ),
     [],
   )
   // nyanpasu-widget-protocol's ipc feature enables nyanpasu-local-channel.
   assert.deepStrictEqual(
     dependencyViolations(
-      'nyanpasu-config',
-      'nyanpasu-config v0.1.0\nnyanpasu-widget-protocol v0.1.0\nnyanpasu-local-channel v0.1.0\n',
-      rules,
+      'nyanpasu-contracts',
+      'nyanpasu-contracts v0.1.0\nnyanpasu-widget-protocol v0.1.0\nnyanpasu-local-channel v0.1.0\n',
     ),
-    ['nyanpasu-config must not depend on nyanpasu-local-channel'],
+    ['nyanpasu-contracts must not depend on nyanpasu-local-channel'],
   )
 })

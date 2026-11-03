@@ -24,7 +24,7 @@ const GUI: readonly PackageMatcher[] = [
   'tauri',
   { prefix: 'tauri-' },
 ]
-const FOUNDATION = ['nyanpasu-config']
+const FOUNDATION = ['nyanpasu-config', 'nyanpasu-contracts']
 const CORE_FAMILY = ['nyanpasu-core']
 // Transitional: implements core ports and depends on core until it is retired.
 const PLATFORM = 'nyanpasu-platform'
@@ -33,6 +33,24 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
   ...[...FOUNDATION, ...CORE_FAMILY, PLATFORM, 'nyanpasu-diagnose'].map(
     (name) => ({ package: name, forbids: GUI }),
   ),
+  ...FOUNDATION.map((name) => ({
+    package: name,
+    forbids: [...CORE_FAMILY, PLATFORM],
+  })),
+  {
+    package: 'nyanpasu-config',
+    forbids: FOUNDATION.filter((name) => name !== 'nyanpasu-config'),
+  },
+  {
+    package: 'nyanpasu-contracts',
+    forbids: [
+      'ractor',
+      'reqwest',
+      'redb',
+      'nyanpasu-core-manager',
+      'nyanpasu-local-channel',
+    ],
+  },
   ...CORE_FAMILY.map((name) => ({ package: name, forbids: [PLATFORM] })),
   {
     package: 'nyanpasu-diagnose',

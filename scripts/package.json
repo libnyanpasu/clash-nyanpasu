@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "adm-zip": "0.5.16",
+    "adm-zip": "0.6.1",
     "colorize-template": "1.0.0",
     "consola": "3.4.2",
     "d3": "7.9.0",

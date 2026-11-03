@@ -3,15 +3,16 @@
 use std::{error::Error, io, path::Path, sync::Arc};
 
 use nyanpasu_config::profile::{ManagedProfilePath, RemoteProfileOptions};
-use nyanpasu_contracts::profiles::{
-    error::{ProfileFileError, SubscriptionFetchError},
-    ports::{
-        MaterializationResource, ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher,
+use nyanpasu_contracts::{
+    net::SelfProxyPortSource,
+    profiles::{
+        error::{ProfileFileError, SubscriptionFetchError},
+        ports::{
+            MaterializationResource, ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher,
+        },
     },
 };
-use nyanpasu_core::{
-    corrupt, service::profile_file::ports::SelfProxyPortSource, utils::test_support,
-};
+use nyanpasu_core::{corrupt, utils::test_support};
 use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
 use url::Url;

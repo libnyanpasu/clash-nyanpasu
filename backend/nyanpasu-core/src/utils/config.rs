@@ -1,4 +1,5 @@
 use anyhow::Result;
+use nyanpasu_contracts::net::SystemProxySource;
 use sysproxy::Sysproxy;
 
 /// The app's own mixed port as a proxy URL. Callers pass the port the facade
@@ -18,10 +19,23 @@ pub fn get_system_proxy() -> Result<Option<String>> {
     Ok(None)
 }
 
+/// Reads the OS proxy at the moment a consumer starts an operation.
+pub struct OsSystemProxySource;
+
+impl SystemProxySource for OsSystemProxySource {
+    fn system_proxy(&self) -> Result<Option<String>> {
+        get_system_proxy()
+    }
+}
+
 pub trait NyanpasuReqwestProxyExt {
     fn swift_set_proxy(self, url: &str) -> Self;
 
-    fn swift_set_nyanpasu_proxy(self, self_proxy_port: u16) -> Self;
+    fn swift_set_nyanpasu_proxy(
+        self,
+        self_proxy_port: u16,
+        system_proxy: &dyn SystemProxySource,
+    ) -> Self;
 }
 
 impl NyanpasuReqwestProxyExt for reqwest::ClientBuilder {
@@ -40,9 +54,13 @@ impl NyanpasuReqwestProxyExt for reqwest::ClientBuilder {
     }
 
     // TODO: 修改成按枚举配置
-    fn swift_set_nyanpasu_proxy(self, self_proxy_port: u16) -> Self {
+    fn swift_set_nyanpasu_proxy(
+        self,
+        self_proxy_port: u16,
+        system_proxy: &dyn SystemProxySource,
+    ) -> Self {
         let mut builder = self.swift_set_proxy(&get_self_proxy(self_proxy_port));
-        if let Ok(Some(proxy)) = get_system_proxy() {
+        if let Ok(Some(proxy)) = system_proxy.system_proxy() {
             builder = builder.swift_set_proxy(&proxy);
         }
         builder

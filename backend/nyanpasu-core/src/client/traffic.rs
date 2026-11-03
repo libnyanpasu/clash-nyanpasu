@@ -98,7 +98,7 @@ impl LocalSourceCache {
 
 /// A running probe stops asking once detection is off or TUN is on, and skips
 /// a server or provider that has since left the user's list.
-impl super::direct_egress::ProbePermission for LocalSourceCache {
+impl nyanpasu_contracts::net::ProbePermission for LocalSourceCache {
     fn allows_stun(&self, server: &StunServer) -> bool {
         self.blocked().is_none()
             && self

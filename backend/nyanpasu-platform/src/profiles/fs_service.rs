@@ -21,7 +21,7 @@ use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
 use crate::profiles::{materialization, materialization::MATERIALIZATION_ROOT, subscription};
-use nyanpasu_core::service::profile_file::ports::SelfProxyPortSource;
+use nyanpasu_contracts::net::SelfProxyPortSource;
 
 #[cfg(windows)]
 use nyanpasu_contracts::profiles::error::{CanonicalizePathSnafu, CleanupTombstoneExistsSnafu};

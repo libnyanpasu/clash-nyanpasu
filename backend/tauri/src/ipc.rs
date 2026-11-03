@@ -10,12 +10,11 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_contracts::net::StunServerTest;
 use nyanpasu_core::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError,
-        agent_skills::CoreAgentSkill,
-        direct_egress::{DirectEgress, StunServerTest},
-        effects::error::EffectsError,
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
+        direct_egress::DirectEgress, effects::error::EffectsError,
         system_proxy::ports::OsProxyError,
     },
     state::{
@@ -1413,12 +1412,8 @@ pub struct IconData {
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_cached_icon(
-    client: State<'_, NyanpasuClient>,
-    paths: State<'_, PathResolver>,
-    url: String,
-) -> Result<IconData> {
-    let (mime, bytes) = client.get_cached_icon(&url, paths).await?;
+pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> Result<IconData> {
+    let (mime, bytes) = client.get_cached_icon(&url).await?;
     Ok(IconData {
         data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
     })

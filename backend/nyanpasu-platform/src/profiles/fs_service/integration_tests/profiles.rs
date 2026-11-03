@@ -6,12 +6,15 @@ use nyanpasu_config::profile::{
     ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileId,
     ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, TransformDefinition,
 };
-use nyanpasu_contracts::profiles::{
-    error::{ExpectedNode, ProfileFileError},
-    ports::{
-        MaterializationReconcileReport, MaterializationResource, MockProfileMaterializationPort,
-        MockSubscriptionFetcher, PreparedMaterialization, ProfileFsPort,
-        ProfileMaterializationPort,
+use nyanpasu_contracts::{
+    net::SelfProxyPortSource,
+    profiles::{
+        error::{ExpectedNode, ProfileFileError},
+        ports::{
+            MaterializationReconcileReport, MaterializationResource,
+            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedMaterialization,
+            ProfileFsPort, ProfileMaterializationPort,
+        },
     },
 };
 use nyanpasu_core::{
@@ -27,7 +30,6 @@ use nyanpasu_core::{
         },
     },
     migration::modules::profiles::ProfilesFormat,
-    service::profile_file::ports::SelfProxyPortSource,
     state::{
         mutation::CommitAborted,
         profiles::{

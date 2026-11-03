@@ -11,7 +11,10 @@ pub mod workflow;
 use super::{Result, runtime};
 #[cfg(test)]
 use nyanpasu_config::application::NyanpasuAppConfig;
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{ChangelogHttp, MockDirectEgressProbe, MockIconFetcher, MockNetworkDiagnostics},
+};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use camino::Utf8PathBuf;
@@ -39,7 +42,7 @@ use crate::{
         endpoint::ExecutionHost,
         test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
-    client::{core_version, direct_egress, system_proxy::ports::MockOsProxyPort},
+    client::{core_version, system_proxy::ports::MockOsProxyPort},
     state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
@@ -779,7 +782,7 @@ pub async fn test_client_args_with_endpoint(
         core_v2,
         service,
         system_dns: Arc::new(NoopSystemDnsCache),
-        direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+        direct_egress: Arc::new(MockDirectEgressProbe::new()),
         geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
         os_proxy: Arc::new(MockOsProxyPort::new()),
         binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
@@ -903,7 +906,7 @@ impl super::debug_http::DebugHttpControl for DisabledDebugHttp {
 struct UnconfiguredChangelogHttp;
 
 #[async_trait::async_trait]
-impl super::app_update::changelog::ChangelogHttp for UnconfiguredChangelogHttp {
+impl ChangelogHttp for UnconfiguredChangelogHttp {
     async fn get_text(&self, _url: &url::Url) -> anyhow::Result<String> {
         anyhow::bail!("changelog HTTP is not configured in this fixture")
     }
@@ -914,6 +917,8 @@ pub fn test_adapters(
     runtime_build: Arc<dyn super::application_workflow::ports::RuntimeBuildPort>,
 ) -> ClientHostAdapters {
     ClientHostAdapters {
+        icon_fetcher: Arc::new(MockIconFetcher::new()),
+        network_diagnostics: Arc::new(MockNetworkDiagnostics::new()),
         debug_http: Arc::new(|| {
             Box::pin(async {
                 Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)

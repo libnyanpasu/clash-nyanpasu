@@ -8,9 +8,9 @@ use super::{
     app_update::changelog::ChangelogHttp, application_workflow::ports::RuntimeBuildPort,
     debug_http::DebugHttpControl,
 };
-use crate::{
-    service::profile_file::ports::SelfProxyPortSource,
-    state::profiles::ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+use crate::service::profile_file::ports::SelfProxyPortSource;
+use nyanpasu_contracts::profiles::ports::{
+    ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher,
 };
 
 /// Matching profile-store capabilities returned by the host's profile factory.

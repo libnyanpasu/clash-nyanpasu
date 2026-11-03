@@ -19,11 +19,8 @@ use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
-use crate::{
-    actor_v2::api::ApiError,
-    corrupt,
-    state::profiles::{ErrorPath, ProfilesError},
-};
+use crate::{actor_v2::api::ApiError, corrupt, state::profiles::ProfilesError};
+use nyanpasu_contracts::profiles::error::ErrorPath;
 use nyanpasu_profile_transform::PostProcessingOutput;
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";

@@ -2240,15 +2240,13 @@ mod tests {
     use serde_json::json;
     use snafu::IntoError;
 
+    use nyanpasu_contracts::profiles::error::{ProfileFileError, SubscriptionFetchError};
     use nyanpasu_core::{
         client::{
             effects::error::EffectsError, runtime_error::RuntimeError,
             system_proxy::ports::OsProxyError,
         },
-        state::{
-            mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
-            profiles::{ProfileFileError, SubscriptionFetchError},
-        },
+        state::mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
     };
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {

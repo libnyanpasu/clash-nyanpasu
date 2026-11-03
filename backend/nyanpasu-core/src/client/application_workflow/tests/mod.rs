@@ -328,10 +328,8 @@ async fn workflow_graph_with_clients(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    use crate::{
-        client::test_support::{test_materialization_port, test_typed_config_clients},
-        state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
-    };
+    use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
+    use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),

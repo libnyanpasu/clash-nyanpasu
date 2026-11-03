@@ -1,7 +1,9 @@
 //! Real profile file capabilities for host integration tests.
 use crate::profiles::fs_service::ProfileFileService;
 #[cfg(test)]
-use nyanpasu_core::{client::NyanpasuClient, state::profiles::ports::SubscriptionFetcher};
+use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
+#[cfg(test)]
+use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_core::{
     client::{
         ClientSetupArgs,

@@ -212,7 +212,7 @@ impl ProfileJobs {
 }
 
 fn sync_error(error: &ProfilesError) -> JobError {
-    use super::error::SubscriptionFetchError;
+    use nyanpasu_contracts::profiles::error::SubscriptionFetchError;
     match error {
         ProfilesError::FetchSubscription {
             source: SubscriptionFetchError::SubscriptionHttpStatus { status },

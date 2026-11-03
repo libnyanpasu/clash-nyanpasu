@@ -67,7 +67,7 @@ use crate::{
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        ReorderOp, ports::ProfileFsPort,
+        ReorderOp,
     },
     storage::Storage,
 };
@@ -84,6 +84,7 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_contracts::profiles::ports::ProfileFsPort;
 use snafu::{OptionExt as _, ResultExt as _};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
@@ -1518,7 +1519,6 @@ pub(crate) mod tests {
                 test_client_with_system_dns,
             },
         },
-        state::profiles::{error::SubscriptionFetchError, ports::MockSubscriptionFetcher},
         utils::test_support::test_paths,
     };
     use nyanpasu_config::{
@@ -1528,6 +1528,10 @@ pub(crate) mod tests {
             ProfileMetadata, ProfileSource, RemoteSyncInterval, SubscriptionInfo,
         },
         state::window::WindowState,
+    };
+    use nyanpasu_contracts::profiles::{
+        error::SubscriptionFetchError,
+        ports::{FetchedSubscription, MockSubscriptionFetcher},
     };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
@@ -2908,7 +2912,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 // No server name: exercises the url last-segment fallback below.
@@ -2961,7 +2965,7 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
-                Ok(crate::state::profiles::ports::FetchedSubscription {
+                Ok(FetchedSubscription {
                     content: "proxies: []\n".into(),
                     subscription: SubscriptionInfo::default(),
                     filename: None,
@@ -3031,7 +3035,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3069,7 +3073,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3221,7 +3225,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3378,7 +3382,7 @@ pub(crate) mod tests {
     fn ok_fetch_without_name() -> MockSubscriptionFetcher {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,

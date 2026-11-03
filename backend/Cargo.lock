@@ -6750,7 +6750,13 @@ dependencies = [
 name = "nyanpasu-contracts"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "mockall",
  "nyanpasu-config",
+ "serde",
+ "snafu 0.9.2",
+ "specta",
+ "url",
 ]
 
 [[package]]

@@ -86,6 +86,7 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-profile-transform/src/',
   'backend/nyanpasu-persistence/src/',
   'backend/nyanpasu-profile-io/src/',
+  'backend/nyanpasu-net/src/',
 ]
 
 /**

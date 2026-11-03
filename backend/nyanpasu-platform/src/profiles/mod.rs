@@ -1,7 +1,4 @@
-//! Subscription HTTP adapters and profile application integration tests.
-
-mod subscription;
-pub mod subscription_http;
+//! Profile application integration tests and host test assembly.
 
 #[cfg(test)]
 mod integration_tests;

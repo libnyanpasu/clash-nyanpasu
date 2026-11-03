@@ -1,23 +1,6 @@
-use super::config::NyanpasuReqwestProxyExt;
 use anyhow::Result;
-use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SystemProxySource};
 use std::time::Duration;
 use url::Url;
-
-// TODO: 添加自定义 User-Agent 等配置，说白了就是重构一下 prfitem 的那坨代码
-pub fn get_reqwest_client(
-    self_proxy_port: u16,
-    metadata: &BundleMetadata,
-    system_proxy: &dyn SystemProxySource,
-) -> Result<reqwest::Client> {
-    let builder = reqwest::ClientBuilder::new();
-    let app_version = metadata.app_version;
-    let client = builder
-        .swift_set_nyanpasu_proxy(self_proxy_port, system_proxy)
-        .user_agent(format!("clash-nyanpasu/{app_version}"))
-        .build()?;
-    Ok(client)
-}
 
 pub const INTERNAL_MIRRORS: &[&str] = &[
     "https://github.com/",

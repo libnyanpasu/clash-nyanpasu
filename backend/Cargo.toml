@@ -11,6 +11,7 @@ members = [
   'nyanpasu-contracts',
   'nyanpasu-persistence',
   'nyanpasu-profile-io',
+  'nyanpasu-net',
   'nyanpasu-profile-transform',
   'nyanpasu-traffic',
   'nyanpasu-tsdb',

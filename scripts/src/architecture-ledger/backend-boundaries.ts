@@ -31,7 +31,11 @@ const FOUNDATION = [
   'nyanpasu-profile-transform',
 ]
 const CORE_FAMILY = ['nyanpasu-core']
-const IMPLEMENTATION = ['nyanpasu-scripts', 'nyanpasu-profile-io']
+const IMPLEMENTATION = [
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+]
 // Transitional: implements core ports and depends on core until it is retired.
 const PLATFORM = 'nyanpasu-platform'
 

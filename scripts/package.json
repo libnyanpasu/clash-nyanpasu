@@ -16,7 +16,7 @@
     "octokit": "5.0.5",
     "picocolors": "1.1.1",
     "playwright": "1.64.1",
-    "prettier": "3.9.9",
+    "prettier": "3.9.10",
     "semver": "7.7.4",
     "smol-toml": "1.9.1",
     "spdx-expression-parse": "5.0.0",

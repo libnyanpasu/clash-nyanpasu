@@ -1,10 +1,12 @@
 use async_trait::async_trait;
-use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+use nyanpasu_config::{
+    profile::ScriptRuntime,
+    runtime::executor::{StepLogEntry, StepLogLevel},
+};
 use serde_yaml::Mapping;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use super::{ScriptDirs, js, lua};
-use nyanpasu_core::enhance::{ScriptType, ScriptWrapper};
+use super::{ScriptDirs, ScriptWrapper, js, lua};
 
 /// Collects the console output of one run. The engine's console callbacks
 /// hold clones; the runner drains it into the caller's logs once the run
@@ -49,7 +51,7 @@ pub trait Runner: Send + Sync {
 }
 
 pub struct RunnerManager {
-    runners: HashMap<ScriptType, Box<dyn Runner>>,
+    runners: HashMap<ScriptRuntime, Box<dyn Runner>>,
     script_dirs: ScriptDirs,
 }
 
@@ -61,13 +63,16 @@ impl RunnerManager {
         }
     }
     // If the script runner is not exist, it should be created.
-    pub fn get_or_init_runner(&mut self, script_type: &ScriptType) -> anyhow::Result<&dyn Runner> {
+    pub fn get_or_init_runner(
+        &mut self,
+        script_type: &ScriptRuntime,
+    ) -> anyhow::Result<&dyn Runner> {
         if !self.runners.contains_key(script_type) {
             let runner = match script_type {
-                ScriptType::JavaScript => {
+                ScriptRuntime::JavaScript => {
                     Box::new(js::JSRunner::new(&self.script_dirs)?) as Box<dyn Runner>
                 }
-                ScriptType::Lua => Box::new(lua::LuaRunner) as Box<dyn Runner>,
+                ScriptRuntime::Lua => Box::new(lua::LuaRunner) as Box<dyn Runner>,
             };
             self.runners.insert(*script_type, runner);
         }
@@ -75,7 +80,7 @@ impl RunnerManager {
     }
 
     #[tracing::instrument(skip(self, script, config, logs), fields(script_kind = ?script.0))]
-    pub async fn process_script(
+    pub(super) async fn process_script(
         &mut self,
         script: &ScriptWrapper,
         config: Mapping,

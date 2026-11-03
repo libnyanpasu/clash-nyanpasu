@@ -12,8 +12,7 @@ use nyanpasu_config::{
 };
 use tracing::Instrument;
 
-use super::{RunnerManager, ScriptDirs, create_lua_context, ordered_map};
-use nyanpasu_core::enhance::{ScriptType, ScriptWrapper};
+use super::{RunnerManager, ScriptDirs, ScriptWrapper, create_lua_context, ordered_map};
 
 pub struct EnhanceScriptRunner {
     runtime: tokio::runtime::Runtime,
@@ -52,12 +51,8 @@ impl ScriptRunner for EnhanceScriptRunner {
         config: &ConfigValue,
         logs: &mut Vec<StepLogEntry>,
     ) -> Result<ConfigValue, PortError> {
-        let script_type = match runtime {
-            ScriptRuntime::JavaScript => ScriptType::JavaScript,
-            ScriptRuntime::Lua => ScriptType::Lua,
-        };
         let mapping = config_to_mapping(config)?;
-        let wrapper = ScriptWrapper(script_type, source.to_string());
+        let wrapper = ScriptWrapper(runtime, source.to_string());
         // TODO: make `ScriptRunner` async and remove the runtime block_on here, so that the whole pipeline can be async.
         let mapping = self
             .runtime

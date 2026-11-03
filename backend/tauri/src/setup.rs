@@ -5,6 +5,8 @@ use nyanpasu_core::{
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_platform::profiles::subscription_http::SubscriptionHttpFetcher;
+use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use std::sync::Arc;
 
 use crate::{
@@ -362,7 +364,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             }),
             runtime_build: Arc::new(
                 nyanpasu_core::client::runtime_build::RuntimeBuildService::new(
-                    Arc::new(nyanpasu_platform::enhance::FsProfileContentSource::new(
+                    Arc::new(FsProfileContentSource::new(
                         paths.app_profiles_dir().into_std_path_buf(),
                     )),
                     {
@@ -388,16 +390,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             profile_files: Arc::new({
                 let paths = paths.clone();
                 move |ports| {
-                    let service = Arc::new(
-                        nyanpasu_platform::profiles::fs_service::ProfileFileService::new(
-                            paths.clone(),
-                            ports,
-                            bundle_metadata,
-                        ),
-                    );
+                    let service = Arc::new(ProfileFileService::new(paths.clone()));
                     ProfileFilePorts {
                         fs: service.clone(),
-                        fetcher: service.clone(),
+                        fetcher: Arc::new(SubscriptionHttpFetcher::new(ports, bundle_metadata)),
                         materialization: service,
                     }
                 }

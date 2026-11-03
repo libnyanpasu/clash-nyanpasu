@@ -60,8 +60,10 @@ test('neutral packages cannot depend on the crash reporter frontend', () => {
     'nyanpasu-platform',
     'nyanpasu-config',
     'nyanpasu-contracts',
+    'nyanpasu-persistence',
     'nyanpasu-profile-transform',
     'nyanpasu-scripts',
+    'nyanpasu-profile-io',
     'nyanpasu-diagnose',
   ]) {
     assert.deepStrictEqual(
@@ -124,6 +126,7 @@ test('foundation packages must not depend on application or platform packages', 
   for (const owner of [
     'nyanpasu-config',
     'nyanpasu-contracts',
+    'nyanpasu-persistence',
     'nyanpasu-profile-transform',
   ]) {
     assert.deepStrictEqual(
@@ -230,14 +233,14 @@ test('implementations reject core and transitional platform dependencies', () =>
   )
 })
 
-test('foundation, core, diagnose and platform reject implementation dependencies', () => {
+test('foundation, core and diagnose reject implementation dependencies', () => {
   for (const owner of [
     'nyanpasu-config',
     'nyanpasu-contracts',
+    'nyanpasu-persistence',
     'nyanpasu-profile-transform',
     'nyanpasu-core',
     'nyanpasu-diagnose',
-    'nyanpasu-platform',
   ]) {
     assert.deepStrictEqual(
       dependencyViolations(owner, 'nyanpasu-scripts v0.1.0\n'),
@@ -294,6 +297,85 @@ test('contracts rejects transform and accepts config', () => {
   )
   assert.deepStrictEqual(
     dependencyViolations('nyanpasu-contracts', 'nyanpasu-config v0.1.0\n'),
+    [],
+  )
+})
+
+for (const dependency of [
+  'redb',
+  'nyanpasu-core-manager',
+  'nyanpasu-contracts',
+  'nyanpasu-profile-transform',
+]) {
+  test(`persistence rejects ${dependency} and accepts IO libraries`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-persistence', `${dependency} v0.1.0\n`),
+      [`nyanpasu-persistence must not depend on ${dependency}`],
+    )
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-persistence',
+        'nyanpasu-utils v0.1.1\nbackon v1.6\natomicwrites v0.4.4\n',
+      ),
+      [],
+    )
+  })
+}
+
+for (const owner of ['nyanpasu-config', 'nyanpasu-contracts']) {
+  test(`${owner} rejects persistence and accepts lower-level libraries`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-persistence v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-persistence`],
+    )
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  })
+}
+
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-core',
+  'nyanpasu-scripts',
+  'nyanpasu-diagnose',
+]) {
+  test(`${owner} rejects profile IO and accepts lower-level libraries`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-profile-io v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-profile-io`],
+    )
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  })
+}
+
+for (const dependency of [
+  'nyanpasu-core',
+  'nyanpasu-platform',
+  'nyanpasu-scripts',
+]) {
+  test(`profile IO rejects ${dependency} and accepts foundation packages`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-profile-io', `${dependency} v0.1.0\n`),
+      [`nyanpasu-profile-io must not depend on ${dependency}`],
+    )
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-profile-io',
+        'nyanpasu-profile-io v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-persistence v0.1.0\n',
+      ),
+      [],
+    )
+  })
+}
+
+test('transitional platform may compose implementation crates', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-platform',
+      'nyanpasu-profile-io v0.1.0\nnyanpasu-scripts v0.1.0\n',
+    ),
     [],
   )
 })

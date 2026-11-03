@@ -9,6 +9,8 @@ members = [
   'nyanpasu-helper',
   'nyanpasu-config',
   'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-io',
   'nyanpasu-profile-transform',
   'nyanpasu-traffic',
   'nyanpasu-tsdb',

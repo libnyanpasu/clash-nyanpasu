@@ -18,6 +18,7 @@ test-support = [
 ]
 
 [dependencies]
+nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
@@ -43,7 +44,6 @@ notify-debouncer-full = '0.7.0'
 zstd = '0.14.0'
 tempfile = '3.9.0'
 nyanpasu-core-manager = { workspace = true }
-backon = { version = '1.0.1', features = ['tokio-sleep'] }
 clash-api = { workspace = true }
 futures-util = '0.3'
 axum = { version = '0.8', features = ['ws'], optional = true }
@@ -111,9 +111,6 @@ serde_yaml_ng = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = '0.61', features = ['Win32_UI_WindowsAndMessaging'] }
 winreg = { version = '0.56', features = ['transactions'] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-nix = '0.31.0'
 
 [target.'cfg(not(target_env = "musl"))'.dev-dependencies]
 # The desktop AES smoke test does not apply to generic router/musl targets.

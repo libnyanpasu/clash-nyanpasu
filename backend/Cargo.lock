@@ -1839,7 +1839,9 @@ dependencies = [
  "nyanpasu-macro",
  "nyanpasu-panics",
  "nyanpasu-paths",
+ "nyanpasu-persistence",
  "nyanpasu-platform",
+ "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
  "nyanpasu-scripts",
  "nyanpasu-traffic",
@@ -6771,7 +6773,6 @@ dependencies = [
  "async-trait",
  "atomicwrites",
  "axum",
- "backon",
  "bolt-load",
  "bon",
  "bytes",
@@ -6789,7 +6790,6 @@ dependencies = [
  "memmap2",
  "mockall",
  "nanoid",
- "nix 0.31.3",
  "notify-debouncer-full",
  "nyanpasu-config",
  "nyanpasu-contracts",
@@ -6801,6 +6801,7 @@ dependencies = [
  "nyanpasu-logging",
  "nyanpasu-macro",
  "nyanpasu-paths",
+ "nyanpasu-persistence",
  "nyanpasu-profile-transform",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
@@ -7069,19 +7070,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-persistence"
+version = "0.1.0"
+dependencies = [
+ "atomicwrites",
+ "backon",
+ "nix 0.31.3",
+ "nyanpasu-utils",
+ "snafu 0.9.2",
+ "tempfile",
+ "time",
+ "tracing",
+]
+
+[[package]]
 name = "nyanpasu-platform"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "atomicwrites",
  "axum",
  "backon",
  "base64 0.23.1",
  "camino",
  "futures-util",
- "hex",
- "nanoid",
  "nyanpasu-config",
  "nyanpasu-contracts",
  "nyanpasu-core",
@@ -7089,12 +7101,12 @@ dependencies = [
  "nyanpasu-ipc",
  "nyanpasu-logging",
  "nyanpasu-paths",
+ "nyanpasu-profile-io",
  "percent-encoding",
  "reqwest 0.13.5",
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
- "sha2 0.11.1",
  "snafu 0.9.2",
  "sysproxy",
  "tempfile",
@@ -7102,6 +7114,25 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
+]
+
+[[package]]
+name = "nyanpasu-profile-io"
+version = "0.1.0"
+dependencies = [
+ "atomicwrites",
+ "hex",
+ "nanoid",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "nyanpasu-paths",
+ "nyanpasu-persistence",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "sha2 0.11.1",
+ "snafu 0.9.2",
+ "tempfile",
 ]
 
 [[package]]

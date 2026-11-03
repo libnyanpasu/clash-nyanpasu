@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
-use crate::{actor_v2::api::ApiError, corrupt, state::profiles::ProfilesError};
+use crate::{actor_v2::api::ApiError, state::profiles::ProfilesError};
 use nyanpasu_contracts::profiles::error::ErrorPath;
 use nyanpasu_profile_transform::PostProcessingOutput;
 
@@ -464,28 +464,28 @@ impl RuntimePaths {
 fn cleanup_candidates(path: &Utf8Path, max_age: Duration) -> Result<usize, Error> {
     let now = SystemTime::now();
     let mut removed = 0;
-    let mut entries =
-        corrupt::retry_io(|| std::fs::read_dir(path)).context(ReadCandidatesSnafu { path })?;
-    while let Some(entry) =
-        corrupt::retry_io(|| entries.next().transpose()).context(ReadCandidatesSnafu { path })?
+    let mut entries = nyanpasu_persistence::retry_io(|| std::fs::read_dir(path))
+        .context(ReadCandidatesSnafu { path })?;
+    while let Some(entry) = nyanpasu_persistence::retry_io(|| entries.next().transpose())
+        .context(ReadCandidatesSnafu { path })?
     {
         let name = entry.file_name();
         if !name.to_string_lossy().starts_with("candidate-") {
             continue;
         }
-        let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(entry.path()))
+        let metadata = nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(entry.path()))
             .context(InspectCandidateSnafu { path: entry.path() })?;
         if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
             continue;
         }
-        let modified = corrupt::retry_io(|| metadata.modified())
+        let modified = nyanpasu_persistence::retry_io(|| metadata.modified())
             .context(InspectCandidateSnafu { path: entry.path() })?;
         let is_stale = now
             .duration_since(modified)
             .ok()
             .is_some_and(|age| age >= max_age);
         if is_stale {
-            match corrupt::retry_io(|| std::fs::remove_file(entry.path())) {
+            match nyanpasu_persistence::retry_io(|| std::fs::remove_file(entry.path())) {
                 Ok(()) => removed += 1,
                 Err(error) => tracing::warn!(path = %entry.path().display(),
                     error = %snafu::Report::from_error(&error), action = "skip_stale_candidate",
@@ -555,7 +555,7 @@ pub enum Error {
         source: std::io::Error,
     },
     #[snafu(display("failed to preserve invalid candidate directory"))]
-    PreserveCandidateDirectory { source: corrupt::Error },
+    PreserveCandidateDirectory { source: nyanpasu_persistence::Error },
     #[cfg(unix)]
     #[snafu(display("failed to secure candidate directory {path}"))]
     SecureCandidateDirectory {
@@ -575,13 +575,13 @@ async fn prepare_private_dir_with<F>(
 where
     F: std::future::Future<Output = std::io::Result<()>>,
 {
-    match corrupt::retry_async(|| tokio::fs::symlink_metadata(path)).await {
+    match nyanpasu_persistence::retry_async(|| tokio::fs::symlink_metadata(path)).await {
         Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_dir() => {
             let error = ValidateCandidateDirectorySnafu { path }.build();
             let original = path.to_path_buf();
             crate::utils::blocking::join(
                 tokio::task::spawn_blocking(move || {
-                    corrupt::preserve(original.as_std_path(), &error)
+                    nyanpasu_persistence::preserve(original.as_std_path(), &error)
                 })
                 .await,
             )
@@ -595,10 +595,10 @@ where
             });
         }
     }
-    corrupt::retry_async(create)
+    nyanpasu_persistence::retry_async(create)
         .await
         .context(CreateCandidateDirectorySnafu { path })?;
-    let metadata = corrupt::retry_async(|| tokio::fs::symlink_metadata(path))
+    let metadata = nyanpasu_persistence::retry_async(|| tokio::fs::symlink_metadata(path))
         .await
         .context(InspectCandidateSnafu {
             path: path.as_std_path(),
@@ -609,7 +609,7 @@ where
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        corrupt::retry_async(|| {
+        nyanpasu_persistence::retry_async(|| {
             tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
         })
         .await

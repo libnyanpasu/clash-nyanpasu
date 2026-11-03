@@ -1,27 +1,20 @@
-//! Profile filesystem, materialization transactions, and subscription fetches
-//! over injected paths/network state. Tauri-free and legacy-Config-free.
+//! Profile filesystem access and materialization transactions over injected paths.
 
-use nyanpasu_contracts::{BoxedCause, bundle_metadata::BundleMetadata};
+use nyanpasu_contracts::BoxedCause;
 use nyanpasu_paths::PathResolver;
 
 use std::{
     collections::HashSet,
     io::Write,
     path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
 };
 
 use atomicwrites::{AtomicFile, OverwriteBehavior, replace_atomic};
-use nyanpasu_config::profile::{
-    ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions,
-};
+use nyanpasu_config::profile::{ExternalProfilePath, ManagedProfilePath, Profiles};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, ensure};
-use url::Url;
 
-use crate::profiles::{materialization, materialization::MATERIALIZATION_ROOT, subscription};
-use nyanpasu_contracts::net::SelfProxyPortSource;
+use crate::{materialization, materialization::MATERIALIZATION_ROOT};
 
 #[cfg(windows)]
 use nyanpasu_contracts::profiles::error::{CanonicalizePathSnafu, CleanupTombstoneExistsSnafu};
@@ -29,61 +22,41 @@ use nyanpasu_contracts::profiles::error::{CanonicalizePathSnafu, CleanupTombston
 use nyanpasu_contracts::profiles::error::{SetPermissionsSnafu, SyncDirectorySnafu};
 use nyanpasu_contracts::profiles::{
     error::{
-        AtomicWriteSnafu, BuildHttpClientSnafu, CleanupAlreadyActivatedSnafu,
-        CompensatingCannotPromoteSnafu, CompensationFencedSnafu, ConflictingCleanupPayloadsSnafu,
-        ConflictingJournalPayloadsSnafu, CreateDirectorySnafu, CreateSymlinkSnafu,
-        DivergedBeforeRecoverySnafu, ExistingFileBlocksSymlinkSnafu, ExpectedNode,
-        InspectPathSnafu, InvalidExternalPathSnafu, JournalDestinationDiffersSnafu,
-        JournalHashInvalidSnafu, JournalNotFoundSnafu, JournalOperationIdMismatchSnafu,
-        ListDirectorySnafu, MixedTransactionFamiliesSnafu, MultipleBackupsSnafu,
-        MultipleStagedResourcesSnafu, NoParentDirectorySnafu, NotCompletableSnafu,
-        OperationIdExhaustedSnafu, OperationIdInvalidSnafu, ParseJournalSnafu,
+        AtomicWriteSnafu, CleanupAlreadyActivatedSnafu, CompensatingCannotPromoteSnafu,
+        CompensationFencedSnafu, ConflictingCleanupPayloadsSnafu, ConflictingJournalPayloadsSnafu,
+        CreateDirectorySnafu, CreateSymlinkSnafu, DivergedBeforeRecoverySnafu,
+        ExistingFileBlocksSymlinkSnafu, ExpectedNode, InspectPathSnafu, InvalidExternalPathSnafu,
+        JournalDestinationDiffersSnafu, JournalHashInvalidSnafu, JournalNotFoundSnafu,
+        JournalOperationIdMismatchSnafu, ListDirectorySnafu, MixedTransactionFamiliesSnafu,
+        MultipleBackupsSnafu, MultipleStagedResourcesSnafu, NoParentDirectorySnafu,
+        NotCompletableSnafu, OperationIdExhaustedSnafu, OperationIdInvalidSnafu, ParseJournalSnafu,
         PathEscapesProfilesDirSnafu, PreserveDerivedDirectorySnafu, ProfileFileError,
         PromotedHashMismatchSnafu, ReadExternalTargetSnafu, ReadFileSnafu, ReadLinkSnafu,
-        ReadSubscriptionBodySnafu, ReadySymlinkMismatchSnafu, RemoveFileSnafu, ReplaceFileSnafu,
-        RequestSubscriptionSnafu, ReservedPathSnafu, SerializeJournalSnafu,
-        StagedHashMismatchSnafu, StagedResourceMissingSnafu, SubscriptionFetchError,
-        SubscriptionHttpStatusSnafu, SymlinkTargetNotUtf8Snafu, TargetHashMismatchSnafu,
-        UnexpectedNodeSnafu, UnexpectedSymlinkSnafu, WriteFileSnafu,
+        ReadySymlinkMismatchSnafu, RemoveFileSnafu, ReplaceFileSnafu, ReservedPathSnafu,
+        SerializeJournalSnafu, StagedHashMismatchSnafu, StagedResourceMissingSnafu,
+        SymlinkTargetNotUtf8Snafu, TargetHashMismatchSnafu, UnexpectedNodeSnafu,
+        UnexpectedSymlinkSnafu, WriteFileSnafu,
     },
     ports::{
-        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
-        SubscriptionFetcher,
+        CleanupOutcome, MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
+        PreparedMaterialization, ProfileDegradation, ProfileDegradationCode,
+        ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
     },
 };
-use nyanpasu_core::corrupt;
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 
 const ABSENT_HASH: &str = "b7c03610089b9f660990ee7db3290cc8d8564161b079319c9c7ba1f19dc2e190";
 
+/// Filesystem and materialization ports rooted at the injected application directories.
 pub struct ProfileFileService {
     paths: PathResolver,
-    self_proxy_port: Arc<dyn SelfProxyPortSource>,
-    http_timeout: Duration,
-    bundle_metadata: BundleMetadata,
 }
 
 impl ProfileFileService {
-    pub fn new(
-        paths: PathResolver,
-        self_proxy_port: Arc<dyn SelfProxyPortSource>,
-        bundle_metadata: BundleMetadata,
-    ) -> Self {
-        Self {
-            paths,
-            self_proxy_port,
-            http_timeout: Duration::from_secs(30),
-            bundle_metadata,
-        }
-    }
-
-    #[cfg(test)]
-    fn with_http_timeout(mut self, timeout: Duration) -> Self {
-        self.http_timeout = timeout;
-        self
+    /// Uses the resolver for all managed profile and materialization paths.
+    pub fn new(paths: PathResolver) -> Self {
+        Self { paths }
     }
 
     fn resolve(&self, path: &ManagedProfilePath) -> Result<PathBuf> {
@@ -198,12 +171,12 @@ impl ProfileFileService {
             .context(NoParentDirectorySnafu { path: &root })?;
         ensure_real_directory_tree(config_dir)?;
 
-        match corrupt::retry_io(|| std::fs::symlink_metadata(&root)) {
+        match nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(&root)) {
             Ok(metadata) => ensure_real_directory(&root, &metadata)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                corrupt::retry_io(|| std::fs::create_dir(&root))
+                nyanpasu_persistence::retry_io(|| std::fs::create_dir(&root))
                     .context(CreateDirectorySnafu { path: &root })?;
-                let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(&root))
+                let metadata = nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(&root))
                     .context(InspectPathSnafu { path: &root })?;
                 ensure_real_directory(&root, &metadata)?;
                 sync_directory(config_dir)?;
@@ -225,31 +198,33 @@ impl ProfileFileService {
         let mut current = root.to_path_buf();
         for component in relative.components() {
             current.push(component.as_os_str());
-            let created = match corrupt::retry_io(|| std::fs::symlink_metadata(&current)) {
-                Ok(metadata) => match ensure_real_directory(&current, &metadata) {
-                    Ok(()) => false,
-                    Err(error) if private => {
-                        corrupt::preserve(&current, &error)
-                            .map_err(BoxedCause::from)
-                            .context(PreserveDerivedDirectorySnafu)?;
-                        corrupt::retry_io(|| std::fs::create_dir(&current))
+            let created =
+                match nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(&current)) {
+                    Ok(metadata) => match ensure_real_directory(&current, &metadata) {
+                        Ok(()) => false,
+                        Err(error) if private => {
+                            nyanpasu_persistence::preserve(&current, &error)
+                                .map_err(BoxedCause::from)
+                                .context(PreserveDerivedDirectorySnafu)?;
+                            nyanpasu_persistence::retry_io(|| std::fs::create_dir(&current))
+                                .context(CreateDirectorySnafu { path: &current })?;
+                            true
+                        }
+                        Err(error) => return Err(error),
+                    },
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        nyanpasu_persistence::retry_io(|| std::fs::create_dir(&current))
                             .context(CreateDirectorySnafu { path: &current })?;
+                        let metadata =
+                            nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(&current))
+                                .context(InspectPathSnafu { path: &current })?;
+                        ensure_real_directory(&current, &metadata)?;
                         true
                     }
-                    Err(error) => return Err(error),
-                },
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    corrupt::retry_io(|| std::fs::create_dir(&current))
-                        .context(CreateDirectorySnafu { path: &current })?;
-                    let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(&current))
-                        .context(InspectPathSnafu { path: &current })?;
-                    ensure_real_directory(&current, &metadata)?;
-                    true
-                }
-                Err(error) => {
-                    return Err(error).context(InspectPathSnafu { path: &current });
-                }
-            };
+                    Err(error) => {
+                        return Err(error).context(InspectPathSnafu { path: &current });
+                    }
+                };
             if created {
                 sync_directory(current.parent().expect("profile directory has parent"))?;
             }
@@ -429,19 +404,19 @@ fn ensure_real_directory(path: &Path, metadata: &std::fs::Metadata) -> Result<()
 }
 
 fn ensure_real_directory_tree(path: &Path) -> Result<()> {
-    match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
+    match nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(path)) {
         Ok(metadata) => ensure_real_directory(path, &metadata),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let parent = path.parent().context(NoParentDirectorySnafu { path })?;
             ensure_real_directory_tree(parent)?;
-            let created = match corrupt::retry_io(|| std::fs::create_dir(path)) {
+            let created = match nyanpasu_persistence::retry_io(|| std::fs::create_dir(path)) {
                 Ok(()) => true,
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
                 Err(error) => {
                     return Err(error).context(CreateDirectorySnafu { path });
                 }
             };
-            let metadata = corrupt::retry_io(|| std::fs::symlink_metadata(path))
+            let metadata = nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(path))
                 .context(InspectPathSnafu { path })?;
             ensure_real_directory(path, &metadata)?;
             if created {
@@ -459,7 +434,7 @@ fn set_private_directory_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        corrupt::retry_io(|| {
+        nyanpasu_persistence::retry_io(|| {
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
         })
         .context(SetPermissionsSnafu { path })?;
@@ -499,9 +474,9 @@ fn create_file_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn sync_directory(path: &Path) -> Result<()> {
-    let directory =
-        corrupt::retry_io(|| std::fs::File::open(path)).context(SyncDirectorySnafu { path })?;
-    corrupt::retry_io(|| directory.sync_all()).context(SyncDirectorySnafu { path })
+    let directory = nyanpasu_persistence::retry_io(|| std::fs::File::open(path))
+        .context(SyncDirectorySnafu { path })?;
+    nyanpasu_persistence::retry_io(|| directory.sync_all()).context(SyncDirectorySnafu { path })
 }
 
 #[cfg(not(unix))]
@@ -2050,179 +2025,20 @@ impl ProfileMaterializationPort for ProfileFileService {
     }
 }
 
-#[async_trait::async_trait]
-impl SubscriptionFetcher for ProfileFileService {
-    async fn fetch(
-        &self,
-        url: &Url,
-        options: &RemoteProfileOptions,
-    ) -> Result<FetchedSubscription, SubscriptionFetchError> {
-        use backon::Retryable;
-
-        let mut builder = reqwest::ClientBuilder::new()
-            .tls_backend_rustls()
-            .no_proxy()
-            .timeout(self.http_timeout);
-
-        // Proxy precedence mirrors the legacy subscriber (remote.rs:129-150):
-        // self_proxy wins, then system proxy, else direct.
-        let proxy_url = if options.self_proxy {
-            self.self_proxy_port
-                .mixed_port()
-                .map(|port| format!("http://127.0.0.1:{port}"))
-        } else {
-            None
-        };
-        let proxy_url = proxy_url.or_else(|| {
-            if options.with_proxy {
-                match sysproxy::Sysproxy::get_system_proxy() {
-                    Ok(p @ sysproxy::Sysproxy { enable: true, .. }) => {
-                        Some(format!("http://{}:{}", p.host, p.port))
-                    }
-                    _ => None,
-                }
-            } else {
-                None
-            }
-        });
-        if let Some(proxy_url) = proxy_url {
-            use nyanpasu_core::utils::config::NyanpasuReqwestProxyExt;
-            builder = builder.swift_set_proxy(&proxy_url);
-        }
-
-        let user_agent = options
-            .user_agent
-            .clone()
-            .unwrap_or_else(|| format!("clash-nyanpasu/v{}", self.bundle_metadata.app_version));
-        let client = builder
-            .user_agent(user_agent)
-            .build()
-            .map_err(BoxedCause::from)
-            .context(BuildHttpClientSnafu)?;
-
-        let device_info = nyanpasu_core::utils::hwid::get_device_info();
-        let sanitize = nyanpasu_core::utils::hwid::sanitize_for_header;
-        let perform = || async {
-            let resp = client
-                .get(url.as_str())
-                .header("x-hwid", &device_info.hwid)
-                .header("x-device-os", sanitize(&device_info.device_os))
-                .header("x-ver-os", sanitize(&device_info.os_version))
-                .header("x-device-model", sanitize(&device_info.device_model))
-                .send()
-                .await
-                .map_err(BoxedCause::from)
-                .context(RequestSubscriptionSnafu)?;
-            let status = resp.status();
-            ensure!(
-                !(status.is_client_error() || status.is_server_error()),
-                SubscriptionHttpStatusSnafu {
-                    status: status.as_u16()
-                }
-            );
-            Ok(resp)
-        };
-        let resp = perform
-            .retry(backon::ExponentialBuilder::default())
-            .when(|error: &SubscriptionFetchError| {
-                !matches!(
-                    error,
-                    SubscriptionFetchError::SubscriptionHttpStatus {
-                        status: 401 | 403 | 404
-                    }
-                )
-            })
-            .await?;
-
-        let subscription = subscription::parse_subscription_userinfo(resp.headers());
-        let filename = subscription::parse_profile_title(resp.headers());
-        let suggested_update_interval_minutes =
-            subscription::parse_suggested_update_interval(resp.headers());
-        let content_type = subscription::parse_media_type(resp.headers());
-        let file_name = subscription::parse_filename_from_content_disposition(resp.headers());
-        let content = resp
-            .text_with_charset("utf-8")
-            .await
-            .map_err(BoxedCause::from)
-            .context(ReadSubscriptionBodySnafu)?;
-        let content = if let Some(content) = content.strip_prefix('\u{feff}') {
-            content.to_owned()
-        } else {
-            content
-        };
-        Ok(FetchedSubscription {
-            content,
-            filename,
-            subscription,
-            suggested_update_interval_minutes,
-            content_type,
-            file_name,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{
-        Router,
-        http::{HeaderMap as AxumHeaderMap, StatusCode, header},
-        response::IntoResponse,
-        routing::get,
-    };
     use nyanpasu_config::profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
         ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource, Profiles,
-        RemoteProfileOptions, RemoteSyncInterval,
     };
-    use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
-    use std::{
-        sync::{
-            Arc, Mutex,
-            atomic::{AtomicUsize, Ordering},
-        },
-        time::{Duration, Instant},
-    };
-    use url::Url;
-
-    struct NoProxy;
-    impl SelfProxyPortSource for NoProxy {
-        fn mixed_port(&self) -> Option<u16> {
-            None
-        }
-    }
-
-    struct CountingNoProxy {
-        hits: Arc<AtomicUsize>,
-    }
-
-    impl SelfProxyPortSource for CountingNoProxy {
-        fn mixed_port(&self) -> Option<u16> {
-            self.hits.fetch_add(1, Ordering::SeqCst);
-            None
-        }
-    }
-
     fn service() -> (tempfile::TempDir, ProfileFileService) {
-        service_with(Arc::new(NoProxy))
-    }
-
-    fn service_with(
-        self_proxy_port: Arc<dyn SelfProxyPortSource>,
-    ) -> (tempfile::TempDir, ProfileFileService) {
         let temp = tempfile::tempdir().unwrap();
-        let paths = nyanpasu_core::utils::test_support::test_paths(
-            temp.path().join("config"),
-            temp.path().join("data"),
+        let paths = PathResolver::with_base_dirs(
+            temp.path().join("config").try_into().unwrap(),
+            temp.path().join("data").try_into().unwrap(),
         );
-        (
-            temp,
-            ProfileFileService::new(
-                paths,
-                self_proxy_port,
-                nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
-            ),
-        )
+        (temp, ProfileFileService::new(paths))
     }
 
     fn managed(name: &str) -> ManagedProfilePath {
@@ -2279,28 +2095,6 @@ mod tests {
                 .expect("test revision must not overflow");
         }
         profiles
-    }
-
-    async fn serve(router: Router) -> (String, tokio::task::JoinHandle<()>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let handle = tokio::spawn(async move {
-            axum::serve(listener, router).await.unwrap();
-        });
-        (format!("http://{addr}/"), handle)
-    }
-
-    fn options_direct() -> RemoteProfileOptions {
-        options(false, false)
-    }
-
-    fn options(self_proxy: bool, with_proxy: bool) -> RemoteProfileOptions {
-        RemoteProfileOptions {
-            user_agent: None,
-            with_proxy,
-            self_proxy,
-            update_interval_minutes: RemoteSyncInterval::from_minutes(120),
-        }
     }
 
     #[test]
@@ -3498,212 +3292,7 @@ mod tests {
         service.ensure_symlink(&link, &equivalent_target).unwrap();
         assert_eq!(std::fs::read_link(&link_path).unwrap(), before);
     }
-
-    #[tokio::test]
-    async fn fetch_parses_userinfo_and_title_headers() {
-        let router = Router::new().route(
-            "/",
-            get(|| async {
-                let mut headers = AxumHeaderMap::new();
-                headers.insert(
-                    "subscription-userinfo",
-                    "upload=1; download=2; total=3; expire=0".parse().unwrap(),
-                );
-                headers.insert("profile-title", "My Sub".parse().unwrap());
-                headers.insert("profile-update-interval", "6".parse().unwrap());
-                headers.insert(
-                    header::CONTENT_TYPE,
-                    "text/yaml; charset=utf-8".parse().unwrap(),
-                );
-                headers.insert(
-                    header::CONTENT_DISPOSITION,
-                    "attachment; filename=sub.yaml".parse().unwrap(),
-                );
-                (headers, "proxies: []\n")
-            }),
-        );
-        let (url, _server) = serve(router).await;
-        let (_temp, service) = service();
-        let fetched = service
-            .fetch(&Url::parse(&url).unwrap(), &options_direct())
-            .await
-            .unwrap();
-        assert_eq!(fetched.content, "proxies: []\n");
-        assert_eq!(fetched.filename.as_deref(), Some("My Sub"));
-        assert_eq!(fetched.subscription.upload, Some(1));
-        assert_eq!(fetched.subscription.download, Some(2));
-        assert_eq!(fetched.subscription.total, Some(3));
-        assert!(fetched.subscription.expire.is_none());
-        assert_eq!(fetched.suggested_update_interval_minutes, Some(360));
-        assert_eq!(fetched.content_type.as_deref(), Some("text/yaml"));
-        assert_eq!(fetched.file_name.as_deref(), Some("sub.yaml"));
-    }
-
-    #[tokio::test]
-    async fn fetch_sends_default_user_agent_and_hwid() {
-        let seen = Arc::new(Mutex::new(None::<(String, bool)>));
-        let seen_request = Arc::clone(&seen);
-        let router = Router::new().route(
-            "/",
-            get(move |headers: AxumHeaderMap| {
-                let seen_request = Arc::clone(&seen_request);
-                async move {
-                    let ua = headers
-                        .get(header::USER_AGENT)
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("")
-                        .to_owned();
-                    let has_hwid = headers
-                        .get("x-hwid")
-                        .and_then(|v| v.to_str().ok())
-                        .is_some_and(|value| !value.trim().is_empty());
-                    *seen_request.lock().unwrap() = Some((ua, has_hwid));
-                    "ok: true\n"
-                }
-            }),
-        );
-        let (url, _server) = serve(router).await;
-        let (_temp, service) = service();
-        service
-            .fetch(&Url::parse(&url).unwrap(), &options_direct())
-            .await
-            .unwrap();
-
-        let (ua, has_hwid) = seen.lock().unwrap().clone().unwrap();
-        assert_eq!(
-            ua,
-            format!("clash-nyanpasu/v{}", service.bundle_metadata.app_version)
-        );
-        assert!(has_hwid);
-    }
-
-    #[tokio::test]
-    async fn fetch_falls_back_to_direct_when_self_proxy_port_is_unavailable() {
-        let hits = Arc::new(AtomicUsize::new(0));
-        let source_hits = Arc::new(AtomicUsize::new(0));
-        let request_hits = Arc::clone(&hits);
-        let router = Router::new().route(
-            "/",
-            get(move || {
-                let request_hits = Arc::clone(&request_hits);
-                async move {
-                    request_hits.fetch_add(1, Ordering::SeqCst);
-                    "ok: true\n"
-                }
-            }),
-        );
-        let (url, _server) = serve(router).await;
-        let (_temp, service) = service_with(Arc::new(CountingNoProxy {
-            hits: Arc::clone(&source_hits),
-        }));
-
-        let fetched = service
-            .fetch(&Url::parse(&url).unwrap(), &options(true, false))
-            .await
-            .unwrap();
-
-        assert_eq!(fetched.content, "ok: true\n");
-        assert_eq!(hits.load(Ordering::SeqCst), 1);
-        assert_eq!(source_hits.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn fetch_continues_proxy_chain_when_self_proxy_port_is_unavailable() {
-        let source_hits = Arc::new(AtomicUsize::new(0));
-        let router = Router::new().route("/", get(|| async { "ok: true\n" }));
-        let (url, _server) = serve(router).await;
-        let (_temp, service) = service_with(Arc::new(CountingNoProxy {
-            hits: Arc::clone(&source_hits),
-        }));
-
-        let fetched = service
-            .fetch(&Url::parse(&url).unwrap(), &options(true, true))
-            .await
-            .unwrap();
-
-        assert_eq!(fetched.content, "ok: true\n");
-        assert_eq!(source_hits.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn fetch_retries_transient_errors_but_not_auth_failures() {
-        let hits = Arc::new(AtomicUsize::new(0));
-        let flaky_hits = Arc::clone(&hits);
-        let flaky = Router::new().route(
-            "/",
-            get(move || {
-                let flaky_hits = Arc::clone(&flaky_hits);
-                async move {
-                    if flaky_hits.fetch_add(1, Ordering::SeqCst) == 0 {
-                        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-                    } else {
-                        "ok: true\n".into_response()
-                    }
-                }
-            }),
-        );
-        let (url, _server) = serve(flaky).await;
-        let (_temp, service) = service();
-        let fetched = service
-            .fetch(&Url::parse(&url).unwrap(), &options_direct())
-            .await
-            .unwrap();
-        assert_eq!(fetched.content, "ok: true\n");
-        assert!(hits.load(Ordering::SeqCst) >= 2);
-
-        for status in [
-            StatusCode::FORBIDDEN,
-            StatusCode::UNAUTHORIZED,
-            StatusCode::NOT_FOUND,
-        ] {
-            let hits = Arc::new(AtomicUsize::new(0));
-            let status_hits = Arc::clone(&hits);
-            let router = Router::new().route(
-                "/",
-                get(move || {
-                    let status_hits = Arc::clone(&status_hits);
-                    async move {
-                        status_hits.fetch_add(1, Ordering::SeqCst);
-                        status
-                    }
-                }),
-            );
-            let (url, _server) = serve(router).await;
-            assert!(
-                service
-                    .fetch(&Url::parse(&url).unwrap(), &options_direct())
-                    .await
-                    .is_err()
-            );
-            assert_eq!(hits.load(Ordering::SeqCst), 1);
-        }
-    }
-
-    #[tokio::test]
-    async fn fetch_timeout_is_managed_internally() {
-        let slow = Router::new().route(
-            "/",
-            get(|| async {
-                tokio::time::sleep(Duration::from_secs(60)).await;
-                "never"
-            }),
-        );
-        let (url, _server) = serve(slow).await;
-        let (_temp, service) = service();
-        let service = service.with_http_timeout(Duration::from_millis(300));
-        let started = Instant::now();
-        assert!(
-            service
-                .fetch(&Url::parse(&url).unwrap(), &options_direct())
-                .await
-                .is_err()
-        );
-        assert!(started.elapsed() < Duration::from_secs(10));
-    }
 }
-
-#[cfg(test)]
-mod integration_tests;
 
 #[cfg(test)]
 mod error_contract_tests;

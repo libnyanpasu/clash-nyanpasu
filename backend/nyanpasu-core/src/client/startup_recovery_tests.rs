@@ -271,7 +271,7 @@ fn failed_session_evidence_rename_is_typed_and_keeps_original() {
     drop(held);
     assert!(
         matches!(result, Err(crate::session_state::Error::PreserveState {
-        source: crate::corrupt::Error::PreserveEvidence { source, .. }
+        source: nyanpasu_persistence::Error::PreserveEvidence { source, .. }
     }) if matches!(source.raw_os_error(), Some(32 | 33)))
     );
     assert!(evidence(path.as_std_path()).is_empty());

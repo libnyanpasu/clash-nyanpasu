@@ -1,5 +1,5 @@
 //! Real profile file capabilities for host integration tests.
-use crate::profiles::fs_service::ProfileFileService;
+use crate::profiles::subscription_http::SubscriptionHttpFetcher;
 use nyanpasu_contracts::net::SelfProxyPortSource;
 #[cfg(test)]
 use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
@@ -12,6 +12,7 @@ use nyanpasu_core::client::{
     test_support::runtime_build::TestRuntimeBuildPort,
 };
 use nyanpasu_paths::PathResolver;
+use nyanpasu_profile_io::fs_service::ProfileFileService;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -19,14 +20,14 @@ pub(crate) fn test_profile_file_ports(
     paths: &PathResolver,
     ports: Arc<dyn SelfProxyPortSource>,
 ) -> ProfileFilePorts {
-    let service = Arc::new(ProfileFileService::new(
-        paths.clone(),
+    let service = Arc::new(ProfileFileService::new(paths.clone()));
+    let fetcher = Arc::new(SubscriptionHttpFetcher::new(
         ports,
         nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     ProfileFilePorts {
         fs: service.clone(),
-        fetcher: service.clone(),
+        fetcher,
         materialization: service,
     }
 }

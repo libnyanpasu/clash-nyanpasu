@@ -27,10 +27,11 @@ const GUI: readonly PackageMatcher[] = [
 const FOUNDATION = [
   'nyanpasu-config',
   'nyanpasu-contracts',
+  'nyanpasu-persistence',
   'nyanpasu-profile-transform',
 ]
 const CORE_FAMILY = ['nyanpasu-core']
-const IMPLEMENTATION = ['nyanpasu-scripts']
+const IMPLEMENTATION = ['nyanpasu-scripts', 'nyanpasu-profile-io']
 // Transitional: implements core ports and depends on core until it is retired.
 const PLATFORM = 'nyanpasu-platform'
 
@@ -58,6 +59,16 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
       'redb',
       'nyanpasu-core-manager',
       'nyanpasu-local-channel',
+      'nyanpasu-persistence',
+      'nyanpasu-profile-transform',
+    ],
+  },
+  {
+    package: 'nyanpasu-persistence',
+    forbids: [
+      'redb',
+      'nyanpasu-core-manager',
+      'nyanpasu-contracts',
       'nyanpasu-profile-transform',
     ],
   },
@@ -77,7 +88,6 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: name,
     forbids: [...IMPLEMENTATION, PLATFORM],
   })),
-  { package: PLATFORM, forbids: IMPLEMENTATION },
   {
     package: 'nyanpasu-diagnose',
     forbids: [...CORE_FAMILY, ...IMPLEMENTATION, PLATFORM],

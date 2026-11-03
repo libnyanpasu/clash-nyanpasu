@@ -1,8 +1,10 @@
-//! Profile file ports, pure transformations, and filesystem and HTTP implementation.
+//! Subscription HTTP adapters and profile application integration tests.
 
-pub mod fs_service;
-mod materialization;
 mod subscription;
+pub mod subscription_http;
+
+#[cfg(test)]
+mod integration_tests;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

@@ -60,17 +60,19 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
 nyanpasu-config             domain models and pure runtime executor
 
 backend/nyanpasu-platform/src/  implements core/config ports (transitional)
-  profiles/                    profile filesystem and HTTP service
-  enhance/                     profile content adapter
+  profiles/                    subscription HTTP adapter and application integration tests
   changelog_http.rs            changelog HTTP adapter
 
-backend/nyanpasu-scripts/src/   JavaScript and Lua script runners over config ports
+backend/nyanpasu-persistence/src/  generic filesystem retry and evidence recovery
+backend/nyanpasu-profile-io/src/   profile files, materialization and content adapter
+backend/nyanpasu-scripts/src/      JavaScript and Lua script runners over config ports
 ```
 
 `NyanpasuClient` and its actor/workflow graph live in
 `backend/nyanpasu-core/src/client/` and the domain modules beside it. Concrete
-profile file and changelog HTTP implementations live in
-`nyanpasu-platform`. The desktop composition root in
+profile file implementations live in `nyanpasu-profile-io`; subscription and
+changelog HTTP implementations remain in `nyanpasu-platform`. The desktop
+composition root in
 `backend/tauri/src/setup.rs` constructs these implementations and the GUI
 adapters, injects them into the core and calls `NyanpasuClient::try_new`. GUI
 adapters remain in `backend/tauri/src/adapters/`; windows, tray, widgets,
@@ -129,9 +131,10 @@ Rules for maintaining the separation:
   must not need the Tauri runtime.
 - The architecture-ledger static gate covers `backend/tauri/src/`,
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
-  `backend/nyanpasu-scripts/src/` and `backend/nyanpasu-profile-transform/src/`
+  `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
+  `backend/nyanpasu-persistence/src/` and `backend/nyanpasu-profile-io/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All five use the same explicit path-and-name allowlist; other backend library
+  All seven use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

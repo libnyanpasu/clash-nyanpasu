@@ -361,16 +361,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 )
             }),
             runtime_build: Arc::new(
-                nyanpasu_platform::enhance::runtime_build::FsRuntimeBuildAdapter {
-                    profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
-                    core_specs: {
+                nyanpasu_core::client::runtime_build::RuntimeBuildService::new(
+                    Arc::new(nyanpasu_platform::enhance::FsProfileContentSource::new(
+                        paths.app_profiles_dir().into_std_path_buf(),
+                    )),
+                    {
                         let paths = paths.clone();
                         Arc::new(move |core| {
                             nyanpasu_core::actor_v2::local_host::core_spec(core, &paths)
                         })
                     },
-                    paths: runtime_paths.clone(),
-                    scripts: {
+                    runtime_paths.clone(),
+                    {
                         let dirs = nyanpasu_scripts::ScriptDirs::new(
                             paths.scripts_dir().into_std_path_buf(),
                             paths.cache_dir().into_std_path_buf(),
@@ -381,7 +383,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                             )?))
                         })
                     },
-                },
+                ),
             ),
             profile_files: Arc::new({
                 let paths = paths.clone();

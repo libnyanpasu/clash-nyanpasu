@@ -1,15 +1,15 @@
-//! Filesystem content capture, blocking script execution, and runtime product publication.
+//! Application orchestration for content capture, blocking builds, and runtime publication.
 
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
-use crate::enhance::FsProfileContentSource;
 use async_trait::async_trait;
+use nyanpasu_config::runtime::executor::ProfileContentSource;
 use nyanpasu_profile_transform::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
 };
 use snafu::ResultExt;
 
-use nyanpasu_core::{
+use crate::{
     actor_v2::local_host::CoreSpecError,
     client::{
         application_workflow::{
@@ -22,36 +22,53 @@ use nyanpasu_core::{
     },
 };
 
+/// Resolves the process specification for the selected core using shell-provided paths.
 pub type CoreSpecResolver = dyn Fn(
         &nyanpasu_config::application::ClashCore,
     ) -> Result<nyanpasu_core_manager::CoreSpec, CoreSpecError>
     + Send
     + Sync;
 
-pub struct FsRuntimeBuildAdapter {
-    pub profiles_dir: PathBuf,
-    pub core_specs: Arc<CoreSpecResolver>,
-    pub paths: runtime::RuntimePaths,
-    pub scripts: Arc<ScriptRunnerFactory>,
+/// Builds application runtime snapshots using injected content and script execution ports.
+pub struct RuntimeBuildService {
+    content: Arc<dyn ProfileContentSource + Send + Sync>,
+    core_specs: Arc<CoreSpecResolver>,
+    paths: runtime::RuntimePaths,
+    scripts: Arc<ScriptRunnerFactory>,
+}
+
+impl RuntimeBuildService {
+    /// Injects content capture, publication paths, core resolution and a blocking runner factory.
+    pub fn new(
+        content: Arc<dyn ProfileContentSource + Send + Sync>,
+        core_specs: Arc<CoreSpecResolver>,
+        paths: runtime::RuntimePaths,
+        scripts: Arc<ScriptRunnerFactory>,
+    ) -> Self {
+        Self {
+            content,
+            core_specs,
+            paths,
+            scripts,
+        }
+    }
 }
 
 #[async_trait]
-impl RuntimeBuildPort for FsRuntimeBuildAdapter {
+impl RuntimeBuildPort for RuntimeBuildService {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
     ) -> inputs::FrozenProfileContent {
-        use nyanpasu_config::runtime::executor::ProfileContentSource;
         let mut content = inputs::FrozenProfileContent::default();
-        let source = FsProfileContentSource::new(self.profiles_dir.clone());
-        for uid in nyanpasu_core::state::profiles::ProfilesActor::current_closure(profiles) {
+        for uid in crate::state::profiles::ProfilesActor::current_closure(profiles) {
             if let Some(source_path) = profiles
                 .items
                 .get(&uid)
                 .and_then(|item| item.definition.source())
             {
                 let path = &source_path.materialized().file;
-                let text = source.read(path).map_err(|error| error.to_string());
+                let text = self.content.read(path).map_err(|error| error.to_string());
                 content.0.insert(path.to_string(), text);
             }
         }
@@ -100,7 +117,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             )))
         })
         .await;
-        nyanpasu_core::utils::blocking::join(built)
+        crate::utils::blocking::join(built)
     }
 
     async fn publish(
@@ -110,9 +127,6 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         runtime::write_product(self.paths.product().as_std_path(), snapshot.product_bytes()).await
     }
 }
-
-#[cfg(test)]
-mod golden;
 
 #[cfg(test)]
 mod tests;

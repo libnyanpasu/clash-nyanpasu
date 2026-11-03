@@ -9,7 +9,7 @@ use mlua::prelude::*;
 use nyanpasu_config::runtime::executor::StepLogLevel;
 
 use super::ordered_map;
-use crate::enhance::script::runner::ConsoleSink;
+use crate::runner::ConsoleSink;
 
 /// Tables nested deeper than this print as `{...}`.
 const MAX_DEPTH: usize = 4;
@@ -327,7 +327,7 @@ mod tests {
     use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel::*};
 
     use super::*;
-    use crate::enhance::script::create_lua_context;
+    use crate::create_lua_context;
 
     /// Runs `script` with `config` loaded from YAML and returns what it logged.
     fn logs(config: &str, script: &str) -> Vec<StepLogEntry> {

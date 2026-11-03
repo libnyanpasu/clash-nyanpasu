@@ -8,6 +8,7 @@ use nyanpasu_core::client::{
     application_workflow::{inputs, ports::RuntimeBuildPort},
     runtime,
 };
+use nyanpasu_scripts::{EnhanceScriptRunner, ScriptDirs};
 use std::sync::Arc;
 
 struct Fixture {
@@ -61,7 +62,10 @@ async fn fixture() -> Fixture {
                 profiles_dir: profiles_dir.clone(),
                 core_specs: Arc::new(nyanpasu_core::client::test_support::runtime_core_spec),
                 paths,
-                scripts: crate::enhance::ScriptDirs::under(dir.path()),
+                scripts: {
+                    let dirs = ScriptDirs::under(dir.path());
+                    Arc::new(move || Ok(Box::new(EnhanceScriptRunner::new(dirs.clone())?)))
+                },
             },
         },
         profiles_dir,
@@ -87,10 +91,10 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         },
     };
     let old_content = crate::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
-    let script_dirs = f.builder.delegate.scripts.clone();
+    let script_runner = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
-        let scripts = crate::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
-        nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+        let scripts = script_runner().unwrap();
+        nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, scripts.as_ref())
     })
     .await
     .unwrap();

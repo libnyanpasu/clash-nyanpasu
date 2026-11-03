@@ -2,7 +2,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
+use crate::enhance::FsProfileContentSource;
 use async_trait::async_trait;
 use nyanpasu_core::enhance::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
@@ -12,7 +12,10 @@ use snafu::ResultExt;
 use nyanpasu_core::{
     actor_v2::local_host::CoreSpecError,
     client::{
-        application_workflow::{inputs, ports::RuntimeBuildPort},
+        application_workflow::{
+            inputs,
+            ports::{RuntimeBuildPort, ScriptRunnerFactory},
+        },
         runtime,
         runtime::PublishRuntimeError,
     },
@@ -29,7 +32,7 @@ pub struct FsRuntimeBuildAdapter {
     pub profiles_dir: PathBuf,
     pub core_specs: Arc<CoreSpecResolver>,
     pub paths: runtime::RuntimePaths,
-    pub scripts: ScriptDirs,
+    pub scripts: Arc<ScriptRunnerFactory>,
 }
 
 #[async_trait]
@@ -69,7 +72,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
     ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildError> {
-        let script_dirs = self.scripts.clone();
+        let script_runner = self.scripts.clone();
         let built = tokio::task::spawn_blocking(move || {
             let inputs::RuntimeInputs {
                 app,
@@ -79,14 +82,14 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             } = inputs;
             let core = app.core;
             let builtin_enabled = app.enable_builtin_enhanced;
-            let scripts = EnhanceScriptRunner::new(script_dirs).context(StartScriptRunnerSnafu)?;
+            let scripts = script_runner().context(StartScriptRunnerSnafu)?;
             let input = RuntimeBuildInput {
                 profiles: profiles.clone(),
                 clash,
                 app,
                 resolved_ports,
             };
-            let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
+            let artifact = RuntimeBuilder::build(&input, &content, scripts.as_ref())?;
             if strict_transforms {
                 RuntimeBuilder::validate_transforms(&artifact)?;
             }

@@ -364,10 +364,17 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                         })
                     },
                     paths: runtime_paths.clone(),
-                    scripts: nyanpasu_platform::enhance::ScriptDirs::new(
-                        paths.scripts_dir().into_std_path_buf(),
-                        paths.cache_dir().into_std_path_buf(),
-                    ),
+                    scripts: {
+                        let dirs = nyanpasu_scripts::ScriptDirs::new(
+                            paths.scripts_dir().into_std_path_buf(),
+                            paths.cache_dir().into_std_path_buf(),
+                        );
+                        Arc::new(move || {
+                            Ok(Box::new(nyanpasu_scripts::EnhanceScriptRunner::new(
+                                dirs.clone(),
+                            )?))
+                        })
+                    },
                 },
             ),
             profile_files: Arc::new({

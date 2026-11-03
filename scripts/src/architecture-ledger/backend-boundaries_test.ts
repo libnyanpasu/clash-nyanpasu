@@ -60,6 +60,7 @@ test('neutral packages cannot depend on the crash reporter frontend', () => {
     'nyanpasu-platform',
     'nyanpasu-config',
     'nyanpasu-contracts',
+    'nyanpasu-scripts',
     'nyanpasu-diagnose',
   ]) {
     assert.deepStrictEqual(
@@ -188,4 +189,57 @@ test('forbidding nyanpasu-local-channel catches the widget ipc feature', () => {
     ),
     ['nyanpasu-contracts must not depend on nyanpasu-local-channel'],
   )
+})
+
+test('script implementations reject GUI dependencies and accept script engines', () => {
+  assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-scripts', 'tauri v2.0.0\nslint v1.18.1\n'),
+    [
+      'nyanpasu-scripts must not depend on tauri',
+      'nyanpasu-scripts must not depend on slint',
+    ],
+  )
+  assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-scripts', 'boa_engine v0.22\nmlua v0.12\n'),
+    [],
+  )
+})
+
+test('implementations reject core and transitional platform dependencies', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-scripts',
+      'nyanpasu-core v0.1.0\nnyanpasu-platform v0.1.0\n',
+    ),
+    [
+      'nyanpasu-scripts must not depend on nyanpasu-core',
+      'nyanpasu-scripts must not depend on nyanpasu-platform',
+    ],
+  )
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-scripts',
+      'nyanpasu-scripts v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\n',
+    ),
+    [],
+  )
+})
+
+test('foundation, core, diagnose and platform reject implementation dependencies', () => {
+  for (const owner of [
+    'nyanpasu-config',
+    'nyanpasu-contracts',
+    'nyanpasu-core',
+    'nyanpasu-diagnose',
+    'nyanpasu-platform',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-scripts v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-scripts`],
+    )
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-paths v0.1.0\nserde v1.0\n'),
+      [],
+    )
+  }
 })

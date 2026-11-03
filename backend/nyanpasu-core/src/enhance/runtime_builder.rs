@@ -14,9 +14,9 @@ use nyanpasu_config::{
     },
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
-        BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
-        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, StepLogEntry,
-        TransformFailure, TunFlavor, TunParams, TunStackWrite, execute,
+        BuiltinTransform, ExecutionTarget, GuardInputs, PortError, ProfileContentSource,
+        ResolvedPortBindings, RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs,
+        ScriptRunner, StepLogEntry, TransformFailure, TunFlavor, TunParams, TunStackWrite, execute,
     },
 };
 use serde::Serialize;
@@ -36,7 +36,7 @@ pub enum RuntimeBuildError {
     #[snafu(display("could not start the script runner"))]
     StartScriptRunner {
         #[serde(skip)]
-        source: std::io::Error,
+        source: PortError,
     },
     #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
     ValidateProfiles { errors: Vec<ProfileValidationError> },

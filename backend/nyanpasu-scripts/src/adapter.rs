@@ -14,12 +14,18 @@ use tracing::Instrument;
 
 use super::{RunnerManager, ScriptDirs, ScriptWrapper, create_lua_context, ordered_map};
 
+/// Runs config transforms synchronously using a private current-thread runtime.
+/// Construct, use and drop it in a blocking context, outside async workers.
 pub struct EnhanceScriptRunner {
     runtime: tokio::runtime::Runtime,
     dirs: ScriptDirs,
 }
 
 impl EnhanceScriptRunner {
+    /// Creates the runtime used for script execution with explicit module directories.
+    ///
+    /// # Errors
+    /// Returns the IO error if the current-thread runtime cannot be created.
     pub fn new(dirs: ScriptDirs) -> std::io::Result<Self> {
         Ok(Self {
             runtime: tokio::runtime::Builder::new_current_thread()

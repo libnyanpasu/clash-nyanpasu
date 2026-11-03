@@ -30,15 +30,15 @@ ownership](../design/application-platform-extraction.md#target-ownership)
 replaces `nyanpasu-platform` and splits `nyanpasu-core` into a package family.
 Names are working names until the PR that creates each crate.
 
-| Group                 | Packages (planned)                                                                                                           | Depends on                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Shells                | `backend/tauri` (desktop GUI), `nyanpasu-server` (headless), mobile shell (later)                                            | Anything below; only shells construct `NyanpasuClient`                     |
-| CLI                   | `nyanpasu-cli`, a client of a running shell over the local socket                                                            | `nyanpasu-rpc-protocol` and the local-socket client; not core              |
-| RPC                   | `nyanpasu-rpc-protocol`, `nyanpasu-rpc`, the WebUI (HTTP) and local-socket transports                                        | Protocol: config and contracts. Registry: core                             |
-| Target crates         | `nyanpasu-desktop` (desktop interaction), `nyanpasu-os` (OS integration), `nyanpasu-openwrt` (on resume)                     | Contracts and config; never core. The server never uses `nyanpasu-desktop` |
-| Core package family   | `nyanpasu-core` facade, application, core control, log/traffic/geodata owners, updater, state engine, migration, persistence | Downward only, ending at `nyanpasu-contracts`                              |
-| Profile enhancement   | `nyanpasu-profile-transform` (runtime builder), `nyanpasu-scripts` (JS and Lua runners)                                      | Config; the transform does not depend on the script crate                  |
-| Implementation crates | `nyanpasu-profile-io`, `nyanpasu-net`, storage backends                                                                      | Contracts and config; never core                                           |
+| Group                 | Packages (planned)                                                                                                                             | Depends on                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Shells                | `backend/tauri` (desktop GUI), `nyanpasu-server` (headless), mobile shell (later)                                                              | Anything below; only shells construct `NyanpasuClient`                                                 |
+| CLI                   | `nyanpasu-cli`, a client of a running shell over the local socket                                                                              | `nyanpasu-rpc-protocol` and the local-socket client; not core                                          |
+| RPC                   | `nyanpasu-rpc-protocol`, `nyanpasu-rpc`, the WebUI (HTTP) and local-socket transports                                                          | Protocol: config and contracts. Registry: core                                                         |
+| Target crates         | `nyanpasu-desktop` (desktop interaction), `nyanpasu-os` (OS integration), `nyanpasu-openwrt` (on resume)                                       | The foundation layer; never core. The server never uses `nyanpasu-desktop`                             |
+| Core package family   | `nyanpasu-core` facade, application, core control, log/traffic/geodata owners, updater, state engine, migration                                | Downward only, ending at the foundation layer                                                          |
+| Foundation layer      | `nyanpasu-config`, `nyanpasu-contracts`, `nyanpasu-persistence` (formats, file recovery), `nyanpasu-profile-transform` (runtime builder)       | Lower foundation crates only; contracts, persistence and transform depend on config, not on each other |
+| Implementation crates | `nyanpasu-scripts` (JS and Lua runners), `nyanpasu-profile-io` (profile files), `nyanpasu-net` (subscription and other HTTP), storage backends | The foundation layer only; never core, never each other                                                |
 
 Presentation capabilities (hotkeys, windows, tray, widgets, dialogs,
 notifications, clipboard, opener, deep links, single instance) belong to the
@@ -86,6 +86,7 @@ workspace/dependency entries have been removed.
 
 This is a baseline, not the target. The runtime builder moves to
 `nyanpasu-profile-transform`, the script runners move out of platform into
-the script crate, and artifact-to-snapshot conversion stays in the application
-layer. `FsRuntimeBuildAdapter` will receive its script runner from the shell
-instead of constructing it.
+the script crate, and runtime-build orchestration, including artifact-to-snapshot
+conversion, moves into core's application layer, which receives a script runner
+constructor from the shell. The [core package split
+spec](../spec/2026-11-03-core-package-split/design.md) plans these steps.

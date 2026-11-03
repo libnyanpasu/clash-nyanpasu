@@ -84,10 +84,10 @@ is the plan for the next stage:
   (an explicit, restricted allowlist) and the CLI over a local socket (a
   separate explicit allowlist). A command that needs a shell capability is
   registered only by a shell that provides it.
-- **The core package family** splits `nyanpasu-core` into contracts,
-  persistence, owners, core control, application and facade crates, so that
-  implementation crates and shells depend on contracts and compile in parallel
-  with core.
+- **The core package family** splits `nyanpasu-core` into owners, core control,
+  application and facade crates over a foundation layer (config, contracts,
+  persistence, profile transform), so that implementation crates depend on the
+  foundation layer and compile in parallel with core.
 - **Script runtimes** belong to profile enhancement: a script crate provides the
   runners and extension definitions over the `nyanpasu-config` ports, and a
   profile transform crate below core holds the runtime builder.
@@ -96,8 +96,8 @@ is the plan for the next stage:
   an OS integration crate per target family (system proxy, autostart, service
   control, DNS, device identity, elevation). Tauri-bound mechanisms stay in the
   Tauri shell.
-- **Implementation crates** (profile IO, HTTP, storage backends) replace
-  `nyanpasu-platform` by owner. The `platform` name is retired.
+- **Implementation crates** (scripts, profile IO, HTTP, storage backends)
+  replace `nyanpasu-platform` by owner. The `platform` name is retired.
 
 The extraction record lists the known gaps and the order of the next stage. The
 [OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the

@@ -14,8 +14,8 @@ test('transitive GUI and host dependencies invalidate neutral packages', () => {
     ],
   )
   assert.deepStrictEqual(
-    dependencyViolations('nyanpasu-platform', 'tauri-specta v2.0.0\n'),
-    ['nyanpasu-platform must not depend on tauri-specta'],
+    dependencyViolations('nyanpasu-core', 'tauri-specta v2.0.0\n'),
+    ['nyanpasu-core must not depend on tauri-specta'],
   )
   assert.deepStrictEqual(
     dependencyViolations(
@@ -32,18 +32,6 @@ test('transitive GUI and host dependencies invalidate neutral packages', () => {
   )
 })
 
-test('platform may depend on core to implement its ports', () => {
-  const graph = 'nyanpasu-platform v0.1.0\nnyanpasu-core v0.1.0\n'
-  assert.deepStrictEqual(dependencyViolations('nyanpasu-platform', graph), [])
-})
-
-test('core must not depend on platform implementations', () => {
-  const graph = 'nyanpasu-core v0.1.0\nnyanpasu-platform v0.1.0\n'
-  assert.deepStrictEqual(dependencyViolations('nyanpasu-core', graph), [
-    'nyanpasu-core must not depend on nyanpasu-platform',
-  ])
-})
-
 test('core may depend on foundation packages', () => {
   assert.deepStrictEqual(
     dependencyViolations(
@@ -57,7 +45,6 @@ test('core may depend on foundation packages', () => {
 test('neutral packages cannot depend on the crash reporter frontend', () => {
   for (const owner of [
     'nyanpasu-core',
-    'nyanpasu-platform',
     'nyanpasu-config',
     'nyanpasu-contracts',
     'nyanpasu-persistence',
@@ -77,7 +64,6 @@ test('neutral packages cannot depend on the crash reporter frontend', () => {
 test('domain, actor, script and storage dependencies remain available', () => {
   for (const owner of [
     'nyanpasu-core',
-    'nyanpasu-platform',
     'nyanpasu-config',
     'nyanpasu-diagnose',
   ]) {
@@ -91,16 +77,10 @@ test('domain, actor, script and storage dependencies remain available', () => {
   }
 })
 
-test('diagnose must not depend on core or platform', () => {
+test('diagnose must not depend on core', () => {
   assert.deepStrictEqual(
-    dependencyViolations(
-      'nyanpasu-diagnose',
-      'nyanpasu-core v0.1.0\nnyanpasu-platform v0.1.0\n',
-    ),
-    [
-      'nyanpasu-diagnose must not depend on nyanpasu-core',
-      'nyanpasu-diagnose must not depend on nyanpasu-platform',
-    ],
+    dependencyViolations('nyanpasu-diagnose', 'nyanpasu-core v0.1.0\n'),
+    ['nyanpasu-diagnose must not depend on nyanpasu-core'],
   )
 })
 
@@ -116,14 +96,14 @@ test('diagnose consumes config and paths without application services', () => {
 
 test('the root package itself is not a violation', () => {
   assert.deepStrictEqual(
-    dependencyViolations('nyanpasu-platform', 'nyanpasu-platform v0.1.0\n', [
-      { package: 'nyanpasu-platform', forbids: ['nyanpasu-platform'] },
+    dependencyViolations('nyanpasu-core', 'nyanpasu-core v0.1.0\n', [
+      { package: 'nyanpasu-core', forbids: ['nyanpasu-core'] },
     ]),
     [],
   )
 })
 
-test('foundation packages must not depend on application or platform packages', () => {
+test('foundation packages must not depend on application packages', () => {
   for (const owner of [
     'nyanpasu-config',
     'nyanpasu-contracts',
@@ -131,14 +111,8 @@ test('foundation packages must not depend on application or platform packages', 
     'nyanpasu-profile-transform',
   ]) {
     assert.deepStrictEqual(
-      dependencyViolations(
-        owner,
-        'nyanpasu-core v0.1.0\nnyanpasu-platform v0.1.0\n',
-      ),
-      [
-        `${owner} must not depend on nyanpasu-core`,
-        `${owner} must not depend on nyanpasu-platform`,
-      ],
+      dependencyViolations(owner, 'nyanpasu-core v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-core`],
     )
     assert.deepStrictEqual(
       dependencyViolations(owner, 'nyanpasu-paths v0.1.0\nserde v1.0\n'),
@@ -214,16 +188,10 @@ test('script implementations reject GUI dependencies and accept script engines',
   )
 })
 
-test('implementations reject core and transitional platform dependencies', () => {
+test('implementations reject core dependencies', () => {
   assert.deepStrictEqual(
-    dependencyViolations(
-      'nyanpasu-scripts',
-      'nyanpasu-core v0.1.0\nnyanpasu-platform v0.1.0\n',
-    ),
-    [
-      'nyanpasu-scripts must not depend on nyanpasu-core',
-      'nyanpasu-scripts must not depend on nyanpasu-platform',
-    ],
+    dependencyViolations('nyanpasu-scripts', 'nyanpasu-core v0.1.0\n'),
+    ['nyanpasu-scripts must not depend on nyanpasu-core'],
   )
   assert.deepStrictEqual(
     dependencyViolations(
@@ -353,7 +321,6 @@ for (const owner of [
 
 for (const dependency of [
   'nyanpasu-core',
-  'nyanpasu-platform',
   'nyanpasu-scripts',
   'nyanpasu-net',
 ]) {
@@ -372,19 +339,8 @@ for (const dependency of [
   })
 }
 
-test('transitional platform may compose implementation crates', () => {
-  assert.deepStrictEqual(
-    dependencyViolations(
-      'nyanpasu-platform',
-      'nyanpasu-profile-io v0.1.0\nnyanpasu-scripts v0.1.0\nnyanpasu-net v0.1.0\n',
-    ),
-    [],
-  )
-})
-
 for (const dependency of [
   'nyanpasu-core',
-  'nyanpasu-platform',
   'nyanpasu-profile-io',
   'nyanpasu-scripts',
 ]) {

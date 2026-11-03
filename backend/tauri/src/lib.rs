@@ -15,6 +15,8 @@ mod server;
 mod setup;
 mod specta_export;
 mod startup_failure;
+#[cfg(test)]
+mod test_support;
 mod unified_rpc;
 
 mod host_paths;

@@ -1,15 +1,9 @@
 //! Facade integration with real profile, log, backup and runtime files.
 
-use crate::profiles::test_support::{test_client_args_with_endpoint, test_client_with_fetcher};
-use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
+use super::test_support::{test_client_args_with_endpoint, test_client_with_fetcher};
 #[cfg(unix)]
-use nyanpasu_contracts::profiles::ports::{
-    CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-    PreparedCleanup, PreparedMaterialization,
-};
-#[cfg(unix)]
-use nyanpasu_core::client::test_support::facade::local_config_request;
-use nyanpasu_core::{
+use crate::client::test_support::facade::local_config_request;
+use crate::{
     client::{
         NyanpasuClient, test_support,
         test_support::{
@@ -18,6 +12,12 @@ use nyanpasu_core::{
         },
     },
     utils::test_support::test_paths,
+};
+use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
+#[cfg(unix)]
+use nyanpasu_contracts::profiles::ports::{
+    CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
+    PreparedCleanup, PreparedMaterialization,
 };
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -40,7 +40,7 @@ impl Drop for RestoreDirMode {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn logs_facade_reads_app_files_and_degrades_service_independently() {
-    use nyanpasu_core::client::logs::LogSource;
+    use crate::client::logs::LogSource;
     use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
     let dir = tempdir().unwrap();
     let paths = test_paths(dir.path(), dir.path().join("data"));
@@ -276,7 +276,7 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             matches!(
                 outcome,
-                nyanpasu_core::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
             ),
             "auto-activation hard failure after commit must be CommittedDegraded"
         );
@@ -284,14 +284,14 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             outcome.degradations().iter().any(|item| matches!(
                 item.reason,
-                nyanpasu_core::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
             )),
             "expected ProfileAutoActivationFailed, got {:?}",
             outcome.degradations()
         );
         assert!(
             outcome.degradations().iter().any(|item| {
-                item.phase == nyanpasu_core::client::runtime::DegradationPhase::SystemEffect
+                item.phase == crate::client::runtime::DegradationPhase::SystemEffect
                     && item.retryable
             }),
             "H2 degradation must be retryable SystemEffect"
@@ -375,10 +375,10 @@ async fn managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_o
             runtime
                 .config()
                 .get("proxies")
-                .and_then(serde_yaml::Value::as_sequence)
+                .and_then(serde_yaml_ng::Value::as_sequence)
                 .and_then(|items| items.first())
                 .and_then(|item| item.get("name"))
-                .and_then(serde_yaml::Value::as_str),
+                .and_then(serde_yaml_ng::Value::as_str),
             Some("t6-fresh")
         );
         client.request_shutdown();

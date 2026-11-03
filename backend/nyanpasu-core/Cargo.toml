@@ -121,6 +121,8 @@ winreg = { version = '0.56', features = ['transactions'] }
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
+nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false, features = [
   'test-support'
 ] }

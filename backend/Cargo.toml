@@ -17,7 +17,6 @@ members = [
   'nyanpasu-tsdb',
   'nyanpasu-geodata',
   'nyanpasu-panics',
-  'nyanpasu-platform',
   'nyanpasu-scripts',
   'nyanpasu-local-channel',
   'nyanpasu-widget-protocol',

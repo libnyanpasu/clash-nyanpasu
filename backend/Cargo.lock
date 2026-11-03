@@ -1841,7 +1841,6 @@ dependencies = [
  "nyanpasu-panics",
  "nyanpasu-paths",
  "nyanpasu-persistence",
- "nyanpasu-platform",
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
  "nyanpasu-scripts",
@@ -6801,8 +6800,10 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-net",
  "nyanpasu-paths",
  "nyanpasu-persistence",
+ "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
@@ -7107,31 +7108,6 @@ dependencies = [
  "tempfile",
  "time",
  "tracing",
-]
-
-[[package]]
-name = "nyanpasu-platform"
-version = "0.1.0"
-dependencies = [
- "axum",
- "camino",
- "futures-util",
- "nyanpasu-config",
- "nyanpasu-contracts",
- "nyanpasu-core",
- "nyanpasu-core-manager",
- "nyanpasu-ipc",
- "nyanpasu-logging",
- "nyanpasu-net",
- "nyanpasu-paths",
- "nyanpasu-profile-io",
- "serde",
- "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
- "tempfile",
- "time",
- "tokio",
- "tokio-util",
 ]
 
 [[package]]

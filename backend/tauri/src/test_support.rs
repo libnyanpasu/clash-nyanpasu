@@ -1,9 +1,7 @@
 //! Real profile file capabilities for host integration tests.
+use std::sync::Arc;
+
 use nyanpasu_contracts::net::SelfProxyPortSource;
-#[cfg(test)]
-use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
-#[cfg(test)]
-use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_core::client::{
     ClientSetupArgs,
     host_adapters::{ClientHostAdapters, ProfileFileFactory, ProfileFilePorts},
@@ -13,10 +11,9 @@ use nyanpasu_core::client::{
 use nyanpasu_net::{device_headers::DeviceHeaders, subscription_http::SubscriptionHttpFetcher};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::fs_service::ProfileFileService;
-use std::sync::Arc;
 use tempfile::TempDir;
 
-pub(crate) fn test_profile_file_ports(
+fn test_profile_file_ports(
     paths: &PathResolver,
     ports: Arc<dyn SelfProxyPortSource>,
 ) -> ProfileFilePorts {
@@ -36,11 +33,11 @@ pub(crate) fn test_profile_file_ports(
         materialization: service,
     }
 }
-pub(crate) fn test_profile_file_factory(paths: &PathResolver) -> Arc<ProfileFileFactory> {
+fn test_profile_file_factory(paths: &PathResolver) -> Arc<ProfileFileFactory> {
     let paths = paths.clone();
     Arc::new(move |ports| test_profile_file_ports(&paths, ports))
 }
-pub(crate) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
+fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
     test_support::test_adapters(
         test_profile_file_factory(paths),
         Arc::new(TestRuntimeBuildPort::from_directory(
@@ -49,23 +46,10 @@ pub(crate) fn test_host_adapters(paths: &PathResolver) -> ClientHostAdapters {
         )),
     )
 }
-pub async fn test_client_args_with_endpoint(
+pub(crate) async fn test_client_args_with_endpoint(
     dir: &TempDir,
     endpoint: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
 ) -> ClientSetupArgs {
     let paths = nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data"));
     test_support::test_client_args_with_endpoint(dir, endpoint, test_host_adapters(&paths)).await
-}
-#[cfg(test)]
-pub(crate) async fn test_client_with_fetcher(
-    dir: &TempDir,
-    fetcher: Arc<dyn SubscriptionFetcher>,
-) -> NyanpasuClient {
-    let paths = nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data"));
-    let mut adapters = test_host_adapters(&paths);
-    adapters.profile_files = Arc::new(move |ports| ProfileFilePorts {
-        fetcher: fetcher.clone(),
-        ..test_profile_file_ports(&paths, ports)
-    });
-    test_support::facade::test_client_with_profile_ports(dir, adapters).await
 }

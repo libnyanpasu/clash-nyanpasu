@@ -3,9 +3,11 @@
 Status: the Tauri extraction baseline is delivered through Part 24
 ([#6108](https://github.com/libnyanpasu/clash-nyanpasu/pull/6108)).
 `NyanpasuClient` and the shared application layer live in `nyanpasu-core`, and
-core no longer depends on Tauri. Package ownership is not final. This document
-is the plan for the next stage: the shells and RPC targets the backend serves,
-the core package family, and where target-specific and concrete
+core no longer depends on Tauri. The Phase A foundation and implementation split
+is also delivered, and the transitional `nyanpasu-platform` crate is retired.
+Package ownership is not final. This document plans the next stage: the shells
+and RPC targets the backend serves, the core package family, and where
+target-specific and concrete
 implementations live. It replaces the earlier definition of
 `nyanpasu-platform` as the home for every concrete filesystem, script, process,
 network and OS implementation.
@@ -128,9 +130,9 @@ The current machinery blocks this in five places:
 ### Core package family
 
 `nyanpasu-core` is one crate of about 100k lines. An edit anywhere in it
-recompiles that crate as one incremental unit and rebuilds every crate that
-depends on it (`nyanpasu-platform`, `backend/tauri`), and every implementation
-crate waits for core before it starts compiling. The split aims at two things:
+recompiles that crate as one incremental unit and rebuilds its desktop shell
+consumer (`backend/tauri`). Implementation crates now depend on the foundation
+layer and compile independently of core. The remaining split aims at two things:
 
 - Implementation and target crates depend on the small foundation layer instead
   of all of core, so they compile in parallel with core and do not rebuild when
@@ -249,41 +251,44 @@ implement contracts; core never depends on them.
 the concrete infrastructure still in core, move as follows. Groups that stay
 small may share a crate; heavy-dependency ownership decides the boundary.
 
-| Group                                     | Current location                                                                                               | Target                                      |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Script runners                            | `nyanpasu-platform/src/enhance/script/`                                                                        | `nyanpasu-scripts`                          |
-| Profile files and materialization         | `nyanpasu-platform/src/profiles/`, `enhance/content_source.rs`                                                 | `nyanpasu-profile-io`                       |
-| Subscription HTTP                         | The fetcher in `nyanpasu-platform/src/profiles/`, `subscription.rs`, `utils/key_value.rs`                      | `nyanpasu-net`                              |
-| Runtime-build orchestration               | `nyanpasu-platform/src/enhance/runtime_build.rs`; it calls `ProfilesActor::current_closure` and `RuntimePaths` | Core's application layer                    |
-| Changelog, egress, icon, diagnostics HTTP | `nyanpasu-platform/src/changelog_http.rs`, `client/direct_egress.rs`, `service/icon.rs`, `utils/net.rs`        | `nyanpasu-net`                              |
-| File watchers                             | `geo/adapters.rs`, `state/profiles/scheduler.rs` (`notify-debouncer-full`)                                     | Injected adapters with their IO crate       |
-| Storage backends                          | redb in `storage.rs`, `logs/redb.rs`, `traffic/storage.rs`; `nyanpasu-traffic` legacy importer                 | Storage backends behind owner storage ports |
+| Group                                     | Current location                                                                               | Target                                      |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Script runners                            | `nyanpasu-scripts`                                                                             | Delivered                                   |
+| Profile files and materialization         | `nyanpasu-profile-io` over `nyanpasu-persistence`                                              | Delivered                                   |
+| Subscription HTTP                         | `nyanpasu-net::subscription_http` and `subscription`                                           | Delivered                                   |
+| Runtime-build orchestration               | `nyanpasu-core::client::runtime_build`                                                         | Delivered in core's application layer       |
+| Changelog, egress, icon, diagnostics HTTP | `nyanpasu-net`                                                                                 | Delivered                                   |
+| File watchers                             | `geo/adapters.rs`, `state/profiles/scheduler.rs` (`notify-debouncer-full`)                     | Injected adapters with their IO crate       |
+| Storage backends                          | redb in `storage.rs`, `logs/redb.rs`, `traffic/storage.rs`; `nyanpasu-traffic` legacy importer | Storage backends behind owner storage ports |
 
 ## Delivered baseline versus target
 
-The Tauri extraction is delivered in the current tree:
+The Tauri extraction and Phase A package split are delivered in the current tree:
 `backend/nyanpasu-core/src/client/` owns the facade, typed clients and
 workflows; the sibling domain modules own their actors, services and
-transactions. `backend/nyanpasu-platform/src/profiles/`,
-`enhance/runtime_build.rs` and `changelog_http.rs` own the concrete profile
-file, runtime-build and changelog HTTP implementations.
+transactions. Core's `client::runtime_build::RuntimeBuildService` owns
+runtime-build orchestration and receives a runner constructor and content source.
+`nyanpasu-profile-transform` owns the runtime builder and builtins;
+`nyanpasu-scripts` owns JavaScript and Lua runners over config's ports.
+`nyanpasu-persistence` owns generic filesystem recovery,
+`nyanpasu-profile-io` owns profile files, materialization and content access,
+and `nyanpasu-net` owns subscription, changelog, egress, icon and diagnostics
+HTTP adapters and shared client policy. These implementations depend on the
+foundation layer only.
 `backend/tauri/src/setup.rs` constructs and injects these implementations and
 the GUI adapters. Tauri retains presentation, desktop plugins, frontend events,
 IPC and HTTP transport.
 
-The runtime builder and builtins previously extracted into
-`nyanpasu-application` are consolidated in `nyanpasu-core::enhance`. Desktop and
-platform callers use core directly; there is no separate application crate.
+Application integration tests live in core with profile-io and net as
+dev-dependencies. Core's exported test support remains parameterized by
+`ClientHostAdapters`; Tauri owns its host test assembly. Golden and real-engine
+runtime tests live in transform, with scripts as a dev-dependency.
+`nyanpasu-platform` and the former `nyanpasu-application` crate are removed.
 
 Known gaps against the target ownership:
 
-- Script runners live in `nyanpasu-platform/src/enhance/script/`. Their only
-  core imports are `ScriptType` and `ScriptWrapper` from
-  `nyanpasu-core::enhance`. `FsRuntimeBuildAdapter` constructs the runner itself
-  instead of receiving it.
-- `nyanpasu-platform` depends on core for more than ports: actor helpers,
-  `RuntimePaths`, metadata, corruption helpers, key/value parsing, proxy helpers
-  and device identity.
+- Script extension capabilities still need explicit injection (A2b); extracting
+  the runners and injecting their constructor did not change extension behavior.
 - OS integration implementations are split between core and the Tauri crate.
   In core: service install and control with elevation (`service/control.rs`,
   `utils/sudo.rs`, `actor_v2/service_host_adapter.rs`), DNS configuration and
@@ -301,9 +306,8 @@ Known gaps against the target ownership:
   IO is implemented by `RuntimePaths`, and the traffic store is typed to the
   redb backend in `ClientSetupArgs`. `nyanpasu-traffic` depends on redb
   directly for its legacy importer.
-- Concrete HTTP and watcher behavior remains in core: egress probes, icon
-  fetching, geodata and external-profile watchers, and service-log IPC
-  (`client/logs.rs`).
+- Watcher and service-log IO remains in core: geodata and external-profile
+  watchers, and service-log IPC (`client/logs.rs`).
 - Effect execution for hotkeys, tray, widgets and locale, and the main-thread
   handoff, still live in core.
 - The RPC registry, command declarations and HTTP server live in the Tauri
@@ -361,13 +365,13 @@ protocol (E1b) waits for D2, so the server and CLI wait for C, D2 and E3.
 
 **Phase A: break the cycles and stop the leak**
 
-| Step | Change                                                                                                                                      | Done when                                                                                                    |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| A1   | Move owner shutdown support to a root core module and `BundleMetadata` into `nyanpasu-contracts`; replace `ScriptType` with `ScriptRuntime` | No lower module imports `client::owner_shutdown` or `client::bundle_metadata`; `ScriptType` is gone          |
-| A2   | Extract `nyanpasu-scripts` and inject a runner constructor into runtime building                                                            | Script engines do not depend on core; JS/Lua golden behavior unchanged                                       |
-| A3   | Extract `nyanpasu-profile-transform`                                                                                                        | Transform depends on config only; artifact-to-snapshot conversion stays in application code                  |
-| A4   | Move the ports implemented outside core into `nyanpasu-contracts`: profile and materialization, then network                                | Each group moves with its full type closure; contract errors box implementation causes, wire shape unchanged |
-| A5   | Move runtime-build orchestration into core; extract `nyanpasu-persistence`, `nyanpasu-profile-io` and `nyanpasu-net`; retire platform       | Implementation crates depend on the foundation layer only; application integration tests move into core      |
+| Step | Change                                                                                                                                      | Done when                                                                                                    | Status    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------- |
+| A1   | Move owner shutdown support to a root core module and `BundleMetadata` into `nyanpasu-contracts`; replace `ScriptType` with `ScriptRuntime` | No lower module imports `client::owner_shutdown` or `client::bundle_metadata`; `ScriptType` is gone          | Delivered |
+| A2   | Extract `nyanpasu-scripts` and inject a runner constructor into runtime building                                                            | Script engines do not depend on core; JS/Lua golden behavior unchanged                                       | Delivered |
+| A3   | Extract `nyanpasu-profile-transform`                                                                                                        | Transform depends on config only; artifact-to-snapshot conversion stays in application code                  | Delivered |
+| A4   | Move the ports implemented outside core into `nyanpasu-contracts`: profile and materialization, then network                                | Each group moves with its full type closure; contract errors box implementation causes, wire shape unchanged | Delivered |
+| A5   | Move runtime-build orchestration into core; extract `nyanpasu-persistence`, `nyanpasu-profile-io` and `nyanpasu-net`; retire platform       | Implementation crates depend on the foundation layer only; application integration tests move into core      | Delivered |
 
 **Phase B: leaf owners and heavy dependencies**
 
@@ -421,19 +425,16 @@ Compile time is a goal of the split, so measure it rather than assume it.
   that ends each phase.
 - Stop adding boundaries where the gain flattens; merge crates that always
   change together.
-- Fix feature wiring that defeats the graph. `backend/tauri` depends on core
-  without `default-features = false` (`backend/tauri/Cargo.toml:39`), so its
-  `default-meta` forwarding cannot turn the feature off; platform's core edge
-  and the config edges of core, platform, Tauri and diagnose do the same.
-  Enabling `test-support` through dev-dependencies
-  (`backend/tauri/Cargo.toml:271`, `backend/nyanpasu-platform/Cargo.toml:65`)
-  gives core a second feature set, so `cargo build` and `cargo test` compile
-  core separately.
+- Phase A disables default features on core and config dependency edges and
+  forwards the required features explicitly. Enabling core's `test-support`
+  through Tauri's dev-dependency still gives core a second feature set, so
+  `cargo build` and `cargo test` compile core separately. O-3 remains pending
+  the Phase A build measurements.
 
 ## Migration requirements
 
-- Do not add script runtime, OS integration or interaction code to
-  `nyanpasu-platform`, and do not add mandatory presentation capabilities to
+- Implementation crates depend on the foundation layer only. Do not add
+  mandatory presentation capabilities to
   `ClientSetupArgs`. New code follows the target ownership; if its crate does
   not exist yet, keep the code behind a consumer-owned port next to its current
   consumer.

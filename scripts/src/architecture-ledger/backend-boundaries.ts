@@ -36,20 +36,17 @@ const IMPLEMENTATION = [
   'nyanpasu-profile-io',
   'nyanpasu-net',
 ]
-// Transitional: implements core ports and depends on core until it is retired.
-const PLATFORM = 'nyanpasu-platform'
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
   ...[
     ...FOUNDATION,
     ...CORE_FAMILY,
     ...IMPLEMENTATION,
-    PLATFORM,
     'nyanpasu-diagnose',
   ].map((name) => ({ package: name, forbids: GUI })),
   ...FOUNDATION.map((name) => ({
     package: name,
-    forbids: [...CORE_FAMILY, ...IMPLEMENTATION, PLATFORM],
+    forbids: [...CORE_FAMILY, ...IMPLEMENTATION],
   })),
   {
     package: 'nyanpasu-config',
@@ -85,16 +82,15 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     forbids: [
       ...CORE_FAMILY,
       ...IMPLEMENTATION.filter((other) => other !== name),
-      PLATFORM,
     ],
   })),
   ...CORE_FAMILY.map((name) => ({
     package: name,
-    forbids: [...IMPLEMENTATION, PLATFORM],
+    forbids: [...IMPLEMENTATION],
   })),
   {
     package: 'nyanpasu-diagnose',
-    forbids: [...CORE_FAMILY, ...IMPLEMENTATION, PLATFORM],
+    forbids: [...CORE_FAMILY, ...IMPLEMENTATION],
   },
 ]
 

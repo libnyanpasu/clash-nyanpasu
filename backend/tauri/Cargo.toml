@@ -46,7 +46,6 @@ nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
-nyanpasu-platform = { path = '../nyanpasu-platform', default-features = false }
 nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
@@ -276,9 +275,6 @@ windows-sys = { version = '0.61', features = [
 atomicwrites = '0.4.4'
 redb = '4.0.0'
 tauri = { version = '2.4', features = ['test'] }
-nyanpasu-platform = { path = '../nyanpasu-platform', default-features = false, features = [
-  'test-support'
-] }
 struct-patch = '0.14'
 zip = '9.0.0'
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
@@ -301,11 +297,7 @@ default = ['custom-protocol', 'default-meta', 'nesting']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = ['nyanpasu-core/verge-dev']
-default-meta = [
-  'nyanpasu-core/default-meta',
-  'nyanpasu-config/default-meta',
-  'nyanpasu-platform/default-meta'
-]
+default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see
@@ -315,8 +307,4 @@ trace-chrome = ['dep:tracing-chrome']
 # logs directory.
 dhat-heap = ['dep:dhat']
 # Keep the configuration and application patch derives on the same feature.
-nesting = [
-  'nyanpasu-config/nesting',
-  'nyanpasu-core/nesting',
-  'nyanpasu-platform/nesting'
-]
+nesting = ['nyanpasu-config/nesting', 'nyanpasu-core/nesting']

@@ -1,12 +1,7 @@
 //! Runtime transactions retaining persisted bytes and staging ownership.
 
-use crate::profiles::test_support::test_client_args_with_endpoint;
-use futures_util::FutureExt;
-use nyanpasu_config::clash::config::{
-    ClashConfig,
-    clash_strategy::port::{PortStrategy, PortStrategyKind},
-};
-use nyanpasu_core::client::{
+use super::test_support::test_client_args_with_endpoint;
+use crate::client::{
     NyanpasuClient,
     application_workflow::{mutation, startup::StartupOutcome},
     test_support,
@@ -17,6 +12,11 @@ use nyanpasu_core::client::{
             override_patch, start_replacement,
         },
     },
+};
+use futures_util::FutureExt;
+use nyanpasu_config::clash::config::{
+    ClashConfig,
+    clash_strategy::port::{PortStrategy, PortStrategyKind},
 };
 use nyanpasu_ipc::api::status::CoreStateDetail;
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -36,7 +36,7 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         },
         ..ClashConfig::default()
     };
-    nyanpasu_core::client::test_support::write_clash_config(args.paths.clash_config_path(), &clash);
+    crate::client::test_support::write_clash_config(args.paths.clash_config_path(), &clash);
     let files = [
         args.paths.application_config_path(),
         args.paths.clash_config_path(),
@@ -68,8 +68,8 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         assert_eq!(versions(&client), before_versions);
         assert_eq!(bytes(), before_bytes);
         assert_eq!(endpoint.submissions(), 1);
-        let submitted: serde_yaml::Value =
-            serde_yaml::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
+        let submitted: serde_yaml_ng::Value =
+            serde_yaml_ng::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
         let picked = submitted["mixed-port"]
             .as_u64()
             .expect("the submitted document carries its mixed port");
@@ -87,9 +87,10 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
     let f = Fixture::with_adapters(true, false, |dir| {
-        crate::profiles::test_support::test_host_adapters(
-            &nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data")),
-        )
+        super::test_support::test_host_adapters(&crate::utils::test_support::test_paths(
+            dir.path(),
+            dir.path().join("data"),
+        ))
     })
     .await;
     (async {
@@ -146,15 +147,15 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
         assert_eq!(outcome.degradations().len(), 1);
         assert!(matches!(
             outcome.degradations()[0].reason,
-            nyanpasu_core::client::runtime::DegradationReason::RuntimeDeferred { .. }
+            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
         ));
         assert_eq!(
             client.configuration_status().runtime.health,
-            nyanpasu_core::client::convergence::ConvergenceHealth::RetryScheduled
+            crate::client::convergence::ConvergenceHealth::RetryScheduled
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =
-            serde_yaml::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
+            serde_yaml_ng::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
         assert_eq!(
             serde_json::to_value(persisted.overrides).unwrap()["mode"],
             "direct"
@@ -202,8 +203,8 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 serde_json::to_value(after.state).unwrap(),
                 serde_json::to_value(before.state).unwrap()
             );
-            let nyanpasu_core::client::ClientError::Config(
-                nyanpasu_core::state::config_error::ConfigError::Commit {
+            let crate::client::ClientError::Config(
+                crate::state::config_error::ConfigError::Commit {
                     domain: mutation::ConfigDomain::Clash,
                     source: aborted,
                 },
@@ -211,8 +212,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
             else {
                 panic!("{error:?}");
             };
-            let nyanpasu_core::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted
-            else {
+            let crate::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted else {
                 panic!("{aborted:?}");
             };
             assert!(
@@ -228,7 +228,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 assert!(
                     matches!(
                         aftermath(aborted),
-                        nyanpasu_core::state::mutation::RuntimeAftermath::RollbackFailed { .. }
+                        crate::state::mutation::RuntimeAftermath::RollbackFailed { .. }
                     ),
                     "{aborted:?}"
                 );
@@ -237,7 +237,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 assert!(
                     matches!(
                         aftermath(aborted),
-                        nyanpasu_core::state::mutation::RuntimeAftermath::RolledBack
+                        crate::state::mutation::RuntimeAftermath::RolledBack
                     ),
                     "{aborted:?}"
                 );

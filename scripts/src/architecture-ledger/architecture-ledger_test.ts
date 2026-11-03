@@ -993,7 +993,11 @@ test('STATIC_ALLOWLIST: each entry is unique, in a gated crate, categorized and 
   assert.deepStrictEqual(new Set(keys).size, keys.length)
 })
 
-for (const root of ['backend/tauri/src/', 'backend/nyanpasu-core/src/']) {
+for (const root of [
+  'backend/tauri/src/',
+  'backend/nyanpasu-core/src/',
+  'backend/nyanpasu-contracts/src/',
+]) {
   test(`scanFile / evaluateGate: service statics fail in ${root}`, () => {
     const relPath = `${root}services/nested.rs`
     const fixtures = [

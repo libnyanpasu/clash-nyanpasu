@@ -11,6 +11,7 @@ pub mod workflow;
 use super::{Result, runtime};
 #[cfg(test)]
 use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use camino::Utf8PathBuf;
@@ -38,10 +39,7 @@ use crate::{
         endpoint::ExecutionHost,
         test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
-    client::{
-        bundle_metadata::BundleMetadata, core_version, direct_egress,
-        system_proxy::ports::MockOsProxyPort,
-    },
+    client::{core_version, direct_egress, system_proxy::ports::MockOsProxyPort},
     state::profiles::{
         NewProfileRequest,
         ports::{
@@ -768,7 +766,7 @@ pub async fn test_client_args_with_endpoint(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         host_adapters,
         logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),

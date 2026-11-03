@@ -4,8 +4,8 @@
 //! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
 //! share it.
 
-use crate::client::bundle_metadata::BundleMetadata;
 use camino::Utf8PathBuf;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 
 use crate::storage::{Storage, StorageOperationError};
@@ -380,7 +380,7 @@ mod tests {
 
     fn manual<'a>(paths: &'a PathResolver, storage: StorageSource<'a>) -> BackupRequest<'a> {
         BackupRequest {
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             paths,
             storage,
             kind: BackupKind::Manual,
@@ -412,7 +412,7 @@ mod tests {
         let target = Version::new(2, 0, 0);
 
         let backup = create_backup(&BackupRequest {
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             paths: &paths,
             storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {
@@ -482,7 +482,7 @@ mod tests {
         let target = Version::new(2, 0, 0);
 
         let backup = create_backup(&BackupRequest {
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             paths: &paths,
             storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {

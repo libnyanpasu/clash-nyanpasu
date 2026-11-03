@@ -24,7 +24,7 @@ pub fn evidence(path: &Path) -> Vec<PathBuf> {
 pub fn migrate(paths: &PathResolver) {
     Runner::with_paths(
         paths.clone(),
-        crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
     )
     .unwrap()

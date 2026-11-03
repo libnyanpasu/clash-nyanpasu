@@ -8,6 +8,7 @@ members = [
   'nyanpasu-paths',
   'nyanpasu-helper',
   'nyanpasu-config',
+  'nyanpasu-contracts',
   'nyanpasu-traffic',
   'nyanpasu-tsdb',
   'nyanpasu-geodata',

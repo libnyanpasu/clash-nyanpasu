@@ -13,9 +13,14 @@ name = 'nyanpasu_platform'
 default = ['default-meta', 'nesting']
 default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
 nesting = ['nyanpasu-core/nesting', 'nyanpasu-config/nesting']
-test-support = ['nyanpasu-core/test-support', 'dep:tempfile']
+test-support = [
+  'nyanpasu-core/test-support',
+  'nyanpasu-contracts/test-support',
+  'dep:tempfile'
+]
 
 [dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-core-manager = { workspace = true }
@@ -67,6 +72,9 @@ tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
   'test-support'
 ] }

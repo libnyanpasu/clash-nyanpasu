@@ -10,9 +10,10 @@ default-meta = ['nyanpasu-config/default-meta']
 default = ['default-meta', 'nesting']
 nesting = ['nyanpasu-config/nesting', 'struct-patch/nesting']
 verge-dev = []
-test-support = ['dep:mockall', 'dep:axum']
+test-support = ['dep:mockall', 'dep:axum', 'nyanpasu-contracts/test-support']
 
 [dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
   'specta'
 ] }
@@ -117,6 +118,9 @@ nix = '0.31.0'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
 tracing-subscriber = { version = '0.3', features = [
   'env-filter',
   'json',

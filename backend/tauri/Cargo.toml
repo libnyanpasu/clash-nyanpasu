@@ -24,6 +24,7 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 # Local Dependencies
 nyanpasu-ipc = { workspace = true }
@@ -260,6 +261,9 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
 windows-sys = { version = '0.61', features = [
   'Win32_System_Console',
   'Win32_UI_WindowsAndMessaging',

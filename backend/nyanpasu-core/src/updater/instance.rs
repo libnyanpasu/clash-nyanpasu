@@ -22,14 +22,12 @@ use super::{
     shared::{self, CoreTypeMeta},
 };
 use crate::{
-    client::{
-        bundle_metadata::BundleMetadata,
-        core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
-    },
+    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
     download::{DownloadSession, DownloadStatus},
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
@@ -754,7 +752,7 @@ mod tests {
             dir.path().to_path_buf(),
             test_paths(&dir),
             port.clone(),
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         );
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
@@ -837,7 +835,7 @@ mod tests {
             dir.path().to_path_buf(),
             test_paths(&dir),
             port,
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         );
         let token = CancellationToken::new();
         let prepare = tokio::spawn({

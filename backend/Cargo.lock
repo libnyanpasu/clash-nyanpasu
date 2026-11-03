@@ -1828,6 +1828,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "nyanpasu-config",
+ "nyanpasu-contracts",
  "nyanpasu-core",
  "nyanpasu-core-manager",
  "nyanpasu-crash-reporter",
@@ -6744,6 +6745,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-contracts"
+version = "0.1.0"
+dependencies = [
+ "nyanpasu-config",
+]
+
+[[package]]
 name = "nyanpasu-core"
 version = "0.1.0"
 dependencies = [
@@ -6773,6 +6781,7 @@ dependencies = [
  "nix 0.31.3",
  "notify-debouncer-full",
  "nyanpasu-config",
+ "nyanpasu-contracts",
  "nyanpasu-core-manager",
  "nyanpasu-diagnose",
  "nyanpasu-geodata",
@@ -7068,6 +7077,7 @@ dependencies = [
  "mlua",
  "nanoid",
  "nyanpasu-config",
+ "nyanpasu-contracts",
  "nyanpasu-core",
  "nyanpasu-core-manager",
  "nyanpasu-ipc",

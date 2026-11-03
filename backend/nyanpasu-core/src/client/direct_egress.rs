@@ -1,3 +1,6 @@
+//! The public address the core's DIRECT outbound leaves from. DIRECT uses the
+//! machine's own route, so the app asks over that route itself: STUN servers
+//! first, then the HTTP lookup services the user accepted.
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use serde::Serialize;

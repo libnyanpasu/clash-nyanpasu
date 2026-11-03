@@ -59,26 +59,27 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           v
 nyanpasu-config             domain models and pure runtime executor
 
-backend/nyanpasu-platform/src/  implements core/config ports (transitional)
-  profiles/                    subscription HTTP adapter and application integration tests
-  changelog_http.rs            changelog HTTP adapter
+backend/nyanpasu-platform/src/  transitional application integration tests
+  profiles/                    integration tests and exported host test assembly
 
 backend/nyanpasu-persistence/src/  generic filesystem retry and evidence recovery
 backend/nyanpasu-profile-io/src/   profile files, materialization and content adapter
+backend/nyanpasu-net/src/          subscription, changelog, egress, icon, diagnostics and HTTP policy
 backend/nyanpasu-scripts/src/      JavaScript and Lua script runners over config ports
 ```
 
 `NyanpasuClient` and its actor/workflow graph live in
 `backend/nyanpasu-core/src/client/` and the domain modules beside it. Concrete
-profile file implementations live in `nyanpasu-profile-io`; subscription and
-changelog HTTP implementations remain in `nyanpasu-platform`. The desktop
-composition root in
+profile file implementations live in `nyanpasu-profile-io`; HTTP implementations
+and shared client policy live in `nyanpasu-net` over foundation contracts.
+Platform retains application integration tests and its exported host test assembly.
+The desktop composition root in
 `backend/tauri/src/setup.rs` constructs these implementations and the GUI
 adapters, injects them into the core and calls `NyanpasuClient::try_new`. GUI
 adapters remain in `backend/tauri/src/adapters/`; windows, tray, widgets,
 desktop plugins and transport delivery stay in the host. Platform depends on
-core to implement its consumed ports; core does not depend on platform in
-production.
+core and implementation crates for its test assembly; core does not depend on
+platform in production.
 
 The [target ownership](../design/application-platform-extraction.md#target-ownership)
 is the plan for the next stage:
@@ -132,9 +133,10 @@ Rules for maintaining the separation:
 - The architecture-ledger static gate covers `backend/tauri/src/`,
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
-  `backend/nyanpasu-persistence/src/` and `backend/nyanpasu-profile-io/src/`
+  `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/` and
+  `backend/nyanpasu-net/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All seven use the same explicit path-and-name allowlist; other backend library
+  All eight use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

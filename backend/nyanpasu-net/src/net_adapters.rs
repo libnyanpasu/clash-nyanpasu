@@ -10,7 +10,7 @@ use nyanpasu_contracts::{
 };
 use url::Url;
 
-use crate::utils::candy;
+use crate::policy;
 
 /// Builds a fresh policy-configured client for each operation, using its caller-supplied port.
 pub struct ReqwestNetworkAdapter {
@@ -31,8 +31,11 @@ impl ReqwestNetworkAdapter {
 #[async_trait::async_trait]
 impl IconFetcher for ReqwestNetworkAdapter {
     async fn fetch(&self, url: &Url, self_proxy_port: u16) -> Result<(String, Bytes)> {
-        let client =
-            candy::get_reqwest_client(self_proxy_port, &self.metadata, self.system_proxy.as_ref())?;
+        let client = policy::get_reqwest_client(
+            self_proxy_port,
+            &self.metadata,
+            self.system_proxy.as_ref(),
+        )?;
         let response = client.get(url.clone()).send().await?.error_for_status()?;
         let mime = response
             .headers()
@@ -55,7 +58,7 @@ impl NetworkDiagnostics for ReqwestNetworkAdapter {
     ) -> Option<u64> {
         // heat up
         let client =
-            candy::get_reqwest_client(self_proxy_port, &self.metadata, self.system_proxy.as_ref())
+            policy::get_reqwest_client(self_proxy_port, &self.metadata, self.system_proxy.as_ref())
                 .ok()?;
         let _ = tokio::time::timeout(Duration::from_secs(10), client.get(url).send())
             .await
@@ -74,8 +77,11 @@ impl NetworkDiagnostics for ReqwestNetworkAdapter {
 
     #[tracing_attributes::instrument(skip(self), fields(metadata = ?self.metadata))]
     async fn get_ipsb_asn(&self, self_proxy_port: u16) -> Result<serde_json::Value> {
-        let client =
-            candy::get_reqwest_client(self_proxy_port, &self.metadata, self.system_proxy.as_ref())?;
+        let client = policy::get_reqwest_client(
+            self_proxy_port,
+            &self.metadata,
+            self.system_proxy.as_ref(),
+        )?;
         let response = client
             .get("https://api.ip.sb/geoip")
             .send()

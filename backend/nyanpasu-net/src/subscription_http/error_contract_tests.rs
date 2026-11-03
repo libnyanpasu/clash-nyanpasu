@@ -1,17 +1,14 @@
 //! Wire and source-chain expectations for subscription failures.
 
-use std::{error::Error, io, sync::Arc};
+use std::{error::Error, io};
 
 use nyanpasu_config::profile::RemoteProfileOptions;
-use nyanpasu_contracts::{
-    net::SelfProxyPortSource,
-    profiles::{error::SubscriptionFetchError, ports::SubscriptionFetcher},
-};
+use nyanpasu_contracts::profiles::{error::SubscriptionFetchError, ports::SubscriptionFetcher};
 use serde::Serialize;
 use serde_json::{Value, json};
 use url::Url;
 
-use super::SubscriptionHttpFetcher;
+use super::tests::service;
 
 fn source_chain(error: &(dyn Error + 'static)) -> Vec<String> {
     let mut chain = Vec::new();
@@ -40,21 +37,6 @@ fn library_source<'error, T: Error + 'static>(error: &'error (dyn Error + 'stati
         .expect("variant has a library cause")
         .downcast_ref::<T>()
         .expect("variant must preserve the original library error object")
-}
-
-struct NoProxy;
-
-impl SelfProxyPortSource for NoProxy {
-    fn mixed_port(&self) -> Option<u16> {
-        None
-    }
-}
-
-fn service() -> SubscriptionHttpFetcher {
-    SubscriptionHttpFetcher::new(
-        Arc::new(NoProxy),
-        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
-    )
 }
 
 fn direct_options() -> RemoteProfileOptions {

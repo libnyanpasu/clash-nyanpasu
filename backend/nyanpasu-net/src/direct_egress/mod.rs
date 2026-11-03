@@ -1,3 +1,7 @@
+//! Direct-route egress probe, isolated from system and self proxies: STUN
+//! servers first, then the accepted HTTP lookup services. The STUN codec is pure.
+mod stun;
+
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
@@ -11,7 +15,7 @@ use tokio::{
     time::Instant,
 };
 
-use super::stun::{self, HEADER_LEN, TransactionId};
+use self::stun::{HEADER_LEN, TransactionId};
 
 /// A STUN server that does not resolve and answer within this is skipped, so a long
 /// server list stays usable when several are unreachable.
@@ -328,8 +332,7 @@ mod tests {
     use nyanpasu_contracts::net::ProbePermission;
     use tokio::net::TcpListener;
 
-    use super::*;
-    use crate::client::direct_egress::stun::tests::binding_response;
+    use super::{stun::tests::binding_response, *};
 
     const LOCALHOST: &str = "127.0.0.1";
     /// The servers these tests run listen on loopback.

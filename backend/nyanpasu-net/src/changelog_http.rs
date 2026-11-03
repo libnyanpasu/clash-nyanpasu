@@ -1,20 +1,33 @@
+//! Changelog HTTP adapter with live self and system proxy sources.
+
 use std::{sync::Arc, time::Duration};
 
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 
-use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SelfProxyPortSource};
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{SelfProxyPortSource, SystemProxySource},
+};
 
+/// Fetches release notes with the bundle user agent and existing HTTP deadlines.
 pub struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,
     bundle_metadata: BundleMetadata,
+    system_proxy: Arc<dyn SystemProxySource>,
 }
 
 impl ReqwestChangelogHttp {
-    pub fn new(proxy_port: Arc<dyn SelfProxyPortSource>, bundle_metadata: BundleMetadata) -> Self {
+    /// Retains metadata and readers; proxy settings are resolved for each request.
+    pub fn new(
+        proxy_port: Arc<dyn SelfProxyPortSource>,
+        bundle_metadata: BundleMetadata,
+        system_proxy: Arc<dyn SystemProxySource>,
+    ) -> Self {
         Self {
             proxy_port,
             bundle_metadata,
+            system_proxy,
         }
     }
 }
@@ -30,11 +43,9 @@ impl nyanpasu_contracts::net::ChangelogHttp for ReqwestChangelogHttp {
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30));
         if let Some(port) = self.proxy_port.mixed_port() {
-            builder = builder.proxy(reqwest::Proxy::all(
-                nyanpasu_core::utils::config::get_self_proxy(port),
-            )?);
+            builder = builder.proxy(reqwest::Proxy::all(crate::policy::get_self_proxy(port))?);
         }
-        if let Ok(Some(proxy)) = nyanpasu_core::utils::config::get_system_proxy() {
+        if let Ok(Some(proxy)) = self.system_proxy.system_proxy() {
             builder = builder.proxy(reqwest::Proxy::all(proxy).context("invalid system proxy")?);
         }
         Ok(builder

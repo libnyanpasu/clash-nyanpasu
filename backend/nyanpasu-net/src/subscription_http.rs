@@ -6,7 +6,7 @@ use nyanpasu_config::profile::RemoteProfileOptions;
 use nyanpasu_contracts::{
     BoxedCause,
     bundle_metadata::BundleMetadata,
-    net::SelfProxyPortSource,
+    net::{SelfProxyPortSource, SystemProxySource},
     profiles::{
         error::{
             BuildHttpClientSnafu, ReadSubscriptionBodySnafu, RequestSubscriptionSnafu,
@@ -18,25 +18,32 @@ use nyanpasu_contracts::{
 use snafu::{ResultExt, ensure};
 use url::Url;
 
-use super::subscription;
+use crate::{device_headers::DeviceHeaders, policy::NyanpasuReqwestProxyExt as _, subscription};
 
 /// Fetches subscriptions using the current proxy port and the host's bundle metadata.
 pub struct SubscriptionHttpFetcher {
     self_proxy_port: Arc<dyn SelfProxyPortSource>,
     http_timeout: Duration,
     bundle_metadata: BundleMetadata,
+    system_proxy: Arc<dyn SystemProxySource>,
+    device_headers: DeviceHeaders,
 }
 
 impl SubscriptionHttpFetcher {
-    /// Resolves the self-proxy port on each request and uses the existing HTTP timeout.
+    /// Retains shell-prepared headers and metadata with the existing 30-second timeout.
+    /// Both proxy sources are resolved at request time according to the remote options.
     pub fn new(
         self_proxy_port: Arc<dyn SelfProxyPortSource>,
         bundle_metadata: BundleMetadata,
+        system_proxy: Arc<dyn SystemProxySource>,
+        device_headers: DeviceHeaders,
     ) -> Self {
         Self {
             self_proxy_port,
             http_timeout: Duration::from_secs(30),
             bundle_metadata,
+            system_proxy,
+            device_headers,
         }
     }
 
@@ -72,18 +79,12 @@ impl SubscriptionFetcher for SubscriptionHttpFetcher {
         };
         let proxy_url = proxy_url.or_else(|| {
             if options.with_proxy {
-                match sysproxy::Sysproxy::get_system_proxy() {
-                    Ok(p @ sysproxy::Sysproxy { enable: true, .. }) => {
-                        Some(format!("http://{}:{}", p.host, p.port))
-                    }
-                    _ => None,
-                }
+                self.system_proxy.system_proxy().ok().flatten()
             } else {
                 None
             }
         });
         if let Some(proxy_url) = proxy_url {
-            use nyanpasu_core::utils::config::NyanpasuReqwestProxyExt;
             builder = builder.swift_set_proxy(&proxy_url);
         }
 
@@ -97,15 +98,13 @@ impl SubscriptionFetcher for SubscriptionHttpFetcher {
             .map_err(BoxedCause::from)
             .context(BuildHttpClientSnafu)?;
 
-        let device_info = nyanpasu_core::utils::hwid::get_device_info();
-        let sanitize = nyanpasu_core::utils::hwid::sanitize_for_header;
         let perform = || async {
             let resp = client
                 .get(url.as_str())
-                .header("x-hwid", &device_info.hwid)
-                .header("x-device-os", sanitize(&device_info.device_os))
-                .header("x-ver-os", sanitize(&device_info.os_version))
-                .header("x-device-model", sanitize(&device_info.device_model))
+                .header("x-hwid", &self.device_headers.hwid)
+                .header("x-device-os", &self.device_headers.device_os)
+                .header("x-ver-os", &self.device_headers.os_version)
+                .header("x-device-model", &self.device_headers.device_model)
                 .send()
                 .await
                 .map_err(BoxedCause::from)
@@ -183,6 +182,23 @@ mod tests {
         }
     }
 
+    impl SystemProxySource for NoProxy {
+        fn system_proxy(&self) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+    }
+
+    fn fixture_headers() -> DeviceHeaders {
+        use crate::device_headers;
+
+        DeviceHeaders {
+            hwid: "0123456789abcdef0123456789abcdef".into(),
+            device_os: device_headers::sanitize_for_header("Windows\r\n"),
+            os_version: device_headers::sanitize_for_header("11\t 版本24H2"),
+            device_model: device_headers::sanitize_for_header("PC-Кирилл\0 Model"),
+        }
+    }
+
     struct CountingNoProxy {
         hits: Arc<AtomicUsize>,
     }
@@ -194,7 +210,7 @@ mod tests {
         }
     }
 
-    fn service() -> SubscriptionHttpFetcher {
+    pub(super) fn service() -> SubscriptionHttpFetcher {
         service_with(Arc::new(NoProxy))
     }
 
@@ -202,6 +218,8 @@ mod tests {
         SubscriptionHttpFetcher::new(
             self_proxy_port,
             nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
+            Arc::new(NoProxy),
+            fixture_headers(),
         )
     }
 
@@ -306,6 +324,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fetch_sends_exact_sanitized_device_headers() {
+        let seen = Arc::new(Mutex::new(None::<AxumHeaderMap>));
+        let seen_request = Arc::clone(&seen);
+        let router = Router::new().route(
+            "/",
+            get(move |headers: AxumHeaderMap| {
+                let seen_request = Arc::clone(&seen_request);
+                async move {
+                    *seen_request.lock().unwrap() = Some(headers);
+                    "ok: true\n"
+                }
+            }),
+        );
+        let (url, _server) = serve(router).await;
+        service()
+            .fetch(&Url::parse(&url).unwrap(), &options_direct())
+            .await
+            .unwrap();
+
+        let headers = seen.lock().unwrap().clone().unwrap();
+        for (name, expected) in [
+            ("x-hwid", "0123456789abcdef0123456789abcdef"),
+            ("x-device-os", "Windows"),
+            ("x-ver-os", "11 24H2"),
+            ("x-device-model", "PC- Model"),
+        ] {
+            assert_eq!(
+                headers.get(name).unwrap().to_str().unwrap(),
+                expected,
+                "{name}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn fetch_falls_back_to_direct_when_self_proxy_port_is_unavailable() {
         let hits = Arc::new(AtomicUsize::new(0));
         let source_hits = Arc::new(AtomicUsize::new(0));
@@ -351,6 +404,68 @@ mod tests {
 
         assert_eq!(fetched.content, "ok: true\n");
         assert_eq!(source_hits.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn fetch_uses_self_proxy_without_reading_system_proxy() {
+        use axum::http::Uri;
+        use nyanpasu_contracts::net::MockSystemProxySource;
+
+        struct SelfProxy(u16);
+
+        impl SelfProxyPortSource for SelfProxy {
+            fn mixed_port(&self) -> Option<u16> {
+                Some(self.0)
+            }
+        }
+
+        let router = Router::new().route("/", get(|uri: Uri| async move { uri.to_string() }));
+        let (proxy_url, _server) = serve(router).await;
+        let port = Url::parse(&proxy_url).unwrap().port().unwrap();
+        let mut system_proxy = MockSystemProxySource::new();
+        system_proxy.expect_system_proxy().never();
+        let service = SubscriptionHttpFetcher::new(
+            Arc::new(SelfProxy(port)),
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
+            Arc::new(system_proxy),
+            fixture_headers(),
+        );
+        let url = Url::parse("http://subscription.invalid/").unwrap();
+
+        let fetched = service.fetch(&url, &options(true, true)).await.unwrap();
+
+        assert_eq!(
+            fetched.content,
+            url.as_str(),
+            "the self-proxy listener must receive the absolute subscription URI"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_reads_the_live_system_proxy_for_each_request() {
+        use nyanpasu_contracts::net::MockSystemProxySource;
+
+        let (first_url, _first_server) =
+            serve(Router::new().route("/", get(|| async { "first" }))).await;
+        let (second_url, _second_server) =
+            serve(Router::new().route("/", get(|| async { "second" }))).await;
+        let mut sequence = [first_url, second_url].into_iter();
+        let mut source = MockSystemProxySource::new();
+        source
+            .expect_system_proxy()
+            .times(2)
+            .returning(move || Ok(sequence.next()));
+        let service = SubscriptionHttpFetcher::new(
+            Arc::new(NoProxy),
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
+            Arc::new(source),
+            fixture_headers(),
+        );
+        let url = Url::parse("http://subscription.invalid/").unwrap();
+        for expected in ["first", "second"] {
+            let fetched = service.fetch(&url, &options(true, true)).await.unwrap();
+            assert_eq!(fetched.content, expected);
+        }
     }
 
     #[tokio::test]

@@ -13,8 +13,9 @@ dependency rules.
 | `nyanpasu-profile-transform` | Runtime builder, builtin transforms and post-processing output types over config's executor      | Core, platform, contracts, implementation crates, Tauri, egui/eframe or Slint                                                           |
 | `nyanpasu-persistence`       | Generic filesystem retry and evidence-preserving recovery                                        | Core, platform, contracts, transform, implementation crates, `redb`, core manager, Tauri, egui/eframe or Slint                          |
 | `nyanpasu-profile-io`        | Profile filesystem access, materialization transactions and content source                       | Core, platform, other implementation crates, Tauri, egui/eframe or Slint                                                                |
+| `nyanpasu-net`               | Subscription, changelog, direct-egress, icon and diagnostics HTTP adapters and client policy     | Core, platform, other implementation crates, Tauri, egui/eframe or Slint                                                                |
 | `nyanpasu-core`              | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions | Platform implementation crate, Tauri, egui/eframe or Slint                                                                              |
-| `nyanpasu-platform`          | Transitional: subscription and changelog HTTP adapters                                           | Tauri host, egui/eframe or Slint                                                                                                        |
+| `nyanpasu-platform`          | Transitional: application integration tests and exported host test assembly                      | Tauri host, egui/eframe or Slint                                                                                                        |
 | `nyanpasu-scripts`           | JavaScript and Lua script runners behind config's `ScriptRunner`                                 | Core, platform, other implementation crates, Tauri, egui/eframe or Slint                                                                |
 | `nyanpasu-widget-protocol`   | Render-free statistic widget contract: variants, messages and the optional `ipc` channel         | Tauri, egui/eframe or Slint                                                                                                             |
 | `nyanpasu-widget`            | Statistic widget process frontend, rendered with Slint                                           | Tauri; no neutral crate may depend on it                                                                                                |
@@ -26,8 +27,8 @@ Contracts and persistence must not depend on each other. Persistence and profile
 transform must not depend on each other either.
 
 The core crate receives dependencies through constructors, function
-arguments or actor startup parameters. Platform can depend on core to
-implement its ports. Core must not import platform in production. Keep
+arguments or actor startup parameters. Platform's transitional test assembly can
+depend on core and implementation crates. Core must not import platform in production. Keep
 cross-layer tests in platform or host tests rather than creating a dependency
 cycle. Tauri-specific adapters remain in the host, outside neutral platform.
 
@@ -94,7 +95,10 @@ and orchestrates content capture, blocking builds, snapshot conversion and produ
 publication. The shell injects its runner constructor and profile-io's
 `content_source::FsProfileContentSource`. Profile-io's `fs_service::ProfileFileService`
 implements profile file access and materialization over persistence's generic
-filesystem recovery. Platform retains subscription and changelog HTTP fetching. Runtime
+filesystem recovery. Net implements subscription, changelog, direct-egress, icon and
+diagnostics HTTP fetching over contracts, with live system proxy readers and
+shell-prepared device headers. Platform retains application integration tests and
+its exported host test assembly until A5d. Runtime
 builder golden and real-engine tests live in `nyanpasu-profile-transform`, with
 `nyanpasu-scripts` as a dev-dependency. The former `nyanpasu-application` crate and
 its workspace/dependency entries have been removed.

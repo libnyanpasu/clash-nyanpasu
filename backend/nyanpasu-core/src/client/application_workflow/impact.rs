@@ -255,7 +255,8 @@ impl MutationHints {
 /// - `enable_service_mode` is the execution host the lifecycle follows
 ///   (`core_lifecycle/workflow.rs`);
 /// - `core` picks the builtin transform table, the tun flavor, and the binary
-///   that gets started (`enhance/runtime_builder.rs`, `RuntimeBuildPort::core_spec`);
+///   that gets started (`nyanpasu-profile-transform/src/runtime_builder.rs`,
+///   `RuntimeBuildPort::core_spec`);
 /// - `enable_builtin_enhanced` gates that transform table.
 ///
 /// Every other field of [`NyanpasuAppConfig`] drives a peripheral owner or
@@ -575,13 +576,11 @@ mod tests {
     use nyanpasu_widget_protocol::StatisticWidgetVariant;
     use struct_patch::Patch as _;
 
-    use crate::{
-        client::effects::{
-            plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
-            status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
-        },
-        enhance::test_support,
+    use crate::client::effects::{
+        plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     };
+    use nyanpasu_profile_transform::test_support;
 
     /// `NyanpasuAppConfig::default()` reads the system locale and the platform
     /// tray default, so the fields a case flips are pinned first.

@@ -106,7 +106,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -3029,7 +3029,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
     // The document that selects the profile, committed unapplied. Its budget is
     // what everything below is measured against.
     let mut selected = Profiles::default();
-    selected.append_item(crate::enhance::test_support::file_config(
+    selected.append_item(nyanpasu_profile_transform::test_support::file_config(
         "sel",
         "sel.yaml",
         &[],
@@ -3750,7 +3750,7 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
     let mut f = fixture().await;
     std::fs::create_dir_all(&f.profiles_dir).unwrap();
     std::fs::write(f.profiles_dir.join("invalid.yaml"), "rules: [").unwrap();
-    let item = crate::enhance::test_support::overlay("invalid", "invalid.yaml");
+    let item = nyanpasu_profile_transform::test_support::overlay("invalid", "invalid.yaml");
     let mut next = f.profiles.snapshot().as_ref().clone();
     next.global_transforms.push(item.uid.clone());
     next.items.insert(item.uid.clone(), item);

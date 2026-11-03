@@ -20,6 +20,7 @@ test-support = [
 ]
 
 [dependencies]
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
@@ -51,6 +52,9 @@ tokio = { workspace = true, features = ['full'] }
 
 [dev-dependencies]
 serde_json = { version = '1', features = ['preserve_order'] }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'

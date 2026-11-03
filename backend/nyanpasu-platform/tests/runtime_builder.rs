@@ -8,11 +8,9 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
-use nyanpasu_core::{
-    client::application_workflow::ports::ScriptRunnerFactory,
-    enhance::{RuntimeBuildInput, RuntimeBuilder},
-};
+use nyanpasu_core::client::application_workflow::ports::ScriptRunnerFactory;
 use nyanpasu_platform::enhance::FsProfileContentSource;
+use nyanpasu_profile_transform::{RuntimeBuildInput, RuntimeBuilder};
 use nyanpasu_scripts::{EnhanceScriptRunner, ScriptDirs};
 
 #[test]

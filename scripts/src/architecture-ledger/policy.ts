@@ -77,12 +77,13 @@ export const STATIC_KEYWORD_RE = /(?<![\w'#$])static(?!\w)/g
 export const STATIC_ITEM_RE =
   /static\s+(?:(?:mut|ref)\s+)?((?:r#)?[A-Za-z_][A-Za-z0-9_]*)\s*:/y
 
-/** Gate the host, application core and extracted contracts sources. */
+/** Gate the host, application core and extracted package sources. */
 export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
+  'backend/nyanpasu-profile-transform/src/',
 ]
 
 /**

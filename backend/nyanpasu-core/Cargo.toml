@@ -10,9 +10,15 @@ default-meta = ['nyanpasu-config/default-meta']
 default = ['default-meta', 'nesting']
 nesting = ['nyanpasu-config/nesting', 'struct-patch/nesting']
 verge-dev = []
-test-support = ['dep:mockall', 'dep:axum', 'nyanpasu-contracts/test-support']
+test-support = [
+  'dep:mockall',
+  'dep:axum',
+  'nyanpasu-contracts/test-support',
+  'nyanpasu-profile-transform/test-support'
+]
 
 [dependencies]
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
   'specta'
@@ -118,6 +124,9 @@ nix = '0.31.0'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'
 ] }

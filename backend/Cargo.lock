@@ -7089,8 +7089,6 @@ dependencies = [
  "nyanpasu-ipc",
  "nyanpasu-logging",
  "nyanpasu-paths",
- "nyanpasu-profile-transform",
- "nyanpasu-scripts",
  "percent-encoding",
  "reqwest 0.13.5",
  "serde",
@@ -7112,11 +7110,13 @@ version = "0.1.0"
 dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-config",
+ "nyanpasu-scripts",
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "specta",
+ "tempfile",
 ]
 
 [[package]]

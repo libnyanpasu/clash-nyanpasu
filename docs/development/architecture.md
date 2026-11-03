@@ -47,7 +47,7 @@ backend/tauri/src/
           | constructs and injects dependencies
           v
 backend/nyanpasu-core/src/
-  client/                  NyanpasuClient, typed clients, workflows and artifact conversion
+  client/                  NyanpasuClient, typed clients, workflows, runtime builds and artifact conversion
   state/                   configuration transactions
   actor_v2/, clash/        core control and API streams
   logs/, geo/, traffic/    log sessions, geodata and traffic accounting
@@ -61,7 +61,7 @@ nyanpasu-config             domain models and pure runtime executor
 
 backend/nyanpasu-platform/src/  implements core/config ports (transitional)
   profiles/                    profile filesystem and HTTP service
-  enhance/                     content and runtime-build adapters
+  enhance/                     profile content adapter
   changelog_http.rs            changelog HTTP adapter
 
 backend/nyanpasu-scripts/src/   JavaScript and Lua script runners over config ports
@@ -69,7 +69,7 @@ backend/nyanpasu-scripts/src/   JavaScript and Lua script runners over config po
 
 `NyanpasuClient` and its actor/workflow graph live in
 `backend/nyanpasu-core/src/client/` and the domain modules beside it. Concrete
-profile file, runtime-build and changelog HTTP implementations live in
+profile file and changelog HTTP implementations live in
 `nyanpasu-platform`. The desktop composition root in
 `backend/tauri/src/setup.rs` constructs these implementations and the GUI
 adapters, injects them into the core and calls `NyanpasuClient::try_new`. GUI

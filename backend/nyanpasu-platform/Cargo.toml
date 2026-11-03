@@ -20,11 +20,9 @@ test-support = [
 ]
 
 [dependencies]
-nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
-nyanpasu-core-manager = { workspace = true }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
@@ -51,11 +49,8 @@ serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://githu
 tokio = { workspace = true, features = ['full'] }
 
 [dev-dependencies]
+nyanpasu-core-manager = { workspace = true }
 serde_json = { version = '1', features = ['preserve_order'] }
-nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false, features = [
-  'test-support'
-] }
-nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'
 ] }

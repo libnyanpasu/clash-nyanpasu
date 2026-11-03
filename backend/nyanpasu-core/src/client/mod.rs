@@ -35,6 +35,7 @@ mod network_tests;
 mod ports;
 pub mod profiles;
 pub mod runtime;
+pub mod runtime_build;
 pub mod runtime_error;
 pub mod runtime_inspection;
 pub mod runtime_recovery;

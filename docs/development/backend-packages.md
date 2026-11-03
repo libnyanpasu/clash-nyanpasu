@@ -12,7 +12,7 @@ dependency rules.
 | `nyanpasu-contracts`         | Bundle metadata, profile filesystem/subscription, materialization and network contracts          | Core, platform, transform, implementation crates, `ractor`, `reqwest`, `redb`, core manager, local channel, Tauri, egui/eframe or Slint |
 | `nyanpasu-profile-transform` | Runtime builder, builtin transforms and post-processing output types over config's executor      | Core, platform, contracts, implementation crates, Tauri, egui/eframe or Slint                                                           |
 | `nyanpasu-core`              | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions | Platform implementation crate, Tauri, egui/eframe or Slint                                                                              |
-| `nyanpasu-platform`          | Transitional: concrete profile filesystem/HTTP, runtime-build and changelog HTTP adapters        | Tauri host, egui/eframe or Slint                                                                                                        |
+| `nyanpasu-platform`          | Transitional: concrete profile filesystem/HTTP, content and changelog HTTP adapters              | Tauri host, egui/eframe or Slint                                                                                                        |
 | `nyanpasu-scripts`           | JavaScript and Lua script runners behind config's `ScriptRunner`                                 | Core, platform, other implementation crates, Tauri, egui/eframe or Slint                                                                |
 | `nyanpasu-widget-protocol`   | Render-free statistic widget contract: variants, messages and the optional `ipc` channel         | Tauri, egui/eframe or Slint                                                                                                             |
 | `nyanpasu-widget`            | Statistic widget process frontend, rendered with Slint                                           | Tauri; no neutral crate may depend on it                                                                                                |
@@ -84,13 +84,14 @@ The runtime builder, builtin transforms and post-processing output types live in
 stays in core's `client::artifact_snapshot`, alongside the facade and its
 dependent actor/workflow graph. Script runners live in `nyanpasu-scripts` over
 config's `ScriptRunner` port.
-Platform's `enhance::runtime_build` receives a runner constructor from the shell
-and implements the core-owned `RuntimeBuildPort`; `profiles::fs_service`
-implements profile file access, and
-`changelog_http` implements changelog fetching. Platform and desktop consumers
-import core and transform directly. The former `nyanpasu-application` crate and its
-workspace/dependency entries have been removed.
+Core's `client::runtime_build::RuntimeBuildService` implements `RuntimeBuildPort`
+and orchestrates content capture, blocking builds, snapshot conversion and product
+publication. The shell injects its runner constructor and platform's
+`enhance::FsProfileContentSource`. Platform's `profiles::fs_service` implements
+profile file access, and `changelog_http` implements changelog fetching. Runtime
+builder golden and real-engine tests live in `nyanpasu-profile-transform`, with
+`nyanpasu-scripts` as a dev-dependency. The former `nyanpasu-application` crate and
+its workspace/dependency entries have been removed.
 
-This is a baseline, not the target. Runtime-build orchestration moves from
-platform into core's application layer, which receives a script runner
-constructor from the shell. The [core package split spec](../spec/2026-11-03-core-package-split/design.md) plans these steps.
+This is a baseline, not the target. The [core package split spec](../spec/2026-11-03-core-package-split/design.md)
+plans the remaining platform split by filesystem and network ownership.

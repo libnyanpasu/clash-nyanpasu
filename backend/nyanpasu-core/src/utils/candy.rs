@@ -1,6 +1,6 @@
 use super::config::NyanpasuReqwestProxyExt;
 use anyhow::Result;
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SystemProxySource};
 use std::time::Duration;
 use url::Url;
 
@@ -8,11 +8,12 @@ use url::Url;
 pub fn get_reqwest_client(
     self_proxy_port: u16,
     metadata: &BundleMetadata,
+    system_proxy: &dyn SystemProxySource,
 ) -> Result<reqwest::Client> {
     let builder = reqwest::ClientBuilder::new();
     let app_version = metadata.app_version;
     let client = builder
-        .swift_set_nyanpasu_proxy(self_proxy_port)
+        .swift_set_nyanpasu_proxy(self_proxy_port, system_proxy)
         .user_agent(format!("clash-nyanpasu/{app_version}"))
         .build()?;
     Ok(client)

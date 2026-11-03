@@ -27,7 +27,7 @@ use crate::{
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SelfProxyPortSource};
 use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
@@ -51,7 +51,7 @@ pub struct UpdaterSummary {
 }
 
 pub(crate) struct HttpUpdaterBackend {
-    proxy_port: Arc<dyn crate::service::profile_file::ports::SelfProxyPortSource>,
+    proxy_port: Arc<dyn SelfProxyPortSource>,
     destination_dir: PathBuf,
     /// Resolves where the agent skills a core archive ships go.
     paths: PathResolver,
@@ -62,7 +62,7 @@ impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
         paths: PathResolver,
-        proxy_port: Arc<dyn crate::service::profile_file::ports::SelfProxyPortSource>,
+        proxy_port: Arc<dyn SelfProxyPortSource>,
         bundle_metadata: BundleMetadata,
     ) -> Self {
         Self {
@@ -703,7 +703,7 @@ mod tests {
         PathResolver::with_base_dirs(root.join("config"), root.join("data"))
     }
 
-    impl crate::service::profile_file::ports::SelfProxyPortSource for ProxyPort {
+    impl SelfProxyPortSource for ProxyPort {
         fn mixed_port(&self) -> Option<u16> {
             Some(self.0.load(std::sync::atomic::Ordering::SeqCst))
         }

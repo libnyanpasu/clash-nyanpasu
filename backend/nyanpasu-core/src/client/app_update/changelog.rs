@@ -8,8 +8,10 @@
 use std::cmp::Ordering;
 
 use anyhow::{Context as _, Result, bail};
+#[cfg(test)]
 use async_trait::async_trait;
 use nyanpasu_config::application::UpdateSource;
+use nyanpasu_contracts::net::ChangelogHttp;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -41,12 +43,6 @@ pub struct AppUpdateChangelog {
     pub entries: Vec<AppUpdateChangelogEntry>,
     /// `None` when either version is a nightly build, which has no tag.
     pub compare_url: Option<String>,
-}
-
-/// Fetches a text document; the adapter owns proxies and network deadlines.
-#[async_trait]
-pub trait ChangelogHttp: Send + Sync + 'static {
-    async fn get_text(&self, url: &url::Url) -> Result<String>;
 }
 
 #[derive(Deserialize)]

@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use nyanpasu_contracts::net::DirectEgressProbe;
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -20,14 +21,6 @@ pub enum DirectEgress {
         ipv4: Option<Ipv4Addr>,
         ipv6: Option<Ipv6Addr>,
     },
-}
-
-/// Asks an echo service, past every proxy, which address a request came from.
-#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
-#[async_trait::async_trait]
-pub trait DirectEgressProbe: Send + Sync + 'static {
-    async fn ipv4(&self) -> Option<Ipv4Addr>;
-    async fn ipv6(&self) -> Option<Ipv6Addr>;
 }
 
 /// Each host resolves in one address family only, so a request to it leaves

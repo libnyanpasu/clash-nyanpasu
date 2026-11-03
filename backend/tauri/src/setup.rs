@@ -328,12 +328,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.app_data_dir().as_std_path().to_owned(),
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
+    let network = Arc::new(nyanpasu_core::net_adapters::ReqwestNetworkAdapter::new(
+        bundle_metadata,
+        Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+    ));
     let span = tracing::info_span!("build_client").entered();
     let ui_sink: Arc<dyn UiEventSink> =
         Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
         bundle_metadata,
         host_adapters: ClientHostAdapters {
+            icon_fetcher: network.clone(),
+            network_diagnostics: network,
             debug_http: {
                 let frontend = Some(debug_http_frontend(&app_handle));
                 Arc::new(move || {

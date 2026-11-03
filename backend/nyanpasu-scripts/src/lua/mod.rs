@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn test_process_honey() {
         use super::*;
-        use crate::enhance::script::runner::Runner;
+        use crate::runner::Runner;
         use serde_yaml::Mapping;
 
         let runner = LuaRunner;
@@ -108,7 +108,7 @@ mod tests {
     #[tokio::test]
     async fn logs_written_before_an_error_survive_the_failure() {
         use super::*;
-        use crate::enhance::script::runner::Runner;
+        use crate::runner::Runner;
         use nyanpasu_config::runtime::executor::StepLogLevel;
 
         let mut logs = Vec::new();
@@ -126,7 +126,7 @@ mod tests {
     #[tokio::test]
     async fn keeps_the_key_order_of_the_config() {
         use super::*;
-        use crate::enhance::script::runner::Runner;
+        use crate::runner::Runner;
 
         let config: Mapping = serde_yaml::from_str(
             "zeta: 1\nalpha: 2\ndns:\n  nameserver-policy:\n    p1: a\n    p2: b\n",
@@ -150,7 +150,7 @@ mod tests {
     #[tokio::test]
     async fn a_script_returning_a_sequence_fails() {
         use super::*;
-        use crate::enhance::script::runner::Runner;
+        use crate::runner::Runner;
 
         let error = LuaRunner
             .process_honey(Mapping::new(), "return { 1, 2 }", &mut Vec::new())
@@ -165,7 +165,7 @@ mod tests {
     #[tokio::test]
     async fn errors_name_the_script_and_carry_the_traceback() {
         use super::*;
-        use crate::enhance::script::runner::Runner;
+        use crate::runner::Runner;
 
         let script = "local function helper()\n  error('boom')\nend\nhelper()\n";
         let error = LuaRunner

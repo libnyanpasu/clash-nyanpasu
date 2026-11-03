@@ -443,7 +443,7 @@ fn convert_table(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enhance::script::create_lua_context;
+    use crate::create_lua_context;
 
     /// Runs `script` with `config` loaded from YAML and returns what it
     /// returns, as YAML text.

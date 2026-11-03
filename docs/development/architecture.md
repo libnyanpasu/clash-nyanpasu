@@ -58,8 +58,10 @@ nyanpasu-config             domain models and pure runtime executor
 
 backend/nyanpasu-platform/src/  implements core/config ports (transitional)
   profiles/                    profile filesystem and HTTP service
-  enhance/                     content, script and runtime-build adapters
+  enhance/                     content and runtime-build adapters
   changelog_http.rs            changelog HTTP adapter
+
+backend/nyanpasu-scripts/src/   JavaScript and Lua script runners over config ports
 ```
 
 `NyanpasuClient` and its actor/workflow graph live in
@@ -123,9 +125,10 @@ Rules for maintaining the separation:
 - Tests of moved code construct the client or service graph with fake adapters and
   must not need the Tauri runtime.
 - The architecture-ledger static gate covers `backend/tauri/src/`,
-  `backend/nyanpasu-core/src/` and `backend/nyanpasu-contracts/src/`
+  `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/` and
+  `backend/nyanpasu-scripts/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All three use the same explicit path-and-name allowlist; other backend library
+  All four use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

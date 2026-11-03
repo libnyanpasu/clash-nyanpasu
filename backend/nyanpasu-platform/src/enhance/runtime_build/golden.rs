@@ -15,11 +15,15 @@ use nyanpasu_config::{
     runtime::executor::{ResolvedPortBindings, known_fields},
 };
 
-use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
-use nyanpasu_core::enhance::{
-    RuntimeBuildInput, RuntimeBuilder,
-    test_support::{composition, file_config, overlay},
+use crate::enhance::FsProfileContentSource;
+use nyanpasu_core::{
+    client::application_workflow::ports::ScriptRunnerFactory,
+    enhance::{
+        RuntimeBuildInput, RuntimeBuilder,
+        test_support::{composition, file_config, overlay},
+    },
 };
+use nyanpasu_scripts::{EnhanceScriptRunner, ScriptDirs};
 
 const SUB_A: &str =
     "proxies:\n  - name: a1\n    type: ss\n    server: a.example.com\n    port: 443\n";
@@ -60,8 +64,11 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
 
 fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml::Value {
     let content = FsProfileContentSource::new(dir.to_path_buf());
-    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(dir)).unwrap();
-    let artifact = RuntimeBuilder::build(input, &content, &scripts).expect("golden build");
+    let dirs = ScriptDirs::under(dir);
+    let script_runner: Arc<ScriptRunnerFactory> =
+        Arc::new(move || Ok(Box::new(EnhanceScriptRunner::new(dirs.clone())?)));
+    let scripts = script_runner().unwrap();
+    let artifact = RuntimeBuilder::build(input, &content, scripts.as_ref()).expect("golden build");
     serde_yaml::to_value(&*artifact.final_config).unwrap()
 }
 

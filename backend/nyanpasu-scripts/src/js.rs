@@ -38,10 +38,12 @@ pub struct ScriptDirs {
 }
 
 impl ScriptDirs {
+    /// Uses the supplied module root and HTTP module cache paths.
     pub fn new(scripts: PathBuf, cache: PathBuf) -> Self {
         Self { scripts, cache }
     }
 
+    /// Places the module root and cache in separate directories under `root`.
     pub fn under(root: &Path) -> Self {
         Self {
             scripts: root.join("scripts"),

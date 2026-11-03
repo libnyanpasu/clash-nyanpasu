@@ -82,6 +82,7 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
   'backend/nyanpasu-contracts/src/',
+  'backend/nyanpasu-scripts/src/',
 ]
 
 /**

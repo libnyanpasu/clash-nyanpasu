@@ -47,11 +47,14 @@ backend/tauri/src/
           | constructs and injects dependencies
           v
 backend/nyanpasu-core/src/
-  client/                  NyanpasuClient, typed clients and workflows
-  state/, enhance/         configuration transactions and runtime building
+  client/                  NyanpasuClient, typed clients, workflows and artifact conversion
+  state/                   configuration transactions
   actor_v2/, clash/        core control and API streams
   logs/, geo/, traffic/    log sessions, geodata and traffic accounting
   service/, utils/         consumed ports, services and shared utilities
+          |
+          v
+nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           |
           v
 nyanpasu-config             domain models and pure runtime executor
@@ -125,10 +128,10 @@ Rules for maintaining the separation:
 - Tests of moved code construct the client or service graph with fake adapters and
   must not need the Tauri runtime.
 - The architecture-ledger static gate covers `backend/tauri/src/`,
-  `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/` and
-  `backend/nyanpasu-scripts/src/`
+  `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
+  `backend/nyanpasu-scripts/src/` and `backend/nyanpasu-profile-transform/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All four use the same explicit path-and-name allowlist; other backend library
+  All five use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

@@ -24,6 +24,7 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 # Local Dependencies

@@ -398,14 +398,12 @@ impl NyanpasuClient {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{
-        client::runtime::{RuntimeRevisionAllocator, RuntimeSnapshotData},
-        enhance::PostProcessingOutput,
-    };
+    use crate::client::runtime::{RuntimeRevisionAllocator, RuntimeSnapshotData};
     use nyanpasu_config::{
         application::ClashCore,
         runtime::{executor::StepLogLevel, snapshot::ConfigSnapshotsBuilder, value::ConfigValue},
     };
+    use nyanpasu_profile_transform::PostProcessingOutput;
     use std::sync::Arc;
 
     pub(crate) fn inspection_data() -> RuntimeInspectionData {

@@ -22,9 +22,9 @@ use super::runtime_error::RuntimeError;
 use crate::{
     actor_v2::api::ApiError,
     corrupt,
-    enhance::PostProcessingOutput,
     state::profiles::{ErrorPath, ProfilesError},
 };
+use nyanpasu_profile_transform::PostProcessingOutput;
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";

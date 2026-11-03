@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use crate::enhance::FsProfileContentSource;
 use async_trait::async_trait;
-use nyanpasu_core::enhance::{
+use nyanpasu_profile_transform::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
 };
 use snafu::ResultExt;
@@ -16,10 +16,10 @@ use nyanpasu_core::{
             inputs,
             ports::{RuntimeBuildPort, ScriptRunnerFactory},
         },
+        artifact_snapshot::runtime_snapshot_data_from_artifact,
         runtime,
         runtime::PublishRuntimeError,
     },
-    enhance::runtime_snapshot_data_from_artifact,
 };
 
 pub type CoreSpecResolver = dyn Fn(

@@ -18,7 +18,6 @@ use nyanpasu_core::{
         effects::error::EffectsError,
         system_proxy::ports::OsProxyError,
     },
-    enhance::PostProcessingOutput,
     state::{
         config_error::ConfigError,
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
@@ -27,6 +26,7 @@ use nyanpasu_core::{
     updater::ManifestVersionLatest,
 };
 use nyanpasu_paths::PathResolver;
+use nyanpasu_profile_transform::PostProcessingOutput;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use tauri::{AppHandle, State, Webview};

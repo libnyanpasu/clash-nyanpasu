@@ -20,9 +20,9 @@ use crate::{
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
-    enhance::RuntimeBuildError,
     service::control::ServiceCommandError,
 };
+use nyanpasu_profile_transform::RuntimeBuildError;
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.

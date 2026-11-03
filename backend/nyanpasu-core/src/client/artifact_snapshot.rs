@@ -11,16 +11,13 @@ use nyanpasu_config::{
         snapshot::SnapshotNodeKey,
     },
 };
+use nyanpasu_profile_transform::{
+    ConfigNotMappingSnafu, LogSpan, Logs, PostProcessingOutput, RuntimeBuildError,
+    SerializeFinalConfigSnafu, builtin_transforms_for,
+};
 use snafu::{ResultExt, ensure};
 
-use crate::enhance::{
-    ConfigNotMappingSnafu, RuntimeBuildError, SerializeFinalConfigSnafu, builtin_transforms_for,
-};
-
-use crate::enhance::{Logs, PostProcessingOutput};
-
-fn span(level: StepLogLevel) -> crate::enhance::utils::LogSpan {
-    use crate::enhance::utils::LogSpan;
+fn span(level: StepLogLevel) -> LogSpan {
     match level {
         StepLogLevel::Log => LogSpan::Log,
         StepLogLevel::Info => LogSpan::Info,
@@ -147,13 +144,17 @@ mod tests {
     #[test]
     fn maps_scoped_global_and_builtin_logs_to_legacy_layout() {
         let mut profiles = Profiles::default();
-        profiles.append_item(crate::enhance::test_support::file_config(
+        profiles.append_item(nyanpasu_profile_transform::test_support::file_config(
             "host",
             "h.yaml",
             &["scr1"],
         ));
-        profiles.append_item(crate::enhance::test_support::overlay("scr1", "s.yaml"));
-        profiles.append_item(crate::enhance::test_support::overlay("gfix", "g.yaml"));
+        profiles.append_item(nyanpasu_profile_transform::test_support::overlay(
+            "scr1", "s.yaml",
+        ));
+        profiles.append_item(nyanpasu_profile_transform::test_support::overlay(
+            "gfix", "g.yaml",
+        ));
         profiles.global_transforms = vec![ProfileId("gfix".into())];
 
         let host = ProfileId("host".into());

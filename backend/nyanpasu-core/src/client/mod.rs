@@ -128,7 +128,7 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub direct_egress: Arc<dyn DirectEgressProbe>,
-    pub geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+    pub geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
@@ -177,7 +177,9 @@ pub enum SetupError {
     #[snafu(display("failed to start proxies"))]
     StartProxies { source: crate::proxies::Error },
     #[snafu(display("failed to start geo index"))]
-    StartGeoIndex { source: crate::geo::SpawnError },
+    StartGeoIndex {
+        source: nyanpasu_observers::geo::SpawnError,
+    },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -273,7 +275,7 @@ struct NyanpasuClientInner {
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
-    _geo_index: crate::geo::GeoIndexClient,
+    _geo_index: nyanpasu_observers::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
@@ -410,7 +412,7 @@ impl NyanpasuClient {
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
-        geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+        geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
@@ -596,8 +598,8 @@ impl NyanpasuClient {
             crate::proxies::ProxiesClient::spawn(core_v2.clone(), shutdown.child_token(), &tasks)
                 .await
                 .context(StartProxiesSnafu)?;
-        let geo_index = crate::geo::GeoIndexClient::spawn(
-            crate::geo::GeoIndexArgs {
+        let geo_index = nyanpasu_observers::geo::GeoIndexClient::spawn(
+            nyanpasu_observers::geo::GeoIndexArgs {
                 source: geo_index,
                 mode_source: Arc::new(geo_mode::CoreModeSource::new(core_v2.clone())),
             },
@@ -1726,7 +1728,7 @@ pub(crate) mod tests {
             clash_config,
             Arc::new(NoopSystemDnsCache),
             Arc::new(MockDirectEgressProbe::new()),
-            Arc::new(crate::geo::NoopCountryIndexSource),
+            Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await;
@@ -2442,7 +2444,7 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             direct_egress: Arc::new(MockDirectEgressProbe::new()),
-            geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
+            geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(crate::client::core_version::MockCoreVersionReader::new()),

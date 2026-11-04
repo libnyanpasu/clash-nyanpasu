@@ -7113,6 +7113,7 @@ dependencies = [
  "async-trait",
  "mockall",
  "nyanpasu-config",
+ "nyanpasu-contracts",
  "nyanpasu-geodata",
  "nyanpasu-owner-support",
  "nyanpasu-traffic",

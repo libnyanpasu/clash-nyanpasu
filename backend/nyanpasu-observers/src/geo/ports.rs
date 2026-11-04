@@ -53,6 +53,7 @@ pub struct IndexKey {
     pub sha256: [u8; 32],
 }
 
+/// The result of loading a database relative to the currently published index.
 pub enum Loaded {
     /// The database still has the content of the current index.
     Unchanged,
@@ -64,8 +65,9 @@ pub enum Loaded {
     },
 }
 
+/// A database read, index build, or watch failure from the injected source.
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(super)))]
+#[snafu(visibility(pub))]
 pub enum GeoIndexError {
     #[snafu(display("could not list the core's home"))]
     ListHome { source: std::io::Error },
@@ -93,6 +95,7 @@ impl OnChange {
     }
 }
 
+/// Loads the country index and reports database writes to its serial owner.
 #[cfg_attr(test, mockall::automock)]
 pub trait CountryIndexSource: Send + Sync + 'static {
     /// Blocking: reads and hashes the database, then reopens or builds its index.

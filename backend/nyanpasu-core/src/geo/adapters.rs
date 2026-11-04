@@ -10,13 +10,12 @@ use std::{
 use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use nyanpasu_contracts::BoxedCause;
 use nyanpasu_geodata::{IpIndex, MihomoGeoFiles, read_source};
-use sha2::{Digest, Sha256};
-use snafu::ResultExt as _;
-
-use super::ports::{
+use nyanpasu_observers::geo::{
     CountryIndexSource, GeoIndexError, GeodataMode, IndexDatabaseSnafu, IndexKey, ListHomeSnafu,
     Loaded, OnChange, ReadDatabaseSnafu, WatchHomeSnafu,
 };
+use sha2::{Digest, Sha256};
+use snafu::ResultExt as _;
 
 /// The names the core resolves its country database from, compared ignoring ASCII case.
 const COUNTRY_DATABASES: [&str; 4] = ["Country.mmdb", "geoip.db", "geoip.metadb", "GeoIP.dat"];
@@ -206,8 +205,9 @@ fn open_image(image: &Path) -> io::Result<File> {
 mod tests {
     use std::{error::Error as _, net::IpAddr};
 
+    use nyanpasu_observers::geo::fixtures::geoip_dat;
+
     use super::*;
-    use crate::geo::fixtures::geoip_dat;
 
     #[test]
     fn watch_home_error_preserves_display_and_source() {

@@ -1,12 +1,10 @@
 //! Follows the running core's database mode for the country index owner.
 use std::time::Duration;
 
+use nyanpasu_observers::geo::{GeodataMode, ModeReporter, ModeSource};
 use tokio::task::JoinHandle;
 
-use crate::{
-    actor_v2::CoreClient,
-    geo::{GeodataMode, ModeReporter, ModeSource},
-};
+use crate::actor_v2::CoreClient;
 
 /// How long to wait before asking a core that did not answer again.
 const RETRY: Duration = Duration::from_secs(1);

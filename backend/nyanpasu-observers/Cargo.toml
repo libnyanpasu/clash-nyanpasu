@@ -10,6 +10,7 @@ authors.workspace = true
 test-support = []
 
 [dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', default-features = false }
 nyanpasu-tsdb = { path = '../nyanpasu-tsdb', default-features = false }
 nyanpasu-geodata = { path = '../nyanpasu-geodata', default-features = false }

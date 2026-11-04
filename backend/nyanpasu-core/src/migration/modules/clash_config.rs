@@ -1,9 +1,12 @@
 use super::super::{
     Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator,
-    fs::{read_document, write_document},
+    fs::read_document,
 };
-use crate::format::{Inspected, StampedDocument, StampedYamlFormat};
 use nyanpasu_config::clash::config::ClashConfig;
+use nyanpasu_persistence::{
+    format::{Inspected, StampedDocument, StampedYamlFormat},
+    write,
+};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml_ng::{Mapping, Value};
@@ -17,7 +20,7 @@ pub enum Error {
         source: super::super::MigrationCheckError,
     },
     #[snafu(context(false), display("failed to write migration output"))]
-    WriteOutput { source: super::super::fs::Error },
+    WriteOutput { source: write::Error },
     #[snafu(display("migration document is missing: {}", path.display()))]
     FindDocument { path: std::path::PathBuf },
     #[snafu(display("expected mapping in {field}"))]
@@ -86,9 +89,11 @@ pub(in crate::migration) fn read_typed(path: &Path) -> Result<ClashConfig, Migra
         source,
     })?;
     let (revision, mut payload) =
-        match crate::format::inspect(&raw).map_err(|source| MigrationCheckError::Stamp {
-            path: path.to_path_buf(),
-            source,
+        match nyanpasu_persistence::format::inspect(&raw).map_err(|source| {
+            MigrationCheckError::Stamp {
+                path: path.to_path_buf(),
+                source,
+            }
         })? {
             Inspected::Unstamped(payload) => (UNSTAMPED_CEILING, payload),
             Inspected::Stamped { stamp, payload } => (stamp.schema_revision, payload),
@@ -152,7 +157,7 @@ impl MigrationStep for MigrateManageableGuardFields {
                 .context(FindDocumentSnafu { path: &path })?;
             let mut payload = file.payload;
             manage_guard_fields(&mut payload)?;
-            write_document(
+            write::write_document(
                 &path,
                 ClashConfigDocument::DOCUMENT,
                 self.revision(),
@@ -243,7 +248,7 @@ impl MigrationStep for MigrateTunOverrides {
                 .context(FindDocumentSnafu { path: &path })?;
             let mut payload = file.payload;
             add_tun_overrides(&mut payload);
-            write_document(
+            write::write_document(
                 &path,
                 ClashConfigDocument::DOCUMENT,
                 self.revision(),
@@ -307,7 +312,7 @@ impl MigrationStep for MigrateTunMips {
                 .context(FindDocumentSnafu { path: &path })?;
             let mut payload = file.payload;
             add_tun_mips(&mut payload);
-            write_document(
+            write::write_document(
                 &path,
                 ClashConfigDocument::DOCUMENT,
                 self.revision(),

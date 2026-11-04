@@ -1,4 +1,5 @@
 use super::super::{Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck};
+use nyanpasu_persistence::write;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml_ng::{Mapping, Value};
@@ -16,7 +17,7 @@ pub enum Error {
     #[snafu(context(false), display("failed to serialize YAML"))]
     SerializeYaml { source: serde_yaml_ng::Error },
     #[snafu(context(false), display("failed to write migration output"))]
-    WriteOutput { source: super::super::fs::Error },
+    WriteOutput { source: write::Error },
     #[snafu(display("network_statistic_widget is not in the nested form"))]
     FlattenWidget,
     #[snafu(display("language is already canonical"))]
@@ -113,7 +114,7 @@ impl MigrationStep for MigrateLanguageOption {
             let mut config: Mapping = serde_yaml_ng::from_str(&config).context(ParseYamlSnafu)?;
             config.insert("language".into(), Value::from("zh-CN"));
             let config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, config.as_bytes())?;
+            write::atomic_write(&config_path, config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -165,7 +166,7 @@ impl MigrationStep for MigrateThemeSetting {
             }
             config.remove("theme_setting");
             let new_config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -188,7 +189,7 @@ impl MigrationStep for MigrateThemeSetting {
                 config.remove("theme_color");
             }
             let new_config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -235,7 +236,7 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
                 .context(FlattenWidgetSnafu)?;
             config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), flattened);
             let new_config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -258,7 +259,7 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
             };
             config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), expanded);
             let new_config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)
@@ -305,7 +306,7 @@ impl MigrationStep for MigrateLanguageCase {
                 .context(CanonicalizeLanguageSnafu)?;
             config.insert("language".into(), Value::String(canonical.to_string()));
             let new_config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
             Ok(())
         })()
         .map_err(Into::into)

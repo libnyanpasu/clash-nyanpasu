@@ -7,10 +7,11 @@ use super::{
     application::ApplicationFormat,
     clash_config::{self, ClashConfigFormat},
 };
-use crate::{format::Format as _, utils::yaml};
+use crate::utils::yaml;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
+use nyanpasu_persistence::{format::Format as _, write};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
@@ -27,7 +28,7 @@ pub enum Error {
         source: super::super::MigrationCheckError,
     },
     #[snafu(context(false), display("failed to write migration output"))]
-    WriteOutput { source: super::super::fs::Error },
+    WriteOutput { source: write::Error },
     #[snafu(context(false), display("failed to convert legacy config"))]
     ConvertLegacy {
         source: super::super::legacy_schema::Error,
@@ -208,8 +209,7 @@ impl MigrationStep for RepairClashConfigPath {
             };
 
             let clash_yaml = serialize_clash(&clash_config)?;
-            crate::migration::fs::atomic_write(&ctx.clash_config_path(), clash_yaml.as_bytes())
-                .map_err(Into::into)
+            write::atomic_write(&ctx.clash_config_path(), clash_yaml.as_bytes()).map_err(Into::into)
         })()
         .map_err(Into::into)
     }
@@ -503,7 +503,7 @@ fn write_typed_files(
     let mut written = Vec::new();
 
     for (_name, path, contents) in outputs {
-        if let Err(error) = crate::migration::fs::atomic_write(&path, contents) {
+        if let Err(error) = write::atomic_write(&path, contents) {
             for created in written.iter().rev() {
                 let _ = std::fs::remove_file(created);
             }
@@ -876,7 +876,7 @@ mod tests {
             write_typed_files(&ctx, "app: true\n", "session: true\n", "clash: true\n").unwrap_err();
 
         assert!(
-            matches!(err, Error::WriteOutput { source: crate::migration::fs::Error::WriteFile { path, .. } } if path == ctx.session_state_path())
+            matches!(err, Error::WriteOutput { source: write::Error::WriteFile { path, .. } } if path == ctx.session_state_path())
         );
         assert!(
             !ctx.application_config_path().exists(),

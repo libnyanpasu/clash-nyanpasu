@@ -2,7 +2,6 @@
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core::{
     client::{NyanpasuClient, core_version::CoreVersionReader},
-    format::Format,
     logs::{CoreLogExport, CoreLogStore, RedbCoreLogStore},
 };
 use nyanpasu_diagnose::{
@@ -11,6 +10,7 @@ use nyanpasu_diagnose::{
     report::{CoreInfo, PageCapabilities, Report},
 };
 use nyanpasu_paths::PathResolver;
+use nyanpasu_persistence::format::Format;
 use std::{io::Write, process::Stdio, time::Duration};
 
 fn home() -> Option<String> {

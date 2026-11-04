@@ -756,7 +756,7 @@ mod tests {
             .expect("set_valid_fields should commit");
 
         let raw = std::fs::read_to_string(temp_profiles_path(&dir)).unwrap();
-        let inspected = crate::format::inspect(&raw).unwrap();
+        let inspected = nyanpasu_persistence::format::inspect(&raw).unwrap();
         assert_eq!(
             inspected.stamp().map(|stamp| stamp.schema_revision),
             Some(4),

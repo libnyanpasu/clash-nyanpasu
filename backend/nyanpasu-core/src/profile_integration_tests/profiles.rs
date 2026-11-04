@@ -38,6 +38,7 @@ use nyanpasu_contracts::{
     },
 };
 use nyanpasu_net::{device_headers::DeviceHeaders, subscription_http::SubscriptionHttpFetcher};
+use nyanpasu_persistence::write;
 use nyanpasu_profile_io::fs_service::ProfileFileService;
 use std::sync::{
     Arc,
@@ -883,7 +884,7 @@ async fn dangling_current_is_persisted_without_removing_global_transforms() {
         client.snapshot().global_transforms,
         profiles.global_transforms
     );
-    use crate::format::Format as _;
+    use nyanpasu_persistence::format::Format as _;
     let saved: Profiles = ProfilesFormat::default()
         .deserialize(std::fs::read(paths.profiles_path()).unwrap().as_slice())
         .unwrap();
@@ -910,7 +911,7 @@ async fn legacy_dangling_current_is_repaired_before_migration_validation() {
         paths.create_base_dirs().unwrap();
         let legacy = "current: [missing]\nchain: []\nitems:\n  - {uid: cfg, type: local, name: CFG, file: cfg.yaml}\n";
         if let Some(revision) = revision {
-            crate::migration::fs::write_document(
+            write::write_document(
                 paths.profiles_path().as_std_path(),
                 "profiles",
                 revision,
@@ -933,7 +934,7 @@ async fn legacy_dangling_current_is_repaired_before_migration_validation() {
                 .items
                 .contains_key(&ProfileId("cfg".into()))
         );
-        use crate::format::Format as _;
+        use nyanpasu_persistence::format::Format as _;
         let saved: Profiles = ProfilesFormat::default()
             .deserialize(std::fs::read(paths.profiles_path()).unwrap().as_slice())
             .unwrap();

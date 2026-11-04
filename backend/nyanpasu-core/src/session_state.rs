@@ -8,6 +8,7 @@ use std::{
 };
 
 use nyanpasu_config::state::PersistentState;
+use nyanpasu_persistence::write;
 use nyanpasu_utils::io::{IoFailure, classify};
 use snafu::{ResultExt as _, Snafu};
 
@@ -22,7 +23,7 @@ pub enum Error {
     #[snafu(display("failed to serialize default session state"))]
     SerializeDefault { source: serde_yaml_ng::Error },
     #[snafu(display("failed to write default session state"))]
-    WriteDefault { source: super::migration::fs::Error },
+    WriteDefault { source: write::Error },
 }
 
 pub fn read(path: &Path) -> Result<Option<PersistentState>, Error> {
@@ -67,7 +68,7 @@ fn reset(path: &Path, error: &(dyn std::error::Error + 'static)) -> Result<Persi
     nyanpasu_persistence::preserve(path, error).context(PreserveStateSnafu)?;
     let state = PersistentState::default();
     let bytes = serde_yaml_ng::to_string(&state).context(SerializeDefaultSnafu)?;
-    super::migration::fs::atomic_write(path, bytes.as_bytes()).context(WriteDefaultSnafu)?;
+    write::atomic_write(path, bytes.as_bytes()).context(WriteDefaultSnafu)?;
     Ok(state)
 }
 

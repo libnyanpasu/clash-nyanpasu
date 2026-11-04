@@ -2,6 +2,7 @@ use super::super::{
     Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
 };
 use crate::storage::{Storage, WebStorage};
+use nyanpasu_persistence::write;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml_ng::Mapping;
@@ -23,7 +24,7 @@ pub enum Error {
         source: super::super::MigrationCheckError,
     },
     #[snafu(context(false), display("failed to write migration output"))]
-    WriteOutput { source: super::super::fs::Error },
+    WriteOutput { source: write::Error },
     #[snafu(display("failed to open storage"))]
     OpenStorage {
         source: crate::storage::StorageOperationError,
@@ -166,7 +167,7 @@ impl MigrationStep for MigrateHotkeysToKv {
 
             config.remove(&hotkeys_key);
             let new_config = serde_yaml_ng::to_string(&config)?;
-            crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
 
             Ok(())
         })()
@@ -249,7 +250,7 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
                 ),
             );
             let serialized = serde_yaml_ng::to_string(&application)?;
-            crate::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
+            write::atomic_write(&application_path, serialized.as_bytes())?;
             tracing::info!(
                 "moved {} hotkeys from KV storage into the typed application config",
                 hotkeys.len()

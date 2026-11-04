@@ -4,7 +4,10 @@ use super::super::{
     Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator, StepCheck,
     fs,
 };
-use crate::format::{StampedDocument, StampedYamlFormat};
+use nyanpasu_persistence::{
+    format::{StampedDocument, StampedYamlFormat},
+    write,
+};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml_ng::{
@@ -29,7 +32,7 @@ pub enum Error {
         source: super::super::MigrationCheckError,
     },
     #[snafu(context(false), display("failed to write migration output"))]
-    WriteOutput { source: super::super::fs::Error },
+    WriteOutput { source: write::Error },
     #[snafu(display("migration document is missing: {}", path.display()))]
     FindDocument { path: std::path::PathBuf },
     #[snafu(context(false), display("failed to convert profile schema"))]
@@ -360,7 +363,7 @@ impl MigrationStep for MigrateProfilesRepairSchema {
                 .map_err(|errors| Error::ValidateProfiles { errors })?;
             let backup = path.with_extension("yaml.recovery.bak");
             if !backup.exists() {
-                fs::atomic_write(&backup, raw.as_bytes())?;
+                write::atomic_write(&backup, raw.as_bytes())?;
             }
             write_profiles_atomic(
                 &path,
@@ -411,7 +414,7 @@ fn run_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
 
     // R15: backup first, then transform (D3: mandatory .bak)
     let bak = path.with_extension("yaml.bak");
-    fs::atomic_write(&bak, raw.as_bytes())?;
+    write::atomic_write(&bak, raw.as_bytes())?;
 
     let migrated = migrate_clean_schema(doc)?;
 
@@ -443,7 +446,7 @@ fn rollback_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
         return Ok(());
     }
     let raw = std::fs::read(&bak).context(ReadFileSnafu { path: &bak })?;
-    fs::atomic_write(&path, &raw).map_err(Into::into)
+    write::atomic_write(&path, &raw).map_err(Into::into)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -993,7 +996,7 @@ fn write_profiles_atomic(
     prefix: Option<&str>,
     revision: u64,
 ) -> Result<(), Error> {
-    fs::write_document(path, ProfilesDocument::DOCUMENT, revision, profiles, prefix)
+    write::write_document(path, ProfilesDocument::DOCUMENT, revision, profiles, prefix)
         .map_err(Into::into)
 }
 

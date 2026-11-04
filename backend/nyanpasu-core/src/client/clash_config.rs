@@ -8,13 +8,13 @@ use camino::Utf8PathBuf;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
+use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
-    migration::modules::clash_config::ClashConfigFormat,
     state::{
         clash_config::{
             ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,

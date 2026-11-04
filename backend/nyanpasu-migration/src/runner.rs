@@ -673,11 +673,9 @@ fn introduced_in_reached(introduced_in: &Version, target: &Version) -> bool {
 mod tests {
     use super::*;
     use crate::{
-        migration::{
-            MigrationCheckError,
-            store::{ModuleState, STORE_FILE_NAME},
-        },
-        storage::RedbHotkeyStoreOpener,
+        MigrationCheckError,
+        fake_hotkey_store::FakeHotkeyStoreOpener,
+        store::{ModuleState, STORE_FILE_NAME},
     };
     use once_cell::sync::Lazy;
 
@@ -732,7 +730,11 @@ mod tests {
         Runner {
             target: TEST_VERSION.clone(),
             force,
-            ctx: Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
+            ctx: Ctx::new(
+                config_dir,
+                data_dir,
+                Arc::new(FakeHotkeyStoreOpener::default()),
+            ),
             store,
             backup: None,
         }
@@ -756,7 +758,7 @@ mod tests {
                 paths,
                 nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
                 false,
-                Arc::new(RedbHotkeyStoreOpener),
+                Arc::new(FakeHotkeyStoreOpener::default()),
             )
             .unwrap_err();
             match error {
@@ -894,166 +896,6 @@ mod tests {
         assert_eq!(runner.advice_step(&step), MigrationAdvice::Pending);
     }
 
-    fn assert_yaml_shape_eq(path: std::path::PathBuf, expected: &str) {
-        let actual_raw = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-        let actual: serde_yaml_ng::Value = serde_yaml_ng::from_str(&actual_raw).unwrap();
-        let expected: serde_yaml_ng::Value = serde_yaml_ng::from_str(expected).unwrap();
-        assert_eq!(
-            actual,
-            expected,
-            "migrated YAML shape mismatch for {}",
-            path.display()
-        );
-    }
-
-    /// Pins the supported upgrade boundary (1.6.1 -> 2.0): a real 1.6.1 config
-    /// pair must end up in the exact 2.0 shape every migration step produces.
-    /// Compares parsed structure (order-independent) rather than raw bytes so the
-    /// test tracks the data contract, not serializer key ordering.
-    #[test]
-    fn real_1_6_1_fixture_migrates_to_2_0_shape() {
-        use crate::storage::{Storage, WebStorage};
-
-        let temp = tempfile::tempdir().unwrap();
-        let config_dir = temp.path().join("config");
-        let data_dir = temp.path().join("data");
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&data_dir).unwrap();
-
-        let config_path = config_dir.join("nyanpasu-config.yaml");
-        let profiles_path = config_dir.join("profiles.yaml");
-        std::fs::write(
-            &config_path,
-            include_str!("fixtures/v1_6_1/nyanpasu-config.yaml"),
-        )
-        .unwrap();
-        std::fs::write(
-            &profiles_path,
-            include_str!("fixtures/v1_6_1/profiles.yaml"),
-        )
-        .unwrap();
-
-        let ctx = Ctx::new(
-            config_dir.clone(),
-            data_dir.clone(),
-            Arc::new(RedbHotkeyStoreOpener),
-        );
-        let mut runner =
-            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
-        runner.run_pending().unwrap();
-
-        assert_yaml_shape_eq(
-            config_path,
-            include_str!("fixtures/v2_0_expected/nyanpasu-config.yaml"),
-        );
-
-        // The script migration re-prefixes profiles.yaml; the header is part of
-        // the on-disk contract, so assert it verbatim before the comment-agnostic
-        // shape check.
-        let profiles_raw = std::fs::read_to_string(&profiles_path).unwrap();
-        assert!(
-            profiles_raw.starts_with("# Profiles Config for Clash Nyanpasu\n\n"),
-            "profiles.yaml lost its generated header prefix"
-        );
-        assert_yaml_shape_eq(
-            profiles_path,
-            include_str!("fixtures/v2_0_expected/profiles.yaml"),
-        );
-
-        // Each module advanced to the head of its step list.
-        assert_eq!(runner.store.module_state("profiles").applied_revision, 4);
-        assert_eq!(runner.store.module_state("app_config").applied_revision, 4);
-        assert_eq!(runner.store.module_state("storage").applied_revision, 2);
-        assert_eq!(
-            runner.store.module_state("typed_config").applied_revision,
-            2
-        );
-        assert_eq!(
-            runner.store.app.last_succeeded,
-            Some(Version::parse("2.0.0").unwrap())
-        );
-
-        // Hotkeys left the legacy config file and ended up in the typed
-        // application config, with nothing stranded in KV storage.
-        let storage = Storage::try_new(&data_dir.join(nyanpasu_paths::STORAGE_DB)).unwrap();
-        let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap().value;
-        assert_eq!(hotkeys, None);
-
-        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
-            &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            application.hotkeys,
-            vec![
-                "clash_mode_rule,Control+Q".to_string(),
-                "toggle_system_proxy,Control+Shift+P".to_string(),
-            ],
-            "the typed application config is the single authority for hotkeys"
-        );
-        let _: nyanpasu_config::state::PersistentState = serde_yaml_ng::from_str(
-            &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
-        )
-        .unwrap();
-        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml_ng::from_str(
-            &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
-        )
-        .unwrap();
-    }
-
-    /// `typed_config` splits the legacy file while `hotkeys` is still in it, so
-    /// both it and `storage` end up with an opinion about the list. The
-    /// key-value store is the one the hotkey editor wrote to, so the typed
-    /// config must end the upgrade holding exactly what `hotkeys_to_kv` parked
-    /// there.
-    #[test]
-    fn full_chain_keeps_the_key_value_hotkeys() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_dir = temp.path().join("config");
-        let data_dir = temp.path().join("data");
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&data_dir).unwrap();
-
-        let legacy_raw = include_str!("fixtures/v1_6_1/nyanpasu-config.yaml");
-        std::fs::write(config_dir.join("nyanpasu-config.yaml"), legacy_raw).unwrap();
-        std::fs::write(
-            config_dir.join("profiles.yaml"),
-            include_str!("fixtures/v1_6_1/profiles.yaml"),
-        )
-        .unwrap();
-
-        // Read back out of the fixture rather than spelled out here, so the
-        // assertion tracks whatever the legacy file actually carries.
-        let legacy: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(legacy_raw).unwrap();
-        let expected: Vec<String> = legacy
-            .get(serde_yaml_ng::Value::String("hotkeys".into()))
-            .and_then(|value| value.as_sequence())
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(|value| value.as_str().map(ToString::to_string))
-                    .collect()
-            })
-            .expect("the 1.6.1 fixture carries hotkeys");
-        assert!(!expected.is_empty());
-
-        let ctx = Ctx::new(
-            config_dir.clone(),
-            data_dir,
-            Arc::new(RedbHotkeyStoreOpener),
-        );
-        let mut runner =
-            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
-        runner.run_pending().unwrap();
-
-        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
-            &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(application.hotkeys, expected);
-    }
-
     #[test]
     fn existing_store_without_typed_config_accepts_legacy_runtime_clash_baseline() {
         let temp = tempfile::tempdir().unwrap();
@@ -1099,7 +941,7 @@ mod tests {
         let ctx = Ctx::new(
             config_dir.clone(),
             data_dir,
-            Arc::new(RedbHotkeyStoreOpener),
+            Arc::new(FakeHotkeyStoreOpener::default()),
         );
         let mut runner =
             Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
@@ -1164,7 +1006,11 @@ mod tests {
         store.flush_atomic(&state_path).unwrap();
         prepare(&config_dir);
 
-        let ctx = Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener));
+        let ctx = Ctx::new(
+            config_dir,
+            data_dir,
+            Arc::new(FakeHotkeyStoreOpener::default()),
+        );
         let result = Runner::with_context(TEST_VERSION.clone(), false, ctx)
             .and_then(|mut runner| runner.run_pending());
         (result, MigrationStore::load(&state_path).unwrap())
@@ -1398,7 +1244,11 @@ mod tests {
             .flush_atomic(&config_dir.join(STORE_FILE_NAME))
             .unwrap();
 
-        let ctx = Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener));
+        let ctx = Ctx::new(
+            config_dir,
+            data_dir,
+            Arc::new(FakeHotkeyStoreOpener::default()),
+        );
         let mut runner = Runner::with_context(TEST_VERSION.clone(), true, ctx).unwrap();
         let step = registry::find_migration("profiles/null_value").unwrap();
 
@@ -1478,7 +1328,11 @@ mod tests {
             std::fs::write(config_dir.join("profiles.yaml"), profiles).unwrap();
             Self {
                 _temp: temp,
-                ctx: Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
+                ctx: Ctx::new(
+                    config_dir,
+                    data_dir,
+                    Arc::new(FakeHotkeyStoreOpener::default()),
+                ),
             }
         }
 
@@ -1848,7 +1702,7 @@ schema_revision: {revision}
         use nyanpasu_persistence::format::Format as _;
 
         let _: nyanpasu_config::application::NyanpasuAppConfig =
-            crate::migration::modules::application::ApplicationFormat::default()
+            crate::modules::application::ApplicationFormat::default()
                 .deserialize(std::fs::File::open(case.ctx.application_config_path()).unwrap())
                 .unwrap();
     }
@@ -2079,7 +1933,7 @@ tray_menu_close_behavior: hide
         use nyanpasu_persistence::format::Format as _;
 
         let _: nyanpasu_config::clash::config::ClashConfig =
-            crate::migration::modules::clash_config::ClashConfigFormat::default()
+            crate::modules::clash_config::ClashConfigFormat::default()
                 .deserialize(std::fs::File::open(case.ctx.clash_config_path()).unwrap())
                 .unwrap();
     }
@@ -2236,7 +2090,11 @@ tray_menu_close_behavior: hide
             std::fs::create_dir_all(&config_dir).unwrap();
             std::fs::create_dir_all(&data_dir).unwrap();
             Self {
-                ctx: Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
+                ctx: Ctx::new(
+                    config_dir,
+                    data_dir,
+                    Arc::new(FakeHotkeyStoreOpener::default()),
+                ),
                 _temp: temp,
             }
         }

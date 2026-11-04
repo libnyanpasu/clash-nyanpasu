@@ -1,4 +1,8 @@
 use nyanpasu_contracts::BoxedCause;
+use nyanpasu_migration::{
+    backup::StorageSnapshot,
+    modules::storage::{HotkeyStore, HotkeyStoreOpener},
+};
 use nyanpasu_utils::{
     io::IoFailure,
     redb_ext::{RedbFailure, find_failure},
@@ -10,11 +14,6 @@ use snafu::{ResultExt as _, Snafu};
 use specta::Type;
 use std::{fs, ops::Deref, path::Path, result::Result as StdResult, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender, error::RecvError};
-
-use crate::{
-    backup::StorageSnapshot,
-    migration::modules::storage::{HotkeyStore, HotkeyStoreOpener},
-};
 
 /// What a storage operation failed with. Library causes stay in `source`
 /// (skipped on the wire); they reach the user only through the copied detail.
@@ -511,7 +510,7 @@ mod tests {
 
     #[test]
     fn backup_storage_error_contract() {
-        use crate::backup::{self, BackupKind, BackupRequest, StorageSource};
+        use nyanpasu_migration::backup::{self, BackupKind, BackupRequest, StorageSource};
 
         let temp = tempfile::tempdir().unwrap();
         let root = camino::Utf8PathBuf::from_path_buf(temp.path().to_owned()).unwrap();
@@ -546,7 +545,7 @@ mod tests {
 
     #[test]
     fn migration_storage_check_error_contract() {
-        use crate::migration::MigrationCheckError;
+        use nyanpasu_migration::MigrationCheckError;
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("storage.db");
@@ -584,7 +583,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("storage.db");
         let _storage = Storage::try_new(&path).unwrap();
-        let error = crate::migration::modules::storage::Error::OpenStorage {
+        let error = nyanpasu_migration::modules::storage::Error::OpenStorage {
             source: RedbHotkeyStoreOpener.open(&path).err().unwrap(),
         };
         assert_error_contract(
@@ -601,7 +600,7 @@ mod tests {
     fn migration_save_hotkeys_error_contract() {
         let dir = tempfile::tempdir().unwrap();
         let storage = storage_with_incompatible_table(&dir);
-        let error = crate::migration::modules::storage::Error::SaveHotkeys {
+        let error = nyanpasu_migration::modules::storage::Error::SaveHotkeys {
             source: HotkeyStore::write(&storage, &["ctrl+k".to_owned()]).unwrap_err(),
         };
         assert_error_contract(
@@ -618,7 +617,7 @@ mod tests {
     fn migration_remove_hotkeys_error_contract() {
         let dir = tempfile::tempdir().unwrap();
         let storage = storage_with_incompatible_table(&dir);
-        let error = crate::migration::modules::storage::Error::RemoveHotkeys {
+        let error = nyanpasu_migration::modules::storage::Error::RemoveHotkeys {
             source: HotkeyStore::remove(&storage).unwrap_err(),
         };
         assert_error_contract(
@@ -633,7 +632,7 @@ mod tests {
 
     #[test]
     fn migration_storage_failure_report_error_contract() {
-        use crate::migration::{
+        use nyanpasu_migration::{
             MigrationCheckError,
             child_result::{Failure, FailureStage},
         };

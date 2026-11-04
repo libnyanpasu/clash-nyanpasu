@@ -1,3 +1,5 @@
+//! Configuration upgrades, session document reads and backups with injected storage ports.
+
 use nyanpasu_paths::PathResolver;
 use semver::Version;
 use std::{path::PathBuf, sync::Arc};
@@ -6,13 +8,19 @@ use nyanpasu_contracts::{BoxedCause, bundle_metadata::BundleMetadata};
 
 use self::modules::storage::HotkeyStoreOpener;
 
+pub mod backup;
 pub mod child_result;
+#[cfg(test)]
+mod fake_hotkey_store;
 pub mod fs;
 mod legacy_schema;
 pub mod modules;
 pub mod registry;
 pub mod runner;
+pub mod session_state;
 pub mod store;
+#[cfg(feature = "test-support")]
+pub mod test_support;
 mod yaml;
 
 pub use runner::Runner;

@@ -1,10 +1,6 @@
 use super::*;
-use nyanpasu_core::{
-    actor_v2::local_host,
-    client,
-    client::SetupError,
-    migration::{runner, store},
-};
+use nyanpasu_core::{actor_v2::local_host, client, client::SetupError};
+use nyanpasu_migration::{runner, store};
 
 fn paths() -> PathResolver {
     PathResolver::with_base_dirs("config".into(), "data".into())

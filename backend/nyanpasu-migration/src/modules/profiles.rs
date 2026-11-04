@@ -1090,7 +1090,7 @@ fn discard_profile_data(mut mapping: Mapping) -> Mapping {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::RedbHotkeyStoreOpener;
+    use crate::fake_hotkey_store::FakeHotkeyStoreOpener;
     use pretty_assertions::assert_str_eq;
     use std::sync::Arc;
 
@@ -1279,10 +1279,10 @@ items:
         let path = config_dir.join("profiles.yaml");
         let original = "current: [a]\nitems:\n- {uid: a, type: local, name: A, file: a.yaml}\n";
         std::fs::write(&path, original).unwrap();
-        let mut state = crate::migration::store::MigrationStore::default();
+        let mut state = crate::store::MigrationStore::default();
         state.modules.insert(
             "profiles".to_owned(),
-            crate::migration::store::ModuleState {
+            crate::store::ModuleState {
                 applied_revision: 3,
                 baseline_revision: 2,
                 stamped: false,
@@ -1290,11 +1290,11 @@ items:
         );
         state.tasks.insert(
             "profiles/clean_schema".to_owned(),
-            crate::migration::store::TaskRecord {
+            crate::store::TaskRecord {
                 module: "profiles".to_owned(),
                 revision: 3,
                 introduced_in: (*VERSION_2_0_0).clone(),
-                state: crate::migration::MigrationState::Completed,
+                state: crate::MigrationState::Completed,
                 started_at: None,
                 finished_at: None,
                 error: None,
@@ -1307,20 +1307,20 @@ items:
             config_dir.try_into().unwrap(),
             data_dir.try_into().unwrap(),
         );
-        let mut runner = crate::migration::Runner::with_paths(
+        let mut runner = crate::Runner::with_paths(
             paths,
             nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             false,
-            Arc::new(RedbHotkeyStoreOpener),
+            Arc::new(FakeHotkeyStoreOpener::default()),
         )
         .unwrap();
 
         assert_eq!(
             runner.advice_step(&REPAIR_SCHEMA),
-            crate::migration::MigrationAdvice::Pending
+            crate::MigrationAdvice::Pending
         );
         runner.run_migration(&REPAIR_SCHEMA).unwrap();
-        let state = crate::migration::store::MigrationStore::load(
+        let state = crate::store::MigrationStore::load(
             &path.parent().unwrap().join("migration-state.yaml"),
         )
         .unwrap();
@@ -1728,7 +1728,7 @@ items:
         let data = temp.path().join("data");
         std::fs::create_dir_all(&config).unwrap();
         std::fs::create_dir_all(&data).unwrap();
-        let ctx = Ctx::new(config, data, Arc::new(RedbHotkeyStoreOpener));
+        let ctx = Ctx::new(config, data, Arc::new(FakeHotkeyStoreOpener::default()));
         (temp, ctx)
     }
 

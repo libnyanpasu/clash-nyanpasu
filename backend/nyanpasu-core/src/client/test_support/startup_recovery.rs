@@ -1,6 +1,7 @@
 //! Startup recovery fixtures shared by application and filesystem integration tests.
 
-use crate::{migration::Runner, storage::RedbHotkeyStoreOpener};
+use crate::storage::RedbHotkeyStoreOpener;
+use nyanpasu_migration::Runner;
 use nyanpasu_paths::PathResolver;
 use std::{
     fs,

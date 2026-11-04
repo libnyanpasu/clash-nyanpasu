@@ -5,7 +5,6 @@ use crate::{
         mutation::ConfigDomain,
         policy::CommandClass,
     },
-    migration::modules::clash_config::ClashConfigFormat,
     state::{
         config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
         mutation::MutationCoordinator,
@@ -17,6 +16,7 @@ use crate::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedStat
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
+use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 use tokio_util::sync::CancellationToken;

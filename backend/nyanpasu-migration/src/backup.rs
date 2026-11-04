@@ -367,7 +367,6 @@ fn rfc3339(now: OffsetDateTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{Storage, WebStorage as _};
 
     // 2026-09-21T14:13:20Z
     const NOW: i64 = 1_790_000_000;
@@ -625,26 +624,6 @@ mod tests {
         assert_eq!(first.name, format!("manual-{STAMP}"));
         assert_eq!(second.name, format!("manual-{STAMP}-1"));
         assert!(first.path.join(MANIFEST_FILE).exists());
-    }
-
-    #[test]
-    fn a_live_storage_is_exported_as_a_consistent_copy() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = paths(dir.path());
-        write(&paths.profiles_path(), "profiles");
-        fs::create_dir_all(paths.app_data_dir()).unwrap();
-        let storage = Storage::try_new(paths.storage_path().as_std_path()).unwrap();
-        storage.set_item("a", &1).unwrap();
-        storage.set_item("b", &"two").unwrap();
-
-        let backup = create_backup(&manual(&paths, StorageSource::Live(&storage))).unwrap();
-
-        let exported = Storage::try_new(&backup.path.join("data").join("storage.db")).unwrap();
-        assert_eq!(exported.get_all().unwrap(), storage.get_all().unwrap());
-        assert_eq!(exported.get_all().unwrap().len(), 2);
-        storage.set_item("c", &3).unwrap();
-        assert_eq!(storage.get_all().unwrap().len(), 3);
-        assert_eq!(exported.get_all().unwrap().len(), 2);
     }
 
     #[test]

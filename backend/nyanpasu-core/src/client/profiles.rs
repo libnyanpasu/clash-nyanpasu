@@ -19,18 +19,16 @@ use nyanpasu_config::profile::{
     ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
     RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
 };
+use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    migration::modules::profiles::ProfilesFormat,
-    state::profiles::{
-        CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
-        ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
-        ReorderOp, sources::SourcesSnapshot,
-    },
+use crate::state::profiles::{
+    CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
+    ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
+    ReorderOp, sources::SourcesSnapshot,
 };
 use nyanpasu_contracts::profiles::{
     error::ProfileFileError,

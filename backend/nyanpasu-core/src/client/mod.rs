@@ -8,6 +8,13 @@ use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
     net::{ChangelogHttp, DirectEgressProbe, NetworkDiagnostics, ProbeSources, StunServerTest},
 };
+use nyanpasu_migration::{
+    backup,
+    backup::{
+        BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
+        StorageSource,
+    },
+};
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
@@ -60,11 +67,6 @@ use crate::{
         CoreClient as CoreClientV2, CoreStatusProjection,
         facade::{ReconcileReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
-    },
-    backup,
-    backup::{
-        BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
-        StorageSource,
     },
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
@@ -1564,7 +1566,7 @@ pub(crate) mod tests {
         use nyanpasu_persistence::format::Format as _;
 
         let mut content = Vec::new();
-        crate::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_migration::modules::application::ApplicationFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -1670,7 +1672,7 @@ pub(crate) mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let mut manager = crate::state::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
-            crate::migration::modules::application::ApplicationFormat,
+            nyanpasu_migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()

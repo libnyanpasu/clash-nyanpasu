@@ -7,7 +7,7 @@ use super::{
     application::ApplicationFormat,
     clash_config::{self, ClashConfigFormat},
 };
-use crate::migration::yaml;
+use crate::yaml;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
@@ -521,7 +521,7 @@ fn current_revision() -> u64 {
 mod tests {
     use super::*;
     use crate::{
-        migration::legacy_schema::WindowState as LegacyWindowState, storage::RedbHotkeyStoreOpener,
+        fake_hotkey_store::FakeHotkeyStoreOpener, legacy_schema::WindowState as LegacyWindowState,
     };
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
     use std::sync::Arc;
@@ -533,7 +533,11 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
         (
-            Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
+            Ctx::new(
+                config_dir,
+                data_dir,
+                Arc::new(FakeHotkeyStoreOpener::default()),
+            ),
             temp,
         )
     }

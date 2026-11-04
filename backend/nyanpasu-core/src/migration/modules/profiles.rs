@@ -1090,7 +1090,9 @@ fn discard_profile_data(mut mapping: Mapping) -> Mapping {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::RedbHotkeyStoreOpener;
     use pretty_assertions::assert_str_eq;
+    use std::sync::Arc;
 
     const ORIGINAL_SAMPLE: &str = r#"current:
 - rIWXPHuafvEM
@@ -1301,11 +1303,15 @@ items:
         state
             .flush_atomic(&config_dir.join("migration-state.yaml"))
             .unwrap();
-        let paths = crate::utils::test_support::test_paths(config_dir, data_dir);
+        let paths = nyanpasu_paths::PathResolver::with_base_dirs(
+            config_dir.try_into().unwrap(),
+            data_dir.try_into().unwrap(),
+        );
         let mut runner = crate::migration::Runner::with_paths(
             paths,
             nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             false,
+            Arc::new(RedbHotkeyStoreOpener),
         )
         .unwrap();
 
@@ -1722,7 +1728,7 @@ items:
         let data = temp.path().join("data");
         std::fs::create_dir_all(&config).unwrap();
         std::fs::create_dir_all(&data).unwrap();
-        let ctx = Ctx::new(config, data);
+        let ctx = Ctx::new(config, data, Arc::new(RedbHotkeyStoreOpener));
         (temp, ctx)
     }
 

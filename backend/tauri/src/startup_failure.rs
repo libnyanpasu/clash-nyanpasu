@@ -54,7 +54,13 @@ impl StartupFailure {
         use setup::Error;
         let (kind, path) = match error {
             Error::PrepareMigrations { source } | Error::RunMigrations { source } => {
-                let report = Failure::from_error(source, FailureStage::Migration, paths, true);
+                let report = Failure::from_error(
+                    source,
+                    FailureStage::Migration,
+                    paths,
+                    true,
+                    nyanpasu_core::corrupt::error_io(source),
+                );
                 let mut failure = Self::from_migration(&report);
                 failure.detail = snafu::Report::from_error(error).to_string();
                 return failure;

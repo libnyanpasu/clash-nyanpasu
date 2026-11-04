@@ -2,6 +2,7 @@
 use std::path::{Path, PathBuf};
 
 use nyanpasu_persistence::write;
+use nyanpasu_utils::io::IoFailure;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
@@ -77,6 +78,7 @@ impl Failure {
         stage: FailureStage,
         paths: &nyanpasu_paths::PathResolver,
         backup_available: bool,
+        io_failure: Option<IoFailure>,
     ) -> Self {
         let mut chain = Vec::new();
         let mut revision = None;
@@ -199,7 +201,7 @@ impl Failure {
             revision,
             chain,
             backup_available,
-            io_failure: crate::corrupt::error_io(error),
+            io_failure,
         }
     }
 

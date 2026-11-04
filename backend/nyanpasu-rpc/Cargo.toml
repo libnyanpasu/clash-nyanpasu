@@ -8,8 +8,11 @@ authors.workspace = true
 description = 'Transport-neutral RPC registry, event bus and shared commands over NyanpasuClient'
 
 [features]
-# The WebUI transport: an axum router over the registry and the event bus.
-http = ['dep:axum', 'dep:futures']
+# The WebUI transport: an axum router over the registry and the event bus,
+# and the credentialed loopback listener that serves it.
+http = ['dep:axum', 'dep:futures', 'dep:url']
+# The local-socket server a headless shell binds for the CLI.
+local-server = ['nyanpasu-rpc-protocol/frame-io']
 
 [dependencies]
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol' }
@@ -30,16 +33,22 @@ serde_yaml_ng = { workspace = true }
 snafu = { workspace = true }
 specta = { version = '^2.0.0-rc.25', features = ['derive', 'function'] }
 tokio = { workspace = true }
+tokio-util = { version = '0.7', features = ['rt'] }
 tracing = { workspace = true }
 uuid = '1.7.0'
 axum = { version = '0.8', optional = true }
 futures = { version = '0.3', optional = true }
+url = { version = '2', optional = true }
 
 [dev-dependencies]
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
   'test-support'
 ] }
 clash-api = { workspace = true }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', features = [
+  'local-client'
+] }
+reqwest = { workspace = true }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 tempfile = '3.9.0'
 tower = { version = '0.5', features = ['util'] }

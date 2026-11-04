@@ -119,6 +119,56 @@ pub fn body_len(header: [u8; HEADER_LEN]) -> Result<usize, FrameError> {
     Ok(len)
 }
 
+/// Reads one frame body, or `None` when the stream ends cleanly between
+/// frames.
+///
+/// # Errors
+///
+/// Fails on IO errors, a stream that ends inside a frame, and a header
+/// announcing more than [`MAX_FRAME_LEN`] bytes; the caller must then drop
+/// the connection.
+#[cfg(feature = "frame-io")]
+pub async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, FrameError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt as _;
+
+    let mut header = [0; HEADER_LEN];
+    let mut filled = 0;
+    while filled < HEADER_LEN {
+        let read = reader.read(&mut header[filled..]).await.context(IoSnafu)?;
+        if read == 0 {
+            if filled == 0 {
+                return Ok(None);
+            }
+            return Err(FrameError::Io {
+                source: std::io::ErrorKind::UnexpectedEof.into(),
+            });
+        }
+        filled += read;
+    }
+    let mut body = vec![0; body_len(header)?];
+    reader.read_exact(&mut body).await.context(IoSnafu)?;
+    Ok(Some(body))
+}
+
+/// Writes one encoded frame, as [`encode`] returns it, and flushes it.
+///
+/// # Errors
+///
+/// Fails on IO errors.
+#[cfg(feature = "frame-io")]
+pub async fn write_frame<W>(writer: &mut W, frame: &[u8]) -> Result<(), FrameError>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::AsyncWriteExt as _;
+
+    writer.write_all(frame).await.context(IoSnafu)?;
+    writer.flush().await.context(IoSnafu)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

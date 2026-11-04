@@ -13,12 +13,16 @@ use axum::{
     routing::{get, post},
 };
 use futures::{StreamExt as _, stream};
-use nyanpasu_rpc_protocol::{EventName, RpcError, RpcOwner, RpcTarget};
+use nyanpasu_rpc_protocol::{EventName, RpcError, RpcErrorKind, RpcOwner, RpcTarget};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::{UnifiedRpc, application_error};
+
+mod listener;
+
+pub use listener::HttpListener;
 
 /// The browser session cookie that identifies an HTTP owner.
 pub const SESSION_COOKIE: &str = "nyanpasu_http_session";
@@ -69,10 +73,25 @@ async fn http_call(
     // use an anonymous owner. The listener authenticates every request before dispatch.
     let owner =
         session_owner(&headers).unwrap_or_else(|| RpcOwner::http_session(uuid::Uuid::new_v4()));
-    rpc.call(RpcTarget::Http, &request.method, owner, request.params)
-        .await
-        .map(Json)
-        .map_err(error_response)
+    // The command runs on its own task so that a panic in it ends only that
+    // task and the caller still gets an answer instead of a dropped connection,
+    // as on the local socket. The task holds only the registry and finishes
+    // even if the caller leaves, so no owner-started work is cancelled.
+    let method = request.method.clone();
+    tokio::spawn(async move {
+        rpc.call(RpcTarget::Http, &request.method, owner, request.params)
+            .await
+    })
+    .await
+    .unwrap_or_else(|error| {
+        tracing::error!(%error, method, "an HTTP RPC command ended without a result");
+        Err(RpcError::new(
+            RpcErrorKind::Internal,
+            format!("command `{method}` stopped unexpectedly: {error}"),
+        ))
+    })
+    .map(Json)
+    .map_err(error_response)
 }
 
 #[derive(Deserialize)]

@@ -40,6 +40,8 @@ pub enum RpcErrorKind {
     ApplicationError,
     /// A local-socket frame was malformed or spoke another protocol version.
     InvalidRequest,
+    /// The command panicked or was aborted before it produced a result.
+    Internal,
 }
 
 impl RpcErrorKind {
@@ -50,6 +52,7 @@ impl RpcErrorKind {
             Self::Unsupported => "unsupported",
             Self::ApplicationError => "application_error",
             Self::InvalidRequest => "invalid_request",
+            Self::Internal => "internal",
         }
     }
 }
@@ -96,7 +99,7 @@ impl RpcError {
             RpcErrorKind::InvalidParams | RpcErrorKind::InvalidRequest => 400,
             RpcErrorKind::UnknownMethod => 404,
             RpcErrorKind::Unsupported => 501,
-            RpcErrorKind::ApplicationError => 500,
+            RpcErrorKind::ApplicationError | RpcErrorKind::Internal => 500,
         }
     }
 }
@@ -140,6 +143,7 @@ mod tests {
             (RpcError::unknown_method("x"), 404),
             (RpcError::unsupported("x", RpcTarget::Local), 501),
             (RpcError::new(RpcErrorKind::ApplicationError, "x"), 500),
+            (RpcError::new(RpcErrorKind::Internal, "x"), 500),
         ] {
             assert_eq!(error.http_status(), status, "{error}");
         }

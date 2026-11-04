@@ -68,6 +68,23 @@ async fn shared_commands_answer_with_bare_json_or_the_error_envelope() {
 }
 
 #[tokio::test]
+async fn a_panicking_command_gets_an_internal_error_and_the_router_keeps_serving() {
+    let directory = tempfile::tempdir().unwrap();
+    let app = test_router(&directory, EventBus::new(Vec::new())).await;
+
+    let (status, error) = call(&app, r#"{"method":"panic_probe","params":{}}"#).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(error["kind"], "internal", "{error}");
+    assert!(
+        error["message"].as_str().unwrap().contains("panic_probe"),
+        "{error}"
+    );
+    let (status, profiles) = call(&app, r#"{"method":"get_profiles","params":{}}"#).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(profiles.get("items").is_some(), "{profiles}");
+}
+
+#[tokio::test]
 async fn event_streams_filter_by_name_and_resynchronize_after_lag() {
     let directory = tempfile::tempdir().unwrap();
     let events = EventBus::new(Vec::new());
@@ -160,4 +177,87 @@ async fn connection_details_send_current_and_new_frames_and_release_demand() {
     );
     drop(body);
     assert_eq!(sender.receiver_count(), 0);
+}
+
+#[tokio::test]
+async fn the_api_serves_without_frontend_assets_behind_the_credential() {
+    let directory = tempfile::tempdir().unwrap();
+    let app = test_router(&directory, EventBus::new(Vec::new())).await;
+    let listener = HttpListener::bind_loopback(0).await.unwrap();
+    let entry = listener.bootstrap_url();
+    let base = entry.split_once("/?").unwrap().0.to_owned();
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let server = tokio::spawn(listener.serve(app, shutdown.clone()));
+    let http = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let call = |cookie: Option<String>| {
+        let mut request = http
+            .post(format!("{base}/bridge/rpc"))
+            .json(&serde_json::json!({"method": "get_profiles", "params": {}}));
+        if let Some(cookie) = cookie {
+            request = request.header("cookie", cookie);
+        }
+        request.send()
+    };
+
+    assert_eq!(call(None).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    let bootstrap = http.get(&entry).send().await.unwrap();
+    assert_eq!(bootstrap.status(), StatusCode::SEE_OTHER);
+    let cookie = bootstrap
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|value| {
+            value
+                .to_str()
+                .unwrap()
+                .split(';')
+                .next()
+                .unwrap()
+                .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let answered = call(Some(cookie.clone())).await.unwrap();
+    assert_eq!(answered.status(), StatusCode::OK);
+    assert!(
+        answered
+            .json::<Value>()
+            .await
+            .unwrap()
+            .get("items")
+            .is_some()
+    );
+    // No assets: the API host has nothing else to serve.
+    let page = http
+        .get(format!("{base}/"))
+        .header("cookie", cookie.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::NOT_FOUND);
+    let rebinding = http
+        .post(format!("{base}/bridge/rpc"))
+        .header("host", "attacker.example")
+        .header("cookie", cookie.clone())
+        .json(&serde_json::json!({"method": "get_profiles"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rebinding.status(), StatusCode::FORBIDDEN);
+    let foreign = http
+        .post(format!("{base}/bridge/rpc"))
+        .header("origin", "http://attacker.example")
+        .header("cookie", cookie)
+        .json(&serde_json::json!({"method": "get_profiles"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), StatusCode::FORBIDDEN);
+
+    shutdown.cancel();
+    server.await.unwrap().unwrap();
 }

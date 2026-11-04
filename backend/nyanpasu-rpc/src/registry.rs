@@ -201,6 +201,30 @@ pub(crate) mod tests {
         Ok(true)
     }
 
+    /// Stands in for a caller's window in a declaration; transports inject
+    /// the owner they derive from the connection.
+    #[expect(dead_code, reason = "only the command declaration names it")]
+    pub(crate) struct Window;
+
+    impl Window {
+        #[expect(dead_code, reason = "only the command declaration calls it")]
+        fn label(&self) -> &str {
+            unreachable!("only the declaration names the window")
+        }
+    }
+
+    // Registered only in test binaries: a command that panics before it replies.
+    #[nyanpasu_macro::rpc(http, local)]
+    async fn panic_probe() -> Result<bool> {
+        panic!("the probe panics on purpose")
+    }
+
+    // Registered only in test binaries: reports the owner a transport derived.
+    #[nyanpasu_macro::rpc(http, local, owner)]
+    async fn owner_probe(window: Window) -> Result<String> {
+        Ok(window.label().to_owned())
+    }
+
     pub(crate) async fn test_rpc(
         directory: &tempfile::TempDir,
         events: EventBus,
@@ -317,7 +341,12 @@ pub(crate) mod tests {
             "get_runtime_yaml",
         ];
         expected.sort_unstable();
-        assert_eq!(rpc.command_names(RpcTarget::Local), expected);
+        let local = rpc
+            .command_names(RpcTarget::Local)
+            .into_iter()
+            .filter(|name| !name.ends_with("_probe"))
+            .collect::<Vec<_>>();
+        assert_eq!(local, expected);
         // Core lifecycle and the redacted YAML are new and not reviewed for the WebUI.
         let http = rpc.command_names(RpcTarget::Http);
         for name in ["reconcile_core", "stop_core", "get_runtime_yaml_redacted"] {

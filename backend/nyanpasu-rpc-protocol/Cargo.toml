@@ -7,6 +7,12 @@ license.workspace = true
 authors.workspace = true
 description = 'RPC wire contract shared by shells and their clients'
 
+[features]
+# Async reading and writing of local-socket frames over any Tokio stream.
+frame-io = ['dep:tokio']
+# The local-socket client a CLI links; it needs no application crate.
+local-client = ['frame-io']
+
 [dependencies]
 serde = { version = '1', features = ['derive'] }
 serde_json = '1'
@@ -14,3 +20,7 @@ snafu = { workspace = true }
 specta = { version = '^2.0.0-rc.25', features = ['derive'] }
 specta-typescript = '0.0.12'
 uuid = '1.7.0'
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ['test-util'] }

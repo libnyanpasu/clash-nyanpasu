@@ -5,17 +5,16 @@ use axum::{
     Router,
     body::Body,
     extract::{Request, State, WebSocketUpgrade, ws::Message as AxumMessage},
-    http::{HeaderMap, HeaderValue, Method, StatusCode},
-    middleware::{self, Next},
+    http::{HeaderMap, Method, StatusCode},
     response::{IntoResponse, Response},
 };
 use futures::{SinkExt, StreamExt};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
-use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientRequest};
 use tokio_util::sync::CancellationToken;
 
 use nyanpasu_core::client::debug_http::{DebugHttpControl, DebugHttpStatus, Error};
+use nyanpasu_rpc::http::HttpListener;
 
 /// Production assets are supplied by the composition root's Tauri adapter.
 pub trait FrontendAssets: Send + Sync + 'static {
@@ -139,34 +138,20 @@ impl Actor for HttpServerActor {
                             .frontend
                             .clone()
                             .context("HTTP frontend is unavailable")?;
-                        let listener =
-                            TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
-                        let authority = listener.local_addr()?.to_string();
-                        let access_token = uuid::Uuid::new_v4().to_string();
-                        let url = format!("http://{authority}/?access_token={access_token}");
+                        let listener = HttpListener::bind_loopback(0).await?;
+                        let url = listener.bootstrap_url();
                         let cancellation = CancellationToken::new();
                         let app = state
                             .routes
                             .build()?
-                            .fallback_service(frontend_router(frontend, cancellation.clone())?)
-                            .layer(middleware::from_fn_with_state(
-                                LocalSession {
-                                    authority,
-                                    access_token,
-                                    shutdown: cancellation.clone(),
-                                },
-                                local_session,
-                            ));
+                            .fallback_service(frontend_router(frontend, cancellation.clone())?);
                         state.generation += 1;
                         let generation = state.generation;
                         let shutdown = cancellation.clone();
                         let task = tokio::spawn(async move {
                             // Dropping serve's connection tasks alone does not
                             // stop upgraded sockets; frontend upgrades share this token.
-                            if let Err(error) = axum::serve(listener, app)
-                                .with_graceful_shutdown(shutdown.cancelled_owned())
-                                .await
-                            {
+                            if let Err(error) = listener.serve(app, shutdown).await {
                                 tracing::error!(%error, "debug HTTP server stopped");
                             }
                             let _ = myself.cast(Message::Stopped(generation));
@@ -258,83 +243,6 @@ impl Drop for HttpServerClientInner {
     fn drop(&mut self) {
         self.actor.stop(None);
     }
-}
-
-/// Reject foreign origins and DNS rebinding before allowing local RPC access.
-#[derive(Clone)]
-struct LocalSession {
-    authority: String,
-    access_token: String,
-    shutdown: CancellationToken,
-}
-
-async fn local_session(
-    State(state): State<LocalSession>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let authority = &state.authority;
-    let host = request.headers().get("host").and_then(|v| v.to_str().ok());
-    let origin = request
-        .headers()
-        .get("origin")
-        .and_then(|v| v.to_str().ok());
-    if host != Some(authority.as_str())
-        || origin.is_some_and(|o| o != format!("http://{authority}"))
-    {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    let authenticated = request
-        .headers()
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .split(';')
-        .map(str::trim)
-        .any(|c| c.strip_prefix("nyanpasu_http_access=") == Some(state.access_token.as_str()));
-    let bootstrap = request.method() == Method::GET
-        && request.uri().path() == "/"
-        && url::form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes())
-            .any(|(key, value)| key == "access_token" && value == state.access_token);
-    if bootstrap {
-        let mut response = axum::response::Redirect::to("/").into_response();
-        for cookie in [
-            format!(
-                "nyanpasu_http_access={}; HttpOnly; SameSite=Strict; Path=/",
-                state.access_token
-            ),
-            format!(
-                "nyanpasu_http_session={}; HttpOnly; SameSite=Strict; Path=/",
-                uuid::Uuid::new_v4()
-            ),
-        ] {
-            response
-                .headers_mut()
-                .append("set-cookie", cookie.parse().unwrap());
-        }
-        response
-            .headers_mut()
-            .insert("cache-control", HeaderValue::from_static("no-store"));
-        response
-            .headers_mut()
-            .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
-        return response;
-    }
-    if !authenticated {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-    let mut response = next.run(request).await;
-    response
-        .headers_mut()
-        .insert("cache-control", HeaderValue::from_static("no-store"));
-    let (parts, body) = response.into_parts();
-    Response::from_parts(
-        parts,
-        Body::from_stream(
-            body.into_data_stream()
-                .take_until(state.shutdown.cancelled_owned()),
-        ),
-    )
 }
 
 pub fn frontend_router(frontend: Frontend, shutdown: CancellationToken) -> Result<Router> {
@@ -534,6 +442,7 @@ async fn proxy(
 pub(crate) mod tests {
     use super::*;
     use axum::{body::to_bytes, http::Request as HttpRequest, routing::get};
+    use tokio::net::TcpListener;
     use tower::ServiceExt;
 
     pub(crate) fn control_factory(

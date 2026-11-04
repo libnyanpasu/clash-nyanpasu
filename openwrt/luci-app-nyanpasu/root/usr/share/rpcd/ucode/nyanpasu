@@ -1,0 +1,134 @@
+'use strict';
+
+// Publishes the ubus object `nyanpasu`: one method per command in the
+// nyanpasu-server `rpc(local)` allowlist. Each method runs
+//
+//   nyanpasu-cli call METHOD --params-file FILE
+//
+// and wraps the outcome as one of
+//
+//   { ok: true,  result: <CLI result> }                 CLI exit 0
+//   { ok: false, error: <RpcError> }                    CLI exit 1
+//   { ok: false, transport: true, error: { kind: 'transport', ... } }
+//                                                       exit 2, a signal, or
+//                                                       output that is not JSON
+//
+// The caller's `params` object is serialized to JSON and written to a file in
+// a private (0700) temporary directory. Nothing the caller sends is ever part
+// of a command line: the method name comes from the table below and the paths
+// are generated here. The ACL in acl.d/luci-app-nyanpasu.json lists the same
+// methods explicitly; keep the two in step.
+
+import { popen, open, mkdtemp, unlink, rmdir, readfile } from 'fs';
+
+const CLI = '/usr/bin/nyanpasu-cli';
+
+// The ubus methods. Each is also the nyanpasu-server command it runs.
+const COMMANDS = [
+	// read
+	'get_core_status',
+	'get_profiles',
+	'get_runtime_yaml_redacted',
+	'inspect_runtime',
+	'query_core_logs',
+	'get_core_log_status',
+
+	// write
+	'create_profile',
+	'delete_profile',
+	'replace_profile_definition',
+	'set_global_transforms',
+	'activate_profile',
+	'read_profile_file',
+	'save_profile_file',
+	'reconcile_core',
+	'stop_core',
+	'get_runtime_yaml'
+];
+
+function shellquote(s) {
+	return `'${replace(s, "'", "'\\''")}'`;
+}
+
+function transport_error(message, exit_code) {
+	return {
+		ok: false,
+		transport: true,
+		error: { kind: 'transport', message, exit_code }
+	};
+}
+
+function parse_json(text) {
+	const trimmed = trim(text);
+	if (trimmed == 'null')
+		return { value: null };
+
+	const value = json(trimmed);
+	return value == null ? null : { value };
+}
+
+function call_cli(command, params) {
+	const dir = mkdtemp('/tmp/nyanpasu-XXXXXX');
+	if (!dir)
+		return transport_error('cannot create a temporary directory');
+
+	const params_file = `${dir}/params.json`;
+	const stderr_file = `${dir}/stderr`;
+	let reply;
+
+	const params_handle = open(params_file, 'w', 0600);
+	if (!params_handle) {
+		reply = transport_error('cannot write the parameters file');
+	}
+	else {
+		params_handle.write(sprintf('%J', params ?? {}));
+		params_handle.close();
+
+		// Only constants and generated paths are interpolated here; both are quoted.
+		const pipe = popen(`${shellquote(CLI)} call ${shellquote(command)} --params-file ${shellquote(params_file)} 2>${shellquote(stderr_file)}`, 'r');
+		if (!pipe) {
+			reply = transport_error('cannot run nyanpasu-cli');
+		}
+		else {
+			const stdout = pipe.read('all');
+			const code = pipe.close();
+			const parsed = (code == 0 || code == 1) ? parse_json(stdout) : null;
+
+			if (code == 0 && parsed)
+				reply = { ok: true, result: parsed.value };
+			else if (code == 1 && parsed)
+				reply = { ok: false, error: parsed.value };
+			else {
+				const stderr = trim(readfile(stderr_file) ?? '');
+				const reason = (code == 0 || code == 1)
+					? 'nyanpasu-cli printed output that is not JSON'
+					: (stderr || `nyanpasu-cli exited with status ${code}`);
+				reply = transport_error(reason, code);
+			}
+		}
+	}
+
+	unlink(params_file);
+	unlink(stderr_file);
+	rmdir(dir);
+
+	return reply;
+}
+
+// A function per method: ucode closures share the loop variables.
+function make_method(command) {
+	return {
+		// One table argument holding the command's camelCase argument object.
+		args: { params: {} },
+		call: function(request) {
+			return call_cli(command, request.args?.params);
+		}
+	};
+}
+
+const methods = {};
+
+for (let command in COMMANDS)
+	methods[command] = make_method(command);
+
+return { nyanpasu: methods };

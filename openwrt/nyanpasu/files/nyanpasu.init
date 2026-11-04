@@ -1,0 +1,32 @@
+#!/bin/sh /etc/rc.common
+
+# procd supervises nyanpasu-server. The server owns the Mihomo core, restores
+# the last explicit start/stop intent on startup and exits when asked to; the
+# core dies with it, so there is nothing to clean up here.
+
+USE_PROCD=1
+START=99
+STOP=10
+
+PROG=/usr/bin/nyanpasu-server
+CONFIG_DIR=/etc/nyanpasu
+DATA_DIR=/usr/share/nyanpasu
+RUN_DIR=/var/run/nyanpasu
+RPC_SOCKET="$RUN_DIR/rpc.sock"
+
+start_service() {
+	mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$RUN_DIR"
+	# The socket permissions are the only transport authentication.
+	chmod 0700 "$RUN_DIR"
+
+	procd_open_instance
+	procd_set_param command "$PROG" run \
+		--config-dir "$CONFIG_DIR" \
+		--data-dir "$DATA_DIR" \
+		--rpc-socket "$RPC_SOCKET"
+	# Restart after a crash: give up after 5 failures within 3600 seconds, 5 seconds apart.
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}

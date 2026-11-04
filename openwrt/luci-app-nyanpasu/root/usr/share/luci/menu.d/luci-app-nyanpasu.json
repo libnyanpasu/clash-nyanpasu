@@ -1,0 +1,39 @@
+{
+  "admin/services/nyanpasu": {
+    "title": "Nyanpasu",
+    "order": 60,
+    "action": {
+      "type": "firstchild"
+    },
+    "depends": {
+      "acl": ["luci-app-nyanpasu"]
+    }
+  },
+
+  "admin/services/nyanpasu/overview": {
+    "title": "Overview",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "nyanpasu/overview"
+    }
+  },
+
+  "admin/services/nyanpasu/profiles": {
+    "title": "Profiles",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "nyanpasu/profiles"
+    }
+  },
+
+  "admin/services/nyanpasu/logs": {
+    "title": "Logs",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "nyanpasu/logs"
+    }
+  }
+}

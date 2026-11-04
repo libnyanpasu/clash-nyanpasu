@@ -192,12 +192,12 @@ CARGO_TARGET_DIR=/cache/target \
 CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS='-C target-feature=+aes,+sse2' \
   cargo build --release --locked -p nyanpasu-server --target x86_64-unknown-linux-musl
 # Place the Mihomo binary at <data-dir>/mihomo, then:
-nyanpasu-server spike --config-dir /cache/run/config --data-dir /cache/run/data --fresh
-nyanpasu-server spike --config-dir /cache/run/config --data-dir /cache/run/data
+nyanpasu-server run --config-dir /cache/run/config --data-dir /cache/run/data \
+  --rpc-socket /cache/run/rpc.sock
 ```
 
-`--hold` keeps run 1 alive after the core starts, for crash tests;
-`--no-scripts` skips the transforms.
+The scripted `spike` subcommand that produced the results above was replaced by
+`run`: the same loop is driven from outside through the local socket.
 
 ## POC plan, 2026-11-05
 

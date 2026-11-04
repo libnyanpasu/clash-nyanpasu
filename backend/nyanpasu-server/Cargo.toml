@@ -19,6 +19,8 @@ nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false 
 nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
+nyanpasu-rpc = { path = '../nyanpasu-rpc', features = ['local-server'] }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol' }
 nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
   'specta'
@@ -31,10 +33,15 @@ nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 anyhow = '1'
 async-trait = '0.1'
 camino = '1.1.9'
-serde = '1'
 serde_json = '1'
 snafu = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { version = '0.7', features = ['full'] }
 tracing = { workspace = true }
 tracing-subscriber = { version = '0.3', features = ['env-filter'] }
+
+[dev-dependencies]
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', features = [
+  'local-client'
+] }
+tempfile = '3.9.0'

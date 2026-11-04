@@ -107,6 +107,11 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-rpc',
     forbids: [...GUI, ...IMPLEMENTATION],
   },
+  // The headless shell composes the implementations, but never a GUI.
+  {
+    package: 'nyanpasu-server',
+    forbids: GUI,
+  },
 ]
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */

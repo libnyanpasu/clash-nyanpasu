@@ -6,9 +6,11 @@
 
 mod effects;
 mod host;
+mod intent;
 
 pub use effects::UnsupportedEffects;
 pub use host::{
-    CoreBinaryVersions, DisabledDebugHttp, NoAccelerators, NoOsProxy, NoProxyEnvironment,
-    NoServiceHost, NoWindows, TracingUiEvents,
+    BusUiEvents, CoreBinaryVersions, DisabledDebugHttp, NoAccelerators, NoOsProxy,
+    NoProxyEnvironment, NoServiceHost, NoWindows,
 };
+pub use intent::FileCoreIntent;

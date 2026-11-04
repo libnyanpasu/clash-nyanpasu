@@ -23,6 +23,8 @@ use nyanpasu_core::{
 };
 use nyanpasu_ipc::types::{ServiceStatus, StatusInfo};
 use nyanpasu_paths::PathResolver;
+use nyanpasu_rpc::EventBus;
+use nyanpasu_rpc_protocol::EventName;
 use snafu::ResultExt as _;
 
 const UNSUPPORTED: &str = "not supported by the headless host";
@@ -31,12 +33,23 @@ fn unsupported() -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, UNSUPPORTED)
 }
 
-/// Frontend state-change hints have no frontend to reach; they are traced.
-pub struct TracingUiEvents;
+/// Frontend state-change hints go to the event bus, as in the desktop shell.
+/// The local socket has no subscribers yet, so they reach only stream
+/// subscribers that attach later.
+pub struct BusUiEvents(EventBus);
 
-impl UiEventSink for TracingUiEvents {
+impl BusUiEvents {
+    pub fn new(events: EventBus) -> Self {
+        Self(events)
+    }
+}
+
+impl UiEventSink for BusUiEvents {
     fn state_changed(&self, state: StateChanged) {
-        tracing::debug!(?state, "state changed");
+        match serde_json::to_value(&state) {
+            Ok(payload) => self.0.publish(EventName::StateChanged, payload),
+            Err(error) => tracing::warn!(%error, "failed to serialize a state change"),
+        }
     }
 }
 

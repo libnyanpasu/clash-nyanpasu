@@ -455,3 +455,21 @@ test('the RPC registry may use core but no GUI or implementation crate', () => {
     [],
   )
 })
+
+test('the headless server composes implementations but links no GUI', () => {
+  for (const dependency of ['tauri', 'tauri-plugin-dialog', 'slint', 'egui']) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-server', `${dependency} v0.1.0\n`),
+      [`nyanpasu-server must not depend on ${dependency}`],
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-server',
+      ['nyanpasu-core', 'nyanpasu-net', 'nyanpasu-scripts', 'nyanpasu-rpc']
+        .map((name) => `${name} v0.1.0`)
+        .join('\n'),
+    ),
+    [],
+  )
+})

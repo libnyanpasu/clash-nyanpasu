@@ -32,11 +32,12 @@ use nyanpasu_net::{
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
+use nyanpasu_rpc::{EventBus, RpcDependencies, UnifiedRpc};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::adapters::{
-    CoreBinaryVersions, DisabledDebugHttp, NoAccelerators, NoOsProxy, NoProxyEnvironment,
-    NoServiceHost, NoWindows, TracingUiEvents, UnsupportedEffects,
+    BusUiEvents, CoreBinaryVersions, DisabledDebugHttp, FileCoreIntent, NoAccelerators, NoOsProxy,
+    NoProxyEnvironment, NoServiceHost, NoWindows, UnsupportedEffects,
 };
 
 const RESTART_BUDGET: u8 = 3;
@@ -68,9 +69,23 @@ impl Owners {
     }
 }
 
-/// A running application graph and its facade.
+/// The file the user's last run or stop request is kept in, under the config directory.
+const CORE_INTENT_FILE: &str = "core-intent";
+
+/// A running application graph, its facade and what the RPC layer needs of it.
 pub struct Server {
     client: NyanpasuClient,
+    storage: Storage,
+    paths: PathResolver,
+    events: EventBus,
+}
+
+/// What assembling the graph hands back besides the facade.
+struct Assembled {
+    client: NyanpasuClient,
+    storage: Storage,
+    paths: PathResolver,
+    events: EventBus,
 }
 
 impl Server {
@@ -85,7 +100,17 @@ impl Server {
             core: None,
         };
         match assemble(dirs, &mut owners).await {
-            Ok(client) => Ok(Self { client }),
+            Ok(Assembled {
+                client,
+                storage,
+                paths,
+                events,
+            }) => Ok(Self {
+                client,
+                storage,
+                paths,
+                events,
+            }),
             Err(error) => {
                 owners.abort().await;
                 Err(error)
@@ -95,6 +120,24 @@ impl Server {
 
     pub fn client(&self) -> &NyanpasuClient {
         &self.client
+    }
+
+    /// The registry the local socket serves. A headless shell provides no shell
+    /// capability, so a command that needs one is not registered.
+    ///
+    /// # Errors
+    /// Returns an error when two linked commands share a name.
+    pub fn rpc(&self) -> anyhow::Result<UnifiedRpc> {
+        UnifiedRpc::new(
+            RpcDependencies {
+                client: self.client.clone(),
+                storage: self.storage.clone(),
+                paths: self.paths.clone(),
+                events: self.events.clone(),
+            },
+            &[],
+        )
+        .context("build the RPC registry")
     }
 
     /// Orderly shutdown: every owner stops admitting work, then the core stops.
@@ -121,7 +164,7 @@ fn bundle_metadata() -> BundleMetadata {
     }
 }
 
-async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<NyanpasuClient> {
+async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Assembled> {
     let bundle_metadata = bundle_metadata();
     let paths = PathResolver::with_base_dirs(dirs.config_dir, dirs.data_dir);
     paths
@@ -189,7 +232,8 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Nyanp
         bundle_metadata,
         Arc::new(NoProxyEnvironment),
     ));
-    let ui_sink: Arc<dyn UiEventSink> = Arc::new(TracingUiEvents);
+    let events = EventBus::new(Vec::new());
+    let ui_sink: Arc<dyn UiEventSink> = Arc::new(BusUiEvents::new(events.clone()));
 
     let args = ClientSetupArgs {
         bundle_metadata,
@@ -197,7 +241,7 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Nyanp
         jobs,
         logging: logging(&paths, service_ipc),
         paths: paths.clone(),
-        storage,
+        storage: storage.clone(),
         runtime_paths,
         ui_sink,
         // Absent: the client then uses its unavailable updater backend.
@@ -212,8 +256,13 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Nyanp
         binary_installer: Arc::new(
             nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
         ),
-        core_intent_store: None,
-        core_versions: Arc::new(CoreBinaryVersions::new(paths)),
+        core_intent_store: Some(Arc::new(FileCoreIntent::new(
+            paths
+                .app_config_dir()
+                .join(CORE_INTENT_FILE)
+                .into_std_path_buf(),
+        ))),
+        core_versions: Arc::new(CoreBinaryVersions::new(paths.clone())),
         effects: Arc::new(UnsupportedEffects),
         window: Arc::new(NoWindows),
         accelerators: Arc::new(NoAccelerators),
@@ -222,7 +271,15 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Nyanp
         shutdown: owners.shutdown.clone(),
         tasks: owners.tasks.clone(),
     };
-    NyanpasuClient::try_new(args).await.context("build client")
+    let client = NyanpasuClient::try_new(args)
+        .await
+        .context("build client")?;
+    Ok(Assembled {
+        client,
+        storage,
+        paths,
+        events,
+    })
 }
 
 fn host_adapters(

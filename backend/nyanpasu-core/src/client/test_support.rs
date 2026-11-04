@@ -774,7 +774,7 @@ pub async fn test_client_args_with_endpoint(
         host_adapters,
         logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
         paths,
-        storage,
+        storage: Arc::new(storage),
         runtime_paths,
         ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
         app_update_backend_factory: None,

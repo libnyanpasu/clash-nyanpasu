@@ -1,8 +1,44 @@
 //! Consumer-owned ports for the traffic actor.
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
+    sync::Arc,
     time::Duration,
 };
+
+use nyanpasu_geodata::IpIndex;
+use nyanpasu_tsdb::Profile;
+use tokio::sync::watch;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+use super::{SpawnError, TrafficClient};
+use crate::clash::ws::ClashConnectionsFrame;
+
+/// Dependencies for a traffic owner whose factory supplies its storage backend.
+pub struct TrafficStartArgs {
+    pub profile: Profile,
+    pub profiles: Arc<dyn ProfileSelection>,
+    pub retention: Arc<dyn RetentionPolicy>,
+    pub clock: Arc<dyn Clock>,
+    pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    /// The country index regions are looked up in; `None` until the core's database loads.
+    pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
+    pub local_source: Arc<dyn LocalSourceLocation>,
+}
+
+/// Starts a traffic owner with the factory's storage backend and startup policy.
+#[async_trait::async_trait]
+pub trait TrafficOwnerFactory: Send + Sync {
+    /// Opens the dataset during owner startup and registers its shutdown with `tasks`.
+    ///
+    /// # Errors
+    /// Returns the owner's existing spawn failure if startup cannot complete.
+    async fn spawn(
+        self: Arc<Self>,
+        args: TrafficStartArgs,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<TrafficClient, SpawnError>;
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LocalSourceIps {

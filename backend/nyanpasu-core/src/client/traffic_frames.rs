@@ -2,17 +2,45 @@
 use std::time::Duration;
 
 use clash_api::{ConfigEnum, Connection, ConnectionNetwork};
+use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample};
 
-use super::{
-    LocalSourceIps,
-    geo::{CountryLookup, locate_destination, locate_source},
+mod geo;
+#[cfg(test)]
+mod tests;
+
+use self::geo::CountryLookup;
+use crate::{
+    clash::ws::ClashConnectionsFrame,
+    traffic::{FrameNormalizer, LocalSourceIps},
 };
-use crate::clash::ws::ClashConnectionsFrame;
+
+pub(crate) struct ClashFrameNormalizer;
+
+impl FrameNormalizer for ClashFrameNormalizer {
+    type Raw = ClashConnectionsFrame;
+
+    fn normalize(
+        &self,
+        raw: &Self::Raw,
+        wall_ms: i64,
+        mono: Duration,
+        index: Option<&IpIndex>,
+        local: LocalSourceIps,
+    ) -> Frame {
+        frame_from_snapshot(
+            raw,
+            wall_ms,
+            mono,
+            index.map(|index| index as &dyn CountryLookup),
+            local,
+        )
+    }
+}
 
 const UNKNOWN: &str = "unknown";
 
-pub(crate) fn frame_from_snapshot(
+fn frame_from_snapshot(
     frame: &ClashConnectionsFrame,
     wall_ms: i64,
     mono: Duration,
@@ -72,7 +100,7 @@ fn dimensions(
         .or_else(|| known.and_then(|m| text(m.inbound_name.as_ref())));
     let (destination_region, destination_basis) = known.map_or_else(
         || (UNKNOWN.to_owned(), None),
-        |m| locate_destination(m, connection.chains.first().map(String::as_str), index),
+        |m| geo::locate_destination(m, connection.chains.first().map(String::as_str), index),
     );
     Dimensions {
         process: process.unwrap_or(UNKNOWN).replace('\\', "/"),
@@ -97,7 +125,7 @@ fn dimensions(
         profile: None,
         source_region: known.map_or_else(
             || UNKNOWN.to_owned(),
-            |m| locate_source(m, index, local_source),
+            |m| geo::locate_source(m, index, local_source),
         ),
         destination_region,
         destination_basis,

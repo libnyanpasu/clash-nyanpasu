@@ -6,12 +6,74 @@ use std::{
 };
 
 use nyanpasu_geodata::IpIndex;
+use nyanpasu_traffic::Frame;
 use nyanpasu_tsdb::Profile;
-use tokio::sync::watch;
+use ractor::ActorRef;
+use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{SpawnError, TrafficClient};
-use crate::clash::ws::ClashConnectionsFrame;
+use super::{
+    SpawnError, TrafficClient,
+    actor::{self, Message},
+};
+
+/// Converts one raw snapshot with the index, times and local addresses sampled by the pump.
+pub trait FrameNormalizer: Send + Sync + 'static {
+    type Raw: Send + Sync + 'static;
+
+    fn normalize(
+        &self,
+        raw: &Self::Raw,
+        wall_ms: i64,
+        mono: Duration,
+        index: Option<&IpIndex>,
+        local: LocalSourceIps,
+    ) -> Frame;
+}
+
+type FeedStarter = dyn FnOnce(
+        ActorRef<Message>,
+        watch::Receiver<Option<Arc<IpIndex>>>,
+        Arc<dyn LocalSourceLocation>,
+        Arc<dyn Clock>,
+    ) -> JoinHandle<()>
+    + Send;
+
+/// A raw watch feed whose pump starts once, after the traffic owner opens its storage.
+pub struct TrafficFeed {
+    start: Box<FeedStarter>,
+}
+
+impl TrafficFeed {
+    /// Captures the feed and normalizer without spawning a task or consuming a frame.
+    pub fn new<N: FrameNormalizer>(
+        frames: watch::Receiver<Option<Arc<N::Raw>>>,
+        normalizer: Arc<N>,
+    ) -> Self {
+        Self {
+            start: Box::new(move |actor, geo, local_source, clock| {
+                tokio::spawn(actor::pump(
+                    actor,
+                    frames,
+                    geo,
+                    local_source,
+                    clock,
+                    normalizer,
+                ))
+            }),
+        }
+    }
+
+    pub(super) fn start(
+        self,
+        actor: ActorRef<Message>,
+        geo: watch::Receiver<Option<Arc<IpIndex>>>,
+        local_source: Arc<dyn LocalSourceLocation>,
+        clock: Arc<dyn Clock>,
+    ) -> JoinHandle<()> {
+        (self.start)(actor, geo, local_source, clock)
+    }
+}
 
 /// Dependencies for a traffic owner whose factory supplies its storage backend.
 pub struct TrafficStartArgs {
@@ -19,7 +81,7 @@ pub struct TrafficStartArgs {
     pub profiles: Arc<dyn ProfileSelection>,
     pub retention: Arc<dyn RetentionPolicy>,
     pub clock: Arc<dyn Clock>,
-    pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    pub frames: TrafficFeed,
     /// The country index regions are looked up in; `None` until the core's database loads.
     pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
     pub local_source: Arc<dyn LocalSourceLocation>,

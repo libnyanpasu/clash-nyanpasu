@@ -54,6 +54,7 @@ pub mod system_proxy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod traffic;
+pub(crate) mod traffic_frames;
 
 use self::{
     application::ApplicationClient,
@@ -615,7 +616,10 @@ impl NyanpasuClient {
                                 application.snapshot_handle(),
                             )),
                             clock: Arc::new(traffic::SystemClock),
-                            frames: streams.subscribe_connection_frames(),
+                            frames: crate::traffic::TrafficFeed::new(
+                                streams.subscribe_connection_frames(),
+                                Arc::new(traffic_frames::ClashFrameNormalizer),
+                            ),
                             geo: geo_index.subscribe(),
                             local_source: local_source.clone(),
                         },

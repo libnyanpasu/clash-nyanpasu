@@ -15,12 +15,10 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult}
 use std::marker::PhantomData;
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
 
-use super::{
-    geo::CountryLookup,
-    ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficStorage},
-    source::frame_from_snapshot,
+use super::ports::{
+    Clock, FrameNormalizer, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficFeed,
+    TrafficStorage,
 };
-use crate::clash::ws::ClashConnectionsFrame;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 pub(super) enum Message {
@@ -63,7 +61,7 @@ pub struct TrafficArgs<S: Storage> {
     pub profiles: Arc<dyn ProfileSelection>,
     pub retention: Arc<dyn RetentionPolicy>,
     pub clock: Arc<dyn Clock>,
-    pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    pub frames: TrafficFeed,
     /// The country index regions are looked up in; `None` until the core's database loads.
     pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
     pub local_source: Arc<dyn LocalSourceLocation>,
@@ -117,7 +115,7 @@ impl<S: Storage> Actor for TrafficActor<S> {
             profiles,
             retention,
             session,
-            pump: tokio::spawn(pump(myself, frames, geo, local_source, clock.clone())),
+            pump: frames.start(myself, geo, local_source, clock.clone()),
             clock,
         })
     }
@@ -306,12 +304,13 @@ impl<S: Storage> State<S> {
 /// Feeds the actor from the frames watch and drives the periodic flush. It
 /// awaits every call, so at most one frame is in flight and the watch coalesces
 /// the rest. Ends when the feed closes or the actor is gone.
-async fn pump(
+pub(super) async fn pump<N: FrameNormalizer>(
     actor: ActorRef<Message>,
-    mut frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    mut frames: watch::Receiver<Option<Arc<N::Raw>>>,
     geo: watch::Receiver<Option<Arc<IpIndex>>>,
     local_source: Arc<dyn LocalSourceLocation>,
     clock: Arc<dyn Clock>,
+    normalizer: Arc<N>,
 ) {
     let origin = tokio::time::Instant::now();
     let mut flush = tokio::time::interval_at(origin + FLUSH_INTERVAL, FLUSH_INTERVAL);
@@ -327,11 +326,11 @@ async fn pump(
                     Some(raw) => {
                         // The index as published when the frame converts.
                         let index = geo.borrow().clone();
-                        let frame = frame_from_snapshot(
+                        let frame = normalizer.normalize(
                             &raw,
                             clock.now_ms(),
                             origin.elapsed(),
-                            index.as_deref().map(|index| index as &dyn CountryLookup),
+                            index.as_deref(),
                             local_source.addresses(),
                         );
                         call(&actor, |reply| Message::Observe(frame, reply)).await

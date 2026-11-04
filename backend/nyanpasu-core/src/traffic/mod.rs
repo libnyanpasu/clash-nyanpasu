@@ -3,9 +3,7 @@
 //! recording.
 mod actor;
 mod client;
-mod geo;
 mod ports;
-mod source;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -13,7 +11,7 @@ mod tests;
 pub use actor::TrafficArgs;
 pub use client::{Error as SpawnError, TrafficClient};
 pub use ports::{
-    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy,
-    TrafficOwnerFactory, TrafficStartArgs, TrafficStorage,
+    Clock, FrameNormalizer, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy,
+    TrafficFeed, TrafficOwnerFactory, TrafficStartArgs, TrafficStorage,
 };
 pub use storage::TrafficFileStorage;

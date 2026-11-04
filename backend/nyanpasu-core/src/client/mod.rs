@@ -838,9 +838,8 @@ impl NyanpasuClient {
         self.inner.application_workflow.reconcile().await
     }
 
-    // No UI entry issues an explicit stop yet; this is the facade entry to the
-    // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
-    #[allow(dead_code)]
+    /// Stops the core as an explicit user intent, which the workflow honours
+    /// until the next explicit start (TCC V11, T10 S18 / §1.4).
     pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
         self.inner.application_workflow.stop_core().await
     }
@@ -2404,6 +2403,10 @@ pub(crate) mod tests {
             client.runtime_yaml().await,
             Err(RuntimeError::NoRuntimeConfig)
         ));
+        assert!(matches!(
+            client.runtime_yaml_redacted().await,
+            Err(RuntimeError::NoRuntimeConfig)
+        ));
         assert!(client.runtime_config().await.unwrap().is_none());
         assert!(matches!(
             client.inspect_runtime_node("missing", 0).await,
@@ -2443,6 +2446,9 @@ pub(crate) mod tests {
         );
         expected.insert("secret".into(), "<redacted>".into());
         assert_eq!(config, expected);
+        let redacted: serde_yaml_ng::Mapping =
+            serde_yaml_ng::from_str(&client.runtime_yaml_redacted().await.unwrap()).unwrap();
+        assert_eq!(redacted, expected);
         client.reconcile_core().await.unwrap();
         let second = client.inspect_runtime().await.unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);

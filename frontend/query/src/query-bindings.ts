@@ -60,6 +60,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getRuntimeYaml', ...args],
         queryFn: () => commands.getRuntimeYaml(...args),
       }),
+    getRuntimeYamlRedacted: (
+      ...args: Parameters<typeof commands.getRuntimeYamlRedacted>
+    ) =>
+      queryOptions({
+        queryKey: ['getRuntimeYamlRedacted', ...args],
+        queryFn: () => commands.getRuntimeYamlRedacted(...args),
+      }),
     getRuntimeExists: (...args: Parameters<typeof commands.getRuntimeExists>) =>
       queryOptions({
         queryKey: ['getRuntimeExists', ...args],
@@ -561,6 +568,16 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['restartSidecar'],
       mutationFn: (input: Parameters<typeof commands.restartSidecar>) =>
         commands.restartSidecar(...input),
+    }),
+    reconcileCore: mutationOptions({
+      mutationKey: ['reconcileCore'],
+      mutationFn: (input: Parameters<typeof commands.reconcileCore>) =>
+        commands.reconcileCore(...input),
+    }),
+    stopCore: mutationOptions({
+      mutationKey: ['stopCore'],
+      mutationFn: (input: Parameters<typeof commands.stopCore>) =>
+        commands.stopCore(...input),
     }),
     patchAppConfig: mutationOptions({
       mutationKey: ['patchAppConfig'],

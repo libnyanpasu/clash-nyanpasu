@@ -6,20 +6,24 @@
 //! frontend bindings by the desktop shell.
 
 use nyanpasu_config::profile::{ProfileDefinition, ProfileId, Profiles as DomainProfiles};
-use nyanpasu_core::{client::NyanpasuClient, state::profiles::actor::NewProfileRequest};
+use nyanpasu_core::{
+    actor_v2::facade::{ReconcileReportInfo, StopReportInfo},
+    client::NyanpasuClient,
+    state::profiles::actor::NewProfileRequest,
+};
 
 use crate::{IpcError, State};
 
 type Result<T = ()> = std::result::Result<T, IpcError>;
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainProfiles> {
     Ok((*client.get_profiles().await?).clone())
 }
 
 /// create a new profile
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
@@ -30,7 +34,7 @@ pub async fn create_profile(
     Ok(client.create_profile(request, file_data).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn delete_profile(
     client: State<'_, NyanpasuClient>,
@@ -39,7 +43,7 @@ pub async fn delete_profile(
     Ok(client.delete_profile(uid).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn activate_profile(
     client: State<'_, NyanpasuClient>,
@@ -48,7 +52,7 @@ pub async fn activate_profile(
     Ok(client.activate_profile(uid).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn set_global_transforms(
     client: State<'_, NyanpasuClient>,
@@ -57,7 +61,7 @@ pub async fn set_global_transforms(
     Ok(client.set_global_transforms(ids).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn replace_profile_definition(
     client: State<'_, NyanpasuClient>,
@@ -67,7 +71,7 @@ pub async fn replace_profile_definition(
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn read_profile_file(
     client: State<'_, NyanpasuClient>,
@@ -76,7 +80,7 @@ pub async fn read_profile_file(
     Ok(client.read_profile_file(uid).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn save_profile_file(
     client: State<'_, NyanpasuClient>,
@@ -86,13 +90,13 @@ pub async fn save_profile_file(
     Ok(client.save_profile_file(uid, file_data).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
     Ok(client.runtime_yaml().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn inspect_runtime(
     client: State<'_, NyanpasuClient>,
@@ -100,7 +104,7 @@ pub async fn inspect_runtime(
     Ok(client.inspect_runtime().await)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, local)]
 #[specta::specta]
 pub async fn get_core_status(
     client: State<'_, NyanpasuClient>,
@@ -108,7 +112,7 @@ pub async fn get_core_status(
     Ok(client.core_status().into())
 }
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(http, local, result)]
 #[specta::specta]
 pub async fn query_core_logs(
     client: State<'_, NyanpasuClient>,
@@ -117,10 +121,33 @@ pub async fn query_core_logs(
     client.query_core_logs(query).await
 }
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(http, local, result)]
 #[specta::specta]
 pub async fn get_core_log_status(
     client: State<'_, NyanpasuClient>,
 ) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
     client.get_core_log_status().await
+}
+
+/// The promoted runtime configuration as YAML with credentials redacted, for
+/// callers that may read the runtime but not its secrets.
+#[nyanpasu_macro::rpc(local)]
+#[specta::specta]
+pub async fn get_runtime_yaml_redacted(client: State<'_, NyanpasuClient>) -> Result<String> {
+    Ok(client.runtime_yaml_redacted().await?)
+}
+
+/// Reconciles the core with the committed configuration and reports the
+/// revision it runs now.
+#[nyanpasu_macro::rpc(local)]
+#[specta::specta]
+pub async fn reconcile_core(client: State<'_, NyanpasuClient>) -> Result<ReconcileReportInfo> {
+    Ok(client.reconcile_core().await?.into())
+}
+
+/// Stops the core as an explicit intent, kept until the next explicit start.
+#[nyanpasu_macro::rpc(local)]
+#[specta::specta]
+pub async fn stop_core(client: State<'_, NyanpasuClient>) -> Result<StopReportInfo> {
+    Ok(client.stop_core().await?.into())
 }

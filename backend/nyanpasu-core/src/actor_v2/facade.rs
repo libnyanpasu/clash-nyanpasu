@@ -20,7 +20,7 @@ use super::{
 
 const OPERATION_WAIT: Duration = Duration::from_secs(60);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
 pub struct AppliedConfigBinding {
     pub revision: nyanpasu_ipc::api::status::ConfigRevisionInfo,
     pub host: ExecutionHost,
@@ -105,6 +105,42 @@ impl ReconcileResult {
 pub struct StopReport {
     pub output: OperationOutputInfo,
     pub status: CoreStatusProjection,
+}
+
+/// A reconcile that took effect, as RPC callers receive it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct ReconcileReportInfo {
+    pub applied: AppliedConfigBinding,
+    pub effective_config: Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
+    pub output: OperationOutputInfo,
+    pub status: super::CoreStatusInfo,
+}
+
+impl From<ReconcileReport> for ReconcileReportInfo {
+    fn from(report: ReconcileReport) -> Self {
+        Self {
+            applied: report.applied,
+            effective_config: report.effective_config,
+            output: report.output,
+            status: report.status.into(),
+        }
+    }
+}
+
+/// A completed stop, as RPC callers receive it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct StopReportInfo {
+    pub output: OperationOutputInfo,
+    pub status: super::CoreStatusInfo,
+}
+
+impl From<StopReport> for StopReportInfo {
+    fn from(report: StopReport) -> Self {
+        Self {
+            output: report.output,
+            status: report.status.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

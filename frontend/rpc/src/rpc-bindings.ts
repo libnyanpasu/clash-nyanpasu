@@ -47,6 +47,12 @@ export function createRpcClient(
       typedError<any | null, IpcError>(__RPC_INVOKE('get_runtime_config')),
     getRuntimeYaml: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_runtime_yaml')),
+    /**
+     *  The promoted runtime configuration as YAML with credentials redacted, for
+     *  callers that may read the runtime but not its secrets.
+     */
+    getRuntimeYamlRedacted: () =>
+      typedError<string, IpcError>(__RPC_INVOKE('get_runtime_yaml_redacted')),
     getRuntimeExists: () =>
       typedError<string[], IpcError>(__RPC_INVOKE('get_runtime_exists')),
     inspectRuntime: () =>
@@ -447,6 +453,17 @@ export function createRpcClient(
     /**  restart the sidecar */
     restartSidecar: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
+    /**
+     *  Reconciles the core with the committed configuration and reports the
+     *  revision it runs now.
+     */
+    reconcileCore: () =>
+      typedError<ReconcileReportInfo_Serialize, IpcError>(
+        __RPC_INVOKE('reconcile_core'),
+      ),
+    /**  Stops the core as an explicit intent, kept until the next explicit start. */
+    stopCore: () =>
+      typedError<StopReportInfo_Serialize, IpcError>(__RPC_INVOKE('stop_core')),
     patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_app_config', { patch }),
@@ -818,6 +835,12 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+export type AppliedConfigBinding = {
+  revision: ConfigRevisionInfo
+  host: ExecutionHost
+  generation: number
+}
 
 export type BrandVersion = {
   brand: string
@@ -1622,6 +1645,13 @@ export type CoreControllerInfo =
   | ({ UnixSocket: string } & { Http?: never; NamedPipe?: never })
   /**  Normalized base URL with any credentials removed. */
   | ({ Http: string } & { NamedPipe?: never; UnixSocket?: never })
+
+/**  Private on-demand response, never a status broadcast. */
+export type CoreEffectiveConfig = {
+  instance_id: string
+  revision: ConfigRevisionInfo
+  config: string
+}
 
 export type CoreErrorKind =
   | 'native_store_unavailable'
@@ -3142,6 +3172,61 @@ export type OpenLogs = {
   request_id: string
   file: string | null
 }
+
+export type OperationOutputInfo =
+  OperationOutputInfo_Serialize | OperationOutputInfo_Deserialize
+
+export type OperationOutputInfo_Deserialize =
+  | ({
+      reconciled: {
+        type: 'reconciled'
+      } & ReconcileOutcomeInfo_Deserialize
+    } & { recovered?: never; shut_down?: never; stopped?: never })
+  | ({
+      stopped: {
+        type: 'stopped'
+      }
+    } & { reconciled?: never; recovered?: never; shut_down?: never })
+  | ({
+      recovered: {
+        type: 'recovered'
+      }
+    } & { reconciled?: never; shut_down?: never; stopped?: never })
+  /**
+   *  Never produced through this wire (there is no shutdown command); kept
+   *  so a locally submitted shutdown observed through the registry decodes.
+   */
+  | ({
+      shut_down: {
+        type: 'shut_down'
+      }
+    } & { reconciled?: never; recovered?: never; stopped?: never })
+
+export type OperationOutputInfo_Serialize =
+  | ({
+      reconciled: {
+        type: 'reconciled'
+      } & ReconcileOutcomeInfo_Serialize
+    } & { recovered?: never; shut_down?: never; stopped?: never })
+  | ({
+      stopped: {
+        type: 'stopped'
+      }
+    } & { reconciled?: never; recovered?: never; shut_down?: never })
+  | ({
+      recovered: {
+        type: 'recovered'
+      }
+    } & { reconciled?: never; shut_down?: never; stopped?: never })
+  /**
+   *  Never produced through this wire (there is no shutdown command); kept
+   *  so a locally submitted shutdown observed through the registry decodes.
+   */
+  | ({
+      shut_down: {
+        type: 'shut_down'
+      }
+    } & { reconciled?: never; recovered?: never; stopped?: never })
 
 export type OperationStatus = {
   operation_id: string
@@ -4711,6 +4796,64 @@ export type Rate = {
   download: number
 }
 
+export type ReconcileOutcomeInfo =
+  ReconcileOutcomeInfo_Serialize | ReconcileOutcomeInfo_Deserialize
+
+export type ReconcileOutcomeInfo_Deserialize = {
+  outcome: ReconcileOutcomeKind
+  /**  The revision the core is running now. */
+  revision: ConfigRevisionInfo
+  /**  Durability or degradation warnings the transaction survived. */
+  warning?: string | null
+  /**  Why the desired config was rejected; set only for `RolledBack`. */
+  failed_apply?: string | null
+}
+
+export type ReconcileOutcomeInfo_Serialize = {
+  outcome: ReconcileOutcomeKind
+  /**  The revision the core is running now. */
+  revision: ConfigRevisionInfo
+  /**  Durability or degradation warnings the transaction survived. */
+  warning?: string | null
+  /**  Why the desired config was rejected; set only for `RolledBack`. */
+  failed_apply?: string | null
+}
+
+/**
+ *  How a reconcile transaction carried the change. `RolledBack` is a
+ *  *successfully completed* transaction whose desired config did not take
+ *  effect; `revision` is then the one actually running.
+ */
+export type ReconcileOutcomeKind =
+  /**  Nothing was running; the desired runtime was started cold. */
+  | 'started'
+  | 'noop'
+  | 'patched'
+  | 'reloaded'
+  | 'restarted'
+  | 'switched'
+  | 'rolled_back'
+
+/**  A reconcile that took effect, as RPC callers receive it. */
+export type ReconcileReportInfo =
+  ReconcileReportInfo_Serialize | ReconcileReportInfo_Deserialize
+
+/**  A reconcile that took effect, as RPC callers receive it. */
+export type ReconcileReportInfo_Deserialize = {
+  applied: AppliedConfigBinding
+  effective_config: CoreEffectiveConfig | null
+  output: OperationOutputInfo_Deserialize
+  status: CoreStatusInfo
+}
+
+/**  A reconcile that took effect, as RPC callers receive it. */
+export type ReconcileReportInfo_Serialize = {
+  applied: AppliedConfigBinding
+  effective_config: CoreEffectiveConfig | null
+  output: OperationOutputInfo_Serialize
+  status: CoreStatusInfo
+}
+
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
 
 export type ReleaseChannelInfo = {
@@ -5320,6 +5463,22 @@ export type StepLogEntry = {
  *  Declaration order is severity (`Log` lowest, `Error` highest); `Ord` relies on it.
  */
 export type StepLogLevel = 'log' | 'info' | 'warn' | 'error'
+
+/**  A completed stop, as RPC callers receive it. */
+export type StopReportInfo =
+  StopReportInfo_Serialize | StopReportInfo_Deserialize
+
+/**  A completed stop, as RPC callers receive it. */
+export type StopReportInfo_Deserialize = {
+  output: OperationOutputInfo_Deserialize
+  status: CoreStatusInfo
+}
+
+/**  A completed stop, as RPC callers receive it. */
+export type StopReportInfo_Serialize = {
+  output: OperationOutputInfo_Serialize
+  status: CoreStatusInfo
+}
 
 export type StorageEntry = {
   key: string

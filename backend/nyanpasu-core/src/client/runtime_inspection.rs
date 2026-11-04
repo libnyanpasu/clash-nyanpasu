@@ -393,6 +393,17 @@ impl NyanpasuClient {
             .context(NoRuntimeConfigSnafu)?;
         Ok(state.config_text.to_string())
     }
+
+    /// The promoted runtime configuration as YAML text with credentials
+    /// redacted, for callers allowed to read the runtime but not its secrets.
+    pub async fn runtime_yaml_redacted(&self) -> Result<String, RuntimeError> {
+        let state = self
+            .promoted_runtime()
+            .await
+            .context(NoRuntimeConfigSnafu)?;
+        serde_yaml_ng::to_string(&redact_config(state.config_json()))
+            .context(SerializeRuntimeConfigSnafu)
+    }
 }
 
 #[cfg(test)]

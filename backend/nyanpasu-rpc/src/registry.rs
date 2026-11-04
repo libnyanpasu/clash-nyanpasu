@@ -291,4 +291,86 @@ pub(crate) mod tests {
                 .contains(&"get_profiles")
         );
     }
+
+    #[tokio::test]
+    async fn the_local_allowlist_is_the_router_command_set() {
+        let directory = tempfile::tempdir().unwrap();
+        let rpc = test_rpc(&directory, EventBus::new(Vec::new()), &ShellCapability::ALL).await;
+        let mut expected = vec![
+            // Read access.
+            "get_core_status",
+            "get_profiles",
+            "get_runtime_yaml_redacted",
+            "inspect_runtime",
+            "query_core_logs",
+            "get_core_log_status",
+            // Write access.
+            "create_profile",
+            "delete_profile",
+            "replace_profile_definition",
+            "set_global_transforms",
+            "activate_profile",
+            "read_profile_file",
+            "save_profile_file",
+            "reconcile_core",
+            "stop_core",
+            "get_runtime_yaml",
+        ];
+        expected.sort_unstable();
+        assert_eq!(rpc.command_names(RpcTarget::Local), expected);
+        // Core lifecycle and the redacted YAML are new and not reviewed for the WebUI.
+        let http = rpc.command_names(RpcTarget::Http);
+        for name in ["reconcile_core", "stop_core", "get_runtime_yaml_redacted"] {
+            assert!(!http.contains(&name), "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn core_lifecycle_results_and_failures_reach_the_local_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let rpc = test_rpc(&directory, EventBus::new(Vec::new()), &ShellCapability::ALL).await;
+        let owner = RpcOwner::local_connection(1);
+
+        let missing = rpc
+            .call(
+                RpcTarget::Local,
+                "get_runtime_yaml_redacted",
+                owner.clone(),
+                Value::Null,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(missing.kind, RpcErrorKind::ApplicationError);
+        let reconciled = rpc
+            .call(
+                RpcTarget::Local,
+                "reconcile_core",
+                owner.clone(),
+                Value::Null,
+            )
+            .await
+            .unwrap();
+        assert!(reconciled["applied"]["generation"].is_u64(), "{reconciled}");
+        assert!(reconciled["status"]["host"].is_string(), "{reconciled}");
+        let yaml = rpc
+            .call(
+                RpcTarget::Local,
+                "get_runtime_yaml_redacted",
+                owner.clone(),
+                Value::Null,
+            )
+            .await
+            .unwrap();
+        assert!(yaml.as_str().unwrap().contains("<redacted>"), "{yaml}");
+        // The test endpoint answers every operation as a reconcile, so the
+        // stop fails; its domain error must still reach the caller intact.
+        let stop = rpc
+            .call(RpcTarget::Local, "stop_core", owner, Value::Null)
+            .await
+            .unwrap_err();
+        assert_eq!(stop.kind, RpcErrorKind::ApplicationError);
+        let domain = &stop.domain_error.as_ref().unwrap().0["kind"];
+        assert_eq!(domain["domain"], "runtime", "{domain}");
+        assert_eq!(domain["error"]["kind"], "stop_core", "{domain}");
+    }
 }

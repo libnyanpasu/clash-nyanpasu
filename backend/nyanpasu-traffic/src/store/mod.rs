@@ -3,6 +3,7 @@
 //! in totals and other/merged nodes, never distinct values or filters. A fully overflowed
 //! closed event retains its target in FoldedLabel; lost dimensions restore as unknown,
 //! None or empty. Auxiliary state holds complete dimensions and needs no catalog pins.
+#[cfg(feature = "legacy-redb")]
 mod legacy;
 mod read;
 mod schema;
@@ -32,6 +33,7 @@ pub struct TrafficDb<S: Storage> {
     retention: Option<Duration>,
     /// Queries can flag a backend failure through &self; the actor remains the sole owner.
     recovery_needed: Cell<bool>,
+    #[cfg(feature = "legacy-redb")]
     legacy: legacy::Progress,
 }
 
@@ -62,11 +64,15 @@ pub enum Recovery {
 impl<S: Storage> TrafficDb<S> {
     pub fn open(storage: S, profile: Profile) -> Result<Opened<S>, RecoveryError> {
         let batch_bytes = profile.batch_bytes;
+        #[cfg(feature = "legacy-redb")]
         let (db, ((last_batch, state), legacy)) =
             Tsdb::open_with(storage, schema::schema(), profile, |view| {
                 let legacy = legacy::restore(&view)?;
                 Ok((restore(view)?, legacy))
             })?;
+        #[cfg(not(feature = "legacy-redb"))]
+        let (db, (last_batch, state)) =
+            Tsdb::open_with(storage, schema::schema(), profile, restore)?;
         Ok((
             Self {
                 reader: db.reader(),
@@ -76,6 +82,7 @@ impl<S: Storage> TrafficDb<S> {
                 arena: Vec::new(),
                 retention: None,
                 recovery_needed: Cell::new(false),
+                #[cfg(feature = "legacy-redb")]
                 legacy,
             },
             state,

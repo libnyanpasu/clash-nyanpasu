@@ -41,7 +41,10 @@ zip = '9.0.0'
 nanoid = '0.5.0'
 seahash = { version = '4.1', features = ['use_std'] }
 nyanpasu-tsdb = { path = '../nyanpasu-tsdb', features = ['redb'] }
-nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = [
+  'specta',
+  'legacy-redb'
+] }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 nyanpasu-geodata = { path = '../nyanpasu-geodata' }
 memmap2 = '0.9'

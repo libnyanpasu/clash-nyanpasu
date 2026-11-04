@@ -29,7 +29,6 @@ mod window;
 use crate::utils::{init, resolve};
 use specta_typescript::Typescript;
 use tauri::Manager;
-use tauri_specta::Event;
 
 rust_i18n::i18n!("./locales");
 
@@ -136,9 +135,9 @@ backtrace:
 /// not: a frontend drains the queue once it has registered its listener.
 fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
     app_handle.state::<crate::ipc::PendingDeepLinks>().push(url);
-    log_err!(
-        crate::ipc::SchemeRequestReceivedEvent.emit(app_handle),
-        "failed to emit scheme-request-received event"
+    crate::unified_rpc::publish(
+        &app_handle.state::<nyanpasu_rpc::EventBus>(),
+        &crate::ipc::SchemeRequestReceivedEvent,
     );
 }
 

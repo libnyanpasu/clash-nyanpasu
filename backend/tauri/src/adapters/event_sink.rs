@@ -1,24 +1,24 @@
-//! Delivers committed state changes to Tauri windows.
-
-use tauri_specta::Event as _;
+//! Delivers committed state changes to every frontend through the shared
+//! event bus.
 
 use crate::adapters::events::StateChangedEvent;
 use nyanpasu_core::client::{StateChanged, UiEventSink};
+use nyanpasu_rpc::EventBus;
 
 #[derive(Clone)]
-pub struct TauriUiEventSink<R: tauri::Runtime = tauri::Wry> {
-    app_handle: tauri::AppHandle<R>,
+pub struct BusUiEventSink {
+    events: EventBus,
 }
 
-impl<R: tauri::Runtime> TauriUiEventSink<R> {
-    pub fn new(app_handle: tauri::AppHandle<R>) -> Self {
-        Self { app_handle }
+impl BusUiEventSink {
+    pub fn new(events: EventBus) -> Self {
+        Self { events }
     }
 }
 
-impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
+impl UiEventSink for BusUiEventSink {
     fn state_changed(&self, state: StateChanged) {
         // Every window: the tray menu and the editor read these queries too.
-        crate::log_err!(StateChangedEvent(state).emit(&self.app_handle));
+        crate::unified_rpc::publish(&self.events, &StateChangedEvent(state));
     }
 }

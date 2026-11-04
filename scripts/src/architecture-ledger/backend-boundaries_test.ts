@@ -439,3 +439,19 @@ test('the RPC protocol links neither the application nor a GUI', () => {
     [],
   )
 })
+
+test('the RPC registry may use core but no GUI or implementation crate', () => {
+  for (const dependency of ['tauri', 'tauri-plugin-dialog', 'nyanpasu-net']) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-rpc', `${dependency} v0.1.0\n`),
+      [`nyanpasu-rpc must not depend on ${dependency}`],
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc',
+      'nyanpasu-core v0.1.0\nnyanpasu-rpc-protocol v0.1.0\naxum v0.8\n',
+    ),
+    [],
+  )
+})

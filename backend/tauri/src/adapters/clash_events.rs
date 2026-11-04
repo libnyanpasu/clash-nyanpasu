@@ -1,7 +1,5 @@
 //! Bridges Clash stream and log status events to Tauri windows.
 
-use tauri_specta::Event as _;
-
 use crate::adapters::{
     connection_details,
     events::{ClashWsEvent, CoreLogsChanged},
@@ -27,17 +25,15 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
         .clone();
     let mut ws_rx = client.subscribe_clash_ws();
     let mut logs_rx = client.subscribe_core_logs();
-    let logs_app = manager.app_handle().clone();
+    let events = manager.state::<nyanpasu_rpc::EventBus>().inner().clone();
+    let logs_events = events.clone();
     let logs_token = client.shutdown_child_token();
     tauri::async_runtime::spawn(client.track_until_shutdown(&logs_token, async move {
         while logs_rx.changed().await.is_ok() {
             let status = logs_rx.borrow_and_update().clone();
-            if let Err(error) = (CoreLogsChanged { status }).emit(&logs_app) {
-                tracing::warn!(%error, "failed to emit Core log status");
-            }
+            crate::unified_rpc::publish(&logs_events, &CoreLogsChanged { status });
         }
     }));
-    let app = manager.app_handle().clone();
     let ws_task = tauri::async_runtime::spawn(async move {
         loop {
             let event = match ws_rx.recv().await {
@@ -54,9 +50,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
                 },
                 Err(RecvError::Closed) => break,
             };
-            if let Err(error) = ClashWsEvent::from(event).emit(&app) {
-                tracing::warn!(%error, "failed to emit Clash stream event");
-            }
+            crate::unified_rpc::publish(&events, &ClashWsEvent::from(event));
         }
     });
     manager.manage(StreamEventBridge(vec![ws_task]));

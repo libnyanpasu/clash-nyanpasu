@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use crate::{
     adapters::{
-        event_sink::TauriUiEventSink,
+        event_sink::BusUiEventSink,
         events::{StorageResyncEvent, StorageValueChangedEvent},
         hotkey::{
             ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
@@ -40,9 +40,9 @@ use nyanpasu_core::{
     storage::{RedbHotkeyStoreOpener, StorageNotification},
     traffic::{TrafficFileStorage, TrafficStorage},
 };
+use nyanpasu_rpc_protocol::ShellCapability;
 use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
 use snafu::ResultExt as _;
-use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 const RESTART_BUDGET: u8 = 3;
@@ -196,9 +196,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     owners: &mut StartupOwners,
 ) -> Result<(), Error> {
     let app_handle = app.app_handle().clone();
-    let rpc_events = crate::unified_rpc::EventBus::new();
-    crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
-    app.manage(rpc_events);
+    // Observations go to the bus first; the desktop webviews are one subscriber.
+    let rpc_events = nyanpasu_rpc::EventBus::new(vec![Arc::new(
+        crate::unified_rpc::TauriEventSink::new(app_handle.clone()),
+    )]);
+    app.manage(rpc_events.clone());
     // Shared with the panic hook, which takes the main thread's work over
     // once the event loop is gone.
     let main_thread_handoff = Arc::new(nyanpasu_core::client::MainThreadHandoff::default());
@@ -310,24 +312,25 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .context(OpenStorageSnafu)?;
     app.manage(storage.clone());
     let storage_changes = storage.subscribe();
-    let storage_handle = app_handle.clone();
+    let storage_events = rpc_events.clone();
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
         nyanpasu_core::storage::forward_storage_changes(storage_changes, move |notification| {
-            let emitted = match notification {
-                StorageNotification::Changed(change) => StorageValueChangedEvent {
-                    key: change.key,
-                    value: change
-                        .value
-                        .map(|value| String::from_utf8_lossy(&value).into_owned()),
-                    revision: change.revision,
+            match notification {
+                StorageNotification::Changed(change) => crate::unified_rpc::publish(
+                    &storage_events,
+                    &StorageValueChangedEvent {
+                        key: change.key,
+                        value: change
+                            .value
+                            .map(|value| String::from_utf8_lossy(&value).into_owned()),
+                        revision: change.revision,
+                    },
+                ),
+                StorageNotification::Resync => {
+                    crate::unified_rpc::publish(&storage_events, &StorageResyncEvent {})
                 }
-                .emit(&storage_handle),
-                StorageNotification::Resync => StorageResyncEvent {}.emit(&storage_handle),
-            };
-            if let Err(error) = emitted {
-                tracing::warn!(%error, "failed to emit a storage notification");
             }
         }),
     ));
@@ -341,8 +344,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
     ));
     let span = tracing::info_span!("build_client").entered();
-    let ui_sink: Arc<dyn UiEventSink> =
-        Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
+    let ui_sink: Arc<dyn UiEventSink> = Arc::new(BusUiEventSink::new(rpc_events.clone()));
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
         bundle_metadata,
         host_adapters: ClientHostAdapters {
@@ -455,7 +457,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             }
         })),
         app_update_event_sink: Some(Arc::new(
-            crate::adapters::app_update::TauriAppUpdateEventSink::new(app_handle.clone()),
+            crate::adapters::app_update::BusAppUpdateEventSink::new(rpc_events.clone()),
         )),
         core_v2,
         service,
@@ -486,13 +488,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowManager::new(app_handle.clone()));
     app.manage(crate::window::kinds::TrayMenuWindowController::default());
-    forward_actor_events(
-        app_handle.clone(),
-        client.clone(),
-        ui_sink,
-        &shutdown,
-        &tasks,
-    );
+    forward_actor_events(rpc_events, client.clone(), ui_sink, &shutdown, &tasks);
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
@@ -554,7 +550,9 @@ async fn start_runtime_owners(
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum UnifiedRpcError {
     #[snafu(display("failed to build unified RPC"))]
-    BuildRpc {
+    BuildRpc { source: nyanpasu_rpc::RegistryError },
+    #[snafu(display("failed to build the desktop RPC dispatcher"))]
+    BuildDesktopRpc {
         source: crate::unified_rpc::SetupError,
     },
     #[snafu(display("failed to install HTTP routes"))]
@@ -568,17 +566,20 @@ pub(crate) enum UnifiedRpcError {
 /// Registers the unified RPC command table after `resolve_setup` has managed
 /// storage and the other Tauri state dependencies.
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
-    let dependencies = crate::unified_rpc::RpcDependencies {
+    let dependencies = nyanpasu_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
-        events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
+        events: (*app.state::<nyanpasu_rpc::EventBus>()).clone(),
     };
-    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies).context(BuildRpcSnafu)?;
+    // The desktop shell provides every shell capability.
+    let rpc = nyanpasu_rpc::UnifiedRpc::new(dependencies, &ShellCapability::ALL)
+        .context(BuildRpcSnafu)?;
     app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
-    snafu::ensure!(app.manage(rpc), RegisterStateSnafu);
+    let desktop = crate::unified_rpc::DesktopRpc::new(rpc).context(BuildDesktopRpcSnafu)?;
+    snafu::ensure!(app.manage(desktop), RegisterStateSnafu);
     Ok(())
 }
 
@@ -721,7 +722,7 @@ fn build_application_effects(
 }
 
 fn forward_actor_events(
-    app_handle: tauri::AppHandle,
+    events: nyanpasu_rpc::EventBus,
     client: NyanpasuClient,
     ui_sink: Arc<dyn UiEventSink>,
     shutdown: &CancellationToken,
@@ -729,7 +730,7 @@ fn forward_actor_events(
 ) {
     let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
     let configuration_client = client.clone();
-    let configuration_handle = app_handle.clone();
+    let configuration_events = events.clone();
     tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         loop {
             let changed = tokio::select! {
@@ -740,19 +741,24 @@ fn forward_actor_events(
             if changed.is_err() {
                 break;
             }
-            let _ =
-                crate::ipc::ConfigurationStatusChanged(configuration_client.configuration_status())
-                    .emit(&configuration_handle);
+            crate::unified_rpc::publish(
+                &configuration_events,
+                &crate::ipc::ConfigurationStatusChanged(
+                    configuration_client.configuration_status(),
+                ),
+            );
         }
     }));
     let mut core_events = client.subscribe_core_events();
-    let core_handle = app_handle.clone();
+    let core_events_bus = events.clone();
     tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         loop {
             match core_events.recv().await {
                 Ok(status) => {
-                    let _ = crate::adapters::events::CoreStatusChangedEvent(status.into())
-                        .emit(&core_handle);
+                    crate::unified_rpc::publish(
+                        &core_events_bus,
+                        &crate::adapters::events::CoreStatusChangedEvent(status.into()),
+                    );
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -771,7 +777,10 @@ fn forward_actor_events(
     tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
-            let _ = crate::adapters::events::ServiceStatusChangedEvent(status).emit(&app_handle);
+            crate::unified_rpc::publish(
+                &events,
+                &crate::adapters::events::ServiceStatusChangedEvent(status),
+            );
         }
     }));
 }

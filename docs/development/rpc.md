@@ -3,7 +3,7 @@
 Use this guide when adding or changing an application command, frontend call, or
 shared event. See [architecture](architecture.md) for dependency and actor rules.
 
-Application commands use the unified RPC framework, with Tauri IPC and HTTP as transport adapters. The [target RPC layer](../design/application-platform-extraction.md#rpc-targets) adds a third target, the CLI over a local socket, and moves the registry out of the Tauri crate; until it lands, the rules below cover Tauri IPC and HTTP (WebUI). Commands should be thin adapters. They should:
+Application commands use the unified RPC framework, with Tauri IPC and HTTP as transport adapters. The [target RPC layer](../design/application-platform-extraction.md#rpc-targets) adds a third target, the CLI over a local socket. The registry, the event bus, the WebUI router and the commands that need no shell context live in `nyanpasu-rpc`; the wire contract (error envelope, targets, shell capabilities, owners, event names and local-socket frames) lives in `nyanpasu-rpc-protocol`. The desktop shell keeps the Tauri IPC entrypoint and the Tauri-bound commands. Commands should be thin adapters. They should:
 
 - parse request DTOs;
 - call `NyanpasuClient`;
@@ -40,6 +40,7 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 ### Use the unified RPC surface
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
+- Put a command that needs no shell context in `backend/nyanpasu-rpc/src/commands.rs` with `#[specta::specta]` and the injected `nyanpasu_rpc::State`; a command that needs Tauri context stays in `backend/tauri/src/ipc.rs` with `#[tauri::command]`. Map `tauri::Error` at the Tauri adapter with `IpcError::unknown`; shared crates do not know Tauri errors.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
 - Frontend application calls use generated protocol types and transport adapters from `@nyanpasu/rpc`, then query/mutation bindings from `@nyanpasu/query`. The app injects the RPC client/context into query providers. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.
 - Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_macro::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
@@ -54,7 +55,7 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
 - Keep HTTP RPC, SSE, and the development proxy behind the existing per-start access credential and Host/Origin checks. A session cookie identifies an owner; it does not by itself authenticate access. Keep the server disabled by default and bound to loopback.
-- Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. New shared events must be registered in the transport metadata and event bridge; do not create desktop-only listeners for shared state.
+- Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. New shared events must be added to `EventName` in `nyanpasu-rpc-protocol` and published on the `EventBus`; Tauri events, SSE and the local socket subscribe to it. Do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
 
@@ -79,4 +80,5 @@ transport adapters, not exceptions permitting standalone application commands.
 Tauri entrypoint. Put application metadata in `build_specta_builder` and regenerate
 both binding files with `specta_export::tests::export_typescript_bindings`. Do not
 add a direct application command to the transport builder. The macro source tests
-check that every IPC application command has a working UnifiedRpc desktop handler.
+check that every IPC application command has a working UnifiedRpc desktop handler
+and that every shared command expands to a neutral handler only.

@@ -11,20 +11,14 @@ use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_core::{
-    client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
-        direct_egress::DirectEgress, effects::error::EffectsError,
-        system_proxy::ports::OsProxyError,
-    },
-    state::{
-        config_error::ConfigError,
-        profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
-    },
-    storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
+    client::{NyanpasuClient, agent_skills::CoreAgentSkill, direct_egress::DirectEgress},
+    state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu},
+    storage::{Storage, StorageItem, StorageRevision, WebStorage},
     updater::ManifestVersionLatest,
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_rpc::IpcError;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use tauri::{AppHandle, State, Webview};
@@ -36,127 +30,6 @@ use tauri_plugin_dialog::{
     MessageDialogKind as TauriDialogKind, MessageDialogResult as TauriDialogResult,
 };
 use tauri_plugin_notification::NotificationExt;
-
-impl std::fmt::Display for IpcError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-impl std::error::Error for IpcError {}
-
-/// A failed command as the frontend receives it.
-#[derive(Debug, Serialize, specta::Type)]
-pub struct IpcError {
-    /// The domain failure; the frontend localizes it.
-    kind: IpcErrorKind,
-    /// The error's own message, shown when `kind` cannot be localized.
-    message: String,
-    /// The original error, copied by the user for diagnosis.
-    detail: String,
-}
-
-/// The domain a command failed in. A domain joins once its errors are typed.
-#[derive(Debug, Serialize, specta::Type)]
-#[serde(tag = "domain", content = "error", rename_all = "snake_case")]
-pub enum IpcErrorKind {
-    /// Not classified into a domain; only `message` describes it.
-    Unknown,
-    Profiles(Box<ProfilesError>),
-    Runtime(Box<RuntimeError>),
-    Config(Box<ConfigError>),
-    Storage(Box<StorageOperationError>),
-    SystemDns(Box<SystemDnsError>),
-    SystemProxy(Box<OsProxyError>),
-    Effects(Box<EffectsError>),
-}
-
-impl From<EffectsError> for IpcErrorKind {
-    fn from(error: EffectsError) -> Self {
-        Self::Effects(Box::new(error))
-    }
-}
-
-impl From<OsProxyError> for IpcErrorKind {
-    fn from(error: OsProxyError) -> Self {
-        Self::SystemProxy(Box::new(error))
-    }
-}
-
-impl From<SystemDnsError> for IpcErrorKind {
-    fn from(error: SystemDnsError) -> Self {
-        Self::SystemDns(Box::new(error))
-    }
-}
-
-impl From<StorageOperationError> for IpcErrorKind {
-    fn from(error: StorageOperationError) -> Self {
-        Self::Storage(Box::new(error))
-    }
-}
-
-impl From<ConfigError> for IpcErrorKind {
-    fn from(error: ConfigError) -> Self {
-        Self::Config(Box::new(error))
-    }
-}
-
-impl From<RuntimeError> for IpcErrorKind {
-    fn from(error: RuntimeError) -> Self {
-        Self::Runtime(Box::new(error))
-    }
-}
-
-impl From<ProfilesError> for IpcErrorKind {
-    fn from(error: ProfilesError) -> Self {
-        Self::Profiles(Box::new(error))
-    }
-}
-
-impl From<ClientError> for IpcErrorKind {
-    fn from(error: ClientError) -> Self {
-        match error {
-            ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
-            ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
-            ClientError::Config(error) => Self::Config(Box::new(error)),
-            ClientError::Storage(error) => Self::Storage(Box::new(error)),
-            _ => Self::Unknown,
-        }
-    }
-}
-
-impl<E> From<E> for IpcError
-where
-    E: std::fmt::Display + std::fmt::Debug,
-    IpcErrorKind: From<E>,
-{
-    fn from(error: E) -> Self {
-        Self {
-            message: error.to_string(),
-            detail: format!("{error:?}"),
-            kind: error.into(),
-        }
-    }
-}
-
-macro_rules! unknown_domain {
-    ($($error:ty),* $(,)?) => {$(
-        impl From<$error> for IpcErrorKind {
-            fn from(_: $error) -> Self {
-                Self::Unknown
-            }
-        }
-    )*};
-}
-
-unknown_domain!(
-    String,
-    std::io::Error,
-    serde_yaml::Error,
-    serde_json::Error,
-    tauri::Error,
-    anyhow::Error,
-    nyanpasu_migration::backup::BackupError,
-);
 
 type Result<T = ()> = StdResult<T, IpcError>;
 
@@ -368,17 +241,9 @@ pub struct GetSysProxyResponse {
 // ---- profiles domain commands (PR-3 T08, thin adapters over NyanpasuClient) ----
 
 use nyanpasu_config::profile::{
-    FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
-    Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
+    FolderId, ProfileId, ProfileLayout, ProfileMetadataPatch, ProxyGroupLayout,
+    RemoteProfileOptionsPatch, TransformKind,
 };
-use nyanpasu_core::state::profiles::actor::NewProfileRequest;
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainProfiles> {
-    Ok((*client.get_profiles().await?).clone())
-}
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
@@ -478,19 +343,6 @@ impl PendingDeepLinks {
 #[specta::specta]
 pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Result<Vec<String>> {
     Ok(pending.take_all())
-}
-
-/// create a new profile
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn create_profile(
-    client: State<'_, NyanpasuClient>,
-    request: NewProfileRequest,
-    file_data: Option<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<ProfileId>> {
-    // Must return the created ProfileId; never drop it on the wire.
-    Ok(client.create_profile(request, file_data).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -607,36 +459,6 @@ pub async fn update_profile(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_profile(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.delete_profile(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn activate_profile(
-    client: State<'_, NyanpasuClient>,
-    uid: Option<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.activate_profile(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_global_transforms(
-    client: State<'_, NyanpasuClient>,
-    ids: Vec<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.set_global_transforms(ids).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
 pub async fn set_profile_valid_fields(
     client: State<'_, NyanpasuClient>,
     fields: Vec<String>,
@@ -666,17 +488,6 @@ pub async fn patch_remote_profile_options(
     Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn replace_profile_definition(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    definition: ProfileDefinition,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.replace_profile_definition(uid, definition).await?)
-}
-
 #[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
@@ -687,27 +498,6 @@ pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     }
     help::open_file(&path)?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn read_profile_file(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result<String> {
-    Ok(client.read_profile_file(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn save_profile_file(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    file_data: String,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.save_profile_file(uid, file_data).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -732,22 +522,6 @@ pub async fn get_runtime_config(
         .runtime_config()
         .await?
         .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    Ok(client.runtime_yaml().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_runtime(
-    client: State<'_, NyanpasuClient>,
-) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
-    Ok(client.inspect_runtime().await)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -794,15 +568,6 @@ pub async fn get_postprocessing_output(
         .as_ref()
         .map(|state| state.postprocessing_output.clone())
         .unwrap_or_default())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_status(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::actor_v2::CoreStatusInfo> {
-    Ok(client.core_status().into())
 }
 
 #[nyanpasu_macro::rpc]
@@ -1368,7 +1133,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
             Ok::<_, anyhow::Error>(())
         })
         .await;
-    ((res)?)?;
+    res.map_err(IpcError::unknown)??;
     Ok(())
 }
 
@@ -1447,7 +1212,8 @@ pub async fn set_tray_icon(
     // Checked here, so a bad icon reaches the caller; only applying it to the
     // tray is queued.
     (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode)))?;
-    (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
+    crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART)
+        .map_err(IpcError::unknown)?;
     // The widget logo may show the tray's icons.
     client.request_widget_logo_refresh()?;
     Ok(())
@@ -1783,30 +1549,11 @@ pub async fn get_clash_ws_snapshot(
 #[nyanpasu_macro::rpc(http, result)]
 #[tauri::command]
 #[specta::specta]
-pub async fn query_core_logs(
-    client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_core::logs::CoreLogQuery,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
-    client.query_core_logs(query).await
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
 pub async fn get_core_log(
     client: tauri::State<'_, NyanpasuClient>,
     cursor: nyanpasu_core::logs::CoreLogCursor,
 ) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
     client.get_core_log(cursor).await
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_log_status(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
-    client.get_core_log_status().await
 }
 
 #[nyanpasu_macro::rpc(http, result)]
@@ -2141,7 +1888,9 @@ pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> 
 #[specta::specta]
 pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<()> {
     if main_thread {
-        app_handle.run_on_main_thread(|| panic!("simulated crash on the main thread"))?;
+        app_handle
+            .run_on_main_thread(|| panic!("simulated crash on the main thread"))
+            .map_err(IpcError::unknown)?;
     } else {
         std::thread::spawn(|| panic!("simulated crash on a background thread"));
     }
@@ -2230,234 +1979,7 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
-    use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
-    use nyanpasu_core::state::ReplaceIfVersionError;
-    use serde_json::json;
-    use snafu::IntoError;
-
-    use nyanpasu_contracts::profiles::error::{ProfileFileError, SubscriptionFetchError};
-    use nyanpasu_core::{
-        client::{
-            effects::error::EffectsError, runtime_error::RuntimeError,
-            system_proxy::ports::OsProxyError,
-        },
-        state::mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
-    };
-
-    fn wire(error: impl Into<ClientError>) -> serde_json::Value {
-        serde_json::to_value(IpcError::from(error.into())).unwrap()
-    }
-
-    #[test]
-    fn a_profiles_error_reaches_the_frontend_as_its_own_domain() {
-        let wire = wire(ProfilesError::ProfileNotFound {
-            uid: ProfileId("p1".into()),
-        });
-
-        assert_eq!(
-            wire["kind"],
-            json!({
-                "domain": "profiles",
-                "error": { "kind": "profile_not_found", "uid": "p1" },
-            })
-        );
-        assert_eq!(wire["message"], "profile not found: p1");
-    }
-
-    #[test]
-    fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
-        let failure = nyanpasu_core::client::runtime_error::ApplyRuntimeSnafu.into_error(
-            nyanpasu_core_manager::CoreError::new(
-                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
-                "the core kept the previous configuration",
-                false,
-            ),
-        );
-        let wire = wire(failure);
-
-        assert_eq!(
-            wire["kind"],
-            json!({
-                "domain": "runtime",
-                "error": {
-                    "kind": "apply_runtime",
-                    "failure": {
-                        "kind": "apply_failed",
-                        "message": "the core kept the previous configuration",
-                        "retryable": false,
-                        "operation_id": null,
-                    },
-                },
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
-            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
-        );
-    }
-
-    #[test]
-    fn a_dns_flush_failure_names_the_command_and_its_exit_code() {
-        let wire = serde_json::to_value(IpcError::from(SystemDnsError::FlushRejected {
-            command: "ipconfig.exe",
-            code: Some(5),
-        }))
-        .unwrap();
-
-        assert_eq!(
-            wire["kind"],
-            json!({
-                "domain": "system_dns",
-                "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
-            })
-        );
-    }
-
-    #[test]
-    fn a_stopped_effects_owner_reaches_the_frontend_as_its_own_domain() {
-        let wire = serde_json::to_value(IpcError::from(EffectsError::EffectsStopped)).unwrap();
-
-        assert_eq!(
-            wire["kind"],
-            json!({ "domain": "effects", "error": { "kind": "effects_stopped" } })
-        );
-    }
-
-    #[test]
-    fn a_failed_os_proxy_write_names_where_it_was_going() {
-        let wire = serde_json::to_value(IpcError::from(OsProxyError::WriteOsProxy {
-            enable: true,
-            host: "127.0.0.1".into(),
-            port: 7890,
-            source: "access denied".into(),
-        }))
-        .unwrap();
-
-        assert_eq!(
-            wire["kind"],
-            json!({
-                "domain": "system_proxy",
-                "error": {
-                    "kind": "write_os_proxy",
-                    "enable": true,
-                    "host": "127.0.0.1",
-                    "port": 7890,
-                },
-            })
-        );
-        assert!(wire["detail"].as_str().unwrap().contains("access denied"));
-    }
-
-    #[test]
-    fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
-        assert_eq!(
-            wire(ProfilesError::ShuttingDown)["kind"],
-            json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
-        );
-        assert_eq!(
-            wire(ClientError::Custom("no domain".into()))["kind"],
-            json!({ "domain": "unknown" })
-        );
-    }
-
-    #[test]
-    fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
-        let fetch = wire(ProfilesError::FetchSubscription {
-            url: "https://sub.example/x".parse().unwrap(),
-            source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },
-        });
-        assert_eq!(
-            fetch["kind"]["error"],
-            json!({
-                "kind": "fetch_subscription",
-                "url": "https://sub.example/x",
-                "source": { "kind": "subscription_http_status", "status": 404 },
-            })
-        );
-
-        let read = wire(ProfilesError::ReadProfileFile {
-            uid: ProfileId("p1".into()),
-            source: ProfileFileError::mock("disk full"),
-        });
-        assert_eq!(
-            read["kind"]["error"],
-            json!({
-                "kind": "read_profile_file",
-                "uid": "p1",
-                "source": { "kind": "write_file", "path": "mock" },
-            }),
-            "the io error stays out of the wire form"
-        );
-        assert!(
-            read["detail"].as_str().unwrap().contains("disk full"),
-            "and reaches the user through the copied detail: {}",
-            read["detail"]
-        );
-    }
-
-    #[test]
-    fn an_aborted_commit_names_what_became_of_the_runtime() {
-        let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
-        let aborted = WriteConfigSnafu {
-            runtime: RuntimeAftermath::RollbackFailed {
-                detail: std::sync::Arc::new(RuntimeError::OwnerUnresponsive {
-                    operation_id: "op1".into(),
-                }),
-            },
-        }
-        .into_error(cause);
-        assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
-
-        let wire = wire(ProfilesError::Commit {
-            uid: Some(ProfileId("r1".into())),
-            path: Some(ManagedProfilePath::new("r1.yaml").unwrap()),
-            source: aborted,
-            cleanup_failures: Vec::new(),
-        });
-        assert_eq!(
-            wire["kind"]["error"],
-            json!({
-                "kind": "commit",
-                "uid": "r1",
-                "path": "r1.yaml",
-                "source": {
-                    "kind": "write_config",
-                    "runtime": {
-                        "kind": "rollback_failed",
-                        "detail": { "kind": "owner_unresponsive", "operation_id": "op1" },
-                    },
-                },
-            })
-        );
-    }
-
-    #[test]
-    fn a_version_conflict_does_not_serialize_its_cleanup_failures() {
-        let wire = wire(ProfilesError::VersionConflict {
-            expected: 3,
-            actual: 4,
-            cleanup_failures: vec![ProfilesError::ShuttingDown],
-        });
-        assert_eq!(
-            wire["kind"]["error"],
-            json!({ "kind": "version_conflict", "expected": 3, "actual": 4 })
-        );
-    }
-
-    #[test]
-    fn unclassified_error_serializes_message_and_original_error() {
-        let error = anyhow::anyhow!("disk full").context("failed to save the profile");
-        let wire = serde_json::to_value(IpcError::from(error)).unwrap();
-
-        assert_eq!(wire["kind"], serde_json::json!({ "domain": "unknown" }));
-        assert_eq!(wire["message"], "failed to save the profile");
-        let detail = wire["detail"].as_str().unwrap();
-        assert!(
-            detail.contains("failed to save the profile") && detail.contains("disk full"),
-            "detail keeps the whole source chain: {detail}"
-        );
-    }
+    use super::PendingDeepLinks;
 
     #[test]
     fn deep_links_queued_while_no_frontend_listens_are_taken_oldest_first() {

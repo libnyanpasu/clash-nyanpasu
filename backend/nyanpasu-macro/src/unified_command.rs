@@ -44,7 +44,7 @@ impl syn::parse::Parse for Options {
 }
 
 /// Where the generated code finds the registry types.
-const REGISTRY: &str = "crate::unified_rpc";
+const REGISTRY: &str = "::nyanpasu_rpc";
 
 #[cfg(test)]
 pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
@@ -740,6 +740,30 @@ mod tests {
                     .to_string()
                     .contains("RpcError :: unsupported"),
                 "Tauri command {name} was compiled into an unsupported dispatcher"
+            );
+        }
+    }
+
+    #[test]
+    fn every_shared_command_has_a_neutral_handler_and_no_tauri_code() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../nyanpasu-rpc/src/commands.rs"
+        );
+        let source = std::fs::read_to_string(path).expect("failed to read shared command source");
+        let file = syn::parse_file(&source).expect("failed to parse shared command source");
+        let mut commands = Vec::new();
+        collect_rpc_commands(&file.items, &mut commands);
+        assert!(!commands.is_empty(), "expected shared RPC commands");
+
+        for command in commands {
+            let name = command.sig.ident.to_string();
+            let expanded = expand(command)
+                .unwrap_or_else(|error| panic!("failed to expand {name}: {error}"))
+                .to_string();
+            assert!(
+                !expanded.contains("RpcError :: unsupported") && !expanded.contains("tauri ::"),
+                "shared command {name} must expand to a neutral handler only"
             );
         }
     }

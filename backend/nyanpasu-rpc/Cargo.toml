@@ -1,0 +1,45 @@
+[package]
+name = 'nyanpasu-rpc'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = 'Transport-neutral RPC registry, event bus and shared commands over NyanpasuClient'
+
+[features]
+# The WebUI transport: an axum router over the registry and the event bus.
+http = ['dep:axum', 'dep:futures']
+
+[dependencies]
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol' }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
+  'specta'
+] }
+nyanpasu-core-manager = { workspace = true }
+nyanpasu-macro = { path = '../nyanpasu-macro' }
+anyhow = '1'
+inventory = '0.3'
+serde = { version = '1', features = ['derive'] }
+serde_json = '1'
+serde_yaml_ng = { workspace = true }
+snafu = { workspace = true }
+specta = { version = '^2.0.0-rc.25', features = ['derive', 'function'] }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = '1.7.0'
+axum = { version = '0.8', optional = true }
+futures = { version = '0.3', optional = true }
+
+[dev-dependencies]
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'test-support'
+] }
+clash-api = { workspace = true }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+tempfile = '3.9.0'
+tower = { version = '0.5', features = ['util'] }

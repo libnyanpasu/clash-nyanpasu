@@ -1844,6 +1844,7 @@ dependencies = [
  "nyanpasu-persistence",
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
+ "nyanpasu-rpc",
  "nyanpasu-rpc-protocol",
  "nyanpasu-scripts",
  "nyanpasu-traffic",
@@ -7177,6 +7178,36 @@ dependencies = [
  "snafu 0.9.2",
  "specta",
  "tempfile",
+]
+
+[[package]]
+name = "nyanpasu-rpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clash-api",
+ "futures",
+ "inventory",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "nyanpasu-core",
+ "nyanpasu-core-manager",
+ "nyanpasu-logging",
+ "nyanpasu-macro",
+ "nyanpasu-migration",
+ "nyanpasu-paths",
+ "nyanpasu-rpc-protocol",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "snafu 0.9.2",
+ "specta",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

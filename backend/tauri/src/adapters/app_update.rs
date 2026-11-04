@@ -6,7 +6,6 @@ use std::{future::Future, sync::Arc, time::Duration};
 use anyhow::{Context as _, Result, anyhow};
 use async_trait::async_trait;
 use tauri_plugin_updater::{Update, UpdaterExt};
-use tauri_specta::Event as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::adapters::events::AppUpdateStateChanged;
@@ -231,17 +230,18 @@ where
     ))
 }
 
-pub(crate) struct TauriAppUpdateEventSink(tauri::AppHandle);
+/// Publishes updater state on the shared event bus.
+pub(crate) struct BusAppUpdateEventSink(nyanpasu_rpc::EventBus);
 
-impl TauriAppUpdateEventSink {
-    pub fn new(app: tauri::AppHandle) -> Self {
-        Self(app)
+impl BusAppUpdateEventSink {
+    pub fn new(events: nyanpasu_rpc::EventBus) -> Self {
+        Self(events)
     }
 }
 
-impl AppUpdateEventSink for TauriAppUpdateEventSink {
+impl AppUpdateEventSink for BusAppUpdateEventSink {
     fn publish(&self, snapshot: AppUpdateSnapshot) {
-        crate::log_err!(AppUpdateStateChanged(snapshot).emit(&self.0));
+        crate::unified_rpc::publish(&self.0, &AppUpdateStateChanged(snapshot));
     }
 }
 

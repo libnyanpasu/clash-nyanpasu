@@ -29,22 +29,35 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .dangerously_cast_bigints_to_number()
 }
 
+/// The schema of application commands for the generated bindings. They are
+/// dispatched through `call_rpc`, never registered as Tauri commands, so the
+/// schema needs only their specta function types; shared commands from
+/// `nyanpasu-rpc` carry no `#[tauri::command]` at all.
+macro_rules! schema_commands {
+    ($($command:tt)*) => {
+        tauri_specta::Commands::<tauri::Wry>(
+            std::sync::Arc::new(|_| false),
+            std::sync::Arc::new(specta::function::collect_functions![$($command)*]),
+        )
+    };
+}
+
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
-        collect_commands![
+        schema_commands![
             ipc::get_debug_http_status,
             // Read-only commands
             ipc::read_clipboard_text,
-            ipc::query_core_logs,
+            nyanpasu_rpc::commands::query_core_logs,
             ipc::get_core_log,
-            ipc::get_core_log_status,
+            nyanpasu_rpc::commands::get_core_log_status,
             ipc::list_log_files,
             ipc::get_sys_proxy,
             ipc::get_clash_info,
             ipc::get_runtime_config,
-            ipc::get_runtime_yaml,
+            nyanpasu_rpc::commands::get_runtime_yaml,
             ipc::get_runtime_exists,
-            ipc::inspect_runtime,
+            nyanpasu_rpc::commands::inspect_runtime,
             ipc::inspect_applied_runtime,
             ipc::inspect_runtime_node,
             ipc::get_postprocessing_output,
@@ -62,12 +75,12 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_clash_config,
             ipc::get_config_features,
             ipc::get_hotkey_functions,
-            ipc::get_profiles,
+            nyanpasu_rpc::commands::get_profiles,
             ipc::probe_profile_url,
             ipc::get_profile_sync_status,
             ipc::get_profile_sync_runs,
             ipc::get_profile_sync_logs,
-            ipc::read_profile_file,
+            nyanpasu_rpc::commands::read_profile_file,
             ipc::get_custom_app_dir,
             ipc::service::status_service,
             ipc::is_portable,
@@ -77,7 +90,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::is_tray_icon_set,
             ipc::get_widget_icon,
             ipc::is_widget_icon_set,
-            ipc::get_core_status,
+            nyanpasu_rpc::commands::get_core_status,
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
             ipc::is_appimage,
@@ -99,7 +112,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_release_channel,
             ipc::get_system_accent_color,
         ],
-        collect_commands![
+        schema_commands![
             ipc::write_clipboard_text,
             ipc::show_native_notification,
             ipc::show_native_message_dialog,
@@ -149,7 +162,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::enhance_profiles,
             ipc::import_profile,
             ipc::take_pending_deep_links,
-            ipc::create_profile,
+            nyanpasu_rpc::commands::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,
             ipc::set_profile_layout,
@@ -157,15 +170,15 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::set_proxy_group_layout,
             ipc::create_proxy_group_folder,
             ipc::update_profile,
-            ipc::delete_profile,
-            ipc::activate_profile,
-            ipc::set_global_transforms,
+            nyanpasu_rpc::commands::delete_profile,
+            nyanpasu_rpc::commands::activate_profile,
+            nyanpasu_rpc::commands::set_global_transforms,
             ipc::set_profile_valid_fields,
             ipc::patch_profile_metadata,
             ipc::patch_remote_profile_options,
-            ipc::replace_profile_definition,
+            nyanpasu_rpc::commands::replace_profile_definition,
             ipc::view_profile,
-            ipc::save_profile_file,
+            nyanpasu_rpc::commands::save_profile_file,
             ipc::set_custom_app_dir,
             ipc::service::install_service,
             ipc::service::uninstall_service,

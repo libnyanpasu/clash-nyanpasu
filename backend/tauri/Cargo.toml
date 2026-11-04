@@ -42,6 +42,7 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 nyanpasu-core-manager = { workspace = true }
 clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
+nyanpasu-rpc = { path = '../nyanpasu-rpc', features = ['http'] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol' }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }

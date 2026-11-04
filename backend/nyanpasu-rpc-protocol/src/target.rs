@@ -61,3 +61,21 @@ pub enum ShellCapability {
     /// declares it can never be exposed over the local socket.
     Elevation,
 }
+
+impl ShellCapability {
+    pub const ALL: [Self; 13] = [
+        Self::Clipboard,
+        Self::Notification,
+        Self::Dialog,
+        Self::CallerWebview,
+        Self::Window,
+        Self::Lifecycle,
+        Self::Opener,
+        Self::Presentation,
+        Self::DeepLink,
+        Self::AppUpdate,
+        Self::Hotkey,
+        Self::OsIntegration,
+        Self::Elevation,
+    ];
+}

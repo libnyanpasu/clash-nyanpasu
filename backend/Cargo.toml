@@ -22,6 +22,7 @@ members = [
   'nyanpasu-local-channel',
   'nyanpasu-widget-protocol',
   'nyanpasu-rpc-protocol',
+  'nyanpasu-rpc',
   'nyanpasu-widget',
   'nyanpasu-crash-reporter',
   'nyanpasu-diagnose',

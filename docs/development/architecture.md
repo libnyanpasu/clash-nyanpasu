@@ -42,10 +42,13 @@ planned below. The current layout is:
 backend/tauri/src/
   setup.rs                 desktop composition root
   adapters/                GUI adapters and frontend event delivery
-  ipc.rs, unified_rpc.rs   RPC transport adapters
-  server/                  HTTP transport
+  ipc.rs, unified_rpc.rs   Tauri-bound commands and the Tauri IPC adapter
+  server/                  desktop debug HTTP server
           |
           | constructs and injects dependencies
+          v
+backend/nyanpasu-rpc/src/  registry, event bus, WebUI router and shared commands
+          |                (wire contract in nyanpasu-rpc-protocol)
           v
 backend/nyanpasu-core/src/
   client/                  NyanpasuClient, typed clients, workflows, runtime builds and artifact conversion

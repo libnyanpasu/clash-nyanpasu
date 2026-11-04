@@ -1,100 +1,27 @@
-//! Experimental HTTP transport for commands shared with the existing Tauri IPC surface.
+//! Tauri adapters for the shared RPC registry: the IPC entrypoint that
+//! dispatches desktop calls, the handlers of Tauri-bound commands, the event
+//! sink that turns bus events into Tauri events, and the desktop shell's HTTP
+//! routes.
 
-use std::{collections::HashMap, convert::Infallible, future::Future, pin::Pin, sync::Arc};
+use std::collections::HashMap;
 
 use axum::{
-    Json, Router,
-    body::Body,
-    extract::{Query, State, rejection::JsonRejection},
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response, Sse, sse::Event},
-    routing::{get, post},
+    Json, Router, body::Body, extract::State, http::StatusCode, response::Response, routing::get,
 };
-use futures::{StreamExt, stream};
-use serde::Deserialize;
+use futures::stream;
 use serde_json::Value;
-use tauri::Manager;
-use tokio::sync::broadcast;
+use tauri::{Emitter as _, Manager as _};
 
-use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
-use nyanpasu_rpc_protocol::{
-    EventName, RpcError, RpcErrorKind, RpcOwner, RpcTarget, RpcValue, ShellCapability,
+use nyanpasu_rpc::{
+    EventBus, EventSink, RpcEvent, RpcFuture, UnifiedRpc, WeakUnifiedRpc, application_error,
+    http::error_response,
 };
+use nyanpasu_rpc_protocol::{EventName, RpcError, RpcErrorKind, RpcOwner, RpcTarget, RpcValue};
 
-pub struct RpcDependencies {
-    pub client: NyanpasuClient,
-    pub storage: Storage,
-    pub paths: nyanpasu_paths::PathResolver,
-    pub events: EventBus,
-}
-
-#[derive(Clone)]
-pub struct EventBus(broadcast::Sender<(&'static str, Value)>);
-
-impl EventBus {
-    pub fn new() -> Self {
-        let (sender, _) = broadcast::channel(256);
-        Self(sender)
-    }
-
-    pub fn publish(&self, name: &'static str, payload: Value) {
-        let _ = self.0.send((name, payload));
-    }
-
-    fn subscribe(&self) -> broadcast::Receiver<(&'static str, Value)> {
-        self.0.subscribe()
-    }
-}
-
-pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
-    use tauri::Listener;
-    for name in EventName::ALL {
-        let events = events.clone();
-        app.listen_any(name.as_str(), move |event| {
-            if let Ok(payload) = serde_json::from_str(event.payload()) {
-                events.publish(name.as_str(), payload);
-            }
-        });
-    }
-}
-
-pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
-
-fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
-    let cookie = headers
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let session = cookie
-        .split(';')
-        .map(str::trim)
-        .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
-        .and_then(|s| uuid::Uuid::parse_str(s).ok())
-        .ok_or_else(|| RpcError::invalid_params("HTTP session cookie is missing"))?;
-    Ok(RpcOwner::http_session(session))
-}
-
-pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
 pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
 
-/// One application command, registered by `#[nyanpasu_macro::rpc]`.
-pub struct CommandEntry {
-    pub name: &'static str,
-    /// The transports the command opted into; the registry refuses the rest.
-    pub targets: &'static [RpcTarget],
-    /// The shell capabilities the command can reach.
-    #[expect(
-        dead_code,
-        reason = "the desktop shell provides every capability, so it registers every command"
-    )]
-    pub capabilities: &'static [ShellCapability],
-    /// The transport-neutral handler.
-    pub handler: RpcHandler,
-}
-
-inventory::collect!(CommandEntry);
-
-/// The desktop handler of a command that is also a `#[tauri::command]`.
+/// The desktop handler of a command that is also a `#[tauri::command]`,
+/// submitted by `#[nyanpasu_macro::rpc]`.
 pub struct TauriCommandEntry {
     pub name: &'static str,
     pub handler: TauriRpcHandler,
@@ -102,151 +29,25 @@ pub struct TauriCommandEntry {
 
 inventory::collect!(TauriCommandEntry);
 
-/// Maps an application failure into the RPC envelope, keeping the structured
-/// domain error and the core's retry metadata found anywhere in its source chain.
-pub fn application_error(error: impl std::error::Error + 'static) -> RpcError {
-    application_error_ref(&error)
+/// Dispatches desktop calls: Tauri-bound commands through their own handlers,
+/// every other registered command through the registry's desktop target.
+pub struct DesktopRpc {
+    rpc: UnifiedRpc,
+    handlers: HashMap<&'static str, TauriRpcHandler>,
 }
 
-pub fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError {
-    let mut result = RpcError::new(RpcErrorKind::ApplicationError, error.to_string());
-    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
-    while let Some(error) = source {
-        if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
-            result.domain_error = serde_json::to_value(log)
-                .ok()
-                .map(|value| Box::new(RpcValue(value)));
-        }
-        if let Some(log) = error.downcast_ref::<nyanpasu_core::logs::CoreLogError>() {
-            result.domain_error = serde_json::to_value(log)
-                .ok()
-                .map(|value| Box::new(RpcValue(value)));
-        }
-        if let Some(core) = error.downcast_ref::<nyanpasu_core_manager::CoreError>() {
-            result.code = core.kind.map(|kind| kind.to_string());
-            result.retryable = Some(core.retryable);
-            result.operation_id = core.operation_id.map(|id| id.to_string());
-        }
-        if let Some(ipc) = error.downcast_ref::<crate::ipc::IpcError>() {
-            result.domain_error = serde_json::to_value(ipc)
-                .ok()
-                .map(|value| Box::new(RpcValue(value)));
-        }
-        source = error.source();
-    }
-    result
-}
-
-fn http_status(error: &RpcError) -> StatusCode {
-    StatusCode::from_u16(error.http_status()).expect("RPC error statuses are valid HTTP codes")
-}
-
-#[derive(Deserialize)]
-struct Request {
-    method: String,
-    #[serde(default)]
-    params: Value,
-}
-
-#[derive(Clone)]
-struct CommandHandlers {
-    commands: Arc<HashMap<&'static str, &'static CommandEntry>>,
-    desktop: Arc<HashMap<&'static str, TauriRpcHandler>>,
-}
-
-#[derive(Clone)]
-pub struct UnifiedRpc {
-    dependencies: Arc<RpcDependencies>,
-    commands: CommandHandlers,
-}
-
-/// Filled once by the composition root after the application facade exists.
-/// A weak dependency graph avoids an idle HTTP actor retaining its own client.
-#[derive(Default)]
-pub struct RpcHttpRoutes(std::sync::OnceLock<(std::sync::Weak<RpcDependencies>, CommandHandlers)>);
-
-#[derive(Debug, snafu::Snafu)]
-pub(crate) enum SetupError {
-    #[snafu(display("HTTP routes already installed"))]
-    InstallRoutes,
-    #[snafu(display("duplicate RPC command: {name}"))]
-    RegisterCommand { name: &'static str },
-}
-
-impl RpcHttpRoutes {
-    pub fn install(&self, rpc: &UnifiedRpc) -> Result<(), SetupError> {
-        self.0
-            .set((Arc::downgrade(&rpc.dependencies), rpc.commands.clone()))
-            .map_err(|_| SetupError::InstallRoutes)
-    }
-}
-impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
-    fn build(&self) -> anyhow::Result<Router> {
-        let (dependencies, commands) = self
-            .0
-            .get()
-            .ok_or_else(|| anyhow::anyhow!("HTTP routes not installed"))?;
-        Ok(UnifiedRpc {
-            dependencies: dependencies
-                .upgrade()
-                .ok_or_else(|| anyhow::anyhow!("application has shut down"))?,
-            commands: commands.clone(),
-        }
-        .router())
-    }
-}
-
-impl UnifiedRpc {
-    pub fn new(dependencies: RpcDependencies) -> Result<Self, SetupError> {
-        let mut commands = HashMap::new();
-        for entry in inventory::iter::<CommandEntry> {
-            if commands.insert(entry.name, entry).is_some() {
-                return Err(SetupError::RegisterCommand { name: entry.name });
-            }
-        }
-        let mut desktop = HashMap::new();
+impl DesktopRpc {
+    pub fn new(rpc: UnifiedRpc) -> Result<Self, SetupError> {
+        let mut handlers = HashMap::new();
         for entry in inventory::iter::<TauriCommandEntry> {
-            if desktop.insert(entry.name, entry.handler).is_some() {
+            if handlers.insert(entry.name, entry.handler).is_some() {
                 return Err(SetupError::RegisterCommand { name: entry.name });
             }
         }
-        Ok(Self {
-            dependencies: Arc::new(dependencies),
-            commands: CommandHandlers {
-                commands: Arc::new(commands),
-                desktop: Arc::new(desktop),
-            },
-        })
+        Ok(Self { rpc, handlers })
     }
 
-    pub fn command_names(&self) -> Vec<&'static str> {
-        let mut names = self.commands.commands.keys().copied().collect::<Vec<_>>();
-        names.sort_unstable();
-        names
-    }
-
-    pub fn router(self) -> Router {
-        Router::new()
-            .route("/bridge/rpc", post(http_call))
-            .route("/bridge/logs/archive", get(http_logs_archive))
-            .route("/bridge/events", get(http_events))
-            .route("/bridge/connection-details", get(http_connection_details))
-            .with_state(self)
-    }
-
-    async fn call(&self, method: &str, owner: RpcOwner, params: Value) -> Result<Value, RpcError> {
-        let entry = self
-            .commands
-            .commands
-            .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
-        if !entry.targets.contains(&RpcTarget::Http) {
-            return Err(RpcError::unsupported(method, RpcTarget::Http));
-        }
-        (entry.handler)(self.dependencies.clone(), owner, params).await
-    }
-
-    async fn call_tauri(
+    async fn call(
         &self,
         app: tauri::AppHandle,
         window: tauri::Window,
@@ -254,27 +55,102 @@ impl UnifiedRpc {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcError> {
-        let handler = self
-            .commands
-            .desktop
-            .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
-        handler(app, window, webview, params).await
+        if let Some(handler) = self.handlers.get(method) {
+            return handler(app, window, webview, params).await;
+        }
+        let owner = RpcOwner::desktop(window.label());
+        self.rpc
+            .call(RpcTarget::Desktop, method, owner, params)
+            .await
     }
+}
+
+/// Delivers every bus event to all webviews as the Tauri event of the same name.
+pub struct TauriEventSink(tauri::AppHandle);
+
+impl TauriEventSink {
+    pub fn new(app: tauri::AppHandle) -> Self {
+        Self(app)
+    }
+}
+
+impl EventSink for TauriEventSink {
+    fn deliver(&self, event: &RpcEvent) {
+        if let Err(error) = self.0.emit(event.name.as_str(), &event.payload) {
+            tracing::warn!(%error, event = %event.name, "failed to emit a shared event");
+        }
+    }
+}
+
+/// Publishes a generated Tauri event on the bus under its shared name, so
+/// every frontend receives the payload the bindings describe.
+pub fn publish<E: tauri_specta::Event + serde::Serialize>(events: &EventBus, event: &E) {
+    let name: EventName = E::NAME
+        .parse()
+        .expect("every shared Tauri event has a protocol event name");
+    match serde_json::to_value(event) {
+        Ok(payload) => events.publish(name, payload),
+        Err(error) => tracing::warn!(%error, event = E::NAME, "failed to serialize a shared event"),
+    }
+}
+
+/// Filled once by the composition root after the application facade exists.
+/// A weak registry handle avoids an idle HTTP actor retaining its own client.
+#[derive(Default)]
+pub struct RpcHttpRoutes(std::sync::OnceLock<WeakUnifiedRpc>);
+
+#[derive(Debug, snafu::Snafu)]
+pub(crate) enum SetupError {
+    #[snafu(display("HTTP routes already installed"))]
+    InstallRoutes,
+    #[snafu(display("duplicate desktop RPC command: {name}"))]
+    RegisterCommand { name: &'static str },
+}
+
+impl RpcHttpRoutes {
+    pub fn install(&self, rpc: &UnifiedRpc) -> Result<(), SetupError> {
+        self.0
+            .set(rpc.downgrade())
+            .map_err(|_| SetupError::InstallRoutes)
+    }
+}
+
+impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
+    fn build(&self) -> anyhow::Result<Router> {
+        let rpc = self
+            .0
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("HTTP routes not installed"))?
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("application has shut down"))?;
+        Ok(http_router(rpc))
+    }
+}
+
+/// The WebUI routes: the shared RPC router plus the desktop log archive download.
+pub fn http_router(rpc: UnifiedRpc) -> Router {
+    nyanpasu_rpc::http::router(rpc.clone()).merge(
+        Router::new()
+            .route("/bridge/logs/archive", get(http_logs_archive))
+            .with_state(rpc),
+    )
 }
 
 async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
 ) -> Result<Response, (StatusCode, Json<RpcError>)> {
-    let paths = rpc.dependencies.paths.clone();
-    let archive = crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
-        .await
-        .map_err(|error| RpcError::new(RpcErrorKind::ApplicationError, error.to_string()))
-        .map_err(http_rpc_error)?;
+    let dependencies = rpc.dependencies();
+    let archive = crate::utils::collect::logs_archive(
+        dependencies.paths.clone(),
+        dependencies.client.clone(),
+    )
+    .await
+    .map_err(|error| RpcError::new(RpcErrorKind::ApplicationError, error.to_string()))
+    .map_err(error_response)?;
     let file = tokio::fs::File::open(&archive)
         .await
         .map_err(application_error)
-        .map_err(http_rpc_error)?;
+        .map_err(error_response)?;
     let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
         use tokio::io::AsyncReadExt;
 
@@ -295,49 +171,7 @@ async fn http_logs_archive(
         )
         .body(Body::from_stream(body))
         .map_err(application_error)
-        .map_err(http_rpc_error)
-}
-
-fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
-    (http_status(&error), Json(error))
-}
-
-// Subscribe only while a page consumes full connection details. Dropping the
-// SSE body releases the watch receiver, just like a native channel teardown.
-async fn http_connection_details(
-    State(rpc): State<UnifiedRpc>,
-) -> Result<impl IntoResponse, (StatusCode, Json<RpcError>)> {
-    let receiver = rpc
-        .dependencies
-        .client
-        .subscribe_clash_connection_details()
-        .await
-        .map_err(application_error)
-        .map_err(http_rpc_error)?;
-    Ok(Sse::new(connection_detail_events(receiver))
-        .keep_alive(axum::response::sse::KeepAlive::default()))
-}
-
-fn connection_detail_events(
-    receiver: tokio::sync::watch::Receiver<
-        Option<Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>,
-    >,
-) -> impl futures::Stream<Item = Result<Event, Infallible>> {
-    stream::unfold((receiver, true), |(mut receiver, mut first)| async move {
-        loop {
-            if !first && receiver.changed().await.is_err() {
-                return None;
-            }
-            first = false;
-            let frame = receiver.borrow_and_update().clone();
-            if let Some(frame) = frame {
-                let event = Event::default()
-                    .json_data(frame.as_ref())
-                    .expect("connection details serialize");
-                return Some((Ok::<_, Infallible>(event), (receiver, false)));
-            }
-        }
-    })
+        .map_err(error_response)
 }
 
 // This is the transport entrypoint, not an application operation. All
@@ -351,87 +185,10 @@ pub async fn call_rpc(
     method: String,
     params: RpcValue,
 ) -> Result<RpcValue, RpcError> {
-    let rpc = app.state::<UnifiedRpc>();
-    rpc.call_tauri(app.clone(), window, webview, &method, params.0)
+    let rpc = app.state::<DesktopRpc>();
+    rpc.call(app.clone(), window, webview, &method, params.0)
         .await
         .map(RpcValue)
-}
-
-#[derive(Deserialize)]
-struct EventRequest {
-    name: Option<String>,
-}
-
-async fn http_events(
-    State(rpc): State<UnifiedRpc>,
-    Query(request): Query<EventRequest>,
-) -> Response {
-    if request
-        .name
-        .as_ref()
-        .is_some_and(|name| name.parse::<EventName>().is_err())
-    {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(RpcError::unknown_method(request.name.as_deref().unwrap())),
-        )
-            .into_response();
-    }
-    let receiver = rpc.dependencies.events.subscribe();
-    let name = request.name;
-    let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
-        loop {
-            match receiver.recv().await {
-                Ok((event_name, payload))
-                    if name.as_ref().is_none_or(|name| event_name == name) =>
-                {
-                    let payload = if name.is_some() {
-                        payload
-                    } else {
-                        serde_json::json!({"name": event_name, "payload": payload})
-                    };
-                    let data = serde_json::to_string(&payload).ok()?;
-                    return Some((
-                        Ok::<Event, Infallible>(Event::default().data(data)),
-                        (receiver, name),
-                    ));
-                }
-                Ok(_) => continue,
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    return Some((
-                        Ok(Event::default().event("resync").data("{}")),
-                        (receiver, name),
-                    ));
-                }
-                Err(broadcast::error::RecvError::Closed) => return None,
-            }
-        }
-    });
-    let ready = stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
-    Sse::new(ready.chain(events))
-        .keep_alive(axum::response::sse::KeepAlive::default())
-        .into_response()
-}
-
-async fn http_call(
-    State(rpc): State<UnifiedRpc>,
-    headers: HeaderMap,
-    request: Result<Json<Request>, JsonRejection>,
-) -> Result<Json<Value>, (StatusCode, Json<RpcError>)> {
-    let Json(request) = request.map_err(|error| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(RpcError::invalid_params(error.to_string())),
-        )
-    })?;
-    // Sessions are required only for owner-scoped commands; ordinary calls may
-    // use an anonymous owner. The listener authenticates every request before dispatch.
-    let owner =
-        http_owner(&headers).unwrap_or_else(|_| RpcOwner::http_session(uuid::Uuid::new_v4()));
-    rpc.call(&request.method, owner, request.params)
-        .await
-        .map(Json)
-        .map_err(http_rpc_error)
 }
 
 #[cfg(test)]
@@ -442,6 +199,10 @@ mod tests {
         http::Request,
     };
     use futures::StreamExt;
+    use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
+    use nyanpasu_rpc::RpcDependencies;
+    use nyanpasu_rpc_protocol::ShellCapability;
+    use std::sync::Arc;
     use tower::ServiceExt;
 
     #[test]
@@ -463,26 +224,38 @@ mod tests {
         let paths = args.paths.clone();
         let logs_dir = paths.app_logs_dir();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        let events = EventBus::new();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            client,
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: events.clone(),
-        })
+        let events = EventBus::new(Vec::new());
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                client,
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: events.clone(),
+            },
+            &ShellCapability::ALL,
+        )
         .unwrap();
-        assert!(rpc.command_names().contains(&"get_debug_http_status"));
-        assert!(rpc.command_names().contains(&"get_profiles"));
-        assert!(rpc.command_names().contains(&"quit_application"));
         assert!(
-            rpc.command_names()
+            rpc.command_names(RpcTarget::Desktop)
+                .contains(&"get_debug_http_status")
+        );
+        assert!(
+            rpc.command_names(RpcTarget::Desktop)
+                .contains(&"get_profiles")
+        );
+        assert!(
+            rpc.command_names(RpcTarget::Desktop)
+                .contains(&"quit_application")
+        );
+        assert!(
+            rpc.command_names(RpcTarget::Desktop)
                 .contains(&"subscribe_clash_connection_details")
         );
         assert!(
-            rpc.command_names()
+            rpc.command_names(RpcTarget::Desktop)
                 .contains(&"unsubscribe_clash_connection_details")
         );
-        let app = rpc.router();
+        let app = http_router(rpc);
         tauri::async_runtime::block_on(async move {
             for method in [
                 "report_issue",
@@ -730,14 +503,14 @@ mod tests {
                 .unwrap();
             let mut stream = response.into_body().into_data_stream();
             stream.next().await.unwrap().unwrap();
-            let name = <crate::adapters::events::StateChangedEvent as tauri_specta::Event>::NAME;
+            let name = EventName::StateChanged;
             for sequence in 0..300 {
                 events.publish(name, serde_json::json!(sequence));
             }
             let gap = stream.next().await.unwrap().unwrap();
             assert!(std::str::from_utf8(&gap).unwrap().contains("event: resync"));
             let event = stream.next().await.unwrap().unwrap();
-            assert!(std::str::from_utf8(&event).unwrap().contains(name));
+            assert!(std::str::from_utf8(&event).unwrap().contains(name.as_str()));
             let response = app
                 .clone()
                 .oneshot(
@@ -762,14 +535,14 @@ mod tests {
             let mut body = response.into_body().into_data_stream();
             let ready = body.next().await.unwrap().unwrap();
             assert!(std::str::from_utf8(&ready).unwrap().contains("ready"));
-            events.publish("clash-ws-event", serde_json::json!({"sequence": 1}));
+            events.publish(EventName::ClashWs, serde_json::json!({"sequence": 1}));
             let frame = body.next().await.unwrap().unwrap();
             assert!(
                 std::str::from_utf8(&frame)
                     .unwrap()
                     .contains("\"sequence\":1")
             );
-            let name = <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME;
+            let name = EventName::CoreLogsChanged;
             let response = app
                 .oneshot(
                     Request::get(format!("/bridge/events?name={name}"))
@@ -842,14 +615,17 @@ mod tests {
             ));
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(Vec::new()),
+            },
+            &ShellCapability::ALL,
+        )
         .unwrap();
-        let app = rpc.router();
+        let app = http_router(rpc);
         tauri::async_runtime::block_on(async {
             let (status, result) =
                 rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
@@ -928,14 +704,17 @@ mod tests {
         );
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(Vec::new()),
+            },
+            &ShellCapability::ALL,
+        )
         .unwrap();
-        let app = rpc.router();
+        let app = http_router(rpc);
 
         tauri::async_runtime::block_on(async {
             let expected = json!({
@@ -991,70 +770,6 @@ mod tests {
     }
 
     #[test]
-    fn errors_preserve_domain_codes_and_operation_identity() {
-        use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
-        let id = OperationId::generate();
-        let wire = application_error(
-            CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false).with_operation(id),
-        );
-        assert_eq!(wire.operation_id, Some(id.to_string()));
-        assert_eq!(wire.retryable, Some(false));
-        assert_eq!(
-            wire.code,
-            Some(CoreErrorKind::BackendUnavailable.to_string())
-        );
-        let ipc = crate::ipc::IpcError::from(std::io::Error::other("request failed"));
-        let wire = application_error(ipc);
-        let payload = serde_json::to_value(wire).unwrap();
-        assert_eq!(payload["domain_error"]["kind"]["domain"], "unknown");
-        assert_eq!(payload["domain_error"]["message"], "request failed");
-        assert!(payload["domain_error"]["detail"].is_string());
-        let log = application_error(nyanpasu_logging::LogError::SessionExpired);
-        assert_eq!(
-            serde_json::to_value(log).unwrap()["domain_error"],
-            "session_expired"
-        );
-    }
-
-    #[tokio::test]
-    async fn connection_details_send_current_and_new_frames_and_release_demand() {
-        use nyanpasu_core::clash::ws::ClashConnectionDetails;
-        let frame = |sequence| {
-            Some(Arc::new(ClashConnectionDetails {
-                sequence,
-                connections: nyanpasu_core::clash::connection_rates::ConnectionDetails::new(
-                    Arc::new(clash_api::ConnectionsSnapshot {
-                        download_total: 0,
-                        upload_total: 0,
-                        connections: None,
-                        memory: None,
-                    }),
-                    Vec::new(),
-                ),
-            }))
-        };
-        let (sender, receiver) = tokio::sync::watch::channel(frame(1));
-        let response = Sse::new(connection_detail_events(receiver)).into_response();
-        let mut body = response.into_body().into_data_stream();
-        assert_eq!(sender.receiver_count(), 1);
-        let first = body.next().await.unwrap().unwrap();
-        assert!(
-            std::str::from_utf8(&first)
-                .unwrap()
-                .contains("\"sequence\":1")
-        );
-        sender.send(frame(2)).unwrap();
-        let next = body.next().await.unwrap().unwrap();
-        assert!(
-            std::str::from_utf8(&next)
-                .unwrap()
-                .contains("\"sequence\":2")
-        );
-        drop(body);
-        assert_eq!(sender.receiver_count(), 0);
-    }
-
-    #[test]
     fn enabled_http_server_joins_application_shutdown() {
         use crate::server::debug_http::{Frontend, FrontendAssets};
         struct Assets;
@@ -1075,12 +790,15 @@ mod tests {
             crate::server::debug_http::tests::control_factory(frontend, routes.clone());
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(Vec::new()),
+            },
+            &ShellCapability::ALL,
+        )
         .unwrap();
         routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {
@@ -1194,13 +912,16 @@ mod tests {
             crate::server::debug_http::tests::control_factory(frontend, routes.clone());
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        let events = EventBus::new();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: events.clone(),
-        })
+        let events = EventBus::new(Vec::new());
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: events.clone(),
+            },
+            &ShellCapability::ALL,
+        )
         .unwrap();
         routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {
@@ -1209,10 +930,9 @@ mod tests {
             let bridge = tokio::spawn(async move {
                 while logs.changed().await.is_ok() {
                     let status = logs.borrow_and_update().clone();
-                    events.publish(
-                        <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
-                        serde_json::to_value(crate::adapters::events::CoreLogsChanged { status })
-                            .unwrap(),
+                    publish(
+                        &events,
+                        &crate::adapters::events::CoreLogsChanged { status },
                     );
                 }
             });

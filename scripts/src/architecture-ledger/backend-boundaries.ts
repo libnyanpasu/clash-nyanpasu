@@ -101,6 +101,12 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-rpc-protocol',
     forbids: [...GUI, ...CORE_FAMILY, ...IMPLEMENTATION],
   },
+  // The registry every shell serves: above core, below every GUI. Shells
+  // inject implementations; the registry never links them.
+  {
+    package: 'nyanpasu-rpc',
+    forbids: [...GUI, ...IMPLEMENTATION],
+  },
 ]
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */

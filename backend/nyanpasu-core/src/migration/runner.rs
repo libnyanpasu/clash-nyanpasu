@@ -12,6 +12,7 @@ use crate::{
 };
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_persistence::write;
 use semver::Version;
 use snafu::ResultExt as _;
 use std::path::PathBuf;
@@ -41,7 +42,7 @@ pub enum Error {
     #[snafu(display("failed to stamp {module} files"))]
     StampDocument {
         module: String,
-        source: super::fs::Error,
+        source: write::Error,
     },
     #[snafu(display(
         "document was written by a newer version (revision {read}, supported {supported})"
@@ -438,7 +439,7 @@ impl Runner {
                 if self.store.module_state(module.module()).applied_revision != head {
                     continue;
                 }
-                fs::write_document(&path, spec.document, head, file.payload, None).context(
+                write::write_document(&path, spec.document, head, file.payload, None).context(
                     StampDocumentSnafu {
                         module: module.module(),
                     },
@@ -1470,7 +1471,7 @@ mod tests {
         }
 
         fn stamp(&self) -> Option<u64> {
-            crate::format::inspect(&self.profiles())
+            nyanpasu_persistence::format::inspect(&self.profiles())
                 .unwrap()
                 .stamp()
                 .map(|stamp| stamp.schema_revision)
@@ -1698,7 +1699,7 @@ mod tests {
         assert!(state.tasks[step.id()].started_at.is_some());
         // So losing the stamp afterwards is refused rather than taken for a
         // file that never had one.
-        let payload = crate::format::inspect(&case.profiles())
+        let payload = nyanpasu_persistence::format::inspect(&case.profiles())
             .unwrap()
             .into_payload();
         std::fs::write(
@@ -1732,7 +1733,7 @@ mod tests {
 
         assert_eq!(case.stamp(), Some(4));
         let before: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(CLEAN_PROFILES).unwrap();
-        let after = crate::format::inspect(&case.profiles())
+        let after = nyanpasu_persistence::format::inspect(&case.profiles())
             .unwrap()
             .into_payload();
         assert_eq!(after, before);
@@ -1741,7 +1742,7 @@ mod tests {
     }
 
     fn application_config_payload(case: &LegacyCase) -> serde_yaml_ng::Mapping {
-        crate::format::inspect(
+        nyanpasu_persistence::format::inspect(
             &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
         )
         .unwrap()
@@ -1749,7 +1750,7 @@ mod tests {
     }
 
     fn application_stamp(case: &LegacyCase) -> Option<u64> {
-        crate::format::inspect(
+        nyanpasu_persistence::format::inspect(
             &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
         )
         .unwrap()
@@ -1820,7 +1821,7 @@ schema_revision: {revision}
     }
 
     fn assert_application_loads(case: &LegacyCase) {
-        use crate::format::Format as _;
+        use nyanpasu_persistence::format::Format as _;
 
         let _: nyanpasu_config::application::NyanpasuAppConfig =
             crate::migration::modules::application::ApplicationFormat::default()
@@ -2000,7 +2001,7 @@ tray_menu_close_behavior: hide
         overrides.insert("tcp-concurrent".into(), managed(false));
         payload.insert("tun".into(), managed_auto_route());
         payload.insert("tun_stack".into(), "mixed".into());
-        fs::write_document(
+        write::write_document(
             &case.ctx.clash_config_path(),
             "clash_config",
             2,
@@ -2037,9 +2038,11 @@ tray_menu_close_behavior: hide
         assert_eq!(state.module_state("clash_config").applied_revision, 3);
     }
 
-    fn clash_config_file(case: &LegacyCase) -> crate::format::Inspected {
-        crate::format::inspect(&std::fs::read_to_string(case.ctx.clash_config_path()).unwrap())
-            .unwrap()
+    fn clash_config_file(case: &LegacyCase) -> nyanpasu_persistence::format::Inspected {
+        nyanpasu_persistence::format::inspect(
+            &std::fs::read_to_string(case.ctx.clash_config_path()).unwrap(),
+        )
+        .unwrap()
     }
 
     fn clash_config_stamp(case: &LegacyCase) -> Option<u64> {
@@ -2049,7 +2052,7 @@ tray_menu_close_behavior: hide
     }
 
     fn assert_clash_config_loads(case: &LegacyCase) {
-        use crate::format::Format as _;
+        use nyanpasu_persistence::format::Format as _;
 
         let _: nyanpasu_config::clash::config::ClashConfig =
             crate::migration::modules::clash_config::ClashConfigFormat::default()

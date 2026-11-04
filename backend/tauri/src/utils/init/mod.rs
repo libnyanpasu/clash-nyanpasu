@@ -1,6 +1,7 @@
 use fs_extra::dir::CopyOptions;
-use nyanpasu_core::{format::Format, migration::modules::profiles::ProfilesFormat};
+use nyanpasu_core::migration::modules::profiles::ProfilesFormat;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_persistence::format::Format;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use snafu::ResultExt as _;

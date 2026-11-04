@@ -1,8 +1,10 @@
 use super::super::{
-    Ctx, DocumentSpec, MigrationStep, ModuleKind, ModuleMigrator,
-    fs::{read_document, write_document},
+    Ctx, DocumentSpec, MigrationStep, ModuleKind, ModuleMigrator, fs::read_document,
 };
-use crate::format::{StampedDocument, StampedYamlFormat};
+use nyanpasu_persistence::{
+    format::{StampedDocument, StampedYamlFormat},
+    write,
+};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml_ng::{Mapping, Value};
@@ -15,7 +17,7 @@ pub enum Error {
         source: super::super::MigrationCheckError,
     },
     #[snafu(context(false), display("failed to write migration output"))]
-    WriteOutput { source: super::super::fs::Error },
+    WriteOutput { source: write::Error },
     #[snafu(display("migration document is missing: {}", path.display()))]
     FindDocument { path: std::path::PathBuf },
     #[snafu(display("expected mapping in {field}"))]
@@ -109,7 +111,7 @@ impl MigrationStep for MigrateWindowClose {
                 .context(FindDocumentSnafu { path: &path })?;
             let mut payload = file.payload;
             window_close_from_tray_menu(&mut payload)?;
-            write_document(
+            write::write_document(
                 &path,
                 ApplicationDocument::DOCUMENT,
                 self.revision(),

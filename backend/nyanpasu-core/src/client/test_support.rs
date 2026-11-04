@@ -682,7 +682,7 @@ pub(super) fn seed_test_clash_config(path: impl AsRef<std::path::Path>) {
 
 /// The stamped file the clash config client loads.
 pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfig) {
-    use crate::format::Format as _;
+    use nyanpasu_persistence::format::Format as _;
 
     let mut content = Vec::new();
     crate::migration::modules::clash_config::ClashConfigFormat::default()

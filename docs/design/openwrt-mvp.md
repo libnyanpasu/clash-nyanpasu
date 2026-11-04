@@ -1,9 +1,10 @@
 # OpenWrt / ImmortalWrt MVP
 
-Status: paused by user, 2026-10-08. This is a downstream product definition,
-not an implementation contract. Wait for the related shared-backend and
-shell/Tauri separation work to complete, then reassess against main when the
-user explicitly resumes. See the [roadmap](openwrt-roadmap.md) for the resume gate.
+Status: resumed for exploration by user, 2026-11-04. This is a downstream
+product definition, not an implementation contract. The user judged the
+Tauri decoupling sufficient to resume; the CLI and server are not built yet.
+The [roadmap](openwrt-roadmap.md#reassessment-2026-11-04) records the baseline
+reassessment, the headless spike and the upstream gaps it found.
 
 ## Product outcome
 

@@ -1,9 +1,10 @@
 # OpenWrt downstream roadmap
 
-Status: paused by user, 2026-10-08. No OpenWrt implementation is scheduled.
-Resume only when the user requests it after the upstream shared-backend and
-shell/Tauri separation work is complete. Upstream completion alone does not
-implicitly resume this project. No monitoring automation is requested.
+Status: resumed for exploration by user, 2026-11-04, after being paused on
+2026-10-08. The user judged the Tauri decoupling sufficient to resume. Baseline
+reassessment is done and headless feasibility is in progress; see
+[Reassessment, 2026-11-04](#reassessment-2026-11-04). Exploration does not
+authorize the later milestones. No monitoring automation is requested.
 
 This replaces the earlier OpenWrt-driven extraction sequence. The
 [MVP definition](openwrt-mvp.md) describes the intended product outcome;
@@ -38,21 +39,19 @@ construction and operation are readiness evidence; a renamed crate alone is not.
 
 ## Upstream dependency snapshot
 
-Snapshot verified on 2026-10-08; refresh on resume.
+Snapshot refreshed on 2026-11-04 from local refs; `git fetch` failed that day,
+so remote branch state may be older.
 
-| Work                                                                                                                               | State                                                                                                                                                 | Treatment while paused                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [#5652](https://github.com/libnyanpasu/clash-nyanpasu/pull/5652)                                                                   | Already merged on 2026-10-06; runtime builder/scripts and neutral config baseline; runtime consolidated into core; original application crate removed | Delivered foundation. Waiting means its related follow-up work, not waiting for this PR to merge again.                    |
-| [#5621](https://github.com/libnyanpasu/clash-nyanpasu/pull/5621), [#5629](https://github.com/libnyanpasu/clash-nyanpasu/pull/5629) | Open architecture/pure-service work                                                                                                                   | Upstream-owned review, architecture reconciliation and integration. No OpenWrt-mandated merge order.                       |
-| [#5666](https://github.com/libnyanpasu/clash-nyanpasu/pull/5666)                                                                   | Open session-state work                                                                                                                               | Upstream-owned. Desktop session-state extraction alone does not establish router readiness.                                |
-| Shell/Tauri separation                                                                                                             | Discussion stage: no dedicated implementation/PR identified in project docs and PR search                                                             | Required external dependency. Wait for an implemented, reviewed result on main; no invented PR number or completion claim. |
-| [#5645](https://github.com/libnyanpasu/clash-nyanpasu/pull/5645)                                                                   | Merged frontend-independent path resolution                                                                                                           | Reuse explicit path inputs; this does not prove complete shell separation.                                                 |
-| Local application-facade WIP                                                                                                       | Historical unfinished extraction                                                                                                                      | Preserve as reference. Do not replay its old commits into a moving main or implement its contracts in advance.             |
+| Work                                                                                        | State                                                                                                                                                                 | Treatment                                                                                                                         |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| [#6106](https://github.com/libnyanpasu/clash-nyanpasu/pull/6106)                            | Merged: client and transaction graph moved into `nyanpasu-core`                                                                                                       | Delivered. The router composes this facade; no second facade.                                                                     |
+| Core package split, phase A/B (`refactor/core-split-*`, through `core-split-b1b-migration`) | In review, not on main. Adds `nyanpasu-contracts`, `-scripts`, `-profile-transform`, `-net`, `-persistence`, `-profile-io`, `-migration`; retires `nyanpasu-platform` | The spike is based on `core-split-b1b-migration` by user decision, so it uses the final crate names. Rebase when the split lands. |
+| RPC registry outside Tauri, `rpc(local)` CLI target                                         | Planned in [application-platform extraction](application-platform-extraction.md); the registry and generated code still use Tauri types                               | Required before native management. Do not add a router-only transport.                                                            |
+| [#5645](https://github.com/libnyanpasu/clash-nyanpasu/pull/5645)                            | Merged frontend-independent path resolution                                                                                                                           | The spike uses `PathResolver::with_base_dirs` for explicit router roots.                                                          |
 
-Paused work includes server assembly, the CLI, procd endpoints, LuCI/ACL,
-feed packaging, and OpenWrt-specific musl/SDK acceptance. Existing generic
-backend/shell work remains separate and may proceed under its own authorization.
-There is no date estimate or active OpenWrt PR queue.
+Router backend, the CLI, procd endpoints, LuCI/ACL, feed packaging and
+OpenWrt-specific SDK acceptance remain unscheduled. There is no date estimate or
+active OpenWrt PR queue.
 
 ## Resume gate
 
@@ -95,6 +94,121 @@ reviewable functional units after reassessment; keep each independently buildabl
 Do not assume the previous eight-method DTO table, rpc(ubus) macro proposal,
 filesystem layout, service names or stop/start convention are accepted contracts.
 Select the thinnest adapter consistent with the completed shared application.
+
+## Reassessment, 2026-11-04
+
+The user resumed exploration on 2026-11-04 and chose to base it on
+`refactor/core-split-b1b-migration` rather than main. The headless spike lives
+on `feat/openwrt-headless-spike` as `backend/nyanpasu-server`. It is
+feasibility evidence, not the production server. Places where core offers no
+honest headless answer are marked `SPIKE: finding Fn` in its source.
+
+### Operation mapping
+
+| MVP step                    | Shared API                                                                                                                      | Status                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Import a local YAML profile | `create_profile(NewProfileRequest, initial_file)` with a managed local source                                                   | Works. No import-from-path/bytes helper; the caller builds `ProfileDefinition`.       |
+| Ordered JS/Lua transforms   | Each script is a `Transform(Script)` profile; attach with `replace_profile_definition` (per profile) or `set_global_transforms` | Works. Order is the `transforms` list; no attach/reorder helper.                      |
+| Select                      | `activate_profile(Some(id))`                                                                                                    | Works; the commit builds, checks and applies through the shared transaction.          |
+| Build, inspect, validate    | Built and checked (`mihomo -t`) inside the mutation or `reconcile_core`; inspect with `runtime_yaml`, `inspect_runtime`         | No build- or validate-only operation. `runtime_yaml` is unredacted (F9).              |
+| Start / stop / status       | `reconcile_core`, `stop_core`, `core_status`, `subscribe_core_events`                                                           | Works. `stop_core` has no RPC command; RPC commands drop the `reconcile_core` report. |
+| Persistence and recovery    | `profiles.yaml` under injected paths; `startup_reconcile`, `start_background_sources`                                           | Works for orderly restarts. Crash recovery leaves an orphan core (F7).                |
+| Shutdown                    | `request_shutdown`, `wait_shutdown`                                                                                             | Works; the core is stopped with the server.                                           |
+
+Rejected changes are `Err` with `CommitAborted` and a `RuntimeAftermath`;
+committed changes with degradation are `MutationOutcome::CommittedDegraded`.
+
+### Spike results
+
+x86_64 musl release build in `rust:alpine` 3.24 with Mihomo v1.19.33
+(`linux-amd64-compatible`), toolchain `nightly-2026-11-03`:
+
+- Run 1 (fresh): startup `Ready`; the profile and both transforms commit;
+  activation applies; Mihomo reaches `Running` and passes its health check. The
+  runtime YAML contains the JS marker before the Lua marker. Replacing the JS
+  transform with a throwing script is rejected (`RuntimeRefused`,
+  `RuntimeAftermath::Untouched`); the file, selection, runtime YAML and core pid
+  are unchanged. Stop reaches `Stopped`; shutdown is orderly.
+- Run 2 (same directories): profile, transform order and selection are
+  retained. `startup_reconcile` does not start the core by itself, whether run 1
+  ended with an explicit stop or a crash; `reconcile_core` starts it with the
+  persisted chain. Shutdown leaves no core process.
+- Crash: after `kill -9` of the server, Mihomo is reparented and keeps running.
+  The next server reports `Stopped` and starts a second core (F7).
+- Desktop effects (tray, widget, hotkeys, system proxy, auto-launch, locale,
+  logger) report `blocked` with a failure code instead of success.
+- `pnpm run lint:backend-boundaries` and `lint:architecture-ledger` pass; the
+  boundary lint does not list `nyanpasu-server` yet, and its musl dependency
+  tree contains no Tauri, wry, egui, Slint, GTK or WebKit crates.
+
+| Measurement                                | Value                        |
+| ------------------------------------------ | ---------------------------- |
+| `nyanpasu-server` binary, stripped         | 26.8 MB (33.9 MB unstripped) |
+| Server peak RSS, JS and Lua transforms     | 23.3 MB                      |
+| Server peak RSS, no transforms             | 22.1 MB                      |
+| Mihomo RSS                                 | 41 MB                        |
+| Client graph construction                  | 0.25–0.5 s                   |
+| Release build, cold / server-crate rebuild | 301 s / 127 s (32 cores)     |
+
+The scripts are trivial, so the RSS difference does not bound real transform
+cost. aarch64 was not built.
+
+### Findings
+
+| #   | Finding                                                                                                                                                                                                                                                               | Suggested upstream change                                                                             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| F1  | `ApplicationEffectsPort` plans widget, tray, hotkey and other desktop effects on every host, and `EffectFailureCode` has no generic "unsupported" value; the spike borrows the nearest failure code.                                                                  | A host-declared set of applicable effects, or an explicit unsupported code.                           |
+| F2  | `OsProxyPort::default_bypass` returns a string, so "no platform bypass" can only be the empty list.                                                                                                                                                                   | Make "no system proxy" a host capability rather than an adapter answer.                               |
+| F3  | A `ServiceHostAdapter::probe` error means "a daemon may hold a core", so startup refuses to start any core (`RecoveryRequired`). The spike reports `NotInstalled`, which is true, but the port has no "this host has no service" answer.                              | Let the host declare that it has no service host.                                                     |
+| F4  | `BundleMetadata` is desktop-shaped (window label, WebView, portable layout, updater feeds), so the server invents values.                                                                                                                                             | Split host-neutral build metadata from desktop bundle metadata.                                       |
+| F5  | `actor_v2::local_host::build` requires the Windows shutdown helper path on every platform.                                                                                                                                                                            | Make it a Windows-only input.                                                                         |
+| F6  | `ServiceHostAdapter` must return an endpoint even when there is no service.                                                                                                                                                                                           | Follows from F3.                                                                                      |
+| F7  | A core orphaned by a server crash is neither adopted nor retired; the next start launches a second core with the same listeners. The container had no cgroup v2, so process containment fell back to process groups. Whether the ports conflicted was not determined. | Decide the server-crash policy (below); then persist enough identity to adopt or retire the old core. |
+| F8  | `stop_core` has no RPC command; there is no build- or validate-only operation; RPC commands drop the `reconcile_core` report.                                                                                                                                         | Add these when the CLI target is defined.                                                             |
+| F9  | `runtime_yaml` returns the controller secret and any credentials unredacted.                                                                                                                                                                                          | Resolve read-only access (below) before exposing it.                                                  |
+| F10 | `gxhash` in `nyanpasu-logging` fails to compile without `+aes`, which routers do not guarantee. The spike passes `+aes,+sse2` through `CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS` only.                                                                        | Make the hasher portable or feature-gated; do not add AES flags to router builds.                     |
+| F11 | Without `/etc/machine-id`, HWID generation logs an error and falls back.                                                                                                                                                                                              | Check OpenWrt images; downgrade the log or inject an identity.                                        |
+
+Other target requirements: `aws-lc-sys`, `zstd-sys` and vendored Lua need a
+target C toolchain; rustls reads the system CA store, so the package needs
+`ca-bundle`; default path discovery needs `HOME`/XDG, so the server injects
+explicit roots.
+
+### Reproduction
+
+From PowerShell, with a long-lived container that keeps the Cargo registry and
+target in named volumes:
+
+```text
+wslc run -d --name nyanpasu-musl -v F:\Code\clash-nyanpasu:/src:ro -v nyanpasu-target:/cache/target -v nyanpasu-cargo:/usr/local/cargo/registry -v nyanpasu-cargo-git:/usr/local/cargo/git rust:alpine sleep infinity
+wslc exec nyanpasu-musl apk add --no-cache build-base cmake git perl pkgconf curl
+```
+
+Inside the container (`wslc exec -i nyanpasu-musl sh`):
+
+```sh
+cd /src/backend
+CARGO_TARGET_DIR=/cache/target \
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS='-C target-feature=+aes,+sse2' \
+  cargo build --release --locked -p nyanpasu-server --target x86_64-unknown-linux-musl
+# Place the Mihomo binary at <data-dir>/mihomo, then:
+nyanpasu-server spike --config-dir /cache/run/config --data-dir /cache/run/data --fresh
+nyanpasu-server spike --config-dir /cache/run/config --data-dir /cache/run/data
+```
+
+`--hold` keeps run 1 alive after the core starts, for crash tests;
+`--no-scripts` skips the transforms.
+
+### Next
+
+1. Decide the server-crash policy (F7) and read-only YAML access (F9); both
+   were already deferred decisions and now have evidence.
+2. Raise F1, F3–F6 and F10 with the upstream split as host-capability and
+   portability changes; do not work around them in a router-only layer.
+3. Compile `aarch64-unknown-linux-musl` (for example with `cargo-zigbuild`) and
+   measure realistic transform scripts.
+4. Router backend and native management wait for the core split to land and for
+   the RPC registry and `rpc(local)` target to leave the Tauri crate.
 
 ## Decisions deliberately deferred
 

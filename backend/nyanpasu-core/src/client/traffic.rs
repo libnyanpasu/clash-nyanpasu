@@ -8,15 +8,15 @@ use nyanpasu_config::{
     application::{IpLookupProvider, NyanpasuAppConfig, StunServer},
     profile::Profiles,
 };
+use nyanpasu_observers::traffic::{
+    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
+};
 use nyanpasu_traffic::{
     ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
     TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::traffic::{
-    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
-};
 
 /// Reads the selected profile from the committed profiles state.
 pub(super) struct SelectedProfile(StateSnapshot<Profiles>);
@@ -207,9 +207,9 @@ impl NyanpasuClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::traffic::{
-        SpawnError, TrafficArgs, TrafficClient, TrafficFileStorage, TrafficOwnerFactory,
-        TrafficStartArgs, TrafficStorage,
+    use nyanpasu_observers::traffic::{
+        SpawnError, TrafficArgs, TrafficClient, TrafficOwnerFactory, TrafficStartArgs,
+        TrafficStorage,
     };
     use nyanpasu_traffic::{
         Dimension, Metric, ReportRequest, TrafficQuery, TrafficRange, TrafficScope,
@@ -225,7 +225,7 @@ mod tests {
     use super::super::NyanpasuClient;
     use crate::{
         actor_v2::test_support::test_idle_endpoint,
-        client::test_support::test_client_args_with_endpoint,
+        client::test_support::test_client_args_with_endpoint, traffic::TrafficFileStorage,
     };
 
     fn everything() -> TrafficQuery {

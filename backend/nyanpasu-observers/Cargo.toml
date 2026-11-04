@@ -10,6 +10,10 @@ authors.workspace = true
 test-support = []
 
 [dependencies]
+nyanpasu-traffic = { path = '../nyanpasu-traffic', default-features = false }
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb', default-features = false }
+nyanpasu-geodata = { path = '../nyanpasu-geodata', default-features = false }
+async-trait = '0.1'
 nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
@@ -24,3 +28,10 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { version = '0.7', features = ['rt'] }
 tracing.workspace = true
+
+[dev-dependencies]
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb', default-features = false, features = [
+  'redb'
+] }
+mockall = '0.15'
+tempfile = '3'

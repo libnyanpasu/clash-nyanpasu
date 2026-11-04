@@ -5,6 +5,9 @@ use std::{
     sync::Arc,
 };
 
+use nyanpasu_observers::traffic::{
+    SpawnError, TrafficArgs, TrafficClient, TrafficOwnerFactory, TrafficStartArgs, TrafficStorage,
+};
 use nyanpasu_traffic::{TrafficDb, store::Opened};
 use nyanpasu_tsdb::{
     ErrorKind, OpenError, Profile, RecoveryError,
@@ -12,10 +15,6 @@ use nyanpasu_tsdb::{
 };
 use nyanpasu_utils::redb_ext::{RedbFailure, find_failure};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-
-use super::{
-    SpawnError, TrafficArgs, TrafficClient, TrafficOwnerFactory, TrafficStartArgs, TrafficStorage,
-};
 
 pub struct TrafficFileStorage {
     path: PathBuf,

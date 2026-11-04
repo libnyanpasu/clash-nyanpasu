@@ -5,7 +5,7 @@ use clash_api::{ConfigEnum, ConnectionNetwork, DnsMode, api::ConnectionMetadataF
 use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{GeoBasis, normalize_region};
 
-use crate::traffic::LocalSourceIps;
+use nyanpasu_observers::traffic::LocalSourceIps;
 
 const UNKNOWN: &str = "unknown";
 

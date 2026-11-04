@@ -1,5 +1,5 @@
 //! Setup logic for the app
-use nyanpasu_observers::logs::UnavailableCoreLogStore;
+use nyanpasu_observers::{logs::UnavailableCoreLogStore, traffic::TrafficOwnerFactory};
 use nyanpasu_owner_support::shutdown::track_until_shutdown;
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
@@ -39,7 +39,7 @@ use nyanpasu_core::{
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
     storage::{RedbHotkeyStoreOpener, StorageNotification},
-    traffic::{TrafficFileStorage, TrafficOwnerFactory},
+    traffic::TrafficFileStorage,
 };
 use nyanpasu_tsdb::Profile;
 use snafu::ResultExt as _;

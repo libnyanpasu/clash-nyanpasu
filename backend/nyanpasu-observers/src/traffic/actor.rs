@@ -22,9 +22,9 @@ use super::ports::{
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 pub(super) enum Message {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     StoredReport(ReportRequest, RpcReplyPort<TrafficResult<TrafficReport>>),
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     StoredClosed(RpcReplyPort<TrafficResult<ClosedPage>>),
     Observe(Frame, RpcReplyPort<()>),
     Disconnected(RpcReplyPort<()>),
@@ -127,7 +127,7 @@ impl<S: Storage> Actor for TrafficActor<S> {
         state: &mut State<S>,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Message::StoredReport(request, reply) => {
                 let _ = reply.send(state.db.report(
                     &Session::new(),
@@ -135,7 +135,7 @@ impl<S: Storage> Actor for TrafficActor<S> {
                     state.clock.now_ms(),
                 ));
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Message::StoredClosed(reply) => {
                 let _ = reply.send(state.db.closed_connections(
                     &Session::new(),

@@ -15,7 +15,10 @@ use nyanpasu_migration::{
         StorageSnapshot, StorageSource,
     },
 };
-use nyanpasu_observers::logs::CoreLogsClient;
+use nyanpasu_observers::{
+    logs::CoreLogsClient,
+    traffic::{TrafficClient, TrafficFeed, TrafficOwnerFactory, TrafficStartArgs},
+};
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
@@ -133,7 +136,7 @@ pub struct ClientSetupArgs {
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
-    pub traffic_store: Option<Arc<dyn crate::traffic::TrafficOwnerFactory>>,
+    pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -258,7 +261,7 @@ struct NyanpasuClientInner {
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
-    traffic: Option<crate::traffic::TrafficClient>,
+    traffic: Option<TrafficClient>,
     updater: crate::updater::UpdaterClient,
     core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
@@ -414,7 +417,7 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-        traffic_store: Option<Arc<dyn crate::traffic::TrafficOwnerFactory>>,
+        traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
@@ -611,7 +614,7 @@ impl NyanpasuClient {
             Some(store) => {
                 match store
                     .spawn(
-                        crate::traffic::TrafficStartArgs {
+                        TrafficStartArgs {
                             profile: nyanpasu_tsdb::Profile::desktop(),
                             profiles: Arc::new(traffic::SelectedProfile::new(
                                 profiles.snapshot_handle(),
@@ -620,7 +623,7 @@ impl NyanpasuClient {
                                 application.snapshot_handle(),
                             )),
                             clock: Arc::new(traffic::SystemClock),
-                            frames: crate::traffic::TrafficFeed::new(
+                            frames: TrafficFeed::new(
                                 streams.subscribe_connection_frames(),
                                 Arc::new(traffic_frames::ClashFrameNormalizer),
                             ),
@@ -1943,7 +1946,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
-        use crate::traffic::LocalSourceLocation;
+        use nyanpasu_observers::traffic::LocalSourceLocation;
         let dir = tempdir().unwrap();
         let mut probe = MockDirectEgressProbe::new();
         let mut sequence = mockall::Sequence::new();
@@ -2002,7 +2005,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_discards_an_answer_when_tun_is_enabled_during_the_request() {
-        use crate::traffic::LocalSourceLocation;
+        use nyanpasu_observers::traffic::LocalSourceLocation;
         struct WaitingProbe {
             started: tokio::sync::Notify,
             release: tokio::sync::Notify,

@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use clash_api::{ConfigEnum, Connection, ConnectionNetwork};
 use nyanpasu_geodata::IpIndex;
+use nyanpasu_observers::traffic::{FrameNormalizer, LocalSourceIps};
 use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample};
 
 mod geo;
@@ -10,10 +11,7 @@ mod geo;
 mod tests;
 
 use self::geo::CountryLookup;
-use crate::{
-    clash::ws::ClashConnectionsFrame,
-    traffic::{FrameNormalizer, LocalSourceIps},
-};
+use crate::clash::ws::ClashConnectionsFrame;
 
 pub(crate) struct ClashFrameNormalizer;
 

@@ -155,7 +155,7 @@ unknown_domain!(
     serde_json::Error,
     tauri::Error,
     anyhow::Error,
-    nyanpasu_core::backup::BackupError,
+    nyanpasu_migration::backup::BackupError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;

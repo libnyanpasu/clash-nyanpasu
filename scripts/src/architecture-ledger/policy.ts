@@ -49,8 +49,8 @@ export const LEGACY_DTO_ALLOWLIST: ReadonlyArray<{
 }> = [
   {
     paths: [
-      'backend/nyanpasu-core/src/migration/legacy_schema/',
-      'backend/nyanpasu-core/src/migration/modules/typed_config.rs',
+      'backend/nyanpasu-migration/src/legacy_schema/',
+      'backend/nyanpasu-migration/src/modules/typed_config.rs',
     ],
     // The pre-typed `verge.yaml` / clash overrides shape the typed config
     // migration reads to upgrade old installs, and the migration module that
@@ -81,6 +81,7 @@ export const STATIC_ITEM_RE =
 export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
+  'backend/nyanpasu-migration/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
   'backend/nyanpasu-profile-transform/src/',
@@ -112,7 +113,7 @@ function migrationModuleStatics(
   module: string,
   steps: string[],
 ): StaticAllowlistEntry[] {
-  const path = `backend/nyanpasu-core/src/migration/modules/${module}.rs`
+  const path = `backend/nyanpasu-migration/src/modules/${module}.rs`
   return [
     {
       path,
@@ -168,7 +169,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: 'host identity computed once',
   },
   {
-    path: 'backend/nyanpasu-core/src/migration/registry.rs',
+    path: 'backend/nyanpasu-migration/src/registry.rs',
     name: 'MODULES',
     category: 'immutable',
     reason: 'lookup table of the migration modules',
@@ -243,7 +244,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
   },
   // -- test-only ------------------------------------------------------------
   {
-    path: 'backend/nyanpasu-core/src/migration/runner.rs',
+    path: 'backend/nyanpasu-migration/src/runner.rs',
     name: 'TEST_VERSION',
     category: 'test',
     reason: 'constant version in a test fixture',

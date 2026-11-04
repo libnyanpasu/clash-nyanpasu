@@ -60,6 +60,7 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           v
 nyanpasu-config             domain models and pure runtime executor
 
+backend/nyanpasu-migration/src/    configuration upgrades, backups and session document reads
 backend/nyanpasu-persistence/src/  generic filesystem retry and evidence recovery
 backend/nyanpasu-profile-io/src/   profile files, materialization and content adapter
 backend/nyanpasu-net/src/          subscription, changelog, egress, icon, diagnostics and HTTP policy
@@ -131,10 +132,10 @@ Rules for maintaining the separation:
 - The architecture-ledger static gate covers `backend/tauri/src/`,
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
-  `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/` and
-  `backend/nyanpasu-net/src/`
+  `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
+  `backend/nyanpasu-net/src/` and `backend/nyanpasu-migration/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All eight use the same explicit path-and-name allowlist; other backend library
+  All nine use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

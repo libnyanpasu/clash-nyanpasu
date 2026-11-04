@@ -142,8 +142,7 @@ impl MigrationStep for MigrateHotkeysToKv {
     }
 
     fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
-        let config: Option<Mapping> =
-            crate::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+        let config: Option<Mapping> = crate::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
         Ok(Some(StepCheck::from_needed(config.is_some_and(|config| {
             config
                 .get(HOTKEYS_KEY)
@@ -318,7 +317,7 @@ fn open_storage(ctx: &Ctx) -> Result<Option<Box<dyn HotkeyStore>>, MigrationChec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{RedbHotkeyStoreOpener, Storage, WebStorage};
+    use crate::fake_hotkey_store::FakeHotkeyStoreOpener;
     use std::sync::Arc;
 
     struct Fixture {
@@ -335,15 +334,19 @@ mod tests {
             let data_dir = temp.path().join("data");
             std::fs::create_dir_all(&config_dir).unwrap();
             std::fs::create_dir_all(&data_dir).unwrap();
-            let ctx = Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener));
+            let ctx = Ctx::new(
+                config_dir,
+                data_dir,
+                Arc::new(FakeHotkeyStoreOpener::default()),
+            );
 
             if let Some(yaml) = application_yaml {
                 std::fs::write(ctx.application_config_path(), yaml).unwrap();
             }
             if let Some(hotkeys) = kv_hotkeys {
-                let storage = Storage::try_new(&ctx.storage_path()).unwrap();
+                let storage = ctx.hotkey_store_opener.open(&ctx.storage_path()).unwrap();
                 let hotkeys: Vec<String> = hotkeys.iter().map(ToString::to_string).collect();
-                storage.set_item(HOTKEYS_KEY, &hotkeys).unwrap();
+                storage.write(&hotkeys).unwrap();
             }
 
             Self { _temp: temp, ctx }
@@ -421,9 +424,13 @@ mod tests {
 
         // A store that exists but holds no hotkeys is the state a second run
         // leaves behind, and must also be a no-op.
-        let storage = Storage::try_new(&fixture.ctx.storage_path()).unwrap();
-        storage.set_item("unrelated", &"value".to_string()).unwrap();
-        drop(storage);
+        drop(
+            fixture
+                .ctx
+                .hotkey_store_opener
+                .open(&fixture.ctx.storage_path())
+                .unwrap(),
+        );
 
         fixture.run().unwrap();
         assert!(fixture.typed_hotkeys().is_empty());
@@ -483,7 +490,11 @@ mod tests {
         let data_dir = temp.path().join("data");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
-        let mut ctx = Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener));
+        let mut ctx = Ctx::new(
+            config_dir,
+            data_dir,
+            Arc::new(FakeHotkeyStoreOpener::default()),
+        );
         std::fs::write(ctx.nyanpasu_config_path(), "hotkeys: []\n").unwrap();
 
         assert_eq!(

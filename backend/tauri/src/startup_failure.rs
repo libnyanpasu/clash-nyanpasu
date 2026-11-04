@@ -6,16 +6,14 @@ use std::{
     process::{Command, Stdio},
 };
 
+use nyanpasu_migration::child_result::{Failure, FailureStage, RevisionFailure};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_utils::io::IoFailure;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
 use crate::setup;
-use nyanpasu_core::{
-    corrupt,
-    migration::child_result::{Failure, FailureStage, RevisionFailure},
-};
+use nyanpasu_core::corrupt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

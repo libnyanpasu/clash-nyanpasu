@@ -32,6 +32,7 @@ use nyanpasu_ipc::{
     },
     types::{ServiceStatus, StatusInfo},
 };
+use nyanpasu_migration::modules::application::ApplicationFormat;
 use tokio::{sync::Notify, time::Instant};
 
 use super::{
@@ -67,7 +68,6 @@ use crate::{
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    migration::modules::application::ApplicationFormat,
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };

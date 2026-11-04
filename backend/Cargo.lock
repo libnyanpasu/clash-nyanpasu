@@ -1837,6 +1837,7 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-migration",
  "nyanpasu-net",
  "nyanpasu-panics",
  "nyanpasu-paths",
@@ -6800,6 +6801,7 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-migration",
  "nyanpasu-net",
  "nyanpasu-paths",
  "nyanpasu-persistence",
@@ -7043,6 +7045,35 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "nyanpasu-migration"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "camino",
+ "chrono",
+ "fs-err",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "nyanpasu-macro",
+ "nyanpasu-paths",
+ "nyanpasu-persistence",
+ "nyanpasu-utils",
+ "nyanpasu-widget-protocol",
+ "once_cell",
+ "pretty_assertions",
+ "semver 1.0.28",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "snafu 0.9.2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "time",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

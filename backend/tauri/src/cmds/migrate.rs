@@ -3,13 +3,11 @@ use std::sync::Arc;
 use clap::Args;
 
 use colored::Colorize;
-use nyanpasu_core::{
-    migration::{
-        MigrationAdvice, Runner,
-        child_result::{Failure, FailureStage},
-        current_version, registry,
-    },
-    storage::RedbHotkeyStoreOpener,
+use nyanpasu_core::storage::RedbHotkeyStoreOpener;
+use nyanpasu_migration::{
+    MigrationAdvice, Runner,
+    child_result::{Failure, FailureStage},
+    current_version, registry,
 };
 use nyanpasu_paths::PathResolver;
 
@@ -55,7 +53,7 @@ pub(crate) enum Error {
     ParseVersion { source: semver::Error },
     #[snafu(display("failed to resolve current migration version"))]
     ResolveVersion {
-        source: nyanpasu_core::migration::VersionError,
+        source: nyanpasu_migration::VersionError,
     },
     #[snafu(display("failed to create migration directories"))]
     CreateDirectories {
@@ -63,13 +61,13 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to initialize migration runner"))]
     ConstructRunner {
-        source: nyanpasu_core::migration::runner::Error,
+        source: nyanpasu_migration::runner::Error,
     },
     #[snafu(display("migration not found: {id}"))]
     FindMigration { id: String },
     #[snafu(display("migration failed"))]
     RunMigration {
-        source: nyanpasu_core::migration::runner::Error,
+        source: nyanpasu_migration::runner::Error,
     },
 }
 
@@ -165,7 +163,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
         let stage = if matches!(
             &error,
             Error::RunMigration {
-                source: nyanpasu_core::migration::runner::Error::CreateBackup { .. }
+                source: nyanpasu_migration::runner::Error::CreateBackup { .. }
             }
         ) {
             FailureStage::Backup

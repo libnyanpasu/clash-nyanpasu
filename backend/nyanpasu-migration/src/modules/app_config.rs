@@ -318,8 +318,7 @@ fn check_config(
     ctx: &Ctx,
     needs: fn(&Mapping) -> bool,
 ) -> Result<Option<StepCheck>, MigrationCheckError> {
-    let config: Option<Mapping> =
-        crate::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+    let config: Option<Mapping> = crate::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
     Ok(Some(StepCheck::from_needed(
         config.as_ref().is_some_and(needs),
     )))

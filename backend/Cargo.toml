@@ -5,6 +5,7 @@ members = [
   'boa_utils',
   'nyanpasu-macro',
   'nyanpasu-core',
+  'nyanpasu-migration',
   'nyanpasu-paths',
   'nyanpasu-helper',
   'nyanpasu-config',

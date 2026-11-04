@@ -30,7 +30,7 @@ const FOUNDATION = [
   'nyanpasu-persistence',
   'nyanpasu-profile-transform',
 ]
-const CORE_FAMILY = ['nyanpasu-core']
+const CORE_FAMILY = ['nyanpasu-core', 'nyanpasu-migration']
 const IMPLEMENTATION = [
   'nyanpasu-scripts',
   'nyanpasu-profile-io',
@@ -76,6 +76,10 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
   {
     package: 'nyanpasu-profile-transform',
     forbids: ['nyanpasu-contracts', 'nyanpasu-persistence'],
+  },
+  {
+    package: 'nyanpasu-migration',
+    forbids: ['redb', 'nyanpasu-core-manager'],
   },
   ...IMPLEMENTATION.map((name) => ({
     package: name,

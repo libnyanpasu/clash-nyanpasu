@@ -7,13 +7,13 @@ use crate::state::{
 };
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel};
+use nyanpasu_migration::modules::application::ApplicationFormat;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
-    migration::modules::application::ApplicationFormat,
     state::{
         application::{
             ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,

@@ -33,6 +33,7 @@ use nyanpasu_config::{
 };
 use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
+use nyanpasu_migration::modules::application::ApplicationFormat;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::Notify;
 
@@ -65,7 +66,6 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    migration::modules::application::ApplicationFormat,
     state::mutation::{CommitAborted, RuntimeAftermath},
 };
 

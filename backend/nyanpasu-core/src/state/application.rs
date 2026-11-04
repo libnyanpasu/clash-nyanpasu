@@ -5,7 +5,6 @@ use crate::{
         mutation::ConfigDomain,
         policy::CommandClass,
     },
-    migration::modules::application::ApplicationFormat,
     state::{
         config_error::{
             ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
@@ -17,6 +16,7 @@ use nyanpasu_core_manager::OperationId;
 
 use crate::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
+use nyanpasu_migration::modules::application::ApplicationFormat;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::ensure;
 use struct_patch::Patch;

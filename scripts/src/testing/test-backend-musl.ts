@@ -65,7 +65,7 @@ export async function main(args: string[]): Promise<void> {
         'toolchain_cargo=$(rustup which --toolchain nightly cargo)\n' +
         'export RUSTC=$(rustup which --toolchain nightly rustc)\n' +
         '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
-        '-p nyanpasu-core -p nyanpasu-profile-transform -p nyanpasu-scripts ' +
+        '-p nyanpasu-core -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts ' +
         '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net --lib --tests ' +
         '--no-run --message-format=json --jobs 4',
     ],
@@ -76,6 +76,7 @@ export async function main(args: string[]): Promise<void> {
   const executables: string[] = []
   const expectedTargets = new Set([
     'lib:nyanpasu_core',
+    'lib:nyanpasu_migration',
     'lib:nyanpasu_profile_transform',
     'lib:nyanpasu_scripts',
     'lib:nyanpasu_persistence',

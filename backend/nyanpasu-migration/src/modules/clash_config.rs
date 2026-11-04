@@ -83,7 +83,7 @@ impl ModuleMigrator for ClashConfigMigrator {
 /// `typed_config` judges `clash-config.yaml` before this module runs, and
 /// repairs it from the older `clash.yaml`, so neither may read the file in the
 /// current shape alone.
-pub(in crate::migration) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError> {
+pub(crate) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError> {
     let raw = std::fs::read_to_string(path).map_err(|source| MigrationCheckError::Io {
         path: path.to_path_buf(),
         source,
@@ -187,7 +187,7 @@ fn manage_guard_fields(payload: &mut Mapping) -> Result<(), Error> {
 /// mapping itself, which the legacy conversion shares. A field already in the
 /// managed shape is left alone: `typed_config` may have written the file at
 /// head before this step runs on it.
-pub(in crate::migration) fn manage_override_fields(overrides: &mut Mapping) -> Result<(), Error> {
+pub(crate) fn manage_override_fields(overrides: &mut Mapping) -> Result<(), Error> {
     for key in MANAGEABLE_GUARD_KEYS {
         let Some(value) = overrides.get_mut(key) else {
             continue;

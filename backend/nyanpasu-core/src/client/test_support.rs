@@ -777,6 +777,9 @@ pub async fn test_client_args_with_endpoint(
         storage: Arc::new(storage),
         runtime_paths,
         ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+        updater_backend_factory: Arc::new(|_| {
+            Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))
+        }),
         app_update_backend_factory: None,
         app_update_event_sink: None,
         core_v2,

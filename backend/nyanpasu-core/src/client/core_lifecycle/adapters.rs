@@ -9,7 +9,7 @@ use snafu::OptionExt;
 use snafu::{ResultExt, Snafu, ensure};
 use std::path::{Path, PathBuf};
 
-use crate::updater::artifact::PreparedCoreBinary;
+use nyanpasu_updater::PreparedCoreBinary;
 
 pub struct FsBinaryInstaller;
 
@@ -181,7 +181,7 @@ fn publish_companion(staged: &Path, destination: &Path) -> Result<(), PublishCom
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::updater::artifact::{BinaryInstallProgress, PreparedCoreCompanion};
+    use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreCompanion};
     use std::sync::Arc;
     use tempfile::TempDir;
 

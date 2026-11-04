@@ -19,11 +19,9 @@ mod tests;
 
 use std::sync::Arc;
 
-use crate::{
-    state::{Ack, StateDecision, StateSnapshot},
-    updater::artifact::PreparedCoreBinary,
-};
+use crate::state::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_updater::PreparedCoreBinary;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::OptionExt;
 use tokio::sync::{broadcast, watch};

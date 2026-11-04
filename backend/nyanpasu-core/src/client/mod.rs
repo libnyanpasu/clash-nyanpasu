@@ -79,7 +79,6 @@ use crate::{
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
         ReorderOp,
     },
-    updater::artifact::PreparedCoreBinary,
 };
 use nyanpasu_config::{
     application::{
@@ -98,7 +97,8 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
 };
 use nyanpasu_contracts::{net::SelfProxyPortSource, profiles::ports::ProfileFsPort};
-use snafu::{OptionExt as _, ResultExt as _};
+use nyanpasu_updater::{BackendFactory, BackendFactoryError, PreparedCoreBinary};
+use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
@@ -122,6 +122,8 @@ pub struct ClientSetupArgs {
     pub storage: Arc<dyn StorageSnapshot>,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
+    /// Built after the session proxy source and application workflow exist.
+    pub updater_backend_factory: Arc<BackendFactory>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
     pub app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -172,7 +174,7 @@ pub enum SetupError {
     #[snafu(display("failed to start workflow"))]
     StartWorkflow { source: application_workflow::Error },
     #[snafu(display("failed to start updater"))]
-    StartUpdater { source: crate::updater::Error },
+    StartUpdater { source: nyanpasu_updater::Error },
     #[snafu(display("failed to start app updater"))]
     StartAppUpdater { source: app_update::Error },
     #[snafu(display("failed to start proxies"))]
@@ -265,7 +267,7 @@ struct NyanpasuClientInner {
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
     traffic: Option<TrafficClient>,
-    updater: crate::updater::UpdaterClient,
+    updater: nyanpasu_updater::UpdaterClient,
     core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
     changelog_http: Arc<dyn ChangelogHttp>,
@@ -300,6 +302,7 @@ impl NyanpasuClient {
             storage,
             runtime_paths,
             ui_sink,
+            updater_backend_factory,
             app_update_backend_factory,
             app_update_event_sink,
             core_v2,
@@ -368,6 +371,7 @@ impl NyanpasuClient {
             runtime_paths,
             host_adapters,
             ui_sink,
+            updater_backend_factory,
             app_update_backend_factory,
             app_update_event_sink,
             core_v2,
@@ -407,6 +411,7 @@ impl NyanpasuClient {
         runtime_paths: RuntimePaths,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
+        updater_backend_factory: Arc<BackendFactory>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
         core_v2: CoreClientV2,
@@ -517,17 +522,13 @@ impl NyanpasuClient {
         if let Some(mutations) = mutations {
             mutations.connect(application_workflow.clone(), notifications);
         }
-        let updater = crate::updater::UpdaterClient::spawn(
-            Arc::new(crate::updater::HttpUpdaterBackend::new(
-                std::env::current_exe()
-                    .context(LocateExecutableSnafu)?
-                    .parent()
-                    .context(LocateExecutableParentSnafu)?
-                    .to_path_buf(),
-                paths.clone(),
-                ports.clone(),
-                bundle_metadata,
-            )),
+        let updater = nyanpasu_updater::UpdaterClient::spawn(
+            updater_backend_factory(ports.clone()).map_err(|error| match error {
+                BackendFactoryError::LocateExecutable { source } => {
+                    SetupError::LocateExecutable { source }
+                }
+                BackendFactoryError::LocateExecutableParent => SetupError::LocateExecutableParent,
+            })?,
             Arc::new(application_workflow.clone()),
             shutdown.child_token(),
             &tasks,
@@ -911,7 +912,7 @@ impl NyanpasuClient {
 
     pub async fn fetch_latest_core_versions(
         &self,
-    ) -> Result<crate::updater::ManifestVersionLatest> {
+    ) -> Result<nyanpasu_updater::ManifestVersionLatest> {
         Ok(self.inner.updater.fetch_latest().await?)
     }
 
@@ -922,7 +923,7 @@ impl NyanpasuClient {
         Ok(self.inner.updater.update(core).await?)
     }
 
-    pub async fn inspect_updater(&self, id: usize) -> Result<crate::updater::UpdaterSummary> {
+    pub async fn inspect_updater(&self, id: usize) -> Result<nyanpasu_updater::UpdaterSummary> {
         Ok(self.inner.updater.inspect(id).await?)
     }
 
@@ -1520,9 +1521,7 @@ impl NyanpasuClient {
 }
 
 #[async_trait::async_trait]
-impl crate::updater::ports::CoreUpdateInstaller
-    for application_workflow::ApplicationWorkflowClient
-{
+impl nyanpasu_updater::CoreUpdateInstaller for application_workflow::ApplicationWorkflowClient {
     async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }
@@ -1572,6 +1571,62 @@ pub(crate) mod tests {
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    async fn setup_with_updater_factory(factory: Arc<BackendFactory>) -> SetupError {
+        let dir = tempdir().unwrap();
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        args.updater_backend_factory = factory;
+        let shutdown = args.shutdown.clone();
+        let tasks = args.tasks.clone();
+        let error = NyanpasuClient::try_new(args)
+            .await
+            .err()
+            .expect("the injected backend factory fails setup");
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+        error
+    }
+
+    #[tokio::test]
+    async fn updater_factory_preserves_executable_lookup_error() {
+        use std::error::Error as _;
+
+        let error = setup_with_updater_factory(Arc::new(|_| {
+            Err(BackendFactoryError::LocateExecutable {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "executable lookup denied",
+                ),
+            })
+        }))
+        .await;
+        assert!(matches!(error, SetupError::LocateExecutable { .. }));
+        assert_eq!(error.to_string(), "failed to locate executable");
+        let source = error.source().expect("the original IO error is the source");
+        let io = source.downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(io.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(source.to_string(), "executable lookup denied");
+        assert!(source.source().is_none());
+    }
+
+    #[tokio::test]
+    async fn updater_factory_preserves_missing_executable_parent_error() {
+        use std::error::Error as _;
+
+        let error = setup_with_updater_factory(Arc::new(|_| {
+            Err(BackendFactoryError::LocateExecutableParent)
+        }))
+        .await;
+        assert!(matches!(error, SetupError::LocateExecutableParent));
+        assert_eq!(error.to_string(), "executable has no parent directory");
+        assert!(error.source().is_none());
+    }
 
     /// The stamped file the application loads.
     fn write_application_config(path: &camino::Utf8Path, config: &NyanpasuAppConfig) {
@@ -2435,6 +2490,9 @@ pub(crate) mod tests {
             storage: Arc::new(storage),
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+            updater_backend_factory: Arc::new(|_| {
+                Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))
+            }),
             app_update_backend_factory: None,
             app_update_event_sink: None,
             core_v2,

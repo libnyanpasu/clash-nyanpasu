@@ -23,7 +23,8 @@ pub(super) fn is_alpha_version(version: &str) -> bool {
     })
 }
 
-pub(crate) enum CoreTypeMeta {
+/// Release identity used to resolve and verify a core artifact.
+pub enum CoreTypeMeta {
     ClashPremium(String),
     Mihomo(String),
     MihomoAlpha,

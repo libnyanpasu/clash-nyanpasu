@@ -14,16 +14,14 @@ mod startup;
 mod validation;
 
 use super::{super::NyanpasuClient, *};
-use crate::{
-    client::test_support::{
-        TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
-        test_client_args_with_endpoint,
-    },
-    updater::artifact::BinaryInstallProgress,
+use crate::client::test_support::{
+    TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
+    test_client_args_with_endpoint,
 };
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_updater::BinaryInstallProgress;
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
@@ -922,9 +920,9 @@ async fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
 
         // Through the updater, the same refusal ends its task as a failure
         // that reserves nothing.
-        use crate::updater::{UpdaterClient, UpdaterState};
+        use nyanpasu_updater::{UpdaterClient, UpdaterState};
         let updater = UpdaterClient::spawn(
-            Arc::new(crate::updater::tests::ReadyBackend),
+            Arc::new(nyanpasu_updater::test_support::ReadyBackend),
             Arc::new(f.client.inner.application_workflow.clone()),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),

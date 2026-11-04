@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_updater::PreparedCoreBinary;
 use serde::Serialize;
 use snafu::Snafu;
 
@@ -9,7 +10,6 @@ use super::super::runtime;
 use crate::{
     actor_v2::local_host::CoreSpecError,
     client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
-    updater::artifact::PreparedCoreBinary,
 };
 use nyanpasu_contracts::profiles::error::ErrorPath;
 

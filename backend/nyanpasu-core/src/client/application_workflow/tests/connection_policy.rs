@@ -11,6 +11,7 @@ use nyanpasu_ipc::api::{
     core::v2::{CoreApiConnection, OperationInfo},
     status::{CoreControllerInfo, CoreStateDetail},
 };
+use nyanpasu_updater::PreparedCoreBinary;
 use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
@@ -23,7 +24,6 @@ use crate::{
             test_client_args_with_endpoint,
         },
     },
-    updater::artifact::PreparedCoreBinary,
 };
 
 #[derive(Default)]

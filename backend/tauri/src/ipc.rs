@@ -22,13 +22,13 @@ use nyanpasu_core::{
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
-    updater::ManifestVersionLatest,
 };
 use nyanpasu_observers::logs::{
     CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_updater::ManifestVersionLatest;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use tauri::{AppHandle, State, Webview};
@@ -1159,7 +1159,7 @@ pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore
 pub async fn inspect_updater(
     client: State<'_, NyanpasuClient>,
     updater_id: usize,
-) -> Result<nyanpasu_core::updater::UpdaterSummary> {
+) -> Result<nyanpasu_updater::UpdaterSummary> {
     Ok(client.inspect_updater(updater_id).await?)
 }
 

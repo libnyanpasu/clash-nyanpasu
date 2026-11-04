@@ -5,6 +5,7 @@ Status: the Tauri extraction baseline is delivered through Part 24
 `NyanpasuClient` and the shared application layer live in `nyanpasu-core`, and
 core no longer depends on Tauri. The Phase A foundation and implementation split
 is also delivered, and the transitional `nyanpasu-platform` crate is retired.
+Phase B (B1a–B4) is delivered as well.
 Package ownership is not final. This document plans the next stage: the shells
 and RPC targets the backend serves, the core package family, and where
 target-specific and concrete
@@ -285,6 +286,14 @@ dev-dependencies. Core's exported test support remains parameterized by
 runtime tests live in transform, with scripts as a dev-dependency.
 `nyanpasu-platform` and the former `nyanpasu-application` crate are removed.
 
+Phase B (B1a–B4) is delivered: `nyanpasu-migration` owns upgrades, backups
+and session document reads over storage ports; `nyanpasu-owner-support` owns
+shutdown tracking and blocking-task result handling; `nyanpasu-observers` owns
+logs, traffic and geodata observation; and `nyanpasu-updater` owns core updates,
+HTTP downloads and unpacking through a shell-injected backend factory. Generic
+formats and atomic writes live in persistence, and facade storage inputs are
+ports with traffic's legacy redb importer behind a feature.
+
 Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting
@@ -302,10 +311,7 @@ Known gaps against the target ownership:
   ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)).
 - `ClientSetupArgs` requires `WindowControl`, `AcceleratorValidator` and a
   `DebugHttpFactory`, so a headless shell must pass stand-ins.
-- The updater backend is constructed inside the facade, runtime candidate file
-  IO is implemented by `RuntimePaths`, and the traffic store is typed to the
-  redb backend in `ClientSetupArgs`. `nyanpasu-traffic` depends on redb
-  directly for its legacy importer.
+- Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).
 - Effect execution for hotkeys, tray, widgets and locale, and the main-thread
@@ -375,13 +381,13 @@ protocol (E1b) waits for D2, so the server and CLI wait for C, D2 and E3.
 
 **Phase B: leaf owners and heavy dependencies**
 
-| Step | Change                                                             | Done when                                                                                               |
-| ---- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| B1a  | Add formats and generic atomic writes to persistence               | Session state no longer depends on migration; generic recovery does not examine core-manager errors     |
-| B1b  | Add storage ports for backup and migration, then extract migration | Migration and backup do not depend on redb                                                              |
-| B2   | Move storage backends out of the facade signature                  | No concrete redb type in `ClientSetupArgs`; traffic's legacy redb importer is feature-gated or separate |
-| B3   | Extract the log, traffic and geodata owners into one owner crate   | Owners consume normalized frames and injected storage and watchers                                      |
-| B4   | Extract the core updater and inject its backend                    | The facade no longer constructs `HttpUpdaterBackend`; archive dependencies stay with the updater        |
+| Step | Change                                                             | Done when                                                                                               | Status    |
+| ---- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | --------- |
+| B1a  | Add formats and generic atomic writes to persistence               | Session state no longer depends on migration; generic recovery does not examine core-manager errors     | Delivered |
+| B1b  | Add storage ports for backup and migration, then extract migration | Migration and backup do not depend on redb                                                              | Delivered |
+| B2   | Move storage backends out of the facade signature                  | No concrete redb type in `ClientSetupArgs`; traffic's legacy redb importer is feature-gated or separate | Delivered |
+| B3   | Extract the log, traffic and geodata owners into one owner crate   | Owners consume normalized frames and injected storage and watchers                                      | Delivered |
+| B4   | Extract the core updater and inject its backend                    | The facade no longer constructs `HttpUpdaterBackend`; archive dependencies stay with the updater        | Delivered |
 
 **Phase C: capabilities and target crates**
 

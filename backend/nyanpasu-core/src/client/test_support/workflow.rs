@@ -8,10 +8,10 @@ use crate::{
         runtime_error::RuntimeError,
         test_support::{TestControlEndpoint, test_client_args_with_endpoint},
     },
-    updater::artifact::{BinaryInstallProgress, PreparedCoreBinary},
 };
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{CoreError, OperationId};
+use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary};
 use std::{
     sync::{
         Arc,

@@ -346,6 +346,23 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
         bundle_metadata,
+        updater_backend_factory: {
+            let paths = paths.clone();
+            Arc::new(move |ports| {
+                let executable = std::env::current_exe().map_err(|source| {
+                    nyanpasu_updater::BackendFactoryError::LocateExecutable { source }
+                })?;
+                let destination = executable
+                    .parent()
+                    .ok_or(nyanpasu_updater::BackendFactoryError::LocateExecutableParent)?;
+                Ok(Arc::new(nyanpasu_updater::HttpUpdaterBackend::new(
+                    destination.to_path_buf(),
+                    paths.clone(),
+                    ports,
+                    bundle_metadata,
+                )))
+            })
+        },
         host_adapters: ClientHostAdapters {
             icon_fetcher: network.clone(),
             network_diagnostics: network,

@@ -48,7 +48,8 @@ pub struct UpdaterSummary {
     pub downloader: DownloadStatus,
 }
 
-pub(crate) struct HttpUpdaterBackend {
+/// Prepares core artifacts using the session proxy source and bundle metadata.
+pub struct HttpUpdaterBackend {
     proxy_port: Arc<dyn SelfProxyPortSource>,
     destination_dir: PathBuf,
     /// Resolves where the agent skills a core archive ships go.

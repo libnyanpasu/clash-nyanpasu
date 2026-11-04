@@ -66,7 +66,7 @@ export async function main(args: string[]): Promise<void> {
         'export RUSTC=$(rustup which --toolchain nightly rustc)\n' +
         '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
         '-p nyanpasu-core -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts ' +
-        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers --lib --tests ' +
+        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater --lib --tests ' +
         '--no-run --message-format=json --jobs 4',
     ],
     stdout: 'piped',
@@ -84,6 +84,7 @@ export async function main(args: string[]): Promise<void> {
     'lib:nyanpasu_net',
     'lib:nyanpasu_owner_support',
     'lib:nyanpasu_observers',
+    'lib:nyanpasu_updater',
   ])
   const expectedCount = expectedTargets.size
   for (const line of build.stdout.toString('utf8').split('\n')) {

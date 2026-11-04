@@ -1,4 +1,4 @@
-use super::*;
+use super::{test_support::ReadyBackend, *};
 use crate::{
     download::{DownloadStatus, DownloaderState},
     updater::artifact::PreparedCoreBinary,
@@ -371,47 +371,6 @@ async fn the_shutdown_waits_for_an_extraction_in_progress() {
 
     backend.release.notify_one();
     shutdown.run().await;
-}
-
-pub(crate) struct ReadyBackend;
-
-#[async_trait]
-impl UpdaterBackend for ReadyBackend {
-    async fn fetch_manifest(
-        &self,
-        _mirror: Option<(String, Instant)>,
-    ) -> Result<(ManifestVersion, (String, Instant))> {
-        let mut manifest = ManifestVersion::default();
-        manifest.latest.mihomo = "test-version".into();
-        manifest
-            .arch_template
-            .mihomo
-            .insert(get_arch().unwrap().into(), "mihomo-{}.gz".into());
-        Ok((manifest, ("https://github.com".into(), Instant::now())))
-    }
-
-    async fn prepare(
-        &self,
-        core: ClashCore,
-        _mirror: String,
-        _artifact: String,
-        _tag: CoreTypeMeta,
-        progress: UpdaterProgress,
-        _shutdown: &CancellationToken,
-    ) -> Result<PreparedCoreBinary> {
-        let staging = Arc::new(tempfile::TempDir::new()?);
-        let source = staging.path().join("prepared");
-        std::fs::write(&source, b"core binary")?;
-        progress.report(UpdaterState::Replacing, None);
-        Ok(PreparedCoreBinary {
-            target: core,
-            source,
-            destination: staging.path().join("installed"),
-            staging,
-            progress: Arc::new(progress),
-            companion: None,
-        })
-    }
 }
 
 struct RecordingInstaller {

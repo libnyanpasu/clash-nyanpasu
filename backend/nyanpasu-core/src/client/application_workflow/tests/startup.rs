@@ -18,10 +18,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    state::{PersistentStateManager, ReplaceIfVersionResult},
-    updater::artifact::PreparedCoreBinary,
-};
+use crate::state::{PersistentStateManager, ReplaceIfVersionResult};
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::ClashConfig,
@@ -36,6 +33,7 @@ use nyanpasu_ipc::{
     types::{ServiceStatus, StatusInfo},
 };
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_updater::PreparedCoreBinary;
 use tokio::{sync::Notify, time::Instant};
 
 use super::{

@@ -127,6 +127,7 @@ pub(crate) async fn test_client_from_typed_clients(
             ..unused_test_adapters(&test_paths(dir.path(), dir.path().join("data")))
         },
         Arc::new(crate::client::event_sink::NoopUiEventSink),
+        Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
         None,
         None,
         core_v2,
@@ -217,6 +218,7 @@ pub async fn test_client_with_profile_ports(
         RuntimePaths::from_resolver(&paths),
         host_adapters,
         Arc::new(crate::client::event_sink::NoopUiEventSink),
+        Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
         None,
         None,
         core_v2,
@@ -337,6 +339,7 @@ pub async fn test_client_with_materialization(
             ..unused_test_adapters(&test_paths(dir.path(), dir.path().join("data")))
         },
         Arc::new(crate::client::event_sink::NoopUiEventSink),
+        Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
         None,
         None,
         core_v2,

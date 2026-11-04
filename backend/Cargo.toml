@@ -8,6 +8,7 @@ members = [
   'nyanpasu-migration',
   'nyanpasu-owner-support',
   'nyanpasu-observers',
+  'nyanpasu-updater',
   'nyanpasu-paths',
   'nyanpasu-helper',
   'nyanpasu-config',

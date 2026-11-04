@@ -35,6 +35,7 @@ const CORE_FAMILY = [
   'nyanpasu-migration',
   'nyanpasu-owner-support',
   'nyanpasu-observers',
+  'nyanpasu-updater',
 ]
 const IMPLEMENTATION = [
   'nyanpasu-scripts',

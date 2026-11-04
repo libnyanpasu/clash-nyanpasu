@@ -2,9 +2,10 @@ use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
 use snafu::{ResultExt, ensure};
 
-use nyanpasu_core::client::core_version::{
-    CoreVersionError, CoreVersionExitSnafu, CoreVersionReader, RunCoreVersionSnafu, parse_version,
+use nyanpasu_contracts::core_version::{
+    self, CoreVersionError, CoreVersionExitSnafu, RunCoreVersionSnafu,
 };
+use nyanpasu_core::client::core_version::CoreVersionReader;
 
 pub struct SidecarCoreVersionReader;
 
@@ -43,6 +44,6 @@ impl CoreVersionReader for SidecarCoreVersionReader {
             .map_err(anyhow::Error::from)
             .context(RunCoreVersionSnafu { core })?;
         ensure!(output.status.success(), CoreVersionExitSnafu { core });
-        parse_version(core, &String::from_utf8_lossy(&output.stdout))
+        core_version::parse_version(core, &String::from_utf8_lossy(&output.stdout))
     }
 }

@@ -18,7 +18,10 @@ use std::{
     time::Duration,
 };
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult};
+use crate::{
+    state::{PersistentStateManager, ReplaceIfVersionResult},
+    updater::artifact::PreparedCoreBinary,
+};
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::ClashConfig,
@@ -64,7 +67,7 @@ use crate::{
     client::{
         SessionPortResolver,
         convergence::ConvergenceHealth,
-        core_lifecycle::{Ownership, ports::PreparedCoreBinary},
+        core_lifecycle::Ownership,
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },

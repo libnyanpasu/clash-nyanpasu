@@ -14,12 +14,12 @@ mod startup;
 mod validation;
 
 use super::{super::NyanpasuClient, *};
-use crate::client::{
-    core_lifecycle::ports::BinaryInstallProgress,
-    test_support::{
+use crate::{
+    client::test_support::{
         TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
         test_client_args_with_endpoint,
     },
+    updater::artifact::BinaryInstallProgress,
 };
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;

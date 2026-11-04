@@ -79,6 +79,7 @@ use crate::{
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
         ReorderOp,
     },
+    updater::artifact::PreparedCoreBinary,
 };
 use nyanpasu_config::{
     application::{
@@ -1522,10 +1523,7 @@ impl NyanpasuClient {
 impl crate::updater::ports::CoreUpdateInstaller
     for application_workflow::ApplicationWorkflowClient
 {
-    async fn install(
-        &self,
-        artifact: core_lifecycle::ports::PreparedCoreBinary,
-    ) -> anyhow::Result<()> {
+    async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }
 }
@@ -1564,6 +1562,7 @@ pub(crate) mod tests {
         state::window::WindowState,
     };
     use nyanpasu_contracts::{
+        core_version::CoreVersionError,
         net::MockDirectEgressProbe,
         profiles::{
             error::SubscriptionFetchError,
@@ -2065,9 +2064,7 @@ pub(crate) mod tests {
             .expect_read()
             .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
             .times(1)
-            .returning(|core| {
-                Err(crate::client::core_version::CoreVersionError::CoreVersionNotReported { core })
-            });
+            .returning(|core| Err(CoreVersionError::CoreVersionNotReported { core }));
         let mut args = test_client_args_with_endpoint(
             &dir,
             test_idle_endpoint(),
@@ -2089,7 +2086,7 @@ pub(crate) mod tests {
                     .get_core_version(nyanpasu_config::application::ClashCore::ClashRs)
                     .await,
                 Err(RuntimeError::ReadCoreVersion {
-                    source: crate::client::core_version::CoreVersionError::CoreVersionNotReported { .. }
+                    source: CoreVersionError::CoreVersionNotReported { .. }
                 })
             ));
         })

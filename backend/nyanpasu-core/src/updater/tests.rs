@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    client::core_lifecycle::ports::PreparedCoreBinary,
     download::{DownloadStatus, DownloaderState},
+    updater::artifact::PreparedCoreBinary,
 };
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicUsize, Ordering};

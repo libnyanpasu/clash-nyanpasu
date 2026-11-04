@@ -11,7 +11,9 @@ use std::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+pub mod artifact;
 mod instance;
+mod mirrors;
 pub(crate) mod ports;
 mod shared;
 pub(crate) use instance::HttpUpdaterBackend;

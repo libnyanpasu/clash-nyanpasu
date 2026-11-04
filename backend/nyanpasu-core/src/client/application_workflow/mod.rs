@@ -19,7 +19,10 @@ mod tests;
 
 use std::sync::Arc;
 
-use crate::state::{Ack, StateDecision, StateSnapshot};
+use crate::{
+    state::{Ack, StateDecision, StateSnapshot},
+    updater::artifact::PreparedCoreBinary,
+};
 use nyanpasu_core_manager::OperationId;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::OptionExt;
@@ -29,8 +32,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
-        ServiceRecovery,
-        ports::{BinaryInstaller, PreparedCoreBinary},
+        ServiceRecovery, ports::BinaryInstaller,
     },
     runtime,
     runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},

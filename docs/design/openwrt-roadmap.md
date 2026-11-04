@@ -199,24 +199,118 @@ nyanpasu-server spike --config-dir /cache/run/config --data-dir /cache/run/data
 `--hold` keeps run 1 alive after the core starts, for crash tests;
 `--no-scripts` skips the transforms.
 
-### Next
+## POC plan, 2026-11-05
 
-1. Decide the server-crash policy (F7) and read-only YAML access (F9); both
-   were already deferred decisions and now have evidence.
-2. Raise F1, F3–F6 and F10 with the upstream split as host-capability and
-   portability changes; do not work around them in a router-only layer.
-3. Compile `aarch64-unknown-linux-musl` (for example with `cargo-zigbuild`) and
-   measure realistic transform scripts.
-4. Router backend and native management wait for the core split to land and for
-   the RPC registry and `rpc(local)` target to leave the Tauri crate.
+The user asked for the POC/MVP implementation, a proper RPC configuration, a
+WebUI-in-LuCI investigation and a container to try it in. The work stays on
+`feat/openwrt-headless-spike`.
+
+### Decisions
+
+Decided by the user on 2026-11-05:
+
+- **Server crash (F7):** the core dies with the server. On Linux the core child
+  is bound to its parent's lifetime, and a starting server retires a leftover
+  core identified by a persisted pid and process start time before starting its
+  own. procd respawns the server.
+- **Autostart:** the server restores the last explicit intent. It persists
+  start/stop intent and starts the core on startup unless the user last stopped
+  it.
+- **Read-only YAML (F9):** read-only sessions get a redacted runtime YAML through
+  a separate command; the full YAML needs write access. Authorization stays in
+  the rpcd ACL, so redaction is a property of the command, not of the caller.
+
+### RPC: Phase E of the core package split
+
+RPC follows Phase E of the
+[core package split](../spec/2026-11-03-core-package-split/design.md) rather
+than a router-only transport:
+
+| Step     | Scope in this POC                                                                                                                                                                             |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1a      | Neutral macro declarations, `rpc(local)` opt-in and capability metadata; command names, event names and the `RpcError` envelope in `nyanpasu-rpc-protocol`. Bindings regenerate without diff. |
+| E2       | `nyanpasu-rpc`: neutral registry and event bus; Tauri events, SSE and the local socket subscribe to it. Tauri-free commands needed by the MVP move first.                                     |
+| E3       | API-only HTTP mode (assets optional) and the local-socket transport, both enforcing the registry's allowlists.                                                                                |
+| E4 (POC) | `nyanpasu-server run` and `nyanpasu-cli`. Deviation: C3 and E1b have not landed, so the CLI passes JSON without typed DTOs and the server still links desktop-shaped core code.               |
+
+### Local interface
+
+- **Socket:** `/var/run/nyanpasu/rpc.sock`, directory `0700` and socket `0600`
+  owned by root; the server takes `--rpc-socket PATH`. Socket permissions are
+  the only transport authentication; rpcd ACLs authorize LuCI sessions.
+- **Frames:** a big-endian `u32` length followed by UTF-8 JSON, at most 4 MiB.
+  The client sends `{"v":1,"id":N,"method":"...","params":{...}}`; the server
+  replies `{"v":1,"id":N,"result":...}` or `{"v":1,"id":N,"error":RpcError}`. A
+  connection may carry several requests; disconnecting does not cancel work
+  the server has started.
+- **CLI:** `nyanpasu-cli [--socket PATH] call METHOD [--params JSON | --params-file FILE]`
+  prints the result or `RpcError` as JSON on stdout. Exit codes: 0 success, 1
+  `RpcError`, 2 transport failure. `nyanpasu-cli methods` lists the `local`
+  allowlist.
+- **`rpc(local)` allowlist and rpcd ACL:**
+
+| ACL   | Commands                                                                                                                                                                                                                                   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| read  | `get_core_status`, `get_profiles`, `get_runtime_yaml_redacted` (new), `inspect_runtime`, `query_core_logs`, `get_core_log_status`                                                                                                          |
+| write | `create_profile`, `delete_profile`, `replace_profile_definition`, `set_global_transforms`, `activate_profile`, `read_profile_file`, `save_profile_file`, `reconcile_core` (new, returns the report), `stop_core` (new), `get_runtime_yaml` |
+
+`read_profile_file` is write-only because configuration profiles carry
+credentials. `update_core` and other commands that can reach elevation stay out
+of the allowlist.
+
+### LuCI and packaging
+
+- **rpcd:** a ucode plugin publishes the ubus object `nyanpasu`, one method per
+  allowlisted command, each running `nyanpasu-cli call`. Parameters go through
+  a temporary file, never through a shell-interpolated argument.
+- **ACL:** `luci-app-nyanpasu` grants the read methods to `read` and the write
+  methods to `write`, with no wildcards.
+- **Views:** native LuCI JavaScript under Services → Nyanpasu: Overview (status,
+  start/stop, selected profile, redacted YAML), Profiles (import YAML, create
+  JS/Lua transforms, order, activate) and Logs.
+- **Service:** a procd init script at `/etc/init.d/nyanpasu` with respawn; config
+  in `/etc/nyanpasu`, data in `/usr/share/nyanpasu` or the overlay, and the core
+  at `<data-dir>/mihomo`.
+- **Try-out container:** `openwrt/rootfs:x86-64-25.12.6`, which uses apk, run
+  with `/sbin/init` and LuCI published on `localhost:8080`. The default
+  capability set has no `CAP_NET_ADMIN`, so network and firewall pages do not
+  work. Files are installed with `wslc container cp` until feed packages exist.
+
+### WebUI in LuCI
+
+The React app already runs in a browser: outside Tauri it calls `POST
+/bridge/rpc` and listens on `GET /bridge/events` (SSE). It can be offered from
+LuCI once E3 lands, with these gaps:
+
+- **Server:** the HTTP host is loopback-only, rejects other `Host` values and
+  refuses to start without assets. Events are bridged from Tauri.
+- **Auth:** the per-start token suits a desktop. A router needs a LuCI-issued
+  one-time ticket (a write-ACL command) that is exchanged for the session cookie.
+- **Size:** the bundle is 24 MB, with Monaco about 13 MB, and expects to be
+  served at `/`. A router route set without Monaco, tray, widget and service
+  pages would cut most of it. Profile editing opens a Tauri-only editor window.
+
+Order: native LuCI views first. The WebUI follows E3 as a link or iframe from
+LuCI to the server's HTTP port with a ticket, then as a reduced router build.
+
+### Units
+
+1. E1a–E3 in shared crates, keeping the desktop build and bindings unchanged.
+2. Core lifecycle for F7 and autostart in the shared core manager and startup.
+3. `nyanpasu-server run` and `nyanpasu-cli` over the local socket.
+4. `luci-app-nyanpasu` (rpcd plugin, ACL, menu, views) and the procd init script.
+5. Container integration: install, LuCI walkthrough, recorded results.
+6. WebUI link with ticket auth, if E3 allows it without the reduced build.
+
+Still open: F1 and F3–F6 (the upstream C1/C2 host capabilities), F10
+(`gxhash`), aarch64, and realistic transform measurements.
 
 ## Decisions deliberately deferred
 
-Before lifecycle/authorization implementation, resolve server-crash/core retention
-and read-only access to runtime YAML containing credentials. These questions are
-not blockers for pausing and must not be answered by silence. Also finalize
-script capability/resource limits, payload limits, SDK/release targets and
-profile-to-runtime apply semantics using the upstream APIs and target evidence.
+Server-crash policy, autostart and read-only YAML access were decided on
+2026-11-05 (above). Still to finalize: script capability/resource limits,
+payload limits, SDK/release targets and profile-to-runtime apply semantics,
+using the upstream APIs and target evidence.
 
 The first product remains a server driven through the CLI by native LuCI for small local
 profiles, ordered JS/Lua transforms and Mihomo lifecycle. Transparent proxy,

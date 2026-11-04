@@ -1,19 +1,17 @@
 //! Owns the country index and keeps it in step with the core.
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use nyanpasu_geodata::IpIndex;
 use ractor::{Actor, ActorProcessingErr, ActorRef};
 use tokio::{sync::watch, task::JoinHandle};
 
-use super::ports::{CountryIndexSource, GeodataMode, IndexKey, Loaded, OnChange};
-use crate::actor_v2::CoreClient;
-
-/// How long to wait before asking a core that did not answer again.
-const RETRY: Duration = Duration::from_secs(1);
+use super::ports::{
+    CountryIndexSource, GeodataMode, IndexKey, Loaded, ModeReporter, ModeSource, OnChange,
+};
 
 pub struct GeoIndexArgs {
     pub source: Arc<dyn CountryIndexSource>,
-    pub core: CoreClient,
+    pub mode_source: Arc<dyn ModeSource>,
 }
 
 pub(super) enum Message {
@@ -45,7 +43,10 @@ impl Actor for GeoIndexActor {
         myself: ActorRef<Message>,
         (args, published): Self::Arguments,
     ) -> Result<State, ActorProcessingErr> {
-        let GeoIndexArgs { source, core } = args;
+        let GeoIndexArgs {
+            source,
+            mode_source,
+        } = args;
         let changed = {
             let myself = myself.clone();
             OnChange::new(move || {
@@ -69,7 +70,7 @@ impl Actor for GeoIndexActor {
             key: None,
             published,
             _watch: watch,
-            follower: tokio::spawn(follow_core(myself, core)),
+            follower: mode_source.start(ModeReporter::new(myself)),
         })
     }
 
@@ -127,36 +128,5 @@ impl State {
                 snafu::Report::from_error(error)
             ),
         }
-    }
-}
-
-/// Reads `geodata-mode` from every core instance as it binds. Cores without the field (clash-rs,
-/// Clash Premium) read the mmdb.
-async fn follow_core(actor: ActorRef<Message>, core: CoreClient) {
-    loop {
-        let Ok(api) = core.api_client().await else {
-            tokio::time::sleep(RETRY).await;
-            continue;
-        };
-        loop {
-            match api.configs().await {
-                Ok(config) => {
-                    let mode = match config.geodata_mode {
-                        Some(true) => GeodataMode::Dat,
-                        _ => GeodataMode::Mmdb,
-                    };
-                    if actor.cast(Message::Mode(mode)).is_err() {
-                        return;
-                    }
-                    break;
-                }
-                Err(_) if api.is_revoked() => break,
-                Err(error) => {
-                    tracing::debug!(%error, "the core did not report its geodata mode");
-                    tokio::time::sleep(RETRY).await;
-                }
-            }
-        }
-        api.cancelled().await;
     }
 }

@@ -12,10 +12,10 @@ mod tests;
 pub use actor::GeoIndexArgs;
 pub use adapters::FsCountryIndexSource;
 pub use client::GeoIndexClient;
-pub use ports::CountryIndexSource;
 #[cfg(test)]
 pub use ports::MockCountryIndexSource;
 #[cfg(any(test, feature = "test-support"))]
 pub use ports::NoopCountryIndexSource;
+pub use ports::{CountryIndexSource, GeodataMode, ModeReporter, ModeSource};
 
 pub use client::Error as SpawnError;

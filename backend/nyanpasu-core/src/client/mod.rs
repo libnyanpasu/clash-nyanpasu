@@ -32,6 +32,7 @@ pub mod effects;
 mod error;
 mod event_sink;
 pub mod frontend_events;
+mod geo_mode;
 pub mod host_adapters;
 pub mod hotkey;
 pub mod jobs;
@@ -592,7 +593,7 @@ impl NyanpasuClient {
         let geo_index = crate::geo::GeoIndexClient::spawn(
             crate::geo::GeoIndexArgs {
                 source: geo_index,
-                core: core_v2.clone(),
+                mode_source: Arc::new(geo_mode::CoreModeSource::new(core_v2.clone())),
             },
             shutdown.child_token(),
             &tasks,

@@ -117,7 +117,7 @@ impl RuntimeBuildPort for RuntimeBuildService {
             )))
         })
         .await;
-        crate::utils::blocking::join(built)
+        nyanpasu_owner_support::blocking::join(built)
     }
 
     async fn publish(

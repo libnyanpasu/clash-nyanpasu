@@ -97,7 +97,7 @@ impl RuntimeBuildPort for TestRuntimeBuildPort {
             Ok(Arc::new(RuntimeSnapshot::from_data(revision, core, data)))
         })
         .await;
-        crate::utils::blocking::join(built)
+        nyanpasu_owner_support::blocking::join(built)
     }
 
     async fn publish(&self, snapshot: &RuntimeSnapshot) -> Result<(), PublishRuntimeError> {

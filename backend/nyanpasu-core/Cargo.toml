@@ -22,6 +22,7 @@ test-support = [
 ]
 
 [dependencies]
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }

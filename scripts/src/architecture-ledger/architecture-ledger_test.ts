@@ -997,6 +997,7 @@ for (const root of [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
   'backend/nyanpasu-migration/src/',
+  'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
   'backend/nyanpasu-profile-transform/src/',

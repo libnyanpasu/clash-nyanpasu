@@ -3,10 +3,10 @@
 //! token is cancelled.
 use std::future::Future;
 
+use nyanpasu_owner_support::shutdown;
 use tokio_util::sync::CancellationToken;
 
 use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
-use crate::owner_shutdown;
 
 impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,
@@ -73,7 +73,7 @@ impl NyanpasuClient {
         token: &CancellationToken,
         producer: impl Future<Output = ()> + Send + 'static,
     ) -> impl Future<Output = ()> + Send + 'static {
-        owner_shutdown::track_until_shutdown(&self.inner.tasks, token, producer)
+        shutdown::track_until_shutdown(&self.inner.tasks, token, producer)
     }
 }
 
@@ -135,15 +135,11 @@ mod tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let dropped = Arc::new(AtomicBool::new(false));
         let guard = Dropped(Arc::clone(&dropped));
-        let task = tokio::spawn(owner_shutdown::track_until_shutdown(
-            &tasks,
-            &token,
-            async move {
-                let _guard = guard;
-                let _ = started_tx.send(());
-                std::future::pending::<()>().await;
-            },
-        ));
+        let task = tokio::spawn(shutdown::track_until_shutdown(&tasks, &token, async move {
+            let _guard = guard;
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        }));
         started_rx.await.unwrap();
 
         token.cancel();
@@ -161,13 +157,9 @@ mod tests {
 
         let ran = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&ran);
-        tokio::spawn(owner_shutdown::track_until_shutdown(
-            &tasks,
-            &token,
-            async move {
-                flag.store(true, Ordering::SeqCst);
-            },
-        ))
+        tokio::spawn(shutdown::track_until_shutdown(&tasks, &token, async move {
+            flag.store(true, Ordering::SeqCst);
+        }))
         .await
         .unwrap();
         assert!(!ran.load(Ordering::SeqCst));

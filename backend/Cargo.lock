@@ -1839,6 +1839,7 @@ dependencies = [
  "nyanpasu-macro",
  "nyanpasu-migration",
  "nyanpasu-net",
+ "nyanpasu-owner-support",
  "nyanpasu-panics",
  "nyanpasu-paths",
  "nyanpasu-persistence",
@@ -6803,6 +6804,7 @@ dependencies = [
  "nyanpasu-macro",
  "nyanpasu-migration",
  "nyanpasu-net",
+ "nyanpasu-owner-support",
  "nyanpasu-paths",
  "nyanpasu-persistence",
  "nyanpasu-profile-io",
@@ -7099,6 +7101,15 @@ dependencies = [
  "tracing",
  "tracing-attributes",
  "url",
+]
+
+[[package]]
+name = "nyanpasu-owner-support"
+version = "0.1.0"
+dependencies = [
+ "ractor",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

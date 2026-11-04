@@ -133,9 +133,10 @@ Rules for maintaining the separation:
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
   `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
-  `backend/nyanpasu-net/src/` and `backend/nyanpasu-migration/src/`
+  `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/` and
+  `backend/nyanpasu-owner-support/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All nine use the same explicit path-and-name allowlist; other backend library
+  All ten use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

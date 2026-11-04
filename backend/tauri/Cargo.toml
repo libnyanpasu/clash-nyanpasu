@@ -24,6 +24,7 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-net = { path = '../nyanpasu-net', default-features = false }

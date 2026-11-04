@@ -1,0 +1,12 @@
+[package]
+name = 'nyanpasu-owner-support'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+ractor = '0.16'
+tokio = { version = '1.54.1', features = ['macros', 'rt'] }
+tokio-util = { version = '0.7', features = ['rt'] }

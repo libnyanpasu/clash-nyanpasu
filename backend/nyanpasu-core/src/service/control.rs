@@ -167,7 +167,7 @@ async fn run_elevated(
     #[cfg(windows)]
     ensure_session_active()?;
     let service_binary = service_binary.to_path_buf();
-    let status = crate::utils::blocking::join(
+    let status = nyanpasu_owner_support::blocking::join(
         tokio::task::spawn_blocking(move || {
             #[cfg(windows)]
             ensure_session_active()?;

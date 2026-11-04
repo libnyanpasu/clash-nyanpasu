@@ -89,6 +89,55 @@ test('migration is a core-family dependency, available to core only above founda
   }
 })
 
+test('owner support consumes actor runtimes without higher core layers or implementations', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-owner-support',
+      'nyanpasu-owner-support v0.1.0\nractor v0.16\ntokio v1.54.1\ntokio-util v0.7\n',
+    ),
+    [],
+  )
+  for (const dependency of [
+    'nyanpasu-core',
+    'nyanpasu-migration',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'tauri',
+    'slint',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-owner-support', `${dependency} v0.1.0\n`),
+      [`nyanpasu-owner-support must not depend on ${dependency}`],
+    )
+  }
+})
+
+test('owner support is available to higher core layers only above foundation', () => {
+  for (const owner of ['nyanpasu-core', 'nyanpasu-migration']) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-owner-support v0.1.0\n'),
+      [],
+    )
+  }
+  for (const owner of [
+    'nyanpasu-config',
+    'nyanpasu-contracts',
+    'nyanpasu-persistence',
+    'nyanpasu-profile-transform',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'nyanpasu-diagnose',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-owner-support v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-owner-support`],
+    )
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  }
+})
+
 test('neutral packages cannot depend on the crash reporter frontend', () => {
   for (const owner of [
     'nyanpasu-core',

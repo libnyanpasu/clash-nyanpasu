@@ -1,5 +1,5 @@
 //! Setup logic for the app
-use nyanpasu_core::owner_shutdown::track_until_shutdown;
+use nyanpasu_owner_support::shutdown::track_until_shutdown;
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_net::{

@@ -30,6 +30,16 @@ pub enum Error {
     },
 }
 
+/// How long a locally spawned core outlives the process that spawned it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreLifetime {
+    /// A host that dies abruptly leaves its core for the next start to retire.
+    Independent,
+    /// The core dies with its host, even when the host is killed. Linux only;
+    /// other targets behave as [`Self::Independent`].
+    BoundToHost,
+}
+
 /// Builds the local core host with the stop strategy shared by its process supervisors.
 ///
 /// # Errors
@@ -38,12 +48,14 @@ pub async fn build(
     paths: &PathResolver,
     shutdown_helper: &std::path::Path,
     stop_strategy: Arc<AtomicStopStrategy>,
+    lifetime: CoreLifetime,
 ) -> Result<CoreControl, Error> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
         runtime_dir: Some(runtime_root.join("control")),
         local_ipc_policy: LocalIpcPolicy::Disable,
         windows_shutdown_helper: Some(shutdown_helper.to_owned()),
+        kill_core_on_manager_death: lifetime == CoreLifetime::BoundToHost,
         ..ManagerOptions::default()
     };
     let working_dir = paths.app_data_dir().to_owned();
@@ -142,6 +154,7 @@ mod tests {
             &paths,
             &root.path().join("helper.exe"),
             Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
+            CoreLifetime::Independent,
         )
         .await
         .unwrap();
@@ -161,6 +174,7 @@ mod tests {
             &paths,
             &root.path().join("helper.exe"),
             Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
+            CoreLifetime::Independent,
         )
         .await
         .unwrap();
@@ -172,6 +186,7 @@ mod tests {
                 &paths,
                 &root.path().join("helper.exe"),
                 Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
+                CoreLifetime::Independent,
             )
             .await
             .is_err()

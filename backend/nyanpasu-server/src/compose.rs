@@ -15,6 +15,7 @@ use nyanpasu_core::{
     actor_v2::{
         CoreClient,
         endpoint::{EndpointHandle, LocalEndpoint},
+        local_host::CoreLifetime,
         service_actor::ServiceClient,
     },
     client::{
@@ -150,10 +151,16 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Nyanp
     let stop_strategy = Arc::new(nyanpasu_utils::process::AtomicStopStrategy::new(
         nyanpasu_utils::process::StopStrategy::default(),
     ));
-    let control =
-        nyanpasu_core::actor_v2::local_host::build(&paths, &shutdown_helper, stop_strategy)
-            .await
-            .context("build core host")?;
+    // The core dies with the server, so a crash cannot leave a core holding the
+    // listeners while the supervisor restarts the server.
+    let control = nyanpasu_core::actor_v2::local_host::build(
+        &paths,
+        &shutdown_helper,
+        stop_strategy,
+        CoreLifetime::BoundToHost,
+    )
+    .await
+    .context("build core host")?;
     let local: EndpointHandle = Arc::new(LocalEndpoint::new(control));
     let core_v2 = CoreClient::spawn(local).await.context("spawn core actor")?;
     owners.core = Some(core_v2.clone());
@@ -205,6 +212,7 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Nyanp
         binary_installer: Arc::new(
             nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
         ),
+        core_intent_store: None,
         core_versions: Arc::new(CoreBinaryVersions::new(paths)),
         effects: Arc::new(UnsupportedEffects),
         window: Arc::new(NoWindows),

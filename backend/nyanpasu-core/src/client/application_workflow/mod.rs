@@ -30,7 +30,7 @@ use super::{
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
         ServiceRecovery,
-        ports::{BinaryInstaller, PreparedCoreBinary},
+        ports::{BinaryInstaller, CoreIntent, CoreIntentStore, PreparedCoreBinary},
     },
     runtime,
     runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
@@ -188,6 +188,9 @@ pub(super) struct ApplicationWorkflowArgs {
     /// and the core lifecycle confirms or invalidates the binding.
     pub ports: Arc<super::SessionPortResolver>,
     pub installer: Arc<dyn BinaryInstaller>,
+    /// Restores the user's last explicit run or stop request across restarts;
+    /// `None` starts the core at every startup.
+    pub intent_store: Option<Arc<dyn CoreIntentStore>>,
     /// Who owns the runtime when the workflow starts. Production starts
     /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
     pub ownership: Ownership,
@@ -622,6 +625,15 @@ impl ApplicationWorkflowClient {
             args.builder,
             args.ports.clone(),
         );
+        // A store that cannot be read must not keep the core down: the user's
+        // last request is unknown, and the default is to run.
+        let intent = match &args.intent_store {
+            Some(store) => store.load().await.unwrap_or_else(|error| {
+                tracing::error!(%error, "the core intent could not be read; starting the core");
+                CoreIntent::Run
+            }),
+            None => CoreIntent::Run,
+        };
         let workflow = ApplicationWorkflow {
             notifications: args.notifications,
             profiles: args.profiles,
@@ -637,9 +649,11 @@ impl ApplicationWorkflowClient {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
                 installer: args.installer,
+                intent_store: args.intent_store,
+                recorded_intent: intent,
                 runtime: runtime.clone(),
                 ports: args.ports,
-                recovery: ServiceRecovery::default(),
+                recovery: ServiceRecovery::restoring(intent),
                 closing: args.shutdown.clone(),
                 ownership: args.ownership,
                 instance_config_dir: args.instance_config_dir,

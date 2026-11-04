@@ -324,7 +324,7 @@ impl ApplicationWorkflow {
         );
         // The start takes back the stop recorded before it; S3 honours any
         // stop recorded after it (§1.4).
-        self.lifecycle.withdraw_stop_intent();
+        self.lifecycle.withdraw_stop_intent().await;
         let target = self.open_reestablish_target(operation_id, ReestablishCause::ExplicitStart);
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
         let (_, reestablished) = self.reestablish(false).await;

@@ -17,7 +17,10 @@ use super::{
         },
     },
     Command, Output,
-    ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
+    ports::{
+        BinaryInstaller, CoreIntent as StoredCoreIntent, CoreIntentStore, PreparedCoreBinary,
+        PreparedRuntime, RuntimePreparationPort,
+    },
 };
 use crate::actor_v2::{
     EndpointConnectivity, HandoffReport,
@@ -35,6 +38,11 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     pub application: StateSnapshot<NyanpasuAppConfig>,
     pub core: CoreFacade,
     pub installer: Arc<dyn BinaryInstaller>,
+    /// Where a host that restores the user's intent keeps it; `None` forgets it
+    /// when the process ends.
+    pub intent_store: Option<Arc<dyn CoreIntentStore>>,
+    /// What the store holds, so that a request it already has is not written again.
+    pub recorded_intent: StoredCoreIntent,
     pub runtime: runtime::RuntimeSnapshotStore,
     /// The session's port bindings. The workflow is the only writer: it
     /// confirms a candidate when the core accepts it and ends the confirmed
@@ -129,6 +137,17 @@ enum CoreIntent {
 const RECOVERY_BUDGET: u8 = 3;
 
 impl ServiceRecovery {
+    /// A recovery state that starts out owing the stop the user last asked for.
+    pub fn restoring(intent: StoredCoreIntent) -> Self {
+        Self {
+            intent: match intent {
+                StoredCoreIntent::Run => CoreIntent::Idle,
+                StoredCoreIntent::Stopped => CoreIntent::Stopped,
+            },
+            ..Self::default()
+        }
+    }
+
     /// Explicit Service intent re-opens the budget. What is owed to the core is
     /// deliberately untouched: neither a stop the user asked for nor a
     /// restoration still owed is a connection concern.
@@ -188,7 +207,12 @@ impl CoreLifecycleWorkflow {
                 self.recover_service_endpoint(preparation).await?;
                 Ok(Output::Unit)
             }
-            Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
+            Command::Reconcile => {
+                // An explicit start is the user's latest request even if the
+                // core fails to start, so it is recorded before it is tried.
+                self.record_intent(StoredCoreIntent::Run).await;
+                Ok(Output::Reconcile(self.reconcile(preparation).await?))
+            }
             #[cfg(test)]
             Command::ChangeHost(host) => Ok(Output::Handoff(
                 self.move_execution_host(host, true)
@@ -209,6 +233,7 @@ impl CoreLifecycleWorkflow {
                 // Running when the endpoint degrades a moment later, and
                 // recovery must not read that as a reason to start the core.
                 self.recovery.intent = CoreIntent::Stopped;
+                self.record_intent(StoredCoreIntent::Stopped).await;
                 let report = self.core.stop().await.context(StopCoreSnafu)?;
                 // Nothing holds those ports any more. A later reader must get
                 // "unavailable", never the endpoint the stopped core used.
@@ -335,9 +360,28 @@ impl CoreLifecycleWorkflow {
     /// An explicit start takes back the stop recorded before it (T10 §1.4).
     /// A restoration still owed is not a stop, and stays owed; a stop asked
     /// for after this is recorded, and honoured, again.
-    pub fn withdraw_stop_intent(&mut self) {
+    pub async fn withdraw_stop_intent(&mut self) {
         if self.recovery.intent == CoreIntent::Stopped {
             self.recovery.intent = CoreIntent::Idle;
+            self.record_intent(StoredCoreIntent::Run).await;
+        }
+    }
+
+    /// Keeps the user's request where the host asked for it. A failure cannot
+    /// undo the request the caller made, so it is reported and the session
+    /// carries on with the intent it holds in memory.
+    async fn record_intent(&mut self, intent: StoredCoreIntent) {
+        let Some(store) = &self.intent_store else {
+            return;
+        };
+        if self.recorded_intent == intent {
+            return;
+        }
+        match store.record(intent).await {
+            Ok(()) => self.recorded_intent = intent,
+            Err(error) => {
+                tracing::error!(%error, ?intent, "the core intent could not be made durable");
+            }
         }
     }
 
@@ -651,6 +695,7 @@ impl CoreLifecycleWorkflow {
         // An applied config is the only thing that discharges what is owed --
         // it both restores an interrupted core and ends a user's stop. Clearing
         // on entry would lose the intent to a failure halfway through.
+        self.withdraw_stop_intent().await;
         self.recovery.intent = CoreIntent::Idle;
         Ok(RuntimeSubmission::Applied {
             product: snapshot,

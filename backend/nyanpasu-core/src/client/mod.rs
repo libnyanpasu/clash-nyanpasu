@@ -123,6 +123,10 @@ pub struct ClientSetupArgs {
     pub geo_index: Arc<dyn crate::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    /// Restores the user's last explicit run or stop request at startup, for a
+    /// host that wants the core to stay stopped across restarts. `None` starts
+    /// the core at every startup, as the desktop does.
+    pub core_intent_store: Option<Arc<dyn core_lifecycle::ports::CoreIntentStore>>,
     pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
@@ -297,6 +301,7 @@ impl NyanpasuClient {
             geo_index,
             os_proxy,
             binary_installer,
+            core_intent_store,
             core_versions,
             effects,
             window,
@@ -365,6 +370,7 @@ impl NyanpasuClient {
             geo_index,
             os_proxy,
             binary_installer,
+            core_intent_store,
             core_versions,
             effects,
             window,
@@ -404,6 +410,7 @@ impl NyanpasuClient {
         geo_index: Arc<dyn crate::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        core_intent_store: Option<Arc<dyn core_lifecycle::ports::CoreIntentStore>>,
         core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
@@ -496,6 +503,7 @@ impl NyanpasuClient {
                 )),
                 ports: ports.clone(),
                 installer: binary_installer,
+                intent_store: core_intent_store,
                 ownership: core_lifecycle::Ownership::Unproven,
                 instance_config_dir,
                 shutdown: shutdown.child_token(),
@@ -2354,6 +2362,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            core_intent_store: None,
             core_versions: Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window

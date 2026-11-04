@@ -269,10 +269,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service, jobs) = tauri::async_runtime::block_on(async {
-        let control =
-            nyanpasu_core::actor_v2::local_host::build(&paths, &service_binary, stop_strategy)
-                .await
-                .context(BuildCoreHostSnafu)?;
+        let control = nyanpasu_core::actor_v2::local_host::build(
+            &paths,
+            &service_binary,
+            stop_strategy,
+            nyanpasu_core::actor_v2::local_host::CoreLifetime::Independent,
+        )
+        .await
+        .context(BuildCoreHostSnafu)?;
         let local: nyanpasu_core::actor_v2::endpoint::EndpointHandle = Arc::new(
             nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
         );
@@ -468,6 +472,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         binary_installer: Arc::new(
             nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
         ),
+        core_intent_store: None,
         core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),

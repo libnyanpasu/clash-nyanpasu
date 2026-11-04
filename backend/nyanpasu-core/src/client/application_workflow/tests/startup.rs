@@ -64,7 +64,10 @@ use crate::{
     client::{
         SessionPortResolver,
         convergence::ConvergenceHealth,
-        core_lifecycle::{Ownership, ports::PreparedCoreBinary},
+        core_lifecycle::{
+            Ownership,
+            ports::{CoreIntent, CoreIntentStore, PreparedCoreBinary},
+        },
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
@@ -303,6 +306,8 @@ pub(super) struct Setup {
     pub(super) owner_on_service: bool,
     /// The daemon was installed by another instance of the app.
     pub(super) foreign_daemon: bool,
+    /// The host keeps the user's last run or stop request across restarts.
+    pub(super) intent_store: Option<Arc<dyn CoreIntentStore>>,
 }
 
 impl Default for Setup {
@@ -319,6 +324,7 @@ impl Default for Setup {
             handoff_budget: None,
             owner_on_service: false,
             foreign_daemon: false,
+            intent_store: None,
         }
     }
 }
@@ -419,6 +425,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            intent_store: setup.intent_store.clone(),
             ownership: Ownership::Unproven,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
@@ -2024,4 +2031,106 @@ async fn stale_convergence_callback_keeps_the_replacement_timer_owned() {
     );
     g.shutdown.cancel();
     g.client.0.actor.stop_and_wait(None, None).await.unwrap();
+}
+
+/// An intent store in memory. Each request is written to the shared log with
+/// the operations the hosts ran, so the order of a record and the core's action
+/// is observable.
+struct MemoryIntent {
+    intent: StdMutex<CoreIntent>,
+    log: StdMutex<Option<Log>>,
+    unreadable: bool,
+}
+
+impl MemoryIntent {
+    fn new(intent: CoreIntent, unreadable: bool) -> Arc<Self> {
+        Arc::new(Self {
+            intent: StdMutex::new(intent),
+            log: StdMutex::new(None),
+            unreadable,
+        })
+    }
+
+    fn write_to(&self, log: Log) {
+        *self.log.lock().unwrap() = Some(log);
+    }
+
+    fn intent(&self) -> CoreIntent {
+        *self.intent.lock().unwrap()
+    }
+}
+
+#[async_trait::async_trait]
+impl CoreIntentStore for MemoryIntent {
+    async fn load(&self) -> Result<CoreIntent, nyanpasu_contracts::BoxedCause> {
+        if self.unreadable {
+            return Err("the intent file is unreadable".into());
+        }
+        Ok(self.intent())
+    }
+
+    async fn record(&self, intent: CoreIntent) -> Result<(), nyanpasu_contracts::BoxedCause> {
+        *self.intent.lock().unwrap() = intent;
+        if let Some(log) = &*self.log.lock().unwrap() {
+            log.lock().unwrap().push(format!("intent:{intent:?}"));
+        }
+        Ok(())
+    }
+}
+
+async fn graph_with_intent(store: &Arc<MemoryIntent>) -> Graph {
+    let g = graph(Setup {
+        intent_store: Some(store.clone()),
+        ..Setup::default()
+    })
+    .await;
+    store.write_to(g.log.clone());
+    g
+}
+
+/// A recorded stop outlives the process: the next startup keeps the core down
+/// as it would after a stop in the same session, and the first explicit start
+/// takes it back and records that.
+#[tokio::test]
+async fn a_recorded_stop_keeps_the_core_down_until_an_explicit_start() {
+    let store = MemoryIntent::new(CoreIntent::Stopped, false);
+    let g = graph_with_intent(&store).await;
+
+    let report = g.start().await;
+
+    assert_eq!(report.outcome, StartupOutcome::Ready);
+    assert!(g.log().is_empty(), "startup started a core: {:?}", g.log());
+    assert_eq!(store.intent(), CoreIntent::Stopped);
+
+    g.client.reconcile().await.unwrap();
+
+    assert_eq!(g.log(), ["intent:Run", "local:reconcile"]);
+    assert_eq!(store.intent(), CoreIntent::Run);
+}
+
+/// Without a recorded stop the startup starts the core, and a stop made later
+/// is made durable before the core is stopped.
+#[tokio::test]
+async fn an_explicit_stop_is_recorded_before_the_core_stops() {
+    let store = MemoryIntent::new(CoreIntent::Run, false);
+    let g = graph_with_intent(&store).await;
+    g.start().await;
+
+    g.client.stop_core().await.unwrap();
+
+    assert_eq!(g.log(), ["local:reconcile", "intent:Stopped", "local:stop"]);
+    assert_eq!(store.intent(), CoreIntent::Stopped);
+}
+
+/// A store that cannot be read says nothing about what the user wanted, so the
+/// core starts.
+#[tokio::test]
+async fn an_unreadable_intent_starts_the_core() {
+    let store = MemoryIntent::new(CoreIntent::Stopped, true);
+    let g = graph_with_intent(&store).await;
+
+    let report = g.start().await;
+
+    assert_eq!(report.outcome, StartupOutcome::Ready);
+    assert_eq!(g.log(), ["local:reconcile"]);
 }

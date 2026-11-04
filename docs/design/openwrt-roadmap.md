@@ -220,6 +220,23 @@ Decided by the user on 2026-11-05:
   a separate command; the full YAML needs write access. Authorization stays in
   the rpcd ACL, so redaction is a property of the command, not of the caller.
 
+How the first two are implemented in the shared core:
+
+- **Core lifetime:** the core manager already records each core's identity (pid,
+  boot-bound process start token and executable) under
+  `<config-dir>/runtime/control/` and, when it is built, retires a leftover whose
+  identity still matches and never signals a reused pid. The spike saw the second
+  core but did not check that the first had been killed, so F7's retirement half
+  existed. The missing half was the window between a crash and the restart, now
+  closed by `ManagerOptions::kill_core_on_manager_death`
+  (`PR_SET_PDEATHSIG` through `nyanpasu_utils::process::Command`). Hosts opt in
+  with `CoreLifetime::BoundToHost`; the desktop stays `Independent`.
+- **Autostart:** `startup_reconcile` starts the core unless the user last stopped
+  it, as the desktop already does within a session. A host that supplies a
+  `CoreIntentStore` makes that stop durable: `stop_core` is recorded before the
+  core stops, an explicit start before it is tried, and a store that cannot be
+  read starts the core. The desktop supplies none.
+
 ### RPC: Phase E of the core package split
 
 RPC follows Phase E of the

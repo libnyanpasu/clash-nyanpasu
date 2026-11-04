@@ -11,7 +11,7 @@ use crate::{
     actor_v2::local_host::CoreSpecError,
     client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
 };
-use nyanpasu_contracts::profiles::error::ErrorPath;
+use nyanpasu_contracts::{BoxedCause, profiles::error::ErrorPath};
 
 /// Owns the staging directory until installation and its restart have finished.
 pub struct PreparedCoreBinary {
@@ -72,6 +72,31 @@ pub enum InstallCoreBinaryError {
     #[cfg_attr(not(windows), allow(dead_code))]
     #[snafu(display("the path {path} is not valid UTF-8"))]
     PathNotUtf8 { path: ErrorPath },
+}
+
+/// What the user last explicitly asked of the core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CoreIntent {
+    /// The core runs, or was never stopped on purpose.
+    #[default]
+    Run,
+    /// The user stopped the core and has not started it since.
+    Stopped,
+}
+
+/// Keeps the user's last explicit run or stop request across restarts, for a
+/// host that restores it at startup.
+///
+/// A host that supplies none starts the core at every startup, as the desktop
+/// does. With a store, `startup_reconcile` honours a recorded stop the way it
+/// honours one made in the same session, and every later explicit start or stop
+/// is recorded before the core acts on it.
+#[async_trait]
+pub trait CoreIntentStore: Send + Sync + 'static {
+    /// The last recorded request; [`CoreIntent::Run`] when none was recorded.
+    async fn load(&self) -> Result<CoreIntent, BoxedCause>;
+    /// Makes `intent` durable before returning.
+    async fn record(&self, intent: CoreIntent) -> Result<(), BoxedCause>;
 }
 
 #[async_trait]

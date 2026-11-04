@@ -375,6 +375,7 @@ async fn workflow_graph_with_clients(
             )),
             ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            intent_store: None,
             ownership,
             instance_config_dir: Default::default(),
             shutdown,

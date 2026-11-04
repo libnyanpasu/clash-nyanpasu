@@ -786,6 +786,7 @@ pub async fn test_client_args_with_endpoint(
         geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
         os_proxy: Arc::new(MockOsProxyPort::new()),
         binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+        core_intent_store: None,
         core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
         effects: Arc::new(effects::ports::NoopApplicationEffects),
         // A mock rather than a no-op: a test that dispatches a window

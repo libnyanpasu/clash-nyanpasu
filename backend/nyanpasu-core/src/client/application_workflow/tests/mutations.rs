@@ -384,6 +384,7 @@ pub(super) async fn fixture_from(
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            intent_store: None,
             ownership,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),

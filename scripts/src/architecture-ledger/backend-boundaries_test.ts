@@ -423,3 +423,19 @@ for (const owner of [
     assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
   })
 }
+
+test('the RPC protocol links neither the application nor a GUI', () => {
+  for (const dependency of ['nyanpasu-core', 'nyanpasu-migration', 'tauri']) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-rpc-protocol', `${dependency} v0.1.0\n`),
+      [`nyanpasu-rpc-protocol must not depend on ${dependency}`],
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-protocol',
+      'serde v1.0\nspecta v2.0.0\ntokio v1.0\n',
+    ),
+    [],
+  )
+})

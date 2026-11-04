@@ -96,6 +96,11 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-diagnose',
     forbids: [...CORE_FAMILY, ...IMPLEMENTATION],
   },
+  // The wire contract a CLI links: no application, no GUI.
+  {
+    package: 'nyanpasu-rpc-protocol',
+    forbids: [...GUI, ...CORE_FAMILY, ...IMPLEMENTATION],
+  },
 ]
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */

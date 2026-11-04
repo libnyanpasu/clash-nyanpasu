@@ -196,7 +196,7 @@ pub struct FileDialogFilter {
     pub extensions: Vec<String>,
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(clipboard))]
 #[tauri::command]
 #[specta::specta]
 pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
@@ -206,7 +206,7 @@ pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
         .map_err(|error| error.to_string())?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(clipboard))]
 #[tauri::command]
 #[specta::specta]
 pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result {
@@ -217,7 +217,7 @@ pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(notification))]
 #[tauri::command]
 #[specta::specta]
 pub async fn show_native_notification(
@@ -233,7 +233,7 @@ pub async fn show_native_notification(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(dialog))]
 #[tauri::command]
 #[specta::specta]
 pub async fn show_native_message_dialog(
@@ -286,7 +286,7 @@ pub async fn show_native_message_dialog(
         .map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(dialog))]
 #[tauri::command]
 #[specta::specta]
 pub async fn ask_native_dialog(
@@ -318,7 +318,7 @@ pub async fn ask_native_dialog(
         .map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(dialog))]
 #[tauri::command]
 #[specta::specta]
 pub async fn open_native_file_dialog(
@@ -473,7 +473,7 @@ impl PendingDeepLinks {
 /// Take and clear the queued deep links, oldest first. The frontend calls it
 /// once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
 /// every such event.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(deep_link))]
 #[tauri::command]
 #[specta::specta]
 pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Result<Vec<String>> {
@@ -677,7 +677,7 @@ pub async fn replace_profile_definition(
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
@@ -853,7 +853,7 @@ pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<Nyanpas
     Ok(client.get_app_config().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, capabilities(os_integration, hotkey, presentation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_app_config(
@@ -968,7 +968,7 @@ pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysPr
     })
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(elevation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
@@ -976,7 +976,7 @@ pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
@@ -984,7 +984,7 @@ pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_data_dir(paths: State<'_, PathResolver>) -> Result<()> {
@@ -1009,7 +1009,7 @@ pub async fn create_config_backup(client: State<'_, NyanpasuClient>) -> Result<C
     })
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_backups_dir(client: State<'_, NyanpasuClient>) -> Result<()> {
@@ -1017,7 +1017,7 @@ pub fn open_backups_dir(client: State<'_, NyanpasuClient>) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_core_dir() -> Result<()> {
@@ -1053,7 +1053,7 @@ pub async fn get_core_agent_skills(
     Ok(client.core_agent_skills(core_type).await)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
@@ -1061,7 +1061,7 @@ pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_web_url(url: String) -> Result<()> {
@@ -1088,7 +1088,7 @@ pub async fn get_core_version(
     Ok(client.get_core_version(core_type).await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(dialog))]
 #[tauri::command]
 #[specta::specta]
 pub async fn collect_logs(
@@ -1119,7 +1119,7 @@ pub async fn collect_logs(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, capabilities(elevation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
@@ -1283,7 +1283,7 @@ pub async fn clash_api_healthcheck_proxy_provider(
     Ok(client.healthcheck_proxy_provider(name).await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn report_issue(
@@ -1295,7 +1295,7 @@ pub fn report_issue(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
 pub fn open_that(path: String) -> Result {
@@ -1331,7 +1331,7 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 }
 
 #[cfg(windows)]
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(dialog, elevation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> Result {
@@ -1372,7 +1372,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(lifecycle))]
 #[tauri::command]
 #[specta::specta]
 pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
@@ -1406,7 +1406,7 @@ pub async fn get_tray_icon(paths: State<'_, PathResolver>, mode: TrayIcon) -> Re
 }
 
 #[cfg(not(windows))]
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(dialog, elevation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(_path: String) -> Result {
@@ -1418,7 +1418,7 @@ pub mod uwp {
     use super::{NyanpasuClient, Result, State};
     use crate::core::win_uwp;
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn invoke_uwp_tool(
@@ -1433,7 +1433,7 @@ pub mod uwp {
     }
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(presentation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon(
@@ -1453,7 +1453,7 @@ pub async fn set_tray_icon(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, capabilities(presentation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon_from_bytes(
@@ -1514,7 +1514,7 @@ pub async fn is_widget_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) 
 
 /// Sets the statistic widget's own icon for `mode` from a file, or resets it
 /// to the bundled one when `path` is `None`.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(presentation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_widget_icon(
@@ -1528,7 +1528,7 @@ pub async fn set_widget_icon(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, capabilities(presentation))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_widget_icon_from_bytes(
@@ -1577,7 +1577,7 @@ pub mod service {
         })
     }
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn install_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -1585,7 +1585,7 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn uninstall_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -1593,7 +1593,7 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn start_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -1601,7 +1601,7 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn stop_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -1609,7 +1609,7 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn restart_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -1622,7 +1622,7 @@ pub mod service {
 pub mod uwp {
     use super::*;
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
     pub async fn invoke_uwp_tool() -> Result {
@@ -1709,7 +1709,7 @@ pub async fn get_hotkeys(client: State<'_, NyanpasuClient>) -> Result<Vec<String
     Ok(client.get_app_config().await?.hotkeys)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, capabilities(hotkey))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_hotkeys(
@@ -1916,7 +1916,7 @@ pub async fn clear_clash_ws_history(
 
 // Subscription control uses UnifiedRpc; only frame delivery is a native Channel.
 // HTTP consumers use the dedicated SSE adapter instead of a webview channel.
-#[nyanpasu_macro::rpc(owner)]
+#[nyanpasu_macro::rpc(owner, capabilities(caller_webview))]
 #[tauri::command]
 #[specta::specta]
 pub async fn subscribe_clash_connection_details(
@@ -1938,7 +1938,7 @@ pub async fn subscribe_clash_connection_details(
     Ok(id)
 }
 
-#[nyanpasu_macro::rpc(owner)]
+#[nyanpasu_macro::rpc(owner, capabilities(caller_webview))]
 #[tauri::command]
 #[specta::specta]
 pub fn unsubscribe_clash_connection_details(
@@ -2023,7 +2023,7 @@ pub struct ReleaseChannelInfo {
     installed: ReleaseChannel,
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<ReleaseChannelInfo> {
@@ -2033,7 +2033,7 @@ pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<Re
     })
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_release_channel(
@@ -2043,7 +2043,7 @@ pub async fn set_release_channel(
     Ok(client.set_release_channel(channel).await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_app_update_state(
@@ -2052,7 +2052,7 @@ pub async fn get_app_update_state(
     Ok(client.get_app_update_state().await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_app_update_changelog(
@@ -2063,7 +2063,7 @@ pub async fn get_app_update_changelog(
     Ok(client.get_app_update_changelog(&from, &to).await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn check_app_update(
@@ -2072,7 +2072,7 @@ pub async fn check_app_update(
     Ok(client.check_app_update().await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn download_app_update(
@@ -2081,7 +2081,7 @@ pub async fn download_app_update(
     Ok(client.download_app_update().await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn cancel_app_update_download(
@@ -2090,7 +2090,7 @@ pub async fn cancel_app_update_download(
     Ok(client.cancel_app_update_download().await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn install_app_update(
@@ -2099,7 +2099,7 @@ pub async fn install_app_update(
     Ok(client.install_app_update().await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(app_update))]
 #[tauri::command]
 #[specta::specta]
 pub async fn discard_app_update_package(
@@ -2108,7 +2108,7 @@ pub async fn discard_app_update_package(
     Ok(client.discard_app_update_package().await?)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(window))]
 #[tauri::command]
 #[specta::specta]
 pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
@@ -2118,7 +2118,7 @@ pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Res
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(window))]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()> {
@@ -2126,7 +2126,7 @@ pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()>
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(window))]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
@@ -2136,7 +2136,7 @@ pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> 
 
 /// Panics on purpose, so the crash reporter can be tested. The panic hook
 /// exits differently when the main thread panics, hence the choice.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(lifecycle))]
 #[tauri::command]
 #[specta::specta]
 pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<()> {
@@ -2148,7 +2148,7 @@ pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(clipboard))]
 #[tauri::command]
 #[specta::specta]
 pub fn copy_clash_env(
@@ -2159,14 +2159,14 @@ pub fn copy_clash_env(
     proxy_env::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(lifecycle))]
 #[tauri::command]
 #[specta::specta]
 pub fn quit_application(app_handle: AppHandle) {
     crate::utils::help::quit_application(&app_handle);
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(window))]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_editor_window(
@@ -2181,7 +2181,7 @@ pub async fn create_editor_window(
 
 /// The calling window has rendered. Its label comes from the invoking webview,
 /// so a window can only report itself.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(capabilities(caller_webview))]
 #[tauri::command]
 #[specta::specta]
 pub async fn report_window_ready(
@@ -2218,7 +2218,7 @@ pub fn get_configuration_status(
 pub async fn retry_configuration_runtime(client: State<'_, NyanpasuClient>) -> Result<()> {
     Ok(client.retry_runtime_now().await?)
 }
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, capabilities(os_integration, hotkey, presentation))]
 #[tauri::command]
 #[specta::specta]
 pub fn retry_configuration_effect(

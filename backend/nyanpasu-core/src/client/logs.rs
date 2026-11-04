@@ -2,6 +2,7 @@ use super::NyanpasuClient;
 use async_trait::async_trait;
 use nyanpasu_ipc::{api::log::OwnedLogRequest, client::Client as IpcClient};
 use nyanpasu_logging::*;
+use nyanpasu_observers::logs::{CoreLogExport, CoreLogResult, CoreLogStore};
 use std::{sync::Arc, time::Duration};
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -12,7 +13,7 @@ pub enum LogSource {
 }
 
 pub struct LoggingSetup {
-    pub core: Box<dyn crate::logs::CoreLogStore>,
+    pub core: Box<dyn CoreLogStore>,
     pub files: Arc<dyn LogFiles>,
     pub clock: Arc<dyn Clock>,
     pub service: Arc<dyn ServiceLogsPort>,
@@ -81,10 +82,7 @@ impl ServiceLogsPort for IpcServiceLogs {
     }
 }
 impl NyanpasuClient {
-    pub async fn export_core_logs(
-        &self,
-        home: Option<String>,
-    ) -> crate::logs::CoreLogResult<crate::logs::CoreLogExport> {
+    pub async fn export_core_logs(&self, home: Option<String>) -> CoreLogResult<CoreLogExport> {
         self.inner.core_logs.export(home).await
     }
 

@@ -24,6 +24,9 @@ use nyanpasu_core::{
     storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
     updater::ManifestVersionLatest,
 };
+use nyanpasu_observers::logs::{
+    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
+};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_transform::PostProcessingOutput;
 use serde::{Deserialize, Serialize};
@@ -1809,8 +1812,8 @@ pub async fn get_clash_ws_snapshot(
 #[specta::specta]
 pub async fn query_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_core::logs::CoreLogQuery,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
+    query: CoreLogQuery,
+) -> CoreLogResult<CoreLogPage> {
     client.query_core_logs(query).await
 }
 
@@ -1819,8 +1822,8 @@ pub async fn query_core_logs(
 #[specta::specta]
 pub async fn get_core_log(
     client: tauri::State<'_, NyanpasuClient>,
-    cursor: nyanpasu_core::logs::CoreLogCursor,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
+    cursor: CoreLogCursor,
+) -> CoreLogResult<CoreLogRecord> {
     client.get_core_log(cursor).await
 }
 
@@ -1829,16 +1832,14 @@ pub async fn get_core_log(
 #[specta::specta]
 pub async fn get_core_log_status(
     client: tauri::State<'_, NyanpasuClient>,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
+) -> CoreLogResult<CoreLogStatus> {
     client.get_core_log_status().await
 }
 
 #[nyanpasu_macro::rpc(http, result)]
 #[tauri::command]
 #[specta::specta]
-pub async fn clear_core_logs(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> nyanpasu_core::logs::CoreLogResult<()> {
+pub async fn clear_core_logs(client: tauri::State<'_, NyanpasuClient>) -> CoreLogResult<()> {
     client.clear_core_logs().await
 }
 

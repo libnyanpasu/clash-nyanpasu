@@ -51,7 +51,8 @@ backend/nyanpasu-core/src/
   client/                  NyanpasuClient, typed clients, workflows, runtime builds and artifact conversion
   state/                   configuration transactions
   actor_v2/, clash/        core control and API streams
-  logs/, geo/, traffic/    log sessions, geodata and traffic accounting
+  logs/                    redb log storage and codec adapters
+  geo/, traffic/           geodata and traffic accounting
   service/, utils/         consumed ports, services and shared utilities
           |
           v
@@ -60,6 +61,7 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           v
 nyanpasu-config             domain models and pure runtime executor
 
+backend/nyanpasu-observers/src/    log capture owner and storage ports
 backend/nyanpasu-migration/src/    configuration upgrades, backups and session document reads
 backend/nyanpasu-persistence/src/  generic filesystem retry and evidence recovery
 backend/nyanpasu-profile-io/src/   profile files, materialization and content adapter
@@ -133,10 +135,10 @@ Rules for maintaining the separation:
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
   `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
-  `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/` and
-  `backend/nyanpasu-owner-support/src/`
+  `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/`,
+  `backend/nyanpasu-owner-support/src/` and `backend/nyanpasu-observers/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All ten use the same explicit path-and-name allowlist; other backend library
+  All eleven use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

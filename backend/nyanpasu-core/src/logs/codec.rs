@@ -1,7 +1,7 @@
 use anyhow::{Result, ensure};
 use nyanpasu_config::application::CoreLogCompression;
 
-use super::model::MAX_RECORD_BYTES;
+use nyanpasu_observers::logs::MAX_RECORD_BYTES;
 
 const PRESET: &[u8] = include_bytes!("preset.zdict");
 const HEADER: usize = 6;

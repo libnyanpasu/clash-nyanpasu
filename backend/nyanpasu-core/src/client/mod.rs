@@ -15,6 +15,7 @@ use nyanpasu_migration::{
         StorageSnapshot, StorageSource,
     },
 };
+use nyanpasu_observers::logs::CoreLogsClient;
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
@@ -155,7 +156,9 @@ pub enum SetupError {
     #[snafu(display("failed to start http server"))]
     StartHttpServer { source: debug_http::Error },
     #[snafu(display("failed to start core logs"))]
-    StartCoreLogs { source: crate::logs::SpawnError },
+    StartCoreLogs {
+        source: nyanpasu_observers::logs::SpawnError,
+    },
     #[snafu(display("failed to start streams"))]
     StartStreams { source: crate::clash::ws::Error },
     #[snafu(display("failed to start app logs"))]
@@ -237,7 +240,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: Arc<dyn DebugHttpControl>,
     bundle_metadata: BundleMetadata,
-    core_logs: crate::logs::CoreLogsClient,
+    core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -429,7 +432,7 @@ impl NyanpasuClient {
                 }
             }
         });
-        let core_logs = crate::logs::CoreLogsClient::spawn(
+        let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
             shutdown.child_token(),

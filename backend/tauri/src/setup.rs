@@ -1,4 +1,5 @@
 //! Setup logic for the app
+use nyanpasu_observers::logs::UnavailableCoreLogStore;
 use nyanpasu_owner_support::shutdown::track_until_shutdown;
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
@@ -424,9 +425,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 Ok(store) => Box::new(store),
                 Err(error) => {
                     tracing::warn!(%error, "Core log storage unavailable");
-                    Box::new(nyanpasu_core::logs::UnavailableCoreLogStore(format!(
-                        "{error:#}"
-                    )))
+                    Box::new(UnavailableCoreLogStore(format!("{error:#}")))
                 }
             },
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(

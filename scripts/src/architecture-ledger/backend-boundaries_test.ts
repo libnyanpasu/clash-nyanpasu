@@ -138,6 +138,57 @@ test('owner support is available to higher core layers only above foundation', (
   }
 })
 
+test('observers consume domain and owner support without concrete infrastructure', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-observers',
+      'nyanpasu-observers v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-owner-support v0.1.0\nractor v0.16\ntokio v1.54.1\n',
+    ),
+    [],
+  )
+  for (const dependency of [
+    'redb',
+    'clash-api',
+    'nyanpasu-core-manager',
+    'notify',
+    'notify-debouncer-full',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'tauri',
+    'slint',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-observers', `${dependency} v0.1.0\n`),
+      [`nyanpasu-observers must not depend on ${dependency}`],
+    )
+  }
+})
+
+test('observers are available to core above foundation and owner support', () => {
+  assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-core', 'nyanpasu-observers v0.1.0\n'),
+    [],
+  )
+  for (const owner of [
+    'nyanpasu-config',
+    'nyanpasu-contracts',
+    'nyanpasu-persistence',
+    'nyanpasu-profile-transform',
+    'nyanpasu-owner-support',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'nyanpasu-diagnose',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-observers v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-observers`],
+    )
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  }
+})
+
 test('neutral packages cannot depend on the crash reporter frontend', () => {
   for (const owner of [
     'nyanpasu-core',

@@ -1,7 +1,7 @@
 //! Recovery regressions in bootstrap order: pre-Tauri migration, setup
 //! migration, and typed client construction, all over temporary app paths.
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use nyanpasu_paths::PathResolver;
 use redb::ReadableDatabase as _;
@@ -11,7 +11,7 @@ use super::new_typed_config_clients;
 use crate::{
     client::test_support::startup_recovery::{evidence, migrate},
     migration::Runner,
-    storage::{Storage, WebStorage},
+    storage::{RedbHotkeyStoreOpener, Storage, WebStorage},
     utils::test_support::test_paths,
 };
 
@@ -92,6 +92,7 @@ fn session_evidence_is_preserved_before_partial_config_rejection() {
         paths.clone(),
         nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
+        Arc::new(RedbHotkeyStoreOpener),
     )
     .unwrap_err();
     assert!(matches!(
@@ -368,6 +369,7 @@ async fn session_acl_permission_failure_is_returned_by_migration_and_client() {
         paths.clone(),
         nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
+        Arc::new(RedbHotkeyStoreOpener),
     )
     .and_then(|mut runner| runner.run_pending());
     let shutdown = CancellationToken::new();

@@ -1,10 +1,15 @@
+use std::sync::Arc;
+
 use clap::Args;
 
 use colored::Colorize;
-use nyanpasu_core::migration::{
-    MigrationAdvice, Runner,
-    child_result::{Failure, FailureStage},
-    current_version, registry,
+use nyanpasu_core::{
+    migration::{
+        MigrationAdvice, Runner,
+        child_result::{Failure, FailureStage},
+        current_version, registry,
+    },
+    storage::RedbHotkeyStoreOpener,
 };
 use nyanpasu_paths::PathResolver;
 
@@ -98,8 +103,14 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             None => current_version(&bundle_metadata).context(ResolveVersionSnafu)?,
         };
         paths.create_base_dirs().context(CreateDirectoriesSnafu)?;
-        let runner = Runner::with_target(target, paths.clone(), bundle_metadata, args.force)
-            .context(ConstructRunnerSnafu)?;
+        let runner = Runner::with_target(
+            target,
+            paths.clone(),
+            bundle_metadata,
+            args.force,
+            Arc::new(RedbHotkeyStoreOpener),
+        )
+        .context(ConstructRunnerSnafu)?;
         Ok((fresh_install, runner))
     })();
     let (fresh_install, mut runner) = construction.map_err(|error| {
@@ -108,6 +119,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             FailureStage::RunnerConstruction,
             paths,
             false,
+            nyanpasu_core::corrupt::error_io(&error),
         ))
     })?;
 
@@ -165,6 +177,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             stage,
             paths,
             runner.backup_available(),
+            nyanpasu_core::corrupt::error_io(&error),
         ))
     })
 }

@@ -37,7 +37,7 @@ use nyanpasu_core::{
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
-    storage::StorageNotification,
+    storage::{RedbHotkeyStoreOpener, StorageNotification},
     traffic::{TrafficFileStorage, TrafficStorage},
 };
 use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
@@ -240,9 +240,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
-    let mut migrations =
-        nyanpasu_core::migration::Runner::with_paths(paths.clone(), bundle_metadata, false)
-            .context(PrepareMigrationsSnafu)?;
+    let mut migrations = nyanpasu_core::migration::Runner::with_paths(
+        paths.clone(),
+        bundle_metadata,
+        false,
+        Arc::new(RedbHotkeyStoreOpener),
+    )
+    .context(PrepareMigrationsSnafu)?;
     migrations.run_pending().context(RunMigrationsSnafu)?;
     crate::log_err!(crate::utils::init::init_resources(
         paths.app_data_dir().as_std_path(),

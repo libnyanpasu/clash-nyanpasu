@@ -1,6 +1,8 @@
 use super::{
     Ctx, DocumentSpec, MigrationAdvice, MigrationCheckError, MigrationState, MigrationStep,
-    ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
+    ModuleKind, ModuleMigrator, StepCheck, current_version, fs,
+    modules::storage::HotkeyStoreOpener,
+    registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
 use crate::{
@@ -15,7 +17,7 @@ use nyanpasu_paths::PathResolver;
 use nyanpasu_persistence::write;
 use semver::Version;
 use snafu::ResultExt as _;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use time::OffsetDateTime;
 
 #[derive(Debug, snafu::Snafu)]
@@ -138,19 +140,25 @@ impl Runner {
         paths: PathResolver,
         bundle_metadata: BundleMetadata,
         force: bool,
+        hotkey_store_opener: Arc<dyn HotkeyStoreOpener>,
     ) -> Result<Self, Error> {
-        Self::with_context(target, force, Ctx::from_paths(paths, bundle_metadata))
+        Self::with_context(
+            target,
+            force,
+            Ctx::from_paths(paths, bundle_metadata, hotkey_store_opener),
+        )
     }
 
     pub fn with_paths(
         paths: PathResolver,
         bundle_metadata: BundleMetadata,
         force: bool,
+        hotkey_store_opener: Arc<dyn HotkeyStoreOpener>,
     ) -> Result<Self, Error> {
         Self::with_context(
             current_version(&bundle_metadata).context(ResolveVersionSnafu)?,
             force,
-            Ctx::from_paths(paths, bundle_metadata),
+            Ctx::from_paths(paths, bundle_metadata, hotkey_store_opener),
         )
     }
 
@@ -664,9 +672,12 @@ fn introduced_in_reached(introduced_in: &Version, target: &Version) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::migration::{
-        MigrationCheckError,
-        store::{ModuleState, STORE_FILE_NAME},
+    use crate::{
+        migration::{
+            MigrationCheckError,
+            store::{ModuleState, STORE_FILE_NAME},
+        },
+        storage::RedbHotkeyStoreOpener,
     };
     use once_cell::sync::Lazy;
 
@@ -721,7 +732,7 @@ mod tests {
         Runner {
             target: TEST_VERSION.clone(),
             force,
-            ctx: Ctx::new(config_dir, data_dir),
+            ctx: Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
             store,
             backup: None,
         }
@@ -734,9 +745,9 @@ mod tests {
             super::super::store::STORE_SCHEMA_VERSION - 1,
         ] {
             let root = tempfile::tempdir().unwrap();
-            let paths = crate::utils::test_support::test_paths(
-                root.path().join("config"),
-                root.path().join("data"),
+            let paths = PathResolver::with_base_dirs(
+                root.path().join("config").try_into().unwrap(),
+                root.path().join("data").try_into().unwrap(),
             );
             paths.create_base_dirs().unwrap();
             let path = paths.app_config_dir().join(STORE_FILE_NAME);
@@ -745,6 +756,7 @@ mod tests {
                 paths,
                 nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
                 false,
+                Arc::new(RedbHotkeyStoreOpener),
             )
             .unwrap_err();
             match error {
@@ -922,7 +934,11 @@ mod tests {
         )
         .unwrap();
 
-        let ctx = Ctx::new(config_dir.clone(), data_dir.clone());
+        let ctx = Ctx::new(
+            config_dir.clone(),
+            data_dir.clone(),
+            Arc::new(RedbHotkeyStoreOpener),
+        );
         let mut runner =
             Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
         runner.run_pending().unwrap();
@@ -1022,7 +1038,11 @@ mod tests {
             .expect("the 1.6.1 fixture carries hotkeys");
         assert!(!expected.is_empty());
 
-        let ctx = Ctx::new(config_dir.clone(), data_dir);
+        let ctx = Ctx::new(
+            config_dir.clone(),
+            data_dir,
+            Arc::new(RedbHotkeyStoreOpener),
+        );
         let mut runner =
             Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
         runner.run_pending().unwrap();
@@ -1076,7 +1096,11 @@ mod tests {
         )
         .unwrap();
 
-        let ctx = Ctx::new(config_dir.clone(), data_dir);
+        let ctx = Ctx::new(
+            config_dir.clone(),
+            data_dir,
+            Arc::new(RedbHotkeyStoreOpener),
+        );
         let mut runner =
             Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
 
@@ -1140,7 +1164,7 @@ mod tests {
         store.flush_atomic(&state_path).unwrap();
         prepare(&config_dir);
 
-        let ctx = Ctx::new(config_dir, data_dir);
+        let ctx = Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener));
         let result = Runner::with_context(TEST_VERSION.clone(), false, ctx)
             .and_then(|mut runner| runner.run_pending());
         (result, MigrationStore::load(&state_path).unwrap())
@@ -1374,7 +1398,7 @@ mod tests {
             .flush_atomic(&config_dir.join(STORE_FILE_NAME))
             .unwrap();
 
-        let ctx = Ctx::new(config_dir, data_dir);
+        let ctx = Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener));
         let mut runner = Runner::with_context(TEST_VERSION.clone(), true, ctx).unwrap();
         let step = registry::find_migration("profiles/null_value").unwrap();
 
@@ -1454,7 +1478,7 @@ mod tests {
             std::fs::write(config_dir.join("profiles.yaml"), profiles).unwrap();
             Self {
                 _temp: temp,
-                ctx: Ctx::new(config_dir, data_dir),
+                ctx: Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
             }
         }
 
@@ -2212,7 +2236,7 @@ tray_menu_close_behavior: hide
             std::fs::create_dir_all(&config_dir).unwrap();
             std::fs::create_dir_all(&data_dir).unwrap();
             Self {
-                ctx: Ctx::new(config_dir, data_dir),
+                ctx: Ctx::new(config_dir, data_dir, Arc::new(RedbHotkeyStoreOpener)),
                 _temp: temp,
             }
         }

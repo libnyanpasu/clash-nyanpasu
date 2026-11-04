@@ -40,7 +40,7 @@
     "@tauri-apps/api": "2.12.4",
     "@uidotdev/usehooks": "2.4.1",
     "class-variance-authority": "0.7.1",
-    "d3": "7.9.1",
+    "d3": "7.9.2",
     "date-fns": "4.4.0",
     "es-toolkit": "1.53.1",
     "less": "4.9.1",

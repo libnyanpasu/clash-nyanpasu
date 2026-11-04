@@ -383,8 +383,8 @@ importers:
         specifier: 0.7.1
         version: 0.7.1
       d3:
-        specifier: 7.9.1
-        version: 7.9.1
+        specifier: 7.9.2
+        version: 7.9.2
       date-fns:
         specifier: 4.4.0
         version: 4.4.0
@@ -601,8 +601,8 @@ importers:
         specifier: 0.7.1
         version: 0.7.1
       d3:
-        specifier: 7.9.1
-        version: 7.9.1
+        specifier: 7.9.2
+        version: 7.9.2
       es-toolkit:
         specifier: 1.53.1
         version: 1.53.1
@@ -659,8 +659,8 @@ importers:
         specifier: 3.4.2
         version: 3.4.2
       d3:
-        specifier: 7.9.1
-        version: 7.9.1
+        specifier: 7.9.2
+        version: 7.9.2
       es-toolkit:
         specifier: 1.52.0
         version: 1.52.0
@@ -4705,8 +4705,8 @@ packages:
     resolution: {integrity: sha512-5DYURc8KwXPOhSUBblU0P9rVcArsSPxPOxsfO0Eud0s28oU0sB2e80aRHRL9AZW3usT8ikFKyIHpHHLNWLdRVA==}
     engines: {node: '>=12'}
 
-  d3-delaunay@6.0.5:
-    resolution: {integrity: sha512-6n1ZJb1+6RYJJfyAmLW4ERKGHRSCK2bNM+hu7Zxc2XLhzFLHWGqltjr3znBS7lZ9Vg3syUxNMnebBZUxpvjqqQ==}
+  d3-delaunay@6.0.6:
+    resolution: {integrity: sha512-DMQIEvSJhZCB6pwedcXaAlQ+MeKU5LlM2XakKtc73b/VM+RBiI1SRXycOEOKg2jsKj4zZ9F0KGYG6nCGwwWu/g==}
     engines: {node: '>=12'}
 
   d3-dispatch@3.0.2:
@@ -4813,8 +4813,8 @@ packages:
     resolution: {integrity: sha512-kfjD3BDQu/FOatpZ6JdMSyIoDwTxIpI29ySTI2J5ZlDaH1WbuJGQJ2Q9oJkWTEZEW98j6idezoomSD3Cn2zwiw==}
     engines: {node: '>=12'}
 
-  d3@7.9.1:
-    resolution: {integrity: sha512-mz88VdFCKJXk3luX1GUmTBhidmxUIQpkq81Ms3y20/k+DvFJn9rF+VRVIbjHBbD5PD+KwlRAZ90sueprzawEyA==}
+  d3@7.9.2:
+    resolution: {integrity: sha512-ZKb/mONPVKzaO5UlcWcwN8bS4ezvQaYu+bsou+XgNABdGC800kwH651ADTbbTxMPHW13UlvbQafdmJQDk1w7Mg==}
     engines: {node: '>=12'}
 
   d@1.0.2:
@@ -10991,7 +10991,7 @@ snapshots:
     dependencies:
       d3-array: 3.2.5
 
-  d3-delaunay@6.0.5:
+  d3-delaunay@6.0.6:
     dependencies:
       delaunator: 5.0.1
 
@@ -11098,7 +11098,7 @@ snapshots:
       d3-selection: 3.0.1
       d3-transition: 3.0.2(d3-selection@3.0.1)
 
-  d3@7.9.1:
+  d3@7.9.2:
     dependencies:
       d3-array: 3.2.5
       d3-axis: 3.0.1
@@ -11106,7 +11106,7 @@ snapshots:
       d3-chord: 3.0.2
       d3-color: 3.1.1
       d3-contour: 4.0.3
-      d3-delaunay: 6.0.5
+      d3-delaunay: 6.0.6
       d3-dispatch: 3.0.2
       d3-drag: 3.0.1
       d3-dsv: 3.0.2
@@ -11138,7 +11138,7 @@ snapshots:
 
   dagre-d3-es@7.0.14:
     dependencies:
-      d3: 7.9.1
+      d3: 7.9.2
       lodash-es: 4.18.1
 
   date-fns@4.4.0: {}
@@ -12080,7 +12080,7 @@ snapshots:
       cytoscape: 3.34.3
       cytoscape-cose-bilkent: 4.1.0(cytoscape@3.34.3)
       cytoscape-fcose: 2.2.0(cytoscape@3.34.3)
-      d3: 7.9.1
+      d3: 7.9.2
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.23

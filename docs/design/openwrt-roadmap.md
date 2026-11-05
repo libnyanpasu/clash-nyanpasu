@@ -325,7 +325,8 @@ LuCI to the server's HTTP port with a ticket, then as a reduced router build.
 3. `nyanpasu-server run` and `nyanpasu-cli` over the local socket.
 4. `luci-app-nyanpasu` (rpcd plugin, ACL, menu, views) and the procd init script.
 5. Container integration: install, LuCI walkthrough, recorded results.
-6. WebUI link with ticket auth, if E3 allows it without the reduced build.
+6. WebUI link with ticket auth, if E3 allows it without the reduced build
+   (done, see [WebUI link](#webui-link-2026-11-05)).
 
 Still open: F1 and F3–F6 (the upstream C1/C2 host capabilities), F10
 (`gxhash`), aarch64, and realistic transform measurements.
@@ -380,21 +381,25 @@ unavailable (`failed adding instance cgroup`).
 
 ### Findings
 
-| #   | Finding                                                                                                                                                                                                                                                                                                                 | Direction                                                                                |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| F12 | A profile whose YAML root is not a mapping (empty, comment-only, a bare scalar) is accepted by `create_profile` and `activate_profile`, then panics `get_runtime_yaml_redacted` and `inspect_runtime` in core (`runtime_inspection.rs:304`, root `Null`; a scalar root panics in the graph restore). Not fixed in core. | Validate the root at profile commit, or return an error from inspection, not a panic.    |
-| F13 | Before the transport caught handler panics, F12 left the CLI waiting for its deadline and then reporting an unknown outcome. `serve_local` now answers a panicking command with an `internal` RpcError and keeps the connection.                                                                                        | Done for the local socket; the HTTP transport was not changed and may have the same gap. |
-| F14 | Parameter keys are camelCase (`fileData`, not `file_data`) and unknown keys are ignored silently, so a misspelled optional key is a no-op.                                                                                                                                                                              | Reject unknown keys in the command DTOs.                                                 |
-| F15 | The status is a projection: it lags `stop_core` by about two seconds, can be empty right after a reconcile, and the status inside a mutation reply can be stale. LuCI re-reads it until the expected state shows.                                                                                                       | Keep this as the contract, or have lifecycle replies carry the settled state.            |
-| F16 | The headless server never started the Clash streams, so the core log store stayed empty. It now starts them as the desktop shell does. The resident cost on a router was not measured.                                                                                                                                  | Measure memory with the streams running on a real router.                                |
-| F17 | `reconcile_core` returns the effective config, including the controller secret, in `effective_config`. It is under the write ACL, so only root gets it, but a caller that logs replies would leak it.                                                                                                                   | Drop the config from the local reply, or redact it.                                      |
-| F18 | procd's `respawn 3600 5 5` ends the respawning after five crashes within an hour; only a `restart` resets it.                                                                                                                                                                                                           | Decide whether a router should give up, and how it reports that.                         |
+| #   | Finding                                                                                                                                                                                                                                                                                                                 | Direction                                                                             |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| F12 | A profile whose YAML root is not a mapping (empty, comment-only, a bare scalar) is accepted by `create_profile` and `activate_profile`, then panics `get_runtime_yaml_redacted` and `inspect_runtime` in core (`runtime_inspection.rs:304`, root `Null`; a scalar root panics in the graph restore). Not fixed in core. | Validate the root at profile commit, or return an error from inspection, not a panic. |
+| F13 | Before the transport caught handler panics, F12 left the CLI waiting for its deadline and then reporting an unknown outcome. `serve_local` now answers a panicking command with an `internal` RpcError and keeps the connection.                                                                                        | Done for the local socket and for HTTP dispatch.                                      |
+| F14 | Parameter keys are camelCase (`fileData`, not `file_data`) and unknown keys are ignored silently, so a misspelled optional key is a no-op.                                                                                                                                                                              | Reject unknown keys in the command DTOs.                                              |
+| F15 | The status is a projection: it lags `stop_core` by about two seconds, can be empty right after a reconcile, and the status inside a mutation reply can be stale. LuCI re-reads it until the expected state shows.                                                                                                       | Keep this as the contract, or have lifecycle replies carry the settled state.         |
+| F16 | The headless server never started the Clash streams, so the core log store stayed empty. It now starts them as the desktop shell does. The resident cost on a router was not measured.                                                                                                                                  | Measure memory with the streams running on a real router.                             |
+| F17 | `reconcile_core` returns the effective config, including the controller secret, in `effective_config`. It is under the write ACL, so only root gets it, but a caller that logs replies would leak it.                                                                                                                   | Drop the config from the local reply, or redact it.                                   |
+| F18 | procd's `respawn 3600 5 5` ends the respawning after five crashes within an hour; only a `restart` resets it.                                                                                                                                                                                                           | Decide whether a router should give up, and how it reports that.                      |
 
 LuCI has no profile editor, so there is no save path to guard. Import refuses
 an empty or non-mapping YAML in the browser (F12); nothing stops another ubus
 caller with the write ACL from sending one.
 
 ### Trying it
+
+Superseded by the [WebUI link](#webui-link-2026-11-05): the native views below
+were replaced by the framed WebUI. The container steps are kept as the record
+of what was verified.
 
 The container `nyanpasu-openwrt` is left running with the server enabled and
 started, the profile `Sample` (with the transform `Sample tweak`) selected and
@@ -414,6 +419,149 @@ the core running.
 
 To start over: `wslc exec nyanpasu-openwrt /etc/init.d/nyanpasu restart`.
 
+## WebUI link, 2026-11-05
+
+Unit 6, then a change of direction.
+
+### Decision
+
+The user decided on 2026-11-05 that Services → Nyanpasu shows the React WebUI
+embedded in LuCI, not a separate tab and not native views. LuCI implements
+neither the management UI nor its API: it is the menu entry, the login gate and
+the frame, and the WebUI talks to `nyanpasu-server`'s HTTP API directly. This
+reverses the MVP's "do not embed its React distribution" and the
+native-views product outcome ([MVP](openwrt-mvp.md#decision-the-webui-is-the-main-ui-2026-11-05)).
+The four native views and `api.js` were deleted.
+
+Consequences:
+
+- **The F9 read-only role is gone.** The WebUI has no read-only mode, so a
+  read-only LuCI login gets a message instead of a frame. The `read` ACL
+  grants only the UCI config, so that login still sees the menu entry.
+  `get_runtime_yaml_redacted` stays on the local socket, unused by LuCI.
+- **The 16-method LuCI allowlist became the HTTP command set**, a wider
+  surface (see the security notes). rpcd now has one method, `webui_ticket`.
+- **The bundle** is 24,053,560 bytes in 428 files (22.9 MiB; about 5.3 MiB
+  gzipped for JS, CSS and HTML), with Monaco and its workers about 12 MiB of
+  it. The stripped musl server is 28.0 MB with the HTTP listener.
+
+### Design
+
+```text
+LuCI view -> rpcd webui_ticket (write ACL) -> nyanpasu-cli -> local socket
+          -> issue_web_ticket -> { "path": "/?ticket=...", "port": 7899 }
+iframe src = location.protocol//location.hostname:7899 + path
+GET /?ticket=T  -> consume T, Set-Cookie session, 303 /
+cookie          -> POST /bridge/rpc, GET /bridge/events, static assets
+```
+
+- **Listener:** `nyanpasu_rpc::http::RouterListener` sits beside the desktop's
+  `HttpListener`, which is unchanged. It binds the given address, owns the
+  ticket and session book and returns the issuing half, which the composition
+  root injects into the registry as `WebTickets` for `issue_web_ticket`.
+- **Tickets:** 128 random bits, single use, valid 60 s, at most 16 outstanding.
+  A wrong or late attempt opens nothing and a wrong guess does not consume a
+  real ticket.
+- **Sessions:** a random UUID cookie, `HttpOnly; SameSite=Strict; Path=/`, kept
+  in memory, at most 8 (the oldest is evicted) and lost on restart. They have
+  no idle timeout and there is no logout.
+- **Host and Origin:** no fixed authority, so any `Host` is served; a request
+  that carries `Origin` must carry `http://{Host}`. The cookie is the
+  credential, so DNS rebinding has nothing to ride on.
+- **Framing:** no `X-Frame-Options`; `Content-Security-Policy: frame-ancestors
+http://{hostname}:* https://{hostname}:*` from the request's Host, or
+  `'none'` for an unusable one. The frame is cross-origin but same-site, so
+  `SameSite=Strict` works (verified: the session cookie reached the app in the
+  frame).
+- **Server:** `nyanpasu-server run --http-listen ADDR:PORT [--webui-dir DIR]`.
+  Without `--http-listen` there is no listener; without a directory it serves
+  the API only. Assets use the Tauri crate's asset router, moved into
+  `nyanpasu-rpc` (`FrontendAssets`, `assets_router`) with a directory source in
+  the server.
+- **OpenWrt:** `/etc/config/nyanpasu` (`webui_listen '0.0.0.0:7899'`,
+  `webui_dir '/usr/share/nyanpasu/webui'`) is read by `nyanpasu.init`; an empty
+  `webui_listen` turns the WebUI off. The default is on, now that it is the main
+  UI. The init file is still mode 100755.
+- **HTTP panics:** HTTP dispatch now turns a handler panic into an `internal`
+  RpcError, as the local socket does (folded into the transport commit).
+
+### Security notes
+
+- **A session is a full user of the HTTP command set**, which is not the
+  local allowlist. Over HTTP: `get_profiles`, `create_profile`,
+  `delete_profile`, `activate_profile`, `set_global_transforms`,
+  `replace_profile_definition`, `read_profile_file`, `save_profile_file`,
+  `get_runtime_yaml` (the full YAML, secrets included), `inspect_runtime`,
+  `get_core_status`, `query_core_logs`, `get_core_log_status`. Not over HTTP:
+  `reconcile_core`, `stop_core`, `get_runtime_yaml_redacted`, `list_methods`
+  and `issue_web_ticket` (a session cannot mint tickets). Write access to
+  profiles is code execution in the server, since profiles carry JS/Lua
+  transforms, and the server runs as root. Whoever can run `webui_ticket` is
+  therefore root-equivalent, as with the old write ACL.
+- **The set will grow** as the Tauri-only commands the WebUI calls (app config,
+  storage, Clash API proxies, system proxy) move into `nyanpasu-rpc`; each needs
+  the review `rpc(http)` already requires.
+- **LAN exposure:** the port listens on `0.0.0.0` in plain HTTP and is open on
+  the LAN, relying on the firewall's WAN input reject. There is no TLS, so a
+  ticket (valid 60 s) and the session cookie can be read by anyone on the path.
+  A LuCI page on HTTPS framing the HTTP server is blocked as mixed content: a
+  known limitation, and the view says so when LuCI is opened over HTTPS.
+- **Cookies are not port-scoped:** the browser sends LuCI's session cookie to
+  port 7899 and ours to LuCI. Both are `HttpOnly`; the servers ignore each
+  other's cookie.
+- **Brute force:** a ticket is 128 random bits, and a failed attempt changes
+  nothing, so guessing is not a practical route.
+
+### Verified
+
+On the try-out container (the stripped musl binaries and the built WebUI):
+
+| Check                                             | Result                                                                                 |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `webui_ticket` over `/ubus`, root                 | `{ok:true, result:{path:"/?ticket=...", port:7899}}`                                   |
+| The same, `viewer` (read ACL)                     | `Access denied`; the `session.access` probe is false                                   |
+| `curl`: ticket URL                                | 303 to `/`, cookie `HttpOnly; SameSite=Strict`, `no-store`, `frame-ancestors` for Host |
+| `curl`: ticket reuse, no cookie, foreign `Origin` | 401, 401, 403                                                                          |
+| `curl`: cookie                                    | `POST /bridge/rpc get_profiles` 200 with the Sample profile; `GET /` the app           |
+| A session minting a ticket                        | 501 `unsupported`                                                                      |
+| LuCI as root, Services → Nyanpasu                 | the WebUI loads in the frame (1180 x 829 at a 900 px viewport) and calls the API       |
+| LuCI as `viewer`                                  | the menu entry shows; no frame, the read-only message                                  |
+| Core and CLI                                      | core running after the restart; `reconcile_core` and `get_core_status` work            |
+
+Unit tests cover the ticket book (single use, expiry, bad ticket, the caps), the
+listener (missing cookie 401, Origin mismatch, any Host, `frame-ancestors`), the
+HTTP panic, the server flags and, on Linux, the whole flow from a socket ticket
+to a session.
+
+### Which WebUI pages work
+
+The server links only the commands in `nyanpasu-rpc`. Everything else the app
+calls lives in the Tauri crate and answers `unknown_method` (404). The app shell
+renders; nothing was fixed in the frontend.
+
+| Page                                                                    | Result                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Profiles                                                                | Works: the Sample profile, its transform and `read_profile_file` load. Traffic columns fail (`query_traffic_report`).                                                                                                                            |
+| Logs                                                                    | The core log query works (`query_core_logs`); it shows what the store holds.                                                                                                                                                                     |
+| Dashboard, Proxies, Rules, Providers, Connections, Traffic and Settings | Empty or "Could not load configuration": `get_app_config`, `get_proxies`, `get_storage_item`, `get_clash_config`, `clash_api_*`, `get_sys_proxy`, `query_traffic_report`, `get_traffic_summary` and `report_frontend_events` are not registered. |
+
+Profile editing opens a Tauri-only editor window. Editing, creating and
+deleting through the UI were not exercised.
+
+### Remaining work for the reduced build
+
+- Move the commands the WebUI needs (app config, storage, proxies and the Clash
+  API, traffic) into `nyanpasu-rpc` with a review of their HTTP exposure, or
+  stub them honestly in the server.
+- Build a router route set without Monaco, tray, widget and service pages, and
+  serve it precompressed.
+- Package the WebUI (a `nyanpasu-webui` package at `webui_dir`).
+- A read-only WebUI mode, session expiry and logout.
+- TLS, or a path through uhttpd, so that an HTTPS LuCI can frame it; consider
+  listening on the LAN address instead of `0.0.0.0`.
+- Mutations through the WebUI on a router; the resident memory of the server
+  with the listener on real hardware.
+
 ## Decisions deliberately deferred
 
 Server-crash policy, autostart and read-only YAML access were decided on
@@ -421,10 +569,11 @@ Server-crash policy, autostart and read-only YAML access were decided on
 payload limits, SDK/release targets and profile-to-runtime apply semantics,
 using the upstream APIs and target evidence.
 
-The first product remains a server driven through the CLI by native LuCI for small local
-profiles, ordered JS/Lua transforms and Mihomo lifecycle. Transparent proxy,
-firewall/DNS/TUN takeover, remote subscriptions, updater, traffic history and
-full React embedding remain later work. No router networking changes are part
+The first product is the server with the React WebUI framed in LuCI (the user's
+2026-11-05 decision, below) for small local profiles, ordered JS/Lua
+transforms and Mihomo lifecycle. Transparent proxy, firewall/DNS/TUN takeover,
+remote subscriptions, updater, traffic history and the reduced router WebUI
+build remain later work. No router networking changes are part
 of the paused MVP.
 
 ## OpenWrt-nikki reference track

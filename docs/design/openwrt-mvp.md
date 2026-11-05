@@ -13,7 +13,8 @@ uses the same shared application as the desktop shell. The router form is
 client/server: `nyanpasu-server` owns the application, LuCI drives
 `nyanpasu-cli`, and the CLI talks to the server over a local socket. LuCI uses
 rpcd sessions and ACLs to authorize each CLI invocation. Do not run the desktop
-Tauri binary or embed its React distribution on the router.
+Tauri binary on the router. The rule against embedding the React distribution
+was reversed on 2026-11-05; see the decision below.
 
 The first usable loop is:
 
@@ -29,6 +30,23 @@ The first usable loop is:
 
 This loop is the end-to-end MVP. Headless composition and a CLI status probe
 are feasibility milestones, not a claim that the MVP is delivered.
+
+## Decision: the WebUI is the main UI, 2026-11-05
+
+The user decided that Services → Nyanpasu shows the React WebUI embedded in
+LuCI. LuCI implements neither the management UI nor its APIs: it is the menu
+entry, the login gate and the frame, and the WebUI talks to the server's HTTP
+API directly. A LuCI user with write access gets a one-time ticket from the
+server (through rpcd and the CLI) that signs the frame in. This reverses two
+statements above: that the React distribution is not embedded, and that the
+product is a native LuCI interface over the CLI.
+
+The consequences are recorded in the
+[roadmap](openwrt-roadmap.md#webui-link-2026-11-05). The read-only role is
+gone, the HTTP command set replaces the 16-method LuCI allowlist as the surface
+a session reaches, and the bundle is 22.9 MiB. The server's HTTP listener is no
+longer "unauthenticated": it admits only sessions created from a ticket. The CLI
+and the local socket remain for shell and ops use and for issuing tickets.
 
 ## Architecture after upstream completion
 

@@ -33,7 +33,10 @@ use nyanpasu_core::{
         ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
         StateChanged, UiEventSink,
         debug_http::DebugHttpControl,
-        effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
+        effects::{
+            executor::ApplicationEffectExecutor, ports::LocaleSink,
+            presentation::PresentationEffectExecutor,
+        },
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
@@ -724,14 +727,17 @@ fn build_application_effects(
     .context(SpawnHotkeysSnafu)?;
 
     let widget = Arc::new(TauriWidgetController::new(paths.clone()));
-    let executor = Arc::new(ApplicationEffectExecutor::new(
-        system_proxy,
+    let presentation = Arc::new(PresentationEffectExecutor::new(
         hotkeys,
         Arc::new(PlatformAcceleratorValidator),
         Arc::new(RustI18nLocaleSink),
-        Arc::new(TracingLoggerRefresher::new(logger_reload)),
         widget.clone(),
         Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+    ));
+    let executor = Arc::new(ApplicationEffectExecutor::new(
+        system_proxy,
+        Arc::new(TracingLoggerRefresher::new(logger_reload)),
+        presentation,
     ));
     Ok((executor, widget))
 }

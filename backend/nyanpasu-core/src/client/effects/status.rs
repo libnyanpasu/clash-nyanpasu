@@ -111,6 +111,34 @@ pub struct EffectStatus {
     pub health: EffectHealth,
 }
 
+pub(crate) fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
+    EffectStatus {
+        kind,
+        desired_revision: revision,
+        applied_revision: revision,
+        health: EffectHealth::Healthy,
+    }
+}
+
+pub(crate) fn degraded(
+    kind: EffectKind,
+    revision: EffectRevision,
+    code: EffectFailureCode,
+    message: String,
+    retryable: bool,
+) -> EffectStatus {
+    EffectStatus {
+        kind,
+        desired_revision: revision,
+        applied_revision: EffectRevision::default(),
+        health: EffectHealth::Degraded {
+            code,
+            message,
+            retryable,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

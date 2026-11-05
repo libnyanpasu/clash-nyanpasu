@@ -304,6 +304,10 @@ HTTP downloads and unpacking through a shell-injected backend factory. Generic
 formats and atomic writes live in persistence, and facade storage inputs are
 ports with traffic's legacy redb importer behind a feature.
 
+In phase C, presentation effects (locale, hotkeys, widget, tray) run in their own
+executor behind a core-owned port, apart from the shared effects; both
+executors are still in core.
+
 Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting

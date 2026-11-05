@@ -313,10 +313,11 @@ LuCI once E3 lands, with these gaps:
   one-time ticket (a write-ACL command) that is exchanged for the session cookie.
 - **Size:** the bundle is 24 MB, with Monaco about 13 MB, and expects to be
   served at `/`. A router route set without Monaco, tray, widget and service
-  pages would cut most of it. Profile editing opens a Tauri-only editor window.
+  pages would cut most of it. Profile editing opened a Tauri-only editor window,
+  which now opens as a browser tab outside Tauri.
 
-Order: native LuCI views first. The WebUI follows E3 as a link or iframe from
-LuCI to the server's HTTP port with a ticket, then as a reduced router build.
+Order: native LuCI views first. The WebUI follows E3 as a link from LuCI to the
+server's HTTP port with a ticket, then as a reduced router build.
 
 ### Units
 
@@ -398,8 +399,8 @@ caller with the write ACL from sending one.
 ### Trying it
 
 Superseded by the [WebUI link](#webui-link-2026-11-05): the native views below
-were replaced by the framed WebUI. The container steps are kept as the record
-of what was verified.
+were replaced by the WebUI and a minimal service page. The container steps are
+kept as the record of what was verified.
 
 The container `nyanpasu-openwrt` is left running with the server enabled and
 started, the profile `Sample` (with the transform `Sample tweak`) selected and
@@ -425,22 +426,46 @@ Unit 6, then a change of direction.
 
 ### Decision
 
-The user decided on 2026-11-05 that Services → Nyanpasu shows the React WebUI
-embedded in LuCI, not a separate tab and not native views. LuCI implements
-neither the management UI nor its API: it is the menu entry, the login gate and
-the frame, and the WebUI talks to `nyanpasu-server`'s HTTP API directly. This
-reverses the MVP's "do not embed its React distribution" and the
-native-views product outcome ([MVP](openwrt-mvp.md#decision-the-webui-is-the-main-ui-2026-11-05)).
-The four native views and `api.js` were deleted.
+The user decided on 2026-11-05 that the React WebUI is the management UI and
+replaces the native LuCI views, which were deleted with `api.js`. That day the
+WebUI was first embedded in LuCI in a frame; the user then reversed this and
+stopped embedding it. Services → Nyanpasu is a minimal native page and the WebUI
+opens in a new window. LuCI implements neither the management UI nor its API,
+and the WebUI talks to `nyanpasu-server`'s HTTP API directly. This reverses the
+MVP's "do not embed its React distribution" and the native-views product
+outcome only in part ([MVP](openwrt-mvp.md#decision-the-webui-is-the-main-ui-2026-11-05)).
+
+The page has only the most basic operations:
+
+- the service status, from procd through the `rc` ubus object (`rc list`);
+- Start, Stop, Restart and a Start at boot toggle (`rc init`), LuCI's standard
+  facility with its standard ACL grants, as luci-mod-system uses it; there is
+  no management API of our own;
+- Open WebUI, which opens the window synchronously in the click handler (so the
+  popup blocker allows it), clears its `opener`, and sets its location when
+  `webui_ticket` returns the ticket; if the ticket fails the window is closed
+  and the reason shown in LuCI;
+- a selector for how that window opens, stored in the UCI option
+  `nyanpasu.main.window_mode`: `tab` (default) or `popup`, a simplified window
+  from `window.open` features (`popup,width=1280,height=800`). It is LuCI's
+  setting only: the page stages it with `uci set` and commits that one config
+  (`uci commit`, in the write ACL), without restarting the service; the pid
+  was unchanged in the container. `reload_config` is not run, so a later Save &
+  Apply elsewhere in LuCI may see the `nyanpasu` config as changed and reload the
+  service once (procd's reload trigger compares config checksums; not
+  exercised). The WebUI is not told about it.
 
 Consequences:
 
-- **The F9 read-only role is gone.** The WebUI has no read-only mode, so a
-  read-only LuCI login gets a message instead of a frame. The `read` ACL
-  grants only the UCI config, so that login still sees the menu entry.
+- **The F9 read-only role is back, as a status page.** A login with the `read`
+  ACL (`rc list`, UCI) sees the status and no buttons; the WebUI still has no
+  read-only mode, and only a login that may run `webui_ticket` can open it.
   `get_runtime_yaml_redacted` stays on the local socket, unused by LuCI.
 - **The 16-method LuCI allowlist became the HTTP command set**, a wider
-  surface (see the security notes). rpcd now has one method, `webui_ticket`.
+  surface (see the security notes). rpcd has one method, `webui_ticket`.
+- **The WebUI's editor windows open as browser tabs.** Outside Tauri the app
+  opens `/editor/profile?uid=...` and `/editor/css` with `window.open(url,
+'_blank')` instead of the desktop-only `create_editor_window` command.
 - **The bundle** is 24,053,560 bytes in 428 files (22.9 MiB; about 5.3 MiB
   gzipped for JS, CSS and HTML), with Monaco and its workers about 12 MiB of
   it. The stripped musl server is 28.0 MB with the HTTP listener.
@@ -448,9 +473,9 @@ Consequences:
 ### Design
 
 ```text
-LuCI view -> rpcd webui_ticket (write ACL) -> nyanpasu-cli -> local socket
+LuCI page -> rpcd webui_ticket (write ACL) -> nyanpasu-cli -> local socket
           -> issue_web_ticket -> { "path": "/?ticket=...", "port": 7899 }
-iframe src = location.protocol//location.hostname:7899 + path
+new window location = location.protocol//location.hostname:7899 + path
 GET /?ticket=T  -> consume T, Set-Cookie session, 303 /
 cookie          -> POST /bridge/rpc, GET /bridge/events, static assets
 ```
@@ -468,11 +493,10 @@ cookie          -> POST /bridge/rpc, GET /bridge/events, static assets
 - **Host and Origin:** no fixed authority, so any `Host` is served; a request
   that carries `Origin` must carry `http://{Host}`. The cookie is the
   credential, so DNS rebinding has nothing to ride on.
-- **Framing:** no `X-Frame-Options`; `Content-Security-Policy: frame-ancestors
-http://{hostname}:* https://{hostname}:*` from the request's Host, or
-  `'none'` for an unusable one. The frame is cross-origin but same-site, so
-  `SameSite=Strict` works (verified: the session cookie reached the app in the
-  frame).
+- **Framing:** every response carries `X-Frame-Options: DENY` and
+  `Content-Security-Policy: frame-ancestors 'none'`. Nothing frames the WebUI;
+  LuCI opens it as a top-level window, so `SameSite=Strict` applies to its own
+  requests.
 - **Server:** `nyanpasu-server run --http-listen ADDR:PORT [--webui-dir DIR]`.
   Without `--http-listen` there is no listener; without a directory it serves
   the API only. Assets use the Tauri crate's asset router, moved into
@@ -504,8 +528,6 @@ http://{hostname}:* https://{hostname}:*` from the request's Host, or
 - **LAN exposure:** the port listens on `0.0.0.0` in plain HTTP and is open on
   the LAN, relying on the firewall's WAN input reject. There is no TLS, so a
   ticket (valid 60 s) and the session cookie can be read by anyone on the path.
-  A LuCI page on HTTPS framing the HTTP server is blocked as mixed content: a
-  known limitation, and the view says so when LuCI is opened over HTTPS.
 - **Cookies are not port-scoped:** the browser sends LuCI's session cookie to
   port 7899 and ours to LuCI. Both are `HttpOnly`; the servers ignore each
   other's cookie.
@@ -516,20 +538,25 @@ http://{hostname}:* https://{hostname}:*` from the request's Host, or
 
 On the try-out container (the stripped musl binaries and the built WebUI):
 
-| Check                                             | Result                                                                                 |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `webui_ticket` over `/ubus`, root                 | `{ok:true, result:{path:"/?ticket=...", port:7899}}`                                   |
-| The same, `viewer` (read ACL)                     | `Access denied`; the `session.access` probe is false                                   |
-| `curl`: ticket URL                                | 303 to `/`, cookie `HttpOnly; SameSite=Strict`, `no-store`, `frame-ancestors` for Host |
-| `curl`: ticket reuse, no cookie, foreign `Origin` | 401, 401, 403                                                                          |
-| `curl`: cookie                                    | `POST /bridge/rpc get_profiles` 200 with the Sample profile; `GET /` the app           |
-| A session minting a ticket                        | 501 `unsupported`                                                                      |
-| LuCI as root, Services → Nyanpasu                 | the WebUI loads in the frame (1180 x 829 at a 900 px viewport) and calls the API       |
-| LuCI as `viewer`                                  | the menu entry shows; no frame, the read-only message                                  |
-| Core and CLI                                      | core running after the restart; `reconcile_core` and `get_core_status` work            |
+| Check                                             | Result                                                                                                                                                                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webui_ticket` over `/ubus`, root                 | `{ok:true, result:{path:"/?ticket=...", port:7899}}`                                                                                                                                                                              |
+| The same, `viewer` (read ACL)                     | `Access denied`; the `session.access` probe is false                                                                                                                                                                              |
+| `curl`: ticket URL                                | 303 to `/`, cookie `HttpOnly; SameSite=Strict`, `no-store`, `frame-ancestors` for Host                                                                                                                                            |
+| `curl`: ticket reuse, no cookie, foreign `Origin` | 401, 401, 403                                                                                                                                                                                                                     |
+| `curl`: cookie                                    | `POST /bridge/rpc get_profiles` 200 with the Sample profile; `GET /` the app                                                                                                                                                      |
+| A session minting a ticket                        | 501 `unsupported`                                                                                                                                                                                                                 |
+| LuCI as root, Services → Nyanpasu                 | status Running; Stop, Start and Restart observed with `/etc/init.d/nyanpasu status` and `pgrep` (no server or core after Stop; both back after Start; new server pid after Restart); Start at boot toggles `enabled`              |
+| Open WebUI, New tab                               | `window.open('about:blank', '_blank')` in the click, then the ticket URL; no `opener`; the new tab is signed in (`get_profiles` 200)                                                                                              |
+| Open WebUI, Popup window                          | `window.open` with `popup,width=1280,height=800`; the window reports 1280 x 800 and no toolbar, menubar or location bar; signed in                                                                                                |
+| `window_mode` setting                             | `uci get` shows the new value, no uncommitted changes, the server pid is unchanged                                                                                                                                                |
+| Open WebUI with the service stopped               | the new window is closed and LuCI shows the socket error                                                                                                                                                                          |
+| WebUI profile editor                              | the profile card's edit button opens `/editor/profile?uid=...` in another tab (`window.open(url, '_blank')`) with the file loaded; an edit and Save closed the tab and `read_profile_file` returned it; the original was restored |
+| LuCI as `viewer` (read ACL)                       | the status and the boot setting as text; no buttons, no inputs                                                                                                                                                                    |
+| Core and CLI                                      | core running after the restart; `reconcile_core` and `get_core_status` work                                                                                                                                                       |
 
 Unit tests cover the ticket book (single use, expiry, bad ticket, the caps), the
-listener (missing cookie 401, Origin mismatch, any Host, `frame-ancestors`), the
+listener (missing cookie 401, Origin mismatch, any Host, no framing), the
 HTTP panic, the server flags and, on Linux, the whole flow from a socket ticket
 to a session.
 
@@ -545,8 +572,11 @@ renders; nothing was fixed in the frontend.
 | Logs                                                                    | The core log query works (`query_core_logs`); it shows what the store holds.                                                                                                                                                                     |
 | Dashboard, Proxies, Rules, Providers, Connections, Traffic and Settings | Empty or "Could not load configuration": `get_app_config`, `get_proxies`, `get_storage_item`, `get_clash_config`, `clash_api_*`, `get_sys_proxy`, `query_traffic_report`, `get_traffic_summary` and `report_frontend_events` are not registered. |
 
-Profile editing opens a Tauri-only editor window. Editing, creating and
-deleting through the UI were not exercised.
+Profile editing opens the editor as a browser tab (see the verified table).
+Creating and deleting through the UI were not exercised. The CSS editor route
+loads, but saving its CSS needs `get_storage_item` and `set_storage_item`, and
+Ctrl+click on a link in the profile editor calls `open_that`; none is registered
+in the server.
 
 ### Remaining work for the reduced build
 
@@ -557,8 +587,8 @@ deleting through the UI were not exercised.
   serve it precompressed.
 - Package the WebUI (a `nyanpasu-webui` package at `webui_dir`).
 - A read-only WebUI mode, session expiry and logout.
-- TLS, or a path through uhttpd, so that an HTTPS LuCI can frame it; consider
-  listening on the LAN address instead of `0.0.0.0`.
+- TLS, or a path through uhttpd; consider listening on the LAN address instead
+  of `0.0.0.0`.
 - Mutations through the WebUI on a router; the resident memory of the server
   with the listener on real hardware.
 
@@ -569,8 +599,8 @@ Server-crash policy, autostart and read-only YAML access were decided on
 payload limits, SDK/release targets and profile-to-runtime apply semantics,
 using the upstream APIs and target evidence.
 
-The first product is the server with the React WebUI framed in LuCI (the user's
-2026-11-05 decision, below) for small local profiles, ordered JS/Lua
+The first product is the server with the React WebUI linked from LuCI (the user's
+2026-11-05 decisions, below) for small local profiles, ordered JS/Lua
 transforms and Mihomo lifecycle. Transparent proxy, firewall/DNS/TUN takeover,
 remote subscriptions, updater, traffic history and the reduced router WebUI
 build remain later work. No router networking changes are part

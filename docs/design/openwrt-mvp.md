@@ -8,13 +8,13 @@ reassessment, the headless spike and the upstream gaps it found.
 
 ## Product outcome
 
-Provide a lightweight native LuCI interface over a separate Rust server that
-uses the same shared application as the desktop shell. The router form is
-client/server: `nyanpasu-server` owns the application, LuCI drives
-`nyanpasu-cli`, and the CLI talks to the server over a local socket. LuCI uses
-rpcd sessions and ACLs to authorize each CLI invocation. Do not run the desktop
-Tauri binary on the router. The rule against embedding the React distribution
-was reversed on 2026-11-05; see the decision below.
+Provide the React WebUI over a separate Rust server that uses the same shared
+application as the desktop shell. The router form is client/server:
+`nyanpasu-server` owns the application and serves the WebUI, LuCI offers the
+service controls and a link to the WebUI, and `nyanpasu-cli` talks to the server
+over a local socket to issue the link's one-time ticket. Do not run the desktop
+Tauri binary on the router. The product direction was settled on 2026-11-05; see
+the decision below.
 
 The first usable loop is:
 
@@ -33,20 +33,32 @@ are feasibility milestones, not a claim that the MVP is delivered.
 
 ## Decision: the WebUI is the main UI, 2026-11-05
 
-The user decided that Services → Nyanpasu shows the React WebUI embedded in
-LuCI. LuCI implements neither the management UI nor its APIs: it is the menu
-entry, the login gate and the frame, and the WebUI talks to the server's HTTP
-API directly. A LuCI user with write access gets a one-time ticket from the
-server (through rpcd and the CLI) that signs the frame in. This reverses two
-statements above: that the React distribution is not embedded, and that the
-product is a native LuCI interface over the CLI.
+The user decided that the React WebUI, not native LuCI views, is the management
+UI. Later the same day the user decided against embedding it in LuCI: a frame
+brought mixed content, cookie and sizing problems. Services → Nyanpasu is a
+minimal LuCI page instead:
+
+- the service status from procd, and Start, Stop, Restart and Start at boot, all
+  through LuCI's standard `rc` ubus object (no management API of our own);
+- an Open WebUI button that opens the WebUI in a new window (a tab, or a popup
+  window if the UCI option `nyanpasu.main.window_mode` is `popup`; LuCI's own
+  setting, which changes only the UCI file and restarts nothing). A one-time
+  ticket from the server (through rpcd and the CLI) signs the new window in;
+- a login with read access only sees the status.
+
+LuCI implements neither the management UI nor its APIs, and the WebUI talks to
+the server's HTTP API directly. This reverses two statements above: that the
+React distribution is not embedded, and that the product is a native LuCI
+interface over the CLI. The WebUI's own editor windows (profile and CSS) open as
+tabs of the browser rather than as Tauri windows.
 
 The consequences are recorded in the
-[roadmap](openwrt-roadmap.md#webui-link-2026-11-05). The read-only role is
-gone, the HTTP command set replaces the 16-method LuCI allowlist as the surface
-a session reaches, and the bundle is 22.9 MiB. The server's HTTP listener is no
-longer "unauthenticated": it admits only sessions created from a ticket. The CLI
-and the local socket remain for shell and ops use and for issuing tickets.
+[roadmap](openwrt-roadmap.md#webui-link-2026-11-05). The HTTP command set
+replaces the 16-method LuCI allowlist as the surface a WebUI session reaches,
+and the bundle is 22.9 MiB. The server's HTTP listener is no longer
+"unauthenticated": it admits only sessions created from a ticket, and its pages
+refuse framing. The CLI and the local socket remain for shell and ops use and
+for issuing tickets.
 
 ## Architecture after upstream completion
 

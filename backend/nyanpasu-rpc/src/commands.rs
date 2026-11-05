@@ -15,12 +15,16 @@ use nyanpasu_core::{
 use nyanpasu_rpc_protocol::RpcTarget;
 
 mod app_config;
+mod clash_api;
+mod core_manager;
 mod host;
 mod storage;
 #[cfg(test)]
 mod tests;
 
 pub use app_config::*;
+pub use clash_api::*;
+pub use core_manager::*;
 pub use host::*;
 pub use storage::*;
 

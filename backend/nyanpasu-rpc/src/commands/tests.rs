@@ -61,6 +61,29 @@ async fn the_http_allowlist_is_the_reviewed_webui_command_set() {
         "get_storage_item",
         "remove_storage_item",
         "set_storage_item",
+        // The running core: proxies, rules, providers, connections and its binary.
+        "change_clash_core",
+        "clash_api_delete_connections",
+        "clash_api_get_configs",
+        "clash_api_get_group_delay",
+        "clash_api_get_providers_proxies",
+        "clash_api_get_providers_rules",
+        "clash_api_get_proxy_delay",
+        "clash_api_get_rules",
+        "clash_api_get_version",
+        "clash_api_healthcheck_proxy_provider",
+        "clash_api_update_providers_rules",
+        "clear_proxy_fixed",
+        "fetch_latest_core_versions",
+        "get_core_agent_skills",
+        "get_core_version",
+        "get_proxies",
+        "get_sys_proxy",
+        "inspect_updater",
+        "mutate_proxies",
+        "restart_sidecar",
+        "select_proxy",
+        "update_proxy_provider",
         // The host.
         "get_cached_icon",
         "is_portable",
@@ -127,4 +150,46 @@ async fn host_queries_answer_without_a_desktop() {
     assert_eq!(http(&rpc, "is_portable", Value::Null).await, json!(false));
     let service = http(&rpc, "status_service", Value::Null).await;
     assert!(service["status"].is_string(), "{service}");
+}
+
+/// A command the host cannot fully serve answers with its own failure, not
+/// as an unknown or unsupported method.
+async fn reaches_the_client(rpc: &UnifiedRpc, method: &str, params: Value) {
+    let result = rpc
+        .call(
+            RpcTarget::Http,
+            method,
+            RpcOwner::http_session(uuid::Uuid::nil()),
+            params,
+        )
+        .await;
+    if let Err(error) = result {
+        assert_eq!(
+            error.kind,
+            nyanpasu_rpc_protocol::RpcErrorKind::ApplicationError,
+            "{method}: {error}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn core_queries_reach_the_client_while_the_core_is_down() {
+    let directory = tempfile::tempdir().unwrap();
+    let rpc = headless(&directory).await;
+
+    for (method, params) in [
+        ("get_proxies", Value::Null),
+        ("mutate_proxies", Value::Null),
+        ("clash_api_get_version", Value::Null),
+        ("clash_api_get_configs", Value::Null),
+        ("clash_api_get_rules", Value::Null),
+        ("clash_api_get_providers_rules", Value::Null),
+        ("clash_api_get_providers_proxies", Value::Null),
+        ("clash_api_delete_connections", json!({"id": null})),
+        ("clash_api_get_group_delay", json!({"group": "g"})),
+        ("select_proxy", json!({"group": "g", "name": "n"})),
+        ("get_core_agent_skills", json!({"coreType": "mihomo"})),
+    ] {
+        reaches_the_client(&rpc, method, params).await;
+    }
 }

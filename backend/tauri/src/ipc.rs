@@ -8,12 +8,10 @@ use crate::{
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
-use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_core::{
-    client::{NyanpasuClient, agent_skills::CoreAgentSkill},
+    client::NyanpasuClient,
     state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu},
-    updater::ManifestVersionLatest,
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_transform::PostProcessingOutput;
@@ -221,20 +219,6 @@ pub async fn open_native_file_dialog(
         .await
         .map_err(|error| error.to_string())
         .map_err(Into::into)
-}
-
-// TODO: remove this struct use Sysproxy
-#[derive(specta::Type, serde::Serialize)]
-pub struct GetSysProxyResponse {
-    // Sysproxy fields (manually defined),
-    // because specta not support serde(flatten)
-    pub enable: bool,
-    pub host: String,
-    pub port: u16,
-    pub bypass: String,
-
-    // old version compatible
-    pub server: String,
 }
 
 // ---- profiles domain commands (PR-3 T08, thin adapters over NyanpasuClient) ----
@@ -591,42 +575,6 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
         .collect()
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn change_clash_core(client: State<'_, NyanpasuClient>, clash_core: ClashCore) -> Result {
-    client.update_core(clash_core).await?;
-    Ok(())
-}
-
-/// restart the sidecar
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
-    client.reconcile_core().await?;
-    Ok(())
-}
-
-/// get the system proxy
-/// server field is the combination of host and port
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
-    let current = client.get_os_proxy().await?;
-
-    let server = format!("{}:{}", current.host, current.port);
-
-    Ok(GetSysProxyResponse {
-        enable: current.enable,
-        host: current.host,
-        port: current.port,
-        bypass: current.bypass,
-        server,
-    })
-}
-
 #[nyanpasu_macro::rpc(capabilities(elevation))]
 #[tauri::command]
 #[specta::specta]
@@ -700,18 +648,6 @@ pub fn get_core_dir() -> Result<String> {
     Ok(core_dir.to_string_lossy().to_string())
 }
 
-/// The agent skills a core ships. Their folders are on the host that runs
-/// Nyanpasu, which is also where an agent driving the core has to run.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_agent_skills(
-    client: State<'_, NyanpasuClient>,
-    core_type: ClashCore,
-) -> Result<Vec<CoreAgentSkill>> {
-    Ok(client.core_agent_skills(core_type).await)
-}
-
 #[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
@@ -726,25 +662,6 @@ pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
 pub fn open_web_url(url: String) -> Result<()> {
     (crate::utils::open::that(url))?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn fetch_latest_core_versions(
-    client: State<'_, NyanpasuClient>,
-) -> Result<ManifestVersionLatest> {
-    Ok(client.fetch_latest_core_versions().await?)
-}
-
-#[nyanpasu_macro::rpc]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_version(
-    client: State<'_, NyanpasuClient>,
-    core_type: ClashCore,
-) -> Result<String> {
-    Ok(client.get_core_version(core_type).await?)
 }
 
 #[nyanpasu_macro::rpc(capabilities(dialog))]
@@ -783,163 +700,6 @@ pub async fn collect_logs(
 #[specta::specta]
 pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
     Ok(client.download_core_update(core_type).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_updater(
-    client: State<'_, NyanpasuClient>,
-    updater_id: usize,
-) -> Result<nyanpasu_core::updater::UpdaterSummary> {
-    Ok(client.inspect_updater(updater_id).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_proxy_delay(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-    provider: Option<String>,
-    url: Option<String>,
-    expected: Option<String>,
-) -> Result<clash_api::Delay> {
-    Ok(client.proxy_delay(name, provider, url, expected).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_configs(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ClashConfig> {
-    Ok(client.clash_configs().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_delete_connections(
-    client: State<'_, NyanpasuClient>,
-    id: Option<String>,
-) -> Result<()> {
-    Ok(client.close_clash_connections(id).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_version(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ClashVersion> {
-    Ok(client.clash_version().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_rules(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::RulesRes> {
-    Ok(client.clash_rules().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_providers_rules(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ProvidersRulesRes> {
-    Ok(client.clash_rule_providers().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_update_providers_rules(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-) -> Result<()> {
-    Ok(client.update_clash_rule_provider(name).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_group_delay(
-    client: State<'_, NyanpasuClient>,
-    group: String,
-    url: Option<String>,
-    expected: Option<String>,
-) -> Result<IndexMap<clash_api::ProxyName, u16>> {
-    Ok(client.group_delay(group, url, expected).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_providers_proxies(
-    client: State<'_, NyanpasuClient>,
-) -> Result<IndexMap<clash_api::ProviderName, nyanpasu_core::clash::proxies::ProxyProviderSummary>>
-{
-    Ok(client.proxy_providers().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_proxies(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.get_proxies().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn mutate_proxies(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.refresh_proxies().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn select_proxy(
-    client: State<'_, NyanpasuClient>,
-    group: String,
-    name: String,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.select_proxy(group, name).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_proxy_fixed(
-    client: State<'_, NyanpasuClient>,
-    group: String,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.clear_proxy_fixed(group).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
-    Ok(client.update_proxy_provider(name).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_healthcheck_proxy_provider(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-) -> Result<()> {
-    Ok(client.healthcheck_proxy_provider(name).await?)
 }
 
 #[nyanpasu_macro::rpc(capabilities(opener))]

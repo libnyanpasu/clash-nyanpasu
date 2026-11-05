@@ -44,6 +44,7 @@ redb = '4.0.0'
 chrono = { version = '0.4', features = ['serde'] }
 time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
 uuid = '1.7.0'
+getrandom = { version = '0.4', features = ['std'] }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
   'ipc'

@@ -8,7 +8,7 @@ pub mod owner_shutdown;
 use crate::client::{
     bundle_metadata::BundleMetadata,
     clash_info::ClashInfo,
-    direct_egress::{DirectEgress, DirectEgressProbe},
+    direct_egress::{DirectEgress, DirectEgressProbe, ProbeSources},
 };
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
@@ -935,8 +935,9 @@ impl NyanpasuClient {
             cache.set(&blocked);
             return Ok(blocked);
         }
+        let sources = ProbeSources::from_config(&self.inner.application.snapshot().state);
         let probe = &self.inner.direct_egress;
-        let (ipv4, ipv6) = tokio::join!(probe.ipv4(), probe.ipv6());
+        let (ipv4, ipv6) = tokio::join!(probe.ipv4(&sources), probe.ipv6(&sources));
         // Permission or TUN may change while the requests are in flight.
         let result = cache
             .blocked()
@@ -1799,9 +1800,16 @@ pub(crate) mod tests {
         let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
         probe
             .expect_ipv4()
+            .withf(|sources| {
+                sources
+                    .stun
+                    .iter()
+                    .all(|server| server.enabled && server.builtin)
+                    && sources.lookups.is_empty()
+            })
             .times(1)
-            .returning(move || Some(address));
-        probe.expect_ipv6().times(1).returning(|| None);
+            .returning(move |_| Some(address));
+        probe.expect_ipv6().times(1).returning(|_| None);
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
         client
             .patch_app_config(NyanpasuAppConfigPatch {
@@ -1858,13 +1866,13 @@ pub(crate) mod tests {
             .expect_ipv4()
             .times(1)
             .in_sequence(&mut sequence)
-            .returning(|| Some("203.0.113.7".parse().unwrap()));
+            .returning(|_| Some("203.0.113.7".parse().unwrap()));
         probe
             .expect_ipv4()
             .times(1)
             .in_sequence(&mut sequence)
-            .returning(|| None);
-        probe.expect_ipv6().times(2).returning(|| None);
+            .returning(|_| None);
+        probe.expect_ipv6().times(2).returning(|_| None);
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
         assert_eq!(
             client.probe_direct_egress().await.unwrap(),
@@ -1916,13 +1924,20 @@ pub(crate) mod tests {
         }
         #[async_trait::async_trait]
         impl DirectEgressProbe for WaitingProbe {
-            async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
+            async fn ipv4(&self, _: &ProbeSources) -> Option<std::net::Ipv4Addr> {
                 self.started.notify_one();
                 self.release.notified().await;
                 Some("203.0.113.7".parse().unwrap())
             }
-            async fn ipv6(&self) -> Option<std::net::Ipv6Addr> {
+            async fn ipv6(&self, _: &ProbeSources) -> Option<std::net::Ipv6Addr> {
                 None
+            }
+            async fn test_stun_server(
+                &self,
+                _: &str,
+                _: u16,
+            ) -> crate::client::direct_egress::StunServerTest {
+                unreachable!("the probe test does not test servers")
             }
         }
         let dir = tempdir().unwrap();

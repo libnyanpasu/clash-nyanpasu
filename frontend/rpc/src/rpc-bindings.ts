@@ -2040,8 +2040,8 @@ export type DirectEgress =
    */
   | { kind: 'tun_enabled' }
   /**
-   *  `None` for a family the echo service gave no address over, such as a
-   *  network without IPv6.
+   *  `None` for a family no source gave an address over, such as a network
+   *  without IPv6.
    */
   | { kind: 'probed'; ipv4: string | null; ipv6: string | null }
 

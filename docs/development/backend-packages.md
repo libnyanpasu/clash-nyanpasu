@@ -50,17 +50,28 @@ Names are working names until the PR that creates each crate.
 | Shells                | `backend/tauri` (desktop GUI), `nyanpasu-server` (headless), mobile shell (later)                                                              | Anything below; only shells construct `NyanpasuClient`                                                 |
 | CLI                   | `nyanpasu-cli`, a client of a running shell over the local socket                                                                              | `nyanpasu-rpc-protocol` and the local-socket client; not core                                          |
 | RPC                   | `nyanpasu-rpc-protocol`, `nyanpasu-rpc`, the WebUI (HTTP) and local-socket transports                                                          | Protocol: config and contracts. Registry: core                                                         |
-| Target crates         | `nyanpasu-desktop` (desktop interaction), `nyanpasu-os` (OS integration), `nyanpasu-openwrt` (on resume)                                       | The foundation layer; never core. The server never uses `nyanpasu-desktop`                             |
+| Target crates         | `nyanpasu-os` (OS integration), `nyanpasu-openwrt` (on resume)                                                                                 | The foundation layer only; never core or other implementation crates                                   |
 | Core package family   | `nyanpasu-core` facade, application, core control, log/traffic/geodata owners, updater, state engine, migration                                | Downward only, ending at the foundation layer                                                          |
 | Foundation layer      | `nyanpasu-config`, `nyanpasu-contracts`, `nyanpasu-persistence` (formats, file recovery), `nyanpasu-profile-transform` (runtime builder)       | Lower foundation crates only; contracts, persistence and transform depend on config, not on each other |
 | Implementation crates | `nyanpasu-scripts` (JS and Lua runners), `nyanpasu-profile-io` (profile files), `nyanpasu-net` (subscription and other HTTP), storage backends | The foundation layer only; never core, never each other                                                |
 
 Presentation capabilities (hotkeys, windows, tray, widgets, dialogs,
 notifications, clipboard, opener, deep links, single instance) belong to the
-shell. A Tauri-free mechanism that several desktop shells can share goes into
-the desktop interaction crate; a Tauri-bound one stays in `backend/tauri`. Core
-treats presentation capabilities as optional, with an explicit unsupported
-outcome.
+shell. Their mechanisms stay in the Tauri shell: the hotkey owner, main-thread
+handoff and presentation-effect execution in `backend/tauri/src/desktop/`, the
+concrete GUI adapters in `backend/tauri/src/adapters/`. There is no desktop
+interaction crate: the server needs none of these mechanisms, and new crate
+boundaries brought no desktop compile-time gain. Core owns the ports it
+consumes, hotkey validation before commit, hotkey action dispatch and the shared
+convergence of effects (revisions, status, receipts).
+
+Core treats window control, hotkey validation, presentation-effect execution
+and the debug HTTP server as optional. Without one, an operation that needs it
+reports unsupported, an explicit hotkey edit is rejected before it is saved,
+and a desired presentation effect is reported unsupported, never applied.
+Sinks that only observe stay required: `UiEventSink` and `FrontendLogSink`
+(frontend diagnostics written into the backend log); a shell without a GUI
+passes a neutral implementation.
 
 Until a target crate exists:
 

@@ -223,10 +223,7 @@ pub async fn open_native_file_dialog(
 
 // ---- profiles domain commands (PR-3 T08, thin adapters over NyanpasuClient) ----
 
-use nyanpasu_config::profile::{
-    FolderId, ProfileId, ProfileLayout, ProfileMetadataPatch, ProxyGroupLayout,
-    RemoteProfileOptionsPatch, TransformKind,
-};
+use nyanpasu_config::profile::{ProfileId, RemoteProfileOptionsPatch};
 
 // #[tauri::command]
 // #[specta::specta]
@@ -259,29 +256,6 @@ pub async fn probe_profile_url(
         InvalidSubscriptionUrlSnafu { url: &url },
     )?;
     Ok(client.probe_profile_url(url, option).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn import_profile(
-    client: State<'_, NyanpasuClient>,
-    url: String,
-    name: Option<String>,
-    option: Option<RemoteProfileOptionsPatch>,
-    transform: Option<TransformKind>,
-    folder: Option<FolderId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<ProfileId>> {
-    let url = snafu::ResultExt::context(
-        url::Url::parse(&url),
-        InvalidSubscriptionUrlSnafu { url: &url },
-    )?;
-    // `name` carries deep-link intent (e.g. an install-config `name=` param);
-    // when absent the facade derives the name from the url server-side. Return
-    // MutationOutcome so a degraded post-import rebuild still carries the uid.
-    Ok(client
-        .import_profile(url, name, option, transform, folder)
-        .await?)
 }
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -332,138 +306,6 @@ pub async fn reorder_profile(
     Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn reorder_profiles_by_list(
-    client: State<'_, NyanpasuClient>,
-    list: Vec<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.reorder_profiles_by_list(list).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_profile_layout(
-    client: State<'_, NyanpasuClient>,
-    layout: ProfileLayout,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.set_profile_layout(layout).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_proxy_group_layout(
-    client: State<'_, NyanpasuClient>,
-    profile: ProfileId,
-    layout: ProxyGroupLayout,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.set_proxy_group_layout(profile, layout).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn create_proxy_group_folder(
-    client: State<'_, NyanpasuClient>,
-    profile: ProfileId,
-    name: String,
-    members: Vec<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<FolderId>> {
-    Ok(client
-        .create_proxy_group_folder(profile, name, members)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn create_profile_folder(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-    members: Vec<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<FolderId>> {
-    Ok(client.create_profile_folder(name, members).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profile_sync_status(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result<nyanpasu_core::client::jobs::ProfileSyncStatus> {
-    Ok(client.profile_sync_status(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profile_sync_runs(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    after: Option<nyanpasu_jobs::dto::RunCursorDto>,
-) -> Result<nyanpasu_jobs::dto::RunPageDto> {
-    Ok(client.profile_sync_runs(uid, after).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profile_sync_logs(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    run: String,
-    after: Option<String>,
-) -> Result<nyanpasu_jobs::dto::LogPageDto> {
-    Ok(client.profile_sync_logs(uid, run, after).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn update_profile(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    option: Option<RemoteProfileOptionsPatch>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.refresh_profile(uid, option).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_profile_valid_fields(
-    client: State<'_, NyanpasuClient>,
-    fields: Vec<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.set_profile_valid_fields(fields).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_profile_metadata(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    patch: ProfileMetadataPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.patch_profile_metadata(uid, patch).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_remote_profile_options(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    patch: RemoteProfileOptionsPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.patch_remote_profile_options(uid, patch).await?)
-}
-
 #[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
@@ -489,26 +331,6 @@ pub async fn get_runtime_config(
         .runtime_config()
         .await?
         .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_applied_runtime(
-    client: State<'_, NyanpasuClient>,
-) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
-    Ok(client.inspect_applied_runtime().await)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_runtime_node(
-    client: State<'_, NyanpasuClient>,
-    snapshot_id: String,
-    node_id: u32,
-) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
-    Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1067,25 +889,6 @@ pub async fn set_hotkeys(
         .await?)
 }
 
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_log(
-    client: tauri::State<'_, NyanpasuClient>,
-    cursor: nyanpasu_core::logs::CoreLogCursor,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
-    client.get_core_log(cursor).await
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_core_logs(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> nyanpasu_core::logs::CoreLogResult<()> {
-    client.clear_core_logs().await
-}
-
 // Subscription control uses UnifiedRpc; only frame delivery is a native Channel.
 // HTTP consumers use the dedicated SSE adapter instead of a webview channel.
 #[nyanpasu_macro::rpc(owner, capabilities(caller_webview))]
@@ -1126,66 +929,6 @@ pub fn unsubscribe_clash_connection_details(
 }
 
 // Updater block
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn list_log_files(
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
-    client.list_log_files(source).await
-}
-#[nyanpasu_macro::rpc(http, result, owner)]
-#[tauri::command]
-#[specta::specta]
-pub async fn open_log_session(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-    request: nyanpasu_logging::OpenLogs,
-) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
-    client
-        .open_log_session(source, window.label().to_string(), request)
-        .await
-}
-#[nyanpasu_macro::rpc(http, result, owner)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_logs(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-    request: nyanpasu_logging::QueryLogs,
-) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
-    client
-        .query_logs(source, window.label().to_string(), request)
-        .await
-}
-#[nyanpasu_macro::rpc(http, result, owner)]
-#[tauri::command]
-#[specta::specta]
-pub async fn close_log_session(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-    session: String,
-) -> nyanpasu_logging::LogResult<()> {
-    client
-        .close_log_session(source, window.label().to_string(), session)
-        .await
-}
-#[nyanpasu_macro::rpc(http, owner)]
-#[tauri::command]
-#[specta::specta]
-pub fn report_frontend_events(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    batch: nyanpasu_core::client::frontend_events::FrontendEventBatch,
-) -> Result {
-    client.report_frontend_events(window.label(), batch);
-    Ok(())
-}
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ReleaseChannelInfo {

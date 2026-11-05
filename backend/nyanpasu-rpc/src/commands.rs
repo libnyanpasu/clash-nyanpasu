@@ -18,6 +18,8 @@ mod app_config;
 mod clash_api;
 mod core_manager;
 mod host;
+mod logs;
+mod profiles;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -27,6 +29,8 @@ pub use app_config::*;
 pub use clash_api::*;
 pub use core_manager::*;
 pub use host::*;
+pub use logs::*;
+pub use profiles::*;
 pub use storage::*;
 pub use traffic::*;
 

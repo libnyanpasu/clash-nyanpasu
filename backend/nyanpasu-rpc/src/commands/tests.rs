@@ -94,6 +94,30 @@ async fn the_http_allowlist_is_the_reviewed_webui_command_set() {
         "query_traffic_usage",
         "query_traffic_usage_by_keys",
         "set_clash_ws_recording",
+        // Logs and the frontend error reporter.
+        "clear_core_logs",
+        "close_log_session",
+        "get_core_log",
+        "list_log_files",
+        "open_log_session",
+        "query_logs",
+        "report_frontend_events",
+        // Profile import, layout, sync and inspection.
+        "create_profile_folder",
+        "create_proxy_group_folder",
+        "get_profile_sync_logs",
+        "get_profile_sync_runs",
+        "get_profile_sync_status",
+        "import_profile",
+        "inspect_applied_runtime",
+        "inspect_runtime_node",
+        "patch_profile_metadata",
+        "patch_remote_profile_options",
+        "reorder_profiles_by_list",
+        "set_profile_layout",
+        "set_profile_valid_fields",
+        "set_proxy_group_layout",
+        "update_profile",
         // The host.
         "get_cached_icon",
         "is_portable",
@@ -205,4 +229,54 @@ async fn core_queries_reach_the_client_while_the_core_is_down() {
     ] {
         reaches_the_client(&rpc, method, params).await;
     }
+}
+
+#[tokio::test]
+async fn a_log_session_belongs_to_the_browser_session_that_opened_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let rpc = headless(&directory).await;
+    let owner = |seed| RpcOwner::http_session(uuid::Uuid::from_u128(seed));
+    let call = |owner: RpcOwner, method: &'static str, params: Value| {
+        let rpc = rpc.clone();
+        async move { rpc.call(RpcTarget::Http, method, owner, params).await }
+    };
+
+    let opened = call(
+        owner(1),
+        "open_log_session",
+        json!({"source": "app", "request": {"request_id": "r", "file": null}}),
+    )
+    .await
+    .unwrap();
+    let session = opened["id"].as_str().unwrap();
+
+    let close = json!({"source": "app", "session": session});
+    let stranger = call(owner(2), "close_log_session", close.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        stranger.kind,
+        nyanpasu_rpc_protocol::RpcErrorKind::ApplicationError,
+        "{stranger}"
+    );
+    call(owner(1), "close_log_session", close).await.unwrap();
+}
+
+#[tokio::test]
+async fn profile_folders_commit_through_the_client_for_a_browser_session() {
+    let directory = tempfile::tempdir().unwrap();
+    let rpc = headless(&directory).await;
+
+    let folder = http(
+        &rpc,
+        "create_profile_folder",
+        json!({"name": "work", "members": []}),
+    )
+    .await;
+    assert!(folder["value"].is_string(), "{folder}");
+    let profiles = http(&rpc, "get_profiles", Value::Null).await;
+    assert!(
+        profiles.to_string().contains("work"),
+        "the folder is listed: {profiles}"
+    );
 }

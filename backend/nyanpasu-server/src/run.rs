@@ -67,6 +67,10 @@ async fn serve(
     if let Err(error) = client.start_background_sources() {
         tracing::error!(%error, "failed to start the background sources");
     }
+    // The streams capture the core's logs; nothing else starts them here.
+    if let Err(error) = client.start_clash_streams().await {
+        tracing::error!(%error, "failed to start the Clash streams");
+    }
     let rpc = server.rpc()?;
     tracing::info!(socket = %rpc_socket.display(), "serving the local socket");
     serve_local(rpc_socket, rpc, stop)

@@ -1427,6 +1427,7 @@
   "error_debug_http_change_enabled_unsupported": "デバッグ HTTP のオン・オフはデスクトップアプリでのみ切り替えられます",
   "error_debug_http_read_status": "デバッグ HTTP の状態を取得できませんでした",
   "error_debug_http_change_enabled": "デバッグ HTTP のオン・オフを切り替えられませんでした",
+  "error_elevation_authorize": "ここからは管理者権限を要求できません",
   "error_system_dns_run_flush_command": "{command} を実行する権限が付与されませんでした",
   "error_system_dns_flush_rejected": "{command} が成功しませんでした（終了コード {code}）",
   "error_system_dns_unsupported": "このシステムでは DNS キャッシュのクリアに対応していません",

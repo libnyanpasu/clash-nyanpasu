@@ -1,12 +1,10 @@
 //! Service process commands and the OS implementation of process control.
 
-#[cfg(not(target_os = "macos"))]
-use runas::Command as RunasCommand;
-use snafu::{ResultExt, ensure};
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     process::ExitStatus,
+    sync::Arc,
 };
 
 #[cfg(unix)]
@@ -14,11 +12,21 @@ use std::os::unix::process::ExitStatusExt;
 
 #[cfg(windows)]
 use nyanpasu_contracts::service::SessionEndingSnafu;
-use nyanpasu_contracts::service::{
-    ResolveServiceDirsSnafu, ResolveServiceUserSnafu, RunElevatedSnafu, RunServiceStatusSnafu,
-    ServiceCommand, ServiceCommandError, ServiceCommandExitSnafu, ServiceProcessControl,
-    ServiceStatusExitSnafu, ServiceStatusNotUtf8Snafu,
+use nyanpasu_contracts::{
+    elevation::{ElevationConsent, ElevationOperation},
+    service::{
+        AuthorizeServiceCommandSnafu, ResolveServiceDirsSnafu, ResolveServiceUserSnafu,
+        RunElevatedSnafu, RunServiceStatusSnafu, ServiceCommand, ServiceCommandError,
+        ServiceCommandExitSnafu, ServiceProcessControl, ServiceStatusExitSnafu,
+        ServiceStatusNotUtf8Snafu,
+    },
 };
+
+#[cfg(not(target_os = "macos"))]
+use runas::Command as RunasCommand;
+use snafu::{ResultExt, ensure};
+
+use crate::elevation::runner::{CommandRunner, OsCommandRunner};
 
 fn signal(status: &ExitStatus) -> Option<i32> {
     #[cfg(unix)]
@@ -75,11 +83,18 @@ pub async fn get_service_install_args(
 }
 
 /// Runs `nyanpasu-service` elevated and waits for it to exit successfully.
+/// Arguments stay lazy so refusal also precedes install's user-lookup processes.
 async fn run_elevated(
     command: ServiceCommand,
     service_binary: &Path,
-    args: Vec<OsString>,
+    args: impl std::future::Future<Output = Result<Vec<OsString>, ServiceCommandError>>,
+    consent: &dyn ElevationConsent,
+    runner: Arc<dyn CommandRunner>,
 ) -> Result<(), ServiceCommandError> {
+    consent
+        .authorize(ElevationOperation::Service { command })
+        .context(AuthorizeServiceCommandSnafu { command })?;
+    let args = args.await?;
     #[cfg(windows)]
     ensure_session_active()?;
     let service_binary = service_binary.to_path_buf();
@@ -89,11 +104,13 @@ async fn run_elevated(
             ensure_session_active()?;
             #[cfg(not(target_os = "macos"))]
             {
-                RunasCommand::new(service_binary.as_path())
-                    .args(&args)
-                    .gui(true)
-                    .show(true)
-                    .status()
+                runner
+                    .runas(
+                        RunasCommand::new(service_binary.as_path())
+                            .args(&args)
+                            .gui(true)
+                            .show(true),
+                    )
                     .context(RunElevatedSnafu { command })
             }
             #[cfg(target_os = "macos")]
@@ -103,7 +120,7 @@ async fn run_elevated(
                     .iter()
                     .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
                     .collect::<Vec<_>>();
-                match macos::sudo(service_binary.to_string_lossy(), &args) {
+                match macos::sudo(service_binary.to_string_lossy(), &args, runner.as_ref()) {
                     Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                     Err(e) => {
                         tracing::error!("failed to run the service {command} command: {}", e);
@@ -128,62 +145,110 @@ async fn run_elevated(
 
 /// Installs the service with the supplied application directories.
 pub async fn install_service(
+    consent: &dyn ElevationConsent,
     service_binary: &Path,
     data_dir: &Path,
     config_dir: &Path,
     app_dir: &Path,
 ) -> Result<(), ServiceCommandError> {
-    let args = get_service_install_args(data_dir, config_dir, app_dir).await?;
-    run_elevated(ServiceCommand::Install, service_binary, args).await
+    run_elevated(
+        ServiceCommand::Install,
+        service_binary,
+        get_service_install_args(data_dir, config_dir, app_dir),
+        consent,
+        Arc::new(OsCommandRunner),
+    )
+    .await
 }
 
 /// Updates the service using its existing platform command arguments.
 pub async fn update_service(
+    consent: &dyn ElevationConsent,
     service_binary: &Path,
     data_dir: &Path,
 ) -> Result<(), ServiceCommandError> {
-    #[cfg(unix)]
-    let args = vec![
-        "update".into(),
-        "--user".into(),
-        whoami::username().context(ResolveServiceUserSnafu)?.into(),
-        "--nyanpasu-data-dir".into(),
-        data_dir.into(),
-    ];
-    #[cfg(windows)]
-    let args = {
-        let _ = data_dir;
-        vec!["update".into()]
+    let args = async {
+        #[cfg(unix)]
+        let args = vec![
+            "update".into(),
+            "--user".into(),
+            whoami::username().context(ResolveServiceUserSnafu)?.into(),
+            "--nyanpasu-data-dir".into(),
+            data_dir.into(),
+        ];
+        #[cfg(windows)]
+        let args = {
+            let _ = data_dir;
+            vec!["update".into()]
+        };
+        Ok(args)
     };
-    run_elevated(ServiceCommand::Update, service_binary, args).await
+    run_elevated(
+        ServiceCommand::Update,
+        service_binary,
+        args,
+        consent,
+        Arc::new(OsCommandRunner),
+    )
+    .await
 }
 
 /// Removes the service through its elevated command.
-pub async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub async fn uninstall_service(
+    consent: &dyn ElevationConsent,
+    service_binary: &Path,
+) -> Result<(), ServiceCommandError> {
     run_elevated(
         ServiceCommand::Uninstall,
         service_binary,
-        vec!["uninstall".into()],
+        async { Ok(vec!["uninstall".into()]) },
+        consent,
+        Arc::new(OsCommandRunner),
     )
     .await
 }
 
 /// Starts the service daemon through its elevated command.
-pub async fn start_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
-    run_elevated(ServiceCommand::Start, service_binary, vec!["start".into()]).await
+pub async fn start_service(
+    consent: &dyn ElevationConsent,
+    service_binary: &Path,
+) -> Result<(), ServiceCommandError> {
+    run_elevated(
+        ServiceCommand::Start,
+        service_binary,
+        async { Ok(vec!["start".into()]) },
+        consent,
+        Arc::new(OsCommandRunner),
+    )
+    .await
 }
 
 /// Stops the service daemon through its elevated command.
-pub async fn stop_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
-    run_elevated(ServiceCommand::Stop, service_binary, vec!["stop".into()]).await
+pub async fn stop_service(
+    consent: &dyn ElevationConsent,
+    service_binary: &Path,
+) -> Result<(), ServiceCommandError> {
+    run_elevated(
+        ServiceCommand::Stop,
+        service_binary,
+        async { Ok(vec!["stop".into()]) },
+        consent,
+        Arc::new(OsCommandRunner),
+    )
+    .await
 }
 
 /// Restarts the service daemon through its elevated command.
-pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub async fn restart_service(
+    consent: &dyn ElevationConsent,
+    service_binary: &Path,
+) -> Result<(), ServiceCommandError> {
     run_elevated(
         ServiceCommand::Restart,
         service_binary,
-        vec!["restart".into()],
+        async { Ok(vec!["restart".into()]) },
+        consent,
+        Arc::new(OsCommandRunner),
     )
     .await
 }
@@ -226,14 +291,21 @@ fn ensure_session_active() -> Result<(), ServiceCommandError> {
 pub struct OsServiceProcessControl {
     service_binary: PathBuf,
     paths: nyanpasu_paths::PathResolver,
+    consent: Arc<dyn ElevationConsent>,
 }
 
 impl OsServiceProcessControl {
-    /// Binds service process control to the supplied executable and path resolver.
-    pub fn new(service_binary: PathBuf, paths: nyanpasu_paths::PathResolver) -> Self {
+    /// Binds service process control to the supplied executable and path resolver;
+    /// `consent` is checked before every elevated service command.
+    pub fn new(
+        service_binary: PathBuf,
+        paths: nyanpasu_paths::PathResolver,
+        consent: Arc<dyn ElevationConsent>,
+    ) -> Self {
         Self {
             service_binary,
             paths,
+            consent,
         }
     }
 }
@@ -250,6 +322,7 @@ impl ServiceProcessControl for OsServiceProcessControl {
             .app_install_dir()
             .context(ResolveServiceDirsSnafu)?;
         install_service(
+            self.consent.as_ref(),
             &self.service_binary,
             self.paths.app_data_dir().as_std_path(),
             self.paths.app_config_dir().as_std_path(),
@@ -259,19 +332,20 @@ impl ServiceProcessControl for OsServiceProcessControl {
     }
 
     async fn uninstall(&self) -> Result<(), ServiceCommandError> {
-        uninstall_service(&self.service_binary).await
+        uninstall_service(self.consent.as_ref(), &self.service_binary).await
     }
 
     async fn start_daemon(&self) -> Result<(), ServiceCommandError> {
-        start_service(&self.service_binary).await
+        start_service(self.consent.as_ref(), &self.service_binary).await
     }
 
     async fn stop_daemon(&self) -> Result<(), ServiceCommandError> {
-        stop_service(&self.service_binary).await
+        stop_service(self.consent.as_ref(), &self.service_binary).await
     }
 
     async fn update(&self) -> Result<(), ServiceCommandError> {
         update_service(
+            self.consent.as_ref(),
             &self.service_binary,
             self.paths.app_data_dir().as_std_path(),
         )
@@ -282,6 +356,55 @@ impl ServiceProcessControl for OsServiceProcessControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn refused_service_command_never_spawns() {
+        use crate::elevation::{RefuseElevation, runner::CountingRunner};
+        use nyanpasu_contracts::elevation::ElevationConsentError;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let runner = Arc::new(CountingRunner::default());
+        let prepared = AtomicUsize::new(0);
+        for command in [
+            ServiceCommand::Install,
+            ServiceCommand::Update,
+            ServiceCommand::Uninstall,
+            ServiceCommand::Start,
+            ServiceCommand::Stop,
+            ServiceCommand::Restart,
+        ] {
+            let error = run_elevated(
+                command,
+                Path::new("unused-service"),
+                async {
+                    prepared.fetch_add(1, Ordering::SeqCst);
+                    Ok(vec![command.to_string().into()])
+                },
+                &RefuseElevation,
+                runner.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(
+                runner.0.load(Ordering::SeqCst),
+                0,
+                "{command} launched a process"
+            );
+            assert_eq!(
+                prepared.load(Ordering::SeqCst),
+                0,
+                "{command} prepared its helper"
+            );
+            assert!(
+                matches!(error, ServiceCommandError::AuthorizeServiceCommand {
+                command: actual,
+                source: ElevationConsentError::AuthorizeElevation {
+                    operation: ElevationOperation::Service { command: requested }
+                }
+            } if actual == command && requested == command)
+            );
+        }
+    }
 
     #[test]
     fn a_failed_command_names_the_command_and_how_it_ended() {

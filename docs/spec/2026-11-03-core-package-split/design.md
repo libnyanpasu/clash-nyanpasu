@@ -355,6 +355,8 @@ B 结束时复测编译时间（§6）。B1a–B4 已在 `tasks.md` §2 细化�
 | C2  | 新建实现 crate `nyanpasu-os`：服务进程控制、DNS 刷新、core 二进制安装、设备标识、系统代理读写与 PAC、自启动、sidecar 版本探测；它实现的端口进 contracts，服务端口只含进程控制与原始探测，安装端口收窄为不含 updater 类型的请求（V-18）。新增提权同意端口，OS 的提权机制先经它再启动命令；桌面注入的策略保持现状（OS 授权框即同意），拒绝策略留给 E4 的 server。`update_core` 去掉 `http`；RPC 层加审计切面（O-5、O-6） | A、B4 | 服务安装与恢复、DNS 守卫的恢复语义不变；staging 生命周期与 panic 传播不变；拒绝时不启动任何提权命令；审计不记载荷、不改变命令结果与取消 | core 无提权执行点（`rg 'runas\|osascript\|with administrator privileges' backend/nyanpasu-core/src`）；门禁：`CORE_FAMILY` ↛ `nyanpasu-os`、`runas`、`sysproxy`，`nyanpasu-os` ↛ `CORE_FAMILY`；拒绝策略下三类提权机制都不启动命令、经 HTTP 调用 `update_core` 在入队前得到不支持、IPC 与 HTTP 调用各产生一条不含载荷的审计记录（测试） |
 | C3  | 不建 `nyanpasu-desktop`：热键 owner、main-thread 交接、展示效果执行（locale、托盘、widget 与整托盘刷新的记忆）移到 `T/desktop/`；core 保留消费端口、提交前的热键校验、热键动作分发与效果的共享收敛（修订、源切片、重试、状态与 receipt）（V-20）                                                                                                                                                                       | C1    | locale 先于托盘、失败的整托盘刷新优先于之后的部分刷新（`C/client/effects/executor.rs:174-188,216-219`）；关闭时释放热键、恢复代理       | core 族不含上述机制（迁移时的 `rg` 检查），core 不再直接依赖 `nyanpasu-widget-protocol`；`commit_receipt_and_status_keep_source_separate_from_pending_notifications`（`C/client/effects/tests.rs:803`）、`stale_revision_is_superseded`（`C/client/hotkey/tests.rs:437`）、main-thread 丢失测试（`C/client/main_thread.rs:178`）通过    |
 
+C2d 已实现同步 `ElevationConsent` 与 `RefuseElevation`：服务、DNS flush 和复制回退先检查策略，拒绝不启动提权命令，服务自动恢复暂停。桌面显式注入允许原 OS 授权框的策略，不加确认框；E4 的独立 server 必须向这三个 OS 构造器注入拒绝策略，并验证 V-19 的剩余路径。C2e 的 HTTP 限制与 C2f 的审计仍独立实施。
+
 C1–C3 已在 `tasks.md` §3 细化为卡（行号记录于 `e004ef566`），偏差见 §8.1 V-16–V-22，决策见 §8.2 O-5–O-9。
 
 ### 5.3 Phase D：事务图

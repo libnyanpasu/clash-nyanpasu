@@ -2150,6 +2150,18 @@ export type EffectsError =
   /**  The owner's mailbox is closed: the app is exiting, or the owner died. */
   { kind: 'effects_stopped' }
 
+/**  The shell cannot request OS authorization for this action. */
+export type ElevationConsentError = {
+  kind: 'authorize_elevation'
+  operation: ElevationOperation
+}
+
+/**  The action requesting authorization, never an executable or command string. */
+export type ElevationOperation =
+  | { kind: 'service'; command: ServiceCommand }
+  | { kind: 'dns_flush' }
+  | { kind: 'core_binary_copy' }
+
 export type EndpointConnectivity =
   | { kind: 'connected' }
   | { kind: 'shut_down' }
@@ -2454,6 +2466,12 @@ export type ImportSignal =
 
 /**  A failure of installing a downloaded core binary over the installed one. */
 export type InstallCoreBinaryError =
+  | {
+      kind: 'authorize_core_copy'
+      core: string
+      destination: ErrorPath
+      source: ElevationConsentError
+    }
   | { kind: 'start_elevated_copy'; core: string; destination: ErrorPath }
   | {
       kind: 'elevated_copy_failed'
@@ -5128,6 +5146,11 @@ export type ServiceCommand =
  *  the service actor puts on every call.
  */
 export type ServiceCommandError =
+  | {
+      kind: 'authorize_service_command'
+      command: ServiceCommand
+      source: ElevationConsentError
+    }
   | { kind: 'session_ending' }
   | { kind: 'resolve_service_user' }
   | { kind: 'resolve_service_dirs' }
@@ -5539,6 +5562,7 @@ export type SubscriptionInfo_Serialize = {
  *  per platform, so the generated bindings do not depend on the build host.
  */
 export type SystemDnsError =
+  | { kind: 'authorize_dns_flush'; source: ElevationConsentError }
   /**
    *  The elevated flush could not be started: the user declined the prompt,
    *  or the platform has no way to ask for elevation.

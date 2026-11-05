@@ -313,16 +313,19 @@ Unsupported effects neither advance applied revisions nor retry automatically.
 Observer sinks (`UiEventSink` and `FrontendLogSink`) remain required; headless
 shells provide neutral implementations. C2b–C2c move proxy reads/writes, PAC,
 autostart, device identity, sidecar version probes, service control, DNS flush
-and binary installation into `nyanpasu-os`. Authorization behavior is unchanged;
-the consent port follows in C2d.
+and binary installation into `nyanpasu-os`. C2d adds the synchronous contracts
+consent port: desktop permits the existing OS prompt, while `RefuseElevation`
+prevents elevated launches and pauses automatic service recovery on refusal.
+E4 must inject that refusing policy into service control, DNS flush and binary
+installation in the independently assembled server.
 
 Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting
   the runners and injecting their constructor did not change extension behavior.
-- The OS mechanisms in `nyanpasu-os` still authorize directly: service install
-  and DNS flush show OS authorization dialogs, and binary installation falls
-  back to an elevated copy that the WebUI can reach through `update_core`
+- The desktop permits OS authorization dialogs for service commands, DNS flush
+  and the binary install copy fallback. The WebUI can still reach the fallback
+  through `update_core`
   ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). Phase C
   removes `update_core` from the WebUI. The embedded WebUI shares the desktop
   client, so service-mode changes through `patch_app_config`,

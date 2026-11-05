@@ -1438,6 +1438,7 @@
   "error_debug_http_change_enabled_unsupported": "只有桌面应用可以开关调试 HTTP",
   "error_debug_http_read_status": "无法读取调试 HTTP 状态",
   "error_debug_http_change_enabled": "无法开关调试 HTTP",
+  "error_elevation_authorize": "无法从此处请求管理员权限",
   "error_system_dns_run_flush_command": "未获得运行 {command} 的权限",
   "error_system_dns_flush_rejected": "{command} 执行失败 (退出码 {code})",
   "error_system_dns_unsupported": "当前系统不支持清除 DNS 缓存",

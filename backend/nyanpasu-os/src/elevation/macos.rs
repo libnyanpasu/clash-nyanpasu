@@ -3,7 +3,11 @@
 use std::{os::unix::process::ExitStatusExt, path::PathBuf};
 
 /// use runas to run the command with bash and pipe the output to the tmp output file
-pub fn sudo<M: AsRef<str>, T: AsRef<str>>(bin: M, args: &[T]) -> std::io::Result<()> {
+pub(crate) fn sudo<M: AsRef<str>, T: AsRef<str>>(
+    bin: M,
+    args: &[T],
+    runner: &dyn super::runner::CommandRunner,
+) -> std::io::Result<()> {
     let dir = tempfile::tempdir()?;
     let script = dir.path().join("script.sh");
     let out = dir.path().join("output.txt");
@@ -31,14 +35,16 @@ pub fn sudo<M: AsRef<str>, T: AsRef<str>>(bin: M, args: &[T]) -> std::io::Result
     );
     tracing::debug!("prepare script: {}", script_content);
     std::fs::write(&script, script_content)?;
-    let status = std::process::Command::new("osascript")
-        .arg("-e")
-        .args([&format!(
-            r#"do shell script "bash {} &> {}" with administrator privileges"#,
-            script.to_string_lossy(),
-            out.to_string_lossy()
-        )])
-        .status();
+    let status =
+        runner.command(
+            std::process::Command::new("osascript")
+                .arg("-e")
+                .args([&format!(
+                    r#"do shell script "bash {} &> {}" with administrator privileges"#,
+                    script.to_string_lossy(),
+                    out.to_string_lossy()
+                )]),
+        );
     match status {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => {

@@ -604,3 +604,36 @@ test('presentation_unsupported_uses_its_message', () => {
     m.effect_failure_presentation_unsupported(),
   )
 })
+
+test('dns_elevation_refusal_uses_the_elevation_message', () => {
+  expect(
+    ipcErrorMessage(
+      systemDns({
+        kind: 'authorize_dns_flush',
+        source: {
+          kind: 'authorize_elevation',
+          operation: { kind: 'dns_flush' },
+        },
+      }),
+    ),
+  ).toBe(m.error_elevation_authorize())
+})
+
+test('core_copy_elevation_refusal_uses_the_elevation_message', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'install_core_binary',
+        source: {
+          kind: 'authorize_core_copy',
+          core: 'mihomo',
+          destination: 'installed-core',
+          source: {
+            kind: 'authorize_elevation',
+            operation: { kind: 'core_binary_copy' },
+          },
+        },
+      }),
+    ),
+  ).toBe(m.error_elevation_authorize())
+})

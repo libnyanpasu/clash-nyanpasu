@@ -1,20 +1,37 @@
 //! Core binary installation and best-effort companion directory publication.
 
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
 use async_trait::async_trait;
 #[cfg(target_os = "windows")]
 use nyanpasu_contracts::core_install::PathNotUtf8Snafu;
-use nyanpasu_contracts::core_install::{
-    BinaryInstaller, ElevatedCopyFailedSnafu, InstallCoreBinaryError, StartElevatedCopySnafu,
+use nyanpasu_contracts::{
+    core_install::{
+        AuthorizeCoreCopySnafu, BinaryInstaller, CoreBinaryInstallRequest, ElevatedCopyFailedSnafu,
+        InstallCoreBinaryError, StartElevatedCopySnafu,
+    },
+    elevation::{ElevationConsent, ElevationOperation},
 };
 #[cfg(target_os = "windows")]
 use snafu::OptionExt;
 use snafu::{ResultExt, Snafu, ensure};
-use std::path::{Path, PathBuf};
 
-use nyanpasu_contracts::core_install::CoreBinaryInstallRequest;
+use crate::elevation::runner::{CommandRunner, OsCommandRunner};
 
 /// Copies a staged binary, falling back to elevation, then publishes its companion.
-pub struct FsBinaryInstaller;
+pub struct FsBinaryInstaller {
+    consent: Arc<dyn ElevationConsent>,
+}
+
+impl FsBinaryInstaller {
+    /// Uses the shell's policy only when an ordinary copy needs an elevated fallback.
+    pub fn new(consent: Arc<dyn ElevationConsent>) -> Self {
+        Self { consent }
+    }
+}
 
 #[async_trait]
 impl BinaryInstaller for FsBinaryInstaller {
@@ -22,7 +39,7 @@ impl BinaryInstaller for FsBinaryInstaller {
         &self,
         request: &CoreBinaryInstallRequest,
     ) -> Result<(), InstallCoreBinaryError> {
-        install_binary(request).await?;
+        install_binary(request, self.consent.as_ref(), Arc::new(OsCommandRunner)).await?;
         // Nothing Nyanpasu runs uses the companion, so failing to publish it fails no
         // core installation; the previous companion stays in place.
         if let Some(companion) = &request.companion
@@ -45,9 +62,19 @@ impl BinaryInstaller for FsBinaryInstaller {
     }
 }
 
-async fn install_binary(request: &CoreBinaryInstallRequest) -> Result<(), InstallCoreBinaryError> {
+async fn install_binary(
+    request: &CoreBinaryInstallRequest,
+    consent: &dyn ElevationConsent,
+    runner: Arc<dyn CommandRunner>,
+) -> Result<(), InstallCoreBinaryError> {
     if let Err(error) = tokio::fs::copy(&request.source, &request.destination).await {
-        tracing::warn!(%error, "core copy failed; requesting elevated installation");
+        tracing::warn!(%error, "core copy failed; an elevated copy is needed");
+        consent
+            .authorize(ElevationOperation::CoreBinaryCopy)
+            .context(AuthorizeCoreCopySnafu {
+                core: request.target,
+                destination: &request.destination,
+            })?;
         let source = request.source.clone();
         let destination = request.destination.clone();
         #[cfg(target_os = "windows")]
@@ -65,23 +92,22 @@ async fn install_binary(request: &CoreBinaryInstallRequest) -> Result<(), Instal
             spawn_staged_copy(&request.staging, move || {
                 #[cfg(target_os = "windows")]
                 {
-                    runas::Command::new("cmd")
-                        .args(&[
-                            "/C",
-                            "copy",
-                            "/Y",
-                            source.as_str(),
-                            destination.trim_start_matches(r"\?\"),
-                        ])
-                        .status()
+                    runner.runas(runas::Command::new("cmd").args(&[
+                        "/C",
+                        "copy",
+                        "/Y",
+                        source.as_str(),
+                        destination.trim_start_matches(r"\?\"),
+                    ]))
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    runas::Command::new("cp")
-                        .arg("-f")
-                        .arg(source)
-                        .arg(destination)
-                        .status()
+                    runner.runas(
+                        runas::Command::new("cp")
+                            .arg("-f")
+                            .arg(source)
+                            .arg(destination),
+                    )
                 }
             })
             .await,
@@ -201,6 +227,83 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
+    struct CountingConsent(std::sync::atomic::AtomicUsize);
+
+    impl ElevationConsent for CountingConsent {
+        fn authorize(
+            &self,
+            operation: ElevationOperation,
+        ) -> Result<(), nyanpasu_contracts::elevation::ElevationConsentError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            crate::elevation::RefuseElevation.authorize(operation)
+        }
+    }
+
+    fn copy_request() -> CoreBinaryInstallRequest {
+        let staging = Arc::new(TempDir::new().unwrap());
+        let source = staging.path().join("staged");
+        std::fs::write(&source, "core binary").unwrap();
+        CoreBinaryInstallRequest {
+            target: nyanpasu_config::application::ClashCore::Mihomo,
+            source,
+            destination: staging.path().join("installed"),
+            staging,
+            companion: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn refused_copy_fallback_never_spawns() {
+        use crate::elevation::runner::CountingRunner;
+        use nyanpasu_contracts::elevation::ElevationConsentError;
+        use std::sync::atomic::Ordering;
+
+        let request = copy_request();
+        // A directory is a deterministic copy failure, without changing permissions.
+        std::fs::create_dir(&request.destination).unwrap();
+        let runner = Arc::new(CountingRunner::default());
+        let consent = CountingConsent(Default::default());
+        let error = install_binary(&request, &consent, runner.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(runner.0.load(Ordering::SeqCst), 0);
+        assert_eq!(consent.0.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            error,
+            InstallCoreBinaryError::AuthorizeCoreCopy {
+                core: nyanpasu_config::application::ClashCore::Mihomo,
+                source: ElevationConsentError::AuthorizeElevation {
+                    operation: ElevationOperation::CoreBinaryCopy
+                },
+                ..
+            }
+        ));
+        assert!(request.destination.is_dir());
+        assert_eq!(
+            std::fs::read_to_string(&request.source).unwrap(),
+            "core binary"
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_plain_copy_does_not_request_elevation() {
+        use crate::elevation::runner::CountingRunner;
+        use std::sync::atomic::Ordering;
+
+        let request = copy_request();
+        let runner = Arc::new(CountingRunner::default());
+        let consent = CountingConsent(Default::default());
+        install_binary(&request, &consent, runner.clone())
+            .await
+            .unwrap();
+        assert_eq!(consent.0.load(Ordering::SeqCst), 0);
+        assert_eq!(runner.0.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            std::fs::read_to_string(&request.destination).unwrap(),
+            "core binary"
+        );
+    }
+
     #[tokio::test]
     async fn install_request_keeps_staging_when_waiter_is_dropped() {
         use futures::FutureExt as _;
@@ -289,7 +392,10 @@ mod tests {
                 destination: destination.clone(),
             }),
         };
-        FsBinaryInstaller.install(&request).await.unwrap();
+        FsBinaryInstaller::new(Arc::new(crate::elevation::RefuseElevation))
+            .install(&request)
+            .await
+            .unwrap();
         drop(request);
 
         assert_eq!(

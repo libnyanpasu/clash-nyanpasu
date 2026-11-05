@@ -1384,6 +1384,7 @@
   "error_debug_http_change_enabled_unsupported": "Включить или отключить отладочный HTTP-сервер можно только в настольном приложении",
   "error_debug_http_read_status": "Не удалось прочитать состояние отладочного HTTP-сервера",
   "error_debug_http_change_enabled": "Не удалось включить или отключить отладочный HTTP-сервер",
+  "error_elevation_authorize": "Отсюда нельзя запросить права администратора",
   "error_system_dns_run_flush_command": "Не получено разрешение на запуск {command}",
   "error_system_dns_flush_rejected": "{command} завершилась с ошибкой (код выхода {code})",
   "error_system_dns_unsupported": "Очистка кэша DNS не поддерживается в этой системе",

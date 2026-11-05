@@ -1363,6 +1363,7 @@
   "error_debug_http_change_enabled_unsupported": "디버그 HTTP는 데스크톱 앱에서만 켜거나 끌 수 있습니다",
   "error_debug_http_read_status": "디버그 HTTP 상태를 조회하지 못했습니다",
   "error_debug_http_change_enabled": "디버그 HTTP를 켜거나 끄지 못했습니다",
+  "error_elevation_authorize": "여기에서는 관리자 권한을 요청할 수 없습니다",
   "error_system_dns_run_flush_command": "{command} 실행 권한을 얻지 못했습니다",
   "error_system_dns_flush_rejected": "{command} 실행에 실패했습니다 (종료 코드 {code})",
   "error_system_dns_unsupported": "이 시스템에서는 DNS 캐시 지우기를 지원하지 않습니다",

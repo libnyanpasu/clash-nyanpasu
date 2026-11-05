@@ -370,3 +370,104 @@ fn os_port_errors_keep_display_source_and_wire_shape() {
         assert_error(&error, display, &[]);
     }
 }
+
+#[test]
+fn elevation_refusal_keeps_display_source_and_wire_shape() {
+    use crate::elevation::{ElevationConsentError, ElevationOperation};
+
+    for (operation, display, wire) in [
+        (
+            ElevationOperation::Service {
+                command: ServiceCommand::Restart,
+            },
+            "administrator access cannot be requested for the service restart command",
+            json!({"kind":"service", "command":"restart"}),
+        ),
+        (
+            ElevationOperation::DnsFlush,
+            "administrator access cannot be requested for the DNS cache flush",
+            json!({"kind":"dns_flush"}),
+        ),
+        (
+            ElevationOperation::CoreBinaryCopy,
+            "administrator access cannot be requested for the core binary copy",
+            json!({"kind":"core_binary_copy"}),
+        ),
+    ] {
+        let error = ElevationConsentError::AuthorizeElevation { operation };
+        assert_error(&error, display, &[]);
+        assert_wire(
+            &error,
+            json!({"kind":"authorize_elevation", "operation":wire}),
+        );
+    }
+}
+
+#[test]
+fn consent_consumer_errors_keep_typed_sources_and_wire_shape() {
+    use crate::elevation::{ElevationConsentError, ElevationOperation};
+
+    let refusal = |operation| ElevationConsentError::AuthorizeElevation { operation };
+    let service_operation = ElevationOperation::Service {
+        command: ServiceCommand::Install,
+    };
+    let service = ServiceCommandError::AuthorizeServiceCommand {
+        command: ServiceCommand::Install,
+        source: refusal(service_operation),
+    };
+    let dns = SystemDnsError::AuthorizeDnsFlush {
+        source: refusal(ElevationOperation::DnsFlush),
+    };
+    let copy = InstallCoreBinaryError::AuthorizeCoreCopy {
+        core: ClashCore::Mihomo,
+        destination: PathBuf::from("installed-core").into(),
+        source: refusal(ElevationOperation::CoreBinaryCopy),
+    };
+    let service_refusal = refusal(service_operation).to_string();
+    for (error, operation, display) in [
+        (
+            &service as &dyn Error,
+            service_operation,
+            format!("could not authorize the service install command: {service_refusal}"),
+        ),
+        (
+            &dns as &dyn Error,
+            ElevationOperation::DnsFlush,
+            "could not authorize flushing the system DNS cache".to_owned(),
+        ),
+        (
+            &copy as &dyn Error,
+            ElevationOperation::CoreBinaryCopy,
+            format!(
+                "could not authorize copying the {} core to installed-core",
+                ClashCore::Mihomo
+            ),
+        ),
+    ] {
+        let source_text = refusal(operation).to_string();
+        assert_error(error, &display, &[&source_text]);
+        let source = error
+            .source()
+            .unwrap()
+            .downcast_ref::<ElevationConsentError>()
+            .unwrap();
+        assert!(
+            matches!(source, ElevationConsentError::AuthorizeElevation { operation: actual } if *actual == operation)
+        );
+    }
+    assert_wire(
+        &service,
+        json!({"kind":"authorize_service_command", "command":"install",
+        "source":{"kind":"authorize_elevation", "operation":{"kind":"service", "command":"install"}}}),
+    );
+    assert_wire(
+        &dns,
+        json!({"kind":"authorize_dns_flush",
+        "source":{"kind":"authorize_elevation", "operation":{"kind":"dns_flush"}}}),
+    );
+    assert_wire(
+        &copy,
+        json!({"kind":"authorize_core_copy", "core":"mihomo", "destination":"installed-core",
+        "source":{"kind":"authorize_elevation", "operation":{"kind":"core_binary_copy"}}}),
+    );
+}

@@ -212,7 +212,7 @@ async fn executor_with_owners(
         widget,
         tray,
     ));
-    ApplicationEffectExecutor::new(system_proxy, logger, presentation)
+    ApplicationEffectExecutor::new(system_proxy, logger, Some(presentation))
 }
 
 /// A controller whose icon paths lead nowhere: the widget logo is the bundled

@@ -306,7 +306,12 @@ ports with traffic's legacy redb importer behind a feature.
 
 In phase C, presentation effects (locale, hotkeys, widget, tray) run in their own
 executor behind a core-owned port, apart from the shared effects; both
-executors are still in core.
+executors are still in core. Window control, hotkey validation, presentation
+execution and debug HTTP are optional: missing capabilities report structured
+unsupported results, and explicit hotkey edits are rejected before persistence.
+Unsupported effects neither advance applied revisions nor retry automatically.
+Observer sinks (`UiEventSink` and `FrontendLogSink`) remain required; headless
+shells provide neutral implementations.
 
 Known gaps against the target ownership:
 
@@ -328,8 +333,6 @@ Known gaps against the target ownership:
   `retry_configuration_runtime` and transaction compensation can still reach
   the desktop's elevation policy; the separately assembled server (E4) closes
   these paths by injecting a refusing policy.
-- `ClientSetupArgs` requires `WindowControl`, `AcceleratorValidator` and a
-  `DebugHttpFactory`, so a headless shell must pass stand-ins.
 - Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).

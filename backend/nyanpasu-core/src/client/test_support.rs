@@ -793,8 +793,8 @@ pub async fn test_client_args_with_endpoint(
         effects: Arc::new(effects::ports::NoopApplicationEffects),
         // A mock rather than a no-op: a test that dispatches a window
         // action without saying so should fail, not pass silently.
-        window: Arc::new(hotkey::ports::MockWindowControl::new()),
-        accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
+        window: Some(Arc::new(hotkey::ports::MockWindowControl::new())),
+        accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         traffic_store: None,
         shutdown,
         tasks,
@@ -922,11 +922,11 @@ pub fn test_adapters(
     ClientHostAdapters {
         icon_fetcher: Arc::new(MockIconFetcher::new()),
         network_diagnostics: Arc::new(MockNetworkDiagnostics::new()),
-        debug_http: Arc::new(|| {
+        debug_http: Some(Arc::new(|| {
             Box::pin(async {
                 Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)
             })
-        }),
+        })),
         changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
         runtime_build,
         profile_files,

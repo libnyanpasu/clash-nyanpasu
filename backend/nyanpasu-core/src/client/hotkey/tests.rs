@@ -578,7 +578,7 @@ mod facade {
             crate::client::test_support::profile_test_adapters(dir),
         )
         .await;
-        args.window = Arc::new(window);
+        args.window = Some(Arc::new(window));
         NyanpasuClient::try_new(args)
             .await
             .expect("client should construct")

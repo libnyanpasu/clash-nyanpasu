@@ -46,5 +46,5 @@ pub struct ClientHostAdapters {
     /// Supplies release-note HTTP access bound to the session proxy source.
     pub changelog_http: Arc<ChangelogHttpFactory>,
     /// Supplies HTTP lifecycle control whose shutdown must drain the owner before returning.
-    pub debug_http: Arc<DebugHttpFactory>,
+    pub debug_http: Option<Arc<DebugHttpFactory>>,
 }

@@ -1333,6 +1333,7 @@ export type ConfigError =
   | { kind: 'invalid_public_ip_probe_sources'; reason: string }
   | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
+  | { kind: 'validate_hotkey_capability' }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
   /**  The owner's mailbox is closed, or it dropped the reply. */
@@ -1934,6 +1935,13 @@ export type CoreVersionError =
   | { kind: 'core_version_exit'; core: string }
   | { kind: 'core_version_not_reported'; core: string }
 
+/**  Why a debug HTTP query or setting change could not be performed. */
+export type DebugHttpControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_enabled_unsupported' }
+  | { kind: 'read_status' }
+  | { kind: 'change_enabled' }
+
 export type DebugHttpStatus = {
   enabled: boolean
   url: string | null
@@ -2092,11 +2100,13 @@ export type EffectConvergence = {
 /**
  *  Why an effect is not in its desired state, in the terms the UI localizes.
  *
- *  One value per kind of failure, named after the effect that failed. The
+ *  One value per kind of failure, named after the effect that failed, or
+ *  after the capability a shell lacks when several effects share it. The
  *  owner that classifies a failure is the one that picks the code; the
  *  message beside it is only the diagnostic text.
  */
 export type EffectFailureCode =
+  | 'presentation_unsupported'
   | 'hotkey_invalid_bindings'
   | 'hotkey_partial_registration'
   | 'hotkey_shut_down'
@@ -2493,6 +2503,7 @@ export type IpcErrorKind =
   | { domain: 'system_dns'; error: SystemDnsError }
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
+  | { domain: 'debug_http'; error: DebugHttpControlError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }

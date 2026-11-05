@@ -14,8 +14,8 @@ use nyanpasu_contracts::net::StunServerTest;
 use nyanpasu_core::{
     client::{
         ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
-        direct_egress::DirectEgress, effects::error::EffectsError,
-        system_proxy::ports::OsProxyError,
+        debug_http::DebugHttpControlError, direct_egress::DirectEgress,
+        effects::error::EffectsError, system_proxy::ports::OsProxyError,
     },
     state::{
         config_error::ConfigError,
@@ -72,6 +72,13 @@ pub enum IpcErrorKind {
     SystemDns(Box<SystemDnsError>),
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
+    DebugHttp(Box<DebugHttpControlError>),
+}
+
+impl From<DebugHttpControlError> for IpcErrorKind {
+    fn from(error: DebugHttpControlError) -> Self {
+        Self::DebugHttp(Box::new(error))
+    }
 }
 
 impl From<EffectsError> for IpcErrorKind {
@@ -2377,6 +2384,25 @@ mod tests {
     #[test]
     fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
         assert_eq!(
+            wire(super::ConfigError::ValidateHotkeyCapability)["kind"],
+            json!({ "domain": "config", "error": { "kind": "validate_hotkey_capability" } })
+        );
+        for (error, kind) in [
+            (
+                super::DebugHttpControlError::ReadStatusUnsupported,
+                "read_status_unsupported",
+            ),
+            (
+                super::DebugHttpControlError::ChangeEnabledUnsupported,
+                "change_enabled_unsupported",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(IpcError::from(error)).unwrap()["kind"],
+                json!({ "domain": "debug_http", "error": { "kind": kind } })
+            );
+        }
+        assert_eq!(
             wire(ProfilesError::ShuttingDown)["kind"],
             json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
         );
@@ -2388,6 +2414,27 @@ mod tests {
 
     #[test]
     fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
+        for (error, kind) in [
+            (
+                super::DebugHttpControlError::ReadStatus {
+                    source: anyhow::anyhow!("read cause"),
+                },
+                "read_status",
+            ),
+            (
+                super::DebugHttpControlError::ChangeEnabled {
+                    source: anyhow::anyhow!("change cause"),
+                },
+                "change_enabled",
+            ),
+        ] {
+            let wire = serde_json::to_value(IpcError::from(error)).unwrap();
+            assert_eq!(
+                wire["kind"],
+                json!({ "domain": "debug_http", "error": { "kind": kind } })
+            );
+            assert!(wire["detail"].as_str().unwrap().contains("cause"));
+        }
         let fetch = wire(ProfilesError::FetchSubscription {
             url: "https://sub.example/x".parse().unwrap(),
             source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },

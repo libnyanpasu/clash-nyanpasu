@@ -37,6 +37,8 @@ mod error;
 mod event_sink;
 pub mod frontend_events;
 mod geo_mode;
+#[cfg(test)]
+mod headless_tests;
 pub mod host_adapters;
 pub mod hotkey;
 pub mod jobs;
@@ -64,7 +66,7 @@ pub(crate) mod traffic_frames;
 use self::{
     application::ApplicationClient,
     clash_config::ClashConfigClient,
-    debug_http::{DebugHttpControl, DebugHttpStatus},
+    debug_http::{DebugHttpControl, DebugHttpControlError, DebugHttpStatus},
     host_adapters::ClientHostAdapters,
     session_state::SessionStateClient,
 };
@@ -136,8 +138,9 @@ pub struct ClientSetupArgs {
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
-    pub window: Arc<dyn hotkey::ports::WindowControl>,
-    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    pub window: Option<Arc<dyn hotkey::ports::WindowControl>>,
+    /// The shell supplies this if and only if its presentation executor registers hotkeys.
+    pub accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
     /// The root shutdown token. The composition root owns it because some
@@ -246,7 +249,7 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
-    debug_http: Arc<dyn DebugHttpControl>,
+    debug_http: Option<Arc<dyn DebugHttpControl>>,
     bundle_metadata: BundleMetadata,
     core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
@@ -281,10 +284,10 @@ struct NyanpasuClientInner {
     _geo_index: nyanpasu_observers::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
-    window: Arc<dyn hotkey::ports::WindowControl>,
+    window: Option<Arc<dyn hotkey::ports::WindowControl>>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
-    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// The root shutdown token; `request_shutdown` cancels it.
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
@@ -423,26 +426,29 @@ impl NyanpasuClient {
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
-        window: Arc<dyn hotkey::ports::WindowControl>,
-        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        window: Option<Arc<dyn hotkey::ports::WindowControl>>,
+        accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
         traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
         let icons =
             crate::service::icon::IconService::new(paths.clone(), host_adapters.icon_fetcher);
-        let debug_http = (host_adapters.debug_http)()
-            .await
-            .context(StartHttpServerSnafu)?;
-        tasks.spawn({
-            let (http, token) = (debug_http.clone(), shutdown.child_token());
-            async move {
-                token.cancelled().await;
-                if let Err(error) = http.shutdown().await {
-                    tracing::warn!(%error, "debug HTTP server shutdown failed");
+        let debug_http = if let Some(factory) = host_adapters.debug_http {
+            let http = factory().await.context(StartHttpServerSnafu)?;
+            tasks.spawn({
+                let (http, token) = (http.clone(), shutdown.child_token());
+                async move {
+                    token.cancelled().await;
+                    if let Err(error) = http.shutdown().await {
+                        tracing::warn!(%error, "debug HTTP server shutdown failed");
+                    }
                 }
-            }
-        });
+            });
+            Some(http)
+        } else {
+            None
+        };
         let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
@@ -692,14 +698,35 @@ impl NyanpasuClient {
         })
     }
 
-    pub async fn debug_http_status(&self) -> anyhow::Result<DebugHttpStatus> {
-        self.inner.debug_http.status().await
+    pub async fn debug_http_status(
+        &self,
+    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
+        let http = self
+            .inner
+            .debug_http
+            .as_ref()
+            .ok_or(DebugHttpControlError::ReadStatusUnsupported)?;
+        http.status()
+            .await
+            .map_err(|source| DebugHttpControlError::ReadStatus { source })
     }
-    pub async fn set_debug_http_enabled(&self, enabled: bool) -> anyhow::Result<DebugHttpStatus> {
-        self.inner.debug_http.set_enabled(enabled).await
+    pub async fn set_debug_http_enabled(
+        &self,
+        enabled: bool,
+    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
+        let http = self
+            .inner
+            .debug_http
+            .as_ref()
+            .ok_or(DebugHttpControlError::ChangeEnabledUnsupported)?;
+        http.set_enabled(enabled)
+            .await
+            .map_err(|source| DebugHttpControlError::ChangeEnabled { source })
     }
     pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
-        self.inner.debug_http.set_enabled(false).await?;
+        if let Some(http) = &self.inner.debug_http {
+            http.set_enabled(false).await?;
+        }
         Ok(())
     }
 
@@ -986,7 +1013,7 @@ impl NyanpasuClient {
         patch: NyanpasuAppConfigPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
-            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
+            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_deref())?;
         }
         let client = self.inner.application.clone();
         Ok(client.patch(patch).await?.outcome())
@@ -2506,10 +2533,10 @@ pub(crate) mod tests {
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
-            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            window: Some(Arc::new(hotkey::ports::MockWindowControl::new())),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
-            accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
+            accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
             traffic_store: None,
             shutdown,
             tasks,

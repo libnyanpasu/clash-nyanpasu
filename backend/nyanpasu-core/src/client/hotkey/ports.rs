@@ -159,6 +159,8 @@ pub enum ShortcutError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum WindowError {
+    #[snafu(display("toggling the dashboard window is not supported"))]
+    ToggleDashboardUnsupported,
     #[snafu(display("could not toggle the dashboard window"))]
     ToggleDashboard {
         source: Box<dyn std::error::Error + Send + Sync>,

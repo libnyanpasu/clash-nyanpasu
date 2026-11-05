@@ -369,7 +369,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         host_adapters: ClientHostAdapters {
             icon_fetcher: network.clone(),
             network_diagnostics: network,
-            debug_http: {
+            debug_http: Some({
                 let frontend = Some(debug_http_frontend(&app_handle));
                 Arc::new(move || {
                     let (frontend, routes) = (frontend.clone(), http_routes.clone());
@@ -380,7 +380,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                         Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
                     })
                 })
-            },
+            }),
             changelog_http: Arc::new(move |ports| {
                 Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(
                     ports,
@@ -487,8 +487,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         ),
         core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
         effects,
-        window: Arc::new(TauriWindowControl::new(app_handle.clone())),
-        accelerators: Arc::new(PlatformAcceleratorValidator),
+        window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
+        accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
@@ -737,7 +737,7 @@ fn build_application_effects(
     let executor = Arc::new(ApplicationEffectExecutor::new(
         system_proxy,
         Arc::new(TracingLoggerRefresher::new(logger_reload)),
-        presentation,
+        Some(presentation),
     ));
     Ok((executor, widget))
 }

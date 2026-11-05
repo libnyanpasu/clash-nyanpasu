@@ -7,6 +7,7 @@ import {
 } from '@/utils/ipc-error'
 import type {
   ConfigError,
+  DebugHttpControlError,
   EffectsError,
   IpcError,
   OsProxyError,
@@ -571,5 +572,35 @@ test('a failed system proxy write names the address it was going to', () => {
 test('a retry that cannot reach the effects owner says it is not running', () => {
   expect(ipcErrorMessage(effects({ kind: 'effects_stopped' }))).toBe(
     m.error_effects_stopped(),
+  )
+})
+
+test('hotkey_capability_error_uses_its_message', () => {
+  expect(ipcErrorMessage(config({ kind: 'validate_hotkey_capability' }))).toBe(
+    m.error_config_hotkey_capability_unsupported(),
+  )
+})
+
+test.each([
+  ['read_status_unsupported', m.error_debug_http_read_status_unsupported],
+  ['change_enabled_unsupported', m.error_debug_http_change_enabled_unsupported],
+  ['read_status', m.error_debug_http_read_status],
+  ['change_enabled', m.error_debug_http_change_enabled],
+] satisfies [DebugHttpControlError['kind'], () => string][])(
+  'debug_http_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'debug_http', error: { kind } },
+        message: 'the backend text',
+        detail: 'the backend text: caused by',
+      }),
+    ).toBe(message())
+  },
+)
+
+test('presentation_unsupported_uses_its_message', () => {
+  expect(effectFailureMessage('presentation_unsupported')).toBe(
+    m.effect_failure_presentation_unsupported(),
   )
 })

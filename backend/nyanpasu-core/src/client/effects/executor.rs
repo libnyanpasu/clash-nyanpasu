@@ -17,7 +17,7 @@ use super::{
         SystemProxyDesired,
     },
     ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, PresentationEffectsPort},
-    status::{self, EffectFailureCode, EffectRevision, EffectStatus},
+    status::{self, EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::{clash::ws::StreamsClient, client::system_proxy::SystemProxyClient};
 
@@ -25,15 +25,15 @@ use crate::{clash::ws::StreamsClient, client::system_proxy::SystemProxyClient};
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,
     logger: Arc<dyn LoggerRefresher>,
-    presentation: Arc<dyn PresentationEffectsPort>,
+    presentation: Option<Arc<dyn PresentationEffectsPort>>,
 }
 
 impl ApplicationEffectExecutor {
-    /// Wires the shared owners and the required presentation executor.
+    /// Wires the shared owners and an optional presentation executor.
     pub fn new(
         system_proxy: SystemProxyClient,
         logger: Arc<dyn LoggerRefresher>,
-        presentation: Arc<dyn PresentationEffectsPort>,
+        presentation: Option<Arc<dyn PresentationEffectsPort>>,
     ) -> Self {
         Self {
             system_proxy,
@@ -89,15 +89,25 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                 | ApplicationEffect::Widget(_)
                 | ApplicationEffect::WidgetLogo(_)
                 | ApplicationEffect::Tray(_, _) => {
-                    statuses.extend(
-                        self.presentation
-                            .apply(
-                                revision,
-                                ApplicationEffectPlan::from_effects(vec![effect.clone()]),
-                            )
-                            .await,
-                    );
-                    continue;
+                    if let Some(presentation) = &self.presentation {
+                        statuses.extend(
+                            presentation
+                                .apply(
+                                    revision,
+                                    ApplicationEffectPlan::from_effects(vec![effect.clone()]),
+                                )
+                                .await,
+                        );
+                        continue;
+                    }
+                    EffectStatus {
+                        kind: effect.kind(),
+                        desired_revision: revision,
+                        applied_revision: EffectRevision::default(),
+                        health: EffectHealth::Unsupported {
+                            code: EffectFailureCode::PresentationUnsupported,
+                        },
+                    }
                 }
                 ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
                 ApplicationEffect::CoreLogLevel(_) | ApplicationEffect::CoreLogStorage(_) => {

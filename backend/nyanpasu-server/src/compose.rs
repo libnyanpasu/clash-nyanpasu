@@ -122,19 +122,20 @@ impl Server {
         &self.client
     }
 
-    /// The registry the local socket serves. A headless shell provides no shell
-    /// capability, so a command that needs one is not registered.
+    /// The registry the transports serve. A headless shell provides no shell
+    /// capability, so a command that needs one is not registered. `web_tickets`
+    /// is the issuer of the listener that serves the WebUI, or unavailable.
     ///
     /// # Errors
     /// Returns an error when two linked commands share a name.
-    pub fn rpc(&self) -> anyhow::Result<UnifiedRpc> {
+    pub fn rpc(&self, web_tickets: WebTickets) -> anyhow::Result<UnifiedRpc> {
         UnifiedRpc::new(
             RpcDependencies {
                 client: self.client.clone(),
                 storage: self.storage.clone(),
                 paths: self.paths.clone(),
                 events: self.events.clone(),
-                web_tickets: WebTickets::unavailable(),
+                web_tickets,
             },
             &[],
         )

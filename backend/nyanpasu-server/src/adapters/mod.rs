@@ -7,6 +7,7 @@
 mod effects;
 mod host;
 mod intent;
+mod webui;
 
 pub use effects::UnsupportedEffects;
 pub use host::{
@@ -14,3 +15,4 @@ pub use host::{
     NoProxyEnvironment, NoServiceHost, NoWindows,
 };
 pub use intent::FileCoreIntent;
+pub use webui::DirAssets;

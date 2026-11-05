@@ -19,7 +19,7 @@ nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false 
 nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
-nyanpasu-rpc = { path = '../nyanpasu-rpc', features = ['local-server'] }
+nyanpasu-rpc = { path = '../nyanpasu-rpc', features = ['local-server', 'http'] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol' }
 nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
@@ -44,4 +44,5 @@ tracing-subscriber = { version = '0.3', features = ['env-filter'] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', features = [
   'local-client'
 ] }
+reqwest = { workspace = true }
 tempfile = '3.9.0'

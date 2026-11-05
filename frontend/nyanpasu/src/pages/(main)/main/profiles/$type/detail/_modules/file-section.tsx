@@ -1,7 +1,7 @@
 import EditDocumentOutlineRounded from '~icons/material-symbols/edit-document-outline-rounded'
 import FolderOpenOutlineRounded from '~icons/material-symbols/folder-open-outline-rounded'
 import { m } from '@/paraglide/messages'
-import { rpc } from '@/services/rpc'
+import { openEditorWindow } from '@/utils/editor-window'
 import { useLockFn } from '@nyanpasu/hooks'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { hasMaterializedFile } from '../../../_modules/utils'
@@ -15,7 +15,7 @@ export default function FileSection({
   profile: ProfileItem_Serialize
 }) {
   const editContent = useLockFn(async () => {
-    await rpc.createEditorWindow('profile', profile.uid)
+    await openEditorWindow('profile', profile.uid)
   })
 
   const showInFileManager = useShowInFileManager(profile)

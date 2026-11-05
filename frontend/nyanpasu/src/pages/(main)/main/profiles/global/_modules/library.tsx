@@ -6,7 +6,7 @@ import { useId, useMemo, useState } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { m } from '@/paraglide/messages'
-import { rpc } from '@/services/rpc'
+import { openEditorWindow } from '@/utils/editor-window'
 import { cn } from '@nyanpasu/utils'
 import {
   CompactButton,
@@ -72,7 +72,7 @@ function LibraryRow({
         label={m.profile_global_library_open_editor({ name: profile.name })}
         data-slot="profile-global-library-open-editor"
         onClick={async () => {
-          await rpc.createEditorWindow('profile', profile.uid)
+          await openEditorWindow('profile', profile.uid)
         }}
       >
         <EditSquareOutlineRounded className="size-5" aria-hidden />

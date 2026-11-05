@@ -2,18 +2,15 @@ import { useEffect, useState } from 'react'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import useCustomCss from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
+import { closeEditorWindow } from '@/utils/editor-window'
 import { registerCssDataSlotCompletion } from '@/utils/monaco-css'
 import { message } from '@/utils/notification'
 import MonacoEditor from '@monaco-editor/react'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
 import { createFileRoute } from '@tanstack/react-router'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import ActionButton from '../_modules/action-button'
 import Header from '../_modules/header'
 import { MONACO_FONT_FAMILY } from '../_modules/utils'
-
-const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS/LESS Editor! */
 /* You can write standard CSS or LESS syntax to customize the appearance of the app. */
@@ -54,7 +51,7 @@ function RouteComponent() {
     try {
       await customCss.upsert(editorValue)
       if (close) {
-        await currentWindow?.close()
+        await closeEditorWindow()
       }
     } catch (error) {
       await message(m.custom_css_save_error(), { kind: 'error', error })
@@ -67,7 +64,7 @@ function RouteComponent() {
   })
 
   const handleCancel = useLockFn(async () => {
-    await currentWindow?.close()
+    await closeEditorWindow()
   })
 
   return (

@@ -2,7 +2,7 @@ import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-ro
 import { Button } from '@nyanpasu/ui/button'
 import useCustomCss from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
-import { rpc } from '@/services/rpc'
+import { openEditorWindow } from '@/utils/editor-window'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
   ItemContainer,
@@ -20,7 +20,7 @@ export default function CustomCssCard() {
   const isLarge = charCount > 100_000
 
   const handleOpen = useLockFn(async () => {
-    await rpc.createEditorWindow('css-editor', null)
+    await openEditorWindow('css-editor', null)
   })
 
   return (

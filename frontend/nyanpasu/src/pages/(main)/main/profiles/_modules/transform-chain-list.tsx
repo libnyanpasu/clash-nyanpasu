@@ -22,8 +22,8 @@ import {
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { m } from '@/paraglide/messages'
-import { rpc } from '@/services/rpc'
 import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
+import { openEditorWindow } from '@/utils/editor-window'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
@@ -146,7 +146,7 @@ function CardItemContent({
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onSelect={async () => {
-              await rpc.createEditorWindow('profile', profile.uid)
+              await openEditorWindow('profile', profile.uid)
             }}
           >
             {m.profile_chain_editor_open_editor()}
@@ -247,7 +247,7 @@ function StepItemContent({
         label={m.profile_chain_editor_open_editor()}
         data-slot="profile-chain-editor-open-editor"
         onClick={async () => {
-          await rpc.createEditorWindow('profile', profile.uid)
+          await openEditorWindow('profile', profile.uid)
         }}
       >
         <EditSquareOutlineRounded className="size-5" aria-hidden />

@@ -42,6 +42,7 @@ planned below. The current layout is:
 backend/tauri/src/
   setup.rs                 desktop composition root
   adapters/                GUI adapters and frontend event delivery
+  desktop/                 hotkey owner, main-thread handoff and presentation effects
   ipc.rs, unified_rpc.rs   RPC transport adapters
   server/                  HTTP transport
           |

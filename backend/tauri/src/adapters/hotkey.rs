@@ -7,14 +7,16 @@ use snafu::{ResultExt as _, ensure};
 use tauri::Manager as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use nyanpasu_core::client::{
-    MainThreadExecutor,
+use crate::desktop::{
     hotkey::ports::{
-        AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError,
-        MissingSuperKeySnafu, RegisterShortcutSnafu, ReleaseAllShortcutsSnafu,
-        ReleaseShortcutSnafu, RunShortcutWorkSnafu, ShortcutError, ShortcutRegistrar,
-        UnsupportedAcceleratorSnafu, WindowControl, WindowError, has_super_key,
+        HotkeyActionSink, RegisterShortcutSnafu, ReleaseAllShortcutsSnafu, ReleaseShortcutSnafu,
+        RunShortcutWorkSnafu, ShortcutError, ShortcutRegistrar,
     },
+    main_thread::MainThreadExecutor,
+};
+use nyanpasu_core::client::hotkey::ports::{
+    AcceleratorValidator, HotkeyAction, HotkeyParseError, MissingSuperKeySnafu,
+    UnsupportedAcceleratorSnafu, WindowControl, WindowError, has_super_key,
 };
 
 /// The accelerator rules the platform actually enforces: the shortcut plugin's

@@ -7,7 +7,6 @@ pub mod error;
 pub mod executor;
 pub mod plan;
 pub mod ports;
-pub mod presentation;
 pub mod status;
 
 impl NyanpasuClient {

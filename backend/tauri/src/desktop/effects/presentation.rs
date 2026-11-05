@@ -7,20 +7,20 @@ use std::sync::{
 };
 
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
-
-use super::{
-    plan::{
-        ApplicationEffect, ApplicationEffectPlan, EffectKind, TrayRefresh, TrayView,
-        WidgetLogoDesired,
+use nyanpasu_core::client::{
+    effects::{
+        plan::{
+            ApplicationEffect, ApplicationEffectPlan, EffectKind, TrayRefresh, TrayView,
+            WidgetLogoDesired,
+        },
+        ports::PresentationEffectsPort,
+        status::{self, EffectRevision, EffectStatus},
     },
-    ports::{LocaleSink, PresentationEffectsPort, TrayRefresher, WidgetController},
-    status::{self, EffectRevision, EffectStatus},
+    hotkey::ports::{AcceleratorValidator, HotkeyBindings},
 };
-use crate::client::hotkey::{
-    HotkeyClient,
-    error::InvalidBindingsSnafu,
-    ports::{AcceleratorValidator, HotkeyBindings},
-};
+
+use super::ports::{LocaleSink, TrayRefresher, WidgetController};
+use crate::desktop::hotkey::{HotkeyClient, error::InvalidBindingsSnafu};
 
 /// Applies locale, hotkey, widget and tray desires in the supplied plan order.
 /// Shared effects stay with the application executor; the effects actor owns

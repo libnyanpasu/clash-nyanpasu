@@ -113,7 +113,8 @@ pub struct EffectStatus {
     pub health: EffectHealth,
 }
 
-pub(crate) fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
+/// Reports that the requested effect revision was applied successfully.
+pub fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
     EffectStatus {
         kind,
         desired_revision: revision,
@@ -122,7 +123,8 @@ pub(crate) fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatu
     }
 }
 
-pub(crate) fn degraded(
+/// Reports an effect failure without advancing the applied revision.
+pub fn degraded(
     kind: EffectKind,
     revision: EffectRevision,
     code: EffectFailureCode,

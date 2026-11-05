@@ -30,20 +30,21 @@ use crate::{
             RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
     },
+    desktop::{
+        effects::{ports::LocaleSink, presentation::PresentationEffectExecutor},
+        hotkey::{HotkeyArgs, HotkeyClient},
+        main_thread::MainThreadExecutor,
+    },
     utils::init::logging::ReloadSignal,
 };
 use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
-        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, RuntimePaths, StateChanged,
-        UiEventSink,
+        ClientSetupArgs, NyanpasuClient, RuntimePaths, StateChanged, UiEventSink,
         debug_http::DebugHttpControl,
-        effects::{
-            executor::ApplicationEffectExecutor, ports::LocaleSink,
-            presentation::PresentationEffectExecutor,
-        },
+        effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
-        hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
+        hotkey::ports::HotkeyAction,
         system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
     storage::{RedbHotkeyStoreOpener, StorageNotification},
@@ -176,7 +177,7 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to spawn hotkeys"))]
     SpawnHotkeys {
-        source: nyanpasu_core::client::hotkey::Error,
+        source: crate::desktop::hotkey::Error,
     },
     #[snafu(display("failed to open storage"))]
     OpenStorage {
@@ -210,7 +211,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(rpc_events);
     // Shared with the panic hook, which takes the main thread's work over
     // once the event loop is gone.
-    let main_thread_handoff = Arc::new(nyanpasu_core::client::MainThreadHandoff::default());
+    let main_thread_handoff = Arc::new(crate::desktop::main_thread::MainThreadHandoff::default());
     app.manage(main_thread_handoff.clone());
     let main_thread: Arc<dyn MainThreadExecutor> = Arc::new(TauriMainThread::new(
         app_handle.clone(),

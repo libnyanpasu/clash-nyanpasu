@@ -113,10 +113,10 @@ impl dyn MainThreadExecutor {
 
 /// Runs every task on the calling thread, which is what Tauri does when the
 /// caller is already on the main thread.
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 pub struct InlineMainThread;
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 impl MainThreadExecutor for InlineMainThread {
     fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), MainThreadError> {
         task();

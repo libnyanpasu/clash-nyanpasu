@@ -310,8 +310,11 @@ formats and atomic writes live in persistence, and facade storage inputs are
 ports with traffic's legacy redb importer behind a feature.
 
 In phase C, presentation effects (locale, hotkeys, widget, tray) run in their own
-executor behind a core-owned port, apart from the shared effects; both
-executors are still in core. Window control, hotkey validation, presentation
+executor behind a core-owned port, apart from the shared effects. C3a moves
+presentation execution, the hotkey owner and the main-thread handoff into the
+Tauri shell; core keeps hotkey parsing, action dispatch and shared effect
+convergence, and no core-family package depends on the widget protocol
+directly. Window control, hotkey validation, presentation
 execution and debug HTTP are optional: missing capabilities report structured
 unsupported results, and explicit hotkey edits are rejected before persistence.
 Unsupported effects neither advance applied revisions nor retry automatically.
@@ -340,8 +343,6 @@ Known gaps against the target ownership:
 - Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).
-- Effect execution for hotkeys, tray, widgets and locale, and the main-thread
-  handoff, still live in core.
 - The RPC registry, command declarations and HTTP server live in the Tauri
   crate ([RPC targets](#rpc-targets)).
 

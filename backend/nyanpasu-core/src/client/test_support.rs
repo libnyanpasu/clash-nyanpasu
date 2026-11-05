@@ -870,7 +870,7 @@ pub fn runtime_core_spec(
 
 /// Accepts anything the shape rules already let through, so the registration
 /// tests read as the spelling under test rather than as a platform verdict.
-pub(crate) struct AnyAccelerator;
+pub struct AnyAccelerator;
 
 impl hotkey::ports::AcceleratorValidator for AnyAccelerator {
     fn validate(

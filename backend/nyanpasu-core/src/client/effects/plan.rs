@@ -456,7 +456,7 @@ mod tests {
     use nyanpasu_config::{
         application::{
             ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
-            ProxiesSelectorMode, TrayMenuMode,
+            ProxiesSelectorMode, StatisticWidgetVariant, TrayMenuMode,
         },
         clash::config::{
             ClashConfig,
@@ -464,7 +464,6 @@ mod tests {
         },
         runtime::executor::ResolvedPortBindings,
     };
-    use nyanpasu_widget_protocol::StatisticWidgetVariant;
 
     fn inputs() -> ApplicationEffectInputs {
         ApplicationEffectInputs {

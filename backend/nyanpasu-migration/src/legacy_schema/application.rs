@@ -1,9 +1,8 @@
 use super::verge::{self as legacy_app, IVerge};
 use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
-    WindowCloseOverride,
+    StatisticWidgetVariant, WindowCloseOverride,
 };
-use nyanpasu_widget_protocol::StatisticWidgetVariant;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {

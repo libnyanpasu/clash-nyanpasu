@@ -65,7 +65,9 @@ concrete GUI adapters in `backend/tauri/src/adapters/`. There is no desktop
 interaction crate: the server needs none of these mechanisms, and new crate
 boundaries brought no desktop compile-time gain. Core owns the ports it
 consumes, hotkey validation before commit, hotkey action dispatch and the shared
-convergence of effects (revisions, status, receipts).
+convergence of effects (revisions, status, receipts). No core-family package
+depends on the widget protocol directly; config uses its render-free widget
+variant and re-exports it.
 
 Core treats window control, hotkey validation, presentation-effect execution
 and the debug HTTP server as optional. Without one, an operation that needs it

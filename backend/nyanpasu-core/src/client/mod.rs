@@ -42,7 +42,6 @@ pub mod host_adapters;
 pub mod hotkey;
 pub mod jobs;
 pub mod logs;
-pub mod main_thread;
 #[cfg(test)]
 mod network_tests;
 mod ports;
@@ -104,7 +103,6 @@ use struct_patch::Patch as _;
 
 pub use error::{ClientError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
-pub use main_thread::{MainThreadExecutor, MainThreadHandoff, MainThreadWork};
 use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;

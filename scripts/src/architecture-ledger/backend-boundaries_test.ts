@@ -109,6 +109,10 @@ test('transitive GUI and host dependencies invalidate neutral packages', () => {
     ],
   )
   assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-core', 'tauri v2.4.0\n'),
+    ['nyanpasu-core must not depend on tauri'],
+  )
+  assert.deepStrictEqual(
     dependencyViolations('nyanpasu-core', 'tauri-specta v2.0.0\n'),
     ['nyanpasu-core must not depend on tauri-specta'],
   )
@@ -127,11 +131,11 @@ test('transitive GUI and host dependencies invalidate neutral packages', () => {
   )
 })
 
-test('core may depend on foundation packages', () => {
+test('core may consume render-free widget protocol through config', () => {
   assert.deepStrictEqual(
     dependencyViolations(
       'nyanpasu-core',
-      'nyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-profile-transform v0.1.0\n',
+      'nyanpasu-config v0.1.0\nnyanpasu-widget-protocol v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-profile-transform v0.1.0\n',
     ),
     [],
   )

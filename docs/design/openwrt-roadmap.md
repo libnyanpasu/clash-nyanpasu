@@ -330,6 +330,90 @@ LuCI to the server's HTTP port with a ticket, then as a reduced router build.
 Still open: F1 and F3–F6 (the upstream C1/C2 host capabilities), F10
 (`gxhash`), aarch64, and realistic transform measurements.
 
+## Container integration, 2026-11-05
+
+Unit 5. The real `nyanpasu-server`, `nyanpasu-cli` (stripped musl builds) and
+Mihomo ran in an `openwrt/rootfs:x86-64-25.12.6` container under procd, with
+LuCI on host port 8080. Mihomo sits at `/usr/share/nyanpasu/mihomo`, the
+server's `<data-dir>/mihomo`. The container has no `CAP_NET_ADMIN`, so the
+network and firewall pages fail as expected; nothing in the MVP needs them.
+
+### What works
+
+- The MVP loop through LuCI over HTTP (`/ubus` login, then the three views in a
+  headless browser): import a YAML profile, create a JavaScript transform,
+  attach, reorder and detach it, select the profile, Start / apply, Stop, read
+  the redacted and the full runtime YAML, read the logs.
+- Failures show as LuCI notifications with the RpcError kind, the domain kind
+  and the domain detail. An unreachable server shows its own message and
+  whether the command may still have run.
+- State persists across a server restart: the selected profile, the profile
+  list and the last start or stop intent.
+
+### Verified
+
+| Check                                  | Root                                     | `viewer` (read ACL only)                       |
+| -------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| The six read methods                   | allowed                                  | allowed                                        |
+| The ten write methods, incl. full YAML | allowed                                  | `Access denied`, each one                      |
+| Redacted YAML                          | `secret: <redacted>`                     | `secret: <redacted>`                           |
+| Full YAML                              | the real secret, behind a warning        | denied; the checkbox is not rendered           |
+| Views                                  | no JS error beyond LuCI's own login page | read-only banner; no buttons, forms or deletes |
+| `session.access` probe for `stop_core` | true                                     | false                                          |
+
+### Crash policy under procd
+
+The init script respawns after 5 s and gives up after 5 failures that each
+happen within 3600 s of a start.
+
+| Case                                                                | Result                                                                     |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `kill -9` the server with the core running                          | procd respawns it; the old Mihomo is gone within a second, never two cores |
+| The same, with the last intent `stop_core`                          | the core stays stopped                                                     |
+| Two further kills                                                   | respawned each time, core still stopped                                    |
+| `/etc/init.d/nyanpasu restart` after `stop_core` / `reconcile_core` | stopped stays stopped; running comes back running                          |
+
+The orphaned core of F7 did not survive here. Why Mihomo died with the server
+is not established (procd tearing the instance down, or the process group);
+the same crash outside procd was not tried. Cgroup containment was still
+unavailable (`failed adding instance cgroup`).
+
+### Findings
+
+| #   | Finding                                                                                                                                                                                                                                                                                                                 | Direction                                                                                |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| F12 | A profile whose YAML root is not a mapping (empty, comment-only, a bare scalar) is accepted by `create_profile` and `activate_profile`, then panics `get_runtime_yaml_redacted` and `inspect_runtime` in core (`runtime_inspection.rs:304`, root `Null`; a scalar root panics in the graph restore). Not fixed in core. | Validate the root at profile commit, or return an error from inspection, not a panic.    |
+| F13 | Before the transport caught handler panics, F12 left the CLI waiting for its deadline and then reporting an unknown outcome. `serve_local` now answers a panicking command with an `internal` RpcError and keeps the connection.                                                                                        | Done for the local socket; the HTTP transport was not changed and may have the same gap. |
+| F14 | Parameter keys are camelCase (`fileData`, not `file_data`) and unknown keys are ignored silently, so a misspelled optional key is a no-op.                                                                                                                                                                              | Reject unknown keys in the command DTOs.                                                 |
+| F15 | The status is a projection: it lags `stop_core` by about two seconds, can be empty right after a reconcile, and the status inside a mutation reply can be stale. LuCI re-reads it until the expected state shows.                                                                                                       | Keep this as the contract, or have lifecycle replies carry the settled state.            |
+| F16 | The headless server never started the Clash streams, so the core log store stayed empty. It now starts them as the desktop shell does. The resident cost on a router was not measured.                                                                                                                                  | Measure memory with the streams running on a real router.                                |
+| F17 | `reconcile_core` returns the effective config, including the controller secret, in `effective_config`. It is under the write ACL, so only root gets it, but a caller that logs replies would leak it.                                                                                                                   | Drop the config from the local reply, or redact it.                                      |
+| F18 | procd's `respawn 3600 5 5` ends the respawning after five crashes within an hour; only a `restart` resets it.                                                                                                                                                                                                           | Decide whether a router should give up, and how it reports that.                         |
+
+LuCI has no profile editor, so there is no save path to guard. Import refuses
+an empty or non-mapping YAML in the browser (F12); nothing stops another ubus
+caller with the write ACL from sending one.
+
+### Trying it
+
+The container `nyanpasu-openwrt` is left running with the server enabled and
+started, the profile `Sample` (with the transform `Sample tweak`) selected and
+the core running.
+
+1. Open <http://localhost:8080/> and log in as `root` / `nyanpasu`. The login
+   `viewer` / `viewer` has only the read ACL.
+2. Services → Nyanpasu → Overview: the core is Running. Click Stop, then
+   Start / apply; the status settles within a few seconds. Tick the checkbox
+   under Runtime configuration to see the full YAML.
+3. Profiles: import a YAML (a name and text, or a file), select it with
+   Activate, then Start / apply on the Overview. Create a script transform and
+   attach it under Transforms of the selected profile.
+4. Logs: Mihomo log lines appear once traffic passes the core, for example
+   `http_proxy=http://127.0.0.1:7890 wget -qO- http://127.0.0.1/` inside the
+   container.
+
+To start over: `wslc exec nyanpasu-openwrt /etc/init.d/nyanpasu restart`.
+
 ## Decisions deliberately deferred
 
 Server-crash policy, autostart and read-only YAML access were decided on

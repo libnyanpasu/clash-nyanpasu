@@ -145,6 +145,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 neutral_args.push(quote!(&dependencies.storage));
             } else if state_name.as_deref() == Some("PathResolver") {
                 neutral_args.push(quote!(&dependencies.paths));
+            } else if state_name.as_deref() == Some("WebTickets") {
+                neutral_args.push(quote!(&dependencies.web_tickets));
             }
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
@@ -449,7 +451,7 @@ fn can_share_with_neutral(signature: &syn::Signature, owner: bool) -> bool {
             return false;
         }
         if is_state(&argument.ty) {
-            if !["NyanpasuClient", "Storage", "PathResolver"]
+            if !["NyanpasuClient", "Storage", "PathResolver", "WebTickets"]
                 .iter()
                 .any(|name| is_state_of(&argument.ty, name))
             {
@@ -583,6 +585,18 @@ mod tests {
 
         assert!(expanded.contains("& dependencies . paths"));
         assert!(!expanded.contains("RpcError :: unsupported"));
+    }
+
+    #[test]
+    fn the_web_ticket_port_is_served_from_the_local_dependencies() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(local)]
+            pub async fn issue(tickets: State<'_, WebTickets>) -> Result<WebTicket> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+
+        assert!(expanded.contains("& dependencies . web_tickets"));
+        assert!(!expanded.contains("RpcError :: unsupported (stringify ! (issue) , :: nyanpasu_rpc_protocol :: RpcTarget :: Local"));
     }
 
     #[test]

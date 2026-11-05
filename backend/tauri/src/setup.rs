@@ -576,6 +576,8 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), U
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<nyanpasu_rpc::EventBus>()).clone(),
+        // The desktop signs in through its own bootstrap URL, not a LuCI ticket.
+        web_tickets: nyanpasu_rpc::WebTickets::unavailable(),
     };
     // The desktop shell provides every shell capability.
     let rpc = nyanpasu_rpc::UnifiedRpc::new(dependencies, &ShellCapability::ALL)
@@ -791,7 +793,8 @@ fn forward_actor_events(
 }
 
 fn debug_http_frontend(app: &tauri::AppHandle) -> crate::server::debug_http::Frontend {
-    use crate::server::debug_http::{Frontend, FrontendAssets};
+    use crate::server::debug_http::Frontend;
+    use nyanpasu_rpc::http::FrontendAssets;
     if !cfg!(feature = "custom-protocol") {
         if let Some(url) = &app.config().build.dev_url {
             return Frontend::Dev(url.clone());

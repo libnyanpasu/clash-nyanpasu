@@ -14,12 +14,7 @@ use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientReq
 use tokio_util::sync::CancellationToken;
 
 use nyanpasu_core::client::debug_http::{DebugHttpControl, DebugHttpStatus, Error};
-use nyanpasu_rpc::http::HttpListener;
-
-/// Production assets are supplied by the composition root's Tauri adapter.
-pub trait FrontendAssets: Send + Sync + 'static {
-    fn get(&self, path: &str) -> Option<(String, Vec<u8>)>;
-}
+use nyanpasu_rpc::http::{FrontendAssets, HttpListener, assets_router};
 
 #[derive(Clone)]
 pub enum Frontend {
@@ -247,7 +242,7 @@ impl Drop for HttpServerClientInner {
 
 pub fn frontend_router(frontend: Frontend, shutdown: CancellationToken) -> Result<Router> {
     match frontend {
-        Frontend::Embedded(assets) => Ok(Router::new().fallback(embedded).with_state(assets)),
+        Frontend::Embedded(assets) => Ok(assets_router(assets)),
         Frontend::Dev(base) => {
             anyhow::ensure!(
                 base.scheme() == "http"
@@ -265,50 +260,6 @@ pub fn frontend_router(frontend: Frontend, shutdown: CancellationToken) -> Resul
                 shutdown,
             }))
         }
-    }
-}
-
-async fn embedded(State(assets): State<Arc<dyn FrontendAssets>>, request: Request) -> Response {
-    if request.method() != Method::GET && request.method() != Method::HEAD {
-        return StatusCode::METHOD_NOT_ALLOWED.into_response();
-    }
-    let decoded = percent_encoding::percent_decode_str(request.uri().path()).decode_utf8_lossy();
-    if decoded.split('/').any(|part| part == "..") || decoded.contains('\\') {
-        return StatusCode::BAD_REQUEST.into_response();
-    }
-    let path = decoded.trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
-    // Assets and API typos must return 404 rather than the SPA HTML.
-    let asset = assets.get(path).or_else(|| {
-        if !path.starts_with("bridge/")
-            && !path.rsplit('/').next().unwrap_or("").contains('.')
-            && request
-                .headers()
-                .get("accept")
-                .and_then(|v| v.to_str().ok())
-                .is_some_and(|v| v.contains("text/html"))
-        {
-            assets.get("index.html")
-        } else {
-            None
-        }
-    });
-    match asset {
-        Some((mime, bytes)) => {
-            let length = bytes.len();
-            let body = if request.method() == Method::HEAD {
-                Body::empty()
-            } else {
-                Body::from(bytes)
-            };
-            Response::builder()
-                .header("content-type", mime)
-                .header("content-length", length)
-                .header("cache-control", "no-cache")
-                .body(body)
-                .unwrap()
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
@@ -509,62 +460,6 @@ pub(crate) mod tests {
                 _ => None,
             }
         }
-    }
-
-    #[tokio::test]
-    async fn embedded_frontend_serves_assets_spa_and_real_404s() {
-        let router = frontend_router(
-            Frontend::Embedded(Arc::new(Assets)),
-            CancellationToken::new(),
-        )
-        .unwrap();
-        for (path, accept, expected, mime) in [
-            ("/", "*/*", StatusCode::OK, Some("text/html")),
-            (
-                "/assets/app.js",
-                "*/*",
-                StatusCode::OK,
-                Some("text/javascript"),
-            ),
-            (
-                "/main/settings/debug",
-                "text/html",
-                StatusCode::OK,
-                Some("text/html"),
-            ),
-            (
-                "/assets/missing.js",
-                "text/html",
-                StatusCode::NOT_FOUND,
-                None,
-            ),
-            ("/bridge/missing", "text/html", StatusCode::NOT_FOUND, None),
-            ("/%2e%2e/secret", "text/html", StatusCode::BAD_REQUEST, None),
-        ] {
-            let response = router
-                .clone()
-                .oneshot(
-                    HttpRequest::get(path)
-                        .header("accept", accept)
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            assert_eq!(response.status(), expected, "{path}");
-            if let Some(mime) = mime {
-                assert_eq!(response.headers()["content-type"], mime);
-            }
-        }
-        let head = router
-            .oneshot(
-                HttpRequest::head("/assets/app.js")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert!(to_bytes(head.into_body(), 1024).await.unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -14,7 +14,7 @@ use nyanpasu_core::{
 
 use nyanpasu_rpc_protocol::RpcTarget;
 
-use crate::{IpcError, State};
+use crate::{IpcError, State, WebTicket, WebTickets};
 
 type Result<T = ()> = std::result::Result<T, IpcError>;
 
@@ -148,6 +148,15 @@ pub async fn list_methods() -> Result<Vec<String>> {
         .into_iter()
         .map(str::to_owned)
         .collect())
+}
+
+/// Issues a one-time ticket that signs a browser in to the WebUI the shell
+/// serves. Whoever may run this command decides who gets in, so it is not
+/// available to a browser session.
+#[nyanpasu_macro::rpc(local)]
+#[specta::specta]
+pub async fn issue_web_ticket(web_tickets: State<'_, WebTickets>) -> Result<WebTicket> {
+    web_tickets.issue().map_err(IpcError::unknown)
 }
 
 /// Reconciles the core with the committed configuration and reports the

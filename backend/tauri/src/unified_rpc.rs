@@ -231,6 +231,7 @@ mod tests {
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
                 paths,
                 events: events.clone(),
+                web_tickets: nyanpasu_rpc::WebTickets::unavailable(),
             },
             &ShellCapability::ALL,
         )
@@ -621,6 +622,7 @@ mod tests {
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
                 paths,
                 events: EventBus::new(Vec::new()),
+                web_tickets: nyanpasu_rpc::WebTickets::unavailable(),
             },
             &ShellCapability::ALL,
         )
@@ -710,6 +712,7 @@ mod tests {
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
                 paths,
                 events: EventBus::new(Vec::new()),
+                web_tickets: nyanpasu_rpc::WebTickets::unavailable(),
             },
             &ShellCapability::ALL,
         )
@@ -771,7 +774,8 @@ mod tests {
 
     #[test]
     fn enabled_http_server_joins_application_shutdown() {
-        use crate::server::debug_http::{Frontend, FrontendAssets};
+        use crate::server::debug_http::Frontend;
+        use nyanpasu_rpc::http::FrontendAssets;
         struct Assets;
         impl FrontendAssets for Assets {
             fn get(&self, _: &str) -> Option<(String, Vec<u8>)> {
@@ -796,6 +800,7 @@ mod tests {
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
                 paths,
                 events: EventBus::new(Vec::new()),
+                web_tickets: nyanpasu_rpc::WebTickets::unavailable(),
             },
             &ShellCapability::ALL,
         )
@@ -835,7 +840,8 @@ mod tests {
     #[test]
     #[ignore = "requires pnpm web:build and Playwright Chromium; optional NYANPASU_HTTP_UI_DEV_URL tests Vite proxy"]
     fn browser_debug_page_and_real_rpc() {
-        use crate::server::debug_http::{Frontend, FrontendAssets};
+        use crate::server::debug_http::Frontend;
+        use nyanpasu_rpc::http::FrontendAssets;
         struct Dist(std::path::PathBuf);
         impl FrontendAssets for Dist {
             fn get(&self, path: &str) -> Option<(String, Vec<u8>)> {
@@ -919,6 +925,7 @@ mod tests {
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
                 paths,
                 events: events.clone(),
+                web_tickets: nyanpasu_rpc::WebTickets::unavailable(),
             },
             &ShellCapability::ALL,
         )

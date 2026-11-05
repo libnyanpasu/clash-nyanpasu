@@ -1,7 +1,8 @@
 //! The WebUI transport: an axum router over the registry and the event bus.
 //! It serves only commands that opted into [`RpcTarget::Http`]. Access
-//! control (the per-start credential and Host/Origin checks) belongs to the
-//! listener that mounts this router.
+//! control belongs to the listener that mounts this router: the desktop's
+//! [`HttpListener`] (a per-start credential and Host/Origin checks) or a
+//! router shell's [`RouterListener`] (ticket-gated sessions).
 
 use std::{convert::Infallible, sync::Arc};
 
@@ -20,9 +21,14 @@ use tokio::sync::broadcast;
 
 use crate::{UnifiedRpc, application_error};
 
+mod assets;
+mod auth;
 mod listener;
+mod router_listener;
 
+pub use assets::{FrontendAssets, assets_router};
 pub use listener::HttpListener;
+pub use router_listener::RouterListener;
 
 /// The browser session cookie that identifies an HTTP owner.
 pub const SESSION_COOKIE: &str = "nyanpasu_http_session";
@@ -44,15 +50,17 @@ pub fn error_response(error: RpcError) -> (StatusCode, Json<RpcError>) {
     (status, Json(error))
 }
 
-fn session_owner(headers: &HeaderMap) -> Option<RpcOwner> {
+fn session_id(headers: &HeaderMap) -> Option<uuid::Uuid> {
     let cookie = headers.get("cookie")?.to_str().ok()?;
     let session = cookie
         .split(';')
         .map(str::trim)
         .find_map(|c| c.strip_prefix(SESSION_COOKIE)?.strip_prefix('='))?;
-    uuid::Uuid::parse_str(session)
-        .ok()
-        .map(RpcOwner::http_session)
+    uuid::Uuid::parse_str(session).ok()
+}
+
+fn session_owner(headers: &HeaderMap) -> Option<RpcOwner> {
+    session_id(headers).map(RpcOwner::http_session)
 }
 
 #[derive(Deserialize)]

@@ -147,6 +147,12 @@ async fn local_session(State(state): State<Session>, request: Request, next: Nex
     response
         .headers_mut()
         .insert("cache-control", HeaderValue::from_static("no-store"));
+    end_with_shutdown(response, shutdown)
+}
+
+/// Ends `response`'s body when `shutdown` is cancelled, so an open event
+/// stream does not hold up the server's graceful shutdown.
+pub(super) fn end_with_shutdown(response: Response, shutdown: CancellationToken) -> Response {
     let (parts, body) = response.into_parts();
     Response::from_parts(
         parts,

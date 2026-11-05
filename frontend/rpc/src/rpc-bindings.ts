@@ -470,6 +470,13 @@ export function createRpcClient(
     /**  Stops the core as an explicit intent, kept until the next explicit start. */
     stopCore: () =>
       typedError<StopReportInfo_Serialize, IpcError>(__RPC_INVOKE('stop_core')),
+    /**
+     *  Issues a one-time ticket that signs a browser in to the WebUI the shell
+     *  serves. Whoever may run this command decides who gets in, so it is not
+     *  available to a browser session.
+     */
+    issueWebTicket: () =>
+      typedError<WebTicket, IpcError>(__RPC_INVOKE('issue_web_ticket')),
     patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_app_config', { patch }),
@@ -5842,6 +5849,20 @@ export type WebGpuAdapter = {
   architecture?: string | null
   device?: string | null
   description?: string | null
+}
+
+/**  A one-time sign-in ticket for the WebUI listener. */
+export type WebTicket = {
+  /**
+   *  The request target that exchanges the ticket for a session, for
+   *  example `/?ticket=...`; it is valid on the WebUI's origin only.
+   */
+  path: string
+  /**
+   *  The TCP port the WebUI listens on. The caller supplies the hostname it
+   *  reached this shell by.
+   */
+  port: number
 }
 
 /**  What closing a window does. */

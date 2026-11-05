@@ -151,6 +151,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::restart_sidecar,
             nyanpasu_rpc::commands::reconcile_core,
             nyanpasu_rpc::commands::stop_core,
+            nyanpasu_rpc::commands::issue_web_ticket,
             ipc::patch_app_config,
             ipc::patch_clash_config,
             ipc::patch_runtime_overrides,

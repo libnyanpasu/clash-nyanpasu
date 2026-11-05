@@ -32,7 +32,7 @@ use nyanpasu_net::{
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
-use nyanpasu_rpc::{EventBus, RpcDependencies, UnifiedRpc};
+use nyanpasu_rpc::{EventBus, RpcDependencies, UnifiedRpc, WebTickets};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::adapters::{
@@ -134,6 +134,7 @@ impl Server {
                 storage: self.storage.clone(),
                 paths: self.paths.clone(),
                 events: self.events.clone(),
+                web_tickets: WebTickets::unavailable(),
             },
             &[],
         )

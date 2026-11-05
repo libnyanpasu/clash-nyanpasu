@@ -17,7 +17,7 @@ use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcTarget, ShellCapability};
 use serde_json::Value;
 use snafu::Snafu;
 
-use crate::EventBus;
+use crate::{EventBus, WebTickets};
 
 /// What every transport-neutral command may receive. Shells assemble it in
 /// their composition root; it carries no shell handle, so no command can
@@ -27,6 +27,8 @@ pub struct RpcDependencies {
     pub storage: Storage,
     pub paths: PathResolver,
     pub events: EventBus,
+    /// Signs browsers in to the WebUI, when the shell serves it.
+    pub web_tickets: WebTickets,
 }
 
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
@@ -243,6 +245,15 @@ pub(crate) mod tests {
         events: EventBus,
         provided: &[ShellCapability],
     ) -> UnifiedRpc {
+        test_rpc_serving(directory, events, provided, WebTickets::unavailable()).await
+    }
+
+    pub(crate) async fn test_rpc_serving(
+        directory: &tempfile::TempDir,
+        events: EventBus,
+        provided: &[ShellCapability],
+        web_tickets: WebTickets,
+    ) -> UnifiedRpc {
         let client = nyanpasu_core::client::test_support::facade::test_client(directory).await;
         UnifiedRpc::new(
             RpcDependencies {
@@ -253,6 +264,7 @@ pub(crate) mod tests {
                     directory.path().join("data"),
                 ),
                 events,
+                web_tickets,
             },
             provided,
         )
@@ -352,8 +364,9 @@ pub(crate) mod tests {
             "reconcile_core",
             "stop_core",
             "get_runtime_yaml",
-            // Introspection for the CLI.
+            // Introspection for the CLI and the WebUI sign-in.
             "list_methods",
+            "issue_web_ticket",
         ];
         expected.sort_unstable();
         let local = rpc
@@ -432,5 +445,62 @@ pub(crate) mod tests {
         let domain = &stop.domain_error.as_ref().unwrap().0["kind"];
         assert_eq!(domain["domain"], "runtime", "{domain}");
         assert_eq!(domain["error"]["kind"], "stop_core", "{domain}");
+    }
+
+    struct FixedTicket;
+
+    impl crate::WebTicketIssuer for FixedTicket {
+        fn issue(&self) -> crate::WebTicket {
+            crate::WebTicket {
+                path: "/?ticket=fixed".into(),
+                port: 7899,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn web_tickets_are_issued_locally_and_refused_without_a_listener() {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = RpcOwner::local_connection(1);
+        let without = test_rpc(&directory, EventBus::new(Vec::new()), &[]).await;
+        let refused = without
+            .call(
+                RpcTarget::Local,
+                "issue_web_ticket",
+                owner.clone(),
+                Value::Null,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(refused.kind, RpcErrorKind::ApplicationError);
+        assert!(refused.message.contains("not being served"), "{refused}");
+
+        let directory = tempfile::tempdir().unwrap();
+        let serving = test_rpc_serving(
+            &directory,
+            EventBus::new(Vec::new()),
+            &[],
+            WebTickets::new(Arc::new(FixedTicket)),
+        )
+        .await;
+        let ticket = serving
+            .call(
+                RpcTarget::Local,
+                "issue_web_ticket",
+                owner.clone(),
+                Value::Null,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            ticket,
+            serde_json::json!({"path": "/?ticket=fixed", "port": 7899})
+        );
+        // A browser session cannot mint tickets.
+        let http = serving
+            .call(RpcTarget::Http, "issue_web_ticket", owner, Value::Null)
+            .await
+            .unwrap_err();
+        assert_eq!(http.kind, RpcErrorKind::Unsupported);
     }
 }

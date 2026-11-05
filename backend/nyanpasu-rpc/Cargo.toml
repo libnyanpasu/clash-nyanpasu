@@ -10,7 +10,14 @@ description = 'Transport-neutral RPC registry, event bus and shared commands ove
 [features]
 # The WebUI transport: an axum router over the registry and the event bus,
 # and the credentialed loopback listener that serves it.
-http = ['dep:axum', 'dep:futures', 'dep:url']
+http = [
+  'dep:axum',
+  'dep:futures',
+  'dep:getrandom',
+  'dep:parking_lot',
+  'dep:percent-encoding',
+  'dep:url'
+]
 # The local-socket server a headless shell binds for the CLI.
 local-server = ['nyanpasu-rpc-protocol/frame-io']
 
@@ -38,6 +45,9 @@ tracing = { workspace = true }
 uuid = '1.7.0'
 axum = { version = '0.8', optional = true }
 futures = { version = '0.3', optional = true }
+getrandom = { version = '0.3', optional = true }
+parking_lot = { version = '0.13.0', optional = true }
+percent-encoding = { version = '2.3.1', optional = true }
 url = { version = '2', optional = true }
 
 [dev-dependencies]

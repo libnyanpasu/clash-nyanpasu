@@ -584,6 +584,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.stopCore>) =>
         commands.stopCore(...input),
     }),
+    issueWebTicket: mutationOptions({
+      mutationKey: ['issueWebTicket'],
+      mutationFn: (input: Parameters<typeof commands.issueWebTicket>) =>
+        commands.issueWebTicket(...input),
+    }),
     patchAppConfig: mutationOptions({
       mutationKey: ['patchAppConfig'],
       mutationFn: (input: Parameters<typeof commands.patchAppConfig>) =>

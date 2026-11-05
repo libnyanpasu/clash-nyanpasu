@@ -18,6 +18,7 @@ pub mod http;
 #[cfg(feature = "local-server")]
 mod local;
 mod registry;
+mod web_ticket;
 
 pub use error::{IpcError, IpcErrorKind, application_error, application_error_ref};
 pub use events::{EventBus, EventSink, RpcEvent};
@@ -27,3 +28,4 @@ pub use registry::{
     CommandEntry, RegistryError, RpcDependencies, RpcFuture, RpcHandler, State, UnifiedRpc,
     WeakUnifiedRpc,
 };
+pub use web_ticket::{WebTicket, WebTicketIssuer, WebTickets, WebUiUnavailable};

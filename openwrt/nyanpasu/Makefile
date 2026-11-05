@@ -39,7 +39,7 @@ define Package/nyanpasu/description
   nyanpasu-server owns the Nyanpasu application and the Mihomo core and serves a
   local control socket and, when /etc/config/nyanpasu sets webui_listen, the
   WebUI over HTTP; nyanpasu-cli talks to the socket, and luci-app-nyanpasu
-  frames the WebUI. The Mihomo core binary and the built WebUI are not part of
+  opens the WebUI in a new window. The Mihomo core binary and the built WebUI are not part of
   this package: they are placed at <data-dir>/mihomo and webui_dir.
 endef
 

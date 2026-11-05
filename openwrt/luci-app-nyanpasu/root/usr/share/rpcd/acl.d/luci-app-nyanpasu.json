@@ -1,12 +1,17 @@
 {
   "luci-app-nyanpasu": {
-    "description": "Open the Nyanpasu WebUI",
+    "description": "Control the Nyanpasu service and open its WebUI",
     "read": {
+      "ubus": {
+        "rc": ["list"]
+      },
       "uci": ["nyanpasu"]
     },
     "write": {
       "ubus": {
-        "nyanpasu": ["webui_ticket"]
+        "nyanpasu": ["webui_ticket"],
+        "rc": ["init"],
+        "uci": ["commit"]
       },
       "uci": ["nyanpasu"]
     }

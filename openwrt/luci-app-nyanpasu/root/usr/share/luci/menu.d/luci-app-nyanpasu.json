@@ -4,7 +4,7 @@
     "order": 60,
     "action": {
       "type": "view",
-      "path": "nyanpasu/webui"
+      "path": "nyanpasu/service"
     },
     "depends": {
       "acl": ["luci-app-nyanpasu"]

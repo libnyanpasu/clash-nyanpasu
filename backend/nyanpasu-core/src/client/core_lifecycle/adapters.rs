@@ -1,27 +1,31 @@
+use async_trait::async_trait;
 #[cfg(target_os = "windows")]
-use super::ports::PathNotUtf8Snafu;
-use super::ports::{
+use nyanpasu_contracts::core_install::PathNotUtf8Snafu;
+use nyanpasu_contracts::core_install::{
     BinaryInstaller, ElevatedCopyFailedSnafu, InstallCoreBinaryError, StartElevatedCopySnafu,
 };
-use async_trait::async_trait;
 #[cfg(target_os = "windows")]
 use snafu::OptionExt;
 use snafu::{ResultExt, Snafu, ensure};
 use std::path::{Path, PathBuf};
 
-use nyanpasu_updater::PreparedCoreBinary;
+use nyanpasu_contracts::core_install::CoreBinaryInstallRequest;
 
 pub struct FsBinaryInstaller;
 
 #[async_trait]
 impl BinaryInstaller for FsBinaryInstaller {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
-        install_binary(artifact).await?;
+    async fn install(
+        &self,
+        request: &CoreBinaryInstallRequest,
+    ) -> Result<(), InstallCoreBinaryError> {
+        install_binary(request).await?;
         // Nothing Nyanpasu runs uses the companion, so failing to publish it fails no
         // core installation; the previous companion stays in place.
-        if let Some(companion) = &artifact.companion
+        if let Some(companion) = &request.companion
             && let Err(error) = {
-                let (staged, destination) = (companion.staged(), companion.destination.clone());
+                let (staged, destination) =
+                    (companion.staged.clone(), companion.destination.clone());
                 nyanpasu_owner_support::blocking::join(
                     tokio::task::spawn_blocking(move || publish_companion(&staged, &destination))
                         .await,
@@ -30,7 +34,7 @@ impl BinaryInstaller for FsBinaryInstaller {
         {
             tracing::warn!(
                 error = %snafu::Report::from_error(error),
-                core = %artifact.target,
+                core = %request.target,
                 "could not publish the files the core archive ships beside the core"
             );
         }
@@ -38,13 +42,11 @@ impl BinaryInstaller for FsBinaryInstaller {
     }
 }
 
-async fn install_binary(artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
-    if let Err(error) = tokio::fs::copy(&artifact.source, &artifact.destination).await {
+async fn install_binary(request: &CoreBinaryInstallRequest) -> Result<(), InstallCoreBinaryError> {
+    if let Err(error) = tokio::fs::copy(&request.source, &request.destination).await {
         tracing::warn!(%error, "core copy failed; requesting elevated installation");
-        let source = artifact.source.clone();
-        let destination = artifact.destination.clone();
-        // The blocking task itself retains the staging files if its waiter dies.
-        let staging = artifact.staging.clone();
+        let source = request.source.clone();
+        let destination = request.destination.clone();
         #[cfg(target_os = "windows")]
         let (source, destination) = (
             source
@@ -57,8 +59,7 @@ async fn install_binary(artifact: &PreparedCoreBinary) -> Result<(), InstallCore
                 .to_owned(),
         );
         let status = nyanpasu_owner_support::blocking::join(
-            tokio::task::spawn_blocking(move || {
-                let _staging = staging;
+            spawn_staged_copy(&request.staging, move || {
                 #[cfg(target_os = "windows")]
                 {
                     runas::Command::new("cmd")
@@ -83,19 +84,31 @@ async fn install_binary(artifact: &PreparedCoreBinary) -> Result<(), InstallCore
             .await,
         )
         .context(StartElevatedCopySnafu {
-            core: artifact.target,
-            destination: &artifact.destination,
+            core: request.target,
+            destination: &request.destination,
         })?;
         ensure!(
             status.success(),
             ElevatedCopyFailedSnafu {
-                core: artifact.target,
-                destination: &artifact.destination,
+                core: request.target,
+                destination: &request.destination,
                 exit_code: status.code(),
             }
         );
     }
     Ok(())
+}
+
+/// The task, rather than its waiter, owns the files an elevated copy reads.
+fn spawn_staged_copy(
+    staging: &std::sync::Arc<tempfile::TempDir>,
+    copy: impl FnOnce() -> std::io::Result<std::process::ExitStatus> + Send + 'static,
+) -> tokio::task::JoinHandle<std::io::Result<std::process::ExitStatus>> {
+    let staging = staging.clone();
+    tokio::task::spawn_blocking(move || {
+        let _staging = staging;
+        copy()
+    })
 }
 
 /// A failure of replacing a companion with the files of a newer core archive.
@@ -181,9 +194,62 @@ fn publish_companion(staged: &Path, destination: &Path) -> Result<(), PublishCom
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreCompanion};
+    use nyanpasu_contracts::core_install::CoreBinaryCompanionPaths;
+    use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary, PreparedCoreCompanion};
     use std::sync::Arc;
     use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn install_request_keeps_staging_when_waiter_is_dropped() {
+        use futures::FutureExt as _;
+
+        let staging = Arc::new(TempDir::new().unwrap());
+        let source = staging.path().join("core");
+        std::fs::write(&source, "staged binary").unwrap();
+        let request = CoreBinaryInstallRequest {
+            target: nyanpasu_config::application::ClashCore::Mihomo,
+            source: source.clone(),
+            destination: staging.path().join("installed"),
+            staging,
+            companion: None,
+        };
+        let (entered, started) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let copy_source = source.clone();
+        let mut task = spawn_staged_copy(&request.staging, move || {
+            entered.send(()).unwrap();
+            released.recv().unwrap();
+            assert_eq!(
+                std::fs::read_to_string(copy_source).unwrap(),
+                "staged binary"
+            );
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        });
+        started.await.unwrap();
+        let waiter = async {
+            let request = request;
+            let result = (&mut task).await;
+            drop(request);
+            result
+        };
+        assert!(waiter.now_or_never().is_none());
+        let exists_after_drop = source.exists();
+        // Always unblock the task, even when the lifetime assertion will fail.
+        release.send(()).unwrap();
+        let result = task.await;
+        assert!(
+            exists_after_drop,
+            "the blocking copy must retain the staging lease"
+        );
+        assert_eq!(
+            result.unwrap().unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert!(
+            !source.exists(),
+            "the completed task releases its staging lease"
+        );
+    }
 
     struct NoProgress;
 
@@ -228,7 +294,21 @@ mod tests {
             companion: Some(staged(&destination, "new skill")),
         };
 
-        FsBinaryInstaller.install(&artifact).await.unwrap();
+        let request = CoreBinaryInstallRequest {
+            target: artifact.target,
+            source: artifact.source.clone(),
+            destination: artifact.destination.clone(),
+            staging: artifact.staging.clone(),
+            companion: artifact
+                .companion
+                .as_ref()
+                .map(|companion| CoreBinaryCompanionPaths {
+                    staged: companion.staged(),
+                    destination: companion.destination.clone(),
+                }),
+        };
+        FsBinaryInstaller.install(&request).await.unwrap();
+        drop(request);
 
         assert_eq!(
             std::fs::read_to_string(dir.path().join("installed-core")).unwrap(),

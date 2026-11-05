@@ -186,10 +186,10 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-    let service = ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
     .await
     .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
@@ -243,10 +243,10 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
     let core = CoreClient::spawn(TestControlEndpoint::succeeding())
         .await
         .unwrap();
-    let service = ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
     .await
     .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
@@ -293,10 +293,10 @@ async fn workflow_graph_with_store(
     let core = CoreClient::spawn(TestControlEndpoint::succeeding())
         .await
         .unwrap();
-    let service = ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
     .await
     .unwrap();
     workflow_graph_with_clients(
@@ -513,15 +513,15 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         ))
         .await
         .unwrap();
-        let service = ServiceClient::spawn(
-            Arc::new(HostTransitionServiceAdapter {
+        let service = {
+            let process_control = Arc::new(HostTransitionServiceAdapter {
                 endpoint: endpoint.clone(),
                 calls: calls.clone(),
                 stopped: AtomicBool::new(false),
                 installed_for: dir.path().into(),
-            }),
-            0,
-        )
+            });
+            ServiceClient::spawn(process_control.clone(), process_control, 0)
+        }
         .await
         .unwrap();
         (core, service)

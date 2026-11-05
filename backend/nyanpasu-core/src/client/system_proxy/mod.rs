@@ -5,7 +5,6 @@
 
 mod actor;
 mod error;
-pub mod ports;
 
 #[cfg(test)]
 mod tests;
@@ -18,12 +17,12 @@ use tokio_util::task::TaskTracker;
 use self::{
     actor::{Message, SystemProxyActor, requested_kinds},
     error::SystemProxyError,
-    ports::OsProxyConfig,
 };
 use crate::client::effects::{
     plan::{ProxyGuardDesired, SystemProxyDesired},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
+use nyanpasu_contracts::system_proxy::OsProxyConfig;
 
 pub use self::actor::Args as SystemProxyArgs;
 

@@ -4,12 +4,12 @@ use crate::{
     actor_v2::endpoint::ExecutionHost,
     client::{
         NyanpasuClient,
-        core_lifecycle::ports::{BinaryInstaller, InstallCoreBinaryError},
         runtime_error::RuntimeError,
         test_support::{TestControlEndpoint, test_client_args_with_endpoint},
     },
 };
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_contracts::core_install::{BinaryInstaller, InstallCoreBinaryError};
 use nyanpasu_core_manager::{CoreError, OperationId};
 use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary};
 use std::{
@@ -250,7 +250,10 @@ pub struct Installer {
 
 #[async_trait::async_trait]
 impl BinaryInstaller for Installer {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
+    async fn install(
+        &self,
+        request: &nyanpasu_contracts::core_install::CoreBinaryInstallRequest,
+    ) -> Result<(), InstallCoreBinaryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.submissions_at_copy
             .store(self.endpoint.submissions(), Ordering::SeqCst);
@@ -260,12 +263,12 @@ impl BinaryInstaller for Installer {
         }
         if self.fail {
             return Err(InstallCoreBinaryError::ElevatedCopyFailed {
-                core: artifact.target,
-                destination: (&artifact.destination).into(),
+                core: request.target,
+                destination: (&request.destination).into(),
                 exit_code: Some(1),
             });
         }
-        tokio::fs::copy(&artifact.source, &artifact.destination)
+        tokio::fs::copy(&request.source, &request.destination)
             .await
             .unwrap();
         Ok(())

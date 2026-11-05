@@ -114,7 +114,7 @@ impl Fixture {
 
     async fn with_installer(
         fail_reconcile: bool,
-        installer: Arc<dyn crate::client::core_lifecycle::ports::BinaryInstaller>,
+        installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
     ) -> Self {
         let calls = Arc::new(Calls::default());
         let (url, server) = (async {
@@ -809,11 +809,11 @@ async fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
 struct CountingInstaller(AtomicUsize);
 
 #[async_trait::async_trait]
-impl crate::client::core_lifecycle::ports::BinaryInstaller for CountingInstaller {
+impl nyanpasu_contracts::core_install::BinaryInstaller for CountingInstaller {
     async fn install(
         &self,
-        _: &PreparedCoreBinary,
-    ) -> Result<(), crate::client::core_lifecycle::ports::InstallCoreBinaryError> {
+        _: &nyanpasu_contracts::core_install::CoreBinaryInstallRequest,
+    ) -> Result<(), nyanpasu_contracts::core_install::InstallCoreBinaryError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }

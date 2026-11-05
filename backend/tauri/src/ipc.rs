@@ -10,12 +10,14 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
-use nyanpasu_contracts::net::StunServerTest;
+use nyanpasu_contracts::{
+    net::StunServerTest, system_dns::SystemDnsError, system_proxy::OsProxyError,
+};
 use nyanpasu_core::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
+        ClientError, NyanpasuClient, RuntimeError, agent_skills::CoreAgentSkill,
         debug_http::DebugHttpControlError, direct_egress::DirectEgress,
-        effects::error::EffectsError, system_proxy::ports::OsProxyError,
+        effects::error::EffectsError,
     },
     state::{
         config_error::ConfigError,
@@ -1668,7 +1670,8 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
-    use nyanpasu_core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
+    use nyanpasu_contracts::service::ResolveServiceDirsSnafu;
+    use nyanpasu_core::service::control::get_service_install_args;
     use snafu::ResultExt;
 
     let args = async {
@@ -2262,18 +2265,19 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
+    use nyanpasu_contracts::system_dns::SystemDnsError;
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
 
-    use nyanpasu_contracts::profiles::error::{ProfileFileError, SubscriptionFetchError};
+    use nyanpasu_contracts::{
+        profiles::error::{ProfileFileError, SubscriptionFetchError},
+        system_proxy::OsProxyError,
+    };
     use nyanpasu_core::{
-        client::{
-            effects::error::EffectsError, runtime_error::RuntimeError,
-            system_proxy::ports::OsProxyError,
-        },
+        client::{effects::error::EffectsError, runtime_error::RuntimeError},
         state::mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
     };
 

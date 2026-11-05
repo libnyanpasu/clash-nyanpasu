@@ -9,13 +9,13 @@ use snafu::{OptionExt as _, ResultExt as _, ensure};
 use sysproxy::{Autoproxy, Sysproxy};
 use tokio_util::sync::CancellationToken;
 
-use nyanpasu_core::client::system_proxy::ports::{
+use nyanpasu_contracts::system_proxy::{
     AutoLaunchError, AutoLaunchPort, BuildHttpClientSnafu, BuildRegistrationSnafu,
     CanonicalizeExecutableSnafu, ClearPacSnafu, DownloadCancelledSnafu, ExecutableNameSnafu,
-    ExecutablePathNotUtf8Snafu, InstallPacSnafu, LocateExecutableSnafu, MissingEntryPointSnafu,
-    OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort, ReadOsProxySnafu,
-    ReadRegistrationSnafu, ReadScriptBodySnafu, RegisterSnafu, RequestScriptSnafu,
-    ScriptNotUtf8Snafu, ScriptStatusSnafu, ScriptTooLargeSnafu, WriteOsProxySnafu,
+    ExecutablePathNotUtf8Snafu, InstallPacSnafu, MissingEntryPointSnafu, OsProxyConfig,
+    OsProxyError, OsProxyPort, PacError, PacPort, ReadOsProxySnafu, ReadRegistrationSnafu,
+    ReadScriptBodySnafu, RegisterSnafu, RequestScriptSnafu, ScriptNotUtf8Snafu, ScriptStatusSnafu,
+    ScriptTooLargeSnafu, WriteOsProxySnafu,
 };
 
 #[cfg(target_os = "windows")]
@@ -75,9 +75,11 @@ impl AutoLaunchConfig {
     /// `appimage` is the Tauri environment's AppImage path, passed in rather
     /// than looked up: on Linux the running binary lives inside a mount that
     /// disappears, so the AppImage itself is what an autostart entry must name.
-    pub fn resolve(appimage: Option<String>) -> Result<Self, AutoLaunchError> {
-        let exe = tauri::utils::platform::current_exe().context(LocateExecutableSnafu)?;
-        let exe = dunce::canonicalize(&exe).context(CanonicalizeExecutableSnafu { path: &exe })?;
+    pub fn resolve(
+        exe: &std::path::Path,
+        appimage: Option<String>,
+    ) -> Result<Self, AutoLaunchError> {
+        let exe = dunce::canonicalize(exe).context(CanonicalizeExecutableSnafu { path: &exe })?;
 
         let app_name = exe
             .file_stem()
@@ -316,5 +318,39 @@ impl PacPort for HttpPacBackend {
         .set_auto_proxy()
         .boxed()
         .context(ClearPacSnafu)
+    }
+}
+
+#[cfg(test)]
+mod autostart_path_tests {
+    use super::AutoLaunchConfig;
+
+    #[test]
+    fn autostart_path_parameterization_preserves_platform_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("Nyanpasu App.app/Contents/MacOS/nyanpasu");
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, "executable").unwrap();
+        let resolved =
+            AutoLaunchConfig::resolve(&executable, Some("/apps/Nyanpasu.AppImage".into())).unwrap();
+        assert_eq!(resolved.app_name, "nyanpasu");
+        #[cfg(target_os = "windows")]
+        assert_eq!(
+            resolved.app_path,
+            format!(
+                "\"{}\"",
+                dunce::canonicalize(&executable).unwrap().display()
+            )
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            resolved.app_path,
+            dunce::canonicalize(dir.path().join("Nyanpasu App.app"))
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+        #[cfg(target_os = "linux")]
+        assert_eq!(resolved.app_path, "/apps/Nyanpasu.AppImage");
     }
 }

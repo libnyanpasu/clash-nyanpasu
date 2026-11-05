@@ -28,6 +28,7 @@ use crate::{
     },
     utils::init::logging::ReloadSignal,
 };
+use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
         ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
@@ -39,7 +40,7 @@ use nyanpasu_core::{
         },
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
-        system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
+        system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
     storage::{RedbHotkeyStoreOpener, StorageNotification},
     traffic::TrafficFileStorage,
@@ -159,11 +160,11 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to build auto launch"))]
     BuildAutoLaunch {
-        source: nyanpasu_core::client::system_proxy::ports::AutoLaunchError,
+        source: nyanpasu_contracts::system_proxy::AutoLaunchError,
     },
     #[snafu(display("failed to build pac"))]
     BuildPac {
-        source: nyanpasu_core::client::system_proxy::ports::PacError,
+        source: nyanpasu_contracts::system_proxy::PacError,
     },
     #[snafu(display("failed to spawn system proxy"))]
     SpawnSystemProxy {
@@ -279,13 +280,24 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
         );
         let adapter = Arc::new(
-            nyanpasu_core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
-                service_ipc.clone(),
+            nyanpasu_core::actor_v2::service_process_control::OsServiceProcessControl::new(
                 service_binary,
                 paths.clone(),
             ),
         );
-        start_runtime_owners(owners, local, adapter, &paths, jobs_capture).await
+        start_runtime_owners(
+            owners,
+            local,
+            adapter,
+            Arc::new(
+                nyanpasu_core::actor_v2::service_process_control::IpcServiceEndpointFactory::new(
+                    service_ipc.clone(),
+                ),
+            ),
+            &paths,
+            jobs_capture,
+        )
+        .await
     })?;
     drop(span);
     // The sink end of the hotkey channel goes into the actor; the receiving end
@@ -485,7 +497,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         binary_installer: Arc::new(
             nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
         ),
-        core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
+        core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader::new(
+            Arc::new(crate::adapters::core_version::TauriCoreVersionExecutableSource),
+        )),
         effects,
         window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
         accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
@@ -539,7 +553,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 async fn start_runtime_owners(
     owners: &mut StartupOwners,
     local: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
-    adapter: Arc<dyn nyanpasu_core::actor_v2::service_actor::ServiceHostAdapter>,
+    process_control: Arc<dyn nyanpasu_contracts::service::ServiceProcessControl>,
+    endpoint_factory: Arc<dyn nyanpasu_core::actor_v2::service_actor::ServiceEndpointFactory>,
     paths: &PathResolver,
     jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<
@@ -554,10 +569,13 @@ async fn start_runtime_owners(
         .await
         .context(SpawnCoreActorSnafu)?;
     owners.core = Some(core.clone());
-    let service =
-        nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
-            .await
-            .context(SpawnServiceActorSnafu)?;
+    let service = nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(
+        process_control,
+        endpoint_factory,
+        RESTART_BUDGET,
+    )
+    .await
+    .context(SpawnServiceActorSnafu)?;
     service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());
     let jobs = nyanpasu_core::client::jobs::start(
         paths.jobs_path().into_std_path_buf(),
@@ -700,7 +718,9 @@ fn build_application_effects(
         None
     };
 
-    let auto_launch = AutoLaunchConfig::resolve(appimage)
+    let auto_launch = tauri::utils::platform::current_exe()
+        .context(nyanpasu_contracts::system_proxy::LocateExecutableSnafu)
+        .and_then(|executable| AutoLaunchConfig::resolve(&executable, appimage))
         .and_then(AutoLaunchBackend::new)
         .context(BuildAutoLaunchSnafu)?;
     let pac = HttpPacBackend::new(paths.cache_dir().join("pac.js")).context(BuildPacSnafu)?;

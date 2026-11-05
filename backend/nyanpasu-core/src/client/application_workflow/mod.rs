@@ -30,7 +30,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
-        ServiceRecovery, ports::BinaryInstaller,
+        ServiceRecovery,
     },
     runtime,
     runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
@@ -41,6 +41,7 @@ use crate::actor_v2::{
     service_actor::{ServiceClient, ServiceHostStatus},
 };
 use mutation::{MutationJournal, MutationRequest};
+use nyanpasu_contracts::core_install::BinaryInstaller;
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;

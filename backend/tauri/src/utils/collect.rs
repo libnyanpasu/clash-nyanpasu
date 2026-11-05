@@ -1,9 +1,7 @@
 //! Desktop adapters and composition for the shared diagnosis.
 use nyanpasu_config::application::NyanpasuAppConfig;
-use nyanpasu_core::{
-    client::{NyanpasuClient, core_version::CoreVersionReader},
-    logs::RedbCoreLogStore,
-};
+use nyanpasu_contracts::core_version::CoreVersionReader;
+use nyanpasu_core::{client::NyanpasuClient, logs::RedbCoreLogStore};
 use nyanpasu_diagnose::{
     Action, Event, Step,
     archive::{Archive, LOG_CAP},
@@ -46,7 +44,12 @@ fn core_from_config(
         nyanpasu_migration::modules::application::ApplicationFormat::default()
             .deserialize(file)
             .map_err(|e| e.to_string())?;
-    let version = runtime.block_on(super::core_version::SidecarCoreVersionReader.read(config.core));
+    let version = runtime.block_on(
+        super::core_version::SidecarCoreVersionReader::new(std::sync::Arc::new(
+            crate::adapters::core_version::TauriCoreVersionExecutableSource,
+        ))
+        .read(config.core),
+    );
     add_core(report, config.core, version.map_err(|e| e.to_string()))
 }
 fn add_core(

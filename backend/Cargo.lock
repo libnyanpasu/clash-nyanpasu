@@ -1922,7 +1922,7 @@ dependencies = [
  "windows-registry 0.6.1",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
- "zip 9.3.0",
+ "zip 9.4.0",
  "zip-extensions",
 ]
 
@@ -6820,7 +6820,7 @@ dependencies = [
  "whoami",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
- "zip 9.3.0",
+ "zip 9.4.0",
  "zstd",
 ]
 
@@ -6895,7 +6895,7 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "windows-registry 0.6.1",
- "zip 9.3.0",
+ "zip 9.4.0",
 ]
 
 [[package]]
@@ -11597,7 +11597,7 @@ dependencies = [
  "tokio",
  "url",
  "windows-sys 0.61.2",
- "zip 9.3.0",
+ "zip 9.4.0",
 ]
 
 [[package]]
@@ -14750,9 +14750,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.3.0"
+version = "9.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaeb7f16d2605b49aef586996ded29e65642fab7259a3077e537351df6d80426"
+checksum = "3cec733c9820347a592f6375c3c0089b479ba0a0b1cbf3dd1958b02959b7c033"
 dependencies = [
  "aes",
  "bzip2",

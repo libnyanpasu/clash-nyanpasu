@@ -8,7 +8,7 @@ pub mod owner_shutdown;
 use crate::client::{
     bundle_metadata::BundleMetadata,
     clash_info::ClashInfo,
-    direct_egress::{DirectEgress, DirectEgressProbe, ProbeSources},
+    direct_egress::{DirectEgress, DirectEgressProbe, ProbeSources, StunServerTest},
 };
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
@@ -73,7 +73,10 @@ use crate::{
     storage::Storage,
 };
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
+    application::{
+        IpLookupProvider, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch,
+        ReleaseChannel,
+    },
     clash::{
         config::{ClashConfig, ClashConfigPatch},
         features::ConfigFeatures,
@@ -944,6 +947,19 @@ impl NyanpasuClient {
             .unwrap_or(DirectEgress::Probed { ipv4, ipv6 });
         cache.set(&result);
         Ok(result)
+    }
+
+    /// Every HTTP lookup provider the user may accept, in display order.
+    pub fn ip_lookup_providers(&self) -> Vec<IpLookupProviderInfo> {
+        IpLookupProvider::ALL.into_iter().map(Into::into).collect()
+    }
+
+    /// Asks a STUN server the user is adding over each transport and family,
+    /// so its entry records what it answers over. The user started the test,
+    /// so it runs whatever the probe switch says; under TUN the requests are
+    /// routed by rule like any other.
+    pub async fn test_stun_server(&self, host: &str, port: u16) -> StunServerTest {
+        self.inner.direct_egress.test_stun_server(host, port).await
     }
 
     pub async fn patch_app_config(
@@ -1932,11 +1948,7 @@ pub(crate) mod tests {
             async fn ipv6(&self, _: &ProbeSources) -> Option<std::net::Ipv6Addr> {
                 None
             }
-            async fn test_stun_server(
-                &self,
-                _: &str,
-                _: u16,
-            ) -> crate::client::direct_egress::StunServerTest {
+            async fn test_stun_server(&self, _: &str, _: u16) -> StunServerTest {
                 unreachable!("the probe test does not test servers")
             }
         }

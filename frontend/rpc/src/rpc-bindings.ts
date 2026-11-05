@@ -154,6 +154,10 @@ export function createRpcClient(
       typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
     getConfigFeatures: () =>
       typedError<ConfigFeatures, IpcError>(__RPC_INVOKE('get_config_features')),
+    getIpLookupProviders: () =>
+      typedError<IpLookupProviderInfo[], IpcError>(
+        __RPC_INVOKE('get_ip_lookup_providers'),
+      ),
     getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
     getProfiles: () =>
       typedError<ProfileDocument_Serialize, IpcError>(
@@ -408,6 +412,11 @@ export function createRpcClient(
       ),
     probeDirectEgress: () =>
       typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
+    /**  Desktop-only: the host is whatever the caller types, like a URL probe. */
+    testStunServer: (host: string, port: number) =>
+      typedError<StunServerTest, IpcError>(
+        __RPC_INVOKE('test_stun_server', { host, port }),
+      ),
     clearCoreLogs: () =>
       typedError<null, CoreLogError>(__RPC_INVOKE('clear_core_logs')),
     openLogSession: (source: LogSource, request: OpenLogs) =>
@@ -2455,6 +2464,13 @@ export type InterruptFailure =
  *  accepts its privacy notice.
  */
 export type IpLookupProvider = 'dnspod' | 'ip_sb' | 'ipify' | 'ident_me'
+
+/**  A provider and the endpoints it is asked at, for its privacy notice. */
+export type IpLookupProviderInfo = {
+  provider: IpLookupProvider
+  ipv4_url: string
+  ipv6_url: string
+}
 
 /**  A failed command as the frontend receives it. */
 export type IpcError = {
@@ -5408,6 +5424,14 @@ export type StorageValueChangedEvent = {
   revision: StorageRevision
 }
 
+/**  One Binding request over one transport and family. */
+export type StunAttempt =
+  /**  The server named the address the request came from. */
+  | { kind: 'answered'; address: string; latency_ms: number }
+  /**  The host has no address of this family, or did not resolve. */
+  | { kind: 'no_address' }
+  | { kind: 'no_answer' }
+
 /**  Which address families a transport answered over. */
 export type StunFamilies = {
   ipv4: boolean
@@ -5435,6 +5459,16 @@ export type StunServer = {
 export type StunServerCapabilities = {
   udp: StunFamilies
   tcp: StunFamilies
+}
+
+/**  What a test of a STUN server found over each transport and family. */
+export type StunServerTest = {
+  udp_ipv4: StunAttempt
+  udp_ipv6: StunAttempt
+  tcp_ipv4: StunAttempt
+  tcp_ipv6: StunAttempt
+  /**  The transports and families that answered. */
+  capabilities: StunServerCapabilities
 }
 
 /**

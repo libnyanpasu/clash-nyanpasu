@@ -61,6 +61,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_app_config,
             ipc::get_clash_config,
             ipc::get_config_features,
+            ipc::get_ip_lookup_providers,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
             ipc::probe_profile_url,
@@ -120,6 +121,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::unsubscribe_clash_connection_details,
             // Side-effecting commands
             ipc::probe_direct_egress,
+            ipc::test_stun_server,
             ipc::clear_core_logs,
             ipc::open_log_session,
             ipc::query_logs,

@@ -104,6 +104,24 @@ impl IpLookupProvider {
     }
 }
 
+/// A provider and the endpoints it is asked at, for its privacy notice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+pub struct IpLookupProviderInfo {
+    pub provider: IpLookupProvider,
+    pub ipv4_url: String,
+    pub ipv6_url: String,
+}
+
+impl From<IpLookupProvider> for IpLookupProviderInfo {
+    fn from(provider: IpLookupProvider) -> Self {
+        Self {
+            provider,
+            ipv4_url: provider.ipv4_url().into(),
+            ipv6_url: provider.ipv6_url().into(),
+        }
+    }
+}
+
 /// Rejects malformed servers and repeated entries in either list.
 pub fn validate_public_ip_probe_sources(
     servers: &[StunServer],

@@ -14,6 +14,7 @@ dependency rules.
 | `nyanpasu-persistence`       | Generic filesystem retry and evidence-preserving recovery                                         | Core, contracts, transform, implementation crates, `redb`, core manager, Tauri, egui/eframe or Slint                          |
 | `nyanpasu-profile-io`        | Profile filesystem access, materialization transactions and content source                        | Core, other implementation crates, Tauri, egui/eframe or Slint                                                                |
 | `nyanpasu-net`               | Subscription, changelog, direct-egress, icon and diagnostics HTTP adapters and client policy      | Core, other implementation crates, Tauri, egui/eframe or Slint                                                                |
+| `nyanpasu-os`                | System proxy reads/writes, PAC, autostart, device identity and sidecar version probes             | Core family, other implementation crates, Tauri, egui/eframe or Slint                                                         |
 | `nyanpasu-owner-support`     | Owner shutdown tracking and blocking-task result handling                                         | Other core-family packages, implementation crates, Tauri, egui/eframe or Slint                                                |
 | `nyanpasu-observers`         | Core-log, traffic and country-index owners over injected store, frame and mode ports              | Implementation crates, `redb`, `clash-api`, core manager, `notify`, `notify-debouncer-full`, Tauri, egui/eframe or Slint      |
 | `nyanpasu-migration`         | Configuration upgrades, backups and session document reads through storage ports                  | Implementation crates, `redb`, core manager, Tauri, egui/eframe or Slint                                                      |
@@ -32,7 +33,8 @@ transform must not depend on each other either.
 The core crate receives dependencies through constructors, function
 arguments or actor startup parameters. Implementation crates depend on the
 foundation layer only, never on core or each other. Core must not depend on an
-implementation crate in production. Application integration tests live in core
+implementation crate in production. The core family must not depend on `sysproxy`;
+OS proxy mechanisms belong to `nyanpasu-os`. Application integration tests live in core
 with implementation crates as dev-dependencies; host test assembly stays in the
 host. Core's exported test support accepts injected adapters without linking
 implementation crates. Tauri-specific adapters remain in the host.

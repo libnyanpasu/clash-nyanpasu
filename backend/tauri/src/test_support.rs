@@ -21,7 +21,7 @@ fn test_profile_file_ports(
     let fetcher = Arc::new(SubscriptionHttpFetcher::new(
         ports,
         nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
-        Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+        Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
         DeviceHeaders {
             hwid: "test-device".into(),
             ..Default::default()

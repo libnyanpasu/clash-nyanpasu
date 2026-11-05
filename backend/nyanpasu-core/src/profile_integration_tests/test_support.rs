@@ -1,7 +1,10 @@
 //! Real profile file capabilities for application integration tests.
 use std::sync::Arc;
 
-use nyanpasu_contracts::{net::SelfProxyPortSource, profiles::ports::SubscriptionFetcher};
+use nyanpasu_contracts::{
+    net::{SelfProxyPortSource, SystemProxySource},
+    profiles::ports::SubscriptionFetcher,
+};
 use nyanpasu_net::{device_headers::DeviceHeaders, subscription_http::SubscriptionHttpFetcher};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::fs_service::ProfileFileService;
@@ -14,6 +17,14 @@ use crate::client::{
     test_support::runtime_build::TestRuntimeBuildPort,
 };
 
+pub(super) struct NoSystemProxy;
+
+impl SystemProxySource for NoSystemProxy {
+    fn system_proxy(&self) -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
+}
+
 fn test_profile_file_ports(
     paths: &PathResolver,
     ports: Arc<dyn SelfProxyPortSource>,
@@ -22,7 +33,7 @@ fn test_profile_file_ports(
     let fetcher = Arc::new(SubscriptionHttpFetcher::new(
         ports,
         nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
-        Arc::new(crate::utils::config::OsSystemProxySource),
+        Arc::new(NoSystemProxy),
         DeviceHeaders {
             hwid: "test-device".into(),
             ..Default::default()

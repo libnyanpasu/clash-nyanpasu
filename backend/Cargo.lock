@@ -1789,7 +1789,6 @@ dependencies = [
  "async-trait",
  "atomic_enum",
  "atomicwrites",
- "auto-launch",
  "axum",
  "base64 0.23.1",
  "bolt-load",
@@ -1840,6 +1839,7 @@ dependencies = [
  "nyanpasu-migration",
  "nyanpasu-net",
  "nyanpasu-observers",
+ "nyanpasu-os",
  "nyanpasu-owner-support",
  "nyanpasu-panics",
  "nyanpasu-paths",
@@ -1885,7 +1885,6 @@ dependencies = [
  "struct-patch",
  "strum",
  "sysinfo",
- "sysproxy",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -6820,7 +6819,6 @@ dependencies = [
  "nyanpasu-updater",
  "nyanpasu-utils",
  "nyanpasu-widget-protocol",
- "once_cell",
  "parking_lot 0.13.0",
  "postcard",
  "pretty_assertions",
@@ -6837,8 +6835,6 @@ dependencies = [
  "specta",
  "struct-patch",
  "strum",
- "sysinfo",
- "sysproxy",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -6851,7 +6847,6 @@ dependencies = [
  "uuid",
  "whoami",
  "windows-sys 0.61.2",
- "winreg 0.56.0",
  "zstd",
 ]
 
@@ -7129,6 +7124,36 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "nyanpasu-os"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "auto-launch",
+ "camino",
+ "dunce",
+ "hex",
+ "mockall",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "once_cell",
+ "reqwest 0.13.5",
+ "serde",
+ "sha2 0.11.1",
+ "snafu 0.9.2",
+ "specta",
+ "sysinfo",
+ "sysproxy",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "whoami",
+ "winreg 0.56.0",
 ]
 
 [[package]]

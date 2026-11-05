@@ -2,6 +2,92 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { dependencyViolations } from './backend-boundaries.ts'
 
+test('the desktop shell constructs OS implementations over foundation contracts', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'clash-nyanpasu',
+      'nyanpasu-os v0.1.0\nsysproxy v0.3\n',
+    ),
+    [],
+  )
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-os',
+      'nyanpasu-os v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-config v0.1.0\nsysproxy v0.3\nreqwest v0.13\n',
+    ),
+    [],
+  )
+})
+
+for (const owner of [
+  'nyanpasu-core',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+]) {
+  test(`${owner} and OS implementations cannot depend on each other`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-os v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-os`],
+    )
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-os', `${owner} v0.1.0\n`),
+      [`nyanpasu-os must not depend on ${owner}`],
+    )
+  })
+  test(`${owner} rejects direct and transitive sysproxy dependencies`, () => {
+    for (const path of [
+      'sysproxy v0.3\n',
+      'neutral-adapter v0.1\nsysproxy v0.3\n',
+    ]) {
+      assert.deepStrictEqual(dependencyViolations(owner, path), [
+        `${owner} must not depend on sysproxy`,
+      ])
+    }
+  })
+}
+
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-net',
+  'nyanpasu-profile-io',
+  'nyanpasu-scripts',
+]) {
+  test(`${owner} cannot depend on OS implementations`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-os v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-os`],
+    )
+  })
+}
+
+for (const dependency of [
+  'nyanpasu-net',
+  'nyanpasu-profile-io',
+  'nyanpasu-scripts',
+  'clash-nyanpasu',
+  'tauri',
+  'tauri-plugin-shell',
+  'egui',
+  'eframe',
+  'slint',
+  'slint-interpreter',
+  'i-slint-core',
+]) {
+  test(`OS rejects direct and transitive ${dependency} dependencies`, () => {
+    for (const prefix of ['', 'neutral-adapter v0.1\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations('nyanpasu-os', `${prefix}${dependency} v0.1\n`),
+        [`nyanpasu-os must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
 test('transitive GUI and host dependencies invalidate neutral packages', () => {
   assert.deepStrictEqual(
     dependencyViolations(

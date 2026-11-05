@@ -8,6 +8,11 @@ use nyanpasu_net::{
     direct_egress::NetworkDirectEgressProbe,
     subscription_http::SubscriptionHttpFetcher,
 };
+use nyanpasu_os::{
+    autostart::{AutoLaunchBackend, AutoLaunchConfig},
+    pac::HttpPacBackend,
+    system_proxy::SysproxyOsProxy,
+};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use std::sync::Arc;
@@ -21,7 +26,6 @@ use crate::{
             TauriWindowControl,
         },
         main_thread::TauriMainThread,
-        system_proxy::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
         ui_effects::adapters::{
             RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
@@ -354,7 +358,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     let network = Arc::new(nyanpasu_net::net_adapters::ReqwestNetworkAdapter::new(
         bundle_metadata,
-        Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+        Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
     ));
     let span = tracing::info_span!("build_client").entered();
     let ui_sink: Arc<dyn UiEventSink> =
@@ -397,7 +401,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(
                     ports,
                     bundle_metadata,
-                    Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+                    Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
                 ))
             }),
             runtime_build: Arc::new(
@@ -427,7 +431,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             ),
             profile_files: Arc::new({
                 let paths = paths.clone();
-                let device_info = nyanpasu_core::utils::hwid::get_device_info();
+                let device_info = nyanpasu_os::device_identity::get_device_info();
                 let device_headers = DeviceHeaders {
                     hwid: device_info.hwid,
                     device_os: device_headers::sanitize_for_header(&device_info.device_os),
@@ -441,7 +445,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                         fetcher: Arc::new(SubscriptionHttpFetcher::new(
                             ports,
                             bundle_metadata,
-                            Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+                            Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
                             device_headers.clone(),
                         )),
                         materialization: service,
@@ -481,7 +485,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     app_handle.clone(),
                     proxy_port,
                     bundle_metadata,
-                    Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+                    Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
                 ))
             }
         })),
@@ -497,7 +501,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         binary_installer: Arc::new(
             nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
         ),
-        core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader::new(
+        core_versions: Arc::new(nyanpasu_os::core_version::SidecarCoreVersionReader::new(
             Arc::new(crate::adapters::core_version::TauriCoreVersionExecutableSource),
         )),
         effects,

@@ -85,6 +85,7 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-observers/src/',
   'backend/nyanpasu-updater/src/',
+  'backend/nyanpasu-os/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
   'backend/nyanpasu-profile-transform/src/',
@@ -166,7 +167,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: 'launch-environment flag read once',
   },
   {
-    path: 'backend/nyanpasu-core/src/utils/hwid.rs',
+    path: 'backend/nyanpasu-os/src/device_identity.rs',
     name: 'DEVICE_INFO',
     category: 'immutable',
     reason: 'host identity computed once',

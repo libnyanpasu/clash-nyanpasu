@@ -1,3 +1,5 @@
+//! Reads the current OS proxy for network consumers.
+
 use anyhow::Result;
 use nyanpasu_contracts::net::SystemProxySource;
 use sysproxy::Sysproxy;

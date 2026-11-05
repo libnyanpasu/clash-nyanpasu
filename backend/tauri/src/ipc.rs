@@ -400,12 +400,6 @@ pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
     Ok(client.is_portable())
 }
 
-// #[tauri::command]
-// #[specta::specta]
-// pub fn get_device_info() -> Result<nyanpasu_core::utils::hwid::DeviceInfo> {
-//     Ok(nyanpasu_core::utils::hwid::get_device_info())
-// }
-
 /// Rebuild-only command: there is no prior state commit, so a failure is a
 /// plain error — the committed/degraded model (spec §6.2) does not apply.
 #[nyanpasu_macro::rpc(http)]

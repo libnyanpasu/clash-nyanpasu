@@ -1,3 +1,5 @@
+//! Sidecar version probes using a shell-provided executable source.
+
 use std::sync::Arc;
 
 use async_trait::async_trait;

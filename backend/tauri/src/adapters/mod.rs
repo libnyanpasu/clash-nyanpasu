@@ -9,4 +9,5 @@ pub(crate) mod event_sink;
 pub(crate) mod events;
 pub(crate) mod hotkey;
 pub(crate) mod main_thread;
+pub(crate) mod rpc_audit;
 pub(crate) mod ui_effects;

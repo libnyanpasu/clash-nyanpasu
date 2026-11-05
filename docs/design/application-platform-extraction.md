@@ -84,6 +84,11 @@ it and which shell capabilities it needs.
 Every dispatched call passes one audit seam in the RPC layer, whatever the
 transport. It records metadata only (transport, command, caller, duration and
 outcome), never payloads; the shell decides where the records go.
+E2 moves `dispatch_audited` and its injected synchronous sink port with the
+registry into `nyanpasu-rpc`. E3's local socket/CLI enters the same kernel at INFO,
+as HTTP does; Tauri IPC stays at DEBUG regardless of outcome. Direct HTTP archive
+and subscription establishment also enter this kernel, without auditing frames
+or retaining streams.
 
 | Target | Transport                                                        | Caller                              | Exposed commands                                                                                                                                            | Authorization                                                                                           |
 | ------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |

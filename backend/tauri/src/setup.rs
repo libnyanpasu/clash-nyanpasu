@@ -613,6 +613,9 @@ pub(crate) enum UnifiedRpcError {
 /// storage and the other Tauri state dependencies.
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
     let dependencies = crate::unified_rpc::RpcDependencies {
+        audit: crate::unified_rpc::RpcAudit::new(Arc::new(
+            crate::adapters::rpc_audit::TracingRpcAuditSink,
+        )),
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),

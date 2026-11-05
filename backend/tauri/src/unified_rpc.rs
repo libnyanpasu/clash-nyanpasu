@@ -1,11 +1,22 @@
 //! Experimental HTTP transport for commands shared with the existing Tauri IPC surface.
 
-use std::{collections::HashMap, convert::Infallible, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap,
+    convert::Infallible,
+    future::Future,
+    hash::{BuildHasher as _, RandomState},
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Query, State, rejection::JsonRejection},
+    extract::{
+        Query, State,
+        rejection::{JsonRejection, QueryRejection},
+    },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
@@ -24,6 +35,139 @@ pub struct RpcDependencies {
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
     pub events: EventBus,
+    pub audit: RpcAudit,
+}
+
+/// The injected audit sink and the per-process key for HTTP caller identities.
+pub struct RpcAudit {
+    sink: Arc<dyn RpcAuditSink>,
+    owner_key: RandomState,
+}
+
+impl RpcAudit {
+    pub fn new(sink: Arc<dyn RpcAuditSink>) -> Self {
+        Self {
+            sink,
+            owner_key: RandomState::new(),
+        }
+    }
+
+    /// IPC callers are window labels. An HTTP owner carries the session cookie, which
+    /// authorizes log sessions, so records get a keyed hash that still correlates
+    /// one session's calls but never reveals the cookie.
+    fn owner(&self, transport: RpcTransport, owner: &RpcOwner) -> RpcAuditOwner {
+        match transport {
+            RpcTransport::TauriIpc => RpcAuditOwner(owner.label().to_owned()),
+            RpcTransport::Http => RpcAuditOwner(format!(
+                "http:{:016x}",
+                self.owner_key.hash_one(owner.label())
+            )),
+        }
+    }
+}
+
+/// A caller identity that is safe to log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpcAuditOwner(String);
+
+impl RpcAuditOwner {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Synchronous observation only: implementations must not panic or queue work.
+pub trait RpcAuditSink: Send + Sync + 'static {
+    fn record(&self, record: &RpcAuditRecord);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RpcTransport {
+    TauriIpc,
+    Http,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RpcAuditOutcome {
+    Success,
+    Failure {
+        kind: &'static str,
+        code: Option<String>,
+    },
+    Cancelled,
+    Panicked,
+}
+
+/// Local metadata only; this record is never serialized onto a transport.
+#[derive(Debug, Clone)]
+pub struct RpcAuditRecord {
+    pub transport: RpcTransport,
+    pub command: &'static str,
+    pub owner: RpcAuditOwner,
+    pub duration: Duration,
+    pub outcome: RpcAuditOutcome,
+}
+
+struct RpcAuditGuard<'a> {
+    sink: &'a dyn RpcAuditSink,
+    record: RpcAuditRecord,
+    started: Instant,
+    completed: bool,
+}
+
+impl RpcAuditGuard<'_> {
+    fn record(&mut self, outcome: RpcAuditOutcome) {
+        self.record.duration = self.started.elapsed();
+        self.record.outcome = outcome;
+        self.completed = true;
+        self.sink.record(&self.record);
+    }
+}
+
+impl Drop for RpcAuditGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.record(if std::thread::panicking() {
+                RpcAuditOutcome::Panicked
+            } else {
+                RpcAuditOutcome::Cancelled
+            });
+        }
+    }
+}
+
+/// Observe dispatch without changing its result, polling, cancellation or unwind.
+/// The name resolver runs under the guard and returns only registry or fixed names.
+/// Aborting the process cannot produce a Drop record.
+pub async fn dispatch_audited<T>(
+    audit: &RpcAudit,
+    transport: RpcTransport,
+    owner: RpcOwner,
+    command: impl FnOnce() -> &'static str,
+    call: impl Future<Output = Result<T, RpcError>>,
+) -> Result<T, RpcError> {
+    let mut guard = RpcAuditGuard {
+        sink: audit.sink.as_ref(),
+        record: RpcAuditRecord {
+            transport,
+            command: "unknown_method",
+            owner: audit.owner(transport, &owner),
+            duration: Duration::ZERO,
+            outcome: RpcAuditOutcome::Cancelled,
+        },
+        started: Instant::now(),
+        completed: false,
+    };
+    guard.record.command = command();
+    let result = call.await;
+    guard.record(match &result {
+        Ok(_) => RpcAuditOutcome::Success,
+        Err(error) => RpcAuditOutcome::Failure {
+            kind: error.kind,
+            code: error.code.clone(),
+        },
+    });
+    result
 }
 
 const EVENT_NAMES: &[&str] = &[
@@ -71,7 +215,7 @@ pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
 }
 
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RpcOwner(String);
 
 impl RpcOwner {
@@ -93,6 +237,11 @@ impl RpcOwner {
     }
     pub fn label(&self) -> &str {
         &self.0
+    }
+
+    fn http_or_anonymous(headers: &HeaderMap) -> Self {
+        // A session identifies an owner; authentication belongs to the listener.
+        Self::http(headers).unwrap_or_else(|_| Self(format!("http:{}", uuid::Uuid::new_v4())))
     }
 }
 
@@ -276,11 +425,26 @@ impl UnifiedRpc {
     }
 
     async fn call(&self, method: &str, owner: RpcOwner, params: Value) -> Result<Value, RpcError> {
-        let handler = self
-            .commands
-            .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
-        (handler.0)(self.dependencies.clone(), owner, params).await
+        dispatch_audited(
+            &self.dependencies.audit,
+            RpcTransport::Http,
+            owner.clone(),
+            || self.audit_command_name(method),
+            async {
+                let handler = self
+                    .commands
+                    .get(method)
+                    .ok_or_else(|| RpcError::unknown_method(method))?;
+                (handler.0)(self.dependencies.clone(), owner, params).await
+            },
+        )
+        .await
+    }
+
+    fn audit_command_name(&self, method: &str) -> &'static str {
+        self.commands
+            .get_key_value(method)
+            .map_or("unknown_method", |(name, _)| *name)
     }
 
     async fn call_tauri(
@@ -291,47 +455,65 @@ impl UnifiedRpc {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcError> {
-        let handler = self
-            .commands
-            .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
-        (handler.1)(app, window, webview, params).await
+        dispatch_audited(
+            &self.dependencies.audit,
+            RpcTransport::TauriIpc,
+            RpcOwner::desktop(window.label()),
+            || self.audit_command_name(method),
+            async {
+                let handler = self
+                    .commands
+                    .get(method)
+                    .ok_or_else(|| RpcError::unknown_method(method))?;
+                (handler.1)(app, window, webview, params).await
+            },
+        )
+        .await
     }
 }
 
 async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<RpcError>)> {
-    let paths = rpc.dependencies.paths.clone();
-    let archive = crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
-        .await
-        .map_err(|error| RpcError::new("application_error", error.to_string()))
-        .map_err(http_rpc_error)?;
-    let file = tokio::fs::File::open(&archive)
-        .await
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)?;
-    let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
-        use tokio::io::AsyncReadExt;
+    dispatch_audited(
+        &rpc.dependencies.audit,
+        RpcTransport::Http,
+        RpcOwner::http_or_anonymous(&headers),
+        || "logs_archive",
+        async {
+            let paths = rpc.dependencies.paths.clone();
+            let archive =
+                crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
+                    .await
+                    .map_err(|error| RpcError::new("application_error", error.to_string()))?;
+            let file = tokio::fs::File::open(&archive)
+                .await
+                .map_err(RpcError::application)?;
+            let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
+                use tokio::io::AsyncReadExt;
 
-        let mut bytes = vec![0; 64 * 1024];
-        let count = file.read(&mut bytes).await?;
-        if count == 0 {
-            return Ok::<_, std::io::Error>(None);
-        }
-        bytes.truncate(count);
-        Ok(Some((bytes, (file, _archive))))
-    });
-    let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
-    Response::builder()
-        .header("content-type", "application/zip")
-        .header(
-            "content-disposition",
-            format!("attachment; filename=\"{file_name}\""),
-        )
-        .body(Body::from_stream(body))
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)
+                let mut bytes = vec![0; 64 * 1024];
+                let count = file.read(&mut bytes).await?;
+                if count == 0 {
+                    return Ok::<_, std::io::Error>(None);
+                }
+                bytes.truncate(count);
+                Ok(Some((bytes, (file, _archive))))
+            });
+            let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+            Response::builder()
+                .header("content-type", "application/zip")
+                .header(
+                    "content-disposition",
+                    format!("attachment; filename=\"{file_name}\""),
+                )
+                .body(Body::from_stream(body))
+                .map_err(RpcError::application)
+        },
+    )
+    .await
+    .map_err(http_rpc_error)
 }
 
 fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
@@ -342,16 +524,26 @@ fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
 // SSE body releases the watch receiver, just like a native channel teardown.
 async fn http_connection_details(
     State(rpc): State<UnifiedRpc>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<RpcError>)> {
-    let receiver = rpc
-        .dependencies
-        .client
-        .subscribe_clash_connection_details()
-        .await
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)?;
-    Ok(Sse::new(connection_detail_events(receiver))
-        .keep_alive(axum::response::sse::KeepAlive::default()))
+    dispatch_audited(
+        &rpc.dependencies.audit,
+        RpcTransport::Http,
+        RpcOwner::http_or_anonymous(&headers),
+        || "connection_details_subscribe",
+        async {
+            let receiver = rpc
+                .dependencies
+                .client
+                .subscribe_clash_connection_details()
+                .await
+                .map_err(RpcError::application)?;
+            Ok(Sse::new(connection_detail_events(receiver))
+                .keep_alive(axum::response::sse::KeepAlive::default()))
+        },
+    )
+    .await
+    .map_err(http_rpc_error)
 }
 
 fn connection_detail_events(
@@ -400,53 +592,76 @@ struct EventRequest {
 
 async fn http_events(
     State(rpc): State<UnifiedRpc>,
-    Query(request): Query<EventRequest>,
+    headers: HeaderMap,
+    request: Result<Query<EventRequest>, QueryRejection>,
 ) -> Response {
-    if request
-        .name
-        .as_ref()
-        .is_some_and(|name| !EVENT_NAMES.contains(&name.as_str()))
-    {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(RpcError::unknown_method(request.name.as_deref().unwrap())),
-        )
-            .into_response();
-    }
-    let receiver = rpc.dependencies.events.subscribe();
-    let name = request.name;
-    let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
-        loop {
-            match receiver.recv().await {
-                Ok((event_name, payload))
-                    if name.as_ref().is_none_or(|name| event_name == name) =>
-                {
-                    let payload = if name.is_some() {
-                        payload
-                    } else {
-                        serde_json::json!({"name": event_name, "payload": payload})
-                    };
-                    let data = serde_json::to_string(&payload).ok()?;
-                    return Some((
-                        Ok::<Event, Infallible>(Event::default().data(data)),
-                        (receiver, name),
-                    ));
-                }
-                Ok(_) => continue,
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    return Some((
-                        Ok(Event::default().event("resync").data("{}")),
-                        (receiver, name),
-                    ));
-                }
-                Err(broadcast::error::RecvError::Closed) => return None,
-            }
+    let owner = RpcOwner::http_or_anonymous(&headers);
+    let request = match request {
+        Ok(Query(request)) => request,
+        Err(error) => {
+            let _ = dispatch_audited(
+                &rpc.dependencies.audit,
+                RpcTransport::Http,
+                owner,
+                || "events_subscribe",
+                async { Err::<(), _>(RpcError::invalid_params(error.to_string())) },
+            )
+            .await;
+            return error.into_response();
         }
-    });
-    let ready = stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
-    Sse::new(ready.chain(events))
-        .keep_alive(axum::response::sse::KeepAlive::default())
-        .into_response()
+    };
+    dispatch_audited(
+        &rpc.dependencies.audit,
+        RpcTransport::Http,
+        owner,
+        || "events_subscribe",
+        async {
+            if request
+                .name
+                .as_ref()
+                .is_some_and(|name| !EVENT_NAMES.contains(&name.as_str()))
+            {
+                return Err(RpcError::unknown_method(request.name.as_deref().unwrap()));
+            }
+            let receiver = rpc.dependencies.events.subscribe();
+            let name = request.name;
+            let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
+                loop {
+                    match receiver.recv().await {
+                        Ok((event_name, payload))
+                            if name.as_ref().is_none_or(|name| event_name == name) =>
+                        {
+                            let payload = if name.is_some() {
+                                payload
+                            } else {
+                                serde_json::json!({"name": event_name, "payload": payload})
+                            };
+                            let data = serde_json::to_string(&payload).ok()?;
+                            return Some((
+                                Ok::<Event, Infallible>(Event::default().data(data)),
+                                (receiver, name),
+                            ));
+                        }
+                        Ok(_) => continue,
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            return Some((
+                                Ok(Event::default().event("resync").data("{}")),
+                                (receiver, name),
+                            ));
+                        }
+                        Err(broadcast::error::RecvError::Closed) => return None,
+                    }
+                }
+            });
+            let ready =
+                stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
+            Ok(Sse::new(ready.chain(events))
+                .keep_alive(axum::response::sse::KeepAlive::default())
+                .into_response())
+        },
+    )
+    .await
+    .unwrap_or_else(|error| http_rpc_error(error).into_response())
 }
 
 async fn http_call(
@@ -454,16 +669,21 @@ async fn http_call(
     headers: HeaderMap,
     request: Result<Json<Request>, JsonRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<RpcError>)> {
-    let Json(request) = request.map_err(|error| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(RpcError::invalid_params(error.to_string())),
-        )
-    })?;
-    // Sessions are required only for owner-scoped commands; ordinary calls may
-    // use an anonymous owner. The listener authenticates every request before dispatch.
-    let owner = RpcOwner::http(&headers)
-        .unwrap_or_else(|_| RpcOwner(format!("http:{}", uuid::Uuid::new_v4())));
+    let owner = RpcOwner::http_or_anonymous(&headers);
+    let request = match request {
+        Ok(Json(request)) => request,
+        Err(error) => {
+            return dispatch_audited(
+                &rpc.dependencies.audit,
+                RpcTransport::Http,
+                owner,
+                || "invalid_envelope",
+                async { Err(RpcError::invalid_params(error.to_string())) },
+            )
+            .await
+            .map_err(http_rpc_error);
+        }
+    };
     rpc.call(&request.method, owner, request.params)
         .await
         .map(Json)
@@ -471,8 +691,11 @@ async fn http_call(
 }
 
 #[cfg(test)]
+mod audit_tests;
+
+#[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{audit_tests::AuditSink, *};
     use axum::{
         body::{Body, to_bytes},
         http::Request,
@@ -559,6 +782,7 @@ mod tests {
             client.fetch_latest_core_versions().await.unwrap();
             assert!(client.inspect_updater(1).await.is_err());
             let app = UnifiedRpc::new(RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client: client.clone(),
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
                 paths,
@@ -606,6 +830,7 @@ mod tests {
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -931,7 +1156,7 @@ mod tests {
             );
         });
     }
-    async fn rpc_for_test_call(
+    pub(super) async fn rpc_for_test_call(
         app: &Router,
         method: &str,
         params: Value,
@@ -997,6 +1222,7 @@ mod tests {
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1083,6 +1309,7 @@ mod tests {
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1211,6 +1438,7 @@ mod tests {
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1333,6 +1561,7 @@ mod tests {
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,

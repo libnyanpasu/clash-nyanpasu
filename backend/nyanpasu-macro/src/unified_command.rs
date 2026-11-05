@@ -603,6 +603,17 @@ mod tests {
                 expand(command).unwrap_or_else(|error| panic!("failed to expand {name}: {error}"));
             let expanded = syn::parse2::<syn::File>(expanded)
                 .unwrap_or_else(|error| panic!("failed to parse expansion for {name}: {error}"));
+            let registration = expanded.to_token_stream().to_string();
+            assert!(registration.contains(&format!("http_handler : __unified_http_{name}")));
+            assert!(registration.contains(&format!("tauri_handler : __unified_tauri_{name}")));
+            assert!(
+                !registration.contains("dispatch_audited"),
+                "handlers must not audit twice"
+            );
+            assert!(
+                !registration.contains("RpcAudit"),
+                "the registry owns auditing"
+            );
             let handler_name = format_ident!("__unified_tauri_{name}");
             let handler = expanded
                 .items
@@ -651,6 +662,67 @@ mod tests {
             "Tauri application commands in ipc.rs must use #[nyanpasu_macro::rpc(...)]: {}",
             plain_commands.join(", ")
         );
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tauri/src/unified_rpc.rs"
+        ))
+        .unwrap();
+        let file = syn::parse_file(&source).unwrap();
+        let transport = file
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(function) if function.sig.ident == "call_rpc" => Some(function),
+                _ => None,
+            })
+            .unwrap();
+        let body = transport.block.to_token_stream().to_string();
+        assert!(body.contains("call_tauri"));
+        assert!(
+            !body.contains("handler"),
+            "call_rpc must enter the registry dispatcher"
+        );
+    }
+
+    #[test]
+    fn transport_builder_registers_only_call_rpc() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tauri/src/specta_export.rs"
+        ))
+        .unwrap();
+        let file = syn::parse_file(&source).unwrap();
+        let builder = file
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(function) if function.sig.ident == "build_transport_builder" => {
+                    Some(function)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let body = builder.block.to_token_stream().to_string();
+        assert_eq!(body.matches(". commands (").count(), 1);
+        assert_eq!(body.matches("collect_commands !").count(), 1);
+        assert!(
+            body.contains(". commands (collect_commands ! [unified_rpc :: call_rpc])"),
+            "only call_rpc may be registered on the runtime transport: {body}"
+        );
+        let source =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/lib.rs"))
+                .unwrap();
+        let body = syn::parse_file(&source)
+            .unwrap()
+            .to_token_stream()
+            .to_string();
+        // Two matches: the builder call and the nested `transport_builder.invoke_handler()`.
+        assert_eq!(body.matches(". invoke_handler (").count(), 2);
+        assert!(body.contains(". invoke_handler (transport_builder . invoke_handler ())"));
+        assert!(
+            body.contains("let transport_builder = specta_export :: build_transport_builder ()")
+        );
+        assert!(!body.contains("generate_handler !"));
     }
 
     fn collect_tauri_commands(items: &[Item], commands: &mut Vec<ItemFn>) {

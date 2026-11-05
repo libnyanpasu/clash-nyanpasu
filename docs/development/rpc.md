@@ -46,6 +46,19 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 ### Declare capabilities and preserve transport semantics
 
+All dispatched application calls enter `dispatch_audited`, including direct HTTP
+archive and subscription routes and dispatch-time parameter rejections. The
+injected synchronous sink records only transport, fixed command name, caller
+(the window label, or a per-process keyed hash of the HTTP session, whose cookie
+authorizes log sessions and so never reaches a record), monotonic duration and
+outcome (failure kind/code only). HTTP uses INFO and Tauri
+IPC uses DEBUG on `nyanpasu::rpc_audit`, regardless of outcome. Results, polling,
+cancellation and panic propagation are unchanged; abort builds cannot record on
+Drop. Streams are audited once when established, never per frame. Authentication
+rejections, static assets and envelopes rejected by Tauri before `call_rpc` are
+outside this boundary. E2 moves the kernel and its port with the registry; E3's
+local socket/CLI must enter this same kernel at INFO.
+
 - HTTP access is explicit opt-in via `rpc(http)`, not inferred authorization from a compatible signature. Review the operation's effects before enabling it. Desktop OS operations, arbitrary outbound URL diagnostics, and desktop-only server controls stay desktop-only unless deliberately adapted and reviewed.
 - Never inject `AppHandle` into an HTTP-enabled RPC command or add it to `RpcDependencies`; doing so grants the handler every capability reachable from the app. Route shared side effects through `NyanpasuClient` and the existing typed client or actor message that owns them. Do not add a one-off managed Tauri closure when an existing actor path already performs the operation. `EventBus` and `rpc.events` carry notifications from backend to frontend; they are not an inbound command channel.
 - Shared operations receive explicit dependencies and call `NyanpasuClient`. Assemble `RpcDependencies`, routers, and server adapters in the composition root. The facade must not accept `axum::Router` or expose transport infrastructure; avoid strong reference cycles between the server/router and client.

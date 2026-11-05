@@ -473,3 +473,29 @@ test('the headless server composes implementations but links no GUI', () => {
     [],
   )
 })
+
+test('the CLI links the wire contract but no application, registry or shell', () => {
+  for (const dependency of [
+    'nyanpasu-core',
+    'nyanpasu-config',
+    'nyanpasu-rpc',
+    'nyanpasu-server',
+    'nyanpasu-net',
+    'ractor',
+    'tauri',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-cli', `${dependency} v0.1.0\n`),
+      [`nyanpasu-cli must not depend on ${dependency}`],
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-cli',
+      ['nyanpasu-rpc-protocol', 'serde_json', 'snafu', 'tokio']
+        .map((name) => `${name} v0.1.0`)
+        .join('\n'),
+    ),
+    [],
+  )
+})

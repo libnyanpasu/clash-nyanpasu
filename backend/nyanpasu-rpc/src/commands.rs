@@ -12,6 +12,8 @@ use nyanpasu_core::{
     state::profiles::actor::NewProfileRequest,
 };
 
+use nyanpasu_rpc_protocol::RpcTarget;
+
 use crate::{IpcError, State};
 
 type Result<T = ()> = std::result::Result<T, IpcError>;
@@ -135,6 +137,17 @@ pub async fn get_core_log_status(
 #[specta::specta]
 pub async fn get_runtime_yaml_redacted(client: State<'_, NyanpasuClient>) -> Result<String> {
     Ok(client.runtime_yaml_redacted().await?)
+}
+
+/// The command names the local socket serves, sorted, so a client can offer
+/// them without carrying a copy of the allowlist.
+#[nyanpasu_macro::rpc(local)]
+#[specta::specta]
+pub async fn list_methods() -> Result<Vec<String>> {
+    Ok(crate::registry::linked_command_names(RpcTarget::Local)
+        .into_iter()
+        .map(str::to_owned)
+        .collect())
 }
 
 /// Reconciles the core with the committed configuration and reports the

@@ -1,0 +1,25 @@
+[package]
+name = 'nyanpasu-cli'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = 'Command-line client of a running Nyanpasu shell over its local socket'
+
+[dependencies]
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', features = [
+  'local-client'
+] }
+serde_json = '1'
+snafu = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+# The session test runs this binary against a real server in the same process.
+nyanpasu-server = { path = '../nyanpasu-server' }
+nyanpasu-rpc = { path = '../nyanpasu-rpc', features = ['local-server'] }
+camino = '1.1.9'
+tokio-util = '0.7'
+tempfile = '3.9.0'
+tokio = { workspace = true, features = ['test-util'] }

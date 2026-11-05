@@ -87,9 +87,9 @@ The [target ownership](../design/application-platform-extraction.md#target-owner
 is the plan for the next stage:
 
 - **Shells** compose the application and serve it over RPC. The desktop shell
-  runs core in process. `nyanpasu-server` (planned) is a long-lived headless
-  shell, and `nyanpasu-cli` (planned) is a client of a running shell, not a
-  composition root. The router form is LuCI → CLI → server.
+  runs core in process. `nyanpasu-server` is a long-lived headless shell
+  (`run` serves the local socket), and `nyanpasu-cli` is a client of a running
+  shell, not a composition root. The router form is LuCI → CLI → server.
 - **RPC targets** are Tauri IPC (the full desktop surface), WebUI over HTTP
   (an explicit, restricted allowlist) and the CLI over a local socket (a
   separate explicit allowlist). A command that needs a shell capability is

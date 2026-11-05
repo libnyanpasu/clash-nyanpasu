@@ -23,6 +23,7 @@ members = [
   'nyanpasu-widget-protocol',
   'nyanpasu-rpc-protocol',
   'nyanpasu-rpc',
+  'nyanpasu-cli',
   'nyanpasu-widget',
   'nyanpasu-crash-reporter',
   'nyanpasu-diagnose',

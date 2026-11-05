@@ -260,15 +260,23 @@ than a router-only transport:
   replies `{"v":1,"id":N,"result":...}` or `{"v":1,"id":N,"error":RpcError}`. A
   connection may carry several requests; disconnecting does not cancel work
   the server has started.
-- **CLI:** `nyanpasu-cli [--socket PATH] call METHOD [--params JSON | --params-file FILE]`
+- **CLI:** `nyanpasu-cli [--socket PATH] [--timeout SECS] call METHOD [--params JSON | --params-file FILE]`
   prints the result or `RpcError` as JSON on stdout. Exit codes: 0 success, 1
-  `RpcError`, 2 transport failure. `nyanpasu-cli methods` lists the `local`
-  allowlist.
+  `RpcError`, 2 transport failure, which prints
+  `{"kind":"transport_error","message":...,"outcome_unknown":bool}` and, for a
+  deadline (default 90 s, as a reconcile can take about 30 s) or a closed
+  connection, reports the outcome as unknown because the server keeps running
+  work its caller left. A usage error exits 2 with a message on stderr.
+  `nyanpasu-cli methods` lists the `local` allowlist through `list_methods`.
+  Parameters are the command's arguments as one JSON object whose top-level keys
+  are camelCase (`fileData`, not `file_data`), while the nested DTOs keep their
+  own snake_case; an unknown key is ignored, so a misspelled `fileData` creates
+  an empty profile.
 - **`rpc(local)` allowlist and rpcd ACL:**
 
 | ACL   | Commands                                                                                                                                                                                                                                   |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| read  | `get_core_status`, `get_profiles`, `get_runtime_yaml_redacted` (new), `inspect_runtime`, `query_core_logs`, `get_core_log_status`                                                                                                          |
+| read  | `get_core_status`, `get_profiles`, `get_runtime_yaml_redacted` (new), `inspect_runtime`, `query_core_logs`, `get_core_log_status`, `list_methods` (new)                                                                                    |
 | write | `create_profile`, `delete_profile`, `replace_profile_definition`, `set_global_transforms`, `activate_profile`, `read_profile_file`, `save_profile_file`, `reconcile_core` (new, returns the report), `stop_core` (new), `get_runtime_yaml` |
 
 `read_profile_file` is write-only because configuration profiles carry

@@ -53,6 +53,12 @@ export function createRpcClient(
      */
     getRuntimeYamlRedacted: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_runtime_yaml_redacted')),
+    /**
+     *  The command names the local socket serves, sorted, so a client can offer
+     *  them without carrying a copy of the allowlist.
+     */
+    listMethods: () =>
+      typedError<string[], IpcError>(__RPC_INVOKE('list_methods')),
     getRuntimeExists: () =>
       typedError<string[], IpcError>(__RPC_INVOKE('get_runtime_exists')),
     inspectRuntime: () =>

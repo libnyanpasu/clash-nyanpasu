@@ -88,6 +88,19 @@ pub struct WeakUnifiedRpc {
     commands: Arc<HashMap<&'static str, &'static CommandEntry>>,
 }
 
+/// The linked commands on `target` that need no shell capability, sorted: what
+/// a shell that provides none registers. A command cannot reach the registry
+/// that serves it, so listing methods reads the linked commands instead.
+pub(crate) fn linked_command_names(target: RpcTarget) -> Vec<&'static str> {
+    let mut names = inventory::iter::<CommandEntry>
+        .into_iter()
+        .filter(|entry| entry.targets.contains(&target) && entry.capabilities.is_empty())
+        .map(|entry| entry.name)
+        .collect::<Vec<_>>();
+    names.sort_unstable();
+    names
+}
+
 impl UnifiedRpc {
     /// Registers every linked command whose capabilities are all in
     /// `provided`; a shell that lacks a capability does not offer the commands
@@ -339,6 +352,8 @@ pub(crate) mod tests {
             "reconcile_core",
             "stop_core",
             "get_runtime_yaml",
+            // Introspection for the CLI.
+            "list_methods",
         ];
         expected.sort_unstable();
         let local = rpc
@@ -347,6 +362,22 @@ pub(crate) mod tests {
             .filter(|name| !name.ends_with("_probe"))
             .collect::<Vec<_>>();
         assert_eq!(local, expected);
+        // A server that provides no capability serves exactly what it lists.
+        let directory = tempfile::tempdir().unwrap();
+        let headless = test_rpc(&directory, EventBus::new(Vec::new()), &[]).await;
+        let listed = headless
+            .call(
+                RpcTarget::Local,
+                "list_methods",
+                RpcOwner::local_connection(1),
+                Value::Null,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            listed,
+            serde_json::json!(headless.command_names(RpcTarget::Local))
+        );
         // Core lifecycle and the redacted YAML are new and not reviewed for the WebUI.
         let http = rpc.command_names(RpcTarget::Http);
         for name in ["reconcile_core", "stop_core", "get_runtime_yaml_redacted"] {

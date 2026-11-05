@@ -107,6 +107,21 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-rpc',
     forbids: [...GUI, ...IMPLEMENTATION],
   },
+  // The CLI is a client of a running shell: it links the wire contract and
+  // never builds the application, so it forbids everything below a shell.
+  {
+    package: 'nyanpasu-cli',
+    forbids: [
+      ...GUI,
+      ...FOUNDATION,
+      ...CORE_FAMILY,
+      ...IMPLEMENTATION,
+      'nyanpasu-rpc',
+      'nyanpasu-core-manager',
+      'nyanpasu-server',
+      'ractor',
+    ],
+  },
   // The headless shell composes the implementations, but never a GUI.
   {
     package: 'nyanpasu-server',

@@ -57,6 +57,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_runtime_config,
             nyanpasu_rpc::commands::get_runtime_yaml,
             nyanpasu_rpc::commands::get_runtime_yaml_redacted,
+            nyanpasu_rpc::commands::list_methods,
             ipc::get_runtime_exists,
             nyanpasu_rpc::commands::inspect_runtime,
             ipc::inspect_applied_runtime,

@@ -67,6 +67,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getRuntimeYamlRedacted', ...args],
         queryFn: () => commands.getRuntimeYamlRedacted(...args),
       }),
+    listMethods: (...args: Parameters<typeof commands.listMethods>) =>
+      queryOptions({
+        queryKey: ['listMethods', ...args],
+        queryFn: () => commands.listMethods(...args),
+      }),
     getRuntimeExists: (...args: Parameters<typeof commands.getRuntimeExists>) =>
       queryOptions({
         queryKey: ['getRuntimeExists', ...args],

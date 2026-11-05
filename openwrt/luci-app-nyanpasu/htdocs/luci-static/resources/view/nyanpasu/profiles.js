@@ -406,12 +406,15 @@ return view.extend({
     const name = this.importName.value.trim()
     const text = this.importYaml.value
 
-    if (name === '' || text.trim() === '') {
-      ui.addNotification(
-        null,
-        E('p', {}, _('A name and the YAML are required.')),
-        'warning',
-      )
+    if (name === '') {
+      ui.addNotification(null, E('p', {}, _('A name is required.')), 'warning')
+      return
+    }
+
+    const problem = api.profileTextProblem(text)
+
+    if (problem != null) {
+      ui.addNotification(null, E('p', {}, problem), 'warning')
       return
     }
 

@@ -9,9 +9,13 @@
 //
 //   { ok: true,  result: <CLI result> }                 CLI exit 0
 //   { ok: false, error: <RpcError> }                    CLI exit 1
-//   { ok: false, transport: true, error: { kind: 'transport', ... } }
+//   { ok: false, transport: true, error: { kind: 'transport', message,
+//                                          exit_code, outcome_unknown? } }
 //                                                       exit 2, a signal, or
 //                                                       output that is not JSON
+//
+// On exit 2 the CLI prints its own JSON report (message and outcome_unknown:
+// whether the command may still have run); that report is passed through.
 //
 // The caller's `params` object is serialized to JSON and written to a file in
 // a private (0700) temporary directory. Nothing the caller sends is ever part
@@ -50,12 +54,13 @@ function shellquote(s) {
 	return `'${replace(s, "'", "'\\''")}'`;
 }
 
-function transport_error(message, exit_code) {
-	return {
-		ok: false,
-		transport: true,
-		error: { kind: 'transport', message, exit_code }
-	};
+function transport_error(message, exit_code, outcome_unknown) {
+	const error = { kind: 'transport', message, exit_code };
+
+	if (outcome_unknown != null)
+		error.outcome_unknown = outcome_unknown;
+
+	return { ok: false, transport: true, error };
 }
 
 function parse_json(text) {
@@ -92,12 +97,14 @@ function call_cli(command, params) {
 		else {
 			const stdout = pipe.read('all');
 			const code = pipe.close();
-			const parsed = (code == 0 || code == 1) ? parse_json(stdout) : null;
+			const parsed = (code == 0 || code == 1 || code == 2) ? parse_json(stdout) : null;
 
 			if (code == 0 && parsed)
 				reply = { ok: true, result: parsed.value };
 			else if (code == 1 && parsed)
 				reply = { ok: false, error: parsed.value };
+			else if (code == 2 && parsed && type(parsed.value) == 'object' && type(parsed.value.message) == 'string')
+				reply = transport_error(parsed.value.message, code, parsed.value.outcome_unknown);
 			else {
 				const stderr = trim(readfile(stderr_file) ?? '');
 				const reason = (code == 0 || code == 1)

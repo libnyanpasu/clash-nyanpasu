@@ -6,6 +6,11 @@
 
 const STATUS_POLL_SECONDS = 5
 
+// The status is a projection: it can lag a start or a stop by a couple of
+// seconds, so after a lifecycle command the view re-reads it until it settles.
+const SETTLE_INTERVAL_MS = 1000
+const SETTLE_ATTEMPTS = 8
+
 function healthLabel(healthy) {
   if (healthy === true) {
     return _('Healthy')
@@ -88,13 +93,14 @@ return view.extend({
       return
     }
 
-    const info = result.value
-    const { kind, pid } = api.describeState(info.state)
+    const info = result.value || {}
+    const { kind, pid, reason } = api.describeState(info.state)
 
     this.statusBox.replaceChildren(
       E('table', { class: 'table' }, [
         this.row(_('State'), kind),
         this.row(_('PID'), pid == null ? '-' : String(pid)),
+        reason == null ? '' : this.row(_('Reason'), reason),
         this.row(_('Health'), healthLabel(info.healthy)),
         this.row(_('Host'), info.host == null ? '-' : String(info.host)),
         this.row(
@@ -211,36 +217,61 @@ return view.extend({
 
   /** Starts the core, or applies the selected profile to a running one. */
   handleStart() {
-    return this.runLifecycle('reconcile_core', (report) => {
-      const { kind } = api.describeState(
-        report && report.status && report.status.state,
-      )
-
-      return _('Core reconciled; it is now: %s.').format(kind)
-    })
+    return this.runLifecycle(
+      'reconcile_core',
+      _('The core was asked to start or apply the selected profile.'),
+      'Running',
+    )
   },
 
   handleStop() {
-    return this.runLifecycle('stop_core', (report) => {
-      const { kind } = api.describeState(
-        report && report.status && report.status.state,
-      )
-
-      return _('Core stop requested; it is now: %s.').format(kind)
-    })
+    return this.runLifecycle(
+      'stop_core',
+      _('The core was asked to stop.'),
+      'Stopped',
+    )
   },
 
-  runLifecycle(method, describe) {
+  /**
+   * Runs a lifecycle command, then waits for the status to show `expected`.
+   * The state in the command's own reply is a projection that can be stale, so
+   * it is not reported.
+   */
+  runLifecycle(method, successText, expected) {
     return api.call(method).then(
-      (report) => {
-        ui.addNotification(null, E('p', {}, api.text(describe(report))), 'info')
-        return this.refresh()
+      () => {
+        ui.addNotification(null, E('p', {}, successText), 'info')
+        return this.refresh(expected)
       },
       (error) => {
         api.notifyError(error)
-        return this.refresh()
+        return this.refresh(null)
       },
     )
+  },
+
+  /** Re-reads the status until its state is `expected`, or a few attempts pass. */
+  settleStatus(expected, attempt = 1) {
+    return api.settle(api.call('get_core_status')).then((status) => {
+      this.paintStatus(status)
+
+      const state =
+        status.error == null && status.value != null
+          ? api.describeState(status.value.state).kind
+          : null
+
+      if (
+        expected == null ||
+        state === expected ||
+        attempt >= SETTLE_ATTEMPTS
+      ) {
+        return status
+      }
+
+      return new Promise((resolve) => {
+        window.setTimeout(resolve, SETTLE_INTERVAL_MS)
+      }).then(() => this.settleStatus(expected, attempt + 1))
+    })
   },
 
   handleFullYamlToggle(ev) {
@@ -256,15 +287,14 @@ return view.extend({
     return api.settle(api.call(method)).then((yaml) => this.paintYaml(yaml))
   },
 
-  refresh() {
+  refresh(expected) {
     return Promise.all([
-      api.settle(api.call('get_core_status')),
-      api.settle(api.call('get_profiles')),
-    ]).then(([status, profiles]) => {
-      this.paintStatus(status)
-      this.paintProfile(profiles)
-      return this.refreshYaml()
-    })
+      this.settleStatus(expected),
+      api.settle(api.call('get_profiles')).then((profiles) => {
+        this.paintProfile(profiles)
+      }),
+      this.refreshYaml(),
+    ])
   },
 
   handleSave: null,

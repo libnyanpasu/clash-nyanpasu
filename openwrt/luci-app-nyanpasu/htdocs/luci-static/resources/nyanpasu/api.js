@@ -91,7 +91,8 @@ class CommandError extends Error {
   }
 }
 
-function errorKindLabel(kind) {
+/** The domain's own kind: a string, or `{ domain, error: { kind } }`. */
+function domainKindLabel(kind) {
   if (typeof kind === 'string') {
     return kind
   }
@@ -102,10 +103,26 @@ function errorKindLabel(kind) {
         ? kind.error.kind
         : null
 
-    return [kind.domain, inner].filter((part) => part != null).join(' / ')
+    return [kind.domain, inner]
+      .filter((part) => typeof part === 'string')
+      .join(' / ')
   }
 
   return ''
+}
+
+/** The RpcError kind, followed by the domain's kind when it reported one. */
+function errorKindLabel(rpcError) {
+  const domain = rpcError.domain_error
+
+  return [
+    rpcError.kind,
+    domain != null && typeof domain === 'object'
+      ? domainKindLabel(domain.kind)
+      : '',
+  ]
+    .filter((part) => typeof part === 'string' && part !== '')
+    .join(' / ')
 }
 
 /** Whether the session may call the write methods. */
@@ -151,18 +168,28 @@ function renderError(error) {
   }
 
   const rpcError = error.rpcError || {}
-  const kind = errorKindLabel(rpcError.kind)
+  const kind = errorKindLabel(rpcError)
   const title = error.transport
     ? _('Cannot reach nyanpasu-server')
     : _('Command failed')
+  const domain = rpcError.domain_error
   const detail =
-    typeof rpcError.detail === 'string' && rpcError.detail !== ''
-      ? rpcError.detail
+    domain != null && typeof domain.detail === 'string' && domain.detail !== ''
+      ? domain.detail
       : null
 
   return E('div', { class: 'alert-message danger' }, [
     E('strong', {}, text(title + (kind ? ` (${kind})` : ''))),
     E('div', {}, text(error.message)),
+    rpcError.outcome_unknown === true
+      ? E(
+          'div',
+          {},
+          _(
+            'The command may still have taken effect. Check the status before retrying.',
+          ),
+        )
+      : '',
     detail
       ? E('details', {}, [
           E('summary', {}, _('Details')),
@@ -234,16 +261,16 @@ function mutate(method, params, successText) {
   )
 }
 
-/** `{ kind, pid }` from the externally tagged core state. */
+/** `{ kind, pid, reason }` from the externally tagged core state. */
 function describeState(state) {
   if (state == null || typeof state !== 'object') {
-    return { kind: 'Unknown', pid: null }
+    return { kind: 'Unknown', pid: null, reason: null }
   }
 
   const kind = Object.keys(state)[0]
 
   if (kind == null) {
-    return { kind: 'Unknown', pid: null }
+    return { kind: 'Unknown', pid: null, reason: null }
   }
 
   const body = state[kind]
@@ -251,7 +278,41 @@ function describeState(state) {
   return {
     kind,
     pid: body != null && typeof body.pid === 'number' ? body.pid : null,
+    reason:
+      body != null && typeof body.reason === 'string' ? body.reason : null,
   }
+}
+
+/**
+ * Why `text` cannot be a profile, or null. The core only accepts a YAML
+ * mapping at the root; an empty file, a comment-only file or a bare value
+ * parses to something else and breaks the runtime views.
+ */
+function profileTextProblem(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#') && line !== '---')
+
+  if (lines.length === 0) {
+    return _(
+      'The YAML is empty or has only comments. An empty profile cannot be used.',
+    )
+  }
+
+  const [first] = lines
+
+  if (
+    first === '-' ||
+    first.startsWith('- ') ||
+    !(first.includes(':') || first.startsWith('{'))
+  ) {
+    return _(
+      'The YAML must be a mapping of Mihomo settings, as in "key: value" lines.',
+    )
+  }
+
+  return null
 }
 
 /** The managed local source of a profile file, as the client expects a new one. */
@@ -298,6 +359,7 @@ return baseclass.extend({
   notifyError,
   notifyOutcome,
   describeState,
+  profileTextProblem,
   configDefinition,
   scriptDefinition,
   newProfileRequest,

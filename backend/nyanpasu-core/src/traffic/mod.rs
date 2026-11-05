@@ -12,6 +12,7 @@ mod tests;
 
 pub use actor::TrafficArgs;
 pub use client::TrafficClient;
+pub(crate) use geo::CountryLookup;
 pub use ports::{
     Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficStorage,
 };

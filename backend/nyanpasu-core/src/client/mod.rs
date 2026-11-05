@@ -261,7 +261,7 @@ struct NyanpasuClientInner {
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
-    _geo_index: crate::geo::GeoIndexClient,
+    geo_index: crate::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
@@ -660,7 +660,7 @@ impl NyanpasuClient {
                 system_dns,
                 direct_egress,
                 local_source,
-                _geo_index: geo_index,
+                geo_index,
                 os_proxy,
                 effects,
                 window,
@@ -942,10 +942,15 @@ impl NyanpasuClient {
             ProbeSources::from_config(&self.inner.application.snapshot().state, cache.clone());
         let probe = &self.inner.direct_egress;
         let (ipv4, ipv6) = tokio::join!(probe.ipv4(&sources), probe.ipv6(&sources));
+        let index = self.inner.geo_index.subscribe().borrow().clone();
+        let countries = index
+            .as_deref()
+            .map(|index| index as &dyn crate::traffic::CountryLookup);
         // Permission or TUN may change while the requests are in flight.
-        let result = cache
-            .blocked()
-            .unwrap_or(DirectEgress::Probed { ipv4, ipv6 });
+        let result = cache.blocked().unwrap_or_else(|| DirectEgress::Probed {
+            ipv4: ipv4.map(|answer| answer.locate(countries)),
+            ipv6: ipv6.map(|answer| answer.locate(countries)),
+        });
         cache.set(&result);
         Ok(result)
     }
@@ -1825,7 +1830,7 @@ pub(crate) mod tests {
                     && sources.lookups.is_empty()
             })
             .times(1)
-            .returning(move |_| Some(address));
+            .returning(move |_| Some(lookup_answer(address)));
         probe.expect_ipv6().times(1).returning(|_| None);
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
         client
@@ -1839,10 +1844,23 @@ pub(crate) mod tests {
         assert_eq!(
             client.probe_direct_egress().await.unwrap(),
             DirectEgress::Probed {
-                ipv4: Some(address),
+                ipv4: Some(crate::client::direct_egress::EgressAddress {
+                    address,
+                    source: lookup_answer(address).source,
+                    country: None,
+                }),
                 ipv6: None,
             }
         );
+    }
+
+    fn lookup_answer<A>(address: A) -> crate::client::direct_egress::EgressAnswer<A> {
+        crate::client::direct_egress::EgressAnswer {
+            address,
+            source: crate::client::direct_egress::EgressSource::Lookup {
+                provider: nyanpasu_config::application::IpLookupProvider::Ipify,
+            },
+        }
     }
 
     #[tokio::test]
@@ -1934,7 +1952,7 @@ pub(crate) mod tests {
             .expect_ipv4()
             .times(1)
             .in_sequence(&mut sequence)
-            .returning(|_| Some("203.0.113.7".parse().unwrap()));
+            .returning(|_| Some(lookup_answer("203.0.113.7".parse().unwrap())));
         probe
             .expect_ipv4()
             .times(1)
@@ -1992,12 +2010,20 @@ pub(crate) mod tests {
         }
         #[async_trait::async_trait]
         impl DirectEgressProbe for WaitingProbe {
-            async fn ipv4(&self, _: &ProbeSources) -> Option<std::net::Ipv4Addr> {
+            async fn ipv4(
+                &self,
+                _: &ProbeSources,
+            ) -> Option<crate::client::direct_egress::EgressAnswer<std::net::Ipv4Addr>>
+            {
                 self.started.notify_one();
                 self.release.notified().await;
-                Some("203.0.113.7".parse().unwrap())
+                Some(lookup_answer("203.0.113.7".parse().unwrap()))
             }
-            async fn ipv6(&self, _: &ProbeSources) -> Option<std::net::Ipv6Addr> {
+            async fn ipv6(
+                &self,
+                _: &ProbeSources,
+            ) -> Option<crate::client::direct_egress::EgressAnswer<std::net::Ipv6Addr>>
+            {
                 None
             }
             async fn test_stun_server(&self, _: &str, _: u16) -> StunServerTest {

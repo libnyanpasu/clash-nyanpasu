@@ -8,6 +8,8 @@ use nyanpasu_config::application::{
 };
 use serde::Serialize;
 
+use crate::traffic::CountryLookup;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DirectEgress {
@@ -18,8 +20,8 @@ pub enum DirectEgress {
     /// `None` for a family no source gave an address over, such as a network
     /// without IPv6.
     Probed {
-        ipv4: Option<Ipv4Addr>,
-        ipv6: Option<Ipv6Addr>,
+        ipv4: Option<EgressAddress<Ipv4Addr>>,
+        ipv6: Option<EgressAddress<Ipv6Addr>>,
     },
 }
 
@@ -29,6 +31,55 @@ pub enum DirectEgress {
 pub trait ProbePermission: Send + Sync {
     fn allows_stun(&self, server: &StunServer) -> bool;
     fn allows_lookup(&self, provider: IpLookupProvider) -> bool;
+}
+
+/// One family's direct egress address, as the app reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct EgressAddress<A> {
+    pub address: A,
+    pub source: EgressSource,
+    /// An upper-case ISO code from the core's country database. `None` while
+    /// the core has no database, or the address is not in it.
+    pub country: Option<String>,
+}
+
+/// One family's answer, as the probe found it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EgressAnswer<A> {
+    pub address: A,
+    pub source: EgressSource,
+}
+
+impl<A: Copy + Into<IpAddr>> EgressAnswer<A> {
+    /// Adds the address's country, looked up in the core's own database.
+    pub(crate) fn locate(self, countries: Option<&dyn CountryLookup>) -> EgressAddress<A> {
+        EgressAddress {
+            country: countries.and_then(|countries| countries.country(self.address.into())),
+            address: self.address,
+            source: self.source,
+        }
+    }
+}
+
+/// What answered a probe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EgressSource {
+    Stun {
+        host: String,
+        port: u16,
+        transport: StunTransport,
+    },
+    Lookup {
+        provider: IpLookupProvider,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum StunTransport {
+    Udp,
+    Tcp,
 }
 
 /// Where a probe asks, in order: STUN servers, then accepted HTTP providers.
@@ -117,8 +168,8 @@ impl StunServerTest {
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
 pub trait DirectEgressProbe: Send + Sync + 'static {
-    async fn ipv4(&self, sources: &ProbeSources) -> Option<Ipv4Addr>;
-    async fn ipv6(&self, sources: &ProbeSources) -> Option<Ipv6Addr>;
+    async fn ipv4(&self, sources: &ProbeSources) -> Option<EgressAnswer<Ipv4Addr>>;
+    async fn ipv6(&self, sources: &ProbeSources) -> Option<EgressAnswer<Ipv6Addr>>;
     /// Sends one Binding request over each transport and family.
     async fn test_stun_server(&self, host: &str, port: u16) -> StunServerTest;
 }
@@ -170,6 +221,33 @@ mod tests {
             sources.lookups,
             [IpLookupProvider::Ipify, IpLookupProvider::Dnspod]
         );
+    }
+
+    struct OneCountry;
+
+    impl CountryLookup for OneCountry {
+        fn country(&self, ip: IpAddr) -> Option<String> {
+            (ip == IpAddr::from(Ipv4Addr::new(203, 0, 113, 7))).then(|| "JP".to_owned())
+        }
+    }
+
+    #[test]
+    fn an_answer_is_located_in_the_country_database_when_there_is_one() {
+        let answer = |address: Ipv4Addr| EgressAnswer {
+            address,
+            source: EgressSource::Lookup {
+                provider: IpLookupProvider::Ipify,
+            },
+        };
+        let known = Ipv4Addr::new(203, 0, 113, 7);
+        let unknown = Ipv4Addr::new(198, 51, 100, 1);
+
+        assert_eq!(
+            answer(known).locate(Some(&OneCountry)).country.as_deref(),
+            Some("JP")
+        );
+        assert_eq!(answer(unknown).locate(Some(&OneCountry)).country, None);
+        assert_eq!(answer(known).locate(None).country, None);
     }
 
     #[test]

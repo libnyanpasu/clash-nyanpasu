@@ -78,8 +78,8 @@ impl LocalSourceCache {
             .write()
             .expect("local source cache lock poisoned") = match result {
             super::DirectEgress::Probed { ipv4, ipv6 } => LocalSourceIps {
-                ipv4: *ipv4,
-                ipv6: *ipv6,
+                ipv4: ipv4.as_ref().map(|egress| egress.address),
+                ipv6: ipv6.as_ref().map(|egress| egress.address),
             },
             _ => LocalSourceIps::default(),
         };

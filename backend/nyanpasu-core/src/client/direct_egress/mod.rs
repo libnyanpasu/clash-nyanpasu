@@ -10,5 +10,6 @@ pub use adapters::NetworkDirectEgressProbe;
 #[cfg(any(test, feature = "test-support"))]
 pub use ports::MockDirectEgressProbe;
 pub use ports::{
-    DirectEgress, DirectEgressProbe, ProbePermission, ProbeSources, StunAttempt, StunServerTest,
+    DirectEgress, DirectEgressProbe, EgressAddress, EgressAnswer, EgressSource, ProbePermission,
+    ProbeSources, StunAttempt, StunServerTest, StunTransport,
 };

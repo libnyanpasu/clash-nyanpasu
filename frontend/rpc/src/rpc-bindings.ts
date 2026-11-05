@@ -2052,7 +2052,11 @@ export type DirectEgress =
    *  `None` for a family no source gave an address over, such as a network
    *  without IPv6.
    */
-  | { kind: 'probed'; ipv4: string | null; ipv6: string | null }
+  | {
+      kind: 'probed'
+      ipv4: EgressAddress<string> | null
+      ipv6: EgressAddress<string> | null
+    }
 
 export type Direction = 'latest' | 'before' | 'after'
 
@@ -2139,6 +2143,22 @@ export type EffectKind =
 export type EffectsError =
   /**  The owner's mailbox is closed: the app is exiting, or the owner died. */
   { kind: 'effects_stopped' }
+
+/**  One family's direct egress address, as the app reports it. */
+export type EgressAddress<A> = {
+  address: A
+  source: EgressSource
+  /**
+   *  An upper-case ISO code from the core's country database. `None` while
+   *  the core has no database, or the address is not in it.
+   */
+  country: string | null
+}
+
+/**  What answered a probe. */
+export type EgressSource =
+  | { kind: 'stun'; host: string; port: number; transport: StunTransport }
+  | { kind: 'lookup'; provider: IpLookupProvider }
 
 export type EndpointConnectivity =
   | { kind: 'connected' }
@@ -5473,6 +5493,8 @@ export type StunServerTest = {
   /**  The transports and families that answered. */
   capabilities: StunServerCapabilities
 }
+
+export type StunTransport = 'udp' | 'tcp'
 
 /**
  *  A failure to download a subscription. The URL is not repeated here: the

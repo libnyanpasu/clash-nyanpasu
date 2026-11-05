@@ -664,7 +664,7 @@ async fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
     (async {
         // Only this workflow may read the binding counted below. Stop background
         // consumers, then drain the lease monitor they may already have started.
-        f.client.inner._geo_index.stop_for_test().await.unwrap();
+        f.client.inner.geo_index.stop_for_test().await.unwrap();
         f.client.inner.proxies.stop_for_test().await.unwrap();
         f.client.inner.core_api.api_client().await.unwrap();
         f.client.inner.core_api.release_api_for_test().await;

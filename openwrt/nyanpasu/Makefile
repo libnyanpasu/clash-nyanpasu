@@ -37,12 +37,14 @@ endef
 
 define Package/nyanpasu/description
   nyanpasu-server owns the Nyanpasu application and the Mihomo core and serves a
-  local control socket; nyanpasu-cli talks to it, and luci-app-nyanpasu drives
-  the CLI. The Mihomo core binary is not part of this package: it is placed at
-  <data-dir>/mihomo.
+  local control socket and, when /etc/config/nyanpasu sets webui_listen, the
+  WebUI over HTTP; nyanpasu-cli talks to the socket, and luci-app-nyanpasu
+  frames the WebUI. The Mihomo core binary and the built WebUI are not part of
+  this package: they are placed at <data-dir>/mihomo and webui_dir.
 endef
 
 define Package/nyanpasu/conffiles
+/etc/config/nyanpasu
 /etc/nyanpasu
 endef
 
@@ -57,6 +59,8 @@ define Package/nyanpasu/install
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/bin/nyanpasu-cli $(1)/usr/bin/nyanpasu-cli
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/nyanpasu.init $(1)/etc/init.d/nyanpasu
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) ./files/nyanpasu.config $(1)/etc/config/nyanpasu
 	$(INSTALL_DIR) $(1)/etc/nyanpasu
 	$(INSTALL_DIR) $(1)/usr/share/nyanpasu
 endef

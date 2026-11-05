@@ -1,54 +1,30 @@
 'use strict';
 
-// Publishes the ubus object `nyanpasu`: one method per command in the
-// nyanpasu-server `rpc(local)` allowlist. Each method runs
+// Publishes the ubus object `nyanpasu` with one method, `webui_ticket`, which
+// asks nyanpasu-server for a one-time ticket that signs a browser in to the
+// WebUI. It runs
 //
-//   nyanpasu-cli call METHOD --params-file FILE
+//   nyanpasu-cli call issue_web_ticket --params-file FILE
 //
 // and wraps the outcome as one of
 //
-//   { ok: true,  result: <CLI result> }                 CLI exit 0
+//   { ok: true,  result: { path, port } }               CLI exit 0
 //   { ok: false, error: <RpcError> }                    CLI exit 1
 //   { ok: false, transport: true, error: { kind: 'transport', message,
 //                                          exit_code, outcome_unknown? } }
 //                                                       exit 2, a signal, or
 //                                                       output that is not JSON
 //
-// On exit 2 the CLI prints its own JSON report (message and outcome_unknown:
-// whether the command may still have run); that report is passed through.
-//
-// The caller's `params` object is serialized to JSON and written to a file in
-// a private (0700) temporary directory. Nothing the caller sends is ever part
-// of a command line: the method name comes from the table below and the paths
-// are generated here. The ACL in acl.d/luci-app-nyanpasu.json lists the same
-// methods explicitly; keep the two in step.
+// The management of profiles and the core is the WebUI's, over the server's
+// HTTP API; LuCI only issues the ticket. The method takes no arguments, and
+// nothing a caller sends reaches a command line: the command name is a
+// constant and the paths are generated here. The ACL in
+// acl.d/luci-app-nyanpasu.json grants the method to `write` only; keep the two
+// in step.
 
 import { popen, open, mkdtemp, unlink, rmdir, readfile } from 'fs';
 
 const CLI = '/usr/bin/nyanpasu-cli';
-
-// The ubus methods. Each is also the nyanpasu-server command it runs.
-const COMMANDS = [
-	// read
-	'get_core_status',
-	'get_profiles',
-	'get_runtime_yaml_redacted',
-	'inspect_runtime',
-	'query_core_logs',
-	'get_core_log_status',
-
-	// write
-	'create_profile',
-	'delete_profile',
-	'replace_profile_definition',
-	'set_global_transforms',
-	'activate_profile',
-	'read_profile_file',
-	'save_profile_file',
-	'reconcile_core',
-	'stop_core',
-	'get_runtime_yaml'
-];
 
 function shellquote(s) {
 	return `'${replace(s, "'", "'\\''")}'`;
@@ -72,7 +48,7 @@ function parse_json(text) {
 	return value == null ? null : { value };
 }
 
-function call_cli(command, params) {
+function call_cli(command) {
 	const dir = mkdtemp('/tmp/nyanpasu-XXXXXX');
 	if (!dir)
 		return transport_error('cannot create a temporary directory');
@@ -86,7 +62,7 @@ function call_cli(command, params) {
 		reply = transport_error('cannot write the parameters file');
 	}
 	else {
-		params_handle.write(sprintf('%J', params ?? {}));
+		params_handle.write('{}');
 		params_handle.close();
 
 		// Only constants and generated paths are interpolated here; both are quoted.
@@ -122,20 +98,14 @@ function call_cli(command, params) {
 	return reply;
 }
 
-// A function per method: ucode closures share the loop variables.
-function make_method(command) {
-	return {
-		// One table argument holding the command's camelCase argument object.
-		args: { params: {} },
-		call: function(request) {
-			return call_cli(command, request.args?.params);
+return {
+	nyanpasu: {
+		// The ubus method `webui_ticket` runs the server command `issue_web_ticket`.
+		webui_ticket: {
+			args: {},
+			call: function() {
+				return call_cli('issue_web_ticket');
+			}
 		}
-	};
-}
-
-const methods = {};
-
-for (let command in COMMANDS)
-	methods[command] = make_method(command);
-
-return { nyanpasu: methods };
+	}
+};

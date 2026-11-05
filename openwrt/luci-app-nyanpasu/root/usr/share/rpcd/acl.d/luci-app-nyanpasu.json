@@ -1,33 +1,14 @@
 {
   "luci-app-nyanpasu": {
-    "description": "Grant access to Nyanpasu",
+    "description": "Open the Nyanpasu WebUI",
     "read": {
-      "ubus": {
-        "nyanpasu": [
-          "get_core_status",
-          "get_profiles",
-          "get_runtime_yaml_redacted",
-          "inspect_runtime",
-          "query_core_logs",
-          "get_core_log_status"
-        ]
-      }
+      "uci": ["nyanpasu"]
     },
     "write": {
       "ubus": {
-        "nyanpasu": [
-          "create_profile",
-          "delete_profile",
-          "replace_profile_definition",
-          "set_global_transforms",
-          "activate_profile",
-          "read_profile_file",
-          "save_profile_file",
-          "reconcile_core",
-          "stop_core",
-          "get_runtime_yaml"
-        ]
-      }
+        "nyanpasu": ["webui_ticket"]
+      },
+      "uci": ["nyanpasu"]
     }
   }
 }

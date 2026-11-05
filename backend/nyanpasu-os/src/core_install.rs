@@ -1,3 +1,5 @@
+//! Core binary installation and best-effort companion directory publication.
+
 use async_trait::async_trait;
 #[cfg(target_os = "windows")]
 use nyanpasu_contracts::core_install::PathNotUtf8Snafu;
@@ -11,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use nyanpasu_contracts::core_install::CoreBinaryInstallRequest;
 
+/// Copies a staged binary, falling back to elevation, then publishes its companion.
 pub struct FsBinaryInstaller;
 
 #[async_trait]
@@ -26,7 +29,7 @@ impl BinaryInstaller for FsBinaryInstaller {
             && let Err(error) = {
                 let (staged, destination) =
                     (companion.staged.clone(), companion.destination.clone());
-                nyanpasu_owner_support::blocking::join(
+                crate::blocking::join(
                     tokio::task::spawn_blocking(move || publish_companion(&staged, &destination))
                         .await,
                 )
@@ -58,7 +61,7 @@ async fn install_binary(request: &CoreBinaryInstallRequest) -> Result<(), Instal
                 .context(PathNotUtf8Snafu { path: &destination })?
                 .to_owned(),
         );
-        let status = nyanpasu_owner_support::blocking::join(
+        let status = crate::blocking::join(
             spawn_staged_copy(&request.staging, move || {
                 #[cfg(target_os = "windows")]
                 {
@@ -195,7 +198,6 @@ fn publish_companion(staged: &Path, destination: &Path) -> Result<(), PublishCom
 mod tests {
     use super::*;
     use nyanpasu_contracts::core_install::CoreBinaryCompanionPaths;
-    use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary, PreparedCoreCompanion};
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -251,25 +253,16 @@ mod tests {
         );
     }
 
-    struct NoProgress;
-
-    impl BinaryInstallProgress for NoProgress {
-        fn restarting(&self) {}
-        fn finished(&self, _: Option<&str>) {}
-    }
-
     /// A companion staged beside `destination` with a `SKILL.md` that says `skill`.
-    fn staged(destination: &Path, skill: &str) -> PreparedCoreCompanion {
-        let companion = PreparedCoreCompanion {
-            staging: tempfile::Builder::new()
-                .prefix("meow-alpha.staging-")
-                .tempdir_in(destination.parent().unwrap())
-                .unwrap(),
-            destination: destination.to_path_buf(),
-        };
-        std::fs::create_dir_all(companion.staged().join("skills/meow-cli")).unwrap();
-        std::fs::write(companion.staged().join("skills/meow-cli/SKILL.md"), skill).unwrap();
-        companion
+    fn staged(destination: &Path, skill: &str) -> (TempDir, PathBuf) {
+        let staging = tempfile::Builder::new()
+            .prefix("meow-alpha.staging-")
+            .tempdir_in(destination.parent().unwrap())
+            .unwrap();
+        let staged = staging.path().join("new");
+        std::fs::create_dir_all(staged.join("skills/meow-cli")).unwrap();
+        std::fs::write(staged.join("skills/meow-cli/SKILL.md"), skill).unwrap();
+        (staging, staged)
     }
 
     fn skill(destination: &Path) -> String {
@@ -285,27 +278,16 @@ mod tests {
         let staging = Arc::new(TempDir::new().unwrap());
         let source = staging.path().join("meow");
         std::fs::write(&source, "new core").unwrap();
-        let artifact = PreparedCoreBinary {
+        let (companion, staged) = staged(&destination, "new skill");
+        let request = CoreBinaryInstallRequest {
             target: nyanpasu_config::application::ClashCore::MeowAlpha,
             source,
             destination: dir.path().join("installed-core"),
             staging,
-            progress: Arc::new(NoProgress),
-            companion: Some(staged(&destination, "new skill")),
-        };
-
-        let request = CoreBinaryInstallRequest {
-            target: artifact.target,
-            source: artifact.source.clone(),
-            destination: artifact.destination.clone(),
-            staging: artifact.staging.clone(),
-            companion: artifact
-                .companion
-                .as_ref()
-                .map(|companion| CoreBinaryCompanionPaths {
-                    staged: companion.staged(),
-                    destination: companion.destination.clone(),
-                }),
+            companion: Some(CoreBinaryCompanionPaths {
+                staged,
+                destination: destination.clone(),
+            }),
         };
         FsBinaryInstaller.install(&request).await.unwrap();
         drop(request);
@@ -316,7 +298,7 @@ mod tests {
         );
         assert_eq!(skill(&destination), "new skill");
         assert!(!destination.join("skills/meow-cli/stale.md").exists());
-        drop(artifact);
+        drop(companion);
         // Only the installed core and the companion remain.
         let mut names = std::fs::read_dir(dir.path())
             .unwrap()
@@ -330,9 +312,9 @@ mod tests {
     fn a_first_companion_is_published_where_none_was() {
         let dir = TempDir::new().unwrap();
         let destination = dir.path().join("meow-alpha");
-        let companion = staged(&destination, "skill");
+        let (_companion, staged) = staged(&destination, "skill");
 
-        publish_companion(&companion.staged(), &destination).unwrap();
+        publish_companion(&staged, &destination).unwrap();
 
         assert_eq!(skill(&destination), "skill");
     }
@@ -345,18 +327,18 @@ mod tests {
         // Interrupted between moving the old files aside and moving the new ones in.
         std::fs::create_dir_all(previous.join("skills/meow-cli")).unwrap();
         std::fs::write(previous.join("skills/meow-cli/SKILL.md"), "old skill").unwrap();
-        let failed = staged(&destination, "unused");
-        std::fs::remove_dir_all(failed.staged()).unwrap();
+        let (_failed, failed) = staged(&destination, "unused");
+        std::fs::remove_dir_all(&failed).unwrap();
 
         // The new files are gone, so the swap fails after restoring the only copy.
-        publish_companion(&failed.staged(), &destination).unwrap_err();
+        publish_companion(&failed, &destination).unwrap_err();
         assert_eq!(skill(&destination), "old skill");
         assert!(!previous.exists());
 
         // With a destination in place, a leftover is only in the way.
         std::fs::create_dir_all(previous.join("skills")).unwrap();
-        let companion = staged(&destination, "new skill");
-        publish_companion(&companion.staged(), &destination).unwrap();
+        let (_companion, staged) = staged(&destination, "new skill");
+        publish_companion(&staged, &destination).unwrap();
         assert_eq!(skill(&destination), "new skill");
         assert!(!previous.exists());
     }
@@ -387,9 +369,9 @@ mod tests {
         std::fs::write(target.join("skills/meow-cli/SKILL.md"), "linked skill").unwrap();
         let destination = dir.path().join("meow-alpha");
         std::os::unix::fs::symlink(&target, &destination).unwrap();
-        let companion = staged(&destination, "new skill");
+        let (_companion, staged) = staged(&destination, "new skill");
 
-        let error = publish_companion(&companion.staged(), &destination).unwrap_err();
+        let error = publish_companion(&staged, &destination).unwrap_err();
 
         assert!(
             matches!(error, PublishCompanionError::SymbolicLink { .. }),

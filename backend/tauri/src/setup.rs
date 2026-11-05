@@ -35,8 +35,8 @@ use crate::{
 use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
-        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-        StateChanged, UiEventSink,
+        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, RuntimePaths, StateChanged,
+        UiEventSink,
         debug_http::DebugHttpControl,
         effects::{
             executor::ApplicationEffectExecutor, ports::LocaleSink,
@@ -268,7 +268,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context(BuildServiceIpcSnafu)?;
-    let service_binary = nyanpasu_core::service::control::service_binary(
+    let service_binary = nyanpasu_os::service::service_binary(
         paths
             .app_install_dir()
             .context(LocateInstallDirectorySnafu)?
@@ -283,18 +283,16 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         let local: nyanpasu_core::actor_v2::endpoint::EndpointHandle = Arc::new(
             nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
         );
-        let adapter = Arc::new(
-            nyanpasu_core::actor_v2::service_process_control::OsServiceProcessControl::new(
-                service_binary,
-                paths.clone(),
-            ),
-        );
+        let adapter = Arc::new(nyanpasu_os::service::OsServiceProcessControl::new(
+            service_binary,
+            paths.clone(),
+        ));
         start_runtime_owners(
             owners,
             local,
             adapter,
             Arc::new(
-                nyanpasu_core::actor_v2::service_process_control::IpcServiceEndpointFactory::new(
+                nyanpasu_core::actor_v2::service_endpoint_factory::IpcServiceEndpointFactory::new(
                     service_ipc.clone(),
                 ),
             ),
@@ -494,13 +492,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         )),
         core_v2,
         service,
-        system_dns: Arc::new(OsSystemDnsCache),
+        system_dns: Arc::new(nyanpasu_os::system_dns::OsSystemDnsCache),
         direct_egress: Arc::new(NetworkDirectEgressProbe::default()),
         geo_index,
         os_proxy: os_proxy.clone(),
-        binary_installer: Arc::new(
-            nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
-        ),
+        binary_installer: Arc::new(nyanpasu_os::core_install::FsBinaryInstaller),
         core_versions: Arc::new(nyanpasu_os::core_version::SidecarCoreVersionReader::new(
             Arc::new(crate::adapters::core_version::TauriCoreVersionExecutableSource),
         )),

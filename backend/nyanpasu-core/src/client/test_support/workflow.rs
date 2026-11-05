@@ -9,7 +9,10 @@ use crate::{
     },
 };
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_contracts::core_install::{BinaryInstaller, InstallCoreBinaryError};
+use nyanpasu_contracts::{
+    core_install::{BinaryInstaller, InstallCoreBinaryError},
+    system_dns::{SystemDnsCache, SystemDnsError},
+};
 use nyanpasu_core_manager::{CoreError, OperationId};
 use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary};
 use std::{
@@ -238,6 +241,16 @@ impl BinaryInstallProgress for Progress {
     }
 }
 
+/// A DNS cache fake for core fixtures that do not exercise flushing.
+#[derive(Debug, Default)]
+pub struct NoopSystemDnsCache;
+
+impl SystemDnsCache for NoopSystemDnsCache {
+    fn flush(&self) -> Result<(), SystemDnsError> {
+        Ok(())
+    }
+}
+
 pub struct Installer {
     pub(crate) endpoint: Arc<TestControlEndpoint>,
     pub(crate) entered: Notify,
@@ -246,6 +259,25 @@ pub struct Installer {
     pub(crate) fail: bool,
     pub(crate) calls: AtomicUsize,
     pub(crate) submissions_at_copy: AtomicUsize,
+}
+
+impl Installer {
+    /// A copying installer fake with no parked work or injected failure.
+    pub fn succeeding() -> Self {
+        Self::new(TestControlEndpoint::succeeding(), false, false)
+    }
+
+    fn new(endpoint: Arc<TestControlEndpoint>, park: bool, fail: bool) -> Self {
+        Self {
+            endpoint,
+            entered: Notify::new(),
+            release: Notify::new(),
+            park,
+            fail,
+            calls: AtomicUsize::new(0),
+            submissions_at_copy: AtomicUsize::new(0),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -300,15 +332,7 @@ impl Fixture {
     ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let installer = Arc::new(Installer {
-            endpoint: endpoint.clone(),
-            entered: Notify::new(),
-            release: Notify::new(),
-            park,
-            fail,
-            calls: AtomicUsize::new(0),
-            submissions_at_copy: AtomicUsize::new(0),
-        });
+        let installer = Arc::new(Installer::new(endpoint.clone(), park, fail));
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone(), adapters(&dir)).await;
         args.binary_installer = installer.clone();
         let client = NyanpasuClient::try_new(args).await.unwrap();

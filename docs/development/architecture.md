@@ -67,7 +67,7 @@ backend/nyanpasu-migration/src/    configuration upgrades, backups and session d
 backend/nyanpasu-persistence/src/  generic filesystem retry and evidence recovery
 backend/nyanpasu-profile-io/src/   profile files, materialization and content adapter
 backend/nyanpasu-net/src/          subscription, changelog, egress, icon, diagnostics and HTTP policy
-backend/nyanpasu-os/src/           proxy reads/writes, PAC, autostart, device identity and version probes
+backend/nyanpasu-os/src/           proxy, PAC, autostart, device identity, version probes, service control, DNS flush and binary installation
 backend/nyanpasu-scripts/src/      JavaScript and Lua script runners over config ports
 ```
 

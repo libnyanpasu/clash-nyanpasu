@@ -37,7 +37,7 @@ pub mod facade;
 pub mod intent;
 pub mod local_host;
 pub mod service_actor;
-pub mod service_process_control;
+pub mod service_endpoint_factory;
 
 use std::time::Duration;
 

@@ -55,7 +55,6 @@ pub mod runtime_recovery;
 mod session_state;
 #[cfg(test)]
 mod startup_recovery_tests;
-mod system_dns;
 pub mod system_proxy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -110,9 +109,6 @@ use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 pub use runtime_error::RuntimeError;
-#[cfg(any(test, feature = "test-support"))]
-pub use system_dns::NoopSystemDnsCache;
-pub use system_dns::OsSystemDnsCache;
 pub struct ClientSetupArgs {
     pub host_adapters: ClientHostAdapters,
     pub jobs: nyanpasu_jobs::JobsClient,
@@ -1571,10 +1567,13 @@ pub(crate) mod tests {
             endpoint::ExecutionHost,
             test_support::{HostTransitionServiceAdapter, test_idle_endpoint, test_v2_clients},
         },
-        client::test_support::facade::{
-            local_config_request, test_client, test_client_from_typed_clients,
-            test_client_with_direct_egress, test_client_with_fetcher, test_client_with_ports,
-            test_client_with_system_dns,
+        client::test_support::{
+            facade::{
+                local_config_request, test_client, test_client_from_typed_clients,
+                test_client_with_direct_egress, test_client_with_fetcher, test_client_with_ports,
+                test_client_with_system_dns,
+            },
+            workflow::{Installer, NoopSystemDnsCache},
         },
         utils::test_support::test_paths,
     };
@@ -2530,7 +2529,7 @@ pub(crate) mod tests {
             direct_egress: Arc::new(MockDirectEgressProbe::new()),
             geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
-            binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            binary_installer: Arc::new(Installer::succeeding()),
             core_versions: Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window

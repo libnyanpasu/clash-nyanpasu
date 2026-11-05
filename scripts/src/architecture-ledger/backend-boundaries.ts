@@ -111,8 +111,12 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
   })),
   ...CORE_FAMILY.map((name) => ({
     package: name,
-    forbids: [...IMPLEMENTATION, 'sysproxy'],
+    forbids: [...IMPLEMENTATION, 'sysproxy', 'runas'],
   })),
+  {
+    package: 'nyanpasu-os',
+    forbids: ['nyanpasu-ipc', 'nyanpasu-core-manager'],
+  },
   {
     package: 'nyanpasu-diagnose',
     forbids: [...CORE_FAMILY, ...IMPLEMENTATION],

@@ -1665,7 +1665,7 @@ pub mod uwp {
 #[specta::specta]
 pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
     use nyanpasu_contracts::service::ResolveServiceDirsSnafu;
-    use nyanpasu_core::service::control::get_service_install_args;
+    use nyanpasu_os::service::get_service_install_args;
     use snafu::ResultExt;
 
     let args = async {

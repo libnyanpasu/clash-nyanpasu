@@ -1,8 +1,8 @@
 use crate::client::{
     UiEventSink,
     test_support::workflow::{
-        Fixture, Progress, ScriptedWaitEndpoint, WaitScript, aftermath, disable_mode_interruption,
-        override_patch, start_replacement,
+        Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
+        disable_mode_interruption, override_patch, start_replacement,
     },
 };
 mod closing;
@@ -372,7 +372,7 @@ async fn workflow_graph_with_clients(
                 validator_paths,
             )),
             ports,
-            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            installer: Arc::new(Installer::succeeding()),
             ownership,
             instance_config_dir: Default::default(),
             shutdown,

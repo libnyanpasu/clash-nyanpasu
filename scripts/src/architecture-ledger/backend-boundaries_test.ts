@@ -6,14 +6,14 @@ test('the desktop shell constructs OS implementations over foundation contracts'
   assert.deepStrictEqual(
     dependencyViolations(
       'clash-nyanpasu',
-      'nyanpasu-os v0.1.0\nsysproxy v0.3\n',
+      'nyanpasu-os v0.1.0\nsysproxy v0.3\nrunas v1.2\n',
     ),
     [],
   )
   assert.deepStrictEqual(
     dependencyViolations(
       'nyanpasu-os',
-      'nyanpasu-os v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-config v0.1.0\nsysproxy v0.3\nreqwest v0.13\n',
+      'nyanpasu-os v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-utils v0.1.1\nsysproxy v0.3\nreqwest v0.13\nrunas v1.2\n',
     ),
     [],
   )
@@ -46,6 +46,13 @@ for (const owner of [
       ])
     }
   })
+  test(`${owner} rejects direct and transitive runas dependencies`, () => {
+    for (const path of ['runas v1.2\n', 'neutral-adapter v0.1\nrunas v1.2\n']) {
+      assert.deepStrictEqual(dependencyViolations(owner, path), [
+        `${owner} must not depend on runas`,
+      ])
+    }
+  })
 }
 
 for (const owner of [
@@ -66,6 +73,8 @@ for (const owner of [
 }
 
 for (const dependency of [
+  'nyanpasu-ipc',
+  'nyanpasu-core-manager',
   'nyanpasu-net',
   'nyanpasu-profile-io',
   'nyanpasu-scripts',

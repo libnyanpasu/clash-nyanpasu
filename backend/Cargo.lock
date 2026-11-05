@@ -6824,7 +6824,6 @@ dependencies = [
  "pretty_assertions",
  "ractor",
  "redb",
- "runas",
  "seahash",
  "semver 1.0.28",
  "serde",
@@ -6845,8 +6844,6 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "whoami",
- "windows-sys 0.61.2",
  "zstd",
 ]
 
@@ -7135,13 +7132,18 @@ dependencies = [
  "auto-launch",
  "camino",
  "dunce",
+ "futures",
  "hex",
  "mockall",
  "nyanpasu-config",
  "nyanpasu-contracts",
+ "nyanpasu-paths",
+ "nyanpasu-utils",
  "once_cell",
  "reqwest 0.13.5",
+ "runas",
  "serde",
+ "serde_json",
  "sha2 0.11.1",
  "snafu 0.9.2",
  "specta",
@@ -7153,6 +7155,7 @@ dependencies = [
  "tracing",
  "url",
  "whoami",
+ "windows-sys 0.61.2",
  "winreg 0.56.0",
 ]
 

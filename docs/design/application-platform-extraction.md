@@ -311,21 +311,18 @@ execution and debug HTTP are optional: missing capabilities report structured
 unsupported results, and explicit hotkey edits are rejected before persistence.
 Unsupported effects neither advance applied revisions nor retry automatically.
 Observer sinks (`UiEventSink` and `FrontendLogSink`) remain required; headless
-shells provide neutral implementations. C2b moves proxy reads/writes, PAC,
-autostart, device identity and sidecar version probes into `nyanpasu-os`;
-service control, DNS flush and binary installation remain for C2c.
+shells provide neutral implementations. C2b–C2c move proxy reads/writes, PAC,
+autostart, device identity, sidecar version probes, service control, DNS flush
+and binary installation into `nyanpasu-os`. Authorization behavior is unchanged;
+the consent port follows in C2d.
 
 Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting
   the runners and injecting their constructor did not change extension behavior.
-- The remaining OS integration mechanisms are still in core: service install
-  and control with elevation (`service/control.rs`, `utils/sudo.rs`,
-  `actor_v2/service_process_control.rs`), DNS configuration and flush
-  (`actor_v2/local_host.rs`, `client/system_dns.rs`) and core binary install
-  (`client/core_lifecycle/adapters.rs`). Core's service install and DNS flush show OS
-  authorization dialogs directly, and core binary installation falls back to an
-  elevated copy that the WebUI can reach through `update_core`
+- The OS mechanisms in `nyanpasu-os` still authorize directly: service install
+  and DNS flush show OS authorization dialogs, and binary installation falls
+  back to an elevated copy that the WebUI can reach through `update_core`
   ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). Phase C
   removes `update_core` from the WebUI. The embedded WebUI shares the desktop
   client, so service-mode changes through `patch_app_config`,

@@ -524,7 +524,8 @@ cookie          -> POST /bridge/rpc, GET /bridge/events, static assets
   therefore root-equivalent, as with the old write ACL.
 - **The set will grow** as the Tauri-only commands the WebUI calls (app config,
   storage, Clash API proxies, system proxy) move into `nyanpasu-rpc`; each needs
-  the review `rpc(http)` already requires.
+  the review `rpc(http)` already requires. It did, see the
+  [WebUI RPC and events](#webui-rpc-and-events-2026-11-05) security note.
 - **LAN exposure:** the port listens on `0.0.0.0` in plain HTTP and is open on
   the LAN, relying on the firewall's WAN input reject. There is no TLS, so a
   ticket (valid 60 s) and the session cookie can be read by anyone on the path.
@@ -562,6 +563,9 @@ to a session.
 
 ### Which WebUI pages work
 
+Superseded by [WebUI RPC and events](#webui-rpc-and-events-2026-11-05), which
+moved these commands. The record of the first result follows.
+
 The server links only the commands in `nyanpasu-rpc`. Everything else the app
 calls lives in the Tauri crate and answers `unknown_method` (404). The app shell
 renders; nothing was fixed in the frontend.
@@ -580,9 +584,9 @@ in the server.
 
 ### Remaining work for the reduced build
 
-- Move the commands the WebUI needs (app config, storage, proxies and the Clash
-  API, traffic) into `nyanpasu-rpc` with a review of their HTTP exposure, or
-  stub them honestly in the server.
+- ~~Move the commands the WebUI needs (app config, storage, proxies and the Clash
+  API, traffic) into `nyanpasu-rpc` with a review of their HTTP exposure~~ (done,
+  see [WebUI RPC and events](#webui-rpc-and-events-2026-11-05)).
 - Build a router route set without Monaco, tray, widget and service pages, and
   serve it precompressed.
 - Package the WebUI (a `nyanpasu-webui` package at `webui_dir`).
@@ -591,6 +595,149 @@ in the server.
   of `0.0.0.0`.
 - Mutations through the WebUI on a router; the resident memory of the server
   with the listener on real hardware.
+
+## WebUI RPC and events, 2026-11-05
+
+The [WebUI link](#webui-link-2026-11-05) served the React app, but only the
+commands in `nyanpasu-rpc` existed on the server. The app shell asks for
+`get_app_config` before it renders a page, so a browser got a blank page on
+every route. This section records the fix: the commands the pages need moved
+into `nyanpasu-rpc`, and the events the pages refresh from now reach the
+browser. The inventory behind it (every command and event the frontend uses,
+with its class) was taken first and is the basis of the table below.
+
+### What moved
+
+72 commands moved from `backend/tauri/src/ipc.rs` to modules under
+`backend/nyanpasu-rpc/src/commands/`, by domain, with their doc comments and
+signatures, so the desktop's generated bindings are unchanged. `get_core_version`
+also opted into `rpc(http)`. The HTTP command set grew from 13 to 85 and is
+pinned by a test (`the_http_allowlist_is_the_reviewed_webui_command_set`).
+
+| Domain            | Commands                                                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| App configuration | get/patch app and Clash config, runtime overrides, config features, Clash info, configuration status and its two retries                     |
+| Storage           | the five `web:` key-value commands, so the CSS editor saves                                                                                  |
+| Host              | `is_portable`, `status_service`, `probe_direct_egress`, `get_cached_icon`                                                                    |
+| Clash             | proxies, `select_proxy`, rules, providers, delay tests, connection close, `get_sys_proxy`                                                    |
+| Core manager      | `change_clash_core`, `restart_sidecar`, versions, updater inspection, agent skills                                                           |
+| Traffic           | the Clash websocket snapshot and recording, and the six `query_traffic_*` reads                                                              |
+| Logs              | `get_core_log`, `clear_core_logs`, log files and sessions, `report_frontend_events`                                                          |
+| Profiles          | import, ordering, layout, folders, sync status, `update_profile`, metadata and remote-option patches, the applied runtime and its node views |
+
+Two rules let them move without a Tauri type:
+
+- **`caller: Caller`** is the neutral counterpart of the desktop `Window` for
+  `rpc(owner)` commands. A browser session owns the log sessions it opens, and
+  another session cannot close them; on the desktop the owner is still the
+  window label.
+- **`rpc(optional_capabilities(...))`** records the effects a command only may
+  reach. `patch_app_config` and `retry_configuration_effect` may touch the
+  system proxy, hotkeys and the tray. As required capabilities they would keep
+  the headless server from registering them, and saving any setting would have
+  failed. The effects port already reports each effect it cannot apply as
+  unsupported, never as applied, so the commands are served and say so.
+
+The traffic store opener moved from the desktop setup into core
+(`TrafficFileStorage::open_in_data_dir`), and the server now opens it, so it
+records traffic like the desktop. The history sits under the data directory,
+which is flash on a router, and the client sizes its cache for a desktop. Where
+that history should live on a device is not decided.
+
+### Events
+
+Seven shared sources were forwarded to the event bus by tasks in the Tauri
+setup; the server forwarded none. `nyanpasu_rpc::forward::forwarders`
+subscribes to all of them, and each shell runs the returned futures under its
+own shutdown owner: the desktop through `tauri::async_runtime`, the server
+through `tokio`. `/bridge/events` already delivered every bus event to a
+router session, so it needed no change. Events the browser receives:
+
+| Event                                                                                                  | Source                                           |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `state-changed-event`                                                                                  | state commits and proxy changes                  |
+| `core-status-changed-event`, `service-status-changed-event`                                            | core and service owners                          |
+| `configuration-status-changed`                                                                         | mutation journal, effects and profile sources    |
+| `clash-ws-event`                                                                                       | the Clash streams (traffic, memory, connections) |
+| `core-logs-changed`                                                                                    | the core log store                               |
+| `storage-value-changed-event`, `storage-resync-event`                                                  | the key-value storage                            |
+| not on the server: `app-update-state-changed`, `scheme-request-received-event`, `window-message-event` | the desktop updater, deep links and windows      |
+
+The desktop's event types stay as the description of the payloads in the
+generated bindings, and a test keeps their wire shape equal to what the shared
+publishers send.
+
+### Pages
+
+Before, every route rendered a blank page (`get_app_config` and
+`get_clash_ws_snapshot` answered 404 `unknown_method`). After, on the container
+with the real server and Mihomo, as root through LuCI → Open WebUI. A page's
+commands are the requests it made in its first five seconds; "Work" means no
+request failed except as listed.
+
+| Page                                                       | After                                                                                                                                                                               |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard                                                  | Works; 11 commands, live traffic, memory and core status. `get_sys_proxy` answers 500 (no OS proxy on this host), the proxy tile shows Disabled.                                    |
+| Proxies, Rules, Providers                                  | Work; the groups, rules and providers of the selected profile load.                                                                                                                 |
+| Connections                                                | Works; the active list went 0 to 3 while three proxy tunnels were held open, and the closed list grew when they ended.                                                              |
+| Traffic                                                    | Works; the store records (3 active connections in `get_traffic_summary` while tunnels were held open).                                                                              |
+| Logs                                                       | Works; core log lines arrive live.                                                                                                                                                  |
+| Profiles                                                   | Works; the count changed from 1 to 2 when a profile was created through the CLI, without a reload, and back on deletion.                                                            |
+| Settings: Clash (core, control, network, runtime, AI)      | Work.                                                                                                                                                                               |
+| Settings: Clash core manager                               | Works; Mihomo's version shows, the cores that are not installed say "Could not read core version" (`get_core_version` 500, an honest answer).                                       |
+| Settings: Nyanpasu interface, logs, widget, updates, About | Render; `get_system_accent_color` is 404 on the interface page, which shows the configured colour. The CSS editor's `set_storage_item` and `get_storage_item` round-trip over HTTP. |
+| Settings: System proxy                                     | Renders; `get_sys_proxy` answers 500.                                                                                                                                               |
+| Settings: Debug                                            | Renders.                                                                                                                                                                            |
+
+Live checks: the browser's own `EventSource` saw `clash-ws-event`,
+`core-logs-changed` and `core-status-changed-event` while traffic passed the
+core; a profile created behind the Profiles page's back through the CLI changed
+its count without a reload, and so did its deletion; the dashboard's totals
+counted the traffic.
+
+### Desktop-only remainder
+
+These stay in Tauri. The pages above still render around them:
+
+- **Keyboard shortcuts** page: `get_hotkeys`, `get_hotkey_functions` (404). The
+  page shows an empty card.
+- **Tray** page: `get_tray_icon` and the tray and widget icon commands (404).
+- **System service** page: `get_service_install_prompt`, `get_core_dir`, the
+  service, DNS and UWP commands. `status_service` is served and reports "Not
+  installed".
+- **Interface** page: `get_system_accent_color` (404).
+- **Updates and About**: the app updater and release channel
+  (`capabilities(app_update)`); the server has no updater backend.
+- **Elsewhere**: `update_core` (elevation fallback), `probe_profile_url`
+  (reviewed as desktop-only because it requests any URL the caller names),
+  dialogs, clipboard, opener, window and lifecycle commands, and the
+  connection-detail Channel (browsers use `/bridge/connection-details`).
+
+Ten commands that no page calls (`enhance_profiles`, `reorder_profile`,
+`get_runtime_config`, `get_runtime_exists`, `get_postprocessing_output` and
+others) were left where they are so the HTTP set grows only by what a page
+uses.
+
+### Security note
+
+The HTTP command set grew from 13 to 85. A browser session, and so whoever may
+run `webui_ticket`, can now also read and change the application and Clash
+configuration (including the controller secret and ports), close connections,
+change the selected proxy, restart the core, switch the core binary, read the
+recorded traffic history (browsing targets), read the core and application
+logs, and import profiles from arbitrary URLs (`import_profile` fetches the URL
+the caller names). Profile import also feeds the JS/Lua transforms, which run in
+the server as root, as before. No command that can reach elevation, the system
+service, the clipboard, dialogs or the opener is registered on the server. The
+auth model is unchanged.
+
+### Verified
+
+Unit tests cover the pinned HTTP set, caller-owned log sessions, the storage
+namespace, the forwarders (storage and a reconcile reach the bus) and the wire
+shape of the forwarded payloads. On the musl target, `nyanpasu-server`'s test
+signs a browser in through a ticket and receives `storage-value-changed-event`,
+`state-changed-event` and `configuration-status-changed` over `/bridge/events`.
 
 ## Decisions deliberately deferred
 

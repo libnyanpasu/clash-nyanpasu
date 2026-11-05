@@ -47,7 +47,7 @@ backend/tauri/src/
           |
           | constructs and injects dependencies
           v
-backend/nyanpasu-rpc/src/  registry, event bus, WebUI router and shared commands
+backend/nyanpasu-rpc/src/  registry, event bus and forwarders, WebUI router and shared commands
           |                (wire contract in nyanpasu-rpc-protocol)
           v
 backend/nyanpasu-core/src/

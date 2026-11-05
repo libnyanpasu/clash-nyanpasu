@@ -23,6 +23,7 @@ use nyanpasu_core::{
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
     },
     storage::{RedbHotkeyStoreOpener, Storage},
+    traffic::TrafficFileStorage,
 };
 use nyanpasu_net::{
     device_headers::{self, DeviceHeaders},
@@ -268,8 +269,7 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Assem
         effects: Arc::new(UnsupportedEffects),
         window: Arc::new(NoWindows),
         accelerators: Arc::new(NoAccelerators),
-        // Recording is optional; this spike does not open the traffic store.
-        traffic_store: None,
+        traffic_store: TrafficFileStorage::open_in_data_dir(&paths),
         shutdown: owners.shutdown.clone(),
         tasks: owners.tasks.clone(),
     };

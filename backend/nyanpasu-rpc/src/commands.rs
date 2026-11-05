@@ -21,12 +21,14 @@ mod host;
 mod storage;
 #[cfg(test)]
 mod tests;
+mod traffic;
 
 pub use app_config::*;
 pub use clash_api::*;
 pub use core_manager::*;
 pub use host::*;
 pub use storage::*;
+pub use traffic::*;
 
 use crate::{IpcError, State, WebTicket, WebTickets};
 

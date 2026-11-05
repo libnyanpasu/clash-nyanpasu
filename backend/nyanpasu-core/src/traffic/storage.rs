@@ -1,13 +1,18 @@
 //! Desktop file opener. Only startup may discard incompatible/corrupted statistics;
 //! recovery always reopens the existing dataset, so it can restore its surviving state.
 use super::TrafficStorage;
+use nyanpasu_paths::PathResolver;
 use nyanpasu_traffic::{TrafficDb, store::Opened};
 use nyanpasu_tsdb::{
     ErrorKind, OpenError, Profile, RecoveryError,
     storage::{StorageError, redb::RedbStorage},
 };
 use nyanpasu_utils::redb_ext::{RedbFailure, find_failure};
-use std::path::{Path, PathBuf};
+use snafu::{ResultExt as _, Snafu};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 pub struct TrafficFileStorage {
     path: PathBuf,
@@ -75,6 +80,62 @@ impl TrafficFileStorage {
         self.initialize_store(profile)
     }
 }
+#[derive(Debug, Snafu)]
+enum TrafficStoreError {
+    #[snafu(display("failed to create traffic directory {}", path.display()))]
+    CreateTrafficDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(unix)]
+    #[snafu(display("failed to secure traffic directory {}", path.display()))]
+    SecureTrafficDirectory {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(windows)]
+    #[snafu(display("failed to harden traffic directory {}", path.display()))]
+    HardenTrafficDirectory {
+        path: PathBuf,
+        source: nyanpasu_utils::io::atomic_fs::AtomicFsError,
+    },
+}
+
+impl TrafficFileStorage {
+    /// Opens the traffic history under the application data directory.
+    ///
+    /// Recording is optional, so a store that cannot be opened disables it
+    /// (`None`) rather than failing the launch. The history holds browsing
+    /// targets, hence the owner-only directory.
+    pub fn open_in_data_dir(paths: &PathResolver) -> Option<Arc<dyn TrafficStorage<RedbStorage>>> {
+        let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
+        let open = || -> Result<TrafficFileStorage, TrafficStoreError> {
+            std::fs::create_dir_all(&dir).context(CreateTrafficDirectorySnafu { path: &dir })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+                    .context(SecureTrafficDirectorySnafu { path: &dir })?;
+            }
+            #[cfg(windows)]
+            nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)
+                .context(HardenTrafficDirectorySnafu { path: &dir })?;
+            let profile = Profile::desktop();
+            Ok(TrafficFileStorage::new(
+                dir.join("traffic.tsdb"),
+                profile.backend_cache,
+            ))
+        };
+        match open() {
+            Ok(store) => Some(Arc::new(store)),
+            Err(error) => {
+                tracing::error!(%error, "failed to open the traffic store; recording is disabled");
+                None
+            }
+        }
+    }
+}
+
 impl TrafficStorage<RedbStorage> for TrafficFileStorage {
     fn open(&self) -> Result<RedbStorage, StorageError> {
         RedbStorage::open(&self.path, self.cache_bytes)
@@ -125,6 +186,17 @@ mod tests {
                 .unwrap();
         }
         txn.commit().unwrap();
+    }
+
+    #[test]
+    fn the_history_lives_in_its_own_directory_under_the_data_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::utils::test_support::test_paths(dir.path().join("config"), dir.path());
+
+        let store = TrafficFileStorage::open_in_data_dir(&paths).expect("the store opens");
+
+        assert!(dir.path().join("traffic").is_dir());
+        store.open().expect("the file opens as a database");
     }
 
     #[test]

@@ -1067,15 +1067,6 @@ pub async fn set_hotkeys(
         .await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_clash_ws_snapshot(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::ws::ClashWsSnapshot> {
-    Ok(client.clash_ws_snapshot().await?)
-}
-
 #[nyanpasu_macro::rpc(http, result)]
 #[tauri::command]
 #[specta::specta]
@@ -1093,102 +1084,6 @@ pub async fn clear_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
 ) -> nyanpasu_core::logs::CoreLogResult<()> {
     client.clear_core_logs().await
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_traffic_summary(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_traffic::TrafficSummary> {
-    Ok(client.traffic_summary().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_report(
-    client: tauri::State<'_, NyanpasuClient>,
-    request: nyanpasu_traffic::ReportRequest,
-) -> Result<nyanpasu_traffic::TrafficReport> {
-    Ok(client.query_traffic_report(request).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_usage(
-    client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_traffic::TrafficQuery,
-    group_by: nyanpasu_traffic::Dimension,
-    metric: nyanpasu_traffic::Metric,
-    after: Option<nyanpasu_traffic::UsageCursor>,
-    limit: usize,
-) -> Result<nyanpasu_traffic::UsagePage> {
-    Ok(client
-        .query_traffic_usage(query, group_by, metric, after, limit)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_usage_by_keys(
-    client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_traffic::TrafficQuery,
-    group_by: nyanpasu_traffic::Dimension,
-    keys: Vec<String>,
-) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
-    Ok(client
-        .query_traffic_usage_by_keys(query, group_by, keys)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_closed_connections(
-    client: tauri::State<'_, NyanpasuClient>,
-    range: nyanpasu_traffic::TrafficRange,
-    filters: Vec<nyanpasu_traffic::TrafficFilter>,
-    before: Option<nyanpasu_traffic::ClosedCursor>,
-    limit: usize,
-) -> Result<nyanpasu_traffic::ClosedPage> {
-    Ok(client
-        .query_traffic_closed_connections(range, filters, before, limit)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_active_connection_ids(
-    client: tauri::State<'_, NyanpasuClient>,
-    filters: Vec<nyanpasu_traffic::TrafficFilter>,
-) -> Result<Vec<String>> {
-    Ok(client.query_traffic_active_connection_ids(filters).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_clash_ws_recording(
-    client: tauri::State<'_, NyanpasuClient>,
-    kind: nyanpasu_core::clash::ws::ClashWsKind,
-    enabled: bool,
-) -> Result<nyanpasu_core::clash::ws::ClashWsRecording> {
-    Ok(client.set_clash_ws_recording(kind, enabled).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_clash_ws_history(
-    client: tauri::State<'_, NyanpasuClient>,
-    kind: nyanpasu_core::clash::ws::ClashWsKind,
-) -> Result {
-    client.clear_clash_ws_history(kind).await?;
-    Ok(())
 }
 
 // Subscription control uses UnifiedRpc; only frame delivery is a native Channel.

@@ -38,10 +38,9 @@ use nyanpasu_core::{
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
     storage::{RedbHotkeyStoreOpener, StorageNotification},
-    traffic::{TrafficFileStorage, TrafficStorage},
+    traffic::TrafficFileStorage,
 };
 use nyanpasu_rpc_protocol::ShellCapability;
-use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -308,7 +307,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &tasks,
     )?;
     drop(span);
-    let traffic_store = open_traffic_store(&paths);
+    let traffic_store = TrafficFileStorage::open_in_data_dir(&paths);
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
@@ -588,58 +587,6 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), U
     let desktop = crate::unified_rpc::DesktopRpc::new(rpc).context(BuildDesktopRpcSnafu)?;
     snafu::ensure!(app.manage(desktop), RegisterStateSnafu);
     Ok(())
-}
-
-#[derive(Debug, snafu::Snafu)]
-enum TrafficStoreError {
-    #[snafu(display("failed to create traffic directory {}", path.display()))]
-    CreateTrafficDirectory {
-        path: std::path::PathBuf,
-        source: std::io::Error,
-    },
-    #[cfg(unix)]
-    #[snafu(display("failed to secure traffic directory {}", path.display()))]
-    SecureTrafficDirectory {
-        path: std::path::PathBuf,
-        source: std::io::Error,
-    },
-    #[cfg(windows)]
-    #[snafu(display("failed to harden traffic directory {}", path.display()))]
-    HardenTrafficDirectory {
-        path: std::path::PathBuf,
-        source: nyanpasu_utils::io::atomic_fs::AtomicFsError,
-    },
-}
-
-/// Recording is optional, so a store that cannot be opened disables it rather
-/// than failing the launch. The history holds browsing targets, hence the
-/// owner-only directory.
-fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStorage<RedbStorage>>> {
-    let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
-    let open = || -> Result<TrafficFileStorage, TrafficStoreError> {
-        std::fs::create_dir_all(&dir).context(CreateTrafficDirectorySnafu { path: &dir })?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
-                .context(SecureTrafficDirectorySnafu { path: &dir })?;
-        }
-        #[cfg(windows)]
-        nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)
-            .context(HardenTrafficDirectorySnafu { path: &dir })?;
-        let profile = Profile::desktop();
-        Ok(TrafficFileStorage::new(
-            dir.join("traffic.tsdb"),
-            profile.backend_cache,
-        ))
-    };
-    match open() {
-        Ok(store) => Some(Arc::new(store)),
-        Err(error) => {
-            tracing::error!(%error, "failed to open the traffic store; recording is disabled");
-            None
-        }
-    }
 }
 
 /// Carries pressed shortcuts from the OS callback into the facade.

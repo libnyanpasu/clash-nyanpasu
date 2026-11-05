@@ -84,6 +84,16 @@ async fn the_http_allowlist_is_the_reviewed_webui_command_set() {
         "restart_sidecar",
         "select_proxy",
         "update_proxy_provider",
+        // The live Clash streams and the traffic history.
+        "clear_clash_ws_history",
+        "get_clash_ws_snapshot",
+        "get_traffic_summary",
+        "query_traffic_active_connection_ids",
+        "query_traffic_closed_connections",
+        "query_traffic_report",
+        "query_traffic_usage",
+        "query_traffic_usage_by_keys",
+        "set_clash_ws_recording",
         // The host.
         "get_cached_icon",
         "is_portable",
@@ -189,6 +199,9 @@ async fn core_queries_reach_the_client_while_the_core_is_down() {
         ("clash_api_get_group_delay", json!({"group": "g"})),
         ("select_proxy", json!({"group": "g", "name": "n"})),
         ("get_core_agent_skills", json!({"coreType": "mihomo"})),
+        ("get_clash_ws_snapshot", Value::Null),
+        ("get_traffic_summary", Value::Null),
+        ("clear_clash_ws_history", json!({"kind": "traffic"})),
     ] {
         reaches_the_client(&rpc, method, params).await;
     }

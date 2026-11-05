@@ -1848,7 +1848,6 @@ dependencies = [
  "nyanpasu-rpc-protocol",
  "nyanpasu-scripts",
  "nyanpasu-traffic",
- "nyanpasu-tsdb",
  "nyanpasu-utils",
  "nyanpasu-widget",
  "nyanpasu-widget-protocol",

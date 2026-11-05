@@ -9,6 +9,7 @@ pub struct Options {
     result: bool,
     owner: bool,
     capabilities: Vec<syn::Ident>,
+    optional_capabilities: Vec<syn::Ident>,
 }
 
 impl syn::parse::Parse for Options {
@@ -28,10 +29,17 @@ impl syn::parse::Parse for Options {
                         .capabilities
                         .extend(list.parse_terminated(syn::Ident::parse, syn::Token![,])?);
                 }
+                "optional_capabilities" => {
+                    let list;
+                    syn::parenthesized!(list in input);
+                    options
+                        .optional_capabilities
+                        .extend(list.parse_terminated(syn::Ident::parse, syn::Token![,])?);
+                }
                 _ => {
                     return Err(Error::new(
                         option.span(),
-                        "expected http, local, result, owner or capabilities(...)",
+                        "expected http, local, result, owner, capabilities(...) or optional_capabilities(...)",
                     ));
                 }
             }
@@ -94,6 +102,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         && let Some(elevation) = options
             .capabilities
             .iter()
+            .chain(&options.optional_capabilities)
             .find(|capability| *capability == "elevation")
     {
         return Err(Error::new(
@@ -150,7 +159,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             }
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
-        } else if options.owner && is_context_type(&argument.ty, "Window") {
+        } else if options.owner && is_owner_context(&argument.ty) {
             *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
             wrapper_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(#ident.label())));
             neutral_args.push(quote!(owner.clone()));
@@ -245,7 +254,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 tauri_args.push(quote!(&*#state_name));
             } else if is_context_type(&argument.ty, "AppHandle") {
                 tauri_args.push(quote!(app.clone()));
-            } else if options.owner && is_context_type(&argument.ty, "Window") {
+            } else if options.owner && is_owner_context(&argument.ty) {
                 tauri_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(
                     window.label()
                 )));
@@ -328,14 +337,21 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     if options.local {
         targets.push(quote!(::nyanpasu_rpc_protocol::RpcTarget::Local));
     }
-    let capabilities = options.capabilities.iter().map(|capability| {
-        let variant = format_ident!(
-            "{}",
-            snake_to_pascal(&capability.to_string()),
-            span = capability.span()
-        );
-        quote!(::nyanpasu_rpc_protocol::ShellCapability::#variant)
-    });
+    let capability_variants = |capabilities: &[syn::Ident]| {
+        capabilities
+            .iter()
+            .map(|capability| {
+                let variant = format_ident!(
+                    "{}",
+                    snake_to_pascal(&capability.to_string()),
+                    span = capability.span()
+                );
+                quote!(::nyanpasu_rpc_protocol::ShellCapability::#variant)
+            })
+            .collect::<Vec<_>>()
+    };
+    let capabilities = capability_variants(&options.capabilities);
+    let optional_capabilities = capability_variants(&options.optional_capabilities);
 
     Ok(quote! {
         #implementation
@@ -361,6 +377,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 name: stringify!(#name),
                 targets: &[#(#targets),*],
                 capabilities: &[#(#capabilities),*],
+                optional_capabilities: &[#(#optional_capabilities),*],
                 handler: #neutral_handler,
             }
         }
@@ -459,7 +476,7 @@ fn can_share_with_neutral(signature: &syn::Signature, owner: bool) -> bool {
             }
         } else if is_context_type(&argument.ty, "AppHandle") {
             return false;
-        } else if owner && is_context_type(&argument.ty, "Window") {
+        } else if owner && is_owner_context(&argument.ty) {
             continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
             return false;
@@ -488,6 +505,12 @@ fn is_tauri_context(ty: &Type) -> bool {
         .iter()
         .any(|name| is_context_type(ty, name))
         || is_tauri_channel(ty)
+}
+
+/// A parameter that stands for the caller of an `owner` command: the desktop
+/// window, or `Caller` in a command that needs no shell context.
+fn is_owner_context(ty: &Type) -> bool {
+    is_context_type(ty, "Window") || is_context_type(ty, "Caller")
 }
 
 fn is_tauri_channel(ty: &Type) -> bool {
@@ -696,10 +719,38 @@ mod tests {
     }
 
     #[test]
+    fn optional_capabilities_are_recorded_apart_from_required_ones() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, capabilities(clipboard), optional_capabilities(hotkey))]
+            pub async fn patch(client: State<'_, NyanpasuClient>) -> Result<()> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+
+        assert!(expanded.contains(
+            "capabilities : & [:: nyanpasu_rpc_protocol :: ShellCapability :: Clipboard] , optional_capabilities : & [:: nyanpasu_rpc_protocol :: ShellCapability :: Hotkey]"
+        ));
+    }
+
+    #[test]
+    fn a_caller_parameter_is_the_owner_of_a_neutral_command() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, result, owner)]
+            pub async fn open(caller: Caller, source: Source) -> LogResult<Session> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+
+        assert!(expanded.contains("__unified_impl_open (owner . clone () , source) . await"));
+        assert!(expanded.contains("caller : :: nyanpasu_rpc_protocol :: RpcOwner"));
+        assert!(!expanded.contains("struct Args { caller"));
+        assert!(!expanded.contains("RpcError :: unsupported"));
+    }
+
+    #[test]
     fn local_is_refused_for_desktop_signatures_and_elevation() {
         for source in [
             "#[nyanpasu_macro::rpc(local)] #[tauri::command] pub fn quit(app: tauri::AppHandle) -> Result<()> { todo!() }",
             "#[nyanpasu_macro::rpc(local, capabilities(elevation))] #[tauri::command] pub async fn update(client: State<'_, NyanpasuClient>) -> Result<()> { todo!() }",
+            "#[nyanpasu_macro::rpc(local, optional_capabilities(elevation))] pub async fn update(client: State<'_, NyanpasuClient>) -> Result<()> { todo!() }",
             "#[nyanpasu_macro::rpc] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
         ] {
             let command: ItemFn = syn::parse_str(source).unwrap();

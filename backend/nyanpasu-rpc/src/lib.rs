@@ -25,7 +25,7 @@ pub use events::{EventBus, EventSink, RpcEvent};
 #[cfg(feature = "local-server")]
 pub use local::{LocalServeError, serve_local};
 pub use registry::{
-    CommandEntry, RegistryError, RpcDependencies, RpcFuture, RpcHandler, State, UnifiedRpc,
+    Caller, CommandEntry, RegistryError, RpcDependencies, RpcFuture, RpcHandler, State, UnifiedRpc,
     WeakUnifiedRpc,
 };
 pub use web_ticket::{WebTicket, WebTicketIssuer, WebTickets, WebUiUnavailable};

@@ -39,8 +39,13 @@ pub struct CommandEntry {
     pub name: &'static str,
     /// The targets the command opted into; the registry refuses the rest.
     pub targets: &'static [RpcTarget],
-    /// The shell capabilities the command can reach.
+    /// The shell capabilities the command needs; a shell that lacks one does
+    /// not register the command.
     pub capabilities: &'static [ShellCapability],
+    /// The capabilities the command's effects can reach through the shell's
+    /// optional effect owners. A shell that lacks one still registers the
+    /// command, and the effect it cannot apply is reported as unsupported.
+    pub optional_capabilities: &'static [ShellCapability],
     /// The transport-neutral handler. A command that is also a
     /// `#[tauri::command]` reaches the desktop through the shell's own
     /// handler instead.
@@ -64,6 +69,24 @@ impl<T> Deref for State<'_, T> {
 }
 
 impl<T> specta::function::FunctionArg for State<'_, T> {
+    fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
+        None
+    }
+}
+
+/// Declares, in the signature of an `owner` command, the caller whose
+/// resources the command acts on. The registry passes the transport's
+/// [`RpcOwner`]; the declaration only types the parameter, and specta leaves
+/// it out of the frontend signature.
+pub struct Caller(RpcOwner);
+
+impl Caller {
+    pub fn label(&self) -> &str {
+        self.0.label()
+    }
+}
+
+impl specta::function::FunctionArg for Caller {
     fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
         None
     }
@@ -216,16 +239,11 @@ pub(crate) mod tests {
         Ok(true)
     }
 
-    /// Stands in for a caller's window in a declaration; transports inject
-    /// the owner they derive from the connection.
-    #[expect(dead_code, reason = "only the command declaration names it")]
-    pub(crate) struct Window;
-
-    impl Window {
-        #[expect(dead_code, reason = "only the command declaration calls it")]
-        fn label(&self) -> &str {
-            unreachable!("only the declaration names the window")
-        }
+    // Registered only in test binaries: a command whose effects may reach a
+    // capability the shell lacks.
+    #[nyanpasu_macro::rpc(http, optional_capabilities(hotkey))]
+    async fn optional_probe() -> Result<bool> {
+        Ok(true)
     }
 
     // Registered only in test binaries: a command that panics before it replies.
@@ -236,8 +254,8 @@ pub(crate) mod tests {
 
     // Registered only in test binaries: reports the owner a transport derived.
     #[nyanpasu_macro::rpc(http, local, owner)]
-    async fn owner_probe(window: Window) -> Result<String> {
-        Ok(window.label().to_owned())
+    async fn owner_probe(caller: Caller) -> Result<String> {
+        Ok(caller.label().to_owned())
     }
 
     pub(crate) async fn test_rpc(
@@ -339,6 +357,16 @@ pub(crate) mod tests {
                 .command_names(RpcTarget::Http)
                 .contains(&"get_profiles")
         );
+        // A capability the command's effects only may reach does not keep a shell from serving it.
+        let optional = headless
+            .call(
+                RpcTarget::Http,
+                "optional_probe",
+                RpcOwner::desktop("main"),
+                Value::Null,
+            )
+            .await;
+        assert_eq!(optional, Ok(Value::Bool(true)));
     }
 
     #[tokio::test]

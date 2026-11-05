@@ -482,6 +482,110 @@ mod tests {
     use tower::ServiceExt;
 
     #[test]
+    fn http_update_core_is_unsupported_before_job_admission() {
+        use std::{
+            sync::atomic::{AtomicUsize, Ordering},
+            time::Instant,
+        };
+
+        use nyanpasu_config::application::ClashCore;
+        use nyanpasu_contracts::core_install::{
+            BinaryInstaller, CoreBinaryInstallRequest, InstallCoreBinaryError,
+        };
+        use nyanpasu_updater::{
+            CoreTypeMeta, ManifestVersion, PreparedCoreBinary, UpdaterBackend, UpdaterProgress,
+            test_support::ReadyBackend,
+        };
+        use tokio_util::sync::CancellationToken;
+
+        #[derive(Default)]
+        struct UpdateEffects {
+            prepares: AtomicUsize,
+            installs: AtomicUsize,
+        }
+
+        #[async_trait::async_trait]
+        impl UpdaterBackend for UpdateEffects {
+            async fn fetch_manifest(
+                &self,
+                mirror: Option<(String, Instant)>,
+            ) -> anyhow::Result<(ManifestVersion, (String, Instant))> {
+                ReadyBackend.fetch_manifest(mirror).await
+            }
+
+            async fn prepare(
+                &self,
+                core_type: ClashCore,
+                mirror: String,
+                artifact: String,
+                tag: CoreTypeMeta,
+                progress: UpdaterProgress,
+                shutdown: &CancellationToken,
+            ) -> anyhow::Result<PreparedCoreBinary> {
+                self.prepares.fetch_add(1, Ordering::SeqCst);
+                ReadyBackend
+                    .prepare(core_type, mirror, artifact, tag, progress, shutdown)
+                    .await
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl BinaryInstaller for UpdateEffects {
+            async fn install(
+                &self,
+                _request: &CoreBinaryInstallRequest,
+            ) -> Result<(), InstallCoreBinaryError> {
+                self.installs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        tauri::async_runtime::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            let mut args = crate::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            )
+            .await;
+            let effects = Arc::new(UpdateEffects::default());
+            args.updater_backend_factory = {
+                let effects = effects.clone();
+                Arc::new(move |_| Ok(effects.clone()))
+            };
+            args.binary_installer = effects.clone();
+            let paths = args.paths.clone();
+            let client = NyanpasuClient::try_new(args).await.unwrap();
+            // Prime a valid update so an opted-in handler would admit a job.
+            client.fetch_latest_core_versions().await.unwrap();
+            assert!(client.inspect_updater(1).await.is_err());
+            let app = UnifiedRpc::new(RpcDependencies {
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(),
+            })
+            .unwrap()
+            .router();
+
+            let (status, result) = rpc_for_test_call(
+                &app,
+                "update_core",
+                serde_json::json!({"coreType": ClashCore::Mihomo}),
+                None,
+            )
+            .await;
+            let admitted = client.inspect_updater(1).await.is_ok();
+            assert!(!admitted, "HTTP update_core must not admit an updater job");
+            assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+            assert_eq!(result["kind"], "unsupported");
+            assert_eq!(effects.prepares.load(Ordering::SeqCst), 0);
+            assert_eq!(effects.installs.load(Ordering::SeqCst), 0);
+            client.request_shutdown();
+            client.wait_shutdown().await;
+        });
+    }
+
+    #[test]
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
         let args =

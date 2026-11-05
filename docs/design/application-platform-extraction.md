@@ -323,15 +323,15 @@ Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting
   the runners and injecting their constructor did not change extension behavior.
-- The desktop permits OS authorization dialogs for service commands, DNS flush
-  and the binary install copy fallback. The WebUI can still reach the fallback
-  through `update_core`
-  ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). Phase C
-  removes `update_core` from the WebUI. The embedded WebUI shares the desktop
-  client, so service-mode changes through `patch_app_config`,
-  `retry_configuration_runtime` and transaction compensation can still reach
-  the desktop's elevation policy; the separately assembled server (E4) closes
-  these paths by injecting a refusing policy.
+- C2e rejects HTTP `update_core` before job admission with unsupported / 501;
+  desktop updates retain the binary install copy fallback
+  ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). The embedded
+  WebUI still shares the desktop elevation policy when `patch_app_config` turns
+  service mode on or off, during `retry_configuration_runtime` and transaction
+  compensation (`client/application_workflow/tcc.rs`). C2 adds no per-call
+  permission context or second client. The separately assembled server (E4)
+  must inject the refusing policy and verify that all these paths cannot show
+  an authorization dialog.
 - Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).

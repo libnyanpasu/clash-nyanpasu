@@ -549,6 +549,46 @@ mod tests {
     }
 
     #[test]
+    fn desktop_update_core_dispatch_remains_available() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
+        let source = std::fs::read_to_string(path).expect("failed to read IPC command source");
+        let file = syn::parse_file(&source).expect("failed to parse IPC command source");
+        let mut commands = Vec::new();
+        collect_rpc_commands(&file.items, &mut commands);
+        let command = commands
+            .into_iter()
+            .find(|command| command.sig.ident == "update_core")
+            .expect("update_core must remain an RPC command");
+        let expanded = expand(command).expect("failed to expand update_core");
+        assert!(
+            expanded
+                .to_string()
+                .contains("tauri_handler : __unified_tauri_update_core"),
+            "update_core must register its generated desktop dispatcher"
+        );
+        let expanded = syn::parse2::<syn::File>(expanded).unwrap();
+        let handler = |name: &str| {
+            expanded
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Fn(function) if function.sig.ident == name => Some(function),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing generated handler {name}"))
+                .block
+                .to_token_stream()
+                .to_string()
+        };
+        let desktop = handler("__unified_tauri_update_core");
+        assert!(desktop.contains("__unified_impl_update_core"));
+        assert!(!desktop.contains("RpcError :: unsupported"));
+        let http = handler("__unified_http_update_core");
+        assert!(http.contains("RpcError :: unsupported (stringify ! (update_core))"));
+        assert!(!http.contains("__unified_impl_update_core"));
+    }
+
+    #[test]
     fn every_ipc_rpc_command_has_a_desktop_dispatcher() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
         let source = std::fs::read_to_string(path).expect("failed to read IPC command source");

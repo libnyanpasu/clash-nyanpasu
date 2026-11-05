@@ -1149,7 +1149,7 @@ pub async fn collect_logs(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {

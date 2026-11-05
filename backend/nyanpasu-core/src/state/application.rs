@@ -139,6 +139,13 @@ impl ApplicationActor {
                 reason: reason.into(),
             },
         )?;
+        nyanpasu_config::application::validate_public_ip_probe_sources(
+            &next.stun_servers,
+            &next.ip_lookup_providers,
+        )
+        .map_err(|reason| ConfigError::InvalidPublicIpProbeSources {
+            reason: reason.into(),
+        })?;
         nyanpasu_config::application::validate_latency_timeout(next.default_latency_timeout_ms)
             .map_err(|reason| ConfigError::InvalidLatencyTimeout {
                 reason: reason.into(),

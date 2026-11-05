@@ -1835,17 +1835,17 @@ schema_revision: {revision}
         let mut runner = case.runner();
         // No file yet, so the module starts at head: no step may run on a file
         // that `typed_config` is about to create at head.
-        assert_eq!(application_state(&runner), at_revision(1, false));
+        assert_eq!(application_state(&runner), at_revision(2, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(1));
+        assert_eq!(application_stamp(&case), Some(2));
         assert_eq!(
             runner.store.task_state("application/window_close"),
             None,
             "nothing to convert in a file created at head"
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(1, true));
+        assert_eq!(state.module_state("application"), at_revision(2, true));
         assert_application_loads(&case);
     }
 
@@ -1855,9 +1855,9 @@ schema_revision: {revision}
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(1));
+        assert_eq!(application_stamp(&case), Some(2));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(1, true));
+        assert_eq!(state.module_state("application"), at_revision(2, true));
         assert_application_loads(&case);
     }
 
@@ -1899,7 +1899,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(1));
+        assert_eq!(application_stamp(&case), Some(2));
         let payload = application_config_payload(&case);
         assert!(!payload.contains_key("tray_menu_close_behavior"));
         assert_eq!(payload["window_close"]["tray_menu"], "hide");
@@ -1913,7 +1913,7 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("application"),
             ModuleState {
-                applied_revision: 1,
+                applied_revision: 2,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -1934,7 +1934,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, true));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(1));
+        assert_eq!(application_stamp(&case), Some(2));
         assert_eq!(
             application_config_payload(&case)["window_close"]["tray_menu"],
             "destroy"
@@ -1946,14 +1946,14 @@ tray_menu_close_behavior: hide
         let case = LegacyCase::empty();
         seed_typed_files(
             &case,
-            Some(1),
+            Some(2),
             "language: en
 ",
         );
         let before = std::fs::read_to_string(case.ctx.application_config_path()).unwrap();
 
         let mut runner = case.runner();
-        assert_eq!(application_state(&runner), at_revision(1, true));
+        assert_eq!(application_state(&runner), at_revision(2, true));
         runner.run_pending().unwrap();
 
         assert_eq!(
@@ -1974,7 +1974,7 @@ tray_menu_close_behavior: hide
         let mut store = MigrationStore::default();
         store
             .modules
-            .insert("application".to_string(), at_revision(1, true));
+            .insert("application".to_string(), at_revision(2, true));
         store.flush_atomic(&case.ctx.state_path()).unwrap();
 
         let error = format!(

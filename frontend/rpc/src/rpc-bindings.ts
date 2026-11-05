@@ -1321,6 +1321,7 @@ export type ConfigError =
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'invalid_core_logs'; reason: string }
+  | { kind: 'invalid_public_ip_probe_sources'; reason: string }
   | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
@@ -2448,6 +2449,13 @@ export type InterruptFailure =
   /**  The Clash API belongs to a core instance that has since been retired. */
   'stale' | 'unavailable' | 'timeout' | 'protocol'
 
+/**
+ *  HTTP services that answer with the caller's address. Each one receives
+ *  the address and ordinary request metadata, so none is used until the user
+ *  accepts its privacy notice.
+ */
+export type IpLookupProvider = 'dnspod' | 'ip_sb' | 'ipify' | 'ident_me'
+
 /**  A failed command as the frontend receives it. */
 export type IpcError = {
   /**  The domain failure; the frontend localizes it. */
@@ -2864,6 +2872,8 @@ export type NyanpasuAppConfigPatch_Deserialize =
       network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
       traffic_retention?: TrafficRetention | null
       enable_local_ip_probe?: boolean | null
+      stun_servers?: StunServer[] | null
+      ip_lookup_providers?: IpLookupProvider[] | null
       pac_url?: string | null
       enable_tray_text?: boolean | null
       enable_tray_traffic?: boolean | null
@@ -2922,6 +2932,8 @@ export type NyanpasuAppConfigPatch_Serialize = {
   network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
   traffic_retention?: TrafficRetention | null
   enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
   pac_url?: string | null
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
@@ -3010,6 +3022,16 @@ export type NyanpasuAppConfig_Deserialize = {
   traffic_retention?: TrafficRetention
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe?: boolean
+  /**
+   *  STUN servers the public IP probe asks, built-in and user-added, in
+   *  the order it asks them.
+   */
+  stun_servers?: StunServer[]
+  /**
+   *  HTTP lookup services asked when no STUN server answers, in order. A
+   *  provider is listed only after the user accepted its privacy notice.
+   */
+  ip_lookup_providers?: IpLookupProvider[]
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -3115,6 +3137,16 @@ export type NyanpasuAppConfig_Serialize = {
   traffic_retention: TrafficRetention
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe: boolean
+  /**
+   *  STUN servers the public IP probe asks, built-in and user-added, in
+   *  the order it asks them.
+   */
+  stun_servers: StunServer[]
+  /**
+   *  HTTP lookup services asked when no STUN server answers, in order. A
+   *  provider is listed only after the user accepted its privacy notice.
+   */
+  ip_lookup_providers: IpLookupProvider[]
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -5374,6 +5406,35 @@ export type StorageValueChangedEvent = {
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
   revision: StorageRevision
+}
+
+/**  Which address families a transport answered over. */
+export type StunFamilies = {
+  ipv4: boolean
+  ipv6: boolean
+}
+
+/**
+ *  A STUN server the probe may ask. The built-in ones are ordinary entries of
+ *  the list, so the user can turn them off or reorder them like their own.
+ */
+export type StunServer = {
+  host: string
+  port: number
+  enabled: boolean
+  /**
+   *  What the operator documents for a built-in server, or what the test
+   *  found when the user added it.
+   */
+  capabilities: StunServerCapabilities
+  /**  Shipped with the app rather than added by the user. */
+  builtin?: boolean
+}
+
+/**  Which transports and families a STUN server answers Binding requests over. */
+export type StunServerCapabilities = {
+  udp: StunFamilies
+  tcp: StunFamilies
 }
 
 /**

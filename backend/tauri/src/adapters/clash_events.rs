@@ -1,58 +1,10 @@
-//! Bridges Clash stream and log status events to Tauri windows.
+//! Registers the state the desktop needs to deliver Clash streams to windows.
 
-use crate::adapters::{
-    connection_details,
-    events::{ClashWsEvent, CoreLogsChanged},
-};
-use nyanpasu_core::clash::ws;
+use crate::adapters::connection_details;
 
-// Tauri owns only event-forwarding tasks; stream state lives in StreamsActor.
-struct StreamEventBridge(Vec<tauri::async_runtime::JoinHandle<()>>);
-impl Drop for StreamEventBridge {
-    fn drop(&mut self) {
-        for task in &self.0 {
-            task.abort();
-        }
-    }
-}
-
+// The stream and log status events are published by `nyanpasu_rpc::forward`;
+// only the per-webview connection-detail subscriptions are desktop state.
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Result<()> {
-    use tokio::sync::broadcast::error::RecvError;
     manager.manage(connection_details::ConnectionDetailSubscriptions::new());
-    let client = manager
-        .state::<nyanpasu_core::client::NyanpasuClient>()
-        .inner()
-        .clone();
-    let mut ws_rx = client.subscribe_clash_ws();
-    let mut logs_rx = client.subscribe_core_logs();
-    let events = manager.state::<nyanpasu_rpc::EventBus>().inner().clone();
-    let logs_events = events.clone();
-    let logs_token = client.shutdown_child_token();
-    tauri::async_runtime::spawn(client.track_until_shutdown(&logs_token, async move {
-        while logs_rx.changed().await.is_ok() {
-            let status = logs_rx.borrow_and_update().clone();
-            crate::unified_rpc::publish(&logs_events, &CoreLogsChanged { status });
-        }
-    }));
-    let ws_task = tauri::async_runtime::spawn(async move {
-        loop {
-            let event = match ws_rx.recv().await {
-                Ok(event) => event,
-                Err(RecvError::Lagged(_)) => match client.clash_ws_snapshot().await {
-                    Ok(snapshot) => ws::ClashWsPacket {
-                        sequence: snapshot.sequence,
-                        update: ws::ClashWsUpdate::Reset(Box::new(snapshot)),
-                    },
-                    Err(error) => {
-                        tracing::warn!(%error, "failed to resync Clash streams");
-                        continue;
-                    }
-                },
-                Err(RecvError::Closed) => break,
-            };
-            crate::unified_rpc::publish(&events, &ClashWsEvent::from(event));
-        }
-    });
-    manager.manage(StreamEventBridge(vec![ws_task]));
     Ok(())
 }

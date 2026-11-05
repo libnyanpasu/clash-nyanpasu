@@ -14,7 +14,6 @@ use std::sync::Arc;
 use crate::{
     adapters::{
         event_sink::BusUiEventSink,
-        events::{StorageResyncEvent, StorageValueChangedEvent},
         hotkey::{
             ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
             TauriWindowControl,
@@ -30,14 +29,14 @@ use crate::{
 use nyanpasu_core::{
     client::{
         ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-        StateChanged, UiEventSink,
+        UiEventSink,
         debug_http::DebugHttpControl,
         effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
         hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
-    storage::{RedbHotkeyStoreOpener, StorageNotification},
+    storage::RedbHotkeyStoreOpener,
     traffic::TrafficFileStorage,
 };
 use nyanpasu_rpc_protocol::ShellCapability;
@@ -314,29 +313,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context(OpenStorageSnafu)?;
     app.manage(storage.clone());
-    let storage_changes = storage.subscribe();
-    let storage_events = rpc_events.clone();
-    tauri::async_runtime::spawn(track_until_shutdown(
-        &tasks,
-        &shutdown,
-        nyanpasu_core::storage::forward_storage_changes(storage_changes, move |notification| {
-            match notification {
-                StorageNotification::Changed(change) => crate::unified_rpc::publish(
-                    &storage_events,
-                    &StorageValueChangedEvent {
-                        key: change.key,
-                        value: change
-                            .value
-                            .map(|value| String::from_utf8_lossy(&value).into_owned()),
-                        revision: change.revision,
-                    },
-                ),
-                StorageNotification::Resync => {
-                    crate::unified_rpc::publish(&storage_events, &StorageResyncEvent {})
-                }
-            }
-        }),
-    ));
     // The core runs with the app data dir as its home, where its geo databases live.
     let geo_index = Arc::new(nyanpasu_core::geo::FsCountryIndexSource::new(
         paths.app_data_dir().as_std_path().to_owned(),
@@ -445,7 +421,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             frontend: Arc::new(nyanpasu_core::client::frontend_events::TracingFrontendLogSink),
         },
         paths: paths.clone(),
-        storage,
+        storage: storage.clone(),
         runtime_paths: runtime_paths.clone(),
         ui_sink: ui_sink.clone(),
         app_update_backend_factory: Some(Arc::new({
@@ -492,7 +468,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowManager::new(app_handle.clone()));
     app.manage(crate::window::kinds::TrayMenuWindowController::default());
-    forward_actor_events(rpc_events, client.clone(), ui_sink, &shutdown, &tasks);
+    for forwarder in nyanpasu_rpc::forward::forwarders(&client, &storage, &rpc_events, ui_sink) {
+        tauri::async_runtime::spawn(track_until_shutdown(&tasks, &shutdown, forwarder));
+    }
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
@@ -673,70 +651,6 @@ fn build_application_effects(
         Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
     ));
     Ok((executor, widget))
-}
-
-fn forward_actor_events(
-    events: nyanpasu_rpc::EventBus,
-    client: NyanpasuClient,
-    ui_sink: Arc<dyn UiEventSink>,
-    shutdown: &CancellationToken,
-    tasks: &TaskTracker,
-) {
-    let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
-    let configuration_client = client.clone();
-    let configuration_events = events.clone();
-    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
-        loop {
-            let changed = tokio::select! {
-                result = mutations.changed() => result,
-                result = effects.changed() => result,
-                result = sources.changed() => result,
-            };
-            if changed.is_err() {
-                break;
-            }
-            crate::unified_rpc::publish(
-                &configuration_events,
-                &crate::ipc::ConfigurationStatusChanged(
-                    configuration_client.configuration_status(),
-                ),
-            );
-        }
-    }));
-    let mut core_events = client.subscribe_core_events();
-    let core_events_bus = events.clone();
-    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
-        loop {
-            match core_events.recv().await {
-                Ok(status) => {
-                    crate::unified_rpc::publish(
-                        &core_events_bus,
-                        &crate::adapters::events::CoreStatusChangedEvent(status.into()),
-                    );
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            }
-        }
-    }));
-
-    let mut proxy_changes = client.subscribe_proxy_changes();
-    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
-        while proxy_changes.changed().await.is_ok() {
-            ui_sink.state_changed(StateChanged::Proxies);
-        }
-    }));
-
-    let mut service_events = client.subscribe_service_events();
-    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
-        while service_events.changed().await.is_ok() {
-            let status = service_events.borrow_and_update().clone();
-            crate::unified_rpc::publish(
-                &events,
-                &crate::adapters::events::ServiceStatusChangedEvent(status),
-            );
-        }
-    }));
 }
 
 fn debug_http_frontend(app: &tauri::AppHandle) -> crate::server::debug_http::Frontend {

@@ -223,3 +223,104 @@ async fn without_a_webui_directory_the_listener_serves_only_the_api() {
     stop.cancel();
     server.await.unwrap().unwrap();
 }
+
+/// A signed-in browser receives what the application publishes: the commands
+/// the pages call change state, and the event stream says so.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_signed_in_browser_receives_application_events_over_sse() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+    let socket = directory.path().join("rpc.sock");
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(run(
+        RunOptions {
+            dirs: ServerDirs {
+                config_dir: root.join("config"),
+                data_dir: root.join("data"),
+            },
+            rpc_socket: socket.clone(),
+            web: Some(WebOptions {
+                listen: ([127, 0, 0, 1], 0).into(),
+                dir: None,
+            }),
+        },
+        stop.clone(),
+    ));
+    let mut client = connect(&socket).await;
+    let ticket = client
+        .call("issue_web_ticket", json!({}))
+        .await
+        .unwrap()
+        .unwrap();
+    let base = format!("http://127.0.0.1:{}", ticket["port"].as_u64().unwrap());
+    let http = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let signed_in = http
+        .get(format!("{base}{}", ticket["path"].as_str().unwrap()))
+        .send()
+        .await
+        .unwrap();
+    let cookie = signed_in.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let call = async |method: &str, params: serde_json::Value| {
+        let response = http
+            .post(format!("{base}/bridge/rpc"))
+            .header("cookie", &cookie)
+            .json(&json!({"method": method, "params": params}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200, "{method}");
+    };
+
+    let mut events = http
+        .get(format!("{base}/bridge/events"))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(events.status(), 200);
+    // What the stream has delivered so far, until the awaited event name shows up.
+    let mut seen = String::new();
+    let mut await_event = async |name: &str| {
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while !seen.contains(name) {
+                let chunk = events
+                    .chunk()
+                    .await
+                    .unwrap()
+                    .expect("the stream stays open");
+                seen.push_str(&String::from_utf8_lossy(&chunk));
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("no {name} event in {seen:?}"));
+    };
+    await_event("ready").await;
+
+    // The CSS editor's save, the Profiles page's folder, and a configuration reconcile.
+    call(
+        "set_storage_item",
+        json!({"key": "css", "value": "\"a{}\""}),
+    )
+    .await;
+    await_event("storage-value-changed-event").await;
+    call(
+        "create_profile_folder",
+        json!({"name": "work", "members": []}),
+    )
+    .await;
+    await_event("state-changed-event").await;
+    await_event("configuration-status-changed").await;
+
+    stop.cancel();
+    server.await.unwrap().unwrap();
+}

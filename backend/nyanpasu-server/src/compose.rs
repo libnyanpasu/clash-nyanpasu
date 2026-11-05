@@ -22,6 +22,7 @@ use nyanpasu_core::{
         ClientSetupArgs, NyanpasuClient, OsSystemDnsCache, RuntimePaths, UiEventSink,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
     },
+    owner_shutdown::track_until_shutdown,
     storage::{RedbHotkeyStoreOpener, Storage},
     traffic::TrafficFileStorage,
 };
@@ -246,7 +247,7 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Assem
         paths: paths.clone(),
         storage: storage.clone(),
         runtime_paths,
-        ui_sink,
+        ui_sink: ui_sink.clone(),
         // Absent: the client then uses its unavailable updater backend.
         app_update_backend_factory: None,
         app_update_event_sink: None,
@@ -276,6 +277,14 @@ async fn assemble(dirs: ServerDirs, owners: &mut Owners) -> anyhow::Result<Assem
     let client = NyanpasuClient::try_new(args)
         .await
         .context("build client")?;
+    // The WebUI learns of every change over the event bus; nothing else publishes it.
+    for forwarder in nyanpasu_rpc::forward::forwarders(&client, &storage, &events, ui_sink) {
+        tokio::spawn(track_until_shutdown(
+            &owners.tasks,
+            &owners.shutdown,
+            forwarder,
+        ));
+    }
     Ok(Assembled {
         client,
         storage,

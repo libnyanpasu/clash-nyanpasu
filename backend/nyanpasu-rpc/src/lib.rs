@@ -13,6 +13,7 @@ extern crate self as nyanpasu_rpc;
 pub mod commands;
 mod error;
 mod events;
+pub mod forward;
 #[cfg(feature = "http")]
 pub mod http;
 #[cfg(feature = "local-server")]

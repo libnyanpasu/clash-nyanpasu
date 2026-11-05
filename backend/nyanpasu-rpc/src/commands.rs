@@ -14,6 +14,16 @@ use nyanpasu_core::{
 
 use nyanpasu_rpc_protocol::RpcTarget;
 
+mod app_config;
+mod host;
+mod storage;
+#[cfg(test)]
+mod tests;
+
+pub use app_config::*;
+pub use host::*;
+pub use storage::*;
+
 use crate::{IpcError, State, WebTicket, WebTickets};
 
 type Result<T = ()> = std::result::Result<T, IpcError>;

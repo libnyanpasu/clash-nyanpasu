@@ -811,14 +811,24 @@ mod tests {
 
     #[test]
     fn every_shared_command_has_a_neutral_handler_and_no_tauri_code() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../nyanpasu-rpc/src/commands.rs"
-        );
-        let source = std::fs::read_to_string(path).expect("failed to read shared command source");
-        let file = syn::parse_file(&source).expect("failed to parse shared command source");
+        let directory = concat!(env!("CARGO_MANIFEST_DIR"), "/../nyanpasu-rpc/src/commands");
+        let mut paths = vec![format!("{directory}.rs")];
+        for entry in std::fs::read_dir(directory).expect("failed to list shared command modules") {
+            paths.push(
+                entry
+                    .expect("failed to list a shared command module")
+                    .path()
+                    .display()
+                    .to_string(),
+            );
+        }
         let mut commands = Vec::new();
-        collect_rpc_commands(&file.items, &mut commands);
+        for path in paths {
+            let source =
+                std::fs::read_to_string(&path).expect("failed to read shared command source");
+            let file = syn::parse_file(&source).expect("failed to parse shared command source");
+            collect_rpc_commands(&file.items, &mut commands);
+        }
         assert!(!commands.is_empty(), "expected shared RPC commands");
 
         for command in commands {

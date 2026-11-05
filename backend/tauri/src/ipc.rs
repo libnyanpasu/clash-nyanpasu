@@ -11,14 +11,13 @@ use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_core::{
-    client::{NyanpasuClient, agent_skills::CoreAgentSkill, direct_egress::DirectEgress},
+    client::{NyanpasuClient, agent_skills::CoreAgentSkill},
     state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu},
-    storage::{Storage, StorageItem, StorageRevision, WebStorage},
     updater::ManifestVersionLatest,
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_transform::PostProcessingOutput;
-use nyanpasu_rpc::IpcError;
+use nyanpasu_rpc::{IpcError, commands::IconData};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use tauri::{AppHandle, State, Webview};
@@ -244,13 +243,6 @@ use nyanpasu_config::profile::{
     FolderId, ProfileId, ProfileLayout, ProfileMetadataPatch, ProxyGroupLayout,
     RemoteProfileOptionsPatch, TransformKind,
 };
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
-    Ok(client.is_portable())
-}
 
 // #[tauri::command]
 // #[specta::specta]
@@ -500,15 +492,6 @@ pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_clash_info(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::clash_info::ClashInfo> {
-    Ok(client.clash_info())
-}
-
 /// get the runtime config
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
@@ -594,98 +577,9 @@ pub async fn get_ipsb_asn(
     Ok(wrapped)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<DirectEgress> {
-    Ok(client.probe_direct_egress().await?)
-}
-
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----
 
-use nyanpasu_config::{
-    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
-    clash::{
-        config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
-        features::ConfigFeatures,
-    },
-};
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
-    Ok(client.get_app_config().await?)
-}
-
-#[nyanpasu_macro::rpc(http, capabilities(os_integration, hotkey, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_app_config(
-    client: State<'_, NyanpasuClient>,
-    patch: NyanpasuAppConfigPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.patch_app_config(patch).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_clash_config(client: State<'_, NyanpasuClient>) -> Result<ClashConfig> {
-    Ok(client.get_clash_config().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_config_features(client: State<'_, NyanpasuClient>) -> Result<ConfigFeatures> {
-    Ok(client.config_features())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_clash_config(
-    client: State<'_, NyanpasuClient>,
-    patch: ClashConfigPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    Ok(client.patch_clash_config(patch).await?)
-}
-
-/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-#[tracing_attributes::instrument(skip_all)]
-pub async fn patch_runtime_overrides(
-    client: State<'_, NyanpasuClient>,
-    patch: ClashGuardOverridesPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future patch fields never auto-leak into
-    // logs; the secret is reported by presence only.
-    #[cfg(feature = "default-meta")]
-    tracing::debug!(
-        log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
-        unified_delay = ?patch.unified_delay,
-        tcp_concurrent = ?patch.tcp_concurrent,
-        ipv6 = ?patch.ipv6,
-        "patch_runtime_overrides"
-    );
-    // `unified_delay` and `tcp_concurrent` exist only with `default-meta`.
-    #[cfg(not(feature = "default-meta"))]
-    tracing::debug!(
-        log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
-        ipv6 = ?patch.ipv6,
-        "patch_runtime_overrides"
-    );
-    Ok(client.patch_runtime_overrides(patch).await?)
-}
+use nyanpasu_config::application::{ClashCore, ReleaseChannel};
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
@@ -1145,21 +1039,6 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
     Ok(())
 }
 
-#[derive(Serialize, specta::Type)]
-pub struct IconData {
-    pub data_url: String,
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> Result<IconData> {
-    let (mime, bytes) = client.get_cached_icon(&url).await?;
-    Ok(IconData {
-        data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
-}
-
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
@@ -1313,36 +1192,6 @@ pub mod service {
     use super::{NyanpasuClient, Result};
     use tauri::State;
 
-    /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
-    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
-    /// wire 是原结构的严格超集，前端既有消费点不受影响。
-    #[derive(serde::Serialize, specta::Type)]
-    pub struct ServiceStatusInfo {
-        pub name: std::borrow::Cow<'static, str>,
-        pub version: std::borrow::Cow<'static, str>,
-        pub status: nyanpasu_ipc::types::ServiceStatus,
-        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
-        pub compat: nyanpasu_core::service::compat::ServiceCompat,
-        pub phase: nyanpasu_core::actor_v2::service_actor::ServicePhase,
-        pub restart_attempts: u8,
-    }
-
-    #[nyanpasu_macro::rpc(http)]
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn status_service(client: State<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
-        let info = client.service_status();
-        Ok(ServiceStatusInfo {
-            name: info.name,
-            version: info.version,
-            status: info.status,
-            server: info.server,
-            compat: info.compat,
-            phase: info.phase,
-            restart_attempts: info.restart_attempts,
-        })
-    }
-
     #[nyanpasu_macro::rpc(capabilities(elevation))]
     #[tauri::command]
     #[specta::specta]
@@ -1434,40 +1283,6 @@ pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Resul
     Ok(prompt)
 }
 
-/// Namespace prefix for all frontend-visible KV entries.
-/// Internal subsystems (e.g. task storage) use un-prefixed keys and are
-/// never exposed to the frontend through these IPC commands.
-const WEB_STORAGE_KEY_PREFIX: &str = "web:";
-
-fn web_key(key: &str) -> String {
-    format!("{WEB_STORAGE_KEY_PREFIX}{key}")
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageItem<String>> {
-    Ok(storage.get_item(web_key(&key))?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn set_storage_item(
-    storage: State<'_, Storage>,
-    key: String,
-    value: String,
-) -> Result<StorageRevision> {
-    Ok(storage.set_item(web_key(&key), &value)?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageRevision> {
-    Ok(storage.remove_item(web_key(&key))?)
-}
-
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
@@ -1490,51 +1305,6 @@ pub async fn set_hotkeys(
             ..Default::default()
         })
         .await?)
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct StorageEntry {
-    pub key: String,
-    /// Raw JSON-encoded value string.
-    pub value: String,
-}
-
-/// Debug: returns all frontend KV entries (keys with the `web:` prefix).
-/// Internal storage entries used by other subsystems are excluded.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_all_storage_items(storage: State<'_, Storage>) -> Result<Vec<StorageEntry>> {
-    let items = storage.get_all()?;
-    Ok(items
-        .into_iter()
-        .filter_map(|(raw_key, value)| {
-            raw_key
-                .strip_prefix(WEB_STORAGE_KEY_PREFIX)
-                .map(|key| StorageEntry {
-                    key: key.to_string(),
-                    value,
-                })
-        })
-        .collect())
-}
-
-/// Debug: clears all frontend KV entries (keys with the `web:` prefix).
-/// Internal storage entries used by other subsystems are left intact.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn clear_storage(storage: State<'_, Storage>) -> Result {
-    let web_keys: Vec<String> = storage
-        .get_all()?
-        .into_iter()
-        .filter(|(k, _)| k.starts_with(WEB_STORAGE_KEY_PREFIX))
-        .map(|(k, _)| k)
-        .collect();
-    for key in web_keys {
-        storage.remove_item(&key)?;
-    }
-    Ok(())
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1952,30 +1722,6 @@ pub fn get_system_accent_color() -> Result<Option<String>> {
 pub struct ConfigurationStatusChanged(
     pub nyanpasu_core::client::configuration_status::ConfigurationStatus,
 );
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_configuration_status(
-    client: State<'_, NyanpasuClient>,
-) -> nyanpasu_core::client::configuration_status::ConfigurationStatus {
-    client.configuration_status()
-}
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn retry_configuration_runtime(client: State<'_, NyanpasuClient>) -> Result<()> {
-    Ok(client.retry_runtime_now().await?)
-}
-#[nyanpasu_macro::rpc(http, capabilities(os_integration, hotkey, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub fn retry_configuration_effect(
-    client: State<'_, NyanpasuClient>,
-    kind: nyanpasu_core::client::effects::plan::EffectKind,
-) -> Result<()> {
-    Ok(client.retry_effect_now(kind)?)
-}
 
 #[cfg(test)]
 mod tests {

@@ -8,6 +8,9 @@ authors.workspace = true
 description = 'Transport-neutral RPC registry, event bus and shared commands over NyanpasuClient'
 
 [features]
+# Keeps the fields only the default Clash metadata build has in the commands'
+# debug logs.
+default-meta = ['nyanpasu-config/default-meta', 'nyanpasu-core/default-meta']
 # The WebUI transport: an axum router over the registry and the event bus,
 # and the credentialed loopback listener that serves it.
 http = [
@@ -15,8 +18,7 @@ http = [
   'dep:futures',
   'dep:getrandom',
   'dep:parking_lot',
-  'dep:percent-encoding',
-  'dep:url'
+  'dep:percent-encoding'
 ]
 # The local-socket server a headless shell binds for the CLI.
 local-server = ['nyanpasu-rpc-protocol/frame-io']
@@ -32,7 +34,15 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 ] }
 nyanpasu-core-manager = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
+  'specta'
+] }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+clash-api = { workspace = true }
 anyhow = '1'
+base64 = '0.23'
+indexmap = { version = '2.2.3', features = ['serde'] }
 inventory = '0.3'
 serde = { version = '1', features = ['derive'] }
 serde_json = '1'
@@ -42,19 +52,18 @@ specta = { version = '^2.0.0-rc.25', features = ['derive', 'function'] }
 tokio = { workspace = true }
 tokio-util = { version = '0.7', features = ['rt'] }
 tracing = { workspace = true }
+url = '2'
 uuid = '1.7.0'
 axum = { version = '0.8', optional = true }
 futures = { version = '0.3', optional = true }
 getrandom = { version = '0.3', optional = true }
 parking_lot = { version = '0.13.0', optional = true }
 percent-encoding = { version = '2.3.1', optional = true }
-url = { version = '2', optional = true }
 
 [dev-dependencies]
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
   'test-support'
 ] }
-clash-api = { workspace = true }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', features = [
   'local-client'
 ] }

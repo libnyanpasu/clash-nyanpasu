@@ -421,6 +421,17 @@ function ConfigFieldRows({
           </ConfigGroup>
         </>
       )
+    case WidgetId.NetworkInfo:
+      return (
+        <ConfigGroup>
+          <Toggle
+            label={m.dashboard_widget_network_info_config_hide_addresses()}
+            checked={config.hideAddresses}
+            disabled={disabled}
+            onChange={(hideAddresses) => onChange({ ...config, hideAddresses })}
+          />
+        </ConfigGroup>
+      )
     case WidgetId.ProxyShortcuts:
       return (
         <ConfigGroup>

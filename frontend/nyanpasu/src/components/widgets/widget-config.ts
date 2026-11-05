@@ -17,6 +17,7 @@ export enum WidgetId {
   RuleTraffic = 'rule-traffic',
   ActiveConnections = 'active-connections',
   ProviderUpdates = 'provider-updates',
+  NetworkInfo = 'network-info',
 }
 
 type TrafficConfig = {
@@ -84,6 +85,10 @@ export type WidgetConfigs = {
     kinds: 'both' | 'proxy' | 'rule'
     resources: ProviderReference[]
     maxItems: number
+  }
+  [WidgetId.NetworkInfo]: {
+    type: WidgetId.NetworkInfo
+    hideAddresses: boolean
   }
   [WidgetId.TrafficDown]: TrafficConfig & { type: WidgetId.TrafficDown }
   [WidgetId.TrafficUp]: TrafficConfig & { type: WidgetId.TrafficUp }
@@ -155,6 +160,10 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     kinds: 'both',
     resources: [],
     maxItems: 3,
+  },
+  [WidgetId.NetworkInfo]: {
+    type: WidgetId.NetworkInfo,
+    hideAddresses: false,
   },
   [WidgetId.TrafficDown]: {
     type: WidgetId.TrafficDown,

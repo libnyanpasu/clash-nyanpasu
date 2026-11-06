@@ -9,8 +9,8 @@ use crate::{
         BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
         StorageSource,
     },
-    client::bundle_metadata::BundleMetadata,
 };
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 use semver::Version;
 use snafu::ResultExt as _;
@@ -742,7 +742,7 @@ mod tests {
             std::fs::write(&path, format!("store_schema_version: {read}\n")).unwrap();
             let error = Runner::with_paths(
                 paths,
-                crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
                 false,
             )
             .unwrap_err();

@@ -6,16 +6,17 @@ and concrete implementations live in separate neutral crates. See the
 delivered split stack and the target ownership; this guide defines the current
 dependency rules.
 
-| Package                    | Owns                                                                                              | Must not depend on                                         |
-| -------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `nyanpasu-config`          | Domain models, profile validation, pure runtime executor and its ports                            | Tauri, egui/eframe or Slint                                |
-| `nyanpasu-core`            | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions  | Platform implementation crate, Tauri, egui/eframe or Slint |
-| `nyanpasu-platform`        | Transitional: concrete profile filesystem/HTTP, script, runtime-build and changelog HTTP adapters | Tauri host, egui/eframe or Slint                           |
-| `nyanpasu-widget-protocol` | Render-free statistic widget contract: variants, messages and the optional `ipc` channel          | Tauri, egui/eframe or Slint                                |
-| `nyanpasu-widget`          | Statistic widget process frontend, rendered with Slint                                            | Tauri; no neutral crate may depend on it                   |
-| `nyanpasu-diagnose`        | Host facts, diagnostic reports, redacted archives and synchronous progress protocol               | Core, platform, Tauri, egui/eframe or Slint                |
-| `nyanpasu-crash-reporter`  | Crash report window, rendered with Slint                                                          | Tauri; no neutral crate may depend on it                   |
-| `backend/tauri`            | Desktop composition root, GUI adapters, lifecycle, IPC and HTTP transports                        | No reverse dependency from neutral crates                  |
+| Package                    | Owns                                                                                              | Must not depend on                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `nyanpasu-config`          | Domain models, profile validation, pure runtime executor and its ports                            | Tauri, egui/eframe or Slint                                                                           |
+| `nyanpasu-contracts`       | Values and ports implemented or consumed outside core, starting with bundle metadata              | Core, platform, `ractor`, `reqwest`, `redb`, core manager, local channel, Tauri, egui/eframe or Slint |
+| `nyanpasu-core`            | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions  | Platform implementation crate, Tauri, egui/eframe or Slint                                            |
+| `nyanpasu-platform`        | Transitional: concrete profile filesystem/HTTP, script, runtime-build and changelog HTTP adapters | Tauri host, egui/eframe or Slint                                                                      |
+| `nyanpasu-widget-protocol` | Render-free statistic widget contract: variants, messages and the optional `ipc` channel          | Tauri, egui/eframe or Slint                                                                           |
+| `nyanpasu-widget`          | Statistic widget process frontend, rendered with Slint                                            | Tauri; no neutral crate may depend on it                                                              |
+| `nyanpasu-diagnose`        | Host facts, diagnostic reports, redacted archives and synchronous progress protocol               | Core, platform, Tauri, egui/eframe or Slint                                                           |
+| `nyanpasu-crash-reporter`  | Crash report window, rendered with Slint                                                          | Tauri; no neutral crate may depend on it                                                              |
+| `backend/tauri`            | Desktop composition root, GUI adapters, lifecycle, IPC and HTTP transports                        | No reverse dependency from neutral crates                                                             |
 
 The core crate receives dependencies through constructors, function
 arguments or actor startup parameters. Platform can depend on core to
@@ -76,8 +77,8 @@ and desktop consumer checks as well: a dependency gate does not prove behavior.
 
 ## Consolidated runtime baseline
 
-The runtime builder, builtin transforms and script descriptor types live in
-`nyanpasu-core::enhance`, alongside the facade and its dependent actor/workflow
+The runtime builder and builtin transforms live in `nyanpasu-core::enhance`,
+alongside the facade and its dependent actor/workflow
 graph. Platform's `enhance::runtime_build` implements the core-owned
 `RuntimeBuildPort`; `profiles::fs_service` implements profile file access, and
 `changelog_http` implements changelog fetching. Platform and desktop consumers

@@ -2,7 +2,7 @@ use nyanpasu_paths::PathResolver;
 use semver::Version;
 use std::path::PathBuf;
 
-use crate::client::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 
 pub mod child_result;
 pub mod fs;
@@ -97,7 +97,7 @@ impl Ctx {
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
             paths: crate::utils::test_support::test_paths(app_config_dir, app_data_dir),
-            bundle_metadata: crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         }
     }
 

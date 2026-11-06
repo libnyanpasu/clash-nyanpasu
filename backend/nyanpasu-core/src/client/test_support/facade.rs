@@ -13,7 +13,6 @@ use crate::{
     client::{
         NoopSystemDnsCache, NyanpasuClient, RuntimePaths, SessionPortResolver, SystemDnsCache,
         application::ApplicationClient,
-        bundle_metadata::BundleMetadata,
         clash_config::ClashConfigClient,
         core_lifecycle,
         direct_egress::DirectEgressProbe,
@@ -36,6 +35,7 @@ use nyanpasu_config::{
         ProfileDefinition, ProfileMetadata, ProfileSource,
     },
 };
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use std::{path::PathBuf, sync::Arc};
 use tempfile::TempDir;
 pub async fn test_client(dir: &TempDir) -> NyanpasuClient {
@@ -99,7 +99,7 @@ pub(crate) async fn test_client_from_typed_clients(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         logs::test_setup(
             test_paths(dir.path(), dir.path().join("data"))
@@ -197,7 +197,7 @@ pub async fn test_client_with_profile_ports(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         logs::test_setup(
             test_paths(dir.path(), dir.path().join("data"))
@@ -309,7 +309,7 @@ pub async fn test_client_with_materialization(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         logs::test_setup(
             test_paths(dir.path(), dir.path().join("data"))

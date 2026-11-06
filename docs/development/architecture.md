@@ -122,10 +122,10 @@ Rules for maintaining the separation:
   Tauri crate.
 - Tests of moved code construct the client or service graph with fake adapters and
   must not need the Tauri runtime.
-- The architecture-ledger static gate covers `backend/tauri/src/` and
-  `backend/nyanpasu-core/src/` (`STATIC_GATE_PREFIXES` in
-  `scripts/src/architecture-ledger/policy.ts`), matching the core extraction PR.
-  Both use the same explicit path-and-name allowlist; other backend library
+- The architecture-ledger static gate covers `backend/tauri/src/`,
+  `backend/nyanpasu-core/src/` and `backend/nyanpasu-contracts/src/`
+  (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
+  All three use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

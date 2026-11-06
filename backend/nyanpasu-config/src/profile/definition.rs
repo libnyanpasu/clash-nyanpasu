@@ -237,3 +237,20 @@ mod specta_wire {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ScriptRuntime;
+
+    #[test]
+    fn javascript_keeps_its_legacy_wire_name() {
+        assert_eq!(
+            serde_json::to_string(&ScriptRuntime::JavaScript).unwrap(),
+            "\"javascript\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ScriptRuntime>("\"javascript\"").unwrap(),
+            ScriptRuntime::JavaScript
+        );
+    }
+}

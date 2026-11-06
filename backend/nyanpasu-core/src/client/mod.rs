@@ -1,15 +1,13 @@
-pub mod bundle_metadata;
 pub mod clash_info;
 pub mod convergence;
 pub mod core_version;
 pub mod direct_egress;
-pub mod owner_shutdown;
 
 use crate::client::{
-    bundle_metadata::BundleMetadata,
     clash_info::ClashInfo,
     direct_egress::{DirectEgress, DirectEgressProbe, ProbeSources, StunServerTest},
 };
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
@@ -2408,7 +2406,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
             },
             host_adapters: crate::client::test_support::profile_test_adapters(&dir),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),

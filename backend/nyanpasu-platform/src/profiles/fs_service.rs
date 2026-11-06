@@ -1,6 +1,7 @@
 //! Profile filesystem, materialization transactions, and subscription fetches
 //! over injected paths/network state. Tauri-free and legacy-Config-free.
 
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 
 use std::{
@@ -23,7 +24,6 @@ use crate::profiles::{materialization, materialization::MATERIALIZATION_ROOT, su
 use nyanpasu_core::service::profile_file::ports::SelfProxyPortSource;
 
 use nyanpasu_core::{
-    client::bundle_metadata::BundleMetadata,
     corrupt,
     state::profiles::{
         error::*,
@@ -2192,7 +2192,7 @@ mod tests {
             ProfileFileService::new(
                 paths,
                 self_proxy_port,
-                nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+                nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             ),
         )
     }

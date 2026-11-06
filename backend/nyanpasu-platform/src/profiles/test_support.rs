@@ -22,7 +22,7 @@ pub(crate) fn test_profile_file_ports(
     let service = Arc::new(ProfileFileService::new(
         paths.clone(),
         ports,
-        nyanpasu_core::client::bundle_metadata::TEST_BUNDLE_METADATA,
+        nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
     ));
     ProfileFilePorts {
         fs: service.clone(),

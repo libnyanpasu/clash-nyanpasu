@@ -3,9 +3,8 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 
-use nyanpasu_core::{
-    client::bundle_metadata::BundleMetadata, service::profile_file::ports::SelfProxyPortSource,
-};
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_core::service::profile_file::ports::SelfProxyPortSource;
 
 pub struct ReqwestChangelogHttp {
     proxy_port: Arc<dyn SelfProxyPortSource>,

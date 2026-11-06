@@ -1,6 +1,6 @@
 use super::config::NyanpasuReqwestProxyExt;
-use crate::client::bundle_metadata::BundleMetadata;
 use anyhow::Result;
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use std::time::Duration;
 use url::Url;
 

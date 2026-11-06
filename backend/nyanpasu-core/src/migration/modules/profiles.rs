@@ -1301,7 +1301,7 @@ items:
         let paths = crate::utils::test_support::test_paths(config_dir, data_dir);
         let mut runner = crate::migration::Runner::with_paths(
             paths,
-            crate::client::bundle_metadata::TEST_BUNDLE_METADATA,
+            nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             false,
         )
         .unwrap();

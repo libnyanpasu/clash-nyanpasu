@@ -1,4 +1,3 @@
-pub mod candy;
 pub mod config;
 pub mod dirs;
 pub mod hwid;

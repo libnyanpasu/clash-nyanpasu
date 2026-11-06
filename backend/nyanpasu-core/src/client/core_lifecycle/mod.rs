@@ -5,7 +5,7 @@ pub mod ports;
 mod workflow;
 
 use crate::actor_v2::facade::{ReconcileReport, StopReport};
-use ports::PreparedCoreBinary;
+use nyanpasu_updater::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;
 pub(in crate::client) use workflow::{

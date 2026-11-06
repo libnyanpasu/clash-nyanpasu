@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::state::AckError;
+use nyanpasu_contracts::core_version::CoreVersionError;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use serde::Serialize;
 use snafu::Snafu;
@@ -16,7 +17,6 @@ use crate::{
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
         core_lifecycle::ports::InstallCoreBinaryError,
-        core_version::CoreVersionError,
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },

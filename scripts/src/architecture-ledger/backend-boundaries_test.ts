@@ -189,6 +189,52 @@ test('observers are available to core above foundation and owner support', () =>
   }
 })
 
+test('updater consumes foundation, owner support, HTTP and archive libraries', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-updater',
+      'nyanpasu-updater v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-owner-support v0.1.0\nnyanpasu-paths v0.1.0\nreqwest v0.13\nzip v9.0\ntar v0.4\nflate2 v1.0\nbolt-load v0.1\n',
+    ),
+    [],
+  )
+  for (const dependency of [
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'tauri',
+    'slint',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-updater', `${dependency} v0.1.0\n`),
+      [`nyanpasu-updater must not depend on ${dependency}`],
+    )
+  }
+})
+
+test('updater is available to core above foundation and owner support', () => {
+  assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-core', 'nyanpasu-updater v0.1.0\n'),
+    [],
+  )
+  for (const owner of [
+    'nyanpasu-config',
+    'nyanpasu-contracts',
+    'nyanpasu-persistence',
+    'nyanpasu-profile-transform',
+    'nyanpasu-owner-support',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'nyanpasu-diagnose',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-updater v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-updater`],
+    )
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  }
+})
+
 test('neutral packages cannot depend on the crash reporter frontend', () => {
   for (const owner of [
     'nyanpasu-core',

@@ -32,7 +32,6 @@ pub mod actor_v2;
 pub mod clash;
 pub mod client;
 pub mod connections;
-pub mod download;
 pub mod geo;
 pub mod logs;
 #[cfg(test)]
@@ -46,4 +45,3 @@ pub mod utils;
 
 pub mod corrupt;
 pub mod proxies;
-pub mod updater;

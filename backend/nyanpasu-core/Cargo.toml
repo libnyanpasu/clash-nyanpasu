@@ -19,10 +19,12 @@ test-support = [
   'nyanpasu-contracts/test-support',
   'nyanpasu-migration/test-support',
   'nyanpasu-observers/test-support',
+  'nyanpasu-updater/test-support',
   'nyanpasu-profile-transform/test-support'
 ]
 
 [dependencies]
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
 nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
@@ -38,9 +40,6 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 struct-patch = '0.14'
 postcard = { version = '1.1', features = ['alloc'] }
 bytes = { version = '1', features = ['serde'] }
-flate2 = '1.0'
-tar = '0.4'
-zip = '9.0.0'
 nanoid = '0.5.0'
 seahash = { version = '4.1', features = ['use_std'] }
 nyanpasu-tsdb = { path = '../nyanpasu-tsdb', features = ['redb'] }
@@ -71,18 +70,11 @@ nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 runas = { workspace = true }
 semver = '1.0'
 parking_lot = { version = '0.13.0' }
-bolt-load = { version = '0.1', default-features = false, features = [
-  'tokio',
-  'serde',
-  'tracing'
-] }
-smol-cancellation-token = '0.1'
 mockall = { version = '0.15', optional = true }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 tokio-util = { version = '0.7', features = ['full'] }
 ractor = '0.16'
 futures = '0.3'
-reqwest = { workspace = true }
 sysproxy = { workspace = true }
 url = '2'
 once_cell = '1.19.0'
@@ -132,6 +124,9 @@ winreg = { version = '0.56', features = ['transactions'] }
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false, features = [
   'test-support'
 ] }

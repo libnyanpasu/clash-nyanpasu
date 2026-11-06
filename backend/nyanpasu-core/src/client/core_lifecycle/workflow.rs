@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::state::StateSnapshot;
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_updater::PreparedCoreBinary;
 use snafu::{ResultExt, ensure};
 
 use super::{
@@ -17,7 +18,7 @@ use super::{
         },
     },
     Command, Output,
-    ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
+    ports::{BinaryInstaller, PreparedRuntime, RuntimePreparationPort},
 };
 use crate::actor_v2::{
     EndpointConnectivity, HandoffReport,

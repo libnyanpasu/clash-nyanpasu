@@ -11,6 +11,7 @@ use nyanpasu_ipc::api::{
     core::v2::{CoreApiConnection, OperationInfo},
     status::{CoreControllerInfo, CoreStateDetail},
 };
+use nyanpasu_updater::PreparedCoreBinary;
 use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
@@ -811,7 +812,7 @@ struct CountingInstaller(AtomicUsize);
 impl crate::client::core_lifecycle::ports::BinaryInstaller for CountingInstaller {
     async fn install(
         &self,
-        _: &crate::client::core_lifecycle::ports::PreparedCoreBinary,
+        _: &PreparedCoreBinary,
     ) -> Result<(), crate::client::core_lifecycle::ports::InstallCoreBinaryError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
@@ -865,7 +866,7 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());
-        let artifact = crate::client::core_lifecycle::ports::PreparedCoreBinary {
+        let artifact = PreparedCoreBinary {
             target: f.client.get_app_config().await.unwrap().core,
             source: staging.path().join("prepared-core"),
             destination: f._dir.path().join("installed-core"),

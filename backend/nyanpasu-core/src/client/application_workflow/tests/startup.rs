@@ -33,6 +33,7 @@ use nyanpasu_ipc::{
     types::{ServiceStatus, StatusInfo},
 };
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_updater::PreparedCoreBinary;
 use tokio::{sync::Notify, time::Instant};
 
 use super::{
@@ -64,7 +65,7 @@ use crate::{
     client::{
         SessionPortResolver,
         convergence::ConvergenceHealth,
-        core_lifecycle::{Ownership, ports::PreparedCoreBinary},
+        core_lifecycle::Ownership,
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },

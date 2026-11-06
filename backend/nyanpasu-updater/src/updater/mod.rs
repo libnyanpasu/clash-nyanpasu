@@ -2,7 +2,8 @@ use anyhow::{Result, anyhow};
 use nyanpasu_config::application::ClashCore;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::{Deserialize, Serialize};
-use shared::{CoreTypeMeta, get_arch};
+pub use shared::CoreTypeMeta;
+use shared::get_arch;
 use specta::Type;
 use std::{
     collections::HashMap,
@@ -11,11 +12,12 @@ use std::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+pub mod artifact;
 mod instance;
+mod mirrors;
 pub(crate) mod ports;
 mod shared;
-pub(crate) use instance::HttpUpdaterBackend;
-pub use instance::{UpdaterState, UpdaterSummary};
+pub use instance::{HttpUpdaterBackend, UpdaterState, UpdaterSummary};
 use ports::{CoreUpdateInstaller, UpdaterBackend, UpdaterProgress};
 
 #[derive(Debug, snafu::Snafu)]
@@ -423,7 +425,8 @@ impl Drop for ClientInner {
     }
 }
 #[derive(Clone)]
-pub(crate) struct UpdaterClient(Arc<ClientInner>);
+/// Typed owner client; shutdown cancels downloads and waits for extraction and installation.
+pub struct UpdaterClient(Arc<ClientInner>);
 impl UpdaterClient {
     pub async fn spawn(
         backend: Arc<dyn UpdaterBackend>,
@@ -465,5 +468,8 @@ impl UpdaterClient {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;

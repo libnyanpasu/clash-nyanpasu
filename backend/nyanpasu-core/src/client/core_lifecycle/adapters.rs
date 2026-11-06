@@ -1,14 +1,15 @@
 #[cfg(target_os = "windows")]
 use super::ports::PathNotUtf8Snafu;
 use super::ports::{
-    BinaryInstaller, ElevatedCopyFailedSnafu, InstallCoreBinaryError, PreparedCoreBinary,
-    StartElevatedCopySnafu,
+    BinaryInstaller, ElevatedCopyFailedSnafu, InstallCoreBinaryError, StartElevatedCopySnafu,
 };
 use async_trait::async_trait;
 #[cfg(target_os = "windows")]
 use snafu::OptionExt;
 use snafu::{ResultExt, Snafu, ensure};
 use std::path::{Path, PathBuf};
+
+use nyanpasu_updater::PreparedCoreBinary;
 
 pub struct FsBinaryInstaller;
 
@@ -180,7 +181,7 @@ fn publish_companion(staged: &Path, destination: &Path) -> Result<(), PublishCom
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreCompanion};
+    use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreCompanion};
     use std::sync::Arc;
     use tempfile::TempDir;
 

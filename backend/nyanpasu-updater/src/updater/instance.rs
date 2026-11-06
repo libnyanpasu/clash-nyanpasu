@@ -18,14 +18,12 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     ManifestVersion, ManifestVersionLatest,
+    artifact::{PreparedCoreBinary, PreparedCoreCompanion},
+    mirrors::{self, ReqwestSpeedTestExt},
     ports::{UpdaterBackend, UpdaterProgress},
     shared::{self, CoreTypeMeta},
 };
-use crate::{
-    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
-    download::{DownloadSession, DownloadStatus},
-    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
-};
+use crate::download::{DownloadSession, DownloadStatus};
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SelfProxyPortSource};
 use nyanpasu_paths::PathResolver;
@@ -50,7 +48,8 @@ pub struct UpdaterSummary {
     pub downloader: DownloadStatus,
 }
 
-pub(crate) struct HttpUpdaterBackend {
+/// Prepares core artifacts using the session proxy source and bundle metadata.
+pub struct HttpUpdaterBackend {
     proxy_port: Arc<dyn SelfProxyPortSource>,
     destination_dir: PathBuf,
     /// Resolves where the agent skills a core archive ships go.
@@ -108,7 +107,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
             Some(cached) if cached.1.elapsed() < Duration::from_secs(3600) => cached,
             _ => {
                 let results = client.mirror_speed_test(
-                    crate::utils::candy::INTERNAL_MIRRORS,
+                    mirrors::INTERNAL_MIRRORS,
                     "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
                 ).await?;
                 let (mirror, speed) = results
@@ -120,7 +119,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
                 (mirror.to_string(), Instant::now())
             }
         };
-        let url = parse_gh_url(
+        let url = mirrors::parse_gh_url(
             &mirror.0,
             "/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
         )?;
@@ -159,9 +158,9 @@ impl UpdaterBackend for HttpUpdaterBackend {
         // Meow publishes `<artifact>.sha256` beside each archive.
         let checksum_url = meow_version
             .is_some()
-            .then(|| parse_gh_url(&mirror, &format!("{url}.sha256")))
+            .then(|| mirrors::parse_gh_url(&mirror, &format!("{url}.sha256")))
             .transpose()?;
-        let url = parse_gh_url(&mirror, url.as_str())?;
+        let url = mirrors::parse_gh_url(&mirror, url.as_str())?;
         let session =
             DownloadSession::new(self.http_client()?, url, staging.path().join(&artifact));
         let downloader = OwnedDownload(tokio::select! {
@@ -370,7 +369,7 @@ async fn fetch_mihomo_alpha_version(
     mirror: &str,
 ) -> anyhow::Result<String> {
     let text = client
-        .get(parse_gh_url(mirror, MIHOMO_ALPHA_VERSION_URL)?)
+        .get(mirrors::parse_gh_url(mirror, MIHOMO_ALPHA_VERSION_URL)?)
         .timeout(ROLLING_VERSION_TIMEOUT)
         .send()
         .await?
@@ -667,7 +666,7 @@ fn stage_companion(
 }
 
 fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
-    let parsed = crate::client::core_version::parse_version(core, banner)?;
+    let parsed = nyanpasu_contracts::core_version::parse_version(core, banner)?;
     let actual = semver::Version::parse(parsed.strip_prefix('v').unwrap_or(&parsed))?;
     match core {
         ClashCore::Meow => {

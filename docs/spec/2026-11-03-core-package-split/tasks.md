@@ -242,10 +242,10 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B1a — persistence 收格式与通用写入
 
-- [ ] `C/format.rs` 整体移为 `backend/nyanpasu-persistence/src/format.rs`（`Format`、`YamlFormat`、`STAMP_KEY`、`DocumentStamp`、`StampError`、`Inspected`、`inspect`、`stamp`、`StampedDocument`、`StampedYamlFormat` 与 4 个测试），内容不变；删除 `C/lib.rs` 的声明。
-- [ ] `C/migration/fs.rs` 的写入错误 `Error`（五个变体原样）、`write_document`、`atomic_write`（含重试分类与最后的 `context`，改为 `pub`）移入 persistence 新模块 `write`；读取侧（`try_exists`、`read_yaml_if_exists*`、`DocumentFile`、`read_document*`）与其 4 个测试留在 migration。`YamlFormat` 前缀后一个换行、`write_document` 前缀后两个换行的差异保持不变。
-- [ ] persistence 加 `serde`、`serde_yaml_ng`、`anyhow`、`thiserror`（版本与 feature 同 core 现有声明）；不加 config、contracts。
-- [ ] `C/session_state.rs:25,70` 改用 `nyanpasu_persistence::write`。其余调用方直接改导入，不留转发：core 的 `state/manager/{persistent_builder,persistent_state,weak_persistent_state}.rs`、`state/tests/support.rs`、`migration/{fs,mod,store,child_result,runner}.rs`、`migration/modules/{app_config,application,clash_config,profiles,storage,typed_config}.rs`、`client/{mod.rs,profiles.rs,test_support.rs}`、`client/application_workflow/tests/mutations.rs`、`profile_integration_tests/profiles.rs`；tauri 的 `utils/collect.rs`、`utils/init/mod.rs`、`unified_rpc.rs` 中对 `nyanpasu_core::format` 的引用。`Failure::from_error` 对写入错误的 downcast（`child_result.rs:159`）改为新类型；tauri 不直接 downcast 它，启动失败分类经 `Failure::from_error`，由下面的测试覆盖。
+- [x] `C/format.rs` 整体移为 `backend/nyanpasu-persistence/src/format.rs`（`Format`、`YamlFormat`、`STAMP_KEY`、`DocumentStamp`、`StampError`、`Inspected`、`inspect`、`stamp`、`StampedDocument`、`StampedYamlFormat` 与 4 个测试），内容不变；删除 `C/lib.rs` 的声明。
+- [x] `C/migration/fs.rs` 的写入错误 `Error`（五个变体原样）、`write_document`、`atomic_write`（含重试分类与最后的 `context`，改为 `pub`）移入 persistence 新模块 `write`；读取侧（`try_exists`、`read_yaml_if_exists*`、`DocumentFile`、`read_document*`）与其 4 个测试留在 migration。`YamlFormat` 前缀后一个换行、`write_document` 前缀后两个换行的差异保持不变。
+- [x] persistence 加 `serde`、`serde_yaml_ng`、`anyhow`、`thiserror`（版本与 feature 同 core 现有声明）；不加 config、contracts。
+- [x] `C/session_state.rs:25,70` 改用 `nyanpasu_persistence::write`。其余调用方直接改导入，不留转发：core 的 `state/manager/{persistent_builder,persistent_state,weak_persistent_state}.rs`、`state/tests/support.rs`、`migration/{fs,mod,store,child_result,runner}.rs`、`migration/modules/{app_config,application,clash_config,profiles,storage,typed_config}.rs`、`client/{mod.rs,profiles.rs,test_support.rs}`、`client/application_workflow/tests/mutations.rs`、`profile_integration_tests/profiles.rs`；tauri 的 `utils/collect.rs`、`utils/init/mod.rs`、`unified_rpc.rs` 中对 `nyanpasu_core::format` 的引用。`Failure::from_error` 对写入错误的 downcast（`child_result.rs:159`）改为新类型；tauri 不直接 downcast 它，启动失败分类经 `Failure::from_error`，由下面的测试覆盖。
 
 **验证**
 
@@ -259,8 +259,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 本卡不是纯移动：引入两个存储端口与一个参数，行为不变。
 
-- [ ] 改动前，在当前提交上为将被替换 source 的错误变体（`BackupError::Storage`、`C/migration/mod.rs` 中以 `StorageOperationError` 为 source 的变体、`C/migration/modules/storage.rs` 的打开/读/写/删除错误）生成期望值测试：`Display`、逐级 `source()` 文本，若该错误经 serde 序列化则加 JSON；用真实 redb 错误构造，确认通过。这些测试从一开始就放在 core 的存储模块（`C/storage.rs` 的测试），B1b-2 只改其导入路径，不进 migration。
-- [ ] backup：在 `C/backup.rs` 定义消费者自有端口：
+- [x] 改动前，在当前提交上为将被替换 source 的错误变体（`BackupError::Storage`、`C/migration/mod.rs` 中以 `StorageOperationError` 为 source 的变体、`C/migration/modules/storage.rs` 的打开/读/写/删除错误）生成期望值测试：`Display`、逐级 `source()` 文本，若该错误经 serde 序列化则加 JSON；用真实 redb 错误构造，确认通过。这些测试从一开始就放在 core 的存储模块（`C/storage.rs` 的测试），B1b-2 只改其导入路径，不进 migration。
+- [x] backup：在 `C/backup.rs` 定义消费者自有端口：
 
   ```rust
   pub trait StorageSnapshot: Send + Sync {
@@ -270,7 +270,7 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
   `StorageSource::Live` 改持 `&dyn StorageSnapshot`；`BackupError::Storage` 的 source 改为 `BoxedCause`，`Display` 不变。`C/storage.rs` 为 `Storage` 实现它，委托 `Storage::export_to`（保持 `:113` 的单个读事务），在产生处装箱 `StorageOperationError`。`C/client/mod.rs:759-767` 照旧克隆 `self.inner.storage` 并传 `&storage`（字段类型在 B2a 换）。修复 `C/backup.rs:4` 指向 `crate::client::NyanpasuClient` 的 rustdoc 链接（B1b-2 后不可解析）。
 
-- [ ] migration：在 `C/migration/modules/storage.rs` 定义消费者自有的打开器与句柄：
+- [x] migration：在 `C/migration/modules/storage.rs` 定义消费者自有的打开器与句柄：
 
   ```rust
   pub trait HotkeyStoreOpener: Send + Sync + std::fmt::Debug {
@@ -285,10 +285,10 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
   打开器无状态，由 core 的 `Storage` 侧实现（`C/storage.rs`，内部 `Storage::try_new` 与现有的键名、序列化）。每次操作打开、用完即关的时机不变：写句柄在重写旧 YAML 前结束（`:154-165`）、读句柄在 `read_kv_hotkeys` 返回时结束（`:270-280`）、先提交类型化 YAML 再重新打开删除（`:252-262`）；"库是否存在"的判断与目录创建留在原调用点；打开、读、写、删除各自的错误上下文保留，source 改为 `BoxedCause`。
 
-- [ ] 打开器经 `Ctx` 到达模块：`Ctx` 加字段 `Arc<dyn HotkeyStoreOpener>`（保留 `Debug`、`Clone` 派生）；`Ctx::from_paths`、测试用 `Ctx::new`、`Runner::with_target`、`Runner::with_paths` 增加该参数。本卡迁完全部构造方：`T/setup.rs:244`、`T/cmds/migrate.rs:101`、`C/client/startup_recovery_tests.rs:91,367`、`C/client/test_support/startup_recovery.rs:25`、`C/migration/modules/profiles.rs:1302`，以及 `runner.rs`、`modules/{storage,typed_config,profiles}.rs` 测试里的夹具构造；它们在本卡都传 core 的真实打开器。
-- [ ] `Failure::from_error`（`C/migration/child_result.rs:77`）增加参数 `io_failure: Option<IoFailure>`，删除 `:204` 对 `crate::corrupt::error_io` 的调用；三处生产调用方 `T/cmds/migrate.rs:106,163`、`T/startup_failure.rs:57` 对传给 `from_error` 的同一个错误调用 `nyanpasu_core::corrupt::error_io` 并传入，测试（`T/startup_failure_tests.rs:198,215`）同改。`error_io` 本身不改（非 IO 的 redb 失败提前返回、递归遍历 source）；`Failure` 的 JSON 字段不变。
-- [ ] `C/utils/yaml.rs` 移为 `C/migration/yaml.rs`（唯一使用者 `modules/typed_config.rs:10,37,434`）。
-- [ ] backup 与 migration 的测试不再调用 `crate::utils::test_support::test_paths`（`C/backup.rs:372,504`、`C/migration/mod.rs:99`、`runner.rs:736`、`modules/profiles.rs:1301`），改为直接调用 `PathResolver::with_base_dirs`。
+- [x] 打开器经 `Ctx` 到达模块：`Ctx` 加字段 `Arc<dyn HotkeyStoreOpener>`（保留 `Debug`、`Clone` 派生）；`Ctx::from_paths`、测试用 `Ctx::new`、`Runner::with_target`、`Runner::with_paths` 增加该参数。本卡迁完全部构造方：`T/setup.rs:244`、`T/cmds/migrate.rs:101`、`C/client/startup_recovery_tests.rs:91,367`、`C/client/test_support/startup_recovery.rs:25`、`C/migration/modules/profiles.rs:1302`，以及 `runner.rs`、`modules/{storage,typed_config,profiles}.rs` 测试里的夹具构造；它们在本卡都传 core 的真实打开器。
+- [x] `Failure::from_error`（`C/migration/child_result.rs:77`）增加参数 `io_failure: Option<IoFailure>`，删除 `:204` 对 `crate::corrupt::error_io` 的调用；三处生产调用方 `T/cmds/migrate.rs:106,163`、`T/startup_failure.rs:57` 对传给 `from_error` 的同一个错误调用 `nyanpasu_core::corrupt::error_io` 并传入，测试（`T/startup_failure_tests.rs:198,215`）同改。`error_io` 本身不改（非 IO 的 redb 失败提前返回、递归遍历 source）；`Failure` 的 JSON 字段不变。
+- [x] `C/utils/yaml.rs` 移为 `C/migration/yaml.rs`（唯一使用者 `modules/typed_config.rs:10,37,434`）。
+- [x] backup 与 migration 的测试不再调用 `crate::utils::test_support::test_paths`（`C/backup.rs:372,504`、`C/migration/mod.rs:99`、`runner.rs:736`、`modules/profiles.rs:1301`），改为直接调用 `PathResolver::with_base_dirs`。
 
 **验证**
 
@@ -298,9 +298,9 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B1b-2 — `nyanpasu-migration`
 
-- [ ] 新建 `backend/nyanpasu-migration`：`C/migration/**`（含 `fixtures/`、`legacy_schema/`、`modules/`、`yaml.rs`）、`C/backup.rs`、`C/session_state.rs` 移入。crate 根是原 `migration/mod.rs` 的内容，`backup`、`session_state` 为其子模块（V-10）。
-- [ ] 依赖按文件实际使用声明（config 关默认 feature 并列出所需，contracts、persistence、`nyanpasu-paths`、`nyanpasu-utils` 不开 `redb`，及这些文件实际用到的第三方库）；不依赖 redb、`nyanpasu-core-manager`、core。
-- [ ] 构造真实 `Storage` 的用例按下表放置，名字不变：
+- [x] 新建 `backend/nyanpasu-migration`：`C/migration/**`（含 `fixtures/`、`legacy_schema/`、`modules/`、`yaml.rs`）、`C/backup.rs`、`C/session_state.rs` 移入。crate 根是原 `migration/mod.rs` 的内容，`backup`、`session_state` 为其子模块（V-10）。
+- [x] 依赖按文件实际使用声明（config 关默认 feature 并列出所需，contracts、persistence、`nyanpasu-paths`、`nyanpasu-utils` 不开 `redb`，及这些文件实际用到的第三方库）；不依赖 redb、`nyanpasu-core-manager`、core。
+- [x] 构造真实 `Storage` 的用例按下表放置，名字不变：
 
   | 用例                                                                                                                                                                                                                                                                                     | 现位置                                   | 去向                                   |
   | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------------- |
@@ -310,8 +310,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
   替身打开器：打开新库时在该路径创建一个空的标记文件（生产代码的"库是否存在"检查留在 `:283`，照旧看文件系统），按路径在多个句柄之间保留 hotkeys，区分"键不存在"与"显式空列表"。其余用 `LegacyCase` 等 fixture 的用例留在 migration，用同一个替身。移到 core 的三例放进 core 的 migration 集成测试模块，用公开的 `Runner::with_target` 与真实打开器组装，断言时重新读取 `MigrationStore`，不暴露 `Runner` 私有项（`runner.rs:926` 的 `with_context`、`:948` 的 `runner.store`）；fixture 只在 migration 保留一份，由 migration 的 `test-support` feature 导出所需内容（或改相对路径），迁移前后 `git hash-object` 一致。core 以 dev-dependency 开启 migration 的 `test-support`，并在 core 的 `test-support` 中转发（§0.5）。
 
-- [ ] 调用方迁完：core 的 `client/{mod.rs,application.rs,clash_config.rs,profiles.rs,session_state.rs}`、`state/{application.rs,clash_config.rs,profiles/actor.rs}` 与测试（`client/{mod.rs,test_support.rs,startup_recovery_tests.rs,test_support/startup_recovery.rs}`、`application_workflow/tests/{mutations,startup}.rs`、`profile_integration_tests/profiles.rs`）；tauri 的 `setup.rs`、`cmds/migrate.rs`、`utils/init/mod.rs`、`utils/collect.rs`、`startup_failure.rs`、`ipc.rs` 与测试（`unified_rpc.rs`、`startup_failure_tests.rs`、`utils/init/tests.rs`）。core 不再有 `migration`、`backup`、`session_state` 模块。
-- [ ] 登记：workspace；`CORE_FAMILY` 加 migration，附加禁止 `redb`、`nyanpasu-core-manager`，正反策略测试；`STATIC_GATE_PREFIXES` 加 `backend/nyanpasu-migration/src/`；`S/policy.ts:52-53`（排除）、`:115`（模块允许名单）、`:171`（registry）、`:246`（测试 static）改到新路径并同步改其测试；musl 脚本；`backend-packages.md`、`architecture.md`。
+- [x] 调用方迁完：core 的 `client/{mod.rs,application.rs,clash_config.rs,profiles.rs,session_state.rs}`、`state/{application.rs,clash_config.rs,profiles/actor.rs}` 与测试（`client/{mod.rs,test_support.rs,startup_recovery_tests.rs,test_support/startup_recovery.rs}`、`application_workflow/tests/{mutations,startup}.rs`、`profile_integration_tests/profiles.rs`）；tauri 的 `setup.rs`、`cmds/migrate.rs`、`utils/init/mod.rs`、`utils/collect.rs`、`startup_failure.rs`、`ipc.rs` 与测试（`unified_rpc.rs`、`startup_failure_tests.rs`、`utils/init/tests.rs`）。core 不再有 `migration`、`backup`、`session_state` 模块。
+- [x] 登记：workspace；`CORE_FAMILY` 加 migration，附加禁止 `redb`、`nyanpasu-core-manager`，正反策略测试；`STATIC_GATE_PREFIXES` 加 `backend/nyanpasu-migration/src/`；`S/policy.ts:52-53`（排除）、`:115`（模块允许名单）、`:171`（registry）、`:246`（测试 static）改到新路径并同步改其测试；musl 脚本；`backend-packages.md`、`architecture.md`。
 
 **验证**
 
@@ -326,8 +326,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 本卡不是纯移动：traffic 存储换成非泛型的 owner 级端口。
 
-- [ ] `ClientSetupArgs.storage: Storage`（`C/client/mod.rs:111`）与 `NyanpasuClientInner`（`:232`）的对应字段改为 `Arc<dyn nyanpasu_migration::backup::StorageSnapshot>`，只用于在线备份；`:767` 改为 `StorageSource::Live(storage.as_ref())`。tauri `T/setup.rs:439` 传入 `Arc::new(storage.clone())`；KV 命令与变更订阅继续用 shell 持有的 `Storage`（不变）。
-- [ ] traffic 模块新增 owner 级端口（消费者自有、非泛型、对象安全）：
+- [x] `ClientSetupArgs.storage: Storage`（`C/client/mod.rs:111`）与 `NyanpasuClientInner`（`:232`）的对应字段改为 `Arc<dyn nyanpasu_migration::backup::StorageSnapshot>`，只用于在线备份；`:767` 改为 `StorageSource::Live(storage.as_ref())`。tauri `T/setup.rs:439` 传入 `Arc::new(storage.clone())`；KV 命令与变更订阅继续用 shell 持有的 `Storage`（不变）。
+- [x] traffic 模块新增 owner 级端口（消费者自有、非泛型、对象安全）：
 
   ```rust
   #[async_trait::async_trait]
@@ -343,8 +343,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
   `TrafficStartArgs` 是 `TrafficArgs` 去掉 `storage` 后的字段；`SpawnError` 是现有的 `traffic::client::Error`（公开导出，消息与 source 链不变）。`TrafficFileStorage` 实现它：把 `self` 放进 `TrafficArgs<RedbStorage>` 后调用现有的 `TrafficClient::spawn`。
 
-- [ ] `ClientSetupArgs.traffic_store`（`:129-130`）与 `NyanpasuClientInner::new` 的同名参数（`:409-410`）改为 `Option<Arc<dyn TrafficOwnerFactory>>`。调用点保持在 `:604-633`：`None` 不创建；`Err` 打印原告警并得到 `None`；都不让启动失败。tauri `open_traffic_store`（`T/setup.rs:605`）改返回新类型，打开数据库的时机不提前。
-- [ ] 测试装配（`C/client/test_support.rs`、`test_support/facade.rs`、`startup_recovery_tests.rs` 等）同改。
+- [x] `ClientSetupArgs.traffic_store`（`:129-130`）与 `NyanpasuClientInner::new` 的同名参数（`:409-410`）改为 `Option<Arc<dyn TrafficOwnerFactory>>`。调用点保持在 `:604-633`：`None` 不创建；`Err` 打印原告警并得到 `None`；都不让启动失败。tauri `open_traffic_store`（`T/setup.rs:605`）改返回新类型，打开数据库的时机不提前。
+- [x] 测试装配（`C/client/test_support.rs`、`test_support/facade.rs`、`startup_recovery_tests.rs` 等）同改。
 
 **验证**
 
@@ -353,9 +353,9 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B2b — traffic 的 legacy 导入器放到 feature 后
 
-- [ ] `backend/nyanpasu-traffic/Cargo.toml`：`redb` 改为可选，新增 `legacy-redb = ["dep:redb"]`，默认 feature 不含它；`store/legacy.rs`、导入与放弃 API、`TrafficDb` 中只为导入存在的字段与路径以该 feature 门控。开 feature 时行为逐字节不变（进度键、编码、已提交前缀、完成标记，`store/mod.rs:65-79` 的恢复）；关 feature 时 store 照常打开与记录，不读写进度键。
-- [ ] 集成测试目标 `tests/legacy_v3.rs`（含 `v3_reports_match_the_old_implementation_byte_for_byte`、忽略的 `export_v3_fixture`）在 `Cargo.toml` 用 `[[test]] required-features = ["legacy-redb"]` 门控；`tests/legacy_v3/{fixture.rs,oracle.rs,expected.json,README.md}` 不变，README 中重新生成的命令加上该 feature。
-- [ ] core 对 `nyanpasu-traffic` 的依赖开启 `legacy-redb`（`C/traffic/storage.rs` 的启动导入在 core）；导入、失败后丢弃重开、持久放弃、旧句柄关闭后才删除、暴露会话前重开的顺序（`C/traffic/storage.rs:49-75`）不变。
+- [x] `backend/nyanpasu-traffic/Cargo.toml`：`redb` 改为可选，新增 `legacy-redb = ["dep:redb"]`，默认 feature 不含它；`store/legacy.rs`、导入与放弃 API、`TrafficDb` 中只为导入存在的字段与路径以该 feature 门控。开 feature 时行为逐字节不变（进度键、编码、已提交前缀、完成标记，`store/mod.rs:65-79` 的恢复）；关 feature 时 store 照常打开与记录，不读写进度键。
+- [x] 集成测试目标 `tests/legacy_v3.rs`（含 `v3_reports_match_the_old_implementation_byte_for_byte`、忽略的 `export_v3_fixture`）在 `Cargo.toml` 用 `[[test]] required-features = ["legacy-redb"]` 门控；`tests/legacy_v3/{fixture.rs,oracle.rs,expected.json,README.md}` 不变，README 中重新生成的命令加上该 feature。
+- [x] core 对 `nyanpasu-traffic` 的依赖开启 `legacy-redb`（`C/traffic/storage.rs` 的启动导入在 core）；导入、失败后丢弃重开、持久放弃、旧句柄关闭后才删除、暴露会话前重开的顺序（`C/traffic/storage.rs:49-75`）不变。
 
 **验证**
 
@@ -366,10 +366,10 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B3a — `nyanpasu-owner-support`
 
-- [ ] 新建 `backend/nyanpasu-owner-support`：`C/owner_shutdown.rs`（`drain_on_shutdown`、`track_until_shutdown`）与 `C/utils/blocking.rs`（`join`）原样移入（V-13），删除两处旧模块声明；依赖只有 ractor、tokio、tokio-util。
-- [ ] `owner_shutdown` 的 18 个使用文件：core 的 `actor_v2/service_actor.rs`、`clash/ws.rs`、`geo/client.rs`、`logs/actor.rs`、`traffic/client.rs`、`updater/mod.rs`、`proxies.rs`、`client/{app_lifecycle,app_update/mod,application,application_workflow/mod,clash_config,effects/actor,hotkey/mod,profiles,session_state,system_proxy/mod}.rs`，tauri `setup.rs`。
-- [ ] `utils::blocking` 的使用文件：core 的 `geo/actor.rs`、`traffic/actor.rs`、`service/control.rs`、`client/{jobs,mod,profiles,runtime,runtime_build,runtime_inspection,session_state}.rs`、`client/core_lifecycle/adapters.rs`、`client/system_proxy/actor.rs`、`client/test_support/runtime_build.rs`，tauri 的 `utils/collect.rs`、`adapters/system_proxy.rs`。
-- [ ] 登记：workspace；`CORE_FAMILY` 加它，附加禁止 `CORE_FAMILY` 的其他成员（它是 core 族最底层），正反策略测试；`STATIC_GATE_PREFIXES`；musl 脚本；`backend-packages.md`。
+- [x] 新建 `backend/nyanpasu-owner-support`：`C/owner_shutdown.rs`（`drain_on_shutdown`、`track_until_shutdown`）与 `C/utils/blocking.rs`（`join`）原样移入（V-13），删除两处旧模块声明；依赖只有 ractor、tokio、tokio-util。
+- [x] `owner_shutdown` 的 18 个使用文件：core 的 `actor_v2/service_actor.rs`、`clash/ws.rs`、`geo/client.rs`、`logs/actor.rs`、`traffic/client.rs`、`updater/mod.rs`、`proxies.rs`、`client/{app_lifecycle,app_update/mod,application,application_workflow/mod,clash_config,effects/actor,hotkey/mod,profiles,session_state,system_proxy/mod}.rs`，tauri `setup.rs`。
+- [x] `utils::blocking` 的使用文件：core 的 `geo/actor.rs`、`traffic/actor.rs`、`service/control.rs`、`client/{jobs,mod,profiles,runtime,runtime_build,runtime_inspection,session_state}.rs`、`client/core_lifecycle/adapters.rs`、`client/system_proxy/actor.rs`、`client/test_support/runtime_build.rs`，tauri 的 `utils/collect.rs`、`adapters/system_proxy.rs`。
+- [x] 登记：workspace；`CORE_FAMILY` 加它，附加禁止 `CORE_FAMILY` 的其他成员（它是 core 族最底层），正反策略测试；`STATIC_GATE_PREFIXES`；musl 脚本；`backend-packages.md`。
 
 **验证**
 
@@ -380,8 +380,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 本卡不是纯移动：新增一个归一化端口与一个非泛型的帧输入，泵的行为不变。
 
-- [ ] `C/traffic/source.rs` 全部与 `C/traffic/geo.rs` 中解释 Clash 原始数据的部分（`clash_api` 类型、`ClashConnectionsFrame` → `Frame` 的转换、核心给出的地区代码解释）移到 owner 之上的 core 模块（`C/client/traffic.rs` 旁，按内容命名）。`LocalSourceIps` 与本地源端口留在 owner。
-- [ ] `C/traffic/ports.rs` 定义消费者自有的归一化端口，参数照搬泵现在传给转换函数的值：
+- [x] `C/traffic/source.rs` 全部与 `C/traffic/geo.rs` 中解释 Clash 原始数据的部分（`clash_api` 类型、`ClashConnectionsFrame` → `Frame` 的转换、核心给出的地区代码解释）移到 owner 之上的 core 模块（`C/client/traffic.rs` 旁，按内容命名）。`LocalSourceIps` 与本地源端口留在 owner。
+- [x] `C/traffic/ports.rs` 定义消费者自有的归一化端口，参数照搬泵现在传给转换函数的值：
 
   ```rust
   pub trait FrameNormalizer: Send + Sync + 'static {
@@ -391,8 +391,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
   }
   ```
 
-- [ ] `TrafficArgs.frames` 与 B2a 的 `TrafficStartArgs.frames` 改为非泛型的 `TrafficFeed`：由泛型构造函数 `TrafficFeed::new<N: FrameNormalizer>(watch::Receiver<Option<Arc<N::Raw>>>, Arc<N>)` 生成，内部保存一个一次性的泵启动闭包；owner 在原 `pre_start` 位置用它启动现有的泵（泛型于 `N`），不新增任务、通道或缓冲。泵的语义原样（`C/traffic/actor.rs:319-342`）：等 `changed`、经 `borrow_and_update` 克隆、采样当前已发布索引、再取时钟/单调时间/本地地址、同步归一化、等待真实回复；`:220-234` 的中止、等待与 panic 传播在最后 flush 前不变。core 用 Clash 的归一化实现构造 `TrafficFeed`（`C/client/mod.rs:620` 附近）。
-- [ ] 归一化的测试（`TG` 13 例、`frame_from_snapshot_extracts_dimensions`、`frame_from_snapshot_maps_the_inbound_and_the_regions`）随实现移动；三个 `pump_*` 用例改为经 core 的归一化实现组装，暂留 traffic 测试文件，B3e 时留在 core。
+- [x] `TrafficArgs.frames` 与 B2a 的 `TrafficStartArgs.frames` 改为非泛型的 `TrafficFeed`：由泛型构造函数 `TrafficFeed::new<N: FrameNormalizer>(watch::Receiver<Option<Arc<N::Raw>>>, Arc<N>)` 生成，内部保存一个一次性的泵启动闭包；owner 在原 `pre_start` 位置用它启动现有的泵（泛型于 `N`），不新增任务、通道或缓冲。泵的语义原样（`C/traffic/actor.rs:319-342`）：等 `changed`、经 `borrow_and_update` 克隆、采样当前已发布索引、再取时钟/单调时间/本地地址、同步归一化、等待真实回复；`:220-234` 的中止、等待与 panic 传播在最后 flush 前不变。core 用 Clash 的归一化实现构造 `TrafficFeed`（`C/client/mod.rs:620` 附近）。
+- [x] 归一化的测试（`TG` 13 例、`frame_from_snapshot_extracts_dimensions`、`frame_from_snapshot_maps_the_inbound_and_the_regions`）随实现移动；三个 `pump_*` 用例改为经 core 的归一化实现组装，暂留 traffic 测试文件，B3e 时留在 core。
 
 **验证**
 
@@ -403,10 +403,10 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 本卡不是纯移动：新增一个模式来源端口与错误装箱。
 
-- [ ] `C/geo/ports.rs` 定义消费者自有端口 `pub trait ModeSource: Send + Sync + 'static { fn start(&self, reporter: ModeReporter) -> JoinHandle<()>; }`；`ModeReporter`（`Send`，可克隆）的 `report(&self, GeodataMode) -> bool` 包装对 owner 的私有 `cast(Message::Mode(_))`，投递失败返回 `false`。owner 的启动参数（`C/geo/actor.rs:41` 进入 `Actor::Arguments` 的结构）以 `Arc<dyn ModeSource>` 替换 `CoreClient`。
-- [ ] `follow_core`（`C/geo/actor.rs:135-160`）原样移到 owner 之上的 core 适配器并实现 `ModeSource`：一秒重试、`geodata_mode` 缺省按 MMDB、每个租约成功报告一次、`api.cancelled().await` 后重新获取、`report` 返回 `false` 时结束。owner 在 watcher 建好之后、原 `:72` 位置调用 `start`，句柄照旧存入 `State`，`post_stop` 的中止、等待与 panic 传播（`:89`）不变；owner 参数不再含 `CoreClient`。
-- [ ] `GeoIndexError` 中以 `notify` 错误为 source 的变体（`C/geo/ports.rs:48`）改为 `BoxedCause`，`Display` 不变；`C/geo/adapters.rs:159,162` 两个构造点装箱原始 notify 错误（不是文本）。先为该变体写期望值测试（`Display` 与 source 链）再改。
-- [ ] `C/geo/tests.rs` 的 3 例改用 `ModeSource` 替身，不再用 `crate::actor_v2::test_support`（`:26,34`）。新增 core 适配器的确定性测试，用 `actor_v2::test_support` 的端点注入（`:254`）与绑定发送端（`:266`）：未取得租约时按间隔重试、租约撤销后重新获取并再报告一次、`report` 返回 `false` 后跟随任务结束。测试里的 `ModeReporter` 由 owner 提供的 `test-support` 构造函数生成（B3f 后来自 observers）。
+- [x] `C/geo/ports.rs` 定义消费者自有端口 `pub trait ModeSource: Send + Sync + 'static { fn start(&self, reporter: ModeReporter) -> JoinHandle<()>; }`；`ModeReporter`（`Send`，可克隆）的 `report(&self, GeodataMode) -> bool` 包装对 owner 的私有 `cast(Message::Mode(_))`，投递失败返回 `false`。owner 的启动参数（`C/geo/actor.rs:41` 进入 `Actor::Arguments` 的结构）以 `Arc<dyn ModeSource>` 替换 `CoreClient`。
+- [x] `follow_core`（`C/geo/actor.rs:135-160`）原样移到 owner 之上的 core 适配器并实现 `ModeSource`：一秒重试、`geodata_mode` 缺省按 MMDB、每个租约成功报告一次、`api.cancelled().await` 后重新获取、`report` 返回 `false` 时结束。owner 在 watcher 建好之后、原 `:72` 位置调用 `start`，句柄照旧存入 `State`，`post_stop` 的中止、等待与 panic 传播（`:89`）不变；owner 参数不再含 `CoreClient`。
+- [x] `GeoIndexError` 中以 `notify` 错误为 source 的变体（`C/geo/ports.rs:48`）改为 `BoxedCause`，`Display` 不变；`C/geo/adapters.rs:159,162` 两个构造点装箱原始 notify 错误（不是文本）。先为该变体写期望值测试（`Display` 与 source 链）再改。
+- [x] `C/geo/tests.rs` 的 3 例改用 `ModeSource` 替身，不再用 `crate::actor_v2::test_support`（`:26,34`）。新增 core 适配器的确定性测试，用 `actor_v2::test_support` 的端点注入（`:254`）与绑定发送端（`:266`）：未取得租约时按间隔重试、租约撤销后重新获取并再报告一次、`report` 返回 `false` 后跟随任务结束。测试里的 `ModeReporter` 由 owner 提供的 `test-support` 构造函数生成（B3f 后来自 observers）。
 
 **验证**
 
@@ -415,11 +415,11 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B3d — `nyanpasu-observers` 与 logs owner
 
-- [ ] 新建 `backend/nyanpasu-observers`，模块 `logs`、`traffic`、`geo`（V-12）；本卡只移入 logs owner：`C/logs/{actor.rs,model.rs,ports.rs}` 与 owner 客户端。redb 日志库与编解码（`redb.rs`、`codec.rs`、压缩字典资源）、`test_support.rs`、`tests.rs` 留在 core。
-- [ ] 可见性：`RedbCoreLogStore` 用到的 `PreparedCoreLog` 字段 `bytes`、`level`（`C/logs/model.rs:73`）改为公开的只读访问器，`level_code`、`truncate_preview`（`C/logs/redb.rs:212,364,394` 的使用）与所需常量公开导出，不公开可变字段。`CoreLogsClient::flush`（现为 `pub(super)`）改为 `pub`，它与对应的消息变体、处理分支（`C/logs/actor.rs:23,314,423`）统一门控为 `cfg(any(test, feature = "test-support"))`；core 以 dev-dependency 开启 observers 的 `test-support` 并在 core 的 `test-support` 中转发；actor 消息保持私有。observers 自身的测试不依赖 core 打开该 feature 即可单独运行。
-- [ ] `C/logs/test_support.rs:42` 的 `impl CoreLogsClient`（跨 crate 不能写固有 impl）改为 core 内的自由函数 `test_client()`，更新 `C/logs/tests.rs:607`、`C/clash/ws.rs` 的 9 处、`C/client/effects/tests.rs:910`；真实 redb 的 `TestStore` 留在 core。
-- [ ] 调用方迁完：core 的 `clash/ws.rs`、`client/{mod,logs,clash_streams}.rs`、`client/effects/executor.rs:35` 与 effects 测试，tauri 的 `setup.rs`、`ipc.rs`、`unified_rpc.rs`、`adapters/events.rs:11`、`utils/collect.rs:6`。`model.rs` 的 serde/specta 属性原样，三个生成文件无 diff。
-- [ ] 依赖：owner-support、config（关默认 feature）及实际用到的库；登记 workspace、`CORE_FAMILY`（附加禁止 `redb`、`clash-api`、`nyanpasu-core-manager`、`notify`、`notify-debouncer-full`，正反策略测试）、`STATIC_GATE_PREFIXES`、musl 脚本、`backend-packages.md`、`architecture.md`。redb 只能经 dev-dependency 进入 observers，不经任何普通 feature（含 `test-support`）转发。
+- [x] 新建 `backend/nyanpasu-observers`，模块 `logs`、`traffic`、`geo`（V-12）；本卡只移入 logs owner：`C/logs/{actor.rs,model.rs,ports.rs}` 与 owner 客户端。redb 日志库与编解码（`redb.rs`、`codec.rs`、压缩字典资源）、`test_support.rs`、`tests.rs` 留在 core。
+- [x] 可见性：`RedbCoreLogStore` 用到的 `PreparedCoreLog` 字段 `bytes`、`level`（`C/logs/model.rs:73`）改为公开的只读访问器，`level_code`、`truncate_preview`（`C/logs/redb.rs:212,364,394` 的使用）与所需常量公开导出，不公开可变字段。`CoreLogsClient::flush`（现为 `pub(super)`）改为 `pub`，它与对应的消息变体、处理分支（`C/logs/actor.rs:23,314,423`）统一门控为 `cfg(any(test, feature = "test-support"))`；core 以 dev-dependency 开启 observers 的 `test-support` 并在 core 的 `test-support` 中转发；actor 消息保持私有。observers 自身的测试不依赖 core 打开该 feature 即可单独运行。
+- [x] `C/logs/test_support.rs:42` 的 `impl CoreLogsClient`（跨 crate 不能写固有 impl）改为 core 内的自由函数 `test_client()`，更新 `C/logs/tests.rs:607`、`C/clash/ws.rs` 的 9 处、`C/client/effects/tests.rs:910`；真实 redb 的 `TestStore` 留在 core。
+- [x] 调用方迁完：core 的 `clash/ws.rs`、`client/{mod,logs,clash_streams}.rs`、`client/effects/executor.rs:35` 与 effects 测试，tauri 的 `setup.rs`、`ipc.rs`、`unified_rpc.rs`、`adapters/events.rs:11`、`utils/collect.rs:6`。`model.rs` 的 serde/specta 属性原样，三个生成文件无 diff。
+- [x] 依赖：owner-support、config（关默认 feature）及实际用到的库；登记 workspace、`CORE_FAMILY`（附加禁止 `redb`、`clash-api`、`nyanpasu-core-manager`、`notify`、`notify-debouncer-full`，正反策略测试）、`STATIC_GATE_PREFIXES`、musl 脚本、`backend-packages.md`、`architecture.md`。redb 只能经 dev-dependency 进入 observers，不经任何普通 feature（含 `test-support`）转发。
 
 **验证**
 
@@ -428,10 +428,10 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B3e — traffic owner 移入 observers
 
-- [ ] `C/traffic/{actor.rs,client.rs,ports.rs}`（含 B2a 的 `TrafficOwnerFactory`、B3b 的 `FrameNormalizer`、`TrafficFeed`）移入 `nyanpasu-observers/src/traffic/`；`TrafficFileStorage` 与启动导入/放弃策略（`storage.rs`）、B3b 的归一化留在 core，core 的 `TrafficFileStorage` 实现 `TrafficOwnerFactory`。
-- [ ] `C/traffic/tests.rs` 拆分：`startup_imports_v3_and_continues_the_restored_session`（`:330`，用 core 的 `TrafficFileStorage`）与三个 `pump_*`（`:1744,1771,1798`，用 core 的归一化）留在 core；其余 28 例移入 observers，共享夹具改用中立的空闲帧输入或替身归一化。observers 需要真实 tsdb 时只经 dev-dependency 开 redb 后端；traffic 的测试钩子（`C/traffic/actor.rs:27` 的消息变体与 `:132-142` 的处理、`C/traffic/client.rs:122` 的客户端方法）按 B3d 的方式处理：客户端方法 `pub`，三处统一门控为 `cfg(any(test, feature = "test-support"))`，消息保持私有；observers 不依赖 core。
-- [ ] observers 依赖 `nyanpasu-traffic`、`nyanpasu-tsdb` 时不开 `legacy-redb`、redb。
-- [ ] 调用方迁完：core 的 `client/{mod,traffic}.rs`、测试装配，tauri 的 `setup.rs`、`ipc.rs` 等。
+- [x] `C/traffic/{actor.rs,client.rs,ports.rs}`（含 B2a 的 `TrafficOwnerFactory`、B3b 的 `FrameNormalizer`、`TrafficFeed`）移入 `nyanpasu-observers/src/traffic/`；`TrafficFileStorage` 与启动导入/放弃策略（`storage.rs`）、B3b 的归一化留在 core，core 的 `TrafficFileStorage` 实现 `TrafficOwnerFactory`。
+- [x] `C/traffic/tests.rs` 拆分：`startup_imports_v3_and_continues_the_restored_session`（`:330`，用 core 的 `TrafficFileStorage`）与三个 `pump_*`（`:1744,1771,1798`，用 core 的归一化）留在 core；其余 28 例移入 observers，共享夹具改用中立的空闲帧输入或替身归一化。observers 需要真实 tsdb 时只经 dev-dependency 开 redb 后端；traffic 的测试钩子（`C/traffic/actor.rs:27` 的消息变体与 `:132-142` 的处理、`C/traffic/client.rs:122` 的客户端方法）按 B3d 的方式处理：客户端方法 `pub`，三处统一门控为 `cfg(any(test, feature = "test-support"))`，消息保持私有；observers 不依赖 core。
+- [x] observers 依赖 `nyanpasu-traffic`、`nyanpasu-tsdb` 时不开 `legacy-redb`、redb。
+- [x] 调用方迁完：core 的 `client/{mod,traffic}.rs`、测试装配，tauri 的 `setup.rs`、`ipc.rs` 等。
 
 **验证**
 
@@ -440,10 +440,10 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B3f — geo owner 移入 observers
 
-- [ ] `C/geo/{actor.rs,client.rs,ports.rs}` 与 3 个 owner 测试移入 `nyanpasu-observers/src/geo/`；文件监视与缓存（`adapters.rs`）及其 7 个测试、B3c 的模式跟随留在 core。
-- [ ] `C/geo/fixtures.rs`（`geoip_dat` 与其私有编码辅助）整体移到 observers，门控为 `cfg(any(test, feature = "test-support"))`，owner 测试、core 的适配器测试与 traffic 归一化测试（`C/traffic/geo.rs:421` 移动后的位置、`C/traffic/tests.rs:1773,1800`）都直接用它，只保留一份。
-- [ ] `GeoIndexError` 的 snafu 选择器（现为 `visibility(pub(super))`，`C/geo/ports.rs:35`）改为 `pub`，供 core 适配器使用（`IndexDatabaseSnafu`、`ListHomeSnafu`、`ReadDatabaseSnafu`、`WatchHomeSnafu`）；公开导出 `GeoIndexError`、`GeodataMode`、`IndexKey`、`Loaded`、`OnChange` 与 B3c 的 `ModeSource`、`ModeReporter`。
-- [ ] 调用方迁完：core 的 `client/mod.rs`、traffic 归一化、测试，tauri 的 `setup.rs`。
+- [x] `C/geo/{actor.rs,client.rs,ports.rs}` 与 3 个 owner 测试移入 `nyanpasu-observers/src/geo/`；文件监视与缓存（`adapters.rs`）及其 7 个测试、B3c 的模式跟随留在 core。
+- [x] `C/geo/fixtures.rs`（`geoip_dat` 与其私有编码辅助）整体移到 observers，门控为 `cfg(any(test, feature = "test-support"))`，owner 测试、core 的适配器测试与 traffic 归一化测试（`C/traffic/geo.rs:421` 移动后的位置、`C/traffic/tests.rs:1773,1800`）都直接用它，只保留一份。
+- [x] `GeoIndexError` 的 snafu 选择器（现为 `visibility(pub(super))`，`C/geo/ports.rs:35`）改为 `pub`，供 core 适配器使用（`IndexDatabaseSnafu`、`ListHomeSnafu`、`ReadDatabaseSnafu`、`WatchHomeSnafu`）；公开导出 `GeoIndexError`、`GeodataMode`、`IndexKey`、`Loaded`、`OnChange` 与 B3c 的 `ModeSource`、`ModeReporter`。
+- [x] 调用方迁完：core 的 `client/mod.rs`、traffic 归一化、测试，tauri 的 `setup.rs`。
 
 **验证**
 
@@ -454,9 +454,9 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B4a — updater 的 core 外向边下移
 
-- [ ] `PreparedCoreBinary`、`PreparedCoreCompanion`、`BinaryInstallProgress`（`C/client/core_lifecycle/ports.rs:17,30,43`）移到 `C/updater/` 下新文件（按内容命名）；core_lifecycle 的运行时准备端口（`:84` 起）不动。更新使用者：`C/updater/{ports,instance,tests}.rs`、`C/client/application_workflow/mod.rs:33,838`、`C/client/core_lifecycle/{mod,workflow,adapters}.rs`、`C/client/mod.rs:1489,1494`、`C/client/test_support/workflow.rs`、`application_workflow/tests/{mod,startup,connection_policy}.rs`。
-- [ ] `parse_version` 与 `CoreVersionError`（`C/client/core_version.rs:6-50`，含生成的 `RunCoreVersionSnafu`、`CoreVersionExitSnafu`、`CoreVersionNotReportedSnafu`）移到 `nyanpasu-contracts` 新模块 `core_version`（V-15）：`#[snafu(visibility(pub))]`、`#[serde(skip)]`、`tag = "kind"` 的枚举形状、`#[specta(type = String)]` 原样；`parse_version` 返回原匹配 token（保留 `v`、`alpha-` 或 premium 前缀）。contracts 加 `semver = "1.0"`。`CoreVersionReader` 端口留在 `C/client/core_version.rs`。更新 `C/updater/instance.rs:670`、`C/client/{mod.rs,runtime_error.rs}`、`T/utils/core_version.rs:6,13,44` 等使用者。
-- [ ] `C/utils/candy.rs`（唯一使用者 `C/updater/instance.rs:27,111`）移到 `C/updater/` 下（按内容命名），含 `test_mirror_speed_test`（联网用例，不是确定性回归测试）。
+- [x] `PreparedCoreBinary`、`PreparedCoreCompanion`、`BinaryInstallProgress`（`C/client/core_lifecycle/ports.rs:17,30,43`）移到 `C/updater/` 下新文件（按内容命名）；core_lifecycle 的运行时准备端口（`:84` 起）不动。更新使用者：`C/updater/{ports,instance,tests}.rs`、`C/client/application_workflow/mod.rs:33,838`、`C/client/core_lifecycle/{mod,workflow,adapters}.rs`、`C/client/mod.rs:1489,1494`、`C/client/test_support/workflow.rs`、`application_workflow/tests/{mod,startup,connection_policy}.rs`。
+- [x] `parse_version` 与 `CoreVersionError`（`C/client/core_version.rs:6-50`，含生成的 `RunCoreVersionSnafu`、`CoreVersionExitSnafu`、`CoreVersionNotReportedSnafu`）移到 `nyanpasu-contracts` 新模块 `core_version`（V-15）：`#[snafu(visibility(pub))]`、`#[serde(skip)]`、`tag = "kind"` 的枚举形状、`#[specta(type = String)]` 原样；`parse_version` 返回原匹配 token（保留 `v`、`alpha-` 或 premium 前缀）。contracts 加 `semver = "1.0"`。`CoreVersionReader` 端口留在 `C/client/core_version.rs`。更新 `C/updater/instance.rs:670`、`C/client/{mod.rs,runtime_error.rs}`、`T/utils/core_version.rs:6,13,44` 等使用者。
+- [x] `C/utils/candy.rs`（唯一使用者 `C/updater/instance.rs:27,111`）移到 `C/updater/` 下（按内容命名），含 `test_mirror_speed_test`（联网用例，不是确定性回归测试）。
 
 **验证**
 
@@ -465,8 +465,8 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ## B4b — `nyanpasu-updater` 与注入的后端
 
-- [ ] 新建 `backend/nyanpasu-updater`：`C/updater/**` 与 `C/download/**` 整体移入（owner、`HttpUpdaterBackend`、下载与解包，V-14）。公开导出跨 crate 需要的项：`UpdaterClient`、`HttpUpdaterBackend`、`ports` 中的 `UpdaterBackend`、`CoreUpdateInstaller`、`CoreTypeMeta`（出现在 `UpdaterBackend::prepare`）与 B4a 的制品类型；core workflow 测试用的 `updater::tests::ReadyBackend`（`C/client/application_workflow/tests/mod.rs:927`）移到 updater 的 `test-support` 模块，不导出整个 tests 模块。
-- [ ] facade 不再构造 `HttpUpdaterBackend`（`C/client/mod.rs:508-518`）。updater crate 定义可失败的工厂：
+- [x] 新建 `backend/nyanpasu-updater`：`C/updater/**` 与 `C/download/**` 整体移入（owner、`HttpUpdaterBackend`、下载与解包，V-14）。公开导出跨 crate 需要的项：`UpdaterClient`、`HttpUpdaterBackend`、`ports` 中的 `UpdaterBackend`、`CoreUpdateInstaller`、`CoreTypeMeta`（出现在 `UpdaterBackend::prepare`）与 B4a 的制品类型；core workflow 测试用的 `updater::tests::ReadyBackend`（`C/client/application_workflow/tests/mod.rs:927`）移到 updater 的 `test-support` 模块，不导出整个 tests 模块。
+- [x] facade 不再构造 `HttpUpdaterBackend`（`C/client/mod.rs:508-518`）。updater crate 定义可失败的工厂：
 
   ```rust
   pub type BackendFactory = dyn Fn(Arc<dyn SelfProxyPortSource>)
@@ -476,9 +476,9 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
   `BackendFactoryError` 是模块自有 snafu 枚举，两个变体对应"取可执行文件路径失败"（source `io::Error`）与"可执行文件没有父目录"。`ClientSetupArgs` 增加 `Arc<BackendFactory>` 字段，facade 在原位置（会话端口源已存在、workflow 已构造之后）调用，把两个变体映射回现有的 `SetupError::LocateExecutable`、`LocateExecutableParent`（`:171-173`），不另加一层显示或 source。tauri `T/setup.rs` 的闭包在被调用时执行 `std::env::current_exe()` 与取父目录，再用 `PathResolver`、元数据构造 `HttpUpdaterBackend`。后端的 HTTP 客户端（UA、120 s 超时、有 mixed 端口时显式走 self proxy 否则保留 reqwest 默认系统代理，`C/updater/instance.rs:76-89`）原样随后端，不改用 net 的策略。
 
-- [ ] core 的 `Cargo.toml` 删除 `zip`、`tar`、`flate2`、`bolt-load`（`:33-35,63`）、`smol-cancellation-token` 及其他只被 updater、download 使用的依赖，updater crate 声明它们。
-- [ ] 调用方迁完：core 的 client updater API、workflow 安装实现、测试装配；tauri 的 `setup.rs`、`ipc.rs` 与 specta 导出（`ManifestVersionLatest`、`UpdaterState`、`UpdaterSummary`、`DownloaderState`、`DownloadStatus` 名字不变）。
-- [ ] 登记：workspace；`CORE_FAMILY` 加它（正反策略测试）；`STATIC_GATE_PREFIXES`；musl 脚本；`backend-packages.md`、`architecture.md`；路线图的 Delivered baseline 与 Phase B 状态。
+- [x] core 的 `Cargo.toml` 删除 `zip`、`tar`、`flate2`、`bolt-load`（`:33-35,63`）、`smol-cancellation-token` 及其他只被 updater、download 使用的依赖，updater crate 声明它们。
+- [x] 调用方迁完：core 的 client updater API、workflow 安装实现、测试装配；tauri 的 `setup.rs`、`ipc.rs` 与 specta 导出（`ManifestVersionLatest`、`UpdaterState`、`UpdaterSummary`、`DownloaderState`、`DownloadStatus` 名字不变）。
+- [x] 登记：workspace；`CORE_FAMILY` 加它（正反策略测试）；`STATIC_GATE_PREFIXES`；musl 脚本；`backend-packages.md`、`architecture.md`；路线图的 Delivered baseline 与 Phase B 状态。
 
 **验证**
 

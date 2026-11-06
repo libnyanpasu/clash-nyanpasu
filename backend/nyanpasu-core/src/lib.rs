@@ -37,7 +37,6 @@ pub mod geo;
 pub mod logs;
 #[cfg(test)]
 mod migration_integration_tests;
-pub mod owner_shutdown;
 #[cfg(test)]
 mod profile_integration_tests;
 pub mod service;

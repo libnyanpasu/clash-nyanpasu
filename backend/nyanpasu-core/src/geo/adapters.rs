@@ -8,14 +8,14 @@ use std::{
 };
 
 use notify_debouncer_full::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
+use nyanpasu_contracts::BoxedCause;
 use nyanpasu_geodata::{IpIndex, MihomoGeoFiles, read_source};
-use sha2::{Digest, Sha256};
-use snafu::ResultExt as _;
-
-use super::ports::{
+use nyanpasu_observers::geo::{
     CountryIndexSource, GeoIndexError, GeodataMode, IndexDatabaseSnafu, IndexKey, ListHomeSnafu,
     Loaded, OnChange, ReadDatabaseSnafu, WatchHomeSnafu,
 };
+use sha2::{Digest, Sha256};
+use snafu::ResultExt as _;
 
 /// The names the core resolves its country database from, compared ignoring ASCII case.
 const COUNTRY_DATABASES: [&str; 4] = ["Country.mmdb", "geoip.db", "geoip.metadb", "GeoIP.dat"];
@@ -156,9 +156,11 @@ impl CountryIndexSource for FsCountryIndexSource {
                 Err(errors) => tracing::warn!(?errors, "the core's home could not be watched"),
             },
         )
+        .map_err(BoxedCause::from)
         .context(WatchHomeSnafu)?;
         debouncer
             .watch(&self.home, RecursiveMode::NonRecursive)
+            .map_err(BoxedCause::from)
             .context(WatchHomeSnafu)?;
         Ok(Box::new(debouncer))
     }
@@ -201,10 +203,52 @@ fn open_image(image: &Path) -> io::Result<File> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
+    use std::{error::Error as _, net::IpAddr};
+
+    use nyanpasu_observers::geo::fixtures::geoip_dat;
 
     use super::*;
-    use crate::geo::fixtures::geoip_dat;
+
+    #[test]
+    fn watch_home_error_preserves_display_and_source() {
+        use notify_debouncer_full::notify::ErrorKind;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("missing-home");
+        let adapter = FsCountryIndexSource::new(home.clone(), dir.path().join("cache"));
+        // notify 8.2 rejects missing paths in ReadDirectoryChangesWatcher::watch_inner,
+        // INotifyWatcher::add_single_watch and FsEventWatcher::append_path.
+        let error = match adapter.watch(OnChange::new(|| {})) {
+            Ok(_) => panic!("watching a missing home must fail"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.to_string(), "could not watch the core's home");
+        let source = error.source().unwrap();
+        assert!(source.source().is_none());
+        let notify = source
+            .downcast_ref::<notify_debouncer_full::notify::Error>()
+            .expect("the original watcher error is retained");
+        #[cfg(windows)]
+        {
+            assert!(notify.paths.is_empty());
+            assert!(matches!(&notify.kind, ErrorKind::Generic(message)
+                if message == "Input watch path is neither a file nor a directory."));
+            assert_eq!(
+                source.to_string(),
+                "Input watch path is neither a file nor a directory."
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(notify.paths, [home.clone()]);
+            assert!(matches!(notify.kind, ErrorKind::PathNotFound));
+            assert_eq!(
+                source.to_string(),
+                format!("No path was found. about {:?}", [home])
+            );
+        }
+    }
 
     struct Home {
         dir: tempfile::TempDir,

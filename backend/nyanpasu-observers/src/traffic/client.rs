@@ -39,7 +39,7 @@ impl TrafficClient {
         let (actor, _) = Actor::spawn(None, TrafficActor::<S>(std::marker::PhantomData), args)
             .await
             .map_err(|source| Error::SpawnActor { source })?;
-        crate::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor })))
     }
 
@@ -119,28 +119,31 @@ impl TrafficClient {
             .await??)
     }
 
-    #[cfg(test)]
-    pub(super) async fn stored_report(&self, request: ReportRequest) -> Result<TrafficReport> {
+    /// Queries only persisted traffic, excluding the current session, for storage assertions.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn stored_report(&self, request: ReportRequest) -> Result<TrafficReport> {
         Ok(self
             .call(|reply| Message::StoredReport(request, reply))
             .await??)
     }
-    #[cfg(test)]
-    pub(super) async fn stored_closed(&self) -> Result<ClosedPage> {
+    /// Lists only persisted closed connections for storage assertions.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn stored_closed(&self) -> Result<ClosedPage> {
         Ok(self.call(Message::StoredClosed).await??)
     }
 
     /// Delivers what the pump would: a frame, or `None` for a lost feed.
-    #[cfg(test)]
-    pub(super) async fn observe(&self, frame: Option<nyanpasu_traffic::Frame>) -> Result<()> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn observe(&self, frame: Option<nyanpasu_traffic::Frame>) -> Result<()> {
         match frame {
             Some(frame) => self.call(|reply| Message::Observe(frame, reply)).await,
             None => self.call(Message::Disconnected).await,
         }
     }
 
-    #[cfg(test)]
-    pub(super) async fn flush(&self) -> Result<()> {
+    /// Waits for the owner to attempt a flush of the current session.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn flush(&self) -> Result<()> {
         self.call(Message::Flush).await
     }
 }

@@ -1,12 +1,13 @@
 //! Temporary-directory-backed log storage and actor fixtures shared by backend tests.
 
+use nyanpasu_observers::logs::{
+    CoreLogCursor, CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult,
+    CoreLogStatus, CoreLogStore, CoreLogsClient, PreparedCoreLog,
+};
 use tempfile::TempDir;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    CoreLogCursor, CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult,
-    CoreLogStatus, CoreLogStore, CoreLogsClient, PreparedCoreLog, RedbCoreLogStore,
-};
+use super::RedbCoreLogStore;
 
 pub(super) struct TestStore {
     // Field drop order keeps the directory until the database has closed.
@@ -39,22 +40,20 @@ impl CoreLogStore for TestStore {
         self.inner.status()
     }
 }
-impl CoreLogsClient {
-    pub async fn test_client() -> Self {
-        let directory = TempDir::new().unwrap();
-        let store = TestStore {
-            inner: RedbCoreLogStore::open(directory.path().into()).unwrap(),
-            _directory: directory,
-        };
-        let client = Self::spawn(
-            Box::new(store),
-            Default::default(),
-            CancellationToken::new(),
-            &TaskTracker::new(),
-        )
-        .await
-        .unwrap();
-        client.set_instance(Some("instance".into())).await.unwrap();
-        client
-    }
+pub(crate) async fn test_client() -> CoreLogsClient {
+    let directory = TempDir::new().unwrap();
+    let store = TestStore {
+        inner: RedbCoreLogStore::open(directory.path().into()).unwrap(),
+        _directory: directory,
+    };
+    let client = CoreLogsClient::spawn(
+        Box::new(store),
+        Default::default(),
+        CancellationToken::new(),
+        &TaskTracker::new(),
+    )
+    .await
+    .unwrap();
+    client.set_instance(Some("instance".into())).await.unwrap();
+    client
 }

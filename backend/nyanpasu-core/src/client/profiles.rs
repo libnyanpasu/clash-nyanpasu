@@ -176,7 +176,7 @@ impl ProfilesClient {
 
         let loaded = snapshot.load().state.clone();
         let preparation = materialization.clone();
-        let report = crate::utils::blocking::join(
+        let report = nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || preparation.reconcile(&loaded)).await,
         )
         .context(PrepareMaterializationSnafu)?;
@@ -200,7 +200,7 @@ impl ProfilesClient {
         .await
         .context(SpawnActorSnafu)?
         .0;
-        crate::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ProfilesClientInner {

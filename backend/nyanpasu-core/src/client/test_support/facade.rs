@@ -61,7 +61,7 @@ pub(crate) async fn test_client_with_ports(
         clash_config,
         system_dns,
         Arc::new(MockDirectEgressProbe::new()),
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         os_proxy,
     )
     .await
@@ -74,7 +74,7 @@ pub(crate) async fn test_client_from_typed_clients(
     clash_config: ClashConfigClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
-    geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+    geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
     os_proxy: Arc<dyn OsProxyPort>,
 ) -> NyanpasuClient {
     let profiles = profiles::ProfilesClient::new(
@@ -161,7 +161,7 @@ pub(crate) async fn test_client_with_direct_egress(
         clash_config,
         Arc::new(NoopSystemDnsCache),
         direct_egress,
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
     )
     .await
@@ -223,7 +223,7 @@ pub async fn test_client_with_profile_ports(
         service,
         Arc::new(NoopSystemDnsCache),
         Arc::new(MockDirectEgressProbe::new()),
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
@@ -343,7 +343,7 @@ pub async fn test_client_with_materialization(
         service,
         Arc::new(NoopSystemDnsCache),
         Arc::new(MockDirectEgressProbe::new()),
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         Arc::new(crate::client::core_version::MockCoreVersionReader::new()),

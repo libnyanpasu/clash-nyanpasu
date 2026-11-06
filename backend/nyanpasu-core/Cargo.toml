@@ -18,10 +18,13 @@ test-support = [
   'dep:axum',
   'nyanpasu-contracts/test-support',
   'nyanpasu-migration/test-support',
+  'nyanpasu-observers/test-support',
   'nyanpasu-profile-transform/test-support'
 ]
 
 [dependencies]
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
@@ -129,6 +132,9 @@ winreg = { version = '0.56', features = ['transactions'] }
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false, features = [
   'test-support'
 ] }

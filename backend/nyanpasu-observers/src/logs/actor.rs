@@ -20,7 +20,7 @@ enum Message {
     Configure(CoreLogSettings, RpcReplyPort<CoreLogResult<()>>),
     SetInstance(Option<String>, RpcReplyPort<CoreLogResult<()>>),
     Status(RpcReplyPort<CoreLogStatus>),
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     FlushNow(RpcReplyPort<CoreLogResult<()>>),
 }
 struct Args {
@@ -194,13 +194,13 @@ impl State {
             }
         };
         if !self.pending.is_empty()
-            && self.pending_bytes + record.bytes.len() > BATCH_BYTES
+            && self.pending_bytes + record.bytes().len() > BATCH_BYTES
             && let Err(error) = self.flush().await
         {
             self.discard(actor);
             return Err(error);
         }
-        self.pending_bytes += record.bytes.len();
+        self.pending_bytes += record.bytes().len();
         self.pending.push(record);
         if self.pending_bytes >= BATCH_BYTES {
             self.flush().await?;
@@ -311,7 +311,7 @@ impl Actor for CoreLogsActor {
                 };
                 let _ = reply.send(result);
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Message::FlushNow(reply) => {
                 let _ = reply.send(state.flush().await);
             }
@@ -373,7 +373,7 @@ impl CoreLogsClient {
         )
         .await
         .map_err(|source| Error::SpawnActor { source })?;
-        crate::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor, changed })))
     }
 
@@ -420,8 +420,9 @@ impl CoreLogsClient {
     pub fn subscribe(&self) -> watch::Receiver<CoreLogStatus> {
         self.0.changed.subscribe()
     }
-    #[cfg(test)]
-    pub(super) async fn flush(&self) -> CoreLogResult<()> {
+    /// Flushes pending records and waits for the storage result in tests.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn flush(&self) -> CoreLogResult<()> {
         self.call(Message::FlushNow).await?
     }
 }

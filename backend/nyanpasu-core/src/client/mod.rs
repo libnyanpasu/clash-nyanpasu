@@ -15,6 +15,10 @@ use nyanpasu_migration::{
         StorageSnapshot, StorageSource,
     },
 };
+use nyanpasu_observers::{
+    logs::CoreLogsClient,
+    traffic::{TrafficClient, TrafficFeed, TrafficOwnerFactory, TrafficStartArgs},
+};
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
@@ -32,6 +36,7 @@ pub mod effects;
 mod error;
 mod event_sink;
 pub mod frontend_events;
+mod geo_mode;
 pub mod host_adapters;
 pub mod hotkey;
 pub mod jobs;
@@ -54,6 +59,7 @@ pub mod system_proxy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod traffic;
+pub(crate) mod traffic_frames;
 
 use self::{
     application::ApplicationClient,
@@ -122,7 +128,7 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub direct_egress: Arc<dyn DirectEgressProbe>,
-    pub geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+    pub geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
@@ -130,7 +136,7 @@ pub struct ClientSetupArgs {
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
-    pub traffic_store: Option<Arc<dyn crate::traffic::TrafficOwnerFactory>>,
+    pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -153,7 +159,9 @@ pub enum SetupError {
     #[snafu(display("failed to start http server"))]
     StartHttpServer { source: debug_http::Error },
     #[snafu(display("failed to start core logs"))]
-    StartCoreLogs { source: crate::logs::SpawnError },
+    StartCoreLogs {
+        source: nyanpasu_observers::logs::SpawnError,
+    },
     #[snafu(display("failed to start streams"))]
     StartStreams { source: crate::clash::ws::Error },
     #[snafu(display("failed to start app logs"))]
@@ -169,7 +177,9 @@ pub enum SetupError {
     #[snafu(display("failed to start proxies"))]
     StartProxies { source: crate::proxies::Error },
     #[snafu(display("failed to start geo index"))]
-    StartGeoIndex { source: crate::geo::SpawnError },
+    StartGeoIndex {
+        source: nyanpasu_observers::geo::SpawnError,
+    },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -235,7 +245,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: Arc<dyn DebugHttpControl>,
     bundle_metadata: BundleMetadata,
-    core_logs: crate::logs::CoreLogsClient,
+    core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -253,7 +263,7 @@ struct NyanpasuClientInner {
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
-    traffic: Option<crate::traffic::TrafficClient>,
+    traffic: Option<TrafficClient>,
     updater: crate::updater::UpdaterClient,
     core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
@@ -265,7 +275,7 @@ struct NyanpasuClientInner {
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
-    _geo_index: crate::geo::GeoIndexClient,
+    _geo_index: nyanpasu_observers::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
@@ -402,14 +412,14 @@ impl NyanpasuClient {
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
-        geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+        geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-        traffic_store: Option<Arc<dyn crate::traffic::TrafficOwnerFactory>>,
+        traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
@@ -427,7 +437,7 @@ impl NyanpasuClient {
                 }
             }
         });
-        let core_logs = crate::logs::CoreLogsClient::spawn(
+        let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
             shutdown.child_token(),
@@ -588,10 +598,10 @@ impl NyanpasuClient {
             crate::proxies::ProxiesClient::spawn(core_v2.clone(), shutdown.child_token(), &tasks)
                 .await
                 .context(StartProxiesSnafu)?;
-        let geo_index = crate::geo::GeoIndexClient::spawn(
-            crate::geo::GeoIndexArgs {
+        let geo_index = nyanpasu_observers::geo::GeoIndexClient::spawn(
+            nyanpasu_observers::geo::GeoIndexArgs {
                 source: geo_index,
-                core: core_v2.clone(),
+                mode_source: Arc::new(geo_mode::CoreModeSource::new(core_v2.clone())),
             },
             shutdown.child_token(),
             &tasks,
@@ -606,7 +616,7 @@ impl NyanpasuClient {
             Some(store) => {
                 match store
                     .spawn(
-                        crate::traffic::TrafficStartArgs {
+                        TrafficStartArgs {
                             profile: nyanpasu_tsdb::Profile::desktop(),
                             profiles: Arc::new(traffic::SelectedProfile::new(
                                 profiles.snapshot_handle(),
@@ -615,7 +625,10 @@ impl NyanpasuClient {
                                 application.snapshot_handle(),
                             )),
                             clock: Arc::new(traffic::SystemClock),
-                            frames: streams.subscribe_connection_frames(),
+                            frames: TrafficFeed::new(
+                                streams.subscribe_connection_frames(),
+                                Arc::new(traffic_frames::ClashFrameNormalizer),
+                            ),
                             geo: geo_index.subscribe(),
                             local_source: local_source.clone(),
                         },
@@ -760,7 +773,7 @@ impl NyanpasuClient {
     pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
         let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
         let bundle_metadata = self.inner.bundle_metadata;
-        crate::utils::blocking::join(
+        nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let info = backup::create_backup(&BackupRequest {
                     bundle_metadata,
@@ -922,12 +935,16 @@ impl NyanpasuClient {
     ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
     {
         let os_proxy = self.inner.os_proxy.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || os_proxy.get()).await,
+        )
     }
 
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || system_dns.flush()).await,
+        )
     }
 
     /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.
@@ -1711,7 +1728,7 @@ pub(crate) mod tests {
             clash_config,
             Arc::new(NoopSystemDnsCache),
             Arc::new(MockDirectEgressProbe::new()),
-            Arc::new(crate::geo::NoopCountryIndexSource),
+            Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await;
@@ -1931,7 +1948,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
-        use crate::traffic::LocalSourceLocation;
+        use nyanpasu_observers::traffic::LocalSourceLocation;
         let dir = tempdir().unwrap();
         let mut probe = MockDirectEgressProbe::new();
         let mut sequence = mockall::Sequence::new();
@@ -1990,7 +2007,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_discards_an_answer_when_tun_is_enabled_during_the_request() {
-        use crate::traffic::LocalSourceLocation;
+        use nyanpasu_observers::traffic::LocalSourceLocation;
         struct WaitingProbe {
             started: tokio::sync::Notify,
             release: tokio::sync::Notify,
@@ -2427,7 +2444,7 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             direct_egress: Arc::new(MockDirectEgressProbe::new()),
-            geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
+            geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(crate::client::core_version::MockCoreVersionReader::new()),

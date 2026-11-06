@@ -34,7 +34,7 @@ pub async fn start(
     let mut service = match start_service(&path, capture.clone()).await {
         Err(error) if error.unusable_journal() => {
             let journal = path.clone();
-            crate::utils::blocking::join(
+            nyanpasu_owner_support::blocking::join(
                 tokio::task::spawn_blocking(move || {
                     nyanpasu_persistence::preserve(&journal, &error)
                 })
@@ -69,7 +69,7 @@ pub async fn start(
 async fn start_service(path: &Path, capture: LogCapture) -> Result<JobsService, Error> {
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
     let store_path = path.to_owned();
-    let store = crate::utils::blocking::join(
+    let store = nyanpasu_owner_support::blocking::join(
         tokio::task::spawn_blocking(move || open_store(&store_path)).await,
     )?;
     let mut limits = Limits::default();

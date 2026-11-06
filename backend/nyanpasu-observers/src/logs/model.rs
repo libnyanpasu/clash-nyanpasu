@@ -71,11 +71,21 @@ impl CoreLogRecord {
 /// An admitted record: JSON and its index key are computed only once.
 #[derive(Debug)]
 pub struct PreparedCoreLog {
-    pub(super) bytes: Vec<u8>,
-    pub(super) level: u8,
+    bytes: Vec<u8>,
+    level: u8,
 }
 
 impl PreparedCoreLog {
+    /// Returns the admitted JSON bytes without allowing the record to change.
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Returns the index key computed from the admitted record's level.
+    pub fn level(&self) -> u8 {
+        self.level
+    }
+
     pub fn new(record: &CoreLogRecord) -> CoreLogResult<Self> {
         if !record.metadata_fits() {
             return Err(CoreLogError::TooLarge);
@@ -143,7 +153,8 @@ pub fn normalize_level(level: &str) -> String {
     }
 }
 
-pub(super) fn level_code(level: &str) -> u8 {
+/// Maps normalized log levels to their persisted index keys.
+pub fn level_code(level: &str) -> u8 {
     match normalize_level(level).as_str() {
         "debug" => 0,
         "info" => 1,
@@ -155,7 +166,8 @@ pub(super) fn level_code(level: &str) -> u8 {
     }
 }
 
-pub(super) fn truncate_preview(value: &mut String) -> bool {
+/// Bounds a preview on a UTF-8 boundary and releases its excess allocation.
+pub fn truncate_preview(value: &mut String) -> bool {
     if value.len() <= PREVIEW_BYTES {
         return false;
     }

@@ -11,6 +11,7 @@ use axum::{
     routing::{get, post},
 };
 use futures::{StreamExt, stream};
+use nyanpasu_observers::logs::CoreLogError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::Manager;
@@ -150,7 +151,7 @@ impl RpcError {
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
             }
-            if let Some(log) = error.downcast_ref::<nyanpasu_core::logs::CoreLogError>() {
+            if let Some(log) = error.downcast_ref::<CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -477,6 +478,7 @@ mod tests {
         http::Request,
     };
     use futures::StreamExt;
+    use nyanpasu_observers::logs::{CoreLogRecord, CoreLogSource, PreparedCoreLog};
     use tower::ServiceExt;
 
     #[test]
@@ -1176,8 +1178,8 @@ mod tests {
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
-                    nyanpasu_core::logs::PreparedCoreLog::new(&nyanpasu_core::logs::CoreLogRecord {
-                        source: nyanpasu_core::logs::CoreLogSource {
+                    PreparedCoreLog::new(&CoreLogRecord {
+                        source: CoreLogSource {
                             capture: "http-fixture".into(),
                             instance_id: "instance".into(),
                             core_kind: Some("Mihomo".into()),

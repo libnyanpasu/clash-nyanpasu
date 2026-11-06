@@ -783,7 +783,7 @@ pub async fn test_client_args_with_endpoint(
         service,
         system_dns: Arc::new(NoopSystemDnsCache),
         direct_egress: Arc::new(MockDirectEgressProbe::new()),
-        geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
+        geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         os_proxy: Arc::new(MockOsProxyPort::new()),
         binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         core_versions: Arc::new(core_version::MockCoreVersionReader::new()),

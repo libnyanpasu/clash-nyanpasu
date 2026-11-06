@@ -58,7 +58,7 @@ impl SessionStateClient {
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
         let path = config_path.clone();
-        let state = crate::utils::blocking::join(
+        let state = nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || {
                 nyanpasu_migration::session_state::read(path.as_std_path())
             })
@@ -79,7 +79,7 @@ impl SessionStateClient {
             .await
             .context(SpawnActorSnafu)?
             .0;
-        crate::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(SessionStateClientInner {

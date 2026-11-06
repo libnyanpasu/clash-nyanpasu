@@ -1,17 +1,11 @@
-mod actor;
+//! Redb log storage and codec adapters for the observation owner.
+
 mod codec;
-mod model;
-mod ports;
 mod redb;
 
-pub use actor::CoreLogsClient;
-pub use model::*;
-pub use ports::{CoreLogStore, UnavailableCoreLogStore};
 pub use redb::RedbCoreLogStore;
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;
-
-pub use actor::Error as SpawnError;

@@ -291,7 +291,7 @@ impl PacPort for HttpPacBackend {
         ensure!(!cancel.is_cancelled(), DownloadCancelledSnafu);
 
         let url = url.to_string();
-        nyanpasu_core::utils::blocking::join(
+        nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || {
                 Autoproxy {
                     enable: true,

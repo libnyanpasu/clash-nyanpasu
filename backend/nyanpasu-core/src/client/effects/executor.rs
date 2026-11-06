@@ -11,6 +11,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
+use nyanpasu_observers::logs::CoreLogsClient;
+
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
@@ -32,9 +35,7 @@ use crate::{
         },
         system_proxy::SystemProxyClient,
     },
-    logs::CoreLogsClient,
 };
-use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,

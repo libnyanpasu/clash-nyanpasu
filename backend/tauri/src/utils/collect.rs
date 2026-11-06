@@ -2,13 +2,14 @@
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core::{
     client::{NyanpasuClient, core_version::CoreVersionReader},
-    logs::{CoreLogExport, CoreLogStore, RedbCoreLogStore},
+    logs::RedbCoreLogStore,
 };
 use nyanpasu_diagnose::{
     Action, Event, Step,
     archive::{Archive, LOG_CAP},
     report::{CoreInfo, PageCapabilities, Report},
 };
+use nyanpasu_observers::logs::{CoreLogExport, CoreLogStore};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_persistence::format::Format;
 use std::{io::Write, process::Stdio, time::Duration};
@@ -208,7 +209,7 @@ pub async fn logs_archive(
     paths: PathResolver,
     client: NyanpasuClient,
 ) -> anyhow::Result<std::path::PathBuf> {
-    nyanpasu_core::utils::blocking::join(
+    nyanpasu_owner_support::blocking::join(
         tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Handle::current();
             let steps: Vec<(Step, Action<'_>)> = vec![

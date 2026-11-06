@@ -998,7 +998,7 @@ impl ServiceClient {
         tasks: &tokio_util::task::TaskTracker,
         shutdown: tokio_util::sync::CancellationToken,
     ) {
-        crate::owner_shutdown::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
     }
 
     pub async fn spawn(

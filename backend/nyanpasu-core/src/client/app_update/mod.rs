@@ -1042,7 +1042,7 @@ impl AppUpdateClient {
         let (actor, _) = Actor::spawn(None, AppUpdateActor, args.clone())
             .await
             .map_err(|source| Error::SpawnActor { source })?;
-        crate::owner_shutdown::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner(actor))))
     }
 

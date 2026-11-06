@@ -5,7 +5,7 @@ use clash_api::{ConfigEnum, ConnectionNetwork, DnsMode, api::ConnectionMetadataF
 use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{GeoBasis, normalize_region};
 
-use super::LocalSourceIps;
+use nyanpasu_observers::traffic::LocalSourceIps;
 
 const UNKNOWN: &str = "unknown";
 
@@ -417,8 +417,10 @@ pub(crate) mod tests {
 
     #[test]
     fn an_index_reads_one_country_among_category_tags() {
-        let dat =
-            crate::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"]), ("GOOGLE", &["8.8.8.0/24"])]);
+        let dat = nyanpasu_observers::geo::fixtures::geoip_dat(&[
+            ("US", &["8.0.0.0/8"]),
+            ("GOOGLE", &["8.8.8.0/24"]),
+        ]);
         let index = IpIndex::from_geoip_dat(&dat).unwrap();
 
         assert_eq!(

@@ -1,4 +1,3 @@
-pub mod blocking;
 pub mod candy;
 pub mod config;
 pub mod dirs;

@@ -5428,7 +5428,10 @@ export type StorageValueChangedEvent = {
 export type StunAttempt =
   /**  The server named the address the request came from. */
   | { kind: 'answered'; address: string; latency_ms: number }
-  /**  The host has no address of this family, or did not resolve. */
+  /**
+   *  The host has no address of this family it may be asked at, or did not
+   *  resolve.
+   */
   | { kind: 'no_address' }
   | { kind: 'no_answer' }
 

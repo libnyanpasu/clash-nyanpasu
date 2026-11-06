@@ -49,11 +49,12 @@ const useTypedConfig = <TConfig, TPatch>(
     mutationFn: async (patch: TPatch) => {
       return unwrapResult(await invokeMutation(patchConfig, [patch]))
     },
-    onSuccess: () => {
+    // Returning the refetch keeps the patch pending until the config is read
+    // back, so the next patch is built from saved values, not stale ones.
+    onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: configQuery.queryKey,
-      })
-    },
+      }),
   })
 
   return {

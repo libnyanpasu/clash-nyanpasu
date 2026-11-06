@@ -29,6 +29,8 @@ pub enum ConfigError {
     InvalidUpdateSources { reason: String },
     #[snafu(display("invalid core log settings: {reason}"))]
     InvalidCoreLogs { reason: String },
+    #[snafu(display("invalid public IP probe sources: {reason}"))]
+    InvalidPublicIpProbeSources { reason: String },
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
     #[snafu(display("the hotkey list is invalid"))]

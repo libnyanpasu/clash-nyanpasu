@@ -289,6 +289,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_public_ip_probe_sources_are_not_committed() {
+        use nyanpasu_config::application::{StunServer, StunServerCapabilities};
+        let (client, _dir) = test_client().await;
+        let committed_version = client.snapshot().version;
+        let server = StunServer {
+            host: "stun.example.com".into(),
+            port: 3478,
+            enabled: true,
+            capabilities: StunServerCapabilities::default(),
+            builtin: false,
+        };
+
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.stun_servers = Some(vec![server.clone(), server]);
+
+        assert!(matches!(
+            client.patch(patch).await,
+            Err(ConfigError::InvalidPublicIpProbeSources { .. })
+        ));
+        assert_eq!(client.snapshot().version, committed_version);
+    }
+
+    #[tokio::test]
     async fn update_sources_preserve_order_and_reject_invalid_writes() {
         use nyanpasu_config::application::UpdateSource;
         let (client, dir) = test_client().await;

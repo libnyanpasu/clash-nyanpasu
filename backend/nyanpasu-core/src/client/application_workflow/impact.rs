@@ -807,6 +807,21 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "stun_servers",
+                mutate: |app| app.stun_servers.clear(),
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
+                field: "ip_lookup_providers",
+                mutate: |app| {
+                    app.ip_lookup_providers =
+                        vec![nyanpasu_config::application::IpLookupProvider::Ipify]
+                },
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "traffic_retention",
                 mutate: |app| {
                     app.traffic_retention = nyanpasu_config::application::TrafficRetention::Forever

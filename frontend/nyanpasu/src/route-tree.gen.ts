@@ -63,6 +63,7 @@ import { Route as mainMainSettingsClashNetworkIndexRouteImport } from './pages/(
 import { Route as mainMainSettingsClashRuntimeIndexRouteImport } from './pages/(main)/main/settings/clash/runtime/index'
 import { Route as mainMainSettingsNyanpasuInterfaceIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/index'
 import { Route as mainMainSettingsNyanpasuLogsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/logs/index'
+import { Route as mainMainSettingsNyanpasuPublicIpIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/public-ip/index'
 import { Route as mainMainSettingsNyanpasuShortcutsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/shortcuts/index'
 import { Route as mainMainSettingsNyanpasuTrayIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/tray/index'
 import { Route as mainMainSettingsNyanpasuUpdatesIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/updates/index'
@@ -371,6 +372,12 @@ const mainMainSettingsNyanpasuLogsIndexRoute =
     path: '/nyanpasu/logs/',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
+const mainMainSettingsNyanpasuPublicIpIndexRoute =
+  mainMainSettingsNyanpasuPublicIpIndexRouteImport.update({
+    id: '/nyanpasu/public-ip/',
+    path: '/nyanpasu/public-ip/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsNyanpasuShortcutsIndexRoute =
   mainMainSettingsNyanpasuShortcutsIndexRouteImport.update({
     id: '/nyanpasu/shortcuts/',
@@ -462,6 +469,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
   '/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   '/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
+  '/main/settings/nyanpasu/public-ip/': typeof mainMainSettingsNyanpasuPublicIpIndexRoute
   '/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
   '/main/settings/nyanpasu/updates/': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -510,6 +518,7 @@ export interface FileRoutesByTo {
   '/main/settings/clash/runtime': typeof mainMainSettingsClashRuntimeIndexRoute
   '/main/settings/nyanpasu/interface': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   '/main/settings/nyanpasu/logs': typeof mainMainSettingsNyanpasuLogsIndexRoute
+  '/main/settings/nyanpasu/public-ip': typeof mainMainSettingsNyanpasuPublicIpIndexRoute
   '/main/settings/nyanpasu/shortcuts': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/main/settings/nyanpasu/tray': typeof mainMainSettingsNyanpasuTrayIndexRoute
   '/main/settings/nyanpasu/updates': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -573,6 +582,7 @@ export interface FileRoutesById {
   '/(main)/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
   '/(main)/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   '/(main)/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
+  '/(main)/main/settings/nyanpasu/public-ip/': typeof mainMainSettingsNyanpasuPublicIpIndexRoute
   '/(main)/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/(main)/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
   '/(main)/main/settings/nyanpasu/updates/': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -636,6 +646,7 @@ export interface FileRouteTypes {
     | '/main/settings/clash/runtime/'
     | '/main/settings/nyanpasu/interface/'
     | '/main/settings/nyanpasu/logs/'
+    | '/main/settings/nyanpasu/public-ip/'
     | '/main/settings/nyanpasu/shortcuts/'
     | '/main/settings/nyanpasu/tray/'
     | '/main/settings/nyanpasu/updates/'
@@ -684,6 +695,7 @@ export interface FileRouteTypes {
     | '/main/settings/clash/runtime'
     | '/main/settings/nyanpasu/interface'
     | '/main/settings/nyanpasu/logs'
+    | '/main/settings/nyanpasu/public-ip'
     | '/main/settings/nyanpasu/shortcuts'
     | '/main/settings/nyanpasu/tray'
     | '/main/settings/nyanpasu/updates'
@@ -746,6 +758,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/clash/runtime/'
     | '/(main)/main/settings/nyanpasu/interface/'
     | '/(main)/main/settings/nyanpasu/logs/'
+    | '/(main)/main/settings/nyanpasu/public-ip/'
     | '/(main)/main/settings/nyanpasu/shortcuts/'
     | '/(main)/main/settings/nyanpasu/tray/'
     | '/(main)/main/settings/nyanpasu/updates/'
@@ -1140,6 +1153,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsNyanpasuLogsIndexRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
+    '/(main)/main/settings/nyanpasu/public-ip/': {
+      id: '/(main)/main/settings/nyanpasu/public-ip/'
+      path: '/nyanpasu/public-ip'
+      fullPath: '/main/settings/nyanpasu/public-ip/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuPublicIpIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/settings/nyanpasu/shortcuts/': {
       id: '/(main)/main/settings/nyanpasu/shortcuts/'
       path: '/nyanpasu/shortcuts'
@@ -1335,6 +1355,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsClashRuntimeIndexRoute: typeof mainMainSettingsClashRuntimeIndexRoute
   mainMainSettingsNyanpasuInterfaceIndexRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   mainMainSettingsNyanpasuLogsIndexRoute: typeof mainMainSettingsNyanpasuLogsIndexRoute
+  mainMainSettingsNyanpasuPublicIpIndexRoute: typeof mainMainSettingsNyanpasuPublicIpIndexRoute
   mainMainSettingsNyanpasuShortcutsIndexRoute: typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   mainMainSettingsNyanpasuTrayIndexRoute: typeof mainMainSettingsNyanpasuTrayIndexRoute
   mainMainSettingsNyanpasuUpdatesIndexRoute: typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -1361,6 +1382,8 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
     mainMainSettingsNyanpasuInterfaceIndexRoute,
   mainMainSettingsNyanpasuLogsIndexRoute:
     mainMainSettingsNyanpasuLogsIndexRoute,
+  mainMainSettingsNyanpasuPublicIpIndexRoute:
+    mainMainSettingsNyanpasuPublicIpIndexRoute,
   mainMainSettingsNyanpasuShortcutsIndexRoute:
     mainMainSettingsNyanpasuShortcutsIndexRoute,
   mainMainSettingsNyanpasuTrayIndexRoute:

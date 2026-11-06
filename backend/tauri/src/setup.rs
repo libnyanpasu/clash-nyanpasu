@@ -1,6 +1,6 @@
 //! Setup logic for the app
 use nyanpasu_core::client::{
-    bundle_metadata::BundleMetadata, direct_egress::HttpDirectEgressProbe,
+    bundle_metadata::BundleMetadata, direct_egress::NetworkDirectEgressProbe,
     owner_shutdown::track_until_shutdown,
 };
 
@@ -431,7 +431,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
-        direct_egress: Arc::new(HttpDirectEgressProbe::dnspod()),
+        direct_egress: Arc::new(NetworkDirectEgressProbe::default()),
         geo_index,
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(

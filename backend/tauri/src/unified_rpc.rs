@@ -861,12 +861,25 @@ mod tests {
         struct Probe(AtomicUsize);
         #[async_trait::async_trait]
         impl nyanpasu_core::client::direct_egress::DirectEgressProbe for Probe {
-            async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
+            async fn ipv4(
+                &self,
+                _: &nyanpasu_core::client::direct_egress::ProbeSources,
+            ) -> Option<std::net::Ipv4Addr> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Some("203.0.113.7".parse().unwrap())
             }
-            async fn ipv6(&self) -> Option<std::net::Ipv6Addr> {
+            async fn ipv6(
+                &self,
+                _: &nyanpasu_core::client::direct_egress::ProbeSources,
+            ) -> Option<std::net::Ipv6Addr> {
                 None
+            }
+            async fn test_stun_server(
+                &self,
+                _: &str,
+                _: u16,
+            ) -> nyanpasu_core::client::direct_egress::StunServerTest {
+                unreachable!("the RPC test does not test servers")
             }
         }
         let directory = tempfile::tempdir().unwrap();

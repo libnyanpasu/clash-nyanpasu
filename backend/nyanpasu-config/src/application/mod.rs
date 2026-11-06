@@ -8,6 +8,7 @@ mod clash_core;
 mod core_logs;
 mod i18n;
 mod logging;
+mod public_ip_probe;
 mod traffic;
 mod update;
 mod widget;
@@ -16,6 +17,7 @@ pub use clash_core::*;
 pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
+pub use public_ip_probe::*;
 pub use traffic::*;
 pub use update::*;
 pub use widget::*;
@@ -212,6 +214,16 @@ pub struct NyanpasuAppConfig {
     #[serde(default)]
     pub enable_local_ip_probe: bool,
 
+    /// STUN servers the public IP probe asks, built-in and user-added, in
+    /// the order it asks them.
+    #[serde(default = "default_stun_servers")]
+    pub stun_servers: Vec<StunServer>,
+
+    /// HTTP lookup services asked when no STUN server answers, in order. A
+    /// provider is listed only after the user accepted its privacy notice.
+    #[serde(default)]
+    pub ip_lookup_providers: Vec<IpLookupProvider>,
+
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -303,6 +315,8 @@ impl Default for NyanpasuAppConfig {
             network_statistic_widget_logo: NetworkStatisticWidgetLogo::default(),
             traffic_retention: TrafficRetention::default(),
             enable_local_ip_probe: false,
+            stun_servers: default_stun_servers(),
+            ip_lookup_providers: Vec::new(),
             pac_url: None,
             enable_tray_text: false,
             enable_tray_traffic: false,
@@ -349,6 +363,19 @@ mod patch_tests {
         let patch = serde_json::from_str(r#"{"enable_local_ip_probe":true}"#).unwrap();
         config.apply(patch);
         assert!(config.enable_local_ip_probe);
+    }
+
+    #[test]
+    fn existing_configurations_get_the_default_probe_sources() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        for field in ["stun_servers", "ip_lookup_providers"] {
+            object.remove(field);
+        }
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(config.stun_servers, default_stun_servers());
+        assert!(config.ip_lookup_providers.is_empty());
     }
 
     #[test]

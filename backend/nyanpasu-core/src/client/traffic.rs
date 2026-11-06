@@ -4,7 +4,10 @@ use std::{
 };
 
 use crate::state::StateSnapshot;
-use nyanpasu_config::{application::NyanpasuAppConfig, profile::Profiles};
+use nyanpasu_config::{
+    application::{IpLookupProvider, NyanpasuAppConfig, StunServer},
+    profile::Profiles,
+};
 use nyanpasu_traffic::{
     ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
     TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
@@ -90,6 +93,35 @@ impl LocalSourceCache {
         } else {
             None
         }
+    }
+}
+
+/// A running probe stops asking once detection is off or TUN is on, and skips
+/// a server or provider that has since left the user's list.
+impl super::direct_egress::ProbePermission for LocalSourceCache {
+    fn allows_stun(&self, server: &StunServer) -> bool {
+        self.blocked().is_none()
+            && self
+                .application
+                .load()
+                .state
+                .stun_servers
+                .iter()
+                .any(|current| {
+                    current.enabled
+                        && current.port == server.port
+                        && current.host.eq_ignore_ascii_case(&server.host)
+                })
+    }
+
+    fn allows_lookup(&self, provider: IpLookupProvider) -> bool {
+        self.blocked().is_none()
+            && self
+                .application
+                .load()
+                .state
+                .ip_lookup_providers
+                .contains(&provider)
     }
 }
 

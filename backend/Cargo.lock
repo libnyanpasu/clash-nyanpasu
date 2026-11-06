@@ -6764,6 +6764,7 @@ dependencies = [
  "fs-err",
  "futures",
  "futures-util",
+ "getrandom 0.4.3",
  "gxhash",
  "hex",
  "indexmap 2.14.2",

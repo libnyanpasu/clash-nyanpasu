@@ -251,7 +251,9 @@ fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
 }
 
 /// Copies `src` into `dst`. Symlinks are neither followed nor recreated; they
-/// are recorded under `rel`, their path relative to the backup root.
+/// are recorded under `rel`, their path relative to the backup root. Sockets,
+/// FIFOs and devices, such as the core's control socket under `runtime/`,
+/// hold no config and cannot be copied, so they are left out.
 fn copy_dir(
     src: &Path,
     dst: &Path,
@@ -277,7 +279,7 @@ fn copy_dir(
             });
         } else if file_type.is_dir() {
             copy_dir(&path, &dst, &rel, skipped, symlinks)?;
-        } else {
+        } else if file_type.is_file() {
             fs::copy(&path, &dst).map_err(io_error(&path))?;
         }
     }
@@ -517,6 +519,27 @@ mod tests {
         assert_eq!(names(&second.path.join(CONFIG_DIR)), ["profiles.yaml"]);
         assert_eq!(names(&second.path.join("data")), ["storage.db"]);
         assert!(first.path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_socket_in_the_config_dir_is_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths(dir.path());
+        let runtime = paths.app_config_dir().join("runtime");
+        fs::create_dir_all(&runtime).unwrap();
+        write(&runtime.join("state.yaml"), "kept");
+        // A live core leaves its control socket here.
+        let _socket = std::os::unix::net::UnixListener::bind(runtime.join("core.sock")).unwrap();
+
+        let backup = create_backup(&manual(
+            &paths,
+            StorageSource::File(paths.storage_path().as_std_path()),
+        ))
+        .unwrap();
+
+        let copied = backup.path.join(CONFIG_DIR).join("runtime");
+        assert_eq!(names(&copied), ["state.yaml"]);
     }
 
     #[test]

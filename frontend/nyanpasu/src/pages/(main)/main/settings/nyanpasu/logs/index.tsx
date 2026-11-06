@@ -5,7 +5,6 @@ import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import AppLogLevelSelector from './_modules/app-log-level-selector'
 import CoreLogLevelSelector from './_modules/core-log-level-selector'
 import CoreLogStorageConfig from './_modules/core-log-storage-config'
-import LocalIpProbeSwitch from './_modules/local-ip-probe-switch'
 import LogFileConfig from './_modules/log-file-config'
 import TrafficRetentionSelector from './_modules/traffic-retention-selector'
 
@@ -48,8 +47,6 @@ const TrafficSettings = () => {
 
       <SettingsGroup>
         <TrafficRetentionSelector />
-
-        <LocalIpProbeSwitch />
       </SettingsGroup>
     </div>
   )

@@ -12,8 +12,10 @@ use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_core::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, agent_skills::CoreAgentSkill,
-        direct_egress::DirectEgress, effects::error::EffectsError,
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError,
+        agent_skills::CoreAgentSkill,
+        direct_egress::{DirectEgress, StunServerTest},
+        effects::error::EffectsError,
         system_proxy::ports::OsProxyError,
     },
     enhance::PostProcessingOutput,
@@ -836,10 +838,33 @@ pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<Di
     Ok(client.probe_direct_egress().await?)
 }
 
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_ip_lookup_providers(
+    client: State<'_, NyanpasuClient>,
+) -> Result<Vec<IpLookupProviderInfo>> {
+    Ok(client.ip_lookup_providers())
+}
+
+/// Desktop-only: the host is whatever the caller types, like a URL probe.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn test_stun_server(
+    client: State<'_, NyanpasuClient>,
+    host: String,
+    port: u16,
+) -> Result<StunServerTest> {
+    Ok(client.test_stun_server(&host, port).await)
+}
+
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----
 
 use nyanpasu_config::{
-    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
+    application::{
+        ClashCore, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel,
+    },
     clash::{
         config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
         features::ConfigFeatures,

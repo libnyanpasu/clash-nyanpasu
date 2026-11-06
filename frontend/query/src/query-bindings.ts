@@ -172,6 +172,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getConfigFeatures', ...args],
         queryFn: () => commands.getConfigFeatures(...args),
       }),
+    getIpLookupProviders: (
+      ...args: Parameters<typeof commands.getIpLookupProviders>
+    ) =>
+      queryOptions({
+        queryKey: ['getIpLookupProviders', ...args],
+        queryFn: () => commands.getIpLookupProviders(...args),
+      }),
     getHotkeyFunctions: (
       ...args: Parameters<typeof commands.getHotkeyFunctions>
     ) =>
@@ -491,6 +498,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['probeDirectEgress'],
       mutationFn: (input: Parameters<typeof commands.probeDirectEgress>) =>
         commands.probeDirectEgress(...input),
+    }),
+    testStunServer: mutationOptions({
+      mutationKey: ['testStunServer'],
+      mutationFn: (input: Parameters<typeof commands.testStunServer>) =>
+        commands.testStunServer(...input),
     }),
     clearCoreLogs: mutationOptions({
       mutationKey: ['clearCoreLogs'],

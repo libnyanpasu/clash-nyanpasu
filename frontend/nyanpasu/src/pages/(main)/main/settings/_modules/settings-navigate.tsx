@@ -8,6 +8,7 @@ import LanRounded from '~icons/material-symbols/lan-rounded'
 import LicenseRounded from '~icons/material-symbols/license-rounded'
 import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
+import PublicRounded from '~icons/material-symbols/public-rounded'
 import ReceiptLongRounded from '~icons/material-symbols/receipt-long-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import SystemUpdateAltRounded from '~icons/material-symbols/system-update-alt-rounded'
@@ -205,6 +206,14 @@ export default function SettingsNavigate() {
           icon={<ReceiptLongRounded />}
           label={m.settings_label_logs()}
           description={m.settings_label_logs_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/nyanpasu/public-ip"
+          color="blue"
+          icon={<PublicRounded />}
+          label={m.settings_label_public_ip()}
+          description={m.settings_label_public_ip_description()}
         />
 
         <SettingsNavigationItem

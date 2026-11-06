@@ -168,8 +168,8 @@ impl Failure {
                 error.downcast_ref::<crate::session_state::Error>()
             {
                 Some(path)
-            } else if let Some(crate::corrupt::Error::PreserveEvidence { path, .. }) =
-                error.downcast_ref::<crate::corrupt::Error>()
+            } else if let Some(nyanpasu_persistence::Error::PreserveEvidence { path, .. }) =
+                error.downcast_ref::<nyanpasu_persistence::Error>()
             {
                 Some(path)
             } else {

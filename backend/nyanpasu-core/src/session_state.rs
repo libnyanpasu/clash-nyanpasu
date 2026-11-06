@@ -11,8 +11,6 @@ use nyanpasu_config::state::PersistentState;
 use nyanpasu_utils::io::{IoFailure, classify};
 use snafu::{ResultExt as _, Snafu};
 
-use super::corrupt;
-
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("failed to read session state at {}", path.display()))]
@@ -20,7 +18,7 @@ pub enum Error {
     #[snafu(display("session state is not a regular file: {}", path.display()))]
     ValidateState { path: PathBuf },
     #[snafu(display("failed to preserve invalid session state"))]
-    PreserveState { source: corrupt::Error },
+    PreserveState { source: nyanpasu_persistence::Error },
     #[snafu(display("failed to serialize default session state"))]
     SerializeDefault { source: serde_yaml_ng::Error },
     #[snafu(display("failed to write default session state"))]
@@ -36,8 +34,8 @@ fn read_with(
     read: impl FnMut() -> io::Result<Vec<u8>>,
     wait: impl Fn(Duration) + 'static,
 ) -> Result<Option<PersistentState>, Error> {
-    match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
-        Ok(metadata) if !metadata.is_file() || corrupt::is_link(&metadata) => {
+    match nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(path)) {
+        Ok(metadata) if !metadata.is_file() || nyanpasu_persistence::is_link(&metadata) => {
             let error = ValidateStateSnafu { path }.build();
             return reset(path, &error).map(Some);
         }
@@ -45,7 +43,7 @@ fn read_with(
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error).context(ReadStateSnafu { path }),
     }
-    let bytes = match corrupt::retry_with_delay(
+    let bytes = match nyanpasu_persistence::retry_with_delay(
         read,
         |error| classify(error) == IoFailure::Transient,
         wait,
@@ -66,7 +64,7 @@ fn read_with(
 }
 
 fn reset(path: &Path, error: &(dyn std::error::Error + 'static)) -> Result<PersistentState, Error> {
-    corrupt::preserve(path, error).context(PreserveStateSnafu)?;
+    nyanpasu_persistence::preserve(path, error).context(PreserveStateSnafu)?;
     let state = PersistentState::default();
     let bytes = serde_yaml_ng::to_string(&state).context(SerializeDefaultSnafu)?;
     super::migration::fs::atomic_write(path, bytes.as_bytes()).context(WriteDefaultSnafu)?;

@@ -101,7 +101,7 @@ impl MigrationStore {
             return Ok(Self::default());
         }
 
-        let raw = crate::corrupt::retry_io(read).context(ReadStateSnafu { path })?;
+        let raw = nyanpasu_persistence::retry_io(read).context(ReadStateSnafu { path })?;
         let store: Self = serde_yaml_ng::from_str(&raw).context(ParseStateSnafu { path })?;
         if store.store_schema_version > STORE_SCHEMA_VERSION {
             return NewerSchemaSnafu {

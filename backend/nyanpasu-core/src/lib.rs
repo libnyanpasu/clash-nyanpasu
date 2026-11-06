@@ -38,8 +38,9 @@ pub mod download;
 pub mod geo;
 pub mod logs;
 pub mod migration;
-pub mod net_adapters;
 pub mod owner_shutdown;
+#[cfg(test)]
+mod profile_integration_tests;
 pub mod service;
 pub mod storage;
 pub mod traffic;

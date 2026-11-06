@@ -574,3 +574,10 @@ mod tests {
         assert!(!debug.contains("verge_hy_alpn"));
     }
 }
+
+#[cfg(test)]
+mod fixture_content;
+#[cfg(test)]
+mod golden;
+#[cfg(test)]
+mod script_tests;

@@ -1,10 +1,14 @@
 //! Setup logic for the app
-use nyanpasu_core::{
-    client::direct_egress::NetworkDirectEgressProbe, owner_shutdown::track_until_shutdown,
-};
+use nyanpasu_core::owner_shutdown::track_until_shutdown;
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_net::{
+    device_headers::{self, DeviceHeaders},
+    direct_egress::NetworkDirectEgressProbe,
+    subscription_http::SubscriptionHttpFetcher,
+};
 use nyanpasu_paths::PathResolver;
+use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use std::sync::Arc;
 
 use crate::{
@@ -328,7 +332,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.app_data_dir().as_std_path().to_owned(),
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
-    let network = Arc::new(nyanpasu_core::net_adapters::ReqwestNetworkAdapter::new(
+    let network = Arc::new(nyanpasu_net::net_adapters::ReqwestNetworkAdapter::new(
         bundle_metadata,
         Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
     ));
@@ -353,24 +357,25 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 })
             },
             changelog_http: Arc::new(move |ports| {
-                Arc::new(
-                    nyanpasu_platform::changelog_http::ReqwestChangelogHttp::new(
-                        ports,
-                        bundle_metadata,
-                    ),
-                )
+                Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(
+                    ports,
+                    bundle_metadata,
+                    Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+                ))
             }),
             runtime_build: Arc::new(
-                nyanpasu_platform::enhance::runtime_build::FsRuntimeBuildAdapter {
-                    profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
-                    core_specs: {
+                nyanpasu_core::client::runtime_build::RuntimeBuildService::new(
+                    Arc::new(FsProfileContentSource::new(
+                        paths.app_profiles_dir().into_std_path_buf(),
+                    )),
+                    {
                         let paths = paths.clone();
                         Arc::new(move |core| {
                             nyanpasu_core::actor_v2::local_host::core_spec(core, &paths)
                         })
                     },
-                    paths: runtime_paths.clone(),
-                    scripts: {
+                    runtime_paths.clone(),
+                    {
                         let dirs = nyanpasu_scripts::ScriptDirs::new(
                             paths.scripts_dir().into_std_path_buf(),
                             paths.cache_dir().into_std_path_buf(),
@@ -381,21 +386,27 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                             )?))
                         })
                     },
-                },
+                ),
             ),
             profile_files: Arc::new({
                 let paths = paths.clone();
+                let device_info = nyanpasu_core::utils::hwid::get_device_info();
+                let device_headers = DeviceHeaders {
+                    hwid: device_info.hwid,
+                    device_os: device_headers::sanitize_for_header(&device_info.device_os),
+                    os_version: device_headers::sanitize_for_header(&device_info.os_version),
+                    device_model: device_headers::sanitize_for_header(&device_info.device_model),
+                };
                 move |ports| {
-                    let service = Arc::new(
-                        nyanpasu_platform::profiles::fs_service::ProfileFileService::new(
-                            paths.clone(),
-                            ports,
-                            bundle_metadata,
-                        ),
-                    );
+                    let service = Arc::new(ProfileFileService::new(paths.clone()));
                     ProfileFilePorts {
                         fs: service.clone(),
-                        fetcher: service.clone(),
+                        fetcher: Arc::new(SubscriptionHttpFetcher::new(
+                            ports,
+                            bundle_metadata,
+                            Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
+                            device_headers.clone(),
+                        )),
                         materialization: service,
                     }
                 }
@@ -435,6 +446,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     app_handle.clone(),
                     proxy_port,
                     bundle_metadata,
+                    Arc::new(nyanpasu_core::utils::config::OsSystemProxySource),
                 ))
             }
         })),

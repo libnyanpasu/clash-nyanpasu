@@ -1837,9 +1837,11 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-net",
  "nyanpasu-panics",
  "nyanpasu-paths",
- "nyanpasu-platform",
+ "nyanpasu-persistence",
+ "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
  "nyanpasu-scripts",
  "nyanpasu-traffic",
@@ -6771,7 +6773,6 @@ dependencies = [
  "async-trait",
  "atomicwrites",
  "axum",
- "backon",
  "bolt-load",
  "bon",
  "bytes",
@@ -6783,14 +6784,12 @@ dependencies = [
  "fs-err",
  "futures",
  "futures-util",
- "getrandom 0.4.3",
  "gxhash",
  "hex",
  "indexmap 2.14.2",
  "memmap2",
  "mockall",
  "nanoid",
- "nix 0.31.3",
  "notify-debouncer-full",
  "nyanpasu-config",
  "nyanpasu-contracts",
@@ -6801,7 +6800,10 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-net",
  "nyanpasu-paths",
+ "nyanpasu-persistence",
+ "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
@@ -7044,6 +7046,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-net"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "backon",
+ "base64 0.23.1",
+ "bytes",
+ "getrandom 0.4.3",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "percent-encoding",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "snafu 0.9.2",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-attributes",
+ "url",
+]
+
+[[package]]
 name = "nyanpasu-panics"
 version = "0.1.0"
 dependencies = [
@@ -7070,41 +7097,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "nyanpasu-platform"
+name = "nyanpasu-persistence"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "async-trait",
  "atomicwrites",
- "axum",
  "backon",
- "base64 0.23.1",
- "camino",
- "futures-util",
+ "nix 0.31.3",
+ "nyanpasu-utils",
+ "snafu 0.9.2",
+ "tempfile",
+ "time",
+ "tracing",
+]
+
+[[package]]
+name = "nyanpasu-profile-io"
+version = "0.1.0"
+dependencies = [
+ "atomicwrites",
  "hex",
  "nanoid",
  "nyanpasu-config",
  "nyanpasu-contracts",
- "nyanpasu-core",
- "nyanpasu-core-manager",
- "nyanpasu-ipc",
- "nyanpasu-logging",
  "nyanpasu-paths",
- "nyanpasu-profile-transform",
- "nyanpasu-scripts",
- "percent-encoding",
- "reqwest 0.13.5",
+ "nyanpasu-persistence",
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "sha2 0.11.1",
  "snafu 0.9.2",
- "sysproxy",
  "tempfile",
- "time",
- "tokio",
- "tokio-util",
- "url",
 ]
 
 [[package]]
@@ -7113,11 +7135,13 @@ version = "0.1.0"
 dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-config",
+ "nyanpasu-scripts",
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "specta",
+ "tempfile",
 ]
 
 [[package]]

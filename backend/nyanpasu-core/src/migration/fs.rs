@@ -42,7 +42,7 @@ pub enum Error {
 /// Whether `path` exists, reporting an inaccessible parent as an error
 /// instead of the `false` that [`Path::exists`] would return.
 pub(crate) fn try_exists(path: &Path) -> Result<bool, MigrationCheckError> {
-    crate::corrupt::retry_io(|| path.try_exists()).map_err(|source| MigrationCheckError::Io {
+    nyanpasu_persistence::retry_io(|| path.try_exists()).map_err(|source| MigrationCheckError::Io {
         path: path.to_path_buf(),
         source,
     })
@@ -59,7 +59,7 @@ fn read_yaml_if_exists_with<T: DeserializeOwned>(
     path: &Path,
     read: impl FnMut() -> std::io::Result<String>,
 ) -> Result<Option<T>, MigrationCheckError> {
-    let raw = match crate::corrupt::retry_io(read) {
+    let raw = match nyanpasu_persistence::retry_io(read) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
@@ -99,7 +99,7 @@ fn read_document_with(
     document: &str,
     read: impl FnMut() -> std::io::Result<String>,
 ) -> Result<Option<DocumentFile>, MigrationCheckError> {
-    let raw = match crate::corrupt::retry_io(read) {
+    let raw = match nyanpasu_persistence::retry_io(read) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
@@ -171,10 +171,10 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), Error> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        crate::corrupt::retry_io(|| std::fs::create_dir_all(parent))
+        nyanpasu_persistence::retry_io(|| std::fs::create_dir_all(parent))
             .context(CreateDirectorySnafu { path: parent })?;
     }
-    crate::corrupt::retry(
+    nyanpasu_persistence::retry(
         || AtomicFile::new(path, AllowOverwrite).write(|file| file.write_all(contents)),
         |error| {
             let (atomicwrites::Error::Internal(error) | atomicwrites::Error::User(error)) = error;

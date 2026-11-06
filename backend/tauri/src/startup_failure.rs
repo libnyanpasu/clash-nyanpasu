@@ -158,8 +158,8 @@ impl StartupFailure {
         let mut path = path;
         let mut current = Some(error);
         while let Some(error) = current {
-            if let Some(corrupt::Error::PreserveEvidence { path: original, .. }) =
-                error.downcast_ref::<corrupt::Error>()
+            if let Some(nyanpasu_persistence::Error::PreserveEvidence { path: original, .. }) =
+                error.downcast_ref::<nyanpasu_persistence::Error>()
             {
                 path = Some(original.clone());
             }

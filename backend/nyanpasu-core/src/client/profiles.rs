@@ -119,11 +119,12 @@ impl ProfilesClient {
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
         let jobs = crate::state::profiles::jobs::ProfileJobs::new(jobs);
-        let should_load = crate::corrupt::retry_async(|| tokio::fs::try_exists(&profiles_path))
-            .await
-            .context(InspectStateSnafu {
-                path: &profiles_path,
-            })?;
+        let should_load =
+            nyanpasu_persistence::retry_async(|| tokio::fs::try_exists(&profiles_path))
+                .await
+                .context(InspectStateSnafu {
+                    path: &profiles_path,
+                })?;
         let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path.clone())
             .assemble();

@@ -2262,7 +2262,7 @@ mod tests {
     use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_contracts::system_dns::SystemDnsError;
-    use nyanpasu_core::state::ReplaceIfVersionError;
+    use nyanpasu_state_engine::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
 

@@ -10,8 +10,8 @@
 //! read directly from its authoritative handle by the workflow's handler, and
 //! the settled receipt goes back to the source on the channel it handed over.
 
-use crate::state::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
 use std::{
     marker::PhantomData,
     sync::{Arc, Mutex},

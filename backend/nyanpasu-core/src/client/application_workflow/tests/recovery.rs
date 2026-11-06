@@ -148,8 +148,8 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
 // the explicit retry, reading what the two slots kept. The interruptions are
 // scripted fakes and barriers; nothing here sleeps for an ordering.
 
-use crate::state::{ReplaceIfVersionError, ReplaceIfVersionResult};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{ReplaceIfVersionError, ReplaceIfVersionResult};
 
 use std::sync::atomic::Ordering;
 

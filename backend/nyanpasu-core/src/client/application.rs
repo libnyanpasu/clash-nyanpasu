@@ -1,13 +1,13 @@
 use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
-use crate::state::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
-    error::{LoadError, UpsertError},
-};
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel};
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_state_engine::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+    error::{LoadError, UpsertError},
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

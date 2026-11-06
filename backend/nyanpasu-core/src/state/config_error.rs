@@ -2,11 +2,11 @@
 //! the session state fails with. Library causes stay in `source` (skipped on
 //! the wire); they reach the user only through the copied detail.
 
-use crate::state::{
+use nyanpasu_config::application::ReleaseChannel;
+use nyanpasu_state_engine::{
     ReplaceIfVersionError,
     error::{StateChangedError, UpsertError},
 };
-use nyanpasu_config::application::ReleaseChannel;
 use serde::Serialize;
 use snafu::{IntoError, Snafu};
 

@@ -6,6 +6,7 @@ type PackageMatcher = string | { prefix: string }
 interface DependencyRule {
   package: string
   forbids: readonly PackageMatcher[]
+  allowedWorkspace?: readonly string[]
 }
 
 const GUI: readonly PackageMatcher[] = [
@@ -32,6 +33,7 @@ const FOUNDATION = [
 ]
 const CORE_FAMILY = [
   'nyanpasu-core',
+  'nyanpasu-state-engine',
   'nyanpasu-migration',
   'nyanpasu-owner-support',
   'nyanpasu-observers',
@@ -102,6 +104,11 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-owner-support',
     forbids: CORE_FAMILY.filter((name) => name !== 'nyanpasu-owner-support'),
   },
+  {
+    package: 'nyanpasu-state-engine',
+    forbids: CORE_FAMILY.filter((name) => name !== 'nyanpasu-state-engine'),
+    allowedWorkspace: ['nyanpasu-state-engine', 'nyanpasu-persistence'],
+  },
   ...IMPLEMENTATION.map((name) => ({
     package: name,
     forbids: [
@@ -128,10 +135,10 @@ export function dependencyViolations(
   owner: string,
   cargoTree: string,
   rules: readonly DependencyRule[] = DEPENDENCY_RULES,
+  workspaceMembers: readonly string[] = [],
 ): string[] {
-  const forbidden = rules
-    .filter((rule) => rule.package === owner)
-    .flatMap((rule) => rule.forbids)
+  const ownerRules = rules.filter((rule) => rule.package === owner)
+  const forbidden = ownerRules.flatMap((rule) => rule.forbids)
   const names = new Set(
     cargoTree
       .split('\n')
@@ -143,16 +150,44 @@ export function dependencyViolations(
     .filter(
       (name) =>
         name !== owner &&
-        forbidden.some((matcher) =>
+        (forbidden.some((matcher) =>
           typeof matcher === 'string'
             ? name === matcher
             : name.startsWith(matcher.prefix),
-        ),
+        ) ||
+          (workspaceMembers.includes(name) &&
+            ownerRules.some(
+              (rule) =>
+                rule.allowedWorkspace && !rule.allowedWorkspace.includes(name),
+            ))),
     )
     .map((name) => `${owner} must not depend on ${name}`)
 }
 
 export async function main(): Promise<number> {
+  const metadataResult = await runCommand('cargo', {
+    cwd: WORKSPACE_ROOT,
+    args: [
+      'metadata',
+      '--locked',
+      '--no-deps',
+      '--format-version',
+      '1',
+      '--manifest-path',
+      'backend/Cargo.toml',
+    ],
+  })
+  if (!metadataResult.success) {
+    console.error(metadataResult.stderr.toString('utf8'))
+    return metadataResult.code || 1
+  }
+  const metadata: {
+    packages: { id: string; name: string }[]
+    workspace_members: string[]
+  } = JSON.parse(metadataResult.stdout.toString('utf8'))
+  const workspaceMembers = metadata.packages
+    .filter((pkg) => metadata.workspace_members.includes(pkg.id))
+    .map((pkg) => pkg.name)
   const problems: string[] = []
   const packages = new Set(DEPENDENCY_RULES.map((rule) => rule.package))
   for (const owner of packages) {
@@ -181,7 +216,12 @@ export async function main(): Promise<number> {
       return result.code || 1
     }
     problems.push(
-      ...dependencyViolations(owner, result.stdout.toString('utf8')),
+      ...dependencyViolations(
+        owner,
+        result.stdout.toString('utf8'),
+        DEPENDENCY_RULES,
+        workspaceMembers,
+      ),
     )
   }
   if (problems.length > 0) {

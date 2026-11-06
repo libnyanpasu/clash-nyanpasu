@@ -16,9 +16,9 @@
 
 use std::sync::Arc;
 
-use crate::state::StateDecision;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
+use nyanpasu_state_engine::StateDecision;
 use snafu::{IntoError, ResultExt};
 
 use super::{

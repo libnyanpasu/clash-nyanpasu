@@ -2,7 +2,7 @@ mod notify;
 
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::state::{
+use crate::{
     AbortResourceState, PersistenceIncident, StateStore, Version, VersionedState,
     decision::DecisionWriter,
 };
@@ -76,7 +76,7 @@ struct RollbackGuardData<T: Clone + Send + Sync + 'static> {
 /// The transaction is its owner's own work, so it is dropped only when that
 /// owner panics or the runtime is torn down. No rollback notification runs
 /// then; what the transaction still owes is its decision, so a participant
-/// waiting on the [`crate::state::DecisionHandle`] is never left `Undecided`.
+/// waiting on the [`crate::DecisionHandle`] is never left `Undecided`.
 struct RollbackGuard<T: Clone + Send + Sync + 'static> {
     data: Option<RollbackGuardData<T>>,
 }
@@ -528,7 +528,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{StateAckSubscriber, StateChangeId, StateDecision, SubscriberName};
+    use crate::{StateAckSubscriber, StateChangeId, StateDecision, SubscriberName};
     use arc_swap::ArcSwap;
     use tokio::sync::Notify;
 

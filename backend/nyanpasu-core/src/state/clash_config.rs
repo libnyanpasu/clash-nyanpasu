@@ -12,11 +12,11 @@ use crate::{
 };
 use nyanpasu_core_manager::OperationId;
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
 use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
+use nyanpasu_state_engine::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 use tokio_util::sync::CancellationToken;

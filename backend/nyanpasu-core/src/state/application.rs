@@ -14,9 +14,9 @@ use crate::{
 };
 use nyanpasu_core_manager::OperationId;
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_state_engine::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::ensure;
 use struct_patch::Patch;

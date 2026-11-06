@@ -1,0 +1,27 @@
+[package]
+name = 'nyanpasu-state-engine'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
+anyhow = '1'
+bon = '3'
+arc-swap = '1'
+async-trait = '0.1'
+indexmap = { version = '2.2.3', features = ['serde'] }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+serde = { version = '1.0', features = ['derive', 'rc'] }
+atomicwrites = '0.4.4'
+camino = { version = '1.1.9', features = ['serde1'] }
+fs-err = { workspace = true }
+
+[dev-dependencies]
+tempfile = '3'
+serde_yaml_ng = { workspace = true }
+tokio = { workspace = true, features = ['full', 'test-util'] }

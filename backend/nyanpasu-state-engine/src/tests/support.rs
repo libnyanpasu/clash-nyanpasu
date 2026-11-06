@@ -7,7 +7,7 @@ use nyanpasu_persistence::format::Format;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
-use crate::state::{
+use crate::{
     Ack, PersistentStateManager, PersistentStateManagerSetup, StateAckSubscriber, StateChange,
     SubscriberName, Version, VersionedState, coordinator::StateStore,
 };

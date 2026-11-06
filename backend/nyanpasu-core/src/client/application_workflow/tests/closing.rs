@@ -7,9 +7,9 @@ use std::{
     time::Duration,
 };
 
-use crate::state::ReplaceIfVersionResult;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::ReplaceIfVersionResult;
 use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 

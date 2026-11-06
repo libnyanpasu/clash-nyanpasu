@@ -20,7 +20,7 @@ use std::sync::{
 
 use tokio::sync::{Mutex, Notify};
 
-use crate::state::{
+use crate::{
     AbortResourceState, Ack, DecisionHandle, ReplaceIfVersionError, ReplaceIfVersionResult,
     RollbackReason, StateAckSubscriber, StateChange, StateChangeId, StateDecision,
     StateParticipant, SubscriberName, Version, error::StateChangedError,
@@ -104,7 +104,7 @@ impl StateAckSubscriber<TestState> for RejectingSubscriber {
     }
 
     async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-        Ack::Rejected(crate::state::ack::test_ack_error("not acceptable"))
+        Ack::Rejected(crate::ack::test_ack_error("not acceptable"))
     }
 }
 

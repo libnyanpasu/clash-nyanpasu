@@ -2,7 +2,7 @@
 //! returns the mismatch. The store keeps what the winner committed, and the
 //! config file is not written back: a failed commit is not a disk rollback.
 
-use crate::state::{
+use crate::{
     Version,
     error::{StateChangedError, UpsertError},
 };

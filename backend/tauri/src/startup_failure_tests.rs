@@ -139,7 +139,7 @@ fn configuration_parse_location_survives_the_typed_source_chain() {
     let location = parse.location().unwrap();
     let source = client::application::Error::LoadState {
         path: paths().application_config_path(),
-        source: nyanpasu_core::state::error::LoadError::DeserializeConfig(parse.into()),
+        source: nyanpasu_state_engine::error::LoadError::DeserializeConfig(parse.into()),
     };
     let failure = StartupFailure::from_setup(
         &setup::Error::BuildClient {

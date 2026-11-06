@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use crate::state::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot, error::LoadError,
-};
 use camino::Utf8PathBuf;
 use nyanpasu_config::state::{
     PersistentState, PersistentStatePatch,
     window::{WindowLabel, WindowState},
 };
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_state_engine::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot, error::LoadError,
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

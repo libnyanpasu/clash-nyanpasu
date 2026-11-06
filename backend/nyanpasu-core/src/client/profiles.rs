@@ -8,10 +8,6 @@ use std::{sync::Arc, time::Duration};
 use crate::{
     profile_import,
     profile_import::{ImportClassification, ImportFacts, ProfileImportKind},
-    state::{
-        PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
-        error::{LoadError, UpsertError},
-    },
 };
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
@@ -20,6 +16,10 @@ use nyanpasu_config::profile::{
     RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
+use nyanpasu_state_engine::{
+    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+    error::{LoadError, UpsertError},
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use strum::VariantArray as _;
@@ -611,7 +611,6 @@ mod tests {
             suggested_fetch, wait_for_source, yaml,
         },
         state::{
-            ReplaceIfVersionError,
             mutation::CommitAborted,
             profiles::{RefreshOrigin, error::MaterializationOperation},
         },
@@ -632,6 +631,7 @@ mod tests {
             ProfileMaterializationPort,
         },
     };
+    use nyanpasu_state_engine::ReplaceIfVersionError;
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 

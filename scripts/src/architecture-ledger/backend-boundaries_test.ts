@@ -21,6 +21,7 @@ test('the desktop shell constructs OS implementations over foundation contracts'
 
 for (const owner of [
   'nyanpasu-core',
+  'nyanpasu-state-engine',
   'nyanpasu-migration',
   'nyanpasu-owner-support',
   'nyanpasu-observers',
@@ -51,6 +52,98 @@ for (const owner of [
       assert.deepStrictEqual(dependencyViolations(owner, path), [
         `${owner} must not depend on runas`,
       ])
+    }
+  })
+}
+
+test('state engine is a core-family leaf over persistence and its neutral runtime dependencies', () => {
+  const workspaceMembers = [
+    'nyanpasu-state-engine',
+    'nyanpasu-persistence',
+    'nyanpasu-core',
+  ]
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-state-engine',
+      'nyanpasu-state-engine v0.1.0\nnyanpasu-persistence v0.1.0\nnyanpasu-utils v0.1.1\nserde v1.0\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-core',
+      'nyanpasu-core v0.1.0\nnyanpasu-state-engine v0.1.0\nnyanpasu-persistence v0.1.0\nnyanpasu-utils v0.1.1\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+})
+
+for (const dependency of [
+  'nyanpasu-core',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-profile-transform',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'clash-nyanpasu',
+  'boa_utils',
+  'nyanpasu-macro',
+  'nyanpasu-paths',
+  'nyanpasu-helper',
+  'nyanpasu-traffic',
+  'nyanpasu-tsdb',
+  'nyanpasu-geodata',
+  'nyanpasu-panics',
+  'nyanpasu-local-channel',
+  'nyanpasu-widget-protocol',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'nyanpasu-diagnose',
+  'fake-core',
+  'future-workspace-member',
+]) {
+  test(`state engine rejects direct and transitive workspace dependency ${dependency}`, () => {
+    for (const prefix of ['', 'nyanpasu-persistence v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-state-engine',
+          `nyanpasu-state-engine v0.1.0\n${prefix}${dependency} v0.1.0\n`,
+          undefined,
+          ['nyanpasu-state-engine', 'nyanpasu-persistence', dependency],
+        ),
+        [`nyanpasu-state-engine must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'nyanpasu-owner-support',
+]) {
+  test(`${owner} rejects direct and transitive state engine dependencies`, () => {
+    for (const prefix of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(owner, `${prefix}nyanpasu-state-engine v0.1.0\n`),
+        [`${owner} must not depend on nyanpasu-state-engine`],
+      )
     }
   })
 }

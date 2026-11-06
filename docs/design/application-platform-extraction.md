@@ -81,6 +81,9 @@ more RPC targets. Only a shell constructs `NyanpasuClient`.
 
 The RPC layer serves three targets. Each command declares which targets expose
 it and which shell capabilities it needs.
+Every dispatched call passes one audit seam in the RPC layer, whatever the
+transport. It records metadata only (transport, command, caller, duration and
+outcome), never payloads; the shell decides where the records go.
 
 | Target | Transport                                                        | Caller                              | Exposed commands                                                                                                                                            | Authorization                                                                                           |
 | ------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -218,31 +221,38 @@ Script runtimes are part of profile enhancement, not platform infrastructure.
 
 System capabilities vary along two independent axes.
 
-| Kind                       | Varies with                         | Capabilities                                                                                                          | Owner                                                                                                |
-| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Presentation / interaction | Shell form: desktop, mobile, server | Global hotkeys, windows, tray, widgets, dialogs, notifications, clipboard, opener, deep links, single instance        | The shell, or an interaction crate shared by the shells of one form when the mechanism is Tauri-free |
-| OS integration             | Operating system and privileges     | System proxy, PAC, autostart, service install and control, DNS flush, device identity, core binary install, elevation | An OS integration crate per target family, used by every shell on that target                        |
+| Kind                       | Varies with                         | Capabilities                                                                                                          | Owner                                                                         |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Presentation / interaction | Shell form: desktop, mobile, server | Global hotkeys, windows, tray, widgets, dialogs, notifications, clipboard, opener, deep links, single instance        | The shell; the desktop mechanisms live in `backend/tauri/src/desktop/`        |
+| OS integration             | Operating system and privileges     | System proxy, PAC, autostart, service install and control, DNS flush, device identity, core binary install, elevation | An OS integration crate per target family, used by every shell on that target |
 
-Target crates sit above core and next to the shells that use them. They
-implement contracts; core never depends on them.
+An OS integration crate sits over the foundation layer like an implementation
+crate: it implements contracts, the shells inject it, and core never depends
+on it. Desktop interaction has no crate of its own; it stays in the Tauri
+shell.
 
-| Crate (working name)           | Used by                                           | Holds                                                                                                                                                                                                                                                                                                |
-| ------------------------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nyanpasu-desktop`             | Desktop shells only                               | Tauri-free interaction mechanisms: deep-link registration (the `tauri-plugin-deep-link` fork already exposes callback APIs; replace its `tauri-utils` executable lookup), the single-instance lock, native `rfd` dialogs, the hotkey owner and its parsing and action contracts, main-thread handoff |
-| `nyanpasu-os`                  | Desktop shells and the server on desktop or Linux | System proxy, PAC and autostart (now `backend/tauri/src/adapters/system_proxy.rs`), service install and control, DNS flush, core binary install, device identity, elevation mechanism, sidecar version probe                                                                                         |
-| `nyanpasu-openwrt` (on resume) | The server on OpenWrt                             | procd lifecycle control, router paths and policy, later firewall integration                                                                                                                                                                                                                         |
-| Mobile target (later)          | Mobile shell                                      | Mobile OS and interaction integration                                                                                                                                                                                                                                                                |
+| Crate (working name)                          | Used by                                           | Holds                                                                                                                                                                                                        |
+| --------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `backend/tauri/src/desktop/` (a shell module) | The Tauri desktop shell                           | The hotkey owner, main-thread handoff and presentation-effect execution (locale, tray, widget); core keeps the ports and the shared convergence of effects                                                   |
+| `nyanpasu-os`                                 | Desktop shells and the server on desktop or Linux | System proxy, PAC and autostart (now `backend/tauri/src/adapters/system_proxy.rs`), service install and control, DNS flush, core binary install, device identity, elevation mechanism, sidecar version probe |
+| `nyanpasu-openwrt` (on resume)                | The server on OpenWrt                             | procd lifecycle control, router paths and policy, later firewall integration                                                                                                                                 |
+| Mobile target (later)                         | Mobile shell                                      | Mobile OS and interaction integration                                                                                                                                                                        |
 
-- The server never depends on an interaction crate. Tauri-bound mechanisms
+- The server does not link the Tauri shell, so it carries none of the desktop
+  mechanisms. Tauri-bound mechanisms
   (global-shortcut registrar, tray and window rendering, Tauri dialog,
   notification and clipboard plugins, the app package installer) stay in
   `backend/tauri`.
 - Presentation capabilities are optional in core. A shell that lacks one passes
-  none, and the dependent operation reports it as unsupported.
+  none, and the dependent operation reports it as unsupported; an explicit
+  hotkey edit is rejected before it is saved. Sinks that only observe (UI
+  invalidations, frontend diagnostics) stay required, and a shell without a GUI
+  passes a neutral one.
 - Elevation crosses both axes: the OS crate owns the mechanism, and the shell
   injects how consent is obtained (an authorization dialog on a GUI shell, a
-  refusal or a pre-elevated service on the server). Core never shows an OS
-  dialog itself.
+  refusal or a pre-elevated service on the server). On the desktop the OS
+  authorization dialog is the consent; there is no second confirmation. Core
+  never shows an OS dialog itself.
 - The `platform` name is retired. It says nothing about the target or the
   owner, and the target ownership has no catch-all crate.
 
@@ -308,7 +318,12 @@ Known gaps against the target ownership:
   (`utils/core_version.rs`). Core's service install and DNS flush show OS
   authorization dialogs directly, and core binary installation falls back to an
   elevated copy that the WebUI can reach through `update_core`
-  ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)).
+  ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). Phase C
+  removes `update_core` from the WebUI. The embedded WebUI shares the desktop
+  client, so service-mode changes through `patch_app_config`,
+  `retry_configuration_runtime` and transaction compensation can still reach
+  the desktop's elevation policy; the separately assembled server (E4) closes
+  these paths by injecting a refusing policy.
 - `ClientSetupArgs` requires `WindowControl`, `AcceleratorValidator` and a
   `DebugHttpFactory`, so a headless shell must pass stand-ins.
 - Runtime candidate file IO is implemented by `RuntimePaths`.
@@ -364,10 +379,12 @@ correction above
 Each step is one reviewable PR or a short stack. Each leaves a buildable tree,
 migrates its desktop callers in the same change and leaves no old-path
 re-export shims. The [core package split
-spec](../spec/2026-11-03-core-package-split/design.md) details phase A as
-executable tasks and phases B–E as milestones. After phase A, phases B, C and
-E1a can proceed as independent stacks. D2 waits for B and C; the complete
-protocol (E1b) waits for D2, so the server and CLI wait for C, D2 and E3.
+spec](../spec/2026-11-03-core-package-split/design.md) details phases A–C as
+executable tasks and phases D–E as milestones. After phase A, phase B and E1a
+can proceed as independent stacks; in phase C, OS integration (C2) waits for
+B4, and the desktop move (C3) waits for the presentation seam from C1. D2 waits
+for B and C; the complete protocol (E1b) waits for D2, so the server and CLI
+wait for C, D2 and E3.
 
 **Phase A: break the cycles and stop the leak**
 
@@ -391,11 +408,11 @@ protocol (E1b) waits for D2, so the server and CLI wait for C, D2 and E3.
 
 **Phase C: capabilities and target crates**
 
-| Step | Change                                                                                         | Done when                                                                                    |
-| ---- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| C1   | Make presentation capabilities and debug HTTP optional in `ClientSetupArgs`                    | A headless assembly passes no stand-ins; dependent operations report unsupported             |
-| C2   | Create `nyanpasu-os` with an elevation consent port; move OS integration out of core and Tauri | Core shows no OS dialog; the Tauri shell injects consent                                     |
-| C3   | Create `nyanpasu-desktop`; split shared convergence from presentation effects                  | Hotkey owner, main-thread handoff and desktop effect execution leave the core package family |
+| Step | Change                                                                                                           | Done when                                                                                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1   | Make window control, hotkey validation, presentation-effect execution and debug HTTP optional                    | A headless assembly passes none of them; dependent operations report unsupported, and an explicit hotkey edit is rejected before it is saved                       |
+| C2   | Create `nyanpasu-os` with an elevation-consent port; remove `update_core` from the WebUI; add the RPC audit seam | Core runs no elevation itself; a refusing policy starts no elevated command; the WebUI's `update_core` reports unsupported                                         |
+| C3   | Move the desktop mechanisms into the Tauri shell; no new crate                                                   | The hotkey owner, main-thread handoff and presentation-effect execution leave the core package family; core drops its direct `nyanpasu-widget-protocol` dependency |
 
 **Phase D: transaction graph**
 
@@ -406,23 +423,27 @@ protocol (E1b) waits for D2, so the server and CLI wait for C, D2 and E3.
 
 **Phase E: RPC targets and shells**
 
-| Step | Change                                                                                                                                           | Done when                                                                                                  |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| E1a  | Give the macro neutral declarations, per-target opt-ins and capability metadata; start `nyanpasu-rpc-protocol` with names and the error envelope | Command metadata, errors and event names have no Tauri type; bindings regenerate unchanged                 |
-| E1b  | Move the complete request and response DTOs into the protocol after D2                                                                           | The protocol's type closure does not reach the core family                                                 |
-| E2   | Extract `nyanpasu-rpc` with the neutral registry and event bus; keep the Tauri IPC binding in the shell                                          | No Tauri type in registration; Tauri events become one subscriber                                          |
-| E3   | Add the API-only WebUI transport and the local-socket transport                                                                                  | WebUI and CLI allowlists are enforced by the registry; owner and error behavior match across targets       |
-| E4   | Assemble `nyanpasu-server`, then `nyanpasu-cli`                                                                                                  | One long-lived server owns `NyanpasuClient`; the CLI links no core crate and preserves structured outcomes |
-| E5   | OpenWrt, after explicit resume                                                                                                                   | LuCI → CLI → server authorization, procd lifecycle, packaging and hardware acceptance verified separately  |
+| Step | Change                                                                                                                                           | Done when                                                                                                                                                                               |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1a  | Give the macro neutral declarations, per-target opt-ins and capability metadata; start `nyanpasu-rpc-protocol` with names and the error envelope | Command metadata, errors and event names have no Tauri type; bindings regenerate unchanged                                                                                              |
+| E1b  | Move the complete request and response DTOs into the protocol after D2                                                                           | The protocol's type closure does not reach the core family                                                                                                                              |
+| E2   | Extract `nyanpasu-rpc` with the neutral registry and event bus; keep the Tauri IPC binding in the shell                                          | No Tauri type in registration or in the audit seam; Tauri events become one subscriber                                                                                                  |
+| E3   | Add the API-only WebUI transport and the local-socket transport                                                                                  | WebUI and CLI allowlists are enforced by the registry; owner and error behavior match across targets                                                                                    |
+| E4   | Assemble `nyanpasu-server`, then `nyanpasu-cli`                                                                                                  | One long-lived server owns `NyanpasuClient` and injects the refusing elevation policy, closing the remaining #6157 paths; the CLI links no core crate and preserves structured outcomes |
+| E5   | OpenWrt, after explicit resume                                                                                                                   | LuCI → CLI → server authorization, procd lifecycle, packaging and hardware acceptance verified separately                                                                               |
 
 Extend `pnpm run lint:backend-boundaries` as each crate appears, so the
 direction rules in [Target ownership](#target-ownership) stay enforced: no
-implementation crate depends on core, the server and CLI do not depend on Tauri
-or `nyanpasu-desktop`, and the CLI does not depend on core.
+implementation crate depends on core, the server and CLI do not depend on Tauri,
+and the CLI does not depend on core.
 
 ### Build measurement
 
 Compile time is a goal of the split, so measure it rather than assume it.
+Phases A and B measured no desktop compile-time gain from the new boundaries:
+the `clash-nyanpasu` library and the link still dominate incremental builds.
+Phase C therefore creates only `nyanpasu-os`, which the server needs, and keeps
+the desktop mechanisms in the Tauri shell.
 
 - Before A1, record a clean `cargo build --timings` of the desktop shell and
   incremental rebuild times after a one-line edit in each of: the facade

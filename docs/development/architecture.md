@@ -101,11 +101,11 @@ is the plan for the next stage:
 - **Script runtimes** belong to profile enhancement: a script crate provides the
   runners and extension definitions over the `nyanpasu-config` ports, and a
   profile transform crate below core holds the runtime builder.
-- **Target crates** hold target-specific code above core: an interaction crate
-  for desktop shells (deep links, single instance, native dialogs, hotkeys) and
-  an OS integration crate per target family (system proxy, autostart, service
-  control, DNS, device identity, elevation). Tauri-bound mechanisms stay in the
-  Tauri shell.
+- **Target crates** hold OS integration (system proxy, autostart, service
+  control, DNS, device identity, elevation) over the foundation layer, and
+  shells inject them. Desktop interaction mechanisms (hotkeys, main-thread
+  handoff, tray, widget and locale effects) stay in the Tauri shell; there is
+  no desktop interaction crate.
 - **Implementation crates** (scripts, profile IO, HTTP, storage backends)
   depend on the foundation layer only, never on core or each other.
 

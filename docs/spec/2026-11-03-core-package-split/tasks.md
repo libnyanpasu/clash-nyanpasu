@@ -5,7 +5,7 @@
 ## 0. 全局约束
 
 1. 遵守 `AGENTS.md` 与 `docs/development/*`：不加全局单例；依赖显式注入；不给 core 族加 Tauri 依赖；`NyanpasuClient` 只是 facade。
-2. 只移动代码、注入依赖、收窄依赖方向。行为改动单独成卡（A2b、C1、C2），不夹在移动提交里；移动中发现的现存问题记在 PR 描述里，不顺手改。
+2. 移动与保行为接缝只移动代码、注入依赖、收窄依赖方向。行为改动单独成卡（A2b、C1 的不支持结果、C2 的同意策略、HTTP 限制与 RPC 审计），不夹在移动提交里；同一 PR 内的卡也分别提交。行为卡的前端例外仅限 design §9；移动中发现的现存问题记在 PR 描述里，不顺手改。
 3. 每个提交可编译、测试通过、只做一件事；调用方在同一提交迁完，不留 re-export、别名或兼容层（design §7）。
 4. 每个新 crate 的提交同时更新：workspace `members` 与依赖项（指向 config、core 的边关默认 feature）、门禁集合与策略测试（design §3.2）、`STATIC_GATE_PREFIXES` 与覆盖测试、静态允许名单路径（design §4.6）。
 5. 被移走、但仍被原 crate 测试使用的夹具与 `pub(crate)` 项，同提交改为公开（测试夹具放在新 crate 的 `test-support` feature 后），原 crate 以 dev-dependency 开启该 feature，同时在原 crate 的 `test-support` 中转发给下游。
@@ -490,28 +490,239 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ---
 
+## 3. Phase C 的 PR 划分
+
+本节是 design §5.2 的细化，行号记录于 `e004ef566`（A、B 已完成），按符号定位；新文件、符号与测试均为计划项。偏差见 design §8.1 V-16–V-22，决策见 §8.2 O-5–O-9。全局约束 §0 适用；本次文档提交是 PR-C0，不是实施卡。下表每张卡一个可独立编译、测试通过的提交，箭头表示提交顺序。
+
+- 新 crate 只有 `nyanpasu-os`，为实现 crate；不建 `nyanpasu-desktop`。新增包同时登记 `S/backend-boundaries.ts`、`backend-boundaries_test.ts`、`S/policy.ts` 的 `STATIC_GATE_PREFIXES` 与覆盖测试，以及 `scripts/src/testing/test-backend-musl.ts:68-69,77-88` 的 `-p` 列表和 `expectedTargets`。新增集成测试目标也登记，不能只加库目标。
+- 下文 `K/` = `backend/nyanpasu-contracts/src/`，`U/` = `backend/nyanpasu-updater/src/`，`O/` = 新建的 `backend/nyanpasu-os/src/`，`D/` = 新建的 `T/desktop/`；其余缩写同 design §1。`rg` 用显式文件参数或 `--glob`，不用 shell 花括号；退出码 1 才算无匹配，2 是检查失败。检查包含测试时迁完测试导入；生产限定检查必须列明文件，不能用排除 `tests.rs` 冒充排除了内联测试。
+- 所有卡执行 §0.7；下列 Rust 命令从 `backend/` 运行，`pnpm run` 从仓库根运行。测试名清单按 §0.8 比较，新增测试单独列出；平台互斥测试分目标比较。触及 Unix/macOS 分支补 `cargo check -p <受影响包> --target x86_64-unknown-linux-gnu`，macOS 分支只在 macOS CI 验证，Linux 交叉检查不能替代它。
+- bindings 统一通过 `cargo test -p clash-nyanpasu export_typescript_bindings` 重新导出（`T/specta_export.rs:444-452,484`）；纯移动与接缝三份生成文件零 diff。行为卡只允许所列类型变化，不改命令参数/返回 DTO 的其他字段。
+- 行为卡新增消息放 `frontend/nyanpasu/messages/{en,ja,ko,ru,zh-cn,zh-tw}.json`（这里只是路径集合，不作 shell 展开）；遵守 `docs/development/typescript.md` 的消息分组，通过 `pnpm run web:build` 的 Paraglide 插件重新编译（`frontend/nyanpasu/vite.config.ts:74-76`），不手改 `src/paraglide/`。分别运行 `pnpm --filter @nyanpasu/rpc typecheck`、`pnpm --filter @nyanpasu/query typecheck`、`pnpm --filter @nyanpasu/nyanpasu typecheck`，不得用根级 `pnpm typecheck` 的无输出代替包检查。
+- 文档同步：创建 OS 的卡更新 `backend-packages.md` 包表和 `architecture.md` 布局；完成能力、OS、桌面迁移的卡分别更新路线图的状态。没有新增 crate 的卡不新增门禁集合、静态前缀或 musl 包；代码迁移到已有 tauri 前缀后仍受静态门禁覆盖。
+
+| PR    | 卡              | 依赖                   | 说明                                                                                |
+| ----- | --------------- | ---------------------- | ----------------------------------------------------------------------------------- |
+| PR-C0 | 本次文档细化    | A、B                   | 记录决策与卡，不实施代码                                                            |
+| PR-C1 | C1a → C1b       | A、B                   | 先切共享/展示接缝，再改变缺失能力行为；两个提交                                     |
+| PR-C2 | C2a             | A、B                   | contracts 端口与完整调用闭包；可与 PR-C1 并行                                       |
+| PR-C3 | C2b → C2c       | C2a                    | 先建 OS 并移无提权机制，再移服务/DNS/安装；不改变授权行为                           |
+| PR-C4 | C2d → C2e → C2f | C2c                    | 同意策略、最小 HTTP 修复、审计切面分别提交；不加逐调用权限上下文                    |
+| PR-C5 | C3a             | C1a（建议 C1b 后合入） | 桌面机制整体移到 tauri；不依赖 C2，hotkey owner/main-thread/error 同迁，解析留 core |
+
+---
+
+## C1a — 共享效果与展示机制的消费接缝
+
+本卡是保行为接缝，不改变能力是否可用或任何错误结果。
+
+- [ ] 拆 `C/client/effects/executor.rs:40,204` 的 `ApplicationEffectExecutor`：共享执行器保留 `Logger`、`SystemProxy`/`ProxyGuard`/`AutoLaunch`，`CoreLogCaptureEffects`（`:268`）仍处理 core 日志；展示执行器 `PresentationEffectExecutor` 暂放 `C/client/effects/presentation.rs`，收 `apply_locale`、`apply_hotkeys`、`apply_widget`、`apply_widget_logo`、`apply_tray` 与 `tray_full_pending`。core 在 `effects/ports.rs` 定义 `PresentationEffectsPort`，传既有 `EffectRevision` 和只含展示项的 `ApplicationEffectPlan`，返回每项一个 `EffectStatus`；不复制另一套 plan/status，不加逐项能力查询。共享执行器按原循环位置传单项展示 plan（不能先批量执行全部展示项再执行 Logger）。现有私有 `healthy`/`degraded`（`executor.rs:369,378`）移到 `effects/status.rs`，本卡设为 `pub(crate)`，两执行器共用；C3a 跨 crate 时再公开。
+- [ ] 保留 `EffectKind` 排序、locale 先于 tray（`executor.rs:216-219`）、失败的 full 刷新覆盖后来 part（`:174-188`）；共享执行器在原位置路由，不能把 `Logger` 从视觉组中提前或移到只在桌面存在的分支。`effects/actor.rs:138-149` 的四组、修订、源切片、重试、过期过滤与 receipt 原样，不能串行化独立组。
+- [ ] `HotkeyBindings::parse`（`C/client/hotkey/ports.rs:199-229`）的形状、canonical、重复键检查和 `AcceleratorValidator`（`:315`）留 core；`C/client/mod.rs:970-974` → `hotkey::validate_bindings`（`hotkey/mod.rs:140`）的提交前校验不变，不新增列表验证端口。tauri 已依赖 core，C3a 的 desktop 直接调用这些公开项。纯 diff `HotkeyBindings::diff`/`HotkeyOp`（`ports.rs:256,170`）也留 core；owner 按 diff 执行注册的机制才移到 desktop。
+- [ ] `T/setup.rs:676-727` 继续传全部真实能力；`T/adapters/hotkey.rs:28` 的 `PlatformAcceleratorValidator` 继续实现既有端口。迁完 `C/client/test_support.rs:797`、`test_support/facade.rs`、内联 `ClientSetupArgs`、`T/adapters/hotkey/tests.rs:22` 以及效果测试的构造方，不留旧参数转发层。`ApplicationEffectsPort` 仍是共享收敛 owner 的内部端口，不能整个变成可选而丢掉共享效果。
+- [ ] Cargo 不新增包或依赖；tauri → core、已有 config 边继续 `default-features = false`。门禁集合、`STATIC_GATE_PREFIXES`、musl 列表均不变；同步本卡接缝在路线图的描述，不声称 C3 已完成。
+
+- [ ] **先写回归，再拆 executor**：在 `T/adapters/ui_effects/tests.rs` 新增 `failed_full_refresh_is_retried_until_success_then_part_stays_part`：full 失败 → 请求 part 实际调用 full 并成功 → 再请求 part 实际只调用 part；断言调用顺序为 full/full/part、各次次数及状态依次为 TrayRefreshFailed 的 Degraded/Healthy/Healthy，并核对 revision。保护 `executor.rs:174-188` 的 pending 生命周期；既有 `late_full_tray_refresh_still_runs_after_a_newer_part_refresh:663` 两次都成功，单独保留其乱序覆盖，不能代替失败路径。
+- [ ] 在 `T/adapters/hotkey/tests.rs` 新增 `duplicate_accelerators_are_rejected_before_commit`，复用 `:91` 的真实 facade/PlatformAcceleratorValidator 与 effects mock；提交不同 action 的 Ctrl+Q/Control+Q，断言 DuplicateAccelerator、磁盘配置字节与读取配置均不变、effects apply 从未调用。原 `C/client/hotkey/tests.rs:709` 只覆盖缺 modifier，不声称它覆盖重复键。
+
+**验证**
+
+- `cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；按 §0.8 比较 hotkey 18 例、effects 18 例、tauri `adapters/ui_effects/tests.rs` 21 例的清单，清单另加本卡两个新测试，只允许实现模块前缀变化。既有 `locale_is_applied_before_tray_refresh`（`T/adapters/ui_effects/tests.rs:236`）、`late_full_tray_refresh_still_runs_after_a_newer_part_refresh`（`:663`）、`blocked_pac_does_not_block_visual_or_hotkey_group`（`C/client/effects/tests.rs:136`）、`invalid_hotkey_is_rejected_before_commit`（`C/client/hotkey/tests.rs:709`）通过。
+- `rg 'HotkeyClient|WidgetController|TrayRefresher|LocaleSink' backend/nyanpasu-core/src/client/effects/executor.rs` 退出码 1；展示实现中允许这些消费。`rg -n 'validate_bindings|HotkeyBindings::parse' backend/nyanpasu-core/src/client/mod.rs backend/nyanpasu-core/src/client/hotkey/mod.rs` 正向核对原提交前调用链；解析实现仍在 core，不删校验。
+- 反向检查：调换 locale/tray 或在 full 失败后清掉 pending，分别使 locale 顺序测试与新增 `failed_full_refresh_is_retried_until_success_then_part_stays_part` 失败；把 core 解析器的重复键检查删掉，`parse_rejects_duplicate_accelerator`（`C/client/hotkey/tests.rs:77`）及新增 `duplicate_accelerators_are_rejected_before_commit` 失败。bindings 三份零 diff。
+
+## C1b — 缺失展示能力的结构化不支持
+
+本卡是行为变更：无展示能力可装配；显式热键编辑在提交前拒绝，既有期望的展示效果报告不支持而不是已应用。
+
+- [ ] `ClientSetupArgs`（`C/client/mod.rs:135-137`）的 window、`accelerators` 变为 `Option<Arc<dyn ...>>`；共享执行器持有 `Option<Arc<dyn PresentationEffectsPort>>`，展示端口整体可缺失，不加逐项 capability 查询。字段文档约定：shell 当且仅当传入会注册热键的 presentation executor 时传 `accelerators`；存在的展示执行器仍持有完整 validator/registrar 等依赖。显式热键编辑仅在 `accelerators` 为 None 时提交前拒绝；validator 存在但 presentation 缺失属于装配错误，不增加专门检测或支持分支，效果仍走整体缺失的 Unsupported。已存在 owner 停止保留原 stopped 错误。`ClientHostAdapters.debug_http`（`C/client/host_adapters.rs:49`）变可选；缺失时不调用工厂、不登记 HTTP shutdown 任务，存在时保留 `C/client/mod.rs:434-442` 的等待和 `T/server/debug_http.rs:230-233` 的 disable 后 drain。主线程执行器不是 setup 字段（`T/setup.rs:205`），只由桌面机制持有。
+- [ ] 显式 hotkey patch（包括空列表）在能力缺失时返回新增 `ConfigError::ValidateHotkeyCapability`（wire `validate_hotkey_capability`，无字段），不写配置；不涉及 hotkeys 的 patch 原样。启动、导入、已有期望值走 `EffectHealth::Unsupported`。缺失整个展示端口不是 `HotkeyStopped`；没有验证器不是 `UnsupportedAccelerator`。验证器存在时仍执行原 `validate_bindings`，不改变解析规则。更新 `C/client/hotkey/mod.rs:140`、`C/state/config_error.rs:35`、`T/ipc.rs:1718` 的完整路径。
+- [ ] `C/client/effects/status.rs:36,100` 复用 `Unsupported { code }`，只新增 `EffectFailureCode::PresentationUnsupported`（wire `presentation_unsupported`）；展示端口缺失时 Locale、Hotkeys、Widget、WidgetLogo、Tray 每项均返回此 code，状态已有 kind 区分效果，不新增 health 枚举。`effects/actor.rs:395-426` 只让 Healthy 推进 applied_revision 的规则原样；Unsupported 不自动重试。显式 `retry_effect_now`、tray/logo refresh 保留“owner 接收入队”的返回语义，最终不支持通过状态查询，不加 `EffectsError` 变体。
+- [ ] 新增 `WindowError::ToggleDashboardUnsupported`（非 wire 错误）；在 `C/client/debug_http.rs` 新增 `DebugHttpControlError::{ReadStatusUnsupported, ChangeEnabledUnsupported, ReadStatus, ChangeEnabled}`，后两项保留原 anyhow source 但序列化跳过 source，错误按 `kind` snake_case。`C/client/mod.rs:692-699` 的 debug 查询/开关与 `T/ipc.rs:2492,2500` 无能力时分别返回前两项；`shutdown_debug_http` 无能力时成功，有能力时保留原 disable 行为。`T/ipc.rs:64,118` 增加 `IpcErrorKind::DebugHttp` 及映射；不能把类型错误重新压成 unknown 文本。
+- [ ] `UiEventSink` 保持必需的中立通知端口，shell 可传事件总线/null；`FrontendLogSink` 是输入诊断到 tracing（`C/client/frontend_events.rs:96-105`，`C/client/logs.rs:20`），保持必需的 tracing/null。app-update factory/sink（`C/client/mod.rs:125-126,544-552`）保持现有 optionality 与现有错误行为，本卡不扩大 app updater 的错误模型。
+- [ ] 改 `C/client/test_support.rs:752-800,918-933`、`test_support/facade.rs`、`client/mod.rs` 内联构造、`T/test_support.rs:49` 与 `T/setup.rs`：新增真正缺失能力的装配，不用 `NoopApplicationEffects` 伪造 Healthy。新增测试（均为新）：`headless_client_constructs_without_presentation_capabilities`、`missing_hotkey_capability_rejects_before_commit`（`accelerators = None`，覆盖非空与空列表；不为不合法的 validator/presentation 组合新增支持逻辑）、`unrelated_config_patch_does_not_require_hotkeys`、`missing_window_returns_unsupported`、`missing_debug_http_returns_structured_unsupported`、`unsupported_presentation_never_advances_applied_revision`（断言五种展示 kind 均为 `presentation_unsupported`）、`unsupported_presentation_does_not_retry`、`headless_shared_effects_still_converge`、`headless_shutdown_without_debug_owner_completes`。
+- [ ] 仅改 `frontend/nyanpasu/src/utils/ipc-error.ts` 的 `configErrorMessage`、`ipcErrorMessage` 和 `effectFailureMessage` 分支，新增 debug 错误 mapper；新增消息 `error_config_hotkey_capability_unsupported`、`error_debug_http_read_status_unsupported`、`error_debug_http_change_enabled_unsupported`、`error_debug_http_read_status`、`error_debug_http_change_enabled` 与一个 `effect_failure_presentation_unsupported`，六种语言齐全；不改页面/组件。按本节公共流程重新编译 Paraglide。
+- [ ] 无新 crate，Cargo/门禁集合/静态前缀/musl 注册不变；端口 mocks 由 core `test-support` 提供，tauri dev 边保持关闭 core 默认 feature。同步路线图 C1 状态及中立 sink 说明。
+
+- [ ] 补齐赋值点：`C/client/hotkey/tests.rs:581` 的 args.window、`T/adapters/hotkey/tests.rs:27` 的 args.accelerators、`T/unified_rpc.rs:1090,1209` 的 args.host_adapters.debug_http 均保留真实能力并包 Some；HTTP fixtures 仍用真实 enabled owner，保留 shutdown drain，不能换成 None/no-op。
+- [ ] 前端行为测试属于本卡允许范围：在 `frontend/nyanpasu/tests/ipc-error.browser.test.ts` 新增 `hotkey_capability_error_uses_its_message`，经 ipcErrorMessage → configErrorMessage 断言 `m.error_config_hotkey_capability_unsupported()`；新增参数化 `debug_http_errors_use_their_messages`，四个变体经 ipcErrorMessage → debug mapper 分别断言 `m.error_debug_http_read_status_unsupported()`、`m.error_debug_http_change_enabled_unsupported()`、`m.error_debug_http_read_status()`、`m.error_debug_http_change_enabled()`；新增 `presentation_unsupported_uses_its_message`，调用 effectFailureMessage 断言 `m.effect_failure_presentation_unsupported()`。除 typecheck 外运行 `pnpm run test:frontend`（根 package.json:49，Vitest browser；见 testing.md:39），不能用编译替代行为断言。消息路径以 `frontend/nyanpasu/project.inlang/settings.json:10` 和实际 `frontend/nyanpasu/messages/` 为准。
+
+**验证**
+
+- §0.8 清单 = C1a 清单 + 本卡新增测试；`cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；既有 `stale_completion_does_not_publish_success_for_new_desired`（`C/client/effects/tests.rs:304`）、`commit_receipt_and_status_keep_source_separate_from_pending_notifications`（`:803`）、`enabled_http_server_joins_application_shutdown`（`T/unified_rpc.rs:1074`）通过。
+- `rg 'expect\(".*(window|presentation|debug HTTP)' backend/nyanpasu-core/src/client/mod.rs backend/nyanpasu-core/src/client/effects/executor.rs` 退出码 1，另逐项审阅 optional 分支；不能仅用搜索证明所有分支已处理。反向检查：缺失能力改用 `NoopApplicationEffects`、校验移到提交后或忽略 HTTP drain，分别使 applied_revision、未持久化、shutdown 测试失败。
+- bindings 只新增 `ConfigError.validate_hotkey_capability`、`EffectFailureCode.presentation_unsupported`、`DebugHttpControlError` 四个变体与 `IpcErrorKind.debug_http`；`WindowError` 不导出，`EffectsError`、app-update DTO、命令签名不变。逐包运行本节列出的 rpc/query/nyanpasu typecheck；新增错误的 serde、Display/source 链测试。没有其他前端改动。
+
+---
+
+## C2a — contracts 的 OS 消费端口与闭包
+
+本卡是保行为接缝；先拆闭包，具体实现仍留原 crate。
+
+- [ ] `SystemDnsCache/SystemDnsError`（`C/client/system_dns.rs:11-36`）移到 `K/system_dns.rs`；`OsProxyConfig/OsProxyError/OsProxyPort`、`AutoLaunchError/AutoLaunchPort`、`PacError/PacPort`（`C/client/system_proxy/ports.rs:15-194`）移到 `K/system_proxy.rs`；`CoreVersionReader`（`C/client/core_version.rs:7`）进已有 `K/core_version.rs`。生产选择器无条件公开：DNS 与 installer 的 `#[snafu(visibility(pub(crate)))]`（`C/client/system_dns.rs:9`、`core_lifecycle/ports.rs:19`）改为 `pub`，包括 RunFlushCommand/FlushRejected/Unsupported 与 PathNotUtf8/StartElevatedCopy/ElevatedCopyFailed selectors；仅 mocks、测试构造辅助放在 `test-support`，不保留旧 re-export。`SystemProxySource` 已在 `K/net.rs:61`，不再搬一次。
+- [ ] 二进制端口使用窄请求：`BinaryInstaller` 与 `InstallCoreBinaryError`（`C/client/core_lifecycle/ports.rs:20,45`）进 `K/core_install.rs`；新增 `CoreBinaryInstallRequest` 包含 `ClashCore`、source/destination 路径、`Arc<TempDir>` staging lease、可选 companion 的 staged/destination 路径，不包含进度回调、restart 或 updater 类型。`PreparedCoreBinary/PreparedCoreCompanion/BinaryInstallProgress` 留 `U/updater/artifact.rs:8-38`；workflow 在 `C/client/core_lifecycle/workflow.rs:715` 由借用的 artifact 构造请求，持有 artifact/companion 直到安装返回；阻塞复制任务照旧克隆并持有 lease（`adapters.rs:46-61`），不能退化为只有裸路径。这样不搬 B4 的进度闭包，也不产生 OS → updater。
+- [ ] `ServiceHostAdapter`（`C/actor_v2/service_actor.rs:44-52`）拆为 contracts 的 `ServiceProcessControl`（async `probe -> Result<String, ServiceCommandError>`，install/uninstall/start_daemon/stop_daemon/update）及 core 内单独注入的 endpoint factory。OS probe 负责进程退出与 UTF-8；core 在同一 probe 调用边界解析 `StatusInfo` 并构造原 `ParseServiceStatus`。`ServiceEndpoint`/`EndpointHandle` 与 IPC 解释留 core；替换 actor args、状态与测试 fake，不能留下一个转发所有方法的旧 `ServiceHostAdapter` 兼容壳。
+- [ ] `ServiceCommand/ServiceCommandError`（`C/service/control.rs:18,40-105`）进 `K/service.rs`：保留 platform `UserError`、`InstallDirError`、IO/UTF-8/JSON source、退出码/signal/timeout 字段、serde skip 与 Display。contracts 可依赖所需 `whoami`/`nyanpasu-paths`，不依赖 runtime IPC 客户端。先加真实 source 的 Display/source 链/JSON 期望测试，再改导入与解析位置。不把 core `RuntimePreparationPort`、`CoreSpec` 或 runtime 状态移入 contracts。
+- [ ] 为后续纯移动提前参数化 Tauri executable lookup：`T/adapters/system_proxy.rs:78` 的 autostart 在原 setup 时点由 shell 解析 executable，再传入配置解析函数；`T/utils/core_version.rs:19` 必须仍在每次 `read` 时查询，不能提前变成 setup 错误。为后者在 `K/core_version.rs` 新增 `CoreVersionExecutableSource: Send + Sync + 'static`，同步 `current_exe(ClashCore) -> Result<PathBuf, CoreVersionError>`，由 `T/adapters/core_version.rs` 调原 Tauri API 并保留 `RunCoreVersion` source，注入版本探测实现。原 Windows 引号、macOS `.app`、Linux AppImage、测试 `deps` 目录处理、`verge-dev` 不变；不换 executable discovery API。
+- [ ] 调用方同提交迁完：`C/client/{mod,core_version,system_dns}.rs`、system_proxy actor/tests、core_lifecycle workflow/adapters、`client/test_support.rs`、`test_support/{facade,workflow}.rs`、application_workflow tests 的 `mod/startup/connection_policy/mutations.rs`、`actor_v2/{service_actor,service_host_adapter}.rs` 及其 fake、`T/{setup,ipc,test_support}.rs`、`T/adapters/system_proxy.rs`、`T/utils/{core_version,collect}.rs`。updater 的 artifact 定义和公开路径不变。
+- [ ] contracts → config、tauri → core/config 及新增的对应边均 `default-features = false`；contracts 加 `tempfile`、新增端口使用的 `tokio-util`；保留已有 `url`（`backend/nyanpasu-contracts/Cargo.toml:26`）等实际依赖，test-support 转发 mockall。`S/backend-boundaries_test.ts` 增加 contracts → updater/core-manager/reqwest（含 IPC client 传递引入 reqwest）的负例和 contracts → config/paths 的正例，规则本身已有禁止项，不放宽。既有 contracts 静态前缀不变；musl 同时加 `-p nyanpasu-contracts` 与 `lib:nyanpasu_contracts`，覆盖迁入测试。同步 backend-packages 的 contracts 职责。
+
+- [ ] 补齐原路径消费者：`C/client/application_workflow/mod.rs:33,190`、`runtime_error.rs:19,23`、`system_proxy/mod.rs:21`、`system_proxy/error.rs:9`、`C/actor_v2/facade.rs:924,1060`、`actor_v2/test_support.rs:76,194`、`client/application_workflow/tests/recovery.rs:615,762`、`tests/service_recovery.rs:5,65`、`C/service/test_support.rs:3`、`T/setup_tests.rs:20,22,78`、`T/adapters/ui_effects/tests.rs:42-44`。每个 service fake 同提交提供分离的 process-control 与 endpoint 依赖；UI-effect mocks 本卡改从 contracts 导入，不等 C2c/C3a。对 core/tauri 的全部 rs 再搜 ServiceHostAdapter、ServiceCommandError、BinaryInstaller、InstallCoreBinaryError、CoreVersionReader、SystemDnsCache 及分组 system_proxy ports 导入，逐项清零旧路径。
+- [ ] 正常生产检查不得依赖测试 feature：`cargo check -p nyanpasu-contracts -p nyanpasu-core -p clash-nyanpasu --lib`，不传 --all-features/--features test-support/--all-targets；C2b/C2c 创建 OS 后同样 `cargo check -p nyanpasu-os --lib`。反向把生产 selector 藏入 test-support 必须使正常消费端检查失败；不能只靠全 feature 测试。
+
+**验证**
+
+- `cargo test -p nyanpasu-contracts`、`-p nyanpasu-core`、`-p nyanpasu-updater`、`-p clash-nyanpasu`；§0.8 四侧清单合计 = 原清单 + 新增 `service_error_keeps_display_source_and_wire_shape`、`os_port_errors_keep_display_source_and_wire_shape`、`install_request_keeps_staging_when_waiter_is_dropped`、`version_probe_resolves_executable_on_each_read`、`version_probe_resolution_failure_stays_a_read_error`、`autostart_path_parameterization_preserves_platform_paths`（均为新测试），只有端口测试迁入 contracts；既有 `the_io_error_stays_out_of_the_wire_form_but_in_the_message`（`C/service/control.rs:342`）、`reads_versions_without_mistaking_banner_words_for_versions`（`K/core_version.rs:59`）保持。
+- `rg 'nyanpasu_updater|nyanpasu_core_manager|nyanpasu_ipc|reqwest' backend/nyanpasu-contracts/src/core_install.rs backend/nyanpasu-contracts/src/service.rs` 退出码 1；`rg 'ServiceHostAdapter' backend/nyanpasu-core/src backend/tauri/src` 退出码 1（含改名后的具体实现）；`rg 'client::core_version::CoreVersionReader|client::system_proxy::ports::(OsProxyPort|AutoLaunchPort|PacPort)' backend/tauri/src` 退出码 1，并审查分组导入。
+- 反向检查：把 artifact 参数换回 updater 类型或 contracts 加 IPC client 依赖，门禁失败；把 source 装箱改为字符串，契约测试失败；去掉 staging lease，新增 `install_request_keeps_staging_when_waiter_is_dropped` 失败。bindings 三份零 diff。
+- `cargo check -p nyanpasu-core -p nyanpasu-contracts -p clash-nyanpasu --target x86_64-unknown-linux-gnu`；macOS CI 检查平台 source/路径分支；`pnpm run test:scripts`、`pnpm run test:backend-musl`。
+
+## C2b — 新建 `nyanpasu-os`，移动代理与设备机制
+
+本卡是纯移动；C2a 已完成构造参数化，不改变代理、PAC、自启动与版本探测策略。
+
+- [ ] 新建 `O/system_proxy_source.rs`、`device_identity.rs`、`system_proxy.rs`、`autostart.rs`、`pac.rs`、`core_version.rs`，分别接收 `C/utils/config.rs:16`、`C/utils/hwid.rs:29,48`、`T/adapters/system_proxy.rs:30,69,122,183`、`T/utils/core_version.rs:10` 的实现。autostart 的 `verge-dev` 语义由 shell feature 显式转发；PAC 的 timeout、大小限制、缓存失败策略、取消和 disable 行为原样。core 的系统代理 owner 留 core。
+- [ ] OS 内放私有 `blocking::join`，复制 `backend/nyanpasu-owner-support/src/blocking.rs:6-14` 的结果处理：正常返回、panic 原 payload `resume_unwind`、runtime 取消 panic。它只供迁入的 PAC/服务/安装机制使用，不新增共享 crate，不依赖 owner-support。保留原 spawn_blocking 与等待位置，避免改同步/异步 API 或 caller-drop 语义；新增 `blocking_join_resumes_the_original_panic`、`blocking_join_panics_on_runtime_cancellation`（新测试）。
+- [ ] 调用方改为 shell 构造 OS 实现：`T/setup.rs:293,342,385,415,429,469,485,701,703`、`T/utils/collect.rs:49`、`T/test_support.rs:24`。core 的 `profile_integration_tests/test_support.rs:25`、`profiles.rs:784,1016` 改用显式注入的 contracts proxy fake，不能让 core 导出的 test-support 链接 OS。删除旧实现模块/导入，不留 shim。
+- [ ] workspace `members` 加 OS；tauri 普通依赖 OS，OS 只依赖 foundation/中立工具与实际第三方库，不依赖 core 族、net 或其他实现 crate；所有 config/core 边关默认 feature。OS 声明 `sysproxy`、`auto-launch`、`sysinfo`、`whoami`、`once_cell`、`sha2`、`hex`、Windows `winreg`；PAC 保留自己的 `reqwest`（沿用 workspace TLS/features）、`url`、`tokio-util`，不借 net；其余直接依赖为 `anyhow`、`async-trait`、`camino`、`dunce`、`serde`/`specta`（DeviceInfo）、`snafu`、`tokio`、`tracing`，版本沿用原 manifest（core `Cargo.toml:78-110`、tauri `Cargo.toml:114-116,127,151-160`）；SHA-256/hex 仍被 core runtime/icon/geo 使用，不能误删。core 不加 OS 普通依赖或 test-support 转发。
+- [ ] `S/backend-boundaries.ts:40-44` 的 `IMPLEMENTATION` 加 OS，继承 GUI 禁止及双向 core 族禁止、实现互依禁止。`backend-boundaries_test.ts` 正例 shell → OS、OS → contracts/config；负例逐个 core 族 → OS、OS → 各 core 族（含 updater/owner-support）、OS → net/profile-io/scripts、foundation → OS、OS → Tauri/egui/Slint（含传递路径）。不要把不存在的 server 当现有 cargo tree 根。
+- [ ] 在删除 core 最后一个 `sysproxy` 使用与 `backend/nyanpasu-core/Cargo.toml:78` 后，扩展 `S/backend-boundaries.ts:111-114` 的 CORE_FAMILY 禁止项，加 `sysproxy`。`backend-boundaries_test.ts` 新增逐个 core 族直接/传递 → sysproxy 的负例及 OS/tauri → sysproxy 的正例；不禁止 OS 机制依赖它。
+- [ ] `S/policy.ts:81` 加 `backend/nyanpasu-os/src/`；`:169` 的 HWID immutable allowlist 改到 `O/device_identity.rs`，同步 `architecture-ledger_test.ts` 的覆盖测试；不新增可变服务 static。musl `-p nyanpasu-os`、`lib:nyanpasu_os` 同加。更新 backend-packages、architecture 的 OS 布局与路线图进度。
+
+- [ ] 删除 `T/ipc.rs:395-396` 所在的已注释 get_device_info wrapper：移动使其 nyanpasu_core::utils::hwid 路径失效，这是本卡明确追踪的删除，不是顺手清理；不为注释豁免旧路径 rg 检查。
+
+**验证**
+
+- `cargo test -p nyanpasu-os`、`-p nyanpasu-core`、`-p clash-nyanpasu`；§0.8 比较三侧清单。移动 HWID 五例：`test_hwid_is_deterministic`、`test_device_os_not_empty`、`test_os_version_not_empty`、`test_device_model_not_empty`、`test_fallback_hwid_is_valid_hex_32`（`C/utils/hwid.rs:218,226,233,239,245`）；其余源实现无本地测试，不能声称移动了 proxy actor 测试。既有 `pac_unsupported_platform_reports_unsupported`（`C/client/system_proxy/tests.rs:605`）、`exit_restores_captured_original`（`:751`）、`the_token_releases_a_pac_download_before_the_restore`（`:955`）留 core 并通过。
+- `rg 'OsSystemProxySource|DEVICE_INFO|SidecarCoreVersionReader' backend/nyanpasu-core/src` 退出码 1；`rg 'nyanpasu_core::utils::(config|hwid)|crate::utils::core_version' backend/tauri/src` 退出码 1；`rg 'nyanpasu_(core|updater|owner_support|net)::' backend/nyanpasu-os/src` 退出码 1。bindings 三份零 diff。
+- 反向检查：OS 加 owner-support/net 依赖、core 加 OS 普通依赖，门禁失败；core 加回 sysproxy 依赖，新增依赖规则失败；删 OS 静态前缀，覆盖测试失败；把 `resume_unwind` 换为普通错误，新增 panic 测试失败。`pnpm run test:scripts`、`pnpm run test:architecture-ledger`、`pnpm run test:backend-musl`；`cargo check -p nyanpasu-os -p clash-nyanpasu --target x86_64-unknown-linux-gnu`，macOS CI。
+
+## C2c — 服务、DNS flush 与二进制安装机制移入 OS
+
+本卡是纯移动，仍保留现有直接 OS 授权行为；同意策略在 C2d 单独改变。
+
+- [ ] `C/service/control.rs:124-299` 的进程机制与 C2a 的具体 process-control 实现移到 `O/service.rs`；`C/utils/sudo.rs` 移到 `O/elevation/macos.rs`；`C/client/system_dns.rs:40-104` 的 OS 实现移到 `O/system_dns.rs`；`C/client/core_lifecycle/adapters.rs:14-178` 的安装、companion 交换和错误进 `O/core_install.rs`，按 C2a 窄请求接收参数。改用 C2b 私有 blocking join，调用位置不变。
+- [ ] core 留 `ServiceEndpoint` factory、probe JSON 解释、compat policy/actor、runtime preparation、安装前 stop/recover 与安装后 restart/progress（`C/client/core_lifecycle/workflow.rs:704-723`）。不整体搬 `C/service/`，不搬 runtime DNS guard；`C/actor_v2/local_host.rs:69-74` 的既有 runtime controller 装配及 runtime submodule 内部结构本轮不变。
+- [ ] `T/setup.rs:263,279,478,483`、`T/ipc.rs:1645` 改从 OS 构造机制/生成服务命令参数；core 的 installer fixtures（`C/client/test_support.rs:791`、`test_support/facade.rs`、`client/mod.rs`、application_workflow tests 的 `mod/startup/connection_policy/mutations.rs`）改用已有 `test_support/workflow.rs` 的 fake，真实安装测试随 OS。所有旧模块声明与导出删除。
+- [ ] OS 加 `runas`、所需 Windows session 检查 API；Windows SID 继续用 `nyanpasu-utils` 的 `os` feature（`backend/nyanpasu-runtime/crates/nyanpasu-utils/Cargo.toml:93`），以直接 path 边 `nyanpasu-utils = { path = "../nyanpasu-runtime/crates/nyanpasu-utils", default-features = false, features = ["os"] }` 声明，不换 SID 算法。workspace 的既有项未关闭默认 feature（`backend/Cargo.toml:58`），不能用 `workspace = true` 再假设子边可以关闭它，也不扩大本卡修改所有旧消费者。该中立工具不引入 runtime IPC/core-manager；OS 不需要这两者，`S/backend-boundaries.ts` 为 OS 加禁止项与对应负例，保留 OS → utils 的正例；仅在 core 最后一个使用者消失后删除依赖。tauri 的 `runas` 仍被 UWP/迁移使用（`T/core/win_uwp.rs:34`、`T/utils/init/mod.rs:412`），不能删除。不加 OS → updater/owner-support/net 或 contracts → IPC client。macOS helper 加 `tempfile`，原 Unix `ExitStatusExt`/Windows session 分支原样；已有 OS 集合/prefix/musl 注册不变，删除 core 最后一个 `runas` 使用与 `backend/nyanpasu-core/Cargo.toml:70` 后，在 `S/backend-boundaries.ts:111-114` 的 CORE_FAMILY 禁止项加 `runas`；`backend-boundaries_test.ts` 加逐个 core 族直接/传递 → runas 的负例及 OS/tauri → runas 的正例。不新增源级扫描规则；授权站点只作下列 PR-time `rg` 审阅；更新路线图 C2 机械迁移状态。
+
+- [ ] 服务机制闭包还包括 `C/service/control.rs:108` 的 signal 与 `:121` 的 SERVICE_BINARY，随机制移入 OS。
+- [ ] **本卡负责安装测试 fixture 改写**：`C/client/core_lifecycle/adapters.rs:184-207,222-228` 不原样复制 updater 类型；迁入 `O/core_install.rs` 后，调用安装器的 `the_companion_is_published_once_the_binary_is_installed` 构造 `CoreBinaryInstallRequest`；其余四例照旧直接调用 `publish_companion` 并保留其错误断言（安装器对 companion 失败只记日志并返回成功，`adapters.rs:22-37`）。凡用到 updater 制品的 fixture 都改为本地 `TempDir` 所有者加 staged/destination 路径，删 NoProgress 与 BinaryInstallProgress/PreparedCoreCompanion 导入。C2a 改接口时先让原位置测试构造窄请求以保证该提交编译；本卡移入 OS 时完成去 updater 的本地 fixture 闭包。保留 `:239-246` 的 drop 后清理断言：释放 request/staging lease 与 companion owner 后目录只剩 installed-core/meow-alpha，不因 fixture 长持有 TempDir 而放宽断言。
+
+**验证**
+
+- §0.8 清单按 C2a 错误测试的最终归属比较。源库存：service 三例 `a_failed_command_names_the_command_and_how_it_ended`、`the_service_binary_sits_next_to_the_executable`、`the_io_error_stays_out_of_the_wire_form_but_in_the_message`（`C/service/control.rs:309,329,342`；错误测试可在 contracts）；DNS 两个平台互斥例 `windows_flush_uses_ipconfig`、`macos_flush_covers_both_resolver_caches`（`C/client/system_dns.rs:123,134`）；安装五例 `the_companion_is_published_once_the_binary_is_installed`、`a_first_companion_is_published_where_none_was`、`the_previous_files_left_by_an_interrupted_swap_are_restored_or_removed`、`a_failed_swap_restores_the_previous_files`、`a_linked_destination_is_left_alone`（`adapters.rs:214,250,261,285,303`）。
+- `cargo test -p nyanpasu-os`、`-p nyanpasu-contracts`、`-p nyanpasu-core`、`-p nyanpasu-updater`、`-p clash-nyanpasu`；保留 `uninstall_stops_the_daemon_before_removing_it`（`C/actor_v2/service_actor.rs:1724`）、`command_settled_waits_out_a_running_helper_and_reaps_it_with_one_probe`（`:1581`）、`daemon_crash_reconnects_and_restores_only_a_previously_running_core`（`C/client/application_workflow/tests/service_recovery.rs:254`）、`the_shutdown_waits_for_an_install_in_progress`、`the_shutdown_waits_for_an_extraction_in_progress`（`U/updater/tests.rs:281,346`）。runtime DNS guard 的 `a_restore_pending_record_keeps_its_baseline`、`an_empty_baseline_is_still_a_baseline`（`backend/nyanpasu-runtime/crates/nyanpasu-core-manager/tests/dns_override.rs:518,567`）由既有 runtime CI 继续验证，不修改 submodule。
+- `rg 'runas|osascript|with administrator privileges' backend/nyanpasu-core/src --glob '*.rs'` 不得有执行站点；注释/测试错误文字逐条列入 PR，不以这些词证明调用存在。`rg 'core_lifecycle::adapters::FsBinaryInstaller|utils::sudo|service_host_adapter::OsServiceHostAdapter' backend/nyanpasu-core/src backend/tauri/src` 退出码 1；`rg 'nyanpasu_(updater|owner_support|net)::' backend/nyanpasu-os/src` 退出码 1。
+- 反向检查：丢弃复制任务的 staging lease，使 C2a lease 测试失败；删除 companion 回滚，使 `a_failed_swap_restores_the_previous_files` 失败；引入 core → OS 普通依赖或加回 core → runas，使依赖 gate 失败。bindings 三份零 diff；`cargo check -p nyanpasu-os -p clash-nyanpasu --target x86_64-unknown-linux-gnu`，macOS CI、musl runner。
+
+---
+
+## C2d — 提权同意端口与拒绝实现
+
+本卡是行为变更：拒绝策略不启动任何提权命令；桌面仍由原 OS 授权框取得授权，不加第二个确认框。
+
+- [ ] contracts 新增 `elevation` 模块，消费者自有 `ElevationConsent: Send + Sync + 'static`，同步且不做 IO 的 `authorize(ElevationOperation) -> Result<(), ElevationConsentError>`；`ElevationOperation` 用 serde snake_case/Specta 枚举 `Service { command: ServiceCommand }`、`DnsFlush`、`CoreBinaryCopy`（tag `kind`），只标识动作，不接收命令字符串。服务调用先检查策略再准备可能启动进程的 helper；非提权 probe 与失败恢复照常，不把拒绝解释成 service 已停止。`ElevationConsentError` 是模块自有 snafu 枚举，只有 `AuthorizeElevation { operation: ElevationOperation }` 一个失败步骤变体（tag `kind`，wire `authorize_elevation`）；没有应用内确认，不区分 Denied/Unsupported。本轮只是“是否允许请求 OS 授权”的策略，不宣称预先得到 OS 授权；OS 对话框的取消继续按原执行失败分类。
+- [ ] `O/elevation` 提供 `RefuseElevation`（返回 `AuthorizeElevation { operation }`，保留调用动作）；`T/adapters/elevation.rs` 提供 `InteractiveElevationConsent`（允许现有 OS 机制），`T/setup.rs` 显式注入各 OS 构造器，不用 global。同步策略足够：本轮没有额外 UI 等待，OS 授权阻塞仍在原 blocking task；未来需要异步确认时另评审，不提前抽象。
+- [ ] C2c 三类机制在启动提权命令前调用策略：服务 install/update/uninstall/start/stop/restart，包含 macOS sudo；Windows/macOS DNS flush；普通复制失败后的 runas fallback。拒绝时 runas/osascript 调用数为零，普通复制成功不请求授权；不改变 actor timeout/outstanding helper、服务 probe/恢复、staging lease、companion best-effort、DNS guard。
+- [ ] 消费模块新增失败步骤变体：`ServiceCommandError::AuthorizeServiceCommand { command, source: ElevationConsentError }`、`SystemDnsError::AuthorizeDnsFlush { source }`、`InstallCoreBinaryError::AuthorizeCoreCopy { core, destination, source }`；嵌套 source 保留 serde/Specta，不转字符串。同步 core 的分类 match；明确永久拒绝不可变成自动重试授权。现有 updater 的 `Failed(String)` 保持，C2e 在 admission 前拒绝 HTTP update，不扩大异步 updater wire 模型。
+- [ ] 前端仅在 `ipc-error.ts` 的 DNS/install mapper 加 `authorize_dns_flush`、`authorize_core_copy` 分支和共用 consent mapper；只新增 `error_elevation_authorize` 消息；consent mapper 处理 `authorize_elevation`，不按 operation 增加消息。`ServiceCommandError` 的新变体经现有 `prepare_service_install_prompt` generic message 路径无需新增 exhaustive switch（`ipc-error.ts:448`），服务 CoreFailure 映射保留；不改页面。重新编译 Paraglide，逐包 typecheck。
+- [ ] Cargo 无新包，contracts/OS 与 shell 的 feature 约束不变；gate/prefix/musl 条目不增。新增测试（新）：`refused_service_command_never_spawns`、`refused_dns_flush_never_spawns`、`refused_copy_fallback_never_spawns`、`successful_plain_copy_does_not_request_elevation`、`interactive_policy_adds_no_confirmation`、`refused_service_command_keeps_the_probed_phase`；通过注入 command runner 断言，不在测试机弹框或改系统状态。同步 design/路线图 C2 consent 状态与 E4 注入责任。
+
+- [ ] 修改 `ServiceActorState::command_error`（`C/actor_v2/service_actor.rs:301-306`）对授权拒绝设 retryable=false；普通命令执行失败仍 true。新增 typed-client 测试 `service_consent_refusal_is_not_retryable`，断言返回 CoreError.retryable == false；另断言普通 RunElevated/退出失败保持原 retryable。新增 `consent_refusal_pauses_automatic_service_recovery` 于 `C/client/application_workflow/tests/service_recovery.rs`：用可计数授权 fake 与确定性时钟/显式 tick 驱动 `core_lifecycle/workflow.rs:422-426` 的 pause，后续多个自动 tick 不再调用 authorize，普通执行失败仍按现有恢复策略重试；不使用 sleeps。
+- [ ] 在 `frontend/nyanpasu/tests/ipc-error.browser.test.ts` 新增 `dns_elevation_refusal_uses_the_elevation_message`：公共 ipcErrorMessage → 私有 systemDnsErrorMessage（ipc-error.ts:327），输入嵌套 authorize_dns_flush/source.authorize_elevation，断言 `m.error_elevation_authorize()`；新增 `core_copy_elevation_refusal_uses_the_elevation_message`：ipcErrorMessage → runtimeErrorMessage 的 install_core_binary（:446-447）→ 私有 installCoreBinaryMessage（:658），嵌套 authorize_core_copy/source.authorize_elevation，同样断言该消息。不要为测试导出私有 mapper。消息写 `frontend/nyanpasu/messages/{en,ja,ko,ru,zh-cn,zh-tw}.json`；重新编译 Paraglide 后运行 `pnpm run test:frontend` 及既定逐包 typecheck。
+
+**验证**
+
+- `cargo test -p nyanpasu-contracts`、`-p nyanpasu-os`、`-p nyanpasu-core`、`-p clash-nyanpasu`；§0.8 清单 = C2c + 新测试。既有 `a_failed_install_leaves_the_probed_phase_not_the_transitional_one`（`C/actor_v2/service_actor.rs:1955`）、`recovery_distinguishes_failed_start_from_an_unconfirmed_timeout`（`:1762`）与 C2c 关闭/lease 测试通过；新增三个消费错误及单一 refusal 的 Display/source 链/serde 断言，验证 operation 在 source 中保留。
+- bindings 仅新增 `ElevationOperation` 三变体、`ElevationConsentError.authorize_elevation { operation }` 及上述三个消费错误变体；core、destination 的原 wire 类型/命令签名/UpdaterState 不变。前端新增一个消息、两个消费错误分支和共用 mapper；运行本节三个显式包 typecheck。
+- `rg 'nyanpasu_(core|updater|owner_support|net)::' backend/nyanpasu-os/src` 退出码 1；逐一核对全部 runas/osascript 启动点经过授权，不把关键字无匹配当作 OS 内的目标。反向检查：任一站点绕过 authorize，对应 never_spawns 测试失败；把拒绝改成 retryable，phase/retry 断言失败。`cargo check -p nyanpasu-os -p nyanpasu-contracts -p clash-nyanpasu --target x86_64-unknown-linux-gnu`，macOS CI、musl runner。
+
+## C2e — `update_core` 的最小 HTTP 限制
+
+本卡是行为变更：WebUI 的 `update_core` 在 job admission 前返回既有 unsupported / HTTP 501；桌面更新不变。
+
+- [ ] 只去掉 `T/ipc.rs:1125` 的 `http` opt-in，不改 `update_core` 的桌面签名和 `download_core_update` 调用（`:1128`）。宏 `backend/nyanpasu-macro/src/unified_command.rs:173` 已生成 unsupported；保留 `T/unified_rpc.rs:174,189` 的 kind/status，不新增 DTO。
+- [ ] 新增 `http_update_core_is_unsupported_before_job_admission`（新）：通过真实 HTTP registry 入口，断言 501、kind unsupported、updater admission/prepare/install 都未发生；新增 `desktop_update_core_dispatch_remains_available`（新），验证桌面 generated dispatcher 仍注册。不用后续 `UpdaterState::Failed(String)` 冒充原 HTTP 调用的结构化拒绝。
+- [ ] 在 design §8/§9 与路线图保留 #6157 已知缺口：`patch_app_config` 开服务（`C/client/application_workflow/tcc.rs:867`）、关服务（`:1290`）、`retry_configuration_runtime`（`:299`）和 compensation（`:1383`）仍共享桌面策略。C2 不引入逐调用权限上下文、不另建第二个 client；E4 独立 server 必须注入拒绝策略，并验证上述路径均不能弹框。不能把本卡描述为“所有嵌入式 WebUI 提权路径已关闭”。
+- [ ] Cargo/gate/静态前缀/musl 不变；无前端 switch/message 新增。
+
+**验证**
+
+- `cargo test -p nyanpasu-macro`、`cargo test -p clash-nyanpasu`；§0.8 清单 = 原清单 + 两新测试；既有宏 `http_requires_opt_in_and_accepts_only_lifetime_generics`（`unified_command.rs:514`）及 `errors_preserve_domain_codes_and_operation_identity`（`T/unified_rpc.rs:1010`）通过。
+- `rg -n -B 3 'pub async fn update_core' backend/tauri/src/ipc.rs` 必须显示无 http 的属性；此正向定位不能按退出码 1 判通过。另对该单个函数的 AST/宏展开断言 HTTP handler 是 unsupported。反向检查：恢复 `rpc(http)`，admission 前拒绝测试失败。
+- 三份 bindings 零 diff，前端变体/消息零新增；仍运行 rpc/query/nyanpasu 三个显式包 typecheck。只改 transport opt-in，无平台分支检查新增要求。
+
+## C2f — RPC dispatch 的审计切面
+
+本卡是行为变更：应用 API 调用产生无 payload 的结构化 tracing 审计事件，命令结果、执行顺序、取消与 panic 语义不变；不建存储、轮转或 UI。
+
+- [ ] 在 RPC 消费层 `T/unified_rpc.rs` 定义 `RpcAuditSink: Send + Sync + 'static { fn record(&self, record: &RpcAuditRecord); }`，无 Result、无 async；`RpcDependencies`（`:22`）显式注入 `Arc<dyn RpcAuditSink>`，HTTP weak routes（`:213-239`）使用同一依赖，不能另建全局 sink。端口/值以后随 registry 移到 `nyanpasu-rpc`（E2），不进 core/contracts，不带 Tauri 类型。
+- [ ] record 只含 transport（`TauriIpc`、`Http`；E3 加 `LocalSocket`）、command（注册表的固定名称；未知名称归为 `unknown_method`，不记录任意输入文本）、现有 owner identity（`RpcOwner`，桌面 window label / HTTP session 或现有匿名 owner）、单调 duration、outcome（Success、Failure 的 kind/code、Cancelled、Panicked）。不记录 params/output、error message/detail/domain_error、headers、URL、token、SSE 帧；kind/code 只取 `RpcError` 的分类字段。无新 serde/Specta DTO，record 不对外传输。
+- [ ] 新增唯一公共内核 `dispatch_audited`：在开始 poll 命令前创建记录 guard，把 lookup、宏生成 handler 的解析/调用/结果序列化全包在其内部；完成时同步记录再原样返回同一个 `Result`，不重试、不 spawn、不加 timeout、不改 error。`UnifiedRpc::call`（`:278`，HTTP）和 `call_tauri`（`:286`）都只经此内核；后者从 window label 构造 owner。未知方法、invalid params、unsupported 均记录。guard 的 Drop 用 `std::thread::panicking()` 区分 Panicked 与 Cancelled，记录后让原命令 panic 及 payload 继续传播。sink 是本项目自有实现，契约要求不得 panic、不得向调用者返回错误；遵守 design §7.3，不新增 `catch_unwind`（包括测试），不提供 sink panic 恢复分支；panic=abort 不承诺 Drop 记录。同步记录只增加自身执行开销，不引入任务/锁等待式队列。
+- [ ] 真实入口：`T/lib.rs:408` 只注册 `T/specta_export.rs:15` 的 `call_rpc` transport builder，`T/unified_rpc.rs:383-393` → `call_tauri`；HTTP `:452-470` → `call`。宏 `unified_command.rs:164-173,176` 生成两类 handler，inventory 项只由 registry 调用，**不在宏 handler 再记一次**。保留并扩展宏覆盖测试 `every_ipc_rpc_command_has_a_desktop_dispatcher`（`:552`）、`every_ipc_tauri_command_uses_unified_rpc`（`:587`），新增 transport builder 只注册 `call_rpc` 的结构测试，防止注册原始 command wrapper 绕过切面。
+- [ ] 当前不是所有 HTTP API 都经过 command table：`http_logs_archive:302`、`http_connection_details:343`、`http_events:401` 直接调用应用。它们也调用同一个泛型 `dispatch_audited` 内核（可返回 Value、Response 或订阅响应，不能为审计把 stream 收集为 Value），分别用固定操作名 `logs_archive`、`connection_details_subscribe`、`events_subscribe` 和相同 HTTP owner 解析（给这三个 handler 增加 HeaderMap 提取，复用 `http_call:465-466` 的 session/匿名 fallback，不另加认证要求）；记录响应/订阅建立的结果，不逐帧记录、不延长 stream 生命周期。把 `http_call` 的 JsonRejection、events 的 QueryRejection 转为经过内核的 invalid_params 记录（无可用 command 时用固定 `invalid_envelope`），保留原 HTTP status/body。静态资源、鉴权中间件拒绝和 Tauri 在进入 `call_rpc` 前拒绝的畸形 transport envelope 不是已分派应用调用，不宣称此层能看到它们；将来若要网络安全接入日志另立卡，不在原始 payload 层补日志。
+- [ ] `T/adapters/rpc_audit.rs` 在同一 target `nyanpasu::rpc_audit` 按 transport 选结构化事件级别：HTTP 为 INFO，Tauri IPC 为 DEBUG；E3 local socket/CLI 为 INFO。GUI 是受信任的本地前端且高频轮询，DEBUG 避免默认日志被查询淹没；WebUI/CLI 是主要审计入口。级别不随 success/failure/cancel/panic 改变。`T/setup.rs:586-596` 显式注入，测试用内存 sink。E3 local-socket/CLI 必须进入同一内核，不能在 transport 自己复制一套审计流程。
+- [ ] 新增测试（新）：`tauri_dispatch_records_one_audit_event`、`http_dispatch_records_one_audit_event`、`direct_http_routes_use_the_same_audit_seam`、`audit_records_rejected_dispatches`、`audit_never_records_payloads_or_error_details`（在请求、响应、错误文本放唯一 secret，并断言 record 和 tracing 输出都没有）、`audited_failure_preserves_the_original_rpc_error`（包括 code/retryable/operation_id/domain_error）、`audit_level_follows_transport_not_outcome`（在 tracing 输出断言 HTTP INFO、Tauri IPC DEBUG，成功/失败同级，E3 增加 local socket INFO）、`dropping_audited_call_preserves_cancellation`、`audited_command_panic_keeps_its_payload`。Tauri 测试必须走真实 `call_tauri`/generated handler 接线，不能只测 helper；HTTP 用 router 请求；同步 sink 以调用序列断言不重排；命令 panic 测试经 `tokio::spawn` 的 JoinError 验证原 payload 及 Panicked 记录，不加 `catch_unwind`。
+- [ ] Cargo 无新依赖/包，gate/prefix/musl 注册不变；三份 bindings、前端 switches/messages 均零 diff。同步 RPC 路线图的 E2 迁移/E3 接入要求。
+
+- [ ] 测试 sink 同提交注入全部 RpcDependencies literals：`T/unified_rpc.rs:504,882,968,1094,1214`；生产 `T/setup.rs:586-596` 同步。不能漏掉 HTTP lifecycle/owner 隔离 fixtures。
+
+**验证**
+
+- `cargo test -p nyanpasu-macro`、`cargo test -p clash-nyanpasu`；§0.8 清单 = 原清单 + 新测试；`errors_preserve_domain_codes_and_operation_identity`（`T/unified_rpc.rs:1010`）、`connection_details_send_current_and_new_frames_and_release_demand`（`:1036`）、`enabled_http_server_joins_application_shutdown`（`:1074`）通过。
+- `rg -n 'handler\.[01]|http_handler|tauri_handler|dispatch_audited' backend/tauri/src/unified_rpc.rs backend/nyanpasu-macro/src/unified_command.rs` 用于枚举所有分派点，逐项证明只经内核，不把正向枚举当无匹配检查；`rg 'params|payload|domain_error|error\.message|headers' backend/tauri/src/adapters/rpc_audit.rs` 退出码 1。运行本节三个显式包 typecheck，bindings 零 diff。
+- 反向检查：任一 transport 直接调用 handler、直接 HTTP route 跳过内核、宏 wrapper 重新注册到 invoke handler，覆盖/一次记录测试失败；向 event 加 error detail，secret 测试失败；把 command error 替换成日志错误，原错误保留测试失败；把等待改 spawn 后 join，取消/顺序测试失败；把 IPC 改为 INFO 或失败升为 ERROR，transport 级别测试失败。
+
+---
+
+## C3a — 桌面交互机制移到 tauri shell
+
+本卡是纯移动，依赖 C1a 的消费接缝；不依赖 C2。建议 C1b 后合入以减少 setup/fixture 冲突。tauri 已依赖 core，desktop 可直接使用 core 公开的解析、plan/status 与消费契约，不新增 crate 或反向依赖。
+
+- [ ] 新建 `D/hotkey/`，接收 `C/client/hotkey/{actor,error}.rs`、`mod.rs:45-133` 的 `HotkeyArgs`、spawn `Error`、`HotkeyStatus`、`HotkeyClient` 与 stopped health；`ports.rs:139,326,343` 的 `ShortcutError`、`ShortcutRegistrar`、`HotkeyActionSink` 随机制走。owner 对已注册状态计算并执行 diff 的逻辑（`actor.rs:161-220`）随 actor 移动；纯 `HotkeyBindings::diff`/`HotkeyOp` 仍在 core。`D/main_thread.rs` 接收 `C/client/main_thread.rs` 全部；`D/effects/` 接收 C1a 的 `PresentationEffectExecutor`、`LocaleSink`、`TrayRefresher/TrayError`、`WidgetController/WidgetError` 与 full-refresh pending。具体 GUI adapters 仍在 `T/adapters/`，由 `T/setup.rs` 组装。
+- [ ] core 保留 `PresentationEffectsPort`、`AcceleratorValidator`、`HotkeyBindings`（parse/shape/canonical/duplicate/diff）、`HotkeyOp`、`HotkeyParseError`、`HotkeyAction`、`WindowControl/WindowError`；desktop 直接 import，不再包装列表验证器。`hotkey::validate_bindings`（`C/client/hotkey/mod.rs:140`）与 `NyanpasuClient::dispatch_hotkey_action`（`:154`）留 core；共享 executor、`CoreLogCaptureEffects`、`SystemProxyClient`、`LoggerRefresher/LoggerError/LogRotation`、plan/actor/status/receipt 不动。`WidgetError` 的 widget IPC source（`C/client/effects/ports.rs:117,126`）随机制走，不进 contracts。
+- [ ] 跨 crate 可见性按实际调用开放：`C/lib.rs:33` → `client/mod.rs:35,41` → `hotkey/mod.rs:11`、`effects/mod.rs:8-10` 已是公开模块链；hotkey 的上述值/trait（`ports.rs:35,106,161,170,190,315,351`）、parse/accelerators/diff/From（`:199,249,256,282`）、`has_super_key`（`:304`）已 public。plan 的 `EffectKind/TrayRefresh/WidgetLogoState/WidgetLogoDesired/TrayView/ApplicationEffect/ApplicationEffectPlan`（`plan.rs:200,215,245,253,287,339,373`）及其字段、`kind/from_effects/effects`（`:354,378,401`），status 的 `EffectRevision` 与 new/get、`EffectFailureCode/EffectHealth/EffectStatus/failure_text`（`status.rs:15-24,36,89,106,74`）也已 public；不公开 plan 私有 fields/投影内部结构。C1a 的 `effects::status::{healthy,degraded}` 从 `pub(crate)` 改为 `pub`，供两 crate 共用；`C/client/test_support.rs:870` 的 `AnyAccelerator` 从 `pub(crate)` 改为 `pub`，仍由 `client/mod.rs:59-60` 的 test-support gate 约束，供迁入的 actor 测试复用。除此之外不扩大 core 可见性；`CoreLogCaptureEffects`、`validate_bindings`、WindowError 的 snafu selectors 保持原可见性。HotkeyParseError 的 selectors 已 public（`ports.rs:104`）；HotkeyEffectError 的 selectors 随模块进 tauri 后仍 `pub(crate)`。
+- [ ] 调用方同提交迁完：`T/setup.rs:205,676-727`、`T/adapters/{hotkey,main_thread}.rs`、`T/adapters/ui_effects/`、`T/utils/exit.rs:204`、`T/core/tray/mod.rs:687`；core 的 `client/app_lifecycle.rs:113,345` 等直接组装 hotkey owner 的集成夹具改用消费端口 fake，真实热键释放由下列迁入测试及 tauri shutdown 测试覆盖，不能让 core dev-depend tauri。删除 core main_thread、hotkey actor/error 的模块声明与旧 re-export（`C/client/mod.rs:104`），但保留 hotkey 的 core 域模块。
+- [ ] hotkey 原 18 例中 **9 例移到 `D/hotkey/tests.rs`**（以下锚点均为 `C/client/hotkey/tests.rs`）：`update_unregisters_before_registering:274`、`unchanged_bindings_produce_no_os_calls:311`、`partial_registration_failure_degrades_and_keeps_successes:331`、`a_refused_grab_is_retried_by_the_next_reconcile:370`、`reconcile_validates_every_binding_before_releasing_any:394`、`stale_revision_is_superseded:437`、`exit_unregisters_all:465`、`reconcile_after_the_cancel_is_rejected:485`、`callback_dispatches_action_to_sink:525`。`RecordingRegistrar` 与 owner fixtures 随测试走，复用公开的 `AnyAccelerator`，不复制它。
+- [ ] **9 例留 core**：`parse_accepts_the_legacy_func_comma_key_format:27`、`parse_rejects_malformed_unknown_invalid_and_missing_super:49`、`parse_rejects_duplicate_accelerator:77`、`diff_emits_unbind_rebind_and_bind:96`，以及 facade 的 `dispatch_toggle_system_proxy_flips_app_config:603`、`dispatch_toggle_tun_mode_flips_clash_config:638`、`dispatch_clash_mode_patches_runtime_overrides:670`、`dispatch_dashboard_goes_to_the_injected_window_control:690`、`invalid_hotkey_is_rejected_before_commit:709`。`HotkeyBindings::from_pairs/as_map`（`ports.rs:232-243`）只被留下的测试用，保留 `cfg(test)`，不为桌面公开它们。
+- [ ] main-thread 四例全移：`run_returns_the_task_result:152`、`a_task_stranded_in_a_lost_event_loop_stops_its_wait:178`、`run_fails_when_the_event_loop_drops_the_task:199`、`work_goes_to_the_taker_only_once_it_has_taken_over:214`（原 `C/client/main_thread.rs`）。`T/adapters/ui_effects/tests.rs` 的纯展示执行测试随 `D/effects/`，依赖真实 Tauri/widget adapter 的测试原地；shared owner 测试仍在 `C/client/effects/tests.rs`。不复制测试/fixture。
+- [ ] 不建 crate，workspace/IMPLEMENTATION/CORE_FAMILY/STATIC_GATE_PREFIXES/musl 包列表均不加 desktop；tauri → core/config 的 normal/dev 边仍关默认 feature，tauri dev 边启用 core `test-support` 以取得 `AnyAccelerator`。删除 core `nyanpasu-widget-protocol` 直接依赖（`backend/nyanpasu-core/Cargo.toml:65-67`）；tauri 按实际用途保留/声明它。core 本来没有直接 global-hotkey/keyboard-types 依赖，不声称移除了这些库。
+- [ ] 保留 `S/backend-boundaries.ts` 的现有依赖规则；不新增源级或直接依赖 manifest 门禁，也不加整个 widget-protocol 的传递禁令：`backend/nyanpasu-config/Cargo.toml:22`、`src/application/widget.rs:1` 仍消费纯值 `StatisticWidgetVariant`，协议的 `ipc` 是可选 feature（`backend/nyanpasu-widget-protocol/Cargo.toml:12`）。`backend-boundaries_test.ts` 保留/补齐 core → config → render-free widget-protocol 正例及 core → tauri/widget GUI 负例；tauri 已在静态前缀内，`S/architecture-ledger_test.ts` 补 D/ static 覆盖。下列机制/manifest 搜索仅作 PR-time 检查，不加入永久扫描规则。更新 backend-packages/architecture/路线图 C3 完成状态；依据 A、B 测量无桌面编译收益、server 不需这些机制，不新增交互 crate。
+
+- [ ] C1a 新增 `failed_full_refresh_is_retried_until_success_then_part_stays_part` 随展示 executor 移入 D/effects/；测试清单在原 21 例基础上计入该例，late-full 乱序测试独立保留。duplicate-list 提交前测试留 T/adapters/hotkey/tests.rs。
+- [ ] 随主机实现移动的测试 guards 改为 tauri 本地 `cfg(test)`/`cfg_attr(test, mockall::automock)`：`C/client/main_thread.rs:116,119` 的 InlineMainThread 及 impl，`effects/ports.rs:25,66,148` 的 locale/tray/widget mocks，`hotkey/ports.rs:324,342` 的 registrar/callback mocks。tauri 不新增 test-support feature；依赖 core 的 test-support 只供仍在 core 的公开 fixtures/ports（如 AnyAccelerator/WindowControl），不能把依赖 feature 当作 tauri 自己的 feature。
+
+**验证**
+
+- `cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；§0.8 两侧测试名清单合计不变，仅文档化的模块前缀变化，逐项核对上述 9 移/9 留与 main-thread 四例。core `commit_receipt_and_status_keep_source_separate_from_pending_notifications`（`effects/tests.rs:803`）、tauri `locale_is_applied_before_tray_refresh:236`、`late_full_tray_refresh_still_runs_after_a_newer_part_refresh:663`、`the_owners_clean_up_independently_and_the_shutdown_waits_for_all:1171`（`adapters/ui_effects/tests.rs`）通过。
+- PR-time：`rg 'struct HotkeyClient|struct HotkeyActor|struct MainThreadHandoff|trait MainThreadExecutor|struct PresentationEffectExecutor|tray_full_pending|nyanpasu_widget_protocol::' backend/nyanpasu-core/src backend/nyanpasu-migration/src backend/nyanpasu-owner-support/src backend/nyanpasu-observers/src backend/nyanpasu-updater/src` 退出码 1；`rg 'nyanpasu_core::client::main_thread|nyanpasu_core::client::MainThread|client::hotkey::HotkeyClient' backend/tauri/src` 退出码 1，另审查分组导入；`rg 'nyanpasu-widget-protocol' backend/nyanpasu-core/Cargo.toml` 退出码 1。正向核对 `HotkeyBindings::parse`/`diff` 与 `validate_bindings` 仍在 core；不把这些调用误判成桌面机制。
+- 反向检查：core 加回 widget-protocol 直接依赖或移回 hotkey owner/handoff，以上 PR-time 无匹配检查失败，不声称永久 gate 拦截；core 引入 tauri 依赖使现有依赖 gate 失败；丢失 event-loop-loss 信号使 main-thread 测试失败；full pending 变局部变量使新增 `failed_full_refresh_is_retried_until_success_then_part_stays_part` 失败。bindings 三份零 diff；`pnpm run test:scripts`、`pnpm run test:architecture-ledger`、`pnpm run test:backend-musl`（只跑原中立包，desktop 测试由 tauri CI 跑）；`cargo check -p clash-nyanpasu --target x86_64-unknown-linux-gnu`，macOS CI。
+
+---
+
 ## Phase B–E 里程碑卡
 
-每张卡开工前先细化为与 Phase A 同粒度的任务并审阅；B1a–B4 已细化为 §2 的卡。依赖图、决策、前置、不变量、完成判据见 design §5。
+每张卡开工前先细化为与 Phase A 同粒度的任务并审阅；B1a–B4 已细化为 §2 的卡，C1–C3 已细化为 §3 的卡。依赖图、决策、前置、不变量、完成判据见 design §5。
 
-| 卡  | 内容                                                                                          | 前置           | 完成判据（摘要）                                                        |
-| --- | --------------------------------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------- |
-| A2b | 脚本扩展注入与引擎 feature                                                                    | A2             | design §5.0                                                             |
-| B1a | persistence 收 format 与通用原子写；`session_state` 不依赖 migration                          | A5b            | 无 `session_state → migration`；两个恢复测试通过                        |
-| B1b | backup/migration 的存储端口；migration crate                                                  | B1a            | migration crate 不依赖 redb                                             |
-| B2  | facade 签名去具体存储类型；traffic legacy 导入器 feature 化                                   | B1b            | `ClientSetupArgs` 类型闭包无 `Storage`/redb；traffic 无默认 redb        |
-| B3  | logs、traffic、geo 成 owner crate；`owner_shutdown` 按需建 crate                              | B2             | owner 生产代码不含 clash/core-control/redb/notify；traffic 回归测试通过 |
-| B4  | updater crate；后端与其 HTTP 客户端由 shell 注入                                              | B3a            | facade 不构造 `HttpUpdaterBackend`；facade 无归档依赖                   |
-| C1  | 展示能力可选、结构化不支持                                                                    | A              | 无展示能力的装配测试                                                    |
-| C2  | `nyanpasu-os` 与提权同意端口；能力端口进 contracts；重审 `update_core` 的 WebUI 暴露（#6157） | A              | core 无 `runas`/`osascript`；WebUI 触发提权得到不支持                   |
-| C3  | `nyanpasu-desktop`；共享收敛与展示效果分离                                                    | C1、C2         | 门禁禁止 core 族/server → desktop；效果与热键回归测试通过               |
-| D1  | 状态引擎（约 7,000 行完整闭包）                                                               | B1a            | 引擎测试名清单不变且通过；不依赖 core 族其他成员                        |
-| D2  | 反转 mutation 参与；运行时值下移；拆 core-control 与应用                                      | D1、B3、B4、C3 | 无具体 workflow client；workflow 取消/恢复/关闭测试通过                 |
-| E1a | 宏中立声明、按目标 opt-in 与能力元数据；protocol 信封                                         | A              | protocol 无 core 族/Tauri；bindings 无 diff                             |
-| E1b | 完整请求/响应 DTO 进 protocol                                                                 | E1a、D2        | protocol 类型闭包不经 core 族                                           |
-| E2  | `nyanpasu-rpc` 注册表与事件总线                                                               | E1a            | 注册表无 Tauri 类型                                                     |
-| E3  | 纯 API WebUI；local socket 传输                                                               | E2             | 无资源启动；未 opt-in 被拒；跨传输一致                                  |
-| E4  | `nyanpasu-server`，然后 `nyanpasu-cli`                                                        | C3、E1b、E3    | CLI 不链接 core 族；同一 server 会话                                    |
-| E5  | OpenWrt                                                                                       | 用户明确恢复   | 单独验收                                                                |
+| 卡  | 内容                                                                                                             | 前置                      | 完成判据（摘要）                                                               |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| A2b | 脚本扩展注入与引擎 feature                                                                                       | A2                        | design §5.0                                                                    |
+| B1a | persistence 收 format 与通用原子写；`session_state` 不依赖 migration                                             | A5b                       | 无 `session_state → migration`；两个恢复测试通过                               |
+| B1b | backup/migration 的存储端口；migration crate                                                                     | B1a                       | migration crate 不依赖 redb                                                    |
+| B2  | facade 签名去具体存储类型；traffic legacy 导入器 feature 化                                                      | B1b                       | `ClientSetupArgs` 类型闭包无 `Storage`/redb；traffic 无默认 redb               |
+| B3  | logs、traffic、geo 成 owner crate；`owner_shutdown` 按需建 crate                                                 | B2                        | owner 生产代码不含 clash/core-control/redb/notify；traffic 回归测试通过        |
+| B4  | updater crate；后端与其 HTTP 客户端由 shell 注入                                                                 | B3a                       | facade 不构造 `HttpUpdaterBackend`；facade 无归档依赖                          |
+| C1  | 展示能力可选、结构化不支持（已细化为 §3 C1a、C1b）                                                               | A                         | 无展示能力的装配测试；显式热键编辑在提交前被拒                                 |
+| C2  | `nyanpasu-os` 与提权同意端口；能力端口进 contracts；`update_core` 去掉 HTTP；RPC 审计切面（已细化为 §3 C2a–C2f） | A、B4                     | core 无提权执行点；拒绝策略不启动提权命令；经 HTTP 的 `update_core` 得到不支持 |
+| C3  | 桌面交互机制移入 tauri 外壳；共享收敛与展示效果分离（已细化为 §3 C3a）                                           | C1                        | core 族不含桌面机制、不直接依赖 widget-protocol；效果与热键回归测试通过        |
+| D1  | 状态引擎（约 7,000 行完整闭包）                                                                                  | B1a                       | 引擎测试名清单不变且通过；不依赖 core 族其他成员                               |
+| D2  | 反转 mutation 参与；运行时值下移；拆 core-control 与应用                                                         | D1、B3、B4、C1b、C2f、C3a | 无具体 workflow client；workflow 取消/恢复/关闭测试通过                        |
+| E1a | 宏中立声明、按目标 opt-in 与能力元数据；protocol 信封                                                            | A                         | protocol 无 core 族/Tauri；bindings 无 diff                                    |
+| E1b | 完整请求/响应 DTO 进 protocol                                                                                    | E1a、D2                   | protocol 类型闭包不经 core 族                                                  |
+| E2  | `nyanpasu-rpc` 注册表与事件总线                                                                                  | E1a、C2f                  | 注册表与审计端口无 Tauri 类型                                                  |
+| E3  | 纯 API WebUI；local socket 传输                                                                                  | E2                        | 无资源启动；未 opt-in 被拒；跨传输一致                                         |
+| E4  | `nyanpasu-server`，然后 `nyanpasu-cli`                                                                           | C2d、C3a、E1b、E3         | CLI 不链接 core 族；同一 server 会话；拒绝策略关闭 #6157 剩余路径              |
+| E5  | OpenWrt                                                                                                          | 用户明确恢复              | 单独验收                                                                       |
 
 B 结束时按 design §6 复测编译时间。

@@ -115,7 +115,7 @@ pub(crate) async fn test_client_from_typed_clients(
         dir.path().join("profiles"),
         PathBuf::new(),
         backup_paths,
-        storage,
+        Arc::new(storage),
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
         ClientHostAdapters {
             runtime_build: Arc::new(
@@ -213,7 +213,7 @@ pub async fn test_client_with_profile_ports(
         paths.app_profiles_dir().into_std_path_buf(),
         PathBuf::new(),
         backup_paths,
-        storage,
+        Arc::new(storage),
         RuntimePaths::from_resolver(&paths),
         host_adapters,
         Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -325,7 +325,7 @@ pub async fn test_client_with_materialization(
         dir.path().join("profiles"),
         PathBuf::new(),
         backup_paths,
-        storage,
+        Arc::new(storage),
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
         ClientHostAdapters {
             runtime_build: Arc::new(

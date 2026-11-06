@@ -26,8 +26,8 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    Clock, ProfileSelection, RetentionPolicy, TrafficArgs, TrafficClient,
-    source::frame_from_snapshot,
+    Clock, ProfileSelection, RetentionPolicy, TrafficArgs, TrafficClient, TrafficOwnerFactory,
+    TrafficStartArgs, source::frame_from_snapshot,
 };
 use crate::clash::ws::ClashConnectionsFrame;
 
@@ -395,25 +395,26 @@ async fn startup_imports_v3_and_continues_the_restored_session() {
     let tasks = TaskTracker::new();
     let (_frames, frames) = watch::channel(None);
     let (_geo, geo) = watch::channel(None);
-    let client = TrafficClient::spawn(
-        TrafficArgs {
-            storage: Arc::new(super::TrafficFileStorage::new(
-                dir.path().join("traffic.tsdb"),
-                profile.backend_cache,
-            )),
-            profile,
-            profiles: Arc::new(FakeProfiles(Mutex::new(Some("new-profile".into())))),
-            retention: Arc::new(FakeRetention(Mutex::new(None))),
-            clock: Arc::new(FakeClock(AtomicI64::new(2000))),
-            frames,
-            geo,
-            local_source: Arc::new(FakeLocalSource::default()),
-        },
-        shutdown.clone(),
-        &tasks,
-    )
-    .await
-    .unwrap();
+    let factory: Arc<dyn TrafficOwnerFactory> = Arc::new(super::TrafficFileStorage::new(
+        dir.path().join("traffic.tsdb"),
+        profile.backend_cache,
+    ));
+    let client = factory
+        .spawn(
+            TrafficStartArgs {
+                profile,
+                profiles: Arc::new(FakeProfiles(Mutex::new(Some("new-profile".into())))),
+                retention: Arc::new(FakeRetention(Mutex::new(None))),
+                clock: Arc::new(FakeClock(AtomicI64::new(2000))),
+                frames,
+                geo,
+                local_source: Arc::new(FakeLocalSource::default()),
+            },
+            shutdown.clone(),
+            &tasks,
+        )
+        .await
+        .unwrap();
     assert!(!old.exists());
     let summary = client.summary().await.unwrap();
     assert_eq!(summary.last_sample_at, Some(1000));

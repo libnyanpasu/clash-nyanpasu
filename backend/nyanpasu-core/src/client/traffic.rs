@@ -207,7 +207,10 @@ impl NyanpasuClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::traffic::{TrafficFileStorage, TrafficStorage};
+    use crate::traffic::{
+        SpawnError, TrafficArgs, TrafficClient, TrafficFileStorage, TrafficOwnerFactory,
+        TrafficStartArgs, TrafficStorage,
+    };
     use nyanpasu_traffic::{
         Dimension, Metric, ReportRequest, TrafficQuery, TrafficRange, TrafficScope,
     };
@@ -217,6 +220,7 @@ mod tests {
     };
     use std::sync::Arc;
     use tempfile::tempdir;
+    use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
     use super::super::NyanpasuClient;
     use crate::{
@@ -233,6 +237,32 @@ mod tests {
     }
 
     struct UnreadableStore;
+    #[async_trait::async_trait]
+    impl TrafficOwnerFactory for UnreadableStore {
+        async fn spawn(
+            self: Arc<Self>,
+            args: TrafficStartArgs,
+            shutdown: CancellationToken,
+            tasks: &TaskTracker,
+        ) -> Result<TrafficClient, SpawnError> {
+            TrafficClient::spawn(
+                TrafficArgs::<RedbStorage> {
+                    storage: self,
+                    profile: args.profile,
+                    profiles: args.profiles,
+                    retention: args.retention,
+                    clock: args.clock,
+                    frames: args.frames,
+                    geo: args.geo,
+                    local_source: args.local_source,
+                },
+                shutdown,
+                tasks,
+            )
+            .await
+        }
+    }
+
     impl TrafficStorage<RedbStorage> for UnreadableStore {
         fn open(&self) -> Result<RedbStorage, StorageError> {
             Err(StorageError::Failed {

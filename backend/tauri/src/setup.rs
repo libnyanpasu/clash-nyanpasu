@@ -38,9 +38,9 @@ use nyanpasu_core::{
         system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
     },
     storage::{RedbHotkeyStoreOpener, StorageNotification},
-    traffic::{TrafficFileStorage, TrafficStorage},
+    traffic::{TrafficFileStorage, TrafficOwnerFactory},
 };
-use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
+use nyanpasu_tsdb::Profile;
 use snafu::ResultExt as _;
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -440,7 +440,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             frontend: Arc::new(nyanpasu_core::client::frontend_events::TracingFrontendLogSink),
         },
         paths: paths.clone(),
-        storage,
+        storage: Arc::new(storage.clone()),
         runtime_paths: runtime_paths.clone(),
         ui_sink: ui_sink.clone(),
         app_update_backend_factory: Some(Arc::new({
@@ -606,7 +606,7 @@ enum TrafficStoreError {
 /// Recording is optional, so a store that cannot be opened disables it rather
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
-fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStorage<RedbStorage>>> {
+fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficOwnerFactory>> {
     let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
     let open = || -> Result<TrafficFileStorage, TrafficStoreError> {
         std::fs::create_dir_all(&dir).context(CreateTrafficDirectorySnafu { path: &dir })?;

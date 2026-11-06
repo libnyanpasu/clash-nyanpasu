@@ -12,7 +12,7 @@ use nyanpasu_migration::{
     backup,
     backup::{
         BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
-        StorageSource,
+        StorageSnapshot, StorageSource,
     },
 };
 use nyanpasu_paths::PathResolver;
@@ -73,7 +73,6 @@ use crate::{
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
         ReorderOp,
     },
-    storage::Storage,
 };
 use nyanpasu_config::{
     application::{
@@ -113,7 +112,7 @@ pub struct ClientSetupArgs {
     pub paths: PathResolver,
     /// Opened by the composition root, which also manages the same instance
     /// for the storage commands.
-    pub storage: Storage,
+    pub storage: Arc<dyn StorageSnapshot>,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
     /// Built after the active proxy-port source exists in the composition root.
@@ -131,8 +130,7 @@ pub struct ClientSetupArgs {
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
-    pub traffic_store:
-        Option<Arc<dyn crate::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>>,
+    pub traffic_store: Option<Arc<dyn crate::traffic::TrafficOwnerFactory>>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -250,7 +248,7 @@ struct NyanpasuClientInner {
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
     paths: PathResolver,
-    storage: Storage,
+    storage: Arc<dyn StorageSnapshot>,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
@@ -394,7 +392,7 @@ impl NyanpasuClient {
         profiles_dir: PathBuf,
         instance_config_dir: PathBuf,
         paths: PathResolver,
-        storage: Storage,
+        storage: Arc<dyn StorageSnapshot>,
         runtime_paths: RuntimePaths,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
@@ -411,9 +409,7 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-        traffic_store: Option<
-            Arc<dyn crate::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>,
-        >,
+        traffic_store: Option<Arc<dyn crate::traffic::TrafficOwnerFactory>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
@@ -608,25 +604,25 @@ impl NyanpasuClient {
         ));
         let traffic = match traffic_store {
             Some(store) => {
-                match crate::traffic::TrafficClient::spawn(
-                    crate::traffic::TrafficArgs {
-                        storage: store,
-                        profile: nyanpasu_tsdb::Profile::desktop(),
-                        profiles: Arc::new(traffic::SelectedProfile::new(
-                            profiles.snapshot_handle(),
-                        )),
-                        retention: Arc::new(traffic::SettingsRetention::new(
-                            application.snapshot_handle(),
-                        )),
-                        clock: Arc::new(traffic::SystemClock),
-                        frames: streams.subscribe_connection_frames(),
-                        geo: geo_index.subscribe(),
-                        local_source: local_source.clone(),
-                    },
-                    shutdown.child_token(),
-                    &tasks,
-                )
-                .await
+                match store
+                    .spawn(
+                        crate::traffic::TrafficStartArgs {
+                            profile: nyanpasu_tsdb::Profile::desktop(),
+                            profiles: Arc::new(traffic::SelectedProfile::new(
+                                profiles.snapshot_handle(),
+                            )),
+                            retention: Arc::new(traffic::SettingsRetention::new(
+                                application.snapshot_handle(),
+                            )),
+                            clock: Arc::new(traffic::SystemClock),
+                            frames: streams.subscribe_connection_frames(),
+                            geo: geo_index.subscribe(),
+                            local_source: local_source.clone(),
+                        },
+                        shutdown.child_token(),
+                        &tasks,
+                    )
+                    .await
                 {
                     Ok(client) => Some(client),
                     // Recording is a side feature: an unreadable store disables it, not the app.
@@ -769,7 +765,7 @@ impl NyanpasuClient {
                 let info = backup::create_backup(&BackupRequest {
                     bundle_metadata,
                     paths: &paths,
-                    storage: StorageSource::Live(&storage),
+                    storage: StorageSource::Live(storage.as_ref()),
                     kind: BackupKind::Manual,
                     now: time::OffsetDateTime::now_utc(),
                 })?;
@@ -2422,7 +2418,7 @@ pub(crate) mod tests {
             host_adapters: crate::client::test_support::profile_test_adapters(&dir),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             paths,
-            storage,
+            storage: Arc::new(storage),
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,

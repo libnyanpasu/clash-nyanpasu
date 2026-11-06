@@ -189,3 +189,53 @@ test('useClashSettings passes the mutation outcome through', async ({
     patch: { enable_tun_mode: true },
   })
 })
+
+test('a patch resolves only after the config is read back', async ({
+  onTestFinished,
+}) => {
+  let saved: Partial<NyanpasuAppConfig_Serialize> = appConfig
+  let reads = 0
+  let releaseReadBack = () => {}
+  const readBack = new Promise<void>((resolve) => {
+    releaseReadBack = resolve
+  })
+  const testRpc = createTestRpc({
+    get_app_config: async () => {
+      // The read after the patch is held until the test lets it finish.
+      if (reads++ > 0) await readBack
+      return saved
+    },
+    patch_app_config: async (params) => {
+      saved = { ...saved, ...(params?.patch as typeof saved) }
+      return degraded
+    },
+  })
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity },
+      mutations: { retry: false },
+    },
+  })
+  const hook = await renderHook(() => useSetting('theme_mode'), {
+    wrapper: rpcWrapper(testRpc.rpc, client),
+  })
+  onTestFinished(async () => {
+    await hook.unmount()
+    client.clear()
+    testRpc.rpc.dispose()
+  })
+  await expect.poll(() => hook.result.current.value).toBe('dark')
+
+  let resolved = false
+  const patched = hook.result.current.upsert('light').then(() => {
+    resolved = true
+  })
+  await expect.poll(() => reads).toBe(2)
+  expect(resolved).toBe(false)
+
+  releaseReadBack()
+  await hook.act(() => patched)
+
+  // A second edit builds on this value, so it must already be the saved one.
+  expect(hook.result.current.value).toBe('light')
+})

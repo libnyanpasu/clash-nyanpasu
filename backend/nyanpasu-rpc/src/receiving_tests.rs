@@ -168,6 +168,7 @@ cases!(
             None
         },
         message: "field-8/路徑\\file.yaml".to_owned(),
+        rejected_snapshot_id: present.then(|| "a_-012345678901234567".to_owned()),
     },
     CheckUnavailable {
         reason: sample(json!({"cause": "no_endpoint", "reason": "offline"})),

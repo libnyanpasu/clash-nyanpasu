@@ -80,7 +80,8 @@ hex = '0.4'
 serde_json = { version = '1.0', features = ['preserve_order'] }
 tracing-attributes = '0.1'
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
-  'nesting'
+  'nesting',
+  'snapshot-persistence'
 ] }
 specta = { version = '^2.0.0-rc.25', features = [
   'serde_json',

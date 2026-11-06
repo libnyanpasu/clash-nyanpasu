@@ -70,6 +70,14 @@ export function createRpcClient(
         } | null,
         IpcError
       >(__RPC_INVOKE('inspect_runtime')),
+    inspectRejectedRuntime: (snapshotId: string) =>
+      typedError<RuntimeInspection, IpcError>(
+        __RPC_INVOKE('inspect_rejected_runtime', { snapshotId }),
+      ),
+    inspectRejectedNode: (snapshotId: string, nodeId: number) =>
+      typedError<RuntimeInspectionContent, IpcError>(
+        __RPC_INVOKE('inspect_rejected_node', { snapshotId, nodeId }),
+      ),
     inspectAppliedRuntime: () =>
       typedError<
         {
@@ -5097,6 +5105,7 @@ export type RuntimeError =
       kind: 'core_rejected_config'
       core_kind: CoreErrorKind | null
       message: string
+      rejected_snapshot_id: string | null
     }
   | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable }
   /**  The core restored its own previous configuration. */

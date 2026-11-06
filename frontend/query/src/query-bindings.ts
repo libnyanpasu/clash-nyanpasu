@@ -77,6 +77,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['inspectRuntime', ...args],
         queryFn: () => commands.inspectRuntime(...args),
       }),
+    inspectRejectedRuntime: (
+      ...args: Parameters<typeof commands.inspectRejectedRuntime>
+    ) =>
+      queryOptions({
+        queryKey: ['inspectRejectedRuntime', ...args],
+        queryFn: () => commands.inspectRejectedRuntime(...args),
+      }),
+    inspectRejectedNode: (
+      ...args: Parameters<typeof commands.inspectRejectedNode>
+    ) =>
+      queryOptions({
+        queryKey: ['inspectRejectedNode', ...args],
+        queryFn: () => commands.inspectRejectedNode(...args),
+      }),
     inspectAppliedRuntime: (
       ...args: Parameters<typeof commands.inspectAppliedRuntime>
     ) =>

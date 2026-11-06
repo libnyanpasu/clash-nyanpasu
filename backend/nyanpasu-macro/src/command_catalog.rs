@@ -358,6 +358,8 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "get_traffic_summary",
         "import_profile",
         "inspect_applied_runtime",
+        "inspect_rejected_node",
+        "inspect_rejected_runtime",
         "inspect_runtime",
         "inspect_runtime_node",
         "inspect_updater",

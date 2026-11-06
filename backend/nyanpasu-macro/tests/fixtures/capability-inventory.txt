@@ -76,6 +76,8 @@ get_traffic_summary | desktop,http | - | -
 get_transparent_proxy_status | desktop | - | -
 import_profile | desktop,http | - | elevation,os_integration,presentation
 inspect_applied_runtime | desktop,http | - | -
+inspect_rejected_node | desktop,http | - | -
+inspect_rejected_runtime | desktop,http | - | -
 inspect_runtime | desktop,http | - | -
 inspect_runtime_node | desktop,http | - | -
 inspect_updater | desktop,http | - | -

@@ -1164,7 +1164,8 @@ pub mod persistence {
     use serde::{Deserialize, Serialize};
     use thiserror::Error;
 
-    use super::StoredConfigSnapshotsGraph;
+    use super::{Idx, StoredConfigSnapshotsGraph};
+    use crate::{application::ClashCore, runtime::executor::StepLog};
 
     pub const SNAPSHOT_ARCHIVE_VERSION: u16 = 3;
     /// Decompression ceiling, guarding against zstd decompression bombs.
@@ -1176,6 +1177,64 @@ pub mod persistence {
         /// Diagnostic only; never used for compatibility decisions.
         pub crate_version: Arc<str>,
         pub graph: StoredConfigSnapshotsGraph,
+    }
+
+    /// Session-scoped rejected build, decoded only while an inspection runs.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct RejectedBuildArchive {
+        pub format_version: u16,
+        pub id: String,
+        pub revision: u64,
+        pub target_core: ClashCore,
+        pub graph: StoredConfigSnapshotsGraph,
+        pub final_node: Idx,
+        pub step_logs: Vec<StepLog>,
+    }
+
+    /// Version of the session-scoped rejected build archive.
+    pub const REJECTED_BUILD_ARCHIVE_VERSION: u16 = 1;
+
+    /// Encode a rejected build using the snapshot archive codec.
+    ///
+    /// # Errors
+    /// Returns serialization or compression failures.
+    pub fn encode_rejected_archive(
+        archive: &RejectedBuildArchive,
+    ) -> Result<Vec<u8>, SnapshotPersistError> {
+        let body = rmp_serde::to_vec_named(archive)?;
+        Ok(zstd::stream::encode_all(body.as_slice(), 3)?)
+    }
+
+    /// Decode a complete rejected build and validate its graph before projection.
+    ///
+    /// # Errors
+    /// Rejects unsupported versions, oversized, trailing or malformed data and invalid graphs.
+    pub fn decode_rejected_archive(
+        bytes: &[u8],
+    ) -> Result<RejectedBuildArchive, SnapshotPersistError> {
+        let body = decode_body(bytes)?;
+        let mut decoder = rmp_serde::Deserializer::new(Cursor::new(&body));
+        let archive = RejectedBuildArchive::deserialize(&mut decoder)?;
+        if decoder.position() != body.len() as u64 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "trailing rejected build data",
+            )
+            .into());
+        }
+        if archive.format_version != REJECTED_BUILD_ARCHIVE_VERSION {
+            return Err(SnapshotPersistError::UnsupportedVersion {
+                found: archive.format_version,
+                expected: REJECTED_BUILD_ARCHIVE_VERSION,
+            });
+        }
+        archive.graph.validate_tree_shape()?;
+        archive.graph.restore(archive.final_node)?;
+        for index in 0..archive.graph.nodes.len() {
+            archive.graph.restore(index as Idx)?;
+        }
+        Ok(archive)
     }
 
     #[derive(Debug, Error)]
@@ -1206,7 +1265,7 @@ pub mod persistence {
         Ok(zstd::stream::encode_all(body.as_slice(), 3)?)
     }
 
-    pub fn decode_archive(bytes: &[u8]) -> Result<SnapshotArchive, SnapshotPersistError> {
+    fn decode_body(bytes: &[u8]) -> Result<Vec<u8>, SnapshotPersistError> {
         let decoder = zstd::stream::read::Decoder::new(Cursor::new(bytes))?;
         let mut limited = decoder.take(MAX_ARCHIVE_DECODED_BYTES + 1);
         let mut body = Vec::new();
@@ -1217,6 +1276,11 @@ pub mod persistence {
             });
         }
 
+        Ok(body)
+    }
+
+    pub fn decode_archive(bytes: &[u8]) -> Result<SnapshotArchive, SnapshotPersistError> {
+        let body = decode_body(bytes)?;
         let archive: SnapshotArchive = rmp_serde::from_slice(&body)?;
         if archive.format_version != SNAPSHOT_ARCHIVE_VERSION {
             return Err(SnapshotPersistError::UnsupportedVersion {
@@ -2491,5 +2555,72 @@ mod tests {
             );
             assert_restore_matches_materialize(&stored);
         }
+    }
+    #[cfg(feature = "snapshot-persistence")]
+    #[test]
+    fn rejected_archive_round_trip_rejects_corruption_versions_and_invalid_nodes() {
+        use persistence::{REJECTED_BUILD_ARCHIVE_VERSION, RejectedBuildArchive};
+        let graph = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "a": 1 })),
+            selected_file_root("primary"),
+        )
+        .build_stored()
+        .unwrap();
+        let mut archive = RejectedBuildArchive {
+            format_version: REJECTED_BUILD_ARCHIVE_VERSION,
+            id: "a".repeat(21),
+            revision: 4,
+            target_core: crate::application::ClashCore::default(),
+            graph,
+            final_node: 0,
+            step_logs: vec![],
+        };
+        let bytes = persistence::encode_rejected_archive(&archive).unwrap();
+        assert_eq!(
+            persistence::decode_rejected_archive(&bytes).unwrap(),
+            archive
+        );
+        assert!(persistence::decode_rejected_archive(&bytes[..bytes.len() / 2]).is_err());
+        let mut body = rmp_serde::to_vec_named(&archive).unwrap();
+        body.push(0);
+        assert!(
+            persistence::decode_rejected_archive(
+                &zstd::stream::encode_all(body.as_slice(), 3).unwrap()
+            )
+            .is_err()
+        );
+        archive.format_version = 0;
+        assert!(matches!(
+            persistence::decode_rejected_archive(
+                &persistence::encode_rejected_archive(&archive).unwrap()
+            ),
+            Err(persistence::SnapshotPersistError::UnsupportedVersion { .. })
+        ));
+        archive.format_version = REJECTED_BUILD_ARCHIVE_VERSION;
+        archive.final_node = u32::MAX;
+        assert!(
+            persistence::decode_rejected_archive(
+                &persistence::encode_rejected_archive(&archive).unwrap()
+            )
+            .is_err()
+        );
+        archive.final_node = 0;
+        archive.graph.nodes[0].next = Some(vec![99]);
+        assert!(
+            persistence::decode_rejected_archive(
+                &persistence::encode_rejected_archive(&archive).unwrap()
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    #[test]
+    fn rejected_archive_enforces_the_decompression_limit() {
+        let bytes = zstd::stream::encode_all(vec![0; 64 * 1024 * 1024 + 1].as_slice(), 1).unwrap();
+        assert!(matches!(
+            persistence::decode_rejected_archive(&bytes),
+            Err(persistence::SnapshotPersistError::DecodeLimitExceeded { .. })
+        ));
     }
 }

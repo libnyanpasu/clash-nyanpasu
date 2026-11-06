@@ -16,11 +16,8 @@ import {
 } from '@/components/profile-label'
 import { usePageEntered } from '@/components/router/animated-outlet'
 import { m } from '@/paraglide/messages'
-import { queries } from '@/services/rpc'
-import { unwrapQueryOptions } from '@nyanpasu/query'
 import type { RuntimeInspectionContent } from '@nyanpasu/rpc/types'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 import { CompactButton } from '../../_modules/compact-controls'
 import LogLevelBadge from '../../../logs/_modules/log-level-badge'
 import ChangedFields from './changed-fields'
@@ -45,22 +42,29 @@ export function defaultTab(step: Step): InspectTab {
  */
 export default function StepDetail({
   snapshotId,
+  contentQuery,
   step,
   steps,
   profiles,
   targetCore,
   onOpenProfile,
+  globalLink,
   tab,
   onTabChange,
   fieldQuery,
 }: {
   snapshotId: string
+  contentQuery: Pick<
+    UseQueryOptions<RuntimeInspectionContent>,
+    'queryKey' | 'queryFn'
+  >
   step: Step
   /** Every step, whatever the page filters, for the position and the baseline. */
   steps: Step[]
   profiles: ProfileLookup
   targetCore: string
-  onOpenProfile: (id: string) => void
+  onOpenProfile?: (id: string) => void
+  globalLink?: ReactNode
   tab: InspectTab
   onTabChange: (tab: InspectTab) => void
   /** Marks the part of each changed field that matches the toolbar search. */
@@ -71,10 +75,9 @@ export default function StepDetail({
   const jumpCount = useRef(0)
   const findInputRef = useRef<HTMLInputElement>(null)
 
-  const contentQuery = queries.inspectRuntimeNode(snapshotId, step.node.id)
   const content = useQuery<RuntimeInspectionContent>({
     queryKey: contentQuery.queryKey,
-    queryFn: unwrapQueryOptions(contentQuery, contentQuery.queryFn!).queryFn,
+    queryFn: contentQuery.queryFn,
     retry: false,
     refetchOnWindowFocus: false,
     gcTime: 0,
@@ -168,22 +171,20 @@ export default function StepDetail({
               <StepLabel
                 parts={stepParts(step.node.tag)}
                 profiles={profiles}
-                onOpenProfile={onOpenProfile}
+                onOpenProfile={(id) => onOpenProfile?.(id)}
               />
             )}
           </h2>
 
-          {profileId && (
+          {profileId && onOpenProfile && (
             <CompactButton onClick={() => onOpenProfile(profileId)}>
               {m.inspect_open_profile()}
             </CompactButton>
           )}
 
-          {step.stage === 'global' && (
+          {step.stage === 'global' && globalLink && (
             <CompactButton tone="tonal" type={undefined} asChild>
-              <Link to="/main/profiles/global">
-                {m.inspect_edit_in_global()}
-              </Link>
+              {globalLink}
             </CompactButton>
           )}
         </div>

@@ -25,6 +25,7 @@ import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import ProfileCardAction from './profile-card-action'
 import ProfileCardContentSummary from './profile-card-content-summary'
+import { useViewRejectedAction } from './use-view-rejected-action'
 
 export function ProfileCardUpdate({
   profile,
@@ -34,6 +35,7 @@ export function ProfileCardUpdate({
   disabled: boolean
 }) {
   const { update } = useProfileMutations()
+  const viewRejectedAction = useViewRejectedAction()
   const task = useBlockTask(
     `update-remote-profile-${profile.uid}`,
     async () => {
@@ -44,6 +46,7 @@ export function ProfileCardUpdate({
           title: m.profile_card_update_failed(),
           kind: 'error',
           error,
+          action: viewRejectedAction(error),
         })
       }
     },

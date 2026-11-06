@@ -184,6 +184,7 @@ pub(super) struct ApplicationWorkflowArgs {
     pub service: ServiceClient,
     pub builder: Arc<dyn RuntimeBuildPort>,
     pub validator: Arc<dyn ports::RuntimeValidatorPort>,
+    pub rejected_builds: Arc<dyn ports::RejectedBuildStore>,
     /// The session port resolver: the preparation resolves candidates from it
     /// and the core lifecycle confirms or invalidates the binding.
     pub ports: Arc<super::SessionPortResolver>,
@@ -562,6 +563,7 @@ impl Actor for ApplicationWorkflowActor {
                 .core
                 .set_service_health_check(false);
         }
+        state.workflow.rejected_builds.clear().await;
         if let Err(error) = state.workflow.lifecycle.core.shutdown().await.stop {
             tracing::warn!(%error, "the core was not proven stopped");
         }
@@ -572,6 +574,7 @@ impl Actor for ApplicationWorkflowActor {
 struct ClientInner {
     actor: ActorRef<Message>,
     runtime: runtime::RuntimeSnapshotStore,
+    rejected_builds: Arc<dyn ports::RejectedBuildStore>,
     status: watch::Receiver<CoreLifecycleStatus>,
     mutations: watch::Receiver<MutationJournal>,
     core: crate::actor_v2::CoreObserver,
@@ -628,6 +631,7 @@ impl ApplicationWorkflowClient {
             clash: args.clash,
             preparation,
             validator: args.validator,
+            rejected_builds: args.rejected_builds.clone(),
             deferred: None,
             pending_product: None,
             pending_release: None,
@@ -686,6 +690,7 @@ impl ApplicationWorkflowClient {
         Ok(Self(Arc::new(ClientInner {
             actor,
             runtime,
+            rejected_builds: args.rejected_builds,
             status,
             mutations,
             core,
@@ -794,6 +799,10 @@ impl ApplicationWorkflowClient {
         self.call(Command::RetryRuntime { explicit: true })
             .await
             .map(|_| ())
+    }
+
+    pub(super) fn rejected_builds(&self) -> Arc<dyn ports::RejectedBuildStore> {
+        self.0.rejected_builds.clone()
     }
 
     pub(super) fn snapshot_store(&self) -> &runtime::RuntimeSnapshotStore {

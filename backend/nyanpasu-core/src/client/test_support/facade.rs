@@ -20,6 +20,7 @@ use crate::{
         effects,
         host_adapters::ClientHostAdapters,
         hotkey, logs, profiles,
+        rejected_build_store::FileRejectedBuildStore,
         session_state::SessionStateClient,
         system_proxy::ports::{MockOsProxyPort, OsProxyPort},
     },
@@ -92,6 +93,7 @@ pub(crate) async fn test_client_from_typed_clients(
     let ports = Arc::new(SessionPortResolver::default());
     let (core_v2, service) = test_v2_clients().await;
     let (backup_paths, storage) = test_backup_deps(&dir);
+    let rejected_builds = Arc::new(FileRejectedBuildStore::new(&backup_paths));
     NyanpasuClient::with_parts(
         None,
         BundleMetadata {
@@ -118,6 +120,7 @@ pub(crate) async fn test_client_from_typed_clients(
         backup_paths,
         storage,
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
+        rejected_builds,
         ClientHostAdapters {
             runtime_build: Arc::new(
                 crate::client::test_support::runtime_build::TestRuntimeBuildPort::from_directory(
@@ -190,7 +193,8 @@ pub async fn test_client_with_profile_ports(
     .expect("profiles client should be created");
     let (core_v2, service) = test_v2_clients().await;
     let (backup_paths, storage) = test_backup_deps(&dir);
-    let client = NyanpasuClient::with_parts(
+    let rejected_builds = Arc::new(FileRejectedBuildStore::new(&backup_paths));
+    NyanpasuClient::with_parts(
         None,
         BundleMetadata {
             is_portable: false,
@@ -216,6 +220,7 @@ pub async fn test_client_with_profile_ports(
         backup_paths,
         storage,
         RuntimePaths::from_resolver(&paths),
+        rejected_builds,
         host_adapters,
         Arc::new(crate::client::event_sink::NoopUiEventSink),
         None,
@@ -236,8 +241,7 @@ pub async fn test_client_with_profile_ports(
         tokio_util::task::TaskTracker::new(),
     )
     .await
-    .unwrap();
-    client
+    .unwrap()
 }
 
 pub fn local_config_request(name: &str) -> NewProfileRequest {
@@ -302,6 +306,7 @@ pub async fn test_client_with_materialization(
     let ports = Arc::new(SessionPortResolver::default());
     let (core_v2, service) = test_v2_clients().await;
     let (backup_paths, storage) = test_backup_deps(dir);
+    let rejected_builds = Arc::new(FileRejectedBuildStore::new(&backup_paths));
     NyanpasuClient::with_parts(
         None,
         BundleMetadata {
@@ -328,6 +333,7 @@ pub async fn test_client_with_materialization(
         backup_paths,
         storage,
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
+        rejected_builds,
         ClientHostAdapters {
             runtime_build: Arc::new(
                 crate::client::test_support::runtime_build::TestRuntimeBuildPort::from_directory(

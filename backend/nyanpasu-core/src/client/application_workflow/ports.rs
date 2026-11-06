@@ -1,9 +1,11 @@
 use super::super::runtime;
 use crate::{
-    actor_v2::local_host::CoreSpecError, client::runtime::PublishRuntimeError,
+    actor_v2::local_host::CoreSpecError,
+    client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
     enhance::RuntimeBuildError,
 };
 use async_trait::async_trait;
+use nyanpasu_config::runtime::snapshot::persistence::RejectedBuildArchive;
 use std::sync::Arc;
 
 #[async_trait]
@@ -77,4 +79,14 @@ pub(in crate::client) enum RuntimeCheckOutcome {
 #[async_trait]
 pub(in crate::client) trait RuntimeValidatorPort: Send + Sync + 'static {
     async fn check(&self, request: RuntimeCheckRequest<'_>) -> RuntimeCheckOutcome;
+}
+
+/// Session-scoped files owned by the workflow; reads retain no decoded build.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub(in crate::client) trait RejectedBuildStore: Send + Sync + 'static {
+    async fn save(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Option<String>;
+    async fn clear_source(&self, snapshot: Arc<runtime::RuntimeSnapshot>);
+    async fn clear(&self);
+    fn load(&self, id: &str) -> Result<RejectedBuildArchive, RuntimeError>;
 }

@@ -33,6 +33,7 @@ pub mod logs;
 pub mod main_thread;
 mod ports;
 pub mod profiles;
+mod rejected_build_store;
 pub mod runtime;
 pub mod runtime_error;
 pub mod runtime_inspection;
@@ -306,6 +307,11 @@ impl NyanpasuClient {
             .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
             .await
             .context(CleanupCandidatesSnafu)?;
+        let rejected_builds = Arc::new(rejected_build_store::FileRejectedBuildStore::new(&paths));
+        {
+            use application_workflow::ports::RejectedBuildStore as _;
+            rejected_builds.clear().await;
+        }
         let (application, session_state, clash_config) = new_typed_config_clients(
             mutations.clone(),
             bundle_metadata.release_channel,
@@ -348,6 +354,7 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
+            rejected_builds,
             host_adapters,
             ui_sink,
             app_update_backend_factory,
@@ -387,6 +394,7 @@ impl NyanpasuClient {
         paths: PathResolver,
         storage: Storage,
         runtime_paths: RuntimePaths,
+        rejected_builds: Arc<dyn application_workflow::ports::RejectedBuildStore>,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -476,6 +484,7 @@ impl NyanpasuClient {
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
                 notifications: notifications.clone(),
+                rejected_builds,
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
                 profiles: profiles.snapshot_handle(),

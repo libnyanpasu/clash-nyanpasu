@@ -275,6 +275,7 @@ test('unavailable native storage is explained for operations and refused mutatio
         kind: 'core_rejected_config',
         core_kind: 'native_store_unavailable',
         message: 'native storage failed',
+        rejected_snapshot_id: 'ckR8l5YdA2m0Pv3qT9sWx',
       }),
     ),
   ).toBe(`${m.error_runtime_core_rejected_config()} (${reason})`)
@@ -301,6 +302,7 @@ test('a refused mutation says what the runtime lacked or rejected', () => {
         kind: 'core_rejected_config',
         core_kind: 'config_check_failed',
         message: 'unknown proxy type',
+        rejected_snapshot_id: 'nH6r4Qc8K2t7Vz1sM9pLa',
       }),
     ),
   ).toBe(

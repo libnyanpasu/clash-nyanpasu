@@ -7,7 +7,7 @@ use super::{
     application::ApplicationFormat,
     clash_config::{self, ClashConfigFormat},
 };
-use crate::utils::yaml;
+use crate::yaml;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
@@ -34,9 +34,7 @@ pub enum Error {
         source: super::super::legacy_schema::Error,
     },
     #[snafu(context(false), display("failed to read legacy overrides"))]
-    ReadLegacyOverrides {
-        source: crate::utils::yaml::YamlError,
-    },
+    ReadLegacyOverrides { source: yaml::YamlError },
     #[snafu(context(false), display("serialized config was not UTF-8"))]
     DecodeConfig { source: std::string::FromUtf8Error },
     // Format is an existing erased serialization port; keep its original source chain.
@@ -522,8 +520,11 @@ fn current_revision() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::migration::legacy_schema::WindowState as LegacyWindowState;
+    use crate::{
+        fake_hotkey_store::FakeHotkeyStoreOpener, legacy_schema::WindowState as LegacyWindowState,
+    };
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
+    use std::sync::Arc;
 
     fn test_ctx() -> (Ctx, tempfile::TempDir) {
         let temp = tempfile::tempdir().unwrap();
@@ -531,7 +532,14 @@ mod tests {
         let data_dir = temp.path().join("data");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
-        (Ctx::new(config_dir, data_dir), temp)
+        (
+            Ctx::new(
+                config_dir,
+                data_dir,
+                Arc::new(FakeHotkeyStoreOpener::default()),
+            ),
+            temp,
+        )
     }
 
     fn write_yaml<T: Serialize>(path: &Path, value: &T) {

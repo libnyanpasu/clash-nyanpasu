@@ -42,6 +42,53 @@ test('core may depend on foundation packages', () => {
   )
 })
 
+test('migration consumes foundation packages without storage or core control', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-migration',
+      'nyanpasu-migration v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-persistence v0.1.0\nnyanpasu-utils v0.1.1\n',
+    ),
+    [],
+  )
+  for (const dependency of [
+    'redb',
+    'nyanpasu-core-manager',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'tauri',
+    'slint',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations('nyanpasu-migration', `${dependency} v0.1.0\n`),
+      [`nyanpasu-migration must not depend on ${dependency}`],
+    )
+  }
+})
+
+test('migration is a core-family dependency, available to core only above foundation', () => {
+  assert.deepStrictEqual(
+    dependencyViolations('nyanpasu-core', 'nyanpasu-migration v0.1.0\n'),
+    [],
+  )
+  for (const owner of [
+    'nyanpasu-config',
+    'nyanpasu-contracts',
+    'nyanpasu-persistence',
+    'nyanpasu-profile-transform',
+    'nyanpasu-scripts',
+    'nyanpasu-profile-io',
+    'nyanpasu-net',
+    'nyanpasu-diagnose',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, 'nyanpasu-migration v0.1.0\n'),
+      [`${owner} must not depend on nyanpasu-migration`],
+    )
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  }
+})
+
 test('neutral packages cannot depend on the crash reporter frontend', () => {
   for (const owner of [
     'nyanpasu-core',

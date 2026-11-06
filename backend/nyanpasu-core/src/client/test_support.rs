@@ -685,7 +685,7 @@ pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfi
     use nyanpasu_persistence::format::Format as _;
 
     let mut content = Vec::new();
-    crate::migration::modules::clash_config::ClashConfigFormat::default()
+    nyanpasu_migration::modules::clash_config::ClashConfigFormat::default()
         .serialize(&mut content, config, None)
         .unwrap();
     std::fs::write(path, content).unwrap();

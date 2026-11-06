@@ -23,6 +23,7 @@ use nyanpasu_contracts::profiles::{
         ProfileMaterializationPort, SubscriptionFetcher,
     },
 };
+use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
@@ -35,7 +36,6 @@ use crate::{
         },
         policy::CommandClass,
     },
-    migration::modules::profiles::ProfilesFormat,
     state::mutation::{CommitAborted, MutationCoordinator},
 };
 use nyanpasu_core_manager::OperationId;

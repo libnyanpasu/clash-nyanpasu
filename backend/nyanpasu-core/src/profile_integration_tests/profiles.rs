@@ -12,7 +12,6 @@ use crate::{
             startup_recovery::{evidence, migrate},
         },
     },
-    migration::modules::profiles::ProfilesFormat,
     state::{
         mutation::CommitAborted,
         profiles::{
@@ -37,6 +36,7 @@ use nyanpasu_contracts::{
         },
     },
 };
+use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use nyanpasu_net::{device_headers::DeviceHeaders, subscription_http::SubscriptionHttpFetcher};
 use nyanpasu_persistence::write;
 use nyanpasu_profile_io::fs_service::ProfileFileService;

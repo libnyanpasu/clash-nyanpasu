@@ -6,7 +6,10 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default-meta = ['nyanpasu-config/default-meta']
+default-meta = [
+  'nyanpasu-config/default-meta',
+  'nyanpasu-migration/default-meta'
+]
 default = ['default-meta', 'nesting']
 nesting = ['nyanpasu-config/nesting', 'struct-patch/nesting']
 verge-dev = []
@@ -14,10 +17,12 @@ test-support = [
   'dep:mockall',
   'dep:axum',
   'nyanpasu-contracts/test-support',
+  'nyanpasu-migration/test-support',
   'nyanpasu-profile-transform/test-support'
 ]
 
 [dependencies]
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
@@ -121,6 +126,9 @@ winreg = { version = '0.56', features = ['transactions'] }
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
 nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false, features = [

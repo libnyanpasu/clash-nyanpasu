@@ -1,14 +1,12 @@
 //! Full snapshots of the config dir and `storage.db` under `<data>/backups/`.
 //!
 //! A backup is a stateless filesystem operation: every input arrives through
-//! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
-//! share it.
+//! the request, so migrations and the application client share it.
 
 use camino::Utf8PathBuf;
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{BoxedCause, bundle_metadata::BundleMetadata};
 use nyanpasu_paths::PathResolver;
 
-use crate::storage::{Storage, StorageOperationError};
 use semver::Version;
 use serde::Serialize;
 use std::{
@@ -40,7 +38,7 @@ pub enum BackupError {
         source: io::Error,
     },
     #[error("failed to snapshot the storage database")]
-    Storage(#[from] StorageOperationError),
+    Storage(#[source] BoxedCause),
     #[error("failed to encode the backup manifest")]
     Manifest(#[source] serde_json::Error),
 }
@@ -53,13 +51,22 @@ pub enum BackupKind<'a> {
     Manual,
 }
 
+/// Exports a consistent snapshot of an open store without copying its locked file.
+pub trait StorageSnapshot: Send + Sync {
+    /// Writes the snapshot to `destination`.
+    ///
+    /// # Errors
+    /// Returns the original storage error if exporting the snapshot fails.
+    fn export_to(&self, destination: &Path) -> Result<(), BoxedCause>;
+}
+
 /// Where `storage.db` comes from.
 pub enum StorageSource<'a> {
     /// No process has the file open (the migration subprocess): copy it.
     File(&'a Path),
     /// The app is running and redb holds the file: export a snapshot from one
     /// read transaction.
-    Live(&'a Storage),
+    Live(&'a dyn StorageSnapshot),
 }
 
 pub struct BackupRequest<'a> {
@@ -302,7 +309,7 @@ fn backup_storage(req: &BackupRequest<'_>, data_dir: &Path) -> Result<(), Backup
         }
         StorageSource::Live(storage) => {
             fs::create_dir_all(data_dir).map_err(io_error(data_dir))?;
-            storage.export_to(&dest)?;
+            storage.export_to(&dest).map_err(BackupError::Storage)?;
         }
     }
     Ok(())
@@ -360,7 +367,6 @@ fn rfc3339(now: OffsetDateTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::WebStorage as _;
 
     // 2026-09-21T14:13:20Z
     const NOW: i64 = 1_790_000_000;
@@ -371,7 +377,10 @@ mod tests {
     }
 
     fn paths(root: &Path) -> PathResolver {
-        crate::utils::test_support::test_paths(root.join("config"), root.join("data"))
+        PathResolver::with_base_dirs(
+            root.join("config").try_into().unwrap(),
+            root.join("data").try_into().unwrap(),
+        )
     }
 
     fn write(path: &(impl AsRef<Path> + ?Sized), content: &str) {
@@ -503,7 +512,10 @@ mod tests {
     fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        let paths = crate::utils::test_support::test_paths(config.clone(), config.clone());
+        let paths = PathResolver::with_base_dirs(
+            config.clone().try_into().unwrap(),
+            config.try_into().unwrap(),
+        );
         write(&paths.profiles_path(), "profiles");
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");
@@ -612,26 +624,6 @@ mod tests {
         assert_eq!(first.name, format!("manual-{STAMP}"));
         assert_eq!(second.name, format!("manual-{STAMP}-1"));
         assert!(first.path.join(MANIFEST_FILE).exists());
-    }
-
-    #[test]
-    fn a_live_storage_is_exported_as_a_consistent_copy() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = paths(dir.path());
-        write(&paths.profiles_path(), "profiles");
-        fs::create_dir_all(paths.app_data_dir()).unwrap();
-        let storage = Storage::try_new(paths.storage_path().as_std_path()).unwrap();
-        storage.set_item("a", &1).unwrap();
-        storage.set_item("b", &"two").unwrap();
-
-        let backup = create_backup(&manual(&paths, StorageSource::Live(&storage))).unwrap();
-
-        let exported = Storage::try_new(&backup.path.join("data").join("storage.db")).unwrap();
-        assert_eq!(exported.get_all().unwrap(), storage.get_all().unwrap());
-        assert_eq!(exported.get_all().unwrap().len(), 2);
-        storage.set_item("c", &3).unwrap();
-        assert_eq!(storage.get_all().unwrap().len(), 3);
-        assert_eq!(exported.get_all().unwrap().len(), 2);
     }
 
     #[test]

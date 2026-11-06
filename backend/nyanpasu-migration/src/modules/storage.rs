@@ -1,12 +1,41 @@
 use super::super::{
     Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
 };
-use crate::storage::{Storage, WebStorage};
+use nyanpasu_contracts::BoxedCause;
 use nyanpasu_persistence::write;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml_ng::Mapping;
 use snafu::{OptionExt as _, ResultExt as _};
+use std::path::Path;
+
+/// Opens a hotkey store on the thread that will use and drop its handle.
+pub trait HotkeyStoreOpener: Send + Sync + std::fmt::Debug {
+    /// Opens the store at `path`.
+    ///
+    /// # Errors
+    /// Returns the original storage error if opening the store fails.
+    fn open(&self, path: &Path) -> Result<Box<dyn HotkeyStore>, BoxedCause>;
+}
+
+/// A short-lived migration handle; dropping it releases the open database.
+pub trait HotkeyStore {
+    /// Reads hotkeys, distinguishing a missing key from an explicitly empty list.
+    ///
+    /// # Errors
+    /// Returns the original storage error if reading or decoding fails.
+    fn read(&self) -> Result<Option<Vec<String>>, BoxedCause>;
+    /// Commits hotkeys to the store.
+    ///
+    /// # Errors
+    /// Returns the original storage error if encoding or committing fails.
+    fn write(&self, hotkeys: &[String]) -> Result<(), BoxedCause>;
+    /// Removes the hotkey key from the store.
+    ///
+    /// # Errors
+    /// Returns the original storage error if removing or committing fails.
+    fn remove(&self) -> Result<(), BoxedCause>;
+}
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -26,17 +55,11 @@ pub enum Error {
     #[snafu(context(false), display("failed to write migration output"))]
     WriteOutput { source: write::Error },
     #[snafu(display("failed to open storage"))]
-    OpenStorage {
-        source: crate::storage::StorageOperationError,
-    },
+    OpenStorage { source: BoxedCause },
     #[snafu(display("failed to save hotkeys"))]
-    SaveHotkeys {
-        source: crate::storage::StorageOperationError,
-    },
+    SaveHotkeys { source: BoxedCause },
     #[snafu(display("failed to remove hotkeys"))]
-    RemoveHotkeys {
-        source: crate::storage::StorageOperationError,
-    },
+    RemoveHotkeys { source: BoxedCause },
     #[snafu(display("hotkeys is not a list in the legacy config"))]
     ReadHotkeyList,
     #[snafu(display("no hotkeys in the key-value storage"))]
@@ -119,8 +142,7 @@ impl MigrationStep for MigrateHotkeysToKv {
     }
 
     fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
-        let config: Option<Mapping> =
-            crate::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+        let config: Option<Mapping> = crate::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
         Ok(Some(StepCheck::from_needed(config.is_some_and(|config| {
             config
                 .get(HOTKEYS_KEY)
@@ -152,11 +174,12 @@ impl MigrationStep for MigrateHotkeysToKv {
                     std::fs::create_dir_all(parent)
                         .context(CreateStorageDirectorySnafu { path: parent })?;
                 }
-                let storage = Storage::try_new(&storage_path).context(OpenStorageSnafu)?;
+                let storage = ctx
+                    .hotkey_store_opener
+                    .open(&storage_path)
+                    .context(OpenStorageSnafu)?;
 
-                storage
-                    .set_item("hotkeys", &hotkey_strings)
-                    .context(SaveHotkeysSnafu)?;
+                storage.write(&hotkey_strings).context(SaveHotkeysSnafu)?;
 
                 // Note: registration is intentionally NOT done here. This migration
                 // runs in a separate `migrate` subprocess with no Tauri app handle, so
@@ -257,10 +280,7 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
             );
 
             let storage = open_storage(ctx)?.expect("storage was readable a moment ago");
-            storage
-                .remove_item(HOTKEYS_KEY)
-                .map(|_| ())
-                .context(RemoveHotkeysSnafu)
+            storage.remove().context(RemoveHotkeysSnafu)
         })()
         .map_err(Into::into)
     }
@@ -273,20 +293,20 @@ fn read_kv_hotkeys(ctx: &Ctx) -> Result<Option<Vec<String>>, MigrationCheckError
         return Ok(None);
     };
     storage
-        .get_item::<Vec<String>>(HOTKEYS_KEY)
-        .map(|item| item.value)
+        .read()
         .map_err(|source| MigrationCheckError::Storage {
             path: ctx.storage_path(),
             source,
         })
 }
 
-fn open_storage(ctx: &Ctx) -> Result<Option<Storage>, MigrationCheckError> {
+fn open_storage(ctx: &Ctx) -> Result<Option<Box<dyn HotkeyStore>>, MigrationCheckError> {
     let storage_path = ctx.storage_path();
     if !try_exists(&storage_path)? {
         return Ok(None);
     }
-    Storage::try_new(&storage_path)
+    ctx.hotkey_store_opener
+        .open(&storage_path)
         .map(Some)
         .map_err(|source| MigrationCheckError::Storage {
             path: storage_path,
@@ -297,6 +317,8 @@ fn open_storage(ctx: &Ctx) -> Result<Option<Storage>, MigrationCheckError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fake_hotkey_store::FakeHotkeyStoreOpener;
+    use std::sync::Arc;
 
     struct Fixture {
         _temp: tempfile::TempDir,
@@ -312,15 +334,19 @@ mod tests {
             let data_dir = temp.path().join("data");
             std::fs::create_dir_all(&config_dir).unwrap();
             std::fs::create_dir_all(&data_dir).unwrap();
-            let ctx = Ctx::new(config_dir, data_dir);
+            let ctx = Ctx::new(
+                config_dir,
+                data_dir,
+                Arc::new(FakeHotkeyStoreOpener::default()),
+            );
 
             if let Some(yaml) = application_yaml {
                 std::fs::write(ctx.application_config_path(), yaml).unwrap();
             }
             if let Some(hotkeys) = kv_hotkeys {
-                let storage = Storage::try_new(&ctx.storage_path()).unwrap();
+                let storage = ctx.hotkey_store_opener.open(&ctx.storage_path()).unwrap();
                 let hotkeys: Vec<String> = hotkeys.iter().map(ToString::to_string).collect();
-                storage.set_item(HOTKEYS_KEY, &hotkeys).unwrap();
+                storage.write(&hotkeys).unwrap();
             }
 
             Self { _temp: temp, ctx }
@@ -398,9 +424,13 @@ mod tests {
 
         // A store that exists but holds no hotkeys is the state a second run
         // leaves behind, and must also be a no-op.
-        let storage = Storage::try_new(&fixture.ctx.storage_path()).unwrap();
-        storage.set_item("unrelated", &"value".to_string()).unwrap();
-        drop(storage);
+        drop(
+            fixture
+                .ctx
+                .hotkey_store_opener
+                .open(&fixture.ctx.storage_path())
+                .unwrap(),
+        );
 
         fixture.run().unwrap();
         assert!(fixture.typed_hotkeys().is_empty());
@@ -460,7 +490,11 @@ mod tests {
         let data_dir = temp.path().join("data");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
-        let mut ctx = Ctx::new(config_dir, data_dir);
+        let mut ctx = Ctx::new(
+            config_dir,
+            data_dir,
+            Arc::new(FakeHotkeyStoreOpener::default()),
+        );
         std::fs::write(ctx.nyanpasu_config_path(), "hotkeys: []\n").unwrap();
 
         assert_eq!(

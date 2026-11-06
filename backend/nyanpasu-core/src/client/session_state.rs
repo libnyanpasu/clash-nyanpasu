@@ -23,7 +23,9 @@ use crate::state::{
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
     #[snafu(display("failed to load session state"))]
-    LoadState { source: crate::session_state::Error },
+    LoadState {
+        source: nyanpasu_migration::session_state::Error,
+    },
     #[snafu(display("failed to initialize persistent state at {path}"))]
     InitializeState {
         path: Utf8PathBuf,
@@ -57,8 +59,10 @@ impl SessionStateClient {
     ) -> Result<Self, Error> {
         let path = config_path.clone();
         let state = crate::utils::blocking::join(
-            tokio::task::spawn_blocking(move || crate::session_state::read(path.as_std_path()))
-                .await,
+            tokio::task::spawn_blocking(move || {
+                nyanpasu_migration::session_state::read(path.as_std_path())
+            })
+            .await,
         )
         .context(LoadStateSnafu)?
         .unwrap_or_default();

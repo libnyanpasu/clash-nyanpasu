@@ -1,10 +1,6 @@
 use super::*;
-use nyanpasu_core::{
-    actor_v2::local_host,
-    client,
-    client::SetupError,
-    migration::{runner, store},
-};
+use nyanpasu_core::{actor_v2::local_host, client, client::SetupError};
+use nyanpasu_migration::{runner, store};
 
 fn paths() -> PathResolver {
     PathResolver::with_base_dirs("config".into(), "data".into())
@@ -195,7 +191,13 @@ fn migration_transport_preserves_revisions_io_and_backup_availability() {
         },
     ];
     for error in revisions {
-        let source = Failure::from_error(&error, FailureStage::Migration, &paths(), true);
+        let source = Failure::from_error(
+            &error,
+            FailureStage::Migration,
+            &paths(),
+            true,
+            nyanpasu_core::corrupt::error_io(&error),
+        );
         let decoded = serde_json::from_slice(&serde_json::to_vec(&source).unwrap()).unwrap();
         let report = Report::migration(
             &crate::utils::init::Error::ReadChildFailure { source: decoded },
@@ -212,7 +214,13 @@ fn migration_transport_preserves_revisions_io_and_backup_availability() {
             path: "config".into(),
             source: io.into(),
         };
-        let source = Failure::from_error(&error, FailureStage::Backup, &paths(), false);
+        let source = Failure::from_error(
+            &error,
+            FailureStage::Backup,
+            &paths(),
+            false,
+            nyanpasu_core::corrupt::error_io(&error),
+        );
         let decoded = serde_json::from_slice(&serde_json::to_vec(&source).unwrap()).unwrap();
         let report = Report::migration(
             &crate::utils::init::Error::ReadChildFailure { source: decoded },

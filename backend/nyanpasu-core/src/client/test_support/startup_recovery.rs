@@ -1,10 +1,12 @@
 //! Startup recovery fixtures shared by application and filesystem integration tests.
 
-use crate::migration::Runner;
+use crate::storage::RedbHotkeyStoreOpener;
+use nyanpasu_migration::Runner;
 use nyanpasu_paths::PathResolver;
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 pub fn evidence(path: &Path) -> Vec<PathBuf> {
@@ -26,6 +28,7 @@ pub fn migrate(paths: &PathResolver) {
         paths.clone(),
         nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         false,
+        Arc::new(RedbHotkeyStoreOpener),
     )
     .unwrap()
     .run_pending()

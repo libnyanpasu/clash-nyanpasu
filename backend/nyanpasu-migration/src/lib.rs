@@ -1,16 +1,27 @@
+//! Configuration upgrades, session document reads and backups with injected storage ports.
+
 use nyanpasu_paths::PathResolver;
 use semver::Version;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{BoxedCause, bundle_metadata::BundleMetadata};
 
+use self::modules::storage::HotkeyStoreOpener;
+
+pub mod backup;
 pub mod child_result;
+#[cfg(test)]
+mod fake_hotkey_store;
 pub mod fs;
 mod legacy_schema;
 pub mod modules;
 pub mod registry;
 pub mod runner;
+pub mod session_state;
 pub mod store;
+#[cfg(feature = "test-support")]
+pub mod test_support;
+mod yaml;
 
 pub use runner::Runner;
 
@@ -83,21 +94,37 @@ impl std::fmt::Display for MigrationAdvice {
 pub struct Ctx {
     paths: PathResolver,
     bundle_metadata: BundleMetadata,
+    hotkey_store_opener: Arc<dyn HotkeyStoreOpener>,
 }
 
 impl Ctx {
-    pub fn from_paths(paths: PathResolver, bundle_metadata: BundleMetadata) -> Self {
+    pub fn from_paths(
+        paths: PathResolver,
+        bundle_metadata: BundleMetadata,
+        hotkey_store_opener: Arc<dyn HotkeyStoreOpener>,
+    ) -> Self {
         Self {
             paths,
             bundle_metadata,
+            hotkey_store_opener,
         }
     }
 
     #[cfg(test)]
-    pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
+    pub fn new(
+        app_config_dir: PathBuf,
+        app_data_dir: PathBuf,
+        hotkey_store_opener: Arc<dyn HotkeyStoreOpener>,
+    ) -> Self {
         Self {
-            paths: crate::utils::test_support::test_paths(app_config_dir, app_data_dir),
+            paths: PathResolver::with_base_dirs(
+                app_config_dir
+                    .try_into()
+                    .expect("test directories are UTF-8"),
+                app_data_dir.try_into().expect("test directories are UTF-8"),
+            ),
             bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
+            hotkey_store_opener,
         }
     }
 
@@ -180,7 +207,7 @@ pub enum MigrationCheckError {
     Storage {
         path: PathBuf,
         #[source]
-        source: crate::storage::StorageOperationError,
+        source: BoxedCause,
     },
     #[error("failed to read the stamp of {}", path.display())]
     Stamp {

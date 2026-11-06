@@ -1,5 +1,4 @@
 //! Core lifecycle execution owned by the application workflow actor.
-pub mod adapters;
 pub(in crate::client) mod apply;
 pub mod ports;
 mod workflow;

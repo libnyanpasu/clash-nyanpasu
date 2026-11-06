@@ -231,12 +231,12 @@ crate: it implements contracts, the shells inject it, and core never depends
 on it. Desktop interaction has no crate of its own; it stays in the Tauri
 shell.
 
-| Crate (working name)                          | Used by                                           | Holds                                                                                                                                                                                                        |
-| --------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `backend/tauri/src/desktop/` (a shell module) | The Tauri desktop shell                           | The hotkey owner, main-thread handoff and presentation-effect execution (locale, tray, widget); core keeps the ports and the shared convergence of effects                                                   |
-| `nyanpasu-os`                                 | Desktop shells and the server on desktop or Linux | System proxy, PAC and autostart (now `backend/tauri/src/adapters/system_proxy.rs`), service install and control, DNS flush, core binary install, device identity, elevation mechanism, sidecar version probe |
-| `nyanpasu-openwrt` (on resume)                | The server on OpenWrt                             | procd lifecycle control, router paths and policy, later firewall integration                                                                                                                                 |
-| Mobile target (later)                         | Mobile shell                                      | Mobile OS and interaction integration                                                                                                                                                                        |
+| Crate (working name)                          | Used by                                           | Holds                                                                                                                                                      |
+| --------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/src/desktop/` (a shell module) | The Tauri desktop shell                           | The hotkey owner, main-thread handoff and presentation-effect execution (locale, tray, widget); core keeps the ports and the shared convergence of effects |
+| `nyanpasu-os`                                 | Desktop shells and the server on desktop or Linux | System proxy, PAC and autostart, service install and control, DNS flush, core binary install, device identity, elevation mechanism, sidecar version probe  |
+| `nyanpasu-openwrt` (on resume)                | The server on OpenWrt                             | procd lifecycle control, router paths and policy, later firewall integration                                                                               |
+| Mobile target (later)                         | Mobile shell                                      | Mobile OS and interaction integration                                                                                                                      |
 
 - The server does not link the Tauri shell, so it carries none of the desktop
   mechanisms. Tauri-bound mechanisms
@@ -311,22 +311,18 @@ execution and debug HTTP are optional: missing capabilities report structured
 unsupported results, and explicit hotkey edits are rejected before persistence.
 Unsupported effects neither advance applied revisions nor retry automatically.
 Observer sinks (`UiEventSink` and `FrontendLogSink`) remain required; headless
-shells provide neutral implementations.
+shells provide neutral implementations. C2b–C2c move proxy reads/writes, PAC,
+autostart, device identity, sidecar version probes, service control, DNS flush
+and binary installation into `nyanpasu-os`. Authorization behavior is unchanged;
+the consent port follows in C2d.
 
 Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting
   the runners and injecting their constructor did not change extension behavior.
-- OS integration implementations are split between core and the Tauri crate.
-  In core: service install and control with elevation (`service/control.rs`,
-  `utils/sudo.rs`, `actor_v2/service_host_adapter.rs`), DNS configuration and
-  flush (`actor_v2/local_host.rs`, `client/system_dns.rs`), core binary install
-  (`client/core_lifecycle/adapters.rs`), device identity (`utils/hwid.rs`) and
-  system proxy reads (`utils/config.rs`). In Tauri: system proxy, PAC and
-  autostart (`adapters/system_proxy.rs`) and the sidecar core version reader
-  (`utils/core_version.rs`). Core's service install and DNS flush show OS
-  authorization dialogs directly, and core binary installation falls back to an
-  elevated copy that the WebUI can reach through `update_core`
+- The OS mechanisms in `nyanpasu-os` still authorize directly: service install
+  and DNS flush show OS authorization dialogs, and binary installation falls
+  back to an elevated copy that the WebUI can reach through `update_core`
   ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). Phase C
   removes `update_core` from the WebUI. The embedded WebUI shares the desktop
   client, so service-mode changes through `patch_app_config`,

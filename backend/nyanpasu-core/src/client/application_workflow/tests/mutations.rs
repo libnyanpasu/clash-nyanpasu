@@ -18,10 +18,13 @@ use std::{
     time::Duration,
 };
 
-use crate::state::{
-    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
-    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
-    StateParticipant, SubscriberName, error::StateChangedError,
+use crate::{
+    client::test_support::workflow::Installer,
+    state::{
+        Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
+        ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber,
+        StateChange, StateParticipant, SubscriberName, error::StateChangedError,
+    },
 };
 use camino::Utf8PathBuf;
 use nyanpasu_config::{
@@ -395,7 +398,7 @@ pub(super) async fn fixture_from(
             builder: builder.clone(),
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
-            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            installer: Arc::new(Installer::succeeding()),
             ownership,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),

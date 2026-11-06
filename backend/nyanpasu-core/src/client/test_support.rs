@@ -32,16 +32,16 @@ use struct_patch::Patch as _;
 use tempfile::TempDir;
 
 use super::{
-    ClientSetupArgs, NoopSystemDnsCache, NyanpasuClient, RuntimePaths,
-    application::ApplicationClient, application_workflow, clash_config::ClashConfigClient,
-    core_lifecycle, effects, host_adapters::ClientHostAdapters, hotkey, jobs, logs,
-    session_state::SessionStateClient,
+    ClientSetupArgs, NyanpasuClient, RuntimePaths, application::ApplicationClient,
+    application_workflow, clash_config::ClashConfigClient, effects,
+    host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
 };
 use crate::{
     actor_v2::{
         endpoint::ExecutionHost,
         test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
+    client::test_support::workflow::{Installer, NoopSystemDnsCache},
     state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
@@ -791,7 +791,7 @@ pub async fn test_client_args_with_endpoint(
         direct_egress: Arc::new(MockDirectEgressProbe::new()),
         geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         os_proxy: Arc::new(MockOsProxyPort::new()),
-        binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+        binary_installer: Arc::new(Installer::succeeding()),
         core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
         effects: Arc::new(effects::ports::NoopApplicationEffects),
         // A mock rather than a no-op: a test that dispatches a window

@@ -45,7 +45,7 @@ fn core_from_config(
             .deserialize(file)
             .map_err(|e| e.to_string())?;
     let version = runtime.block_on(
-        super::core_version::SidecarCoreVersionReader::new(std::sync::Arc::new(
+        nyanpasu_os::core_version::SidecarCoreVersionReader::new(std::sync::Arc::new(
             crate::adapters::core_version::TauriCoreVersionExecutableSource,
         ))
         .read(config.core),

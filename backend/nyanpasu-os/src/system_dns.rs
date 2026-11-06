@@ -1,3 +1,5 @@
+//! Platform DNS cache flush commands.
+
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 use nyanpasu_contracts::system_dns::UnsupportedSnafu;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -6,6 +8,7 @@ use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use snafu::{ResultExt as _, ensure};
 
+/// Flushes the operating system DNS caches using the existing authorization mechanism.
 #[derive(Debug, Default)]
 pub struct OsSystemDnsCache;
 
@@ -72,17 +75,6 @@ fn ensure_success(
         }
     );
     Ok(())
-}
-
-#[cfg(any(test, feature = "test-support"))]
-#[derive(Debug, Default)]
-pub struct NoopSystemDnsCache;
-
-#[cfg(any(test, feature = "test-support"))]
-impl SystemDnsCache for NoopSystemDnsCache {
-    fn flush(&self) -> Result<(), SystemDnsError> {
-        Ok(())
-    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

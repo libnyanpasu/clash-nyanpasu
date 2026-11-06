@@ -1,3 +1,5 @@
+//! Immutable device identity for subscription requests.
+
 use anyhow::{Result, anyhow};
 use once_cell::sync::Lazy;
 use serde::Serialize;

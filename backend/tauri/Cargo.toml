@@ -24,6 +24,7 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
 nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
@@ -124,7 +125,6 @@ bolt-load = { version = '0.1', default-features = false, features = [
 # the CancellationToken type required by bolt-load's TaskBuilder
 smol-cancellation-token = '0.1'
 urlencoding = '2.1'
-sysproxy = { workspace = true }
 
 # Serialization
 serde = { version = '1.0', features = ['derive', 'rc'] }
@@ -148,7 +148,6 @@ md-5 = '0.11.0'
 nanoid = '0.5.0'
 
 # System Utilities
-auto-launch = { workspace = true }
 dunce = '1.0.4'  # for cross platform path normalization
 runas = { workspace = true }
 single-instance = '0.3.3'
@@ -300,7 +299,7 @@ fake-core = { path = '../fake-core' }
 default = ['custom-protocol', 'default-meta', 'nesting']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
-verge-dev = ['nyanpasu-core/verge-dev']
+verge-dev = ['nyanpasu-core/verge-dev', 'nyanpasu-os/verge-dev']
 default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']

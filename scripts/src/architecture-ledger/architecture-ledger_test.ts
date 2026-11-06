@@ -1000,6 +1000,7 @@ for (const root of [
   'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-observers/src/',
   'backend/nyanpasu-updater/src/',
+  'backend/nyanpasu-os/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
   'backend/nyanpasu-profile-transform/src/',

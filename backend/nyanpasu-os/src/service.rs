@@ -1,3 +1,5 @@
+//! Service process commands and the OS implementation of process control.
+
 #[cfg(not(target_os = "macos"))]
 use runas::Command as RunasCommand;
 use snafu::{ResultExt, ensure};
@@ -13,9 +15,9 @@ use std::os::unix::process::ExitStatusExt;
 #[cfg(windows)]
 use nyanpasu_contracts::service::SessionEndingSnafu;
 use nyanpasu_contracts::service::{
-    ResolveServiceUserSnafu, RunElevatedSnafu, RunServiceStatusSnafu, ServiceCommand,
-    ServiceCommandError, ServiceCommandExitSnafu, ServiceStatusExitSnafu,
-    ServiceStatusNotUtf8Snafu,
+    ResolveServiceDirsSnafu, ResolveServiceUserSnafu, RunElevatedSnafu, RunServiceStatusSnafu,
+    ServiceCommand, ServiceCommandError, ServiceCommandExitSnafu, ServiceProcessControl,
+    ServiceStatusExitSnafu, ServiceStatusNotUtf8Snafu,
 };
 
 fn signal(status: &ExitStatus) -> Option<i32> {
@@ -38,6 +40,7 @@ pub fn service_binary(install_dir: &Path) -> PathBuf {
     install_dir.join(format!("{SERVICE_BINARY}{}", std::env::consts::EXE_SUFFIX))
 }
 
+/// Resolves the current user and builds the service installation command arguments.
 pub async fn get_service_install_args(
     data_dir: &Path,
     config_dir: &Path,
@@ -80,7 +83,7 @@ async fn run_elevated(
     #[cfg(windows)]
     ensure_session_active()?;
     let service_binary = service_binary.to_path_buf();
-    let status = nyanpasu_owner_support::blocking::join(
+    let status = crate::blocking::join(
         tokio::task::spawn_blocking(move || {
             #[cfg(windows)]
             ensure_session_active()?;
@@ -95,12 +98,12 @@ async fn run_elevated(
             }
             #[cfg(target_os = "macos")]
             {
-                use crate::utils::sudo::sudo;
+                use crate::elevation::macos;
                 let args = args
                     .iter()
                     .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
                     .collect::<Vec<_>>();
-                match sudo(service_binary.to_string_lossy(), &args) {
+                match macos::sudo(service_binary.to_string_lossy(), &args) {
                     Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                     Err(e) => {
                         tracing::error!("failed to run the service {command} command: {}", e);
@@ -123,6 +126,7 @@ async fn run_elevated(
     Ok(())
 }
 
+/// Installs the service with the supplied application directories.
 pub async fn install_service(
     service_binary: &Path,
     data_dir: &Path,
@@ -133,6 +137,7 @@ pub async fn install_service(
     run_elevated(ServiceCommand::Install, service_binary, args).await
 }
 
+/// Updates the service using its existing platform command arguments.
 pub async fn update_service(
     service_binary: &Path,
     data_dir: &Path,
@@ -153,6 +158,7 @@ pub async fn update_service(
     run_elevated(ServiceCommand::Update, service_binary, args).await
 }
 
+/// Removes the service through its elevated command.
 pub async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(
         ServiceCommand::Uninstall,
@@ -162,14 +168,17 @@ pub async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceComma
     .await
 }
 
+/// Starts the service daemon through its elevated command.
 pub async fn start_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(ServiceCommand::Start, service_binary, vec!["start".into()]).await
 }
 
+/// Stops the service daemon through its elevated command.
 pub async fn stop_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(ServiceCommand::Stop, service_binary, vec!["stop".into()]).await
 }
 
+/// Restarts the service daemon through its elevated command.
 pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(
         ServiceCommand::Restart,
@@ -179,6 +188,7 @@ pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommand
     .await
 }
 
+/// Returns raw UTF-8 status output after checking the service process exit status.
 #[tracing::instrument]
 pub async fn status(service_binary: &Path) -> Result<String, ServiceCommandError> {
     #[cfg(windows)]
@@ -210,6 +220,63 @@ fn ensure_session_active() -> Result<(), ServiceCommandError> {
         SessionEndingSnafu
     );
     Ok(())
+}
+
+/// Runs service commands against the binary and application directories supplied by the shell.
+pub struct OsServiceProcessControl {
+    service_binary: PathBuf,
+    paths: nyanpasu_paths::PathResolver,
+}
+
+impl OsServiceProcessControl {
+    /// Binds service process control to the supplied executable and path resolver.
+    pub fn new(service_binary: PathBuf, paths: nyanpasu_paths::PathResolver) -> Self {
+        Self {
+            service_binary,
+            paths,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ServiceProcessControl for OsServiceProcessControl {
+    async fn probe(&self) -> Result<String, ServiceCommandError> {
+        status(&self.service_binary).await
+    }
+
+    async fn install(&self) -> Result<(), ServiceCommandError> {
+        let app_dir = self
+            .paths
+            .app_install_dir()
+            .context(ResolveServiceDirsSnafu)?;
+        install_service(
+            &self.service_binary,
+            self.paths.app_data_dir().as_std_path(),
+            self.paths.app_config_dir().as_std_path(),
+            app_dir.as_std_path(),
+        )
+        .await
+    }
+
+    async fn uninstall(&self) -> Result<(), ServiceCommandError> {
+        uninstall_service(&self.service_binary).await
+    }
+
+    async fn start_daemon(&self) -> Result<(), ServiceCommandError> {
+        start_service(&self.service_binary).await
+    }
+
+    async fn stop_daemon(&self) -> Result<(), ServiceCommandError> {
+        stop_service(&self.service_binary).await
+    }
+
+    async fn update(&self) -> Result<(), ServiceCommandError> {
+        update_service(
+            &self.service_binary,
+            self.paths.app_data_dir().as_std_path(),
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -251,7 +318,10 @@ mod tests {
 
     #[test]
     fn the_io_error_stays_out_of_the_wire_form_but_in_the_message() {
-        let error = crate::service::test_support::service_command_error("the user cancelled");
+        let error = ServiceCommandError::RunElevated {
+            command: ServiceCommand::Start,
+            source: std::io::Error::other("the user cancelled"),
+        };
 
         assert_eq!(
             serde_json::to_value(&error).unwrap(),

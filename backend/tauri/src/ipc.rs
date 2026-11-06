@@ -400,12 +400,6 @@ pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
     Ok(client.is_portable())
 }
 
-// #[tauri::command]
-// #[specta::specta]
-// pub fn get_device_info() -> Result<nyanpasu_core::utils::hwid::DeviceInfo> {
-//     Ok(nyanpasu_core::utils::hwid::get_device_info())
-// }
-
 /// Rebuild-only command: there is no prior state commit, so a failure is a
 /// plain error — the committed/degraded model (spec §6.2) does not apply.
 #[nyanpasu_macro::rpc(http)]
@@ -1671,7 +1665,7 @@ pub mod uwp {
 #[specta::specta]
 pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
     use nyanpasu_contracts::service::ResolveServiceDirsSnafu;
-    use nyanpasu_core::service::control::get_service_install_args;
+    use nyanpasu_os::service::get_service_install_args;
     use snafu::ResultExt;
 
     let args = async {

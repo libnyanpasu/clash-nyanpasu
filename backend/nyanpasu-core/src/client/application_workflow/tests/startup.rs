@@ -19,7 +19,10 @@ use std::{
     time::Duration,
 };
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult};
+use crate::{
+    client::test_support::workflow::Installer,
+    state::{PersistentStateManager, ReplaceIfVersionResult},
+};
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::ClashConfig,
@@ -423,7 +426,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             builder,
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
-            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            installer: Arc::new(Installer::succeeding()),
             ownership: Ownership::Unproven,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),

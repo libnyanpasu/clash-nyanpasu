@@ -21,7 +21,7 @@ use crate::{
         NyanpasuClient,
         test_support::{
             TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
-            test_client_args_with_endpoint,
+            test_client_args_with_endpoint, workflow::Installer,
         },
     },
 };
@@ -105,11 +105,7 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new(fail_reconcile: bool) -> Self {
-        Self::with_installer(
-            fail_reconcile,
-            Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-        )
-        .await
+        Self::with_installer(fail_reconcile, Arc::new(Installer::succeeding())).await
     }
 
     async fn with_installer(

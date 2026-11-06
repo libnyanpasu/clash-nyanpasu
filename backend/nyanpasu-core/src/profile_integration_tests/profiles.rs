@@ -781,7 +781,7 @@ async fn startup_client(
         Arc::new(SubscriptionHttpFetcher::new(
             Arc::new(NoProxyPort),
             nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
-            Arc::new(crate::utils::config::OsSystemProxySource),
+            Arc::new(super::test_support::NoSystemProxy),
             DeviceHeaders {
                 hwid: "test-device".into(),
                 ..Default::default()
@@ -1013,7 +1013,7 @@ async fn materialization_preparation_failure_keeps_its_typed_source() {
         Arc::new(SubscriptionHttpFetcher::new(
             Arc::new(NoProxyPort),
             nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
-            Arc::new(crate::utils::config::OsSystemProxySource),
+            Arc::new(super::test_support::NoSystemProxy),
             DeviceHeaders {
                 hwid: "test-device".into(),
                 ..Default::default()

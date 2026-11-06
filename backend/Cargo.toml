@@ -16,6 +16,7 @@ members = [
   'nyanpasu-persistence',
   'nyanpasu-profile-io',
   'nyanpasu-net',
+  'nyanpasu-os',
   'nyanpasu-profile-transform',
   'nyanpasu-traffic',
   'nyanpasu-tsdb',

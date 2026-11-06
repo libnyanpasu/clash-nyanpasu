@@ -142,18 +142,18 @@ layer and compile independently of core. The remaining split aims at two things:
   below the application layer, so editing the facade or a workflow does not
   rebuild them.
 
-| Layer         | Package (working name)  | Moves from `nyanpasu-core/src`                                                                     | LOC     | Owns                                                                  |
-| ------------- | ----------------------- | -------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------- |
-| Facade        | `nyanpasu-core`         | `client/mod.rs` and assembly                                                                       | ~3,600  | `NyanpasuClient`, `ClientSetupArgs`                                   |
-| Application   | `nyanpasu-workflow`     | `client/application_workflow/`, convergence, domain state owners in `state/profiles/` and siblings | ~25,000 | Workflows, mutation participants, profile owners                      |
-| Core control  | `nyanpasu-core-control` | `actor_v2/`, `clash/`, `proxies.rs`, `connections.rs`                                              | ~14,000 | `nyanpasu-ipc`, `nyanpasu-core-manager`, `clash-api`                  |
-| Owners        | one crate each          | `logs/`, `traffic/`, `geo/`                                                                        | ~6,700  | Log sessions, traffic accounting, geodata                             |
-| Updater       | `nyanpasu-core-updater` | `updater/`, `download/`                                                                            | ~3,100  | `zip`, `tar`, `flate2`, `bolt-load`                                   |
-| State engine  | `nyanpasu-state-engine` | `state/manager*`, `state/transaction*`                                                             | ~3,300  | Voting, CAS, rollback, settlement                                     |
-| Migration     | `nyanpasu-migration`    | `migration/` and `backup.rs`, after storage ports exist                                            | ~10,000 | Legacy schema migration, backups                                      |
-| Persistence   | `nyanpasu-persistence`  | Generic recovery from `corrupt.rs`, `format.rs`, generic atomic writes                             | ~600    | Foundation layer: formats and file recovery; no redb or core-manager  |
-| Contracts     | `nyanpasu-contracts`    | `BundleMetadata` and ports implemented outside core, with their type closure                       | Unknown | Foundation layer; no `ractor`, `reqwest`, `redb`, Tauri or widget IPC |
-| Actor support | root core module first  | `client/owner_shutdown.rs`; a crate once the first owner crate leaves core                         | 39      | Owner drain helpers over `ractor`                                     |
+| Layer         | Package (working name)   | Moves from `nyanpasu-core/src`                                                                     | LOC     | Owns                                                                  |
+| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------- |
+| Facade        | `nyanpasu-core`          | `client/mod.rs` and assembly                                                                       | ~3,600  | `NyanpasuClient`, `ClientSetupArgs`                                   |
+| Application   | `nyanpasu-workflow`      | `client/application_workflow/`, convergence, domain state owners in `state/profiles/` and siblings | ~25,000 | Workflows, mutation participants, profile owners                      |
+| Core control  | `nyanpasu-core-control`  | `actor_v2/`, `clash/`, `proxies.rs`, `connections.rs`                                              | ~14,000 | `nyanpasu-ipc`, `nyanpasu-core-manager`, `clash-api`                  |
+| Owners        | `nyanpasu-observers`     | Owner parts of `logs/`, `traffic/`, `geo/`; their redb, file-watch and Clash adapters stay in core | ~6,700  | Log sessions, traffic accounting, geodata                             |
+| Updater       | `nyanpasu-updater`       | `updater/`, `download/`; the shell injects the backend through a factory                           | ~3,100  | `zip`, `tar`, `flate2`, `bolt-load`                                   |
+| State engine  | `nyanpasu-state-engine`  | `state/manager*`, `state/transaction*`                                                             | ~3,300  | Voting, CAS, rollback, settlement                                     |
+| Migration     | `nyanpasu-migration`     | `migration/`, `backup.rs`, `session_state.rs`, after storage ports exist                           | ~10,000 | Legacy schema migration, backups, session-state recovery              |
+| Persistence   | `nyanpasu-persistence`   | Generic recovery from `corrupt.rs`, `format.rs`, generic atomic writes                             | ~600    | Foundation layer: formats and file recovery; no redb or core-manager  |
+| Contracts     | `nyanpasu-contracts`     | `BundleMetadata` and ports implemented outside core, with their type closure                       | Unknown | Foundation layer; no `ractor`, `reqwest`, `redb`, Tauri or widget IPC |
+| Actor support | `nyanpasu-owner-support` | `owner_shutdown.rs` and `utils/blocking.rs`, once the first owner crate leaves core                | ~55     | Owner drain and blocking-join helpers over `ractor`                   |
 
 Dependency rules:
 
@@ -189,7 +189,7 @@ owner, not by arrow:
 | enhance ↔ client                                               | `enhance/artifact_snapshot.rs:95-120` builds `client::runtime` snapshot types               | Keep the conversion in application, above the transform crate                                                    |
 | effects ↔ hotkey, system_proxy                                 | The executor calls owners that return effect status types                                   | Move effect result values below both                                                                             |
 | state ↔ application_workflow                                   | `state/mutation.rs:15` stores the concrete workflow client                                  | Inject the mutation participant boundary                                                                         |
-| updater → client                                               | `updater/ports.rs:8` uses `client::core_lifecycle` artifact types                           | Move the artifact types below both (B4)                                                                          |
+| updater → client                                               | `updater/ports.rs:8` uses `client::core_lifecycle` artifact types; version parsing, mirrors | Move the artifact types and mirrors below both, version parsing to contracts (B4)                                |
 | migration ↔ session_state                                      | `session_state.rs:27,72` uses `migration::fs` errors and atomic writes                      | Move generic atomic writes to persistence (B1a)                                                                  |
 
 ### Script runtimes and profile transform
@@ -380,7 +380,7 @@ protocol (E1b) waits for D2, so the server and CLI wait for C, D2 and E3.
 | B1a  | Add formats and generic atomic writes to persistence               | Session state no longer depends on migration; generic recovery does not examine core-manager errors     |
 | B1b  | Add storage ports for backup and migration, then extract migration | Migration and backup do not depend on redb                                                              |
 | B2   | Move storage backends out of the facade signature                  | No concrete redb type in `ClientSetupArgs`; traffic's legacy redb importer is feature-gated or separate |
-| B3   | Extract the log, traffic and geodata owners                        | Owners consume normalized frames and injected storage and watchers                                      |
+| B3   | Extract the log, traffic and geodata owners into one owner crate   | Owners consume normalized frames and injected storage and watchers                                      |
 | B4   | Extract the core updater and inject its backend                    | The facade no longer constructs `HttpUpdaterBackend`; archive dependencies stay with the updater        |
 
 **Phase C: capabilities and target crates**

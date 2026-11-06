@@ -144,7 +144,7 @@
     "tailwind-merge": "3.7.0",
     "react-use": "17.6.1"
   },
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": "26.13.0"
   }

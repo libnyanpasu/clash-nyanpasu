@@ -3,6 +3,7 @@ import CheckRounded from '~icons/material-symbols/check-rounded'
 import ListRounded from '~icons/material-symbols/list-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import ScheduleRounded from '~icons/material-symbols/schedule-rounded'
+import type { ReactNode } from 'react'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import {
   SegmentedButton,
@@ -34,8 +35,8 @@ const layoutItemClassName = 'flex-none px-3'
  */
 export default function InspectToolbar({
   snapshot,
-  view,
-  onViewChange,
+  snapshotControls,
+  status,
   layout,
   onLayoutChange,
   fieldQuery,
@@ -46,21 +47,18 @@ export default function InspectToolbar({
 }: {
   /** Absent while loading and when there is no snapshot. */
   snapshot?: RuntimeInspection | null
-  view: SnapshotView
-  onViewChange: (view: SnapshotView) => void
+  snapshotControls?: ReactNode
+  status?: ReactNode
   layout: StepLayout
   onLayoutChange: (layout: StepLayout) => void
   fieldQuery: string
   onFieldQueryChange: (query: string) => void
   /** Enter selects the next step with a matching field; Shift+Enter, the previous. */
   onCycleMatch: (delta: 1 | -1) => void
-  onRefresh: () => void
+  onRefresh?: () => void
   /** Opens the step list where it does not fit beside the details. */
   onShowSteps: () => void
 }) {
-  const settled = snapshot?.applied && !snapshot.effective_pending
-  const StatusIcon = settled ? CheckRounded : ScheduleRounded
-
   return (
     <PageToolbar
       title={m.inspect_title()}
@@ -71,29 +69,7 @@ export default function InspectToolbar({
       actionsClassName="contents"
       context={
         <>
-          <SegmentedButton
-            className="order-5 h-8 w-auto shrink-0 text-[13px] @3xl:order-2"
-            aria-label={m.inspect_snapshot_label()}
-            value={view}
-            onValueChange={(value) => {
-              if (value) onViewChange(value as SnapshotView)
-            }}
-          >
-            <SegmentedButtonItem
-              value="latest"
-              hideIndicator
-              className={snapshotItemClassName}
-            >
-              {m.inspect_snapshot_latest()}
-            </SegmentedButtonItem>
-            <SegmentedButtonItem
-              value="applied"
-              hideIndicator
-              className={snapshotItemClassName}
-            >
-              {m.inspect_snapshot_applied()}
-            </SegmentedButtonItem>
-          </SegmentedButton>
+          {snapshotControls}
 
           <SegmentedButton
             className="order-5 h-8 w-auto shrink-0 text-[13px] @3xl:order-2"
@@ -121,31 +97,7 @@ export default function InspectToolbar({
             </SegmentedButtonItem>
           </SegmentedButton>
 
-          {snapshot && (
-            <p
-              data-slot="inspect-status"
-              data-applied={snapshot.applied || undefined}
-              className={cn(
-                'bg-surface-variant text-on-surface-variant hidden h-7 min-w-0 items-center gap-1.5',
-                'rounded-lg px-2.5 text-xs font-medium whitespace-nowrap @3xl:order-3 @3xl:inline-flex',
-                // Shrinks before the controls wrap onto a second row.
-                '@3xl:max-w-max @3xl:flex-1 @3xl:basis-0',
-              )}
-            >
-              <StatusIcon
-                aria-hidden
-                className={cn(
-                  'size-4 shrink-0',
-                  settled ? 'text-ok' : 'text-warn',
-                )}
-              />
-
-              <span className="truncate">
-                {statusText(snapshot)} · {snapshot.target_core} ·{' '}
-                {m.inspect_revision()} {snapshot.revision}
-              </span>
-            </p>
-          )}
+          {status}
         </>
       }
       actions={
@@ -179,15 +131,79 @@ export default function InspectToolbar({
             }}
           />
 
-          <RowAction
-            label={m.inspect_refresh()}
-            className="order-3 size-10 @3xl:order-5"
-            onClick={onRefresh}
-          >
-            <RefreshRounded className="size-5" aria-hidden />
-          </RowAction>
+          {onRefresh && (
+            <RowAction
+              label={m.inspect_refresh()}
+              className="order-3 size-10 @3xl:order-5"
+              onClick={onRefresh}
+            >
+              <RefreshRounded className="size-5" aria-hidden />
+            </RowAction>
+          )}
         </>
       }
     />
+  )
+}
+
+export function SnapshotSwitch({
+  view,
+  onViewChange,
+}: {
+  view: SnapshotView
+  onViewChange: (view: SnapshotView) => void
+}) {
+  return (
+    <SegmentedButton
+      className="order-5 h-8 w-auto shrink-0 text-[13px] @3xl:order-2"
+      aria-label={m.inspect_snapshot_label()}
+      value={view}
+      onValueChange={(value) => {
+        if (value) onViewChange(value as SnapshotView)
+      }}
+    >
+      <SegmentedButtonItem
+        value="latest"
+        hideIndicator
+        className={snapshotItemClassName}
+      >
+        {m.inspect_snapshot_latest()}
+      </SegmentedButtonItem>
+      <SegmentedButtonItem
+        value="applied"
+        hideIndicator
+        className={snapshotItemClassName}
+      >
+        {m.inspect_snapshot_applied()}
+      </SegmentedButtonItem>
+    </SegmentedButton>
+  )
+}
+
+export function SnapshotStatus({ snapshot }: { snapshot: RuntimeInspection }) {
+  const settled = snapshot.applied && !snapshot.effective_pending
+  const StatusIcon = settled ? CheckRounded : ScheduleRounded
+
+  return (
+    <p
+      data-slot="inspect-status"
+      data-applied={snapshot.applied || undefined}
+      className={cn(
+        'bg-surface-variant text-on-surface-variant hidden h-7 min-w-0 items-center gap-1.5',
+        'rounded-lg px-2.5 text-xs font-medium whitespace-nowrap @3xl:order-3 @3xl:inline-flex',
+        // Shrinks before the controls wrap onto a second row.
+        '@3xl:max-w-max @3xl:flex-1 @3xl:basis-0',
+      )}
+    >
+      <StatusIcon
+        aria-hidden
+        className={cn('size-4 shrink-0', settled ? 'text-ok' : 'text-warn')}
+      />
+
+      <span className="truncate">
+        {statusText(snapshot)} · {snapshot.target_core} · {m.inspect_revision()}{' '}
+        {snapshot.revision}
+      </span>
+    </p>
   )
 }

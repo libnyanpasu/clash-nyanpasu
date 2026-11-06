@@ -16,6 +16,10 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{adapters::TauriWidgetController, ports::MockWidgetRuntime};
 use crate::adapters::hotkey::PlatformAcceleratorValidator;
+use nyanpasu_contracts::system_proxy::{
+    MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError, OsProxyPort,
+    PacError, PacPort,
+};
 use nyanpasu_core::client::{
     effects::{
         executor::ApplicationEffectExecutor,
@@ -38,13 +42,7 @@ use nyanpasu_core::client::{
             MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
         },
     },
-    system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        ports::{
-            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
-            OsProxyPort, PacError, PacPort,
-        },
-    },
+    system_proxy::{SystemProxyArgs, SystemProxyClient},
 };
 
 /// The root shutdown, shared by every owner a test builds.

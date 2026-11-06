@@ -334,6 +334,7 @@ test('contracts excludes actor, HTTP, database and core-control dependencies', (
     'reqwest',
     'redb',
     'nyanpasu-core-manager',
+    'nyanpasu-updater',
   ]) {
     assert.deepStrictEqual(
       dependencyViolations('nyanpasu-contracts', `${dependency} v0.1.0\n`),
@@ -343,9 +344,19 @@ test('contracts excludes actor, HTTP, database and core-control dependencies', (
   assert.deepStrictEqual(
     dependencyViolations(
       'nyanpasu-contracts',
-      'nyanpasu-contracts v0.1.0\nnyanpasu-config v0.1.0\nserde v1.0\n',
+      'nyanpasu-contracts v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-paths v0.1.0\nserde v1.0\n',
     ),
     [],
+  )
+})
+
+test('contracts rejects the HTTP dependency introduced by the IPC client', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-contracts',
+      'nyanpasu-contracts v0.1.0\nnyanpasu-ipc v0.1.0\nreqwest v0.13.0\n',
+    ),
+    ['nyanpasu-contracts must not depend on reqwest'],
   )
 })
 

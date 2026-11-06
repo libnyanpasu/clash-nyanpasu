@@ -9,6 +9,7 @@
 //! builder parks its first build, and the transaction's `local_write` step
 //! parks between prepare and the compare-and-swap.
 
+use nyanpasu_contracts::service::ServiceProcessControl;
 use std::{
     sync::{
         Arc, Mutex as StdMutex,
@@ -54,11 +55,7 @@ use super::{
     RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
-    actor_v2::{
-        CoreClient,
-        endpoint::ExecutionHost,
-        service_actor::{ServiceClient, ServiceHostAdapter},
-    },
+    actor_v2::{CoreClient, endpoint::ExecutionHost, service_actor::ServiceClient},
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
@@ -256,8 +253,13 @@ async fn fixture_with_hosts(
     confirmed_apply: bool,
     service_host: Option<Arc<TestControlEndpoint>>,
 ) -> Fixture {
-    let daemon = service_host
-        .map(|endpoint| Arc::new(host_transition_daemon(endpoint)) as Arc<dyn ServiceHostAdapter>);
+    let daemon = service_host.map(|endpoint| {
+        let daemon = Arc::new(host_transition_daemon(endpoint));
+        (
+            daemon.clone() as Arc<dyn ServiceProcessControl>,
+            daemon as Arc<dyn crate::actor_v2::service_actor::ServiceEndpointFactory>,
+        )
+    });
     fixture_with_daemon(confirmed_apply, daemon).await
 }
 
@@ -278,7 +280,10 @@ fn host_transition_daemon(
 /// of the handoff's legs still.
 pub(super) async fn fixture_with_daemon(
     confirmed_apply: bool,
-    daemon: Option<Arc<dyn ServiceHostAdapter>>,
+    daemon: Option<(
+        Arc<dyn ServiceProcessControl>,
+        Arc<dyn crate::actor_v2::service_actor::ServiceEndpointFactory>,
+    )>,
 ) -> Fixture {
     fixture_with_parts(confirmed_apply, daemon, false).await
 }
@@ -291,15 +296,22 @@ pub(super) async fn scripted_fixture() -> Fixture {
 
 async fn fixture_with_parts(
     confirmed_apply: bool,
-    daemon: Option<Arc<dyn ServiceHostAdapter>>,
+    daemon: Option<(
+        Arc<dyn ServiceProcessControl>,
+        Arc<dyn crate::actor_v2::service_actor::ServiceEndpointFactory>,
+    )>,
     scripted: bool,
 ) -> Fixture {
     let service = match daemon {
-        Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
-        None => ServiceClient::spawn(
-            Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-            0,
-        )
+        Some((process_control, endpoint_factory)) => {
+            ServiceClient::spawn(process_control, endpoint_factory, 0)
+                .await
+                .unwrap()
+        }
+        None => {
+            let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+            ServiceClient::spawn(process_control.clone(), process_control, 0)
+        }
         .await
         .unwrap(),
     };
@@ -3673,34 +3685,32 @@ async fn successful_confirm_keeps_the_promoted_inspection() {
 struct RefusedInstall;
 
 #[async_trait::async_trait]
-impl ServiceHostAdapter for RefusedInstall {
-    async fn probe(
-        &self,
-    ) -> Result<
-        nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::service::control::ServiceCommandError,
-    > {
+impl ServiceProcessControl for RefusedInstall {
+    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         crate::actor_v2::test_support::IdleServiceAdapter
             .probe()
             .await
     }
-    async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Err(crate::service::test_support::service_command_error(
             "the user cancelled the elevation prompt",
         ))
     }
-    async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
+}
+
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for RefusedInstall {
     fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         unreachable!()
     }
@@ -3708,7 +3718,11 @@ impl ServiceHostAdapter for RefusedInstall {
 
 #[tokio::test]
 async fn refused_service_install_does_not_isolate_the_local_runtime() {
-    let mut f = fixture_with_daemon(true, Some(Arc::new(RefusedInstall))).await;
+    let mut f = fixture_with_daemon(
+        true,
+        Some((Arc::new(RefusedInstall), Arc::new(RefusedInstall))),
+    )
+    .await;
     let mut next = f.application.snapshot().as_ref().clone();
     next.enable_service_mode = true;
     let (id, result) = simple_mutate(

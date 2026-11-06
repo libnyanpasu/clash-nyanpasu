@@ -1,8 +1,24 @@
 //! Pure core-version banner parsing and failures shared by readers and update validation.
 
+use std::path::PathBuf;
+
+use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
 use serde::Serialize;
 use snafu::Snafu;
+
+/// Reads a core version at the time the consumer requests it.
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
+#[async_trait]
+pub trait CoreVersionReader: Send + Sync + 'static {
+    async fn read(&self, core: ClashCore) -> Result<String, CoreVersionError>;
+}
+
+/// Resolves the host executable on each version read, preserving read-time failures.
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
+pub trait CoreVersionExecutableSource: Send + Sync + 'static {
+    fn current_exe(&self, core: ClashCore) -> Result<PathBuf, CoreVersionError>;
+}
 
 // A failure to execute a core or obtain a version from its banner. Not a doc
 // comment: specta would copy it into the generated bindings.

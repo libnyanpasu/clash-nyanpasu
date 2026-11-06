@@ -10,24 +10,20 @@ use snafu::ResultExt;
 
 use super::{
     endpoint::{EndpointHandle, ServiceEndpoint},
-    service_actor::ServiceHostAdapter,
+    service_actor::ServiceEndpointFactory,
 };
-use crate::service::control::{ResolveServiceDirsSnafu, ServiceCommandError};
+use nyanpasu_contracts::service::{
+    ResolveServiceDirsSnafu, ServiceCommandError, ServiceProcessControl,
+};
 
-pub struct OsServiceHostAdapter {
-    client: nyanpasu_ipc::client::Client,
+pub struct OsServiceProcessControl {
     service_binary: PathBuf,
     paths: nyanpasu_paths::PathResolver,
 }
 
-impl OsServiceHostAdapter {
-    pub fn new(
-        client: nyanpasu_ipc::client::Client,
-        service_binary: PathBuf,
-        paths: nyanpasu_paths::PathResolver,
-    ) -> Self {
+impl OsServiceProcessControl {
+    pub fn new(service_binary: PathBuf, paths: nyanpasu_paths::PathResolver) -> Self {
         Self {
-            client,
             service_binary,
             paths,
         }
@@ -35,8 +31,8 @@ impl OsServiceHostAdapter {
 }
 
 #[async_trait::async_trait]
-impl ServiceHostAdapter for OsServiceHostAdapter {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, ServiceCommandError> {
+impl ServiceProcessControl for OsServiceProcessControl {
+    async fn probe(&self) -> Result<String, ServiceCommandError> {
         crate::service::control::status(&self.service_binary).await
     }
 
@@ -73,7 +69,20 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
         )
         .await
     }
+}
 
+/// Constructs the application endpoint only after the service version gate passes.
+pub struct IpcServiceEndpointFactory {
+    client: nyanpasu_ipc::client::Client,
+}
+
+impl IpcServiceEndpointFactory {
+    pub fn new(client: nyanpasu_ipc::client::Client) -> Self {
+        Self { client }
+    }
+}
+
+impl ServiceEndpointFactory for IpcServiceEndpointFactory {
     fn endpoint(&self) -> EndpointHandle {
         Arc::new(ServiceEndpoint::new(self.client.clone()))
     }

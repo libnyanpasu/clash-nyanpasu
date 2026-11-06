@@ -1,8 +1,6 @@
-use nyanpasu_paths::InstallDirError;
 #[cfg(not(target_os = "macos"))]
 use runas::Command as RunasCommand;
-use serde::Serialize;
-use snafu::{ResultExt, Snafu, ensure};
+use snafu::{ResultExt, ensure};
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},
@@ -12,98 +10,13 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-/// The elevated operations `nyanpasu-service` is asked to perform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum ServiceCommand {
-    Install,
-    Update,
-    Uninstall,
-    Start,
-    Stop,
-    Restart,
-}
-
-impl std::fmt::Display for ServiceCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Install => "install",
-            Self::Update => "update",
-            Self::Uninstall => "uninstall",
-            Self::Start => "start",
-            Self::Stop => "stop",
-            Self::Restart => "restart",
-        })
-    }
-}
-
 #[cfg(windows)]
-type UserError = std::io::Error;
-#[cfg(not(windows))]
-type UserError = whoami::Error;
-
-/// A failure of running or querying the system service, including the bounds
-/// the service actor puts on every call.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub))]
-pub enum ServiceCommandError {
-    #[snafu(display("Windows is ending the session; service commands are unavailable"))]
-    SessionEnding,
-    #[snafu(display("could not resolve the current user: {source}"))]
-    ResolveServiceUser {
-        #[serde(skip)]
-        source: UserError,
-    },
-    #[snafu(display("could not resolve the application directories: {source}"))]
-    ResolveServiceDirs {
-        #[snafu(source(from(InstallDirError, Box::new)))]
-        #[serde(skip)]
-        source: Box<InstallDirError>,
-    },
-    #[snafu(display("could not run the service {command} command: {source}"))]
-    RunElevated {
-        command: ServiceCommand,
-        #[serde(skip)]
-        source: std::io::Error,
-    },
-    #[snafu(display(
-        "the service {command} command failed, exit code: {exit_code:?}, signal: {signal:?}"
-    ))]
-    ServiceCommandExit {
-        command: ServiceCommand,
-        exit_code: Option<i32>,
-        signal: Option<i32>,
-    },
-    #[snafu(display("could not query the service status: {source}"))]
-    RunServiceStatus {
-        #[serde(skip)]
-        source: std::io::Error,
-    },
-    #[snafu(display(
-        "the service status query failed, exit code: {exit_code:?}, signal: {signal:?}"
-    ))]
-    ServiceStatusExit {
-        exit_code: Option<i32>,
-        signal: Option<i32>,
-    },
-    #[snafu(display("the service status is not valid UTF-8"))]
-    ServiceStatusNotUtf8 {
-        #[serde(skip)]
-        source: std::string::FromUtf8Error,
-    },
-    #[snafu(display("could not parse the service status: {source}"))]
-    ParseServiceStatus {
-        #[serde(skip)]
-        source: serde_json::Error,
-    },
-    #[snafu(display("timed out after {limit_ms} ms"))]
-    TimedOut { limit_ms: u64 },
-    #[snafu(display("timed out after {limit_ms} ms; the command is still running"))]
-    StillRunning { limit_ms: u64 },
-    #[snafu(display("the command's task was cancelled"))]
-    TaskCancelled,
-}
+use nyanpasu_contracts::service::SessionEndingSnafu;
+use nyanpasu_contracts::service::{
+    ResolveServiceUserSnafu, RunElevatedSnafu, RunServiceStatusSnafu, ServiceCommand,
+    ServiceCommandError, ServiceCommandExitSnafu, ServiceStatusExitSnafu,
+    ServiceStatusNotUtf8Snafu,
+};
 
 fn signal(status: &ExitStatus) -> Option<i32> {
     #[cfg(unix)]
@@ -267,9 +180,7 @@ pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommand
 }
 
 #[tracing::instrument]
-pub async fn status<'a>(
-    service_binary: &Path,
-) -> Result<nyanpasu_ipc::types::StatusInfo<'a>, ServiceCommandError> {
+pub async fn status(service_binary: &Path) -> Result<String, ServiceCommandError> {
     #[cfg(windows)]
     ensure_session_active()?;
     let mut cmd = tokio::process::Command::new(service_binary);
@@ -286,7 +197,7 @@ pub async fn status<'a>(
     );
     let status = String::from_utf8(output.stdout).context(ServiceStatusNotUtf8Snafu)?;
     tracing::trace!("service status: {}", status);
-    serde_json::from_str(&status).context(ParseServiceStatusSnafu)
+    Ok(status)
 }
 
 #[cfg(windows)]

@@ -2,13 +2,10 @@ use super::*;
 use crate::actor_v2::{
     EndpointConnectivity,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
-    service_actor::ServiceHostAdapter,
     test_support::HostTransitionServiceAdapter,
 };
-use nyanpasu_ipc::{
-    api::{core::v2::OperationInfo, status::CoreStateDetail},
-    types::StatusInfo,
-};
+use nyanpasu_contracts::service::ServiceProcessControl;
+use nyanpasu_ipc::api::{core::v2::OperationInfo, status::CoreStateDetail};
 
 struct RecoveringEndpoint {
     delegate: Arc<TestControlEndpoint>,
@@ -62,10 +59,8 @@ struct RecoveringDaemon {
 }
 
 #[async_trait::async_trait]
-impl ServiceHostAdapter for RecoveringDaemon {
-    async fn probe(
-        &self,
-    ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
+impl ServiceProcessControl for RecoveringDaemon {
+    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.probe_fails.load(Ordering::SeqCst) {
             return Err(crate::service::test_support::service_command_error(
@@ -74,16 +69,16 @@ impl ServiceHostAdapter for RecoveringDaemon {
         }
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         panic!("recovery must not install")
     }
-    async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         panic!("recovery must not update")
     }
-    async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.start_entered.notify_one();
         if self.block_start.load(Ordering::SeqCst) {
             self.start_release.notified().await;
@@ -92,11 +87,14 @@ impl ServiceHostAdapter for RecoveringDaemon {
         self.endpoint.unavailable.store(false, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.stop_daemon().await?;
         self.endpoint.unavailable.store(true, Ordering::SeqCst);
         Ok(())
     }
+}
+
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for RecoveringDaemon {
     fn endpoint(&self) -> EndpointHandle {
         self.endpoint.clone()
     }
@@ -148,7 +146,9 @@ impl RecoveryGraph {
             .unwrap();
         core.change_host(endpoint).await.unwrap();
         core.refresh_status().await.unwrap();
-        let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
+        let service = ServiceClient::spawn(daemon.clone(), daemon.clone(), 3)
+            .await
+            .unwrap();
         let shutdown = CancellationToken::new();
         let (client, builder, application, _) = workflow_graph_with_clients(
             &dir,

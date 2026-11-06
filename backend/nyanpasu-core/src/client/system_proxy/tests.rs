@@ -10,16 +10,14 @@ use std::{
 
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    SystemProxyArgs, SystemProxyClient,
-    ports::{
-        AutoLaunchError, AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort,
-        OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
-    },
-};
+use super::{SystemProxyArgs, SystemProxyClient};
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+};
+use nyanpasu_contracts::system_proxy::{
+    AutoLaunchError, AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort,
+    OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
 };
 
 const BYPASS: &str = "localhost";

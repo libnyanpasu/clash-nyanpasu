@@ -12,14 +12,9 @@ use nyanpasu_ipc::{
 
 use super::{StartupFailureHost, StartupOwners};
 use crate::startup_failure::{FailureKind, StartupFailure};
-use nyanpasu_core::{
-    actor_v2::{
-        endpoint::{
-            ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
-        },
-        service_actor::ServiceHostAdapter,
-    },
-    service::control::ServiceCommandError,
+use nyanpasu_contracts::service::{ServiceCommandError, ServiceProcessControl};
+use nyanpasu_core::actor_v2::endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
 };
 
 struct Endpoint(Arc<Mutex<Vec<&'static str>>>);
@@ -75,14 +70,15 @@ impl Drop for Service {
 }
 
 #[async_trait::async_trait]
-impl ServiceHostAdapter for Service {
-    async fn probe(&self) -> Result<StatusInfo<'static>, ServiceCommandError> {
-        Ok(StatusInfo {
+impl ServiceProcessControl for Service {
+    async fn probe(&self) -> Result<String, ServiceCommandError> {
+        Ok(serde_json::to_string(&StatusInfo {
             name: "test".into(),
             version: "test".into(),
             status: ServiceStatus::NotInstalled,
             server: None,
         })
+        .expect("test service status serializes"))
     }
     async fn install(&self) -> Result<(), ServiceCommandError> {
         unreachable!()
@@ -99,6 +95,9 @@ impl ServiceHostAdapter for Service {
     async fn update(&self) -> Result<(), ServiceCommandError> {
         unreachable!()
     }
+}
+
+impl nyanpasu_core::actor_v2::service_actor::ServiceEndpointFactory for Service {
     fn endpoint(&self) -> EndpointHandle {
         self.endpoint.clone()
     }
@@ -164,13 +163,15 @@ fn jobs_failure_after_core_and_service_start_returns_ok_then_drains_owners() {
                         cleanup.lock().unwrap().push("owner acknowledged");
                     }
                 });
+                let service = Arc::new(Service {
+                    endpoint: endpoint.clone(),
+                    cleanup: cleanup.clone(),
+                });
                 let error = super::start_runtime_owners(
                     owners,
-                    endpoint.clone(),
-                    Arc::new(Service {
-                        endpoint,
-                        cleanup: cleanup.clone(),
-                    }),
+                    endpoint,
+                    service.clone(),
+                    service,
                     &paths,
                     nyanpasu_core::client::jobs::capture(),
                 )

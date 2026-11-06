@@ -1,6 +1,5 @@
 pub mod clash_info;
 pub mod convergence;
-pub mod core_version;
 pub mod direct_egress;
 
 use crate::client::{clash_info::ClashInfo, direct_egress::DirectEgress};
@@ -107,12 +106,13 @@ use struct_patch::Patch as _;
 pub use error::{ClientError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
 pub use main_thread::{MainThreadExecutor, MainThreadHandoff, MainThreadWork};
+use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 pub use runtime_error::RuntimeError;
 #[cfg(any(test, feature = "test-support"))]
-pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
-pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
+pub use system_dns::NoopSystemDnsCache;
+pub use system_dns::OsSystemDnsCache;
 pub struct ClientSetupArgs {
     pub host_adapters: ClientHostAdapters,
     pub jobs: nyanpasu_jobs::JobsClient,
@@ -134,9 +134,9 @@ pub struct ClientSetupArgs {
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub direct_egress: Arc<dyn DirectEgressProbe>,
     pub geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
-    pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-    pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
-    pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+    pub os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
+    pub binary_installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
+    pub core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Option<Arc<dyn hotkey::ports::WindowControl>>,
     /// The shell supplies this if and only if its presentation executor registers hotkeys.
@@ -271,7 +271,7 @@ struct NyanpasuClientInner {
     streams: crate::clash::ws::StreamsClient,
     traffic: Option<TrafficClient>,
     updater: nyanpasu_updater::UpdaterClient,
-    core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+    core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
     changelog_http: Arc<dyn ChangelogHttp>,
     system_dns: Arc<dyn SystemDnsCache>,
@@ -282,7 +282,7 @@ struct NyanpasuClientInner {
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
     _geo_index: nyanpasu_observers::geo::GeoIndexClient,
-    os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
+    os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Option<Arc<dyn hotkey::ports::WindowControl>>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
@@ -422,9 +422,9 @@ impl NyanpasuClient {
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
         geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
-        os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-        binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
-        core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+        os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
+        binary_installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
+        core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Option<Arc<dyn hotkey::ports::WindowControl>>,
         accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
@@ -961,8 +961,10 @@ impl NyanpasuClient {
     /// would stall a status poll behind it.
     pub async fn get_os_proxy(
         &self,
-    ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
-    {
+    ) -> std::result::Result<
+        nyanpasu_contracts::system_proxy::OsProxyConfig,
+        nyanpasu_contracts::system_proxy::OsProxyError,
+    > {
         let os_proxy = self.inner.os_proxy.clone();
         nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || os_proxy.get()).await,
@@ -1569,13 +1571,10 @@ pub(crate) mod tests {
             endpoint::ExecutionHost,
             test_support::{HostTransitionServiceAdapter, test_idle_endpoint, test_v2_clients},
         },
-        client::{
-            system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError},
-            test_support::facade::{
-                local_config_request, test_client, test_client_from_typed_clients,
-                test_client_with_direct_egress, test_client_with_fetcher, test_client_with_ports,
-                test_client_with_system_dns,
-            },
+        client::test_support::facade::{
+            local_config_request, test_client, test_client_from_typed_clients,
+            test_client_with_direct_egress, test_client_with_fetcher, test_client_with_ports,
+            test_client_with_system_dns,
         },
         utils::test_support::test_paths,
     };
@@ -1594,6 +1593,8 @@ pub(crate) mod tests {
             error::SubscriptionFetchError,
             ports::{FetchedSubscription, MockSubscriptionFetcher},
         },
+        system_dns::MockSystemDnsCache,
+        system_proxy::{MockOsProxyPort, OsProxyConfig, OsProxyError},
     };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
@@ -2136,7 +2137,7 @@ pub(crate) mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
         let dir = tempdir().unwrap();
-        let mut reader = crate::client::core_version::MockCoreVersionReader::new();
+        let mut reader = nyanpasu_contracts::core_version::MockCoreVersionReader::new();
         reader
             .expect_read()
             .withf(|core| *core == nyanpasu_config::application::ClashCore::Meow)
@@ -2191,13 +2192,10 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
+    impl nyanpasu_contracts::service::ServiceProcessControl for PersistedSwitchProbe {
         async fn probe(
             &self,
-        ) -> std::result::Result<
-            nyanpasu_ipc::types::StatusInfo<'static>,
-            crate::service::control::ServiceCommandError,
-        > {
+        ) -> std::result::Result<String, nyanpasu_contracts::service::ServiceCommandError> {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
                 .and_then(|bytes| serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes).ok())
@@ -2211,34 +2209,36 @@ pub(crate) mod tests {
 
         async fn install(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.install().await
         }
 
         async fn uninstall(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.uninstall().await
         }
 
         async fn start_daemon(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.start_daemon().await
         }
 
         async fn stop_daemon(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.stop_daemon().await
         }
 
         async fn update(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.update().await
         }
+    }
 
+    impl crate::actor_v2::service_actor::ServiceEndpointFactory for PersistedSwitchProbe {
         fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
             self.delegate.endpoint()
         }
@@ -2268,7 +2268,9 @@ pub(crate) mod tests {
             application_config: args.paths.application_config_path().into_std_path_buf(),
         });
         let core_v2 = CoreClientV2::spawn(local).await.unwrap();
-        let service = ServiceClient::spawn(adapter, 0).await.unwrap();
+        let service = ServiceClient::spawn(adapter.clone(), adapter, 0)
+            .await
+            .unwrap();
         args.core_v2 = core_v2;
         args.service = service;
         if service_seed {
@@ -2529,7 +2531,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-            core_versions: Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+            core_versions: Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.

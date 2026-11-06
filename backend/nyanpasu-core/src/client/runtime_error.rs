@@ -16,12 +16,11 @@ use crate::{
     actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
-        core_lifecycle::ports::InstallCoreBinaryError,
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
-    service::control::ServiceCommandError,
 };
+use nyanpasu_contracts::{core_install::InstallCoreBinaryError, service::ServiceCommandError};
 use nyanpasu_profile_transform::RuntimeBuildError;
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.

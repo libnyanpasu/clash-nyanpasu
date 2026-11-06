@@ -13,6 +13,7 @@ test-support = ['dep:mockall']
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
 
 anyhow = '1'
 bytes = '1'
@@ -24,6 +25,11 @@ semver = '1.0'
 snafu = { workspace = true }
 specta = { version = '^2.0.0-rc.25' }
 url = '2'
+tempfile = '3'
+tokio-util = '0.7'
+
+[target.'cfg(not(windows))'.dependencies]
+whoami = '2.0.0'
 
 [dev-dependencies]
 mockall = '0.15'

@@ -17,13 +17,12 @@ use super::{
         status::{EffectFailureCode, EffectHealth, EffectRevision},
     },
     hotkey::ports::{HotkeyAction, WindowError},
-    system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
-    },
-    test_support::{self, TestControlEndpoint},
+    system_proxy::{SystemProxyArgs, SystemProxyClient},
+    test_support,
+    test_support::TestControlEndpoint,
 };
 use crate::state::config_error::ConfigError;
+use nyanpasu_contracts::system_proxy::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort};
 
 const PRESENTATION_KINDS: [EffectKind; 5] = [
     EffectKind::Locale,

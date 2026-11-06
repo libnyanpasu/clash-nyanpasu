@@ -42,16 +42,19 @@ use crate::{
         endpoint::ExecutionHost,
         test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
-    client::{core_version, system_proxy::ports::MockOsProxyPort},
     state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
 };
 #[cfg(test)]
 use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
-use nyanpasu_contracts::profiles::ports::{
-    CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-    PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+use nyanpasu_contracts::{
+    core_version,
+    profiles::ports::{
+        CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
+        PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+    },
+    system_proxy::MockOsProxyPort,
 };
 
 pub struct TestControlEndpoint {

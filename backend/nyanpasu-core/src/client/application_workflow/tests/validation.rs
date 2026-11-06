@@ -101,10 +101,14 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
         .await;
     assert_eq!(outcome, RuntimeCheckOutcome::Passed);
 
-    let service = crate::actor_v2::service_actor::ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        crate::actor_v2::service_actor::ServiceClient::spawn(
+            process_control.clone(),
+            process_control,
+            0,
+        )
+    }
     .await
     .unwrap();
     let mut facade = CoreFacade::new(graph.core.clone(), service);

@@ -2,7 +2,7 @@
 //!
 //! Each trait is narrow and task-oriented so the actor can be exercised with
 //! plain fakes: nothing here mentions `sysproxy`, `auto_launch`, `reqwest` or
-//! Tauri. The concrete implementations live in [`crate::adapters::system_proxy`].
+//! Tauri.
 
 use std::path::PathBuf;
 
@@ -49,8 +49,7 @@ impl OsProxyError {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn refused(config: &OsProxyConfig, reason: &str) -> Self {
+    pub fn refused(config: &OsProxyConfig, reason: &str) -> Self {
         Self::WriteOsProxy {
             enable: config.enable,
             host: config.host.clone(),
@@ -101,9 +100,9 @@ pub enum AutoLaunchError {
     },
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl AutoLaunchError {
-    pub(crate) fn refused(reason: &str) -> Self {
+    pub fn refused(reason: &str) -> Self {
         Self::Register {
             source: reason.into(),
         }
@@ -161,10 +160,10 @@ pub enum PacError {
     DownloadCancelled,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl PacError {
     /// A script that could not be fetched.
-    pub(crate) fn unreachable(reason: &str) -> Self {
+    pub fn unreachable(reason: &str) -> Self {
         Self::RequestScript {
             url: "http://pac.test/proxy.pac".into(),
             source: reason.into(),
@@ -172,7 +171,7 @@ impl PacError {
     }
 
     /// An installed url the OS would not give up.
-    pub(crate) fn kept(reason: &str) -> Self {
+    pub fn kept(reason: &str) -> Self {
         Self::ClearPac {
             source: reason.into(),
         }

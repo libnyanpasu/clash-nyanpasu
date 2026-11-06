@@ -7,14 +7,10 @@ use super::{
 use crate::{
     actor_v2::test_support::test_v2_clients,
     client::{
-        NoopSystemDnsCache, NyanpasuClient, RuntimePaths, SessionPortResolver, SystemDnsCache,
-        application::ApplicationClient,
-        clash_config::ClashConfigClient,
-        core_lifecycle, effects,
-        host_adapters::ClientHostAdapters,
-        hotkey, logs, profiles,
+        NoopSystemDnsCache, NyanpasuClient, RuntimePaths, SessionPortResolver,
+        application::ApplicationClient, clash_config::ClashConfigClient, core_lifecycle, effects,
+        host_adapters::ClientHostAdapters, hotkey, logs, profiles,
         session_state::SessionStateClient,
-        system_proxy::ports::{MockOsProxyPort, OsProxyPort},
     },
     state::profiles::NewProfileRequest,
     utils::test_support::test_paths,
@@ -34,6 +30,8 @@ use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
     net::{DirectEgressProbe, MockDirectEgressProbe},
     profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
+    system_dns::SystemDnsCache,
+    system_proxy::{MockOsProxyPort, OsProxyPort},
 };
 use std::{path::PathBuf, sync::Arc};
 use tempfile::TempDir;
@@ -137,7 +135,7 @@ pub(crate) async fn test_client_from_typed_clients(
         geo_index,
         os_proxy,
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-        Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+        Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
         Arc::new(effects::ports::NoopApplicationEffects),
         Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         Some(Arc::new(crate::client::test_support::AnyAccelerator)),
@@ -228,7 +226,7 @@ pub async fn test_client_with_profile_ports(
         Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-        Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+        Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
         Arc::new(effects::ports::NoopApplicationEffects),
         Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         Some(Arc::new(crate::client::test_support::AnyAccelerator)),
@@ -349,7 +347,7 @@ pub async fn test_client_with_materialization(
         Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-        Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+        Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
         Arc::new(effects::ports::NoopApplicationEffects),
         Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         Some(Arc::new(crate::client::test_support::AnyAccelerator)),

@@ -1,50 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use nyanpasu_config::application::ClashCore;
-use nyanpasu_updater::PreparedCoreBinary;
-use serde::Serialize;
-use snafu::Snafu;
 
 use super::super::runtime;
 use crate::{
     actor_v2::local_host::CoreSpecError,
     client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
 };
-use nyanpasu_contracts::profiles::error::ErrorPath;
-
-/// A failure of installing a downloaded core binary over the installed one.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
-pub enum InstallCoreBinaryError {
-    #[snafu(display("could not start the elevated copy of the {core} core to {destination}"))]
-    StartElevatedCopy {
-        #[specta(type = String)]
-        core: ClashCore,
-        destination: ErrorPath,
-        #[serde(skip)]
-        source: std::io::Error,
-    },
-    #[snafu(display(
-        "the elevated copy of the {core} core to {destination} failed (exit code {exit_code:?})"
-    ))]
-    ElevatedCopyFailed {
-        #[specta(type = String)]
-        core: ClashCore,
-        destination: ErrorPath,
-        exit_code: Option<i32>,
-    },
-    // Constructed by the windows-only elevated copy, which needs UTF-8 paths.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    #[snafu(display("the path {path} is not valid UTF-8"))]
-    PathNotUtf8 { path: ErrorPath },
-}
-
-#[async_trait]
-pub trait BinaryInstaller: Send + Sync + 'static {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError>;
-}
 
 /// Application-owned runtime preparation; implementations never call the workflow actor.
 #[async_trait]

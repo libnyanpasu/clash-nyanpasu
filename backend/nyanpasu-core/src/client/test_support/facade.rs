@@ -4,28 +4,19 @@ use super::{
     temp_config_path, test_backup_deps, test_materialization_port, test_typed_config_clients,
     unused_test_adapters,
 };
-#[cfg(unix)]
-use crate::state::profiles::ports::ProfileMaterializationPort;
-#[cfg(test)]
-use crate::state::profiles::ports::SubscriptionFetcher;
 use crate::{
     actor_v2::test_support::test_v2_clients,
     client::{
         NoopSystemDnsCache, NyanpasuClient, RuntimePaths, SessionPortResolver, SystemDnsCache,
         application::ApplicationClient,
         clash_config::ClashConfigClient,
-        core_lifecycle,
-        direct_egress::DirectEgressProbe,
-        effects,
+        core_lifecycle, effects,
         host_adapters::ClientHostAdapters,
         hotkey, logs, profiles,
         session_state::SessionStateClient,
         system_proxy::ports::{MockOsProxyPort, OsProxyPort},
     },
-    state::profiles::{
-        NewProfileRequest,
-        ports::{MockProfileFsPort, MockSubscriptionFetcher},
-    },
+    state::profiles::NewProfileRequest,
     utils::test_support::test_paths,
 };
 use nyanpasu_config::{
@@ -35,7 +26,15 @@ use nyanpasu_config::{
         ProfileDefinition, ProfileMetadata, ProfileSource,
     },
 };
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+#[cfg(unix)]
+use nyanpasu_contracts::profiles::ports::ProfileMaterializationPort;
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{DirectEgressProbe, MockDirectEgressProbe},
+    profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
+};
 use std::{path::PathBuf, sync::Arc};
 use tempfile::TempDir;
 pub async fn test_client(dir: &TempDir) -> NyanpasuClient {
@@ -61,7 +60,7 @@ pub(crate) async fn test_client_with_ports(
         session_state,
         clash_config,
         system_dns,
-        Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+        Arc::new(MockDirectEgressProbe::new()),
         Arc::new(crate::geo::NoopCountryIndexSource),
         os_proxy,
     )
@@ -223,7 +222,7 @@ pub async fn test_client_with_profile_ports(
         core_v2,
         service,
         Arc::new(NoopSystemDnsCache),
-        Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+        Arc::new(MockDirectEgressProbe::new()),
         Arc::new(crate::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
@@ -343,7 +342,7 @@ pub async fn test_client_with_materialization(
         core_v2,
         service,
         Arc::new(NoopSystemDnsCache),
-        Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+        Arc::new(MockDirectEgressProbe::new()),
         Arc::new(crate::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
         Arc::new(core_lifecycle::adapters::FsBinaryInstaller),

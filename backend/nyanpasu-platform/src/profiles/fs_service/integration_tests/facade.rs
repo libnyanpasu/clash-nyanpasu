@@ -1,6 +1,14 @@
 //! Facade integration with real profile, log, backup and runtime files.
 
 use crate::profiles::test_support::{test_client_args_with_endpoint, test_client_with_fetcher};
+use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
+#[cfg(unix)]
+use nyanpasu_contracts::profiles::ports::{
+    CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
+    PreparedCleanup, PreparedMaterialization,
+};
+#[cfg(unix)]
+use nyanpasu_core::client::test_support::facade::local_config_request;
 use nyanpasu_core::{
     client::{
         NyanpasuClient, test_support,
@@ -9,22 +17,12 @@ use nyanpasu_core::{
             minimal_file_profile_request, test_runtime_paths,
         },
     },
-    state::profiles::ports::MockSubscriptionFetcher,
     utils::test_support::test_paths,
 };
 #[cfg(unix)]
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::tempdir;
-#[cfg(unix)]
-use {
-    nyanpasu_core::client::test_support::facade::local_config_request,
-    nyanpasu_core::state::profiles::ports::CleanupOutcome,
-    nyanpasu_core::state::profiles::ports::MaterializationReconcileReport,
-    nyanpasu_core::state::profiles::ports::MockProfileMaterializationPort,
-    nyanpasu_core::state::profiles::ports::PreparedCleanup,
-    nyanpasu_core::state::profiles::ports::PreparedMaterialization,
-};
 /// Restores a directory's unix mode on drop so tempdir cleanup stays reliable
 /// after permission-poison tests.
 #[cfg(unix)]

@@ -1,6 +1,6 @@
 //! Backend-owned application update state and task lifecycle.
 
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SelfProxyPortSource};
 
 use std::{any::Any, sync::Arc};
 
@@ -111,11 +111,8 @@ pub trait AppUpdateBackend: Send + Sync + 'static {
     async fn install(&self, update: PreparedAppUpdate, package: VerifiedAppUpdate) -> Result<()>;
 }
 
-pub type BackendFactory = dyn Fn(
-        Arc<dyn crate::service::profile_file::ports::SelfProxyPortSource>,
-    ) -> Arc<dyn AppUpdateBackend>
-    + Send
-    + Sync;
+pub type BackendFactory =
+    dyn Fn(Arc<dyn SelfProxyPortSource>) -> Arc<dyn AppUpdateBackend> + Send + Sync;
 
 pub trait AppUpdateEventSink: Send + Sync + 'static {
     fn publish(&self, snapshot: AppUpdateSnapshot);

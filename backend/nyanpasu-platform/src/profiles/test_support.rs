@@ -1,15 +1,15 @@
 //! Real profile file capabilities for host integration tests.
 use crate::profiles::fs_service::ProfileFileService;
+use nyanpasu_contracts::net::SelfProxyPortSource;
 #[cfg(test)]
-use nyanpasu_core::{client::NyanpasuClient, state::profiles::ports::SubscriptionFetcher};
-use nyanpasu_core::{
-    client::{
-        ClientSetupArgs,
-        host_adapters::{ClientHostAdapters, ProfileFileFactory, ProfileFilePorts},
-        test_support,
-        test_support::runtime_build::TestRuntimeBuildPort,
-    },
-    service::profile_file::ports::SelfProxyPortSource,
+use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
+#[cfg(test)]
+use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_core::client::{
+    ClientSetupArgs,
+    host_adapters::{ClientHostAdapters, ProfileFileFactory, ProfileFilePorts},
+    test_support,
+    test_support::runtime_build::TestRuntimeBuildPort,
 };
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;

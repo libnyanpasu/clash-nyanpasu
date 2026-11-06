@@ -6,6 +6,17 @@ use nyanpasu_config::profile::{
     ExternalMode, LocalBinding, ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileId,
     ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, TransformDefinition,
 };
+use nyanpasu_contracts::{
+    net::SelfProxyPortSource,
+    profiles::{
+        error::{ExpectedNode, ProfileFileError},
+        ports::{
+            MaterializationReconcileReport, MaterializationResource,
+            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedMaterialization,
+            ProfileFsPort, ProfileMaterializationPort,
+        },
+    },
+};
 use nyanpasu_core::{
     client::{
         convergence::ConvergenceHealth,
@@ -19,17 +30,10 @@ use nyanpasu_core::{
         },
     },
     migration::modules::profiles::ProfilesFormat,
-    service::profile_file::ports::SelfProxyPortSource,
     state::{
         mutation::CommitAborted,
         profiles::{
             NewProfileRequest, ProfilesActorMessage, ProfilesError,
-            error::ProfileFileError,
-            ports::{
-                MaterializationReconcileReport, MockProfileMaterializationPort,
-                MockSubscriptionFetcher, PreparedMaterialization, ProfileFsPort,
-                ProfileMaterializationPort,
-            },
             sources::{SourceOrigin, SourceOutcome, SourceStatus},
         },
     },
@@ -1016,7 +1020,7 @@ async fn materialization_directory_node_problems_rebuild_before_client_spawn() {
         let prepared = service
             .prepare_state_first(
                 &path,
-                nyanpasu_core::state::profiles::ports::MaterializationResource::File {
+                MaterializationResource::File {
                     content: "usable: true\n".into(),
                 },
                 client.snapshot().revision() + 1,
@@ -1065,7 +1069,7 @@ async fn materialization_preparation_failure_keeps_its_typed_source() {
         Err(
             nyanpasu_core::client::profiles::Error::PrepareMaterialization {
                 source: ProfileFileError::UnexpectedNode {
-                    expected: nyanpasu_core::state::profiles::error::ExpectedNode::RealDirectory,
+                    expected: ExpectedNode::RealDirectory,
                     ..
                 },
             }

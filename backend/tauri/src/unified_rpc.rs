@@ -860,17 +860,17 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         struct Probe(AtomicUsize);
         #[async_trait::async_trait]
-        impl nyanpasu_core::client::direct_egress::DirectEgressProbe for Probe {
+        impl nyanpasu_contracts::net::DirectEgressProbe for Probe {
             async fn ipv4(
                 &self,
-                _: &nyanpasu_core::client::direct_egress::ProbeSources,
+                _: &nyanpasu_contracts::net::ProbeSources,
             ) -> Option<std::net::Ipv4Addr> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Some("203.0.113.7".parse().unwrap())
             }
             async fn ipv6(
                 &self,
-                _: &nyanpasu_core::client::direct_egress::ProbeSources,
+                _: &nyanpasu_contracts::net::ProbeSources,
             ) -> Option<std::net::Ipv6Addr> {
                 None
             }
@@ -878,7 +878,7 @@ mod tests {
                 &self,
                 _: &str,
                 _: u16,
-            ) -> nyanpasu_core::client::direct_egress::StunServerTest {
+            ) -> nyanpasu_contracts::net::StunServerTest {
                 unreachable!("the RPC test does not test servers")
             }
         }

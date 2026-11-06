@@ -3,11 +3,11 @@ pub mod convergence;
 pub mod core_version;
 pub mod direct_egress;
 
-use crate::client::{
-    clash_info::ClashInfo,
-    direct_egress::{DirectEgress, DirectEgressProbe, ProbeSources, StunServerTest},
+use crate::client::{clash_info::ClashInfo, direct_egress::DirectEgress};
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{ChangelogHttp, DirectEgressProbe, NetworkDiagnostics, ProbeSources, StunServerTest},
 };
-use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
 mod app_lifecycle;
@@ -30,6 +30,8 @@ pub mod hotkey;
 pub mod jobs;
 pub mod logs;
 pub mod main_thread;
+#[cfg(test)]
+mod network_tests;
 mod ports;
 pub mod profiles;
 pub mod runtime;
@@ -63,11 +65,10 @@ use crate::{
         BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
         StorageSource,
     },
-    service::profile_file::ports::SelfProxyPortSource,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        ReorderOp, ports::ProfileFsPort,
+        ReorderOp,
     },
     storage::Storage,
 };
@@ -87,6 +88,7 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_contracts::{net::SelfProxyPortSource, profiles::ports::ProfileFsPort};
 use snafu::{OptionExt as _, ResultExt as _};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
@@ -254,9 +256,11 @@ struct NyanpasuClientInner {
     updater: crate::updater::UpdaterClient,
     core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
-    changelog_http: Arc<dyn app_update::changelog::ChangelogHttp>,
+    changelog_http: Arc<dyn ChangelogHttp>,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
+    icons: crate::service::icon::IconService,
+    network_diagnostics: Arc<dyn NetworkDiagnostics>,
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
@@ -410,6 +414,8 @@ impl NyanpasuClient {
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
+        let icons =
+            crate::service::icon::IconService::new(paths.clone(), host_adapters.icon_fetcher);
         let debug_http = (host_adapters.debug_http)()
             .await
             .context(StartHttpServerSnafu)?;
@@ -658,6 +664,8 @@ impl NyanpasuClient {
                 changelog_http,
                 system_dns,
                 direct_egress,
+                icons,
+                network_diagnostics: host_adapters.network_diagnostics,
                 local_source,
                 _geo_index: geo_index,
                 os_proxy,
@@ -792,31 +800,24 @@ impl NyanpasuClient {
     }
 
     pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
-        crate::utils::net::url_delay_test(
-            url,
-            expected_status,
-            self.clash_info().port,
-            &self.inner.bundle_metadata,
-        )
-        .await
+        self.inner
+            .network_diagnostics
+            .url_delay_test(url, expected_status, self.clash_info().port)
+            .await
     }
 
     pub async fn get_ipsb_asn(&self) -> anyhow::Result<serde_json::Value> {
-        crate::utils::net::get_ipsb_asn(self.clash_info().port, &self.inner.bundle_metadata).await
+        self.inner
+            .network_diagnostics
+            .get_ipsb_asn(self.clash_info().port)
+            .await
     }
 
-    pub async fn get_cached_icon(
-        &self,
-        url: &str,
-        paths: &PathResolver,
-    ) -> anyhow::Result<(String, bytes::Bytes)> {
-        crate::service::icon::get_cached_icon(
-            url,
-            self.clash_info().port,
-            paths,
-            &self.inner.bundle_metadata,
-        )
-        .await
+    pub async fn get_cached_icon(&self, url: &str) -> anyhow::Result<(String, bytes::Bytes)> {
+        self.inner
+            .icons
+            .get_cached_icon(url, self.clash_info().port)
+            .await
     }
 
     pub fn is_portable(&self) -> bool {
@@ -1536,7 +1537,6 @@ pub(crate) mod tests {
                 test_client_with_system_dns,
             },
         },
-        state::profiles::{error::SubscriptionFetchError, ports::MockSubscriptionFetcher},
         utils::test_support::test_paths,
     };
     use nyanpasu_config::{
@@ -1546,6 +1546,13 @@ pub(crate) mod tests {
             ProfileMetadata, ProfileSource, RemoteSyncInterval, SubscriptionInfo,
         },
         state::window::WindowState,
+    };
+    use nyanpasu_contracts::{
+        net::MockDirectEgressProbe,
+        profiles::{
+            error::SubscriptionFetchError,
+            ports::{FetchedSubscription, MockSubscriptionFetcher},
+        },
     };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
@@ -1704,7 +1711,7 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
-            Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(MockDirectEgressProbe::new()),
             Arc::new(crate::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
@@ -1813,7 +1820,7 @@ pub(crate) mod tests {
     async fn probe_direct_egress_reports_each_family_from_the_injected_probe() {
         let dir = tempdir().expect("tempdir should be created");
         let address = std::net::Ipv4Addr::new(203, 0, 113, 7);
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe
             .expect_ipv4()
             .withf(|sources| {
@@ -1846,11 +1853,11 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn a_running_probe_sees_detection_servers_and_consent_change() {
-        use crate::client::direct_egress::ProbePermission;
+        use nyanpasu_contracts::net::ProbePermission;
         let dir = tempdir().expect("tempdir should be created");
         let permission = Arc::new(std::sync::Mutex::new(None::<Arc<dyn ProbePermission>>));
         let slot = permission.clone();
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe.expect_ipv4().times(1).returning(move |sources| {
             *slot.lock().unwrap() = Some(sources.permission.clone());
             None
@@ -1898,7 +1905,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn probe_direct_egress_does_not_probe_while_tun_mode_is_enabled() {
         let dir = tempdir().expect("tempdir should be created");
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe.expect_ipv4().never();
         probe.expect_ipv6().never();
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
@@ -1927,7 +1934,7 @@ pub(crate) mod tests {
     async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
         use crate::traffic::LocalSourceLocation;
         let dir = tempdir().unwrap();
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         let mut sequence = mockall::Sequence::new();
         probe
             .expect_ipv4()
@@ -2420,7 +2427,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
-            direct_egress: Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
+            direct_egress: Arc::new(MockDirectEgressProbe::new()),
             geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
@@ -2987,7 +2994,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 // No server name: exercises the url last-segment fallback below.
@@ -3040,7 +3047,7 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
-                Ok(crate::state::profiles::ports::FetchedSubscription {
+                Ok(FetchedSubscription {
                     content: "proxies: []\n".into(),
                     subscription: SubscriptionInfo::default(),
                     filename: None,
@@ -3110,7 +3117,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3148,7 +3155,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3300,7 +3307,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3457,7 +3464,7 @@ pub(crate) mod tests {
     fn ok_fetch_without_name() -> MockSubscriptionFetcher {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,

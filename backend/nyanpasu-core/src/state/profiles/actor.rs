@@ -15,6 +15,14 @@ use nyanpasu_config::profile::{
     ProxyGroupLayout, RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval,
     ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition, TransformKind,
 };
+use nyanpasu_contracts::profiles::{
+    error::ProfileFileError,
+    ports::{
+        MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
+        ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
+        ProfileMaterializationPort, SubscriptionFetcher,
+    },
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
@@ -37,11 +45,6 @@ use tokio_util::sync::CancellationToken;
 use super::{
     error::*,
     jobs::{ProfileJobs, ProfileSyncContext},
-    ports::{
-        MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
-        ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
-        ProfileMaterializationPort, SubscriptionFetcher,
-    },
     scheduler::ExternalWatchers,
     sources::{SourceLedger, SourceOrigin, SourceOutcome, SourcesSnapshot},
 };

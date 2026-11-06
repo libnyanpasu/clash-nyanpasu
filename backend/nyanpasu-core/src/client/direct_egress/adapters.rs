@@ -4,16 +4,14 @@ use std::{
 };
 
 use nyanpasu_config::application::StunServerCapabilities;
+use nyanpasu_contracts::net::{DirectEgressProbe, ProbeSources, StunAttempt, StunServerTest};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::{TcpStream, UdpSocket},
     time::Instant,
 };
 
-use super::{
-    ports::{DirectEgressProbe, ProbeSources, StunAttempt, StunServerTest},
-    stun::{self, HEADER_LEN, TransactionId},
-};
+use super::stun::{self, HEADER_LEN, TransactionId};
 
 /// A STUN server that does not resolve and answer within this is skipped, so a long
 /// server list stays usable when several are unreachable.
@@ -327,10 +325,11 @@ mod tests {
 
     use axum::{Router, http::StatusCode, routing::get};
     use nyanpasu_config::application::{IpLookupProvider, StunFamilies, StunServer};
+    use nyanpasu_contracts::net::ProbePermission;
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::client::direct_egress::{ProbePermission, stun::tests::binding_response};
+    use crate::client::direct_egress::stun::tests::binding_response;
 
     const LOCALHOST: &str = "127.0.0.1";
     /// The servers these tests run listen on loopback.

@@ -4,13 +4,10 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
-use super::{
-    app_update::changelog::ChangelogHttp, application_workflow::ports::RuntimeBuildPort,
-    debug_http::DebugHttpControl,
-};
-use crate::{
-    service::profile_file::ports::SelfProxyPortSource,
-    state::profiles::ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+use super::{application_workflow::ports::RuntimeBuildPort, debug_http::DebugHttpControl};
+use nyanpasu_contracts::{
+    net::{ChangelogHttp, IconFetcher, NetworkDiagnostics, SelfProxyPortSource},
+    profiles::ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
 };
 
 /// Matching profile-store capabilities returned by the host's profile factory.
@@ -38,6 +35,10 @@ pub type DebugHttpFactory = dyn Fn() -> BoxFuture<'static, Result<Arc<dyn DebugH
 
 /// Host-built capabilities and factories consumed during facade assembly.
 pub struct ClientHostAdapters {
+    /// Downloads icon bytes using the current port passed by the facade.
+    pub icon_fetcher: Arc<dyn IconFetcher>,
+    /// Performs diagnostics using the current port passed by the facade.
+    pub network_diagnostics: Arc<dyn NetworkDiagnostics>,
     /// Captures content on demand; script construction and execution must use blocking threads.
     pub runtime_build: Arc<dyn RuntimeBuildPort>,
     /// Supplies matching filesystem, download and materialization ports for the profile store.

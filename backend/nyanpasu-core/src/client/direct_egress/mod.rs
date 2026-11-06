@@ -9,4 +9,6 @@ mod stun;
 pub use adapters::NetworkDirectEgressProbe;
 #[cfg(any(test, feature = "test-support"))]
 pub use ports::MockDirectEgressProbe;
-pub use ports::{DirectEgress, DirectEgressProbe, ProbeSources, StunAttempt, StunServerTest};
+pub use ports::{
+    DirectEgress, DirectEgressProbe, ProbePermission, ProbeSources, StunAttempt, StunServerTest,
+};

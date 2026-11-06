@@ -1,4 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 
 use nyanpasu_config::application::{
     IpLookupProvider, NyanpasuAppConfig, StunFamilies, StunServer, StunServerCapabilities,
@@ -20,16 +23,25 @@ pub enum DirectEgress {
     },
 }
 
+/// Asked again right before each request, so switching detection off,
+/// turning a server off or withdrawing a provider's consent stops the
+/// requests a running probe has not sent yet.
+pub trait ProbePermission: Send + Sync {
+    fn allows_stun(&self, server: &StunServer) -> bool;
+    fn allows_lookup(&self, provider: IpLookupProvider) -> bool;
+}
+
 /// Where a probe asks, in order: STUN servers, then accepted HTTP providers.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct ProbeSources {
     pub stun: Vec<StunServer>,
     pub lookups: Vec<IpLookupProvider>,
+    pub permission: Arc<dyn ProbePermission>,
 }
 
 impl ProbeSources {
     /// The enabled servers, in the order the user keeps them.
-    pub fn from_config(config: &NyanpasuAppConfig) -> Self {
+    pub fn from_config(config: &NyanpasuAppConfig, permission: Arc<dyn ProbePermission>) -> Self {
         Self {
             stun: config
                 .stun_servers
@@ -38,6 +50,7 @@ impl ProbeSources {
                 .cloned()
                 .collect(),
             lookups: config.ip_lookup_providers.clone(),
+            permission,
         }
     }
 }
@@ -135,7 +148,17 @@ mod tests {
         config.stun_servers = servers;
         config.ip_lookup_providers = vec![IpLookupProvider::Ipify, IpLookupProvider::Dnspod];
 
-        let sources = ProbeSources::from_config(&config);
+        struct Anything;
+        impl ProbePermission for Anything {
+            fn allows_stun(&self, _: &StunServer) -> bool {
+                true
+            }
+            fn allows_lookup(&self, _: IpLookupProvider) -> bool {
+                true
+            }
+        }
+
+        let sources = ProbeSources::from_config(&config, Arc::new(Anything));
 
         let hosts: Vec<&str> = sources
             .stun

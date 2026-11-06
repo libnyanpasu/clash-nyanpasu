@@ -117,6 +117,9 @@ impl NetworkDirectEgressProbe {
             let Some(transport) = transport_for(target.capabilities, family) else {
                 continue;
             };
+            if !sources.permission.allows_stun(target) {
+                continue;
+            }
             if let StunAttempt::Answered { address, .. } = ask_stun(
                 &target.host,
                 target.port,
@@ -131,6 +134,9 @@ impl NetworkDirectEgressProbe {
             }
         }
         for provider in &sources.lookups {
+            if !sources.permission.allows_lookup(*provider) {
+                continue;
+            }
             let url = match family {
                 Family::Ipv4 => provider.ipv4_url(),
                 Family::Ipv6 => provider.ipv6_url(),
@@ -317,12 +323,14 @@ async fn fetch(url: &str) -> reqwest::Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use axum::{Router, http::StatusCode, routing::get};
     use nyanpasu_config::application::{IpLookupProvider, StunFamilies, StunServer};
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::client::direct_egress::stun::tests::binding_response;
+    use crate::client::direct_egress::{ProbePermission, stun::tests::binding_response};
 
     const LOCALHOST: &str = "127.0.0.1";
     /// The servers these tests run listen on loopback.
@@ -401,6 +409,26 @@ mod tests {
         }
     }
 
+    /// Allows the servers on these ports, and no lookup provider.
+    struct AllowingPorts(Vec<u16>);
+
+    impl ProbePermission for AllowingPorts {
+        fn allows_stun(&self, server: &StunServer) -> bool {
+            self.0.contains(&server.port)
+        }
+        fn allows_lookup(&self, _: IpLookupProvider) -> bool {
+            false
+        }
+    }
+
+    fn sources(stun: Vec<StunServer>, permission: AllowingPorts) -> ProbeSources {
+        ProbeSources {
+            stun,
+            lookups: Vec::new(),
+            permission: Arc::new(permission),
+        }
+    }
+
     fn closed_port() -> u16 {
         let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         socket.local_addr().unwrap().port()
@@ -466,16 +494,25 @@ mod tests {
     #[tokio::test]
     async fn the_probe_skips_servers_that_do_not_answer_and_uses_tcp_only_where_needed() {
         let tcp = tcp_stun_server().await;
-        let sources = ProbeSources {
-            stun: vec![target(closed_port(), true, false), target(tcp, false, true)],
-            lookups: Vec::new(),
-        };
+        let closed = closed_port();
+        let sources = sources(
+            vec![target(closed, true, false), target(tcp, false, true)],
+            AllowingPorts(vec![closed, tcp]),
+        );
 
         assert_eq!(
             LOOPBACK_PROBE.ipv4(&sources).await,
             Some(Ipv4Addr::LOCALHOST)
         );
         assert_eq!(LOOPBACK_PROBE.ipv6(&sources).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_server_the_permission_no_longer_allows_is_not_asked() {
+        let udp = udp_stun_server(0).await;
+        let sources = sources(vec![target(udp, true, false)], AllowingPorts(Vec::new()));
+
+        assert_eq!(LOOPBACK_PROBE.ipv4(&sources).await, None);
     }
 
     #[tokio::test]

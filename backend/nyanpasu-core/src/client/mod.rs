@@ -938,7 +938,8 @@ impl NyanpasuClient {
             cache.set(&blocked);
             return Ok(blocked);
         }
-        let sources = ProbeSources::from_config(&self.inner.application.snapshot().state);
+        let sources =
+            ProbeSources::from_config(&self.inner.application.snapshot().state, cache.clone());
         let probe = &self.inner.direct_egress;
         let (ipv4, ipv6) = tokio::join!(probe.ipv4(&sources), probe.ipv6(&sources));
         // Permission or TUN may change while the requests are in flight.
@@ -1842,6 +1843,57 @@ pub(crate) mod tests {
                 ipv6: None,
             }
         );
+    }
+
+    #[tokio::test]
+    async fn a_running_probe_sees_detection_servers_and_consent_change() {
+        use crate::client::direct_egress::ProbePermission;
+        let dir = tempdir().expect("tempdir should be created");
+        let permission = Arc::new(std::sync::Mutex::new(None::<Arc<dyn ProbePermission>>));
+        let slot = permission.clone();
+        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        probe.expect_ipv4().times(1).returning(move |sources| {
+            *slot.lock().unwrap() = Some(sources.permission.clone());
+            None
+        });
+        probe.expect_ipv6().times(1).returning(|_| None);
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ip_lookup_providers: Some(vec![IpLookupProvider::Dnspod]),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        client.probe_direct_egress().await.unwrap();
+        let permission = permission.lock().unwrap().clone().unwrap();
+        let mut servers = nyanpasu_config::application::default_stun_servers();
+        let first = servers[0].clone();
+        assert!(permission.allows_stun(&first));
+        assert!(permission.allows_lookup(IpLookupProvider::Dnspod));
+
+        servers[0].enabled = false;
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                stun_servers: Some(servers),
+                ip_lookup_providers: Some(Vec::new()),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        assert!(!permission.allows_stun(&first));
+        assert!(!permission.allows_lookup(IpLookupProvider::Dnspod));
+
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(false),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        let second = nyanpasu_config::application::default_stun_servers()[1].clone();
+        assert!(!permission.allows_stun(&second));
     }
 
     #[tokio::test]

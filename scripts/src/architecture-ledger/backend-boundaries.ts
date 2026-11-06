@@ -1,51 +1,78 @@
 import { runCommand } from '../shared/command.ts'
 import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 
-const NEUTRAL_PACKAGES = [
-  'nyanpasu-core',
-  'nyanpasu-platform',
-  'nyanpasu-config',
-  'nyanpasu-diagnose',
+type PackageMatcher = string | { prefix: string }
+
+interface DependencyRule {
+  package: string
+  forbids: readonly PackageMatcher[]
+}
+
+const GUI: readonly PackageMatcher[] = [
+  'clash-nyanpasu',
+  'nyanpasu-egui',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'slint',
+  { prefix: 'slint-' },
+  { prefix: 'i-slint-' },
+  'winit',
+  'eframe',
+  'egui',
+  'gtk',
+  'webkit2gtk',
+  'tauri',
+  { prefix: 'tauri-' },
+]
+const FOUNDATION = ['nyanpasu-config']
+const CORE_FAMILY = ['nyanpasu-core']
+// Transitional: implements core ports and depends on core until it is retired.
+const PLATFORM = 'nyanpasu-platform'
+
+const DEPENDENCY_RULES: readonly DependencyRule[] = [
+  ...[...FOUNDATION, ...CORE_FAMILY, PLATFORM, 'nyanpasu-diagnose'].map(
+    (name) => ({ package: name, forbids: GUI }),
+  ),
+  ...CORE_FAMILY.map((name) => ({ package: name, forbids: [PLATFORM] })),
+  {
+    package: 'nyanpasu-diagnose',
+    forbids: [...CORE_FAMILY, PLATFORM],
+  },
 ]
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */
 export function dependencyViolations(
   owner: string,
   cargoTree: string,
+  rules: readonly DependencyRule[] = DEPENDENCY_RULES,
 ): string[] {
+  const forbidden = rules
+    .filter((rule) => rule.package === owner)
+    .flatMap((rule) => rule.forbids)
   const names = new Set(
     cargoTree
       .split('\n')
       .map((line) => line.trim().split(/\s+/)[0])
       .filter(Boolean),
   )
+
   return [...names]
     .filter(
       (name) =>
-        name === 'clash-nyanpasu' ||
-        name === 'nyanpasu-egui' ||
-        name === 'nyanpasu-widget' ||
-        name === 'nyanpasu-crash-reporter' ||
-        name === 'slint' ||
-        name.startsWith('slint-') ||
-        name.startsWith('i-slint-') ||
-        name === 'winit' ||
-        name === 'eframe' ||
-        name === 'egui' ||
-        name === 'gtk' ||
-        name === 'webkit2gtk' ||
-        name === 'tauri' ||
-        name.startsWith('tauri-') ||
-        (owner === 'nyanpasu-core' && name === 'nyanpasu-platform') ||
-        (owner === 'nyanpasu-diagnose' &&
-          (name === 'nyanpasu-core' || name === 'nyanpasu-platform')),
+        name !== owner &&
+        forbidden.some((matcher) =>
+          typeof matcher === 'string'
+            ? name === matcher
+            : name.startsWith(matcher.prefix),
+        ),
     )
     .map((name) => `${owner} must not depend on ${name}`)
 }
 
 export async function main(): Promise<number> {
   const problems: string[] = []
-  for (const owner of NEUTRAL_PACKAGES) {
+  const packages = new Set(DEPENDENCY_RULES.map((rule) => rule.package))
+  for (const owner of packages) {
     const result = await runCommand('cargo', {
       cwd: WORKSPACE_ROOT,
       args: [
@@ -78,7 +105,7 @@ export async function main(): Promise<number> {
     console.error(problems.join('\n'))
     return 1
   }
-  console.log('Backend core/platform/config boundaries passed.')
+  console.log('Backend package boundaries passed.')
   return 0
 }
 

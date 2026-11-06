@@ -1,5 +1,5 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { Input, NumericInput } from '@nyanpasu/ui/input'
@@ -96,6 +96,15 @@ export default function AddStunServerDialog({
 
   const serverTest = useStunServerTest()
 
+  // Bumped whenever the dialog closes or its input changes, so a test that
+  // answers afterwards neither saves the server nor updates the dialog.
+  const submission = useRef(0)
+
+  const discardTest = () => {
+    submission.current += 1
+    serverTest.reset()
+  }
+
   const trimmedHost = host.trim()
   const portValid = port != null && port >= 1 && port <= 65535
   const duplicate = servers.some(
@@ -121,17 +130,19 @@ export default function AddStunServerDialog({
       setHost('')
       setPort(DEFAULT_STUN_PORT)
       setAdded(false)
-      serverTest.reset()
+      discardTest()
     }
   }
 
   const handleAdd = async () => {
     if (!canAdd || port == null) return
+    const current = ++submission.current
 
     // A failed test is shown from the mutation's own error state.
     const result = await serverTest
       .mutateAsync({ host: trimmedHost, port })
       .catch(() => null)
+    if (current !== submission.current) return
     if (!result || !answeredAny(result.capabilities)) return
 
     const saved = await onAdd({
@@ -141,6 +152,7 @@ export default function AddStunServerDialog({
       capabilities: result.capabilities,
       builtin: false,
     })
+    if (current !== submission.current) return
     setAdded(saved)
   }
 
@@ -189,7 +201,7 @@ export default function AddStunServerDialog({
                 spellCheck={false}
                 onChange={(event) => {
                   setHost(event.target.value)
-                  serverTest.reset()
+                  discardTest()
                 }}
               />
 
@@ -205,7 +217,7 @@ export default function AddStunServerDialog({
                 disabled={added}
                 onChange={(value) => {
                   setPort(value)
-                  serverTest.reset()
+                  discardTest()
                 }}
               />
             </form>

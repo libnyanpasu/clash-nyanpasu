@@ -256,6 +256,48 @@ test('a server that answers over nothing is not added', async ({
   expect(backend.save).not.toHaveBeenCalled()
 })
 
+test('a test that answers after the dialog closes adds nothing', async ({
+  onTestFinished,
+}) => {
+  backend.settings = { stun_servers: [BUILTIN] }
+  backend.save.mockResolvedValue(undefined)
+  let answer = (_test: StunServerTest) => {}
+  backend.test.mockReturnValue(
+    new Promise<StunServerTest>((resolve) => {
+      answer = resolve
+    }),
+  )
+  const view = await render(
+    <Providers>
+      <StunServerList />
+    </Providers>,
+  )
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+
+  await view
+    .getByRole('button', { name: m.settings_public_ip_stun_add() })
+    .click()
+  await page
+    .getByLabelText(m.settings_public_ip_stun_host())
+    .fill('stun.example.com')
+  await page
+    .getByRole('button', { name: m.settings_public_ip_stun_add_confirm() })
+    .click()
+  await expect.poll(() => backend.test.mock.calls.length).toBe(1)
+  await page.getByRole('button', { name: m.common_cancel() }).click()
+  answer(serverTest(true))
+
+  await expect
+    .element(page.getByLabelText(m.settings_public_ip_stun_host()))
+    .not.toBeInTheDocument()
+  // Let the late answer's continuation run before checking it did nothing.
+  await new Promise((resolve) => setTimeout(resolve))
+  expect(backend.save).not.toHaveBeenCalled()
+})
+
 test('a server already in the list cannot be added again', async ({
   onTestFinished,
 }) => {

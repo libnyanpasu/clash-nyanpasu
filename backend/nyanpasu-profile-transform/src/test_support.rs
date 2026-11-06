@@ -6,14 +6,14 @@ use nyanpasu_config::profile::{
     ProfileSource, TransformDefinition,
 };
 
-pub(crate) fn managed(name: &str) -> MaterializedFile {
+pub fn managed(name: &str) -> MaterializedFile {
     MaterializedFile {
         file: ManagedProfilePath::new(name).unwrap(),
         updated_at: None,
     }
 }
 
-pub(crate) fn metadata(name: &str) -> ProfileMetadata {
+pub fn metadata(name: &str) -> ProfileMetadata {
     ProfileMetadata {
         name: name.into(),
         desc: None,

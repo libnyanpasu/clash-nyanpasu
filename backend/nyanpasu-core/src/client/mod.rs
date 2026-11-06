@@ -14,6 +14,7 @@ mod app_lifecycle;
 pub mod app_update;
 pub mod application;
 pub mod application_workflow;
+pub mod artifact_snapshot;
 mod clash_api;
 mod clash_config;
 mod clash_streams;

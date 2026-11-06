@@ -1,4 +1,3 @@
-pub mod enhance;
 pub mod format;
 pub mod profile_import;
 pub mod state;

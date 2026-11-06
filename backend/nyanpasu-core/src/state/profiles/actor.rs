@@ -2611,10 +2611,8 @@ mod tests {
     /// profile, whatever produced it.
     #[test]
     fn profiles_operations_reach_the_runtime_by_request_and_diff() {
-        use crate::{
-            client::application_workflow::impact::{RuntimeImpact, runtime_impact},
-            enhance::test_support::{file_config, metadata, overlay},
-        };
+        use crate::client::application_workflow::impact::{RuntimeImpact, runtime_impact};
+        use nyanpasu_profile_transform::test_support::{file_config, metadata, overlay};
 
         // current -> `sel` with its scoped transform `scoped`; `global` is a
         // document-level transform; `spare` is reachable from neither.
@@ -2819,7 +2817,7 @@ mod tests {
     /// proxies (legacy remote.rs semantics); overlays only need a mapping.
     #[test]
     fn config_content_requires_proxies_key() {
-        let config = crate::enhance::test_support::file_config("p1", "p1.yaml", &[]);
+        let config = nyanpasu_profile_transform::test_support::file_config("p1", "p1.yaml", &[]);
         assert!(ProfilesActor::validate_fetched_content(&config.definition, "{}\n").is_err());
         assert!(
             ProfilesActor::validate_fetched_content(&config.definition, "proxies: []\n").is_ok()
@@ -2832,7 +2830,7 @@ mod tests {
 
     #[test]
     fn overlay_content_needs_only_a_mapping() {
-        let overlay = crate::enhance::test_support::overlay("t1", "t1.yaml");
+        let overlay = nyanpasu_profile_transform::test_support::overlay("t1", "t1.yaml");
         assert!(ProfilesActor::validate_fetched_content(&overlay.definition, "a: 1\n").is_ok());
     }
 

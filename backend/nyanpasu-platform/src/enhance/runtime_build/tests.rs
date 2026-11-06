@@ -39,7 +39,7 @@ impl RuntimeBuildPort for Builder {
         inputs: inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_core::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
         self.delegate.build(revision, inputs, ports, strict).await
     }
     async fn publish(
@@ -77,11 +77,11 @@ async fn fixture() -> Fixture {
 async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     use nyanpasu_core::client::application_workflow::ports::RuntimeBuildPort;
     let f = fixture().await;
-    let item = nyanpasu_core::enhance::test_support::overlay("missing", "missing.yaml");
+    let item = nyanpasu_profile_transform::test_support::overlay("missing", "missing.yaml");
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);
-    let input = nyanpasu_core::enhance::RuntimeBuildInput {
+    let input = nyanpasu_profile_transform::RuntimeBuildInput {
         profiles: Arc::new(profiles.clone()),
         clash: ClashConfig::default(),
         app: NyanpasuAppConfig::default(),
@@ -94,7 +94,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let script_runner = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
         let scripts = script_runner().unwrap();
-        nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, scripts.as_ref())
+        nyanpasu_profile_transform::RuntimeBuilder::build(&input, &old_content, scripts.as_ref())
     })
     .await
     .unwrap();

@@ -1,17 +1,17 @@
+//! Pure runtime assembly and builtin transforms over the config executor.
+
 mod runtime_builder;
 
 pub use runtime_builder::{
     ConfigNotMappingSnafu, RuntimeBuildError, RuntimeBuildInput, RuntimeBuildLog, RuntimeBuilder,
-    SerializeFinalConfigSnafu, StartScriptRunnerSnafu, builtin_transforms_for, derive_tun_flavor,
+    SerializeFinalConfigSnafu, StartScriptRunnerSnafu, builtin_transforms_for,
 };
 
-mod artifact_snapshot;
 mod chain;
 mod utils;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
-pub use artifact_snapshot::runtime_snapshot_data_from_artifact;
 pub use chain::PostProcessingOutput;
-pub use utils::Logs;
+pub use utils::{LogSpan, Logs};

@@ -16,12 +16,10 @@ use nyanpasu_config::{
 };
 
 use crate::enhance::FsProfileContentSource;
-use nyanpasu_core::{
-    client::application_workflow::ports::ScriptRunnerFactory,
-    enhance::{
-        RuntimeBuildInput, RuntimeBuilder,
-        test_support::{composition, file_config, overlay},
-    },
+use nyanpasu_core::client::application_workflow::ports::ScriptRunnerFactory;
+use nyanpasu_profile_transform::{
+    RuntimeBuildInput, RuntimeBuilder,
+    test_support::{composition, file_config, overlay},
 };
 use nyanpasu_scripts::{EnhanceScriptRunner, ScriptDirs};
 

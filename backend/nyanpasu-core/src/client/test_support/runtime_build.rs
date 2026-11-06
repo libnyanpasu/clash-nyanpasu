@@ -2,7 +2,6 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use crate::enhance::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 use async_trait::async_trait;
 use nyanpasu_config::{
     application::ClashCore,
@@ -13,6 +12,7 @@ use nyanpasu_config::{
     },
 };
 use nyanpasu_core_manager::CoreSpec;
+use nyanpasu_profile_transform::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 
 use crate::{
     actor_v2::local_host::CoreSpecError,
@@ -86,7 +86,7 @@ impl RuntimeBuildPort for TestRuntimeBuildPort {
             if strict_transforms {
                 RuntimeBuilder::validate_transforms(&artifact)?;
             }
-            let data = crate::enhance::runtime_snapshot_data_from_artifact(
+            let data = crate::client::artifact_snapshot::runtime_snapshot_data_from_artifact(
                 artifact,
                 &inputs.profiles,
                 core,

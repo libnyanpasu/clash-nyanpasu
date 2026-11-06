@@ -40,6 +40,11 @@ type UserError = whoami::Error;
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum ServiceCommandError {
+    #[snafu(display("could not authorize the service {command} command: {source}"))]
+    AuthorizeServiceCommand {
+        command: ServiceCommand,
+        source: crate::elevation::ElevationConsentError,
+    },
     #[snafu(display("Windows is ending the session; service commands are unavailable"))]
     SessionEnding,
     #[snafu(display("could not resolve the current user: {source}"))]

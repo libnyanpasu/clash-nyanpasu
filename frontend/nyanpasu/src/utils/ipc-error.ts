@@ -8,6 +8,7 @@ import type {
   DegradationReason,
   EffectFailureCode,
   EffectsError,
+  ElevationConsentError,
   EvidenceGap,
   ExecutionHost,
   HotkeyAction,
@@ -346,8 +347,17 @@ function debugHttpErrorMessage(error: DebugHttpControlError): string {
   }
 }
 
+function elevationConsentErrorMessage(error: ElevationConsentError): string {
+  switch (error.kind) {
+    case 'authorize_elevation':
+      return m.error_elevation_authorize()
+  }
+}
+
 function systemDnsErrorMessage(error: SystemDnsError): string {
   switch (error.kind) {
+    case 'authorize_dns_flush':
+      return elevationConsentErrorMessage(error.source)
     case 'run_flush_command':
       return m.error_system_dns_run_flush_command({ command: error.command })
     case 'flush_rejected':
@@ -679,6 +689,8 @@ function portFieldName(field: PortField): string {
 
 function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
   switch (error.kind) {
+    case 'authorize_core_copy':
+      return elevationConsentErrorMessage(error.source)
     case 'start_elevated_copy':
       return m.error_runtime_install_core_binary_elevation({
         core: error.core,

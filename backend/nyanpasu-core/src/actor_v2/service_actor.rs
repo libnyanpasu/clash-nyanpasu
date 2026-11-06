@@ -293,7 +293,7 @@ impl ServiceActorState {
         CoreError::new(
             CoreErrorKind::BackendUnavailable,
             format!("service {what} failed: {error}"),
-            true,
+            !matches!(error, ServiceCommandError::AuthorizeServiceCommand { .. }),
         )
     }
 
@@ -1262,6 +1262,7 @@ mod tests {
         core_detail: Mutex<Option<CoreStateDetail>>,
         /// A running daemon whose `/status` does not come back at all.
         probe_blind: AtomicBool,
+        command_failure: Mutex<Option<ServiceCommandError>>,
         fail_install: AtomicBool,
         fail_start: AtomicBool,
         /// F5: the probe call itself fails -- not "answered Stopped", not
@@ -1293,6 +1294,7 @@ mod tests {
                 uninstalls: AtomicUsize::new(0),
                 core_detail: Mutex::new(Some(CoreStateDetail::Stopped { reason: None })),
                 probe_blind: AtomicBool::new(false),
+                command_failure: Mutex::new(None),
                 fail_install: AtomicBool::new(false),
                 fail_start: AtomicBool::new(false),
                 probe_fail: AtomicBool::new(false),
@@ -1410,6 +1412,9 @@ mod tests {
             }
 
             self.installs.fetch_add(1, Ordering::SeqCst);
+            if let Some(error) = self.command_failure.lock().unwrap().take() {
+                return Err(error);
+            }
             if self.fail_install.load(Ordering::SeqCst) {
                 return Err(crate::service::test_support::service_command_error(
                     "install refused",
@@ -1430,6 +1435,9 @@ mod tests {
             &self,
         ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.starts.fetch_add(1, Ordering::SeqCst);
+            if let Some(error) = self.command_failure.lock().unwrap().take() {
+                return Err(error);
+            }
             if self.hang_start.load(Ordering::SeqCst) {
                 return std::future::pending().await;
             }
@@ -1445,6 +1453,9 @@ mod tests {
             &self,
         ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.calls.lock().unwrap().push("stop_daemon");
+            if let Some(error) = self.command_failure.lock().unwrap().take() {
+                return Err(error);
+            }
             // Like `nyanpasu-service stop`, which exits with an error for a
             // service that is already stopped.
             if !self.state.lock().unwrap().1 {
@@ -2011,6 +2022,93 @@ mod tests {
         let status = client.status();
         assert_eq!(status.phase, ServicePhase::Ready);
         assert_eq!(status.restart_attempts, 0);
+    }
+
+    fn consent_refusal(
+        command: nyanpasu_contracts::service::ServiceCommand,
+    ) -> ServiceCommandError {
+        ServiceCommandError::AuthorizeServiceCommand {
+            command,
+            source: nyanpasu_contracts::elevation::ElevationConsentError::AuthorizeElevation {
+                operation: nyanpasu_contracts::elevation::ElevationOperation::Service { command },
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn refused_service_command_keeps_the_probed_phase() {
+        use nyanpasu_contracts::service::ServiceCommand;
+
+        for (installed, command, phase) in [
+            (false, ServiceCommand::Install, ServicePhase::NotInstalled),
+            (true, ServiceCommand::Start, ServicePhase::DaemonStopped),
+        ] {
+            let daemon = FakeDaemon::new(installed, false, "2.0.2");
+            *daemon.command_failure.lock().unwrap() = Some(consent_refusal(command));
+            let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+                .await
+                .unwrap();
+            let error = client
+                .ensure_ready()
+                .await
+                .err()
+                .expect("consent must be refused");
+            assert!(!error.retryable);
+            assert_eq!(client.status().phase, phase);
+            assert_eq!(client.probe().await.unwrap().phase, phase);
+        }
+
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
+        *daemon.command_failure.lock().unwrap() = Some(consent_refusal(ServiceCommand::Stop));
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
+        let error = client.stop_daemon().await.unwrap_err();
+        assert!(!error.retryable);
+        assert_eq!(client.status().phase, ServicePhase::Ready);
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
+        assert!(
+            daemon.state.lock().unwrap().1,
+            "refusal does not stop the daemon"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_consent_refusal_is_not_retryable() {
+        use nyanpasu_contracts::service::ServiceCommand;
+
+        for (failure, retryable) in [
+            (consent_refusal(ServiceCommand::Start), false),
+            (
+                ServiceCommandError::RunElevated {
+                    command: ServiceCommand::Start,
+                    source: std::io::Error::other("OS dialog cancelled"),
+                },
+                true,
+            ),
+            (
+                ServiceCommandError::ServiceCommandExit {
+                    command: ServiceCommand::Start,
+                    exit_code: Some(1),
+                    signal: None,
+                },
+                true,
+            ),
+        ] {
+            let daemon = FakeDaemon::new(true, false, "2.0.2");
+            *daemon.command_failure.lock().unwrap() = Some(failure);
+            let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 3)
+                .await
+                .unwrap();
+            let error = client
+                .recover_endpoint()
+                .await
+                .err()
+                .expect("scripted command fails");
+            assert_eq!(error.retryable, retryable);
+            assert_eq!(client.status().phase, ServicePhase::DaemonStopped);
+            assert_eq!(daemon.starts.load(Ordering::SeqCst), 1);
+        }
     }
 
     /// Minor-A3: a convergence that fails must not leave a transitional phase

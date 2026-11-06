@@ -5,7 +5,7 @@ mod blocking;
 pub mod core_install;
 pub mod core_version;
 pub mod device_identity;
-mod elevation;
+pub mod elevation;
 pub mod pac;
 pub mod service;
 pub mod system_dns;

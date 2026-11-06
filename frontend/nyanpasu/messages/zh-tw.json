@@ -1438,6 +1438,7 @@
   "error_debug_http_change_enabled_unsupported": "只有桌面應用程式可以開關偵錯 HTTP",
   "error_debug_http_read_status": "無法讀取偵錯 HTTP 狀態",
   "error_debug_http_change_enabled": "無法開關偵錯 HTTP",
+  "error_elevation_authorize": "無法從這裡要求管理員權限",
   "error_system_dns_run_flush_command": "未取得執行 {command} 的權限",
   "error_system_dns_flush_rejected": "{command} 執行失敗 (結束代碼 {code})",
   "error_system_dns_unsupported": "目前系統不支援清除 DNS 快取",

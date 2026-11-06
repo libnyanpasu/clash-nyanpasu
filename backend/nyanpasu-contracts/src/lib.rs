@@ -3,6 +3,7 @@
 pub mod bundle_metadata;
 pub mod core_install;
 pub mod core_version;
+pub mod elevation;
 pub mod service;
 pub mod system_dns;
 pub mod system_proxy;

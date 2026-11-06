@@ -9,6 +9,10 @@ use snafu::Snafu;
 #[snafu(visibility(pub))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SystemDnsError {
+    #[snafu(display("could not authorize flushing the system DNS cache"))]
+    AuthorizeDnsFlush {
+        source: crate::elevation::ElevationConsentError,
+    },
     /// The elevated flush could not be started: the user declined the prompt,
     /// or the platform has no way to ask for elevation.
     #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]

@@ -268,6 +268,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context(BuildServiceIpcSnafu)?;
+    let elevation_consent: Arc<dyn nyanpasu_contracts::elevation::ElevationConsent> =
+        Arc::new(crate::adapters::elevation::InteractiveElevationConsent);
     let service_binary = nyanpasu_os::service::service_binary(
         paths
             .app_install_dir()
@@ -286,6 +288,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         let adapter = Arc::new(nyanpasu_os::service::OsServiceProcessControl::new(
             service_binary,
             paths.clone(),
+            elevation_consent.clone(),
         ));
         start_runtime_owners(
             owners,
@@ -492,11 +495,15 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         )),
         core_v2,
         service,
-        system_dns: Arc::new(nyanpasu_os::system_dns::OsSystemDnsCache),
+        system_dns: Arc::new(nyanpasu_os::system_dns::OsSystemDnsCache::new(
+            elevation_consent.clone(),
+        )),
         direct_egress: Arc::new(NetworkDirectEgressProbe::default()),
         geo_index,
         os_proxy: os_proxy.clone(),
-        binary_installer: Arc::new(nyanpasu_os::core_install::FsBinaryInstaller),
+        binary_installer: Arc::new(nyanpasu_os::core_install::FsBinaryInstaller::new(
+            elevation_consent,
+        )),
         core_versions: Arc::new(nyanpasu_os::core_version::SidecarCoreVersionReader::new(
             Arc::new(crate::adapters::core_version::TauriCoreVersionExecutableSource),
         )),
@@ -606,6 +613,9 @@ pub(crate) enum UnifiedRpcError {
 /// storage and the other Tauri state dependencies.
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
     let dependencies = crate::unified_rpc::RpcDependencies {
+        audit: crate::unified_rpc::RpcAudit::new(Arc::new(
+            crate::adapters::rpc_audit::TracingRpcAuditSink,
+        )),
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),

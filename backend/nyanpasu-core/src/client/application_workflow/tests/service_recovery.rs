@@ -4,7 +4,10 @@ use crate::actor_v2::{
     endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
     test_support::HostTransitionServiceAdapter,
 };
-use nyanpasu_contracts::service::ServiceProcessControl;
+use nyanpasu_contracts::{
+    elevation::{ElevationConsent, ElevationConsentError, ElevationOperation},
+    service::{ServiceCommand, ServiceCommandError, ServiceProcessControl},
+};
 use nyanpasu_ipc::api::{core::v2::OperationInfo, status::CoreStateDetail};
 
 struct RecoveringEndpoint {
@@ -48,7 +51,26 @@ impl ControlEndpoint for RecoveringEndpoint {
     }
 }
 
+#[derive(Default)]
+struct RecoveryConsent {
+    refused: AtomicBool,
+    calls: AtomicUsize,
+}
+
+impl ElevationConsent for RecoveryConsent {
+    fn authorize(&self, operation: ElevationOperation) -> Result<(), ElevationConsentError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.refused.load(Ordering::SeqCst) {
+            Err(ElevationConsentError::AuthorizeElevation { operation })
+        } else {
+            Ok(())
+        }
+    }
+}
+
 struct RecoveringDaemon {
+    consent: RecoveryConsent,
+    execution_fails: AtomicBool,
     delegate: HostTransitionServiceAdapter,
     endpoint: Arc<RecoveringEndpoint>,
     probe_fails: AtomicBool,
@@ -79,6 +101,16 @@ impl ServiceProcessControl for RecoveringDaemon {
         self.delegate.uninstall().await
     }
     async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
+        let command = ServiceCommand::Start;
+        self.consent
+            .authorize(ElevationOperation::Service { command })
+            .map_err(|source| ServiceCommandError::AuthorizeServiceCommand { command, source })?;
+        if self.execution_fails.load(Ordering::SeqCst) {
+            return Err(ServiceCommandError::RunElevated {
+                command,
+                source: std::io::Error::other("OS dialog cancelled"),
+            });
+        }
         self.start_entered.notify_one();
         if self.block_start.load(Ordering::SeqCst) {
             self.start_release.notified().await;
@@ -128,6 +160,8 @@ impl RecoveryGraph {
             None,
         );
         let daemon = Arc::new(RecoveringDaemon {
+            consent: RecoveryConsent::default(),
+            execution_fails: AtomicBool::new(false),
             delegate: HostTransitionServiceAdapter {
                 endpoint: endpoint.clone(),
                 calls: Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -667,4 +701,36 @@ async fn production_timer_recovers_without_a_user_request() {
     );
     assert_eq!(graph.starts(), 1);
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+}
+
+#[tokio::test]
+async fn consent_refusal_pauses_automatic_service_recovery() {
+    for refused in [true, false] {
+        let graph = RecoveryGraph::new(true).await;
+        graph.outage(true).await;
+        graph
+            .daemon
+            .consent
+            .refused
+            .store(refused, Ordering::SeqCst);
+        graph
+            .daemon
+            .execution_fails
+            .store(!refused, Ordering::SeqCst);
+        graph.attempt().await;
+        assert_eq!(graph.daemon.consent.calls.load(Ordering::SeqCst), 1);
+        tokio::time::pause();
+        for tick in 1..=4 {
+            tokio::time::advance(RECOVERY_INTERVAL).await;
+            graph.attempt().await;
+            assert_eq!(
+                graph.daemon.consent.calls.load(Ordering::SeqCst),
+                if refused { 1 } else { (tick + 1).min(3) },
+                "refusal pauses immediately; execution failures retain the retry budget"
+            );
+        }
+        assert_eq!(graph.starts(), 0);
+        assert!(!graph.client.status().uncertain);
+        tokio::time::resume();
+    }
 }

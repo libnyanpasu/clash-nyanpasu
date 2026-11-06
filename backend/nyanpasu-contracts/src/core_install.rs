@@ -34,6 +34,13 @@ pub struct CoreBinaryCompanionPaths {
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum InstallCoreBinaryError {
+    #[snafu(display("could not authorize copying the {core} core to {destination}"))]
+    AuthorizeCoreCopy {
+        #[specta(type = String)]
+        core: ClashCore,
+        destination: ErrorPath,
+        source: crate::elevation::ElevationConsentError,
+    },
     #[snafu(display("could not start the elevated copy of the {core} core to {destination}"))]
     StartElevatedCopy {
         #[specta(type = String)]

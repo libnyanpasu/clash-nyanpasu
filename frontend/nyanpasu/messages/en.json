@@ -1492,6 +1492,7 @@
   "error_debug_http_change_enabled_unsupported": "Debug HTTP can only be turned on or off in the desktop app",
   "error_debug_http_read_status": "Could not read the debug HTTP status",
   "error_debug_http_change_enabled": "Could not turn debug HTTP on or off",
+  "error_elevation_authorize": "Administrator access cannot be requested from here",
   "error_system_dns_run_flush_command": "Permission to run {command} was not granted",
   "error_system_dns_flush_rejected": "{command} did not succeed (exit code {code})",
   "error_system_dns_unsupported": "Flushing the DNS cache is not supported on this system",

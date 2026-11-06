@@ -84,6 +84,11 @@ it and which shell capabilities it needs.
 Every dispatched call passes one audit seam in the RPC layer, whatever the
 transport. It records metadata only (transport, command, caller, duration and
 outcome), never payloads; the shell decides where the records go.
+E2 moves `dispatch_audited` and its injected synchronous sink port with the
+registry into `nyanpasu-rpc`. E3's local socket/CLI enters the same kernel at INFO,
+as HTTP does; Tauri IPC stays at DEBUG regardless of outcome. Direct HTTP archive
+and subscription establishment also enter this kernel, without auditing frames
+or retaining streams.
 
 | Target | Transport                                                        | Caller                              | Exposed commands                                                                                                                                            | Authorization                                                                                           |
 | ------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -313,22 +318,25 @@ Unsupported effects neither advance applied revisions nor retry automatically.
 Observer sinks (`UiEventSink` and `FrontendLogSink`) remain required; headless
 shells provide neutral implementations. C2b–C2c move proxy reads/writes, PAC,
 autostart, device identity, sidecar version probes, service control, DNS flush
-and binary installation into `nyanpasu-os`. Authorization behavior is unchanged;
-the consent port follows in C2d.
+and binary installation into `nyanpasu-os`. C2d adds the synchronous contracts
+consent port: desktop permits the existing OS prompt, while `RefuseElevation`
+prevents elevated launches and pauses automatic service recovery on refusal.
+E4 must inject that refusing policy into service control, DNS flush and binary
+installation in the independently assembled server.
 
 Known gaps against the target ownership:
 
 - Script extension capabilities still need explicit injection (A2b); extracting
   the runners and injecting their constructor did not change extension behavior.
-- The OS mechanisms in `nyanpasu-os` still authorize directly: service install
-  and DNS flush show OS authorization dialogs, and binary installation falls
-  back to an elevated copy that the WebUI can reach through `update_core`
-  ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). Phase C
-  removes `update_core` from the WebUI. The embedded WebUI shares the desktop
-  client, so service-mode changes through `patch_app_config`,
-  `retry_configuration_runtime` and transaction compensation can still reach
-  the desktop's elevation policy; the separately assembled server (E4) closes
-  these paths by injecting a refusing policy.
+- C2e rejects HTTP `update_core` before job admission with unsupported / 501;
+  desktop updates retain the binary install copy fallback
+  ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). The embedded
+  WebUI still shares the desktop elevation policy when `patch_app_config` turns
+  service mode on or off, during `retry_configuration_runtime` and transaction
+  compensation (`client/application_workflow/tcc.rs`). C2 adds no per-call
+  permission context or second client. The separately assembled server (E4)
+  must inject the refusing policy and verify that all these paths cannot show
+  an authorization dialog.
 - Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).

@@ -1,13 +1,10 @@
-use crate::{
-    client::application_workflow::{
-        impact,
+use crate::state::{
+    config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
+    mutation::{
+        MutationCoordinator, impact,
         impact::{MutationHints, RequestedRuntimeFields},
-        mutation::ConfigDomain,
-        policy::CommandClass,
-    },
-    state::{
-        config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
-        mutation::MutationCoordinator,
+        intent::CommandClass,
+        value::ConfigDomain,
     },
 };
 use nyanpasu_core_manager::OperationId;

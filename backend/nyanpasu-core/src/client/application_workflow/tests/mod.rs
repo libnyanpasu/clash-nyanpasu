@@ -1,9 +1,12 @@
-use crate::client::{
-    UiEventSink,
-    test_support::workflow::{
-        Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
-        disable_mode_interruption, override_patch, start_replacement,
+use crate::{
+    client::{
+        UiEventSink,
+        test_support::workflow::{
+            Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
+            disable_mode_interruption, override_patch, start_replacement,
+        },
     },
+    state::mutation::value::MutationReceipt,
 };
 mod closing;
 mod connection_policy;
@@ -33,7 +36,7 @@ use tokio::sync::Notify;
 /// receipt for the operation.
 fn classify(
     error: nyanpasu_state_engine::ReplaceIfVersionError,
-    receipt: &super::mutation::MutationReceipt,
+    receipt: &MutationReceipt,
 ) -> crate::state::mutation::CommitAborted {
     crate::state::mutation::CommitAborted::classify(error, Some(receipt))
 }

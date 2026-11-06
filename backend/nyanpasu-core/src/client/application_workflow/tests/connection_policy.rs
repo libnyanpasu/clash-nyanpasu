@@ -749,7 +749,7 @@ async fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_
         assert!(workflow.mutation_journal().completed.iter().any(|receipt| {
             receipt.operation_id == active
                 && receipt.conclusion
-                    == crate::client::application_workflow::mutation::MutationConclusion::Confirmed
+                    == crate::state::mutation::value::MutationConclusion::Confirmed
         }));
         assert_eq!(
             *f.calls.events.lock().unwrap(),

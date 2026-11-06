@@ -3,7 +3,7 @@
 use super::test_support::test_client_args_with_endpoint;
 use crate::client::{
     NyanpasuClient,
-    application_workflow::{mutation, startup::StartupOutcome},
+    application_workflow::startup::StartupOutcome,
     test_support,
     test_support::{
         TestControlEndpoint,
@@ -205,7 +205,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
             );
             let crate::client::ClientError::Config(
                 crate::state::config_error::ConfigError::Commit {
-                    domain: mutation::ConfigDomain::Clash,
+                    domain: crate::state::mutation::value::ConfigDomain::Clash,
                     source: aborted,
                 },
             ) = &error

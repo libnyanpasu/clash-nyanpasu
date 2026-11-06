@@ -42,16 +42,8 @@ use tokio::sync::Notify;
 use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
-        impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, RuntimeImpact,
-            TouchedContent, runtime_impact,
-        },
-        mutation::{
-            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
-            MutationOutcomeKind, MutationReceipt,
-        },
+        mutation::{DEFERRED_RETRY_BUDGET, EvidenceGap},
         participant::ApplicationMutationParticipant,
-        policy::CommandClass,
     },
     RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
@@ -64,7 +56,16 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    state::mutation::{CommitAborted, RuntimeAftermath},
+    state::mutation::{
+        CommitAborted, RuntimeAftermath,
+        impact::{
+            ActivationIntent, ContentDigest, MutationDomain, MutationHints, RequestedRuntimeFields,
+            RuntimeImpact, TouchedContent, runtime_impact,
+        },
+        intent::CommandClass,
+        runtime_apply::RuntimeApplyReceipt,
+        value::{CheckRecord, MutationConclusion, MutationOutcomeKind, MutationReceipt},
+    },
 };
 
 // -- fixture ---------------------------------------------------------------
@@ -192,8 +193,8 @@ pub(super) fn temp_path(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
 /// Its identity and exact bytes match the fresh fake endpoint observation.
 /// A stale or unrelated receipt is tested explicitly rather than admitted by
 /// the default fixture.
-pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
-    runtime::RuntimeApplyReceipt {
+pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
+    RuntimeApplyReceipt {
         revision: runtime::tests::test_revision(),
         config_text: Arc::from("mode: rule\n"),
         config_digest: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
@@ -205,7 +206,7 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
             features: Vec::new(),
         },
         host: crate::actor_v2::endpoint::ExecutionHost::Local,
-        run_intent: super::super::policy::CoreRunIntent::Running,
+        run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings {
             policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
             keep_http_controller: true,
@@ -452,14 +453,7 @@ pub(super) async fn mutate<T, F>(
 ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
 where
     F: nyanpasu_persistence::format::Format + Clone,
-    T: super::super::mutation::MutationDomain
-        + Clone
-        + Send
-        + Sync
-        + 'static
-        + Serialize
-        + DeserializeOwned
-        + Default,
+    T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
     super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     mutate_settling(
@@ -494,14 +488,7 @@ pub(super) async fn mutate_settling<T, F>(
 )
 where
     F: nyanpasu_persistence::format::Format + Clone,
-    T: super::super::mutation::MutationDomain
-        + Clone
-        + Send
-        + Sync
-        + 'static
-        + Serialize
-        + DeserializeOwned
-        + Default,
+    T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
     super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let hints = MutationHints::default();
@@ -555,14 +542,7 @@ pub(super) async fn mutate_with_hints<T, F>(
 )
 where
     F: nyanpasu_persistence::format::Format + Clone,
-    T: super::super::mutation::MutationDomain
-        + Clone
-        + Send
-        + Sync
-        + 'static
-        + Serialize
-        + DeserializeOwned
-        + Default,
+    T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
     super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
@@ -613,14 +593,7 @@ pub(super) async fn simple_mutate<T, F>(
 )
 where
     F: nyanpasu_persistence::format::Format + Clone,
-    T: super::super::mutation::MutationDomain
-        + Clone
-        + Send
-        + Sync
-        + 'static
-        + Serialize
-        + DeserializeOwned
-        + Default,
+    T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
     super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();

@@ -21,9 +21,12 @@ use super::{
     mutation::{AppliedCandidate, DeferredTarget, KnownRuntimeState},
     workflow::ApplicationWorkflow,
 };
-use crate::client::{
-    runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
-    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+use crate::{
+    client::{
+        runtime::RuntimeSnapshot,
+        runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+    },
+    state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 
 pub(super) use super::tcc::RestorableBaseline;

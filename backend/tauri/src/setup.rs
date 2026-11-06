@@ -431,7 +431,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
-        direct_egress: Arc::new(NetworkDirectEgressProbe),
+        direct_egress: Arc::new(NetworkDirectEgressProbe::default()),
         geo_index,
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(

@@ -51,7 +51,8 @@ pub enum StunAttempt {
         address: IpAddr,
         latency_ms: u64,
     },
-    /// The host has no address of this family, or did not resolve.
+    /// The host has no address of this family it may be asked at, or did not
+    /// resolve.
     NoAddress,
     NoAnswer,
 }

@@ -72,16 +72,59 @@ fn transport_for(capabilities: StunServerCapabilities, family: Family) -> Option
 
 /// Asks STUN servers one at a time, so only the operators needed for an
 /// answer learn the address, then the accepted HTTP lookup providers.
-pub struct NetworkDirectEgressProbe;
+pub struct NetworkDirectEgressProbe {
+    /// The addresses a STUN server may be asked at.
+    destinations: fn(IpAddr) -> bool,
+}
+
+impl Default for NetworkDirectEgressProbe {
+    fn default() -> Self {
+        Self {
+            destinations: is_public,
+        }
+    }
+}
+
+/// A server on this machine or the local network sees a local address, never
+/// the public one, and asking one would let whoever edits the server list
+/// reach those hosts. Fake-IP answers under TUN are left to the core's rules.
+fn is_public(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            !(ip.is_loopback()
+                || ip.is_private()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || ip.is_broadcast()
+                || ip.is_multicast())
+        }
+        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
+            Some(ip) => is_public(ip.into()),
+            None => {
+                !(ip.is_loopback()
+                    || ip.is_unspecified()
+                    || ip.is_multicast()
+                    || ip.is_unique_local()
+                    || ip.is_unicast_link_local())
+            }
+        },
+    }
+}
 
 impl NetworkDirectEgressProbe {
-    async fn probe(sources: &ProbeSources, family: Family) -> Option<IpAddr> {
+    async fn probe(&self, sources: &ProbeSources, family: Family) -> Option<IpAddr> {
         for target in &sources.stun {
             let Some(transport) = transport_for(target.capabilities, family) else {
                 continue;
             };
-            if let StunAttempt::Answered { address, .. } =
-                ask_stun(&target.host, target.port, transport, family).await
+            if let StunAttempt::Answered { address, .. } = ask_stun(
+                &target.host,
+                target.port,
+                transport,
+                family,
+                self.destinations,
+            )
+            .await
                 && family.matches(address)
             {
                 return Some(address);
@@ -104,14 +147,14 @@ impl NetworkDirectEgressProbe {
 #[async_trait::async_trait]
 impl DirectEgressProbe for NetworkDirectEgressProbe {
     async fn ipv4(&self, sources: &ProbeSources) -> Option<Ipv4Addr> {
-        match Self::probe(sources, Family::Ipv4).await? {
+        match self.probe(sources, Family::Ipv4).await? {
             IpAddr::V4(address) => Some(address),
             IpAddr::V6(_) => None,
         }
     }
 
     async fn ipv6(&self, sources: &ProbeSources) -> Option<Ipv6Addr> {
-        match Self::probe(sources, Family::Ipv6).await? {
+        match self.probe(sources, Family::Ipv6).await? {
             IpAddr::V6(address) => Some(address),
             IpAddr::V4(_) => None,
         }
@@ -119,20 +162,29 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
 
     async fn test_stun_server(&self, host: &str, port: u16) -> StunServerTest {
         let (udp_ipv4, udp_ipv6, tcp_ipv4, tcp_ipv6) = tokio::join!(
-            ask_stun(host, port, Transport::Udp, Family::Ipv4),
-            ask_stun(host, port, Transport::Udp, Family::Ipv6),
-            ask_stun(host, port, Transport::Tcp, Family::Ipv4),
-            ask_stun(host, port, Transport::Tcp, Family::Ipv6),
+            ask_stun(host, port, Transport::Udp, Family::Ipv4, self.destinations),
+            ask_stun(host, port, Transport::Udp, Family::Ipv6, self.destinations),
+            ask_stun(host, port, Transport::Tcp, Family::Ipv4, self.destinations),
+            ask_stun(host, port, Transport::Tcp, Family::Ipv6, self.destinations),
         );
         StunServerTest::new(udp_ipv4, udp_ipv6, tcp_ipv4, tcp_ipv6)
     }
 }
 
 /// One Binding request to the first address of `family` that `host` resolves
-/// to. The socket is a plain OS socket, so no proxy setting applies.
-async fn ask_stun(host: &str, port: u16, transport: Transport, family: Family) -> StunAttempt {
+/// to among the `destinations`. The socket is a plain OS socket, so no proxy
+/// setting applies.
+async fn ask_stun(
+    host: &str,
+    port: u16,
+    transport: Transport,
+    family: Family,
+    destinations: fn(IpAddr) -> bool,
+) -> StunAttempt {
     let server = match tokio::net::lookup_host((host, port)).await {
-        Ok(mut addresses) => addresses.find(|address| family.matches(address.ip())),
+        Ok(mut addresses) => {
+            addresses.find(|address| family.matches(address.ip()) && destinations(address.ip()))
+        }
         Err(error) => {
             tracing::debug!(host, %error, "the STUN server did not resolve");
             None
@@ -265,6 +317,11 @@ mod tests {
     use crate::client::direct_egress::stun::tests::binding_response;
 
     const LOCALHOST: &str = "127.0.0.1";
+    /// The servers these tests run listen on loopback.
+    const ANYWHERE: fn(IpAddr) -> bool = |_| true;
+    const LOOPBACK_PROBE: NetworkDirectEgressProbe = NetworkDirectEgressProbe {
+        destinations: ANYWHERE,
+    };
 
     async fn serve(router: Router) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -345,7 +402,7 @@ mod tests {
     async fn a_udp_server_names_the_address_the_request_came_from() {
         let port = udp_stun_server(0).await;
 
-        let attempt = ask_stun(LOCALHOST, port, Transport::Udp, Family::Ipv4).await;
+        let attempt = ask_stun(LOCALHOST, port, Transport::Udp, Family::Ipv4, ANYWHERE).await;
 
         assert!(matches!(
             attempt,
@@ -357,7 +414,7 @@ mod tests {
     async fn a_lost_udp_request_is_sent_again() {
         let port = udp_stun_server(1).await;
 
-        let attempt = ask_stun(LOCALHOST, port, Transport::Udp, Family::Ipv4).await;
+        let attempt = ask_stun(LOCALHOST, port, Transport::Udp, Family::Ipv4, ANYWHERE).await;
 
         assert!(
             matches!(attempt, StunAttempt::Answered { .. }),
@@ -369,7 +426,7 @@ mod tests {
     async fn a_tcp_server_names_the_address_the_request_came_from() {
         let port = tcp_stun_server().await;
 
-        let attempt = ask_stun(LOCALHOST, port, Transport::Tcp, Family::Ipv4).await;
+        let attempt = ask_stun(LOCALHOST, port, Transport::Tcp, Family::Ipv4, ANYWHERE).await;
 
         assert!(matches!(
             attempt,
@@ -379,14 +436,21 @@ mod tests {
 
     #[tokio::test]
     async fn a_host_without_an_address_of_the_family_is_not_asked() {
-        let attempt = ask_stun(LOCALHOST, 3478, Transport::Udp, Family::Ipv6).await;
+        let attempt = ask_stun(LOCALHOST, 3478, Transport::Udp, Family::Ipv6, ANYWHERE).await;
 
         assert_eq!(attempt, StunAttempt::NoAddress);
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_silent_udp_server_is_no_answer() {
-        let attempt = ask_stun(LOCALHOST, closed_port(), Transport::Udp, Family::Ipv4).await;
+        let attempt = ask_stun(
+            LOCALHOST,
+            closed_port(),
+            Transport::Udp,
+            Family::Ipv4,
+            ANYWHERE,
+        )
+        .await;
 
         assert_eq!(attempt, StunAttempt::NoAnswer);
     }
@@ -400,19 +464,17 @@ mod tests {
         };
 
         assert_eq!(
-            NetworkDirectEgressProbe.ipv4(&sources).await,
+            LOOPBACK_PROBE.ipv4(&sources).await,
             Some(Ipv4Addr::LOCALHOST)
         );
-        assert_eq!(NetworkDirectEgressProbe.ipv6(&sources).await, None);
+        assert_eq!(LOOPBACK_PROBE.ipv6(&sources).await, None);
     }
 
     #[tokio::test]
     async fn a_server_test_reports_each_transport_and_family() {
         let udp = udp_stun_server(0).await;
 
-        let test = NetworkDirectEgressProbe
-            .test_stun_server(LOCALHOST, udp)
-            .await;
+        let test = LOOPBACK_PROBE.test_stun_server(LOCALHOST, udp).await;
 
         assert!(matches!(test.udp_ipv4, StunAttempt::Answered { .. }));
         assert_eq!(test.udp_ipv6, StunAttempt::NoAddress);
@@ -427,6 +489,32 @@ mod tests {
                 tcp: StunFamilies::default(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn servers_on_this_machine_or_the_local_network_are_not_asked() {
+        let udp = udp_stun_server(0).await;
+
+        let test = NetworkDirectEgressProbe::default()
+            .test_stun_server(LOCALHOST, udp)
+            .await;
+
+        assert_eq!(test.udp_ipv4, StunAttempt::NoAddress);
+        for local in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "192.168.1.1",
+            "169.254.0.1",
+            "::1",
+            "fd00::1",
+            "fe80::1",
+            "::ffff:192.168.1.1",
+        ] {
+            assert!(!is_public(local.parse().unwrap()), "{local}");
+        }
+        for public in ["203.0.113.7", "198.18.0.1", "2001:db8::7"] {
+            assert!(is_public(public.parse().unwrap()), "{public}");
+        }
     }
 
     #[tokio::test]

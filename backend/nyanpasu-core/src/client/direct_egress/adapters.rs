@@ -15,7 +15,7 @@ use super::{
     stun::{self, HEADER_LEN, TransactionId},
 };
 
-/// A STUN server that does not answer within this is skipped, so a long
+/// A STUN server that does not resolve and answer within this is skipped, so a long
 /// server list stays usable when several are unreachable.
 const STUN_DEADLINE: Duration = Duration::from_millis(2500);
 /// Delays before each UDP retransmission (RFC 8489 starts at 500 ms and
@@ -181,12 +181,20 @@ async fn ask_stun(
     family: Family,
     destinations: fn(IpAddr) -> bool,
 ) -> StunAttempt {
-    let server = match tokio::net::lookup_host((host, port)).await {
-        Ok(mut addresses) => {
+    // Resolution counts against the deadline, so a resolver that never
+    // answers cannot hold up the next server.
+    let deadline = Instant::now() + STUN_DEADLINE;
+    let resolved = tokio::time::timeout_at(deadline, tokio::net::lookup_host((host, port))).await;
+    let server = match resolved {
+        Ok(Ok(mut addresses)) => {
             addresses.find(|address| family.matches(address.ip()) && destinations(address.ip()))
         }
-        Err(error) => {
+        Ok(Err(error)) => {
             tracing::debug!(host, %error, "the STUN server did not resolve");
+            None
+        }
+        Err(_) => {
+            tracing::debug!(host, "the STUN server did not resolve in time");
             None
         }
     };
@@ -207,7 +215,7 @@ async fn ask_stun(
             Transport::Tcp => exchange_tcp(server, id).await,
         }
     };
-    match tokio::time::timeout(STUN_DEADLINE, exchange).await {
+    match tokio::time::timeout_at(deadline, exchange).await {
         Ok(Ok(mapped)) => StunAttempt::Answered {
             address: mapped.ip(),
             latency_ms: started.elapsed().as_millis() as u64,

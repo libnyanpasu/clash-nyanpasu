@@ -8,19 +8,20 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use nyanpasu_core::client::{
+    effects::{
+        plan::EffectKind,
+        status::{EffectHealth, EffectRevision, EffectStatus},
+    },
+    hotkey::ports::{HotkeyAction, HotkeyBindings, HotkeyOp},
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio_util::sync::CancellationToken;
 
 use super::{
     HotkeyStatus,
     error::{HotkeyEffectError, InvalidBindingsSnafu, PartialRegistrationSnafu},
-    ports::{
-        HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, ShortcutError, ShortcutRegistrar,
-    },
-};
-use crate::client::effects::{
-    plan::EffectKind,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    ports::{HotkeyActionSink, ShortcutError, ShortcutRegistrar},
 };
 
 pub(super) enum Message {

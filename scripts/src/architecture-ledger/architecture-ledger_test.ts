@@ -995,6 +995,7 @@ test('STATIC_ALLOWLIST: each entry is unique, in a gated crate, categorized and 
 
 for (const root of [
   'backend/tauri/src/',
+  'backend/tauri/src/desktop/',
   'backend/nyanpasu-core/src/',
   'backend/nyanpasu-migration/src/',
   'backend/nyanpasu-owner-support/src/',

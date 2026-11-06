@@ -549,8 +549,8 @@ mod tests {
     use nyanpasu_config::{
         application::{
             ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig,
-            ProxiesSelectorMode, ReleaseChannel, ThemeMode, TrayMenuMode, WindowCloseBehavior,
-            WindowCloseSettings,
+            ProxiesSelectorMode, ReleaseChannel, StatisticWidgetVariant, ThemeMode, TrayMenuMode,
+            WindowCloseBehavior, WindowCloseSettings,
         },
         clash::config::{
             ClashConfigPatch,
@@ -573,7 +573,6 @@ mod tests {
         },
         runtime::executor::ResolvedPortBindings,
     };
-    use nyanpasu_widget_protocol::StatisticWidgetVariant;
     use struct_patch::Patch as _;
 
     use crate::client::effects::{

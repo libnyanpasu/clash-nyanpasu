@@ -3,10 +3,13 @@
 //! The actor builds the variant where the failure happens; the degraded
 //! status takes its code, its retry flag and its text from it.
 
+use nyanpasu_core::client::{
+    effects::status::{EffectFailureCode, EffectHealth, failure_text},
+    hotkey::ports::HotkeyParseError,
+};
 use snafu::Snafu;
 
-use super::ports::{HotkeyParseError, ShortcutError};
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, failure_text};
+use super::ports::ShortcutError;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]

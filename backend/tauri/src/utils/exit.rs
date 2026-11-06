@@ -201,14 +201,14 @@ pub fn shutdown_on_main_thread(app_handle: &AppHandle) {
         return;
     };
     let (done, work) = app_handle
-        .state::<std::sync::Arc<nyanpasu_core::client::MainThreadHandoff>>()
+        .state::<std::sync::Arc<crate::desktop::main_thread::MainThreadHandoff>>()
         .take_over();
     client.request_shutdown();
     tauri::async_runtime::spawn(async move {
         client.wait_shutdown().await;
-        let _ = done.send(nyanpasu_core::client::MainThreadWork::Done);
+        let _ = done.send(crate::desktop::main_thread::MainThreadWork::Done);
     });
-    while let Ok(nyanpasu_core::client::MainThreadWork::Run(task)) = work.recv() {
+    while let Ok(crate::desktop::main_thread::MainThreadWork::Run(task)) = work.recv() {
         task();
     }
     app_handle.cleanup_before_exit();

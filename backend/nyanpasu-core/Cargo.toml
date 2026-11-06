@@ -62,9 +62,6 @@ chrono = { version = '0.4', features = ['serde'] }
 time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
 uuid = '1.7.0'
 nyanpasu-macro = { path = '../nyanpasu-macro' }
-nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
-  'ipc'
-] }
 nyanpasu-ipc = { workspace = true }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 semver = '1.0'

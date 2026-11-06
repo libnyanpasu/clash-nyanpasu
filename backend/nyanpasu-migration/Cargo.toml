@@ -20,7 +20,6 @@ nyanpasu-utils = { path = '../nyanpasu-runtime/crates/nyanpasu-utils', default-f
   'serde'
 ] }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
-nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol' }
 anyhow = '1'
 camino = '1.1.9'
 chrono = '0.4'

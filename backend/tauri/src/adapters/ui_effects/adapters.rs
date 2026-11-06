@@ -13,14 +13,14 @@ use snafu::{OptionExt as _, ResultExt as _};
 use super::ports::{WIDGET_STOP_BOUND, WidgetRuntime};
 use crate::{
     core::tray::{Tray, TrayWork, icon::TrayIcon},
+    desktop::effects::ports::{
+        LocaleSink, ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WidgetController, WidgetError,
+    },
     utils::init::logging::ReloadSignal,
 };
 use nyanpasu_core::client::effects::{
     plan::{TrayView, WidgetLogoState},
-    ports::{
-        LocaleSink, LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu,
-        ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WidgetController, WidgetError,
-    },
+    ports::{LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu},
 };
 
 #[derive(Debug, snafu::Snafu)]

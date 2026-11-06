@@ -9,6 +9,7 @@ mod bundle;
 mod cmds;
 mod consts;
 mod core;
+mod desktop;
 mod event_handler;
 mod ipc;
 mod server;

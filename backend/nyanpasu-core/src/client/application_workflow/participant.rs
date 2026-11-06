@@ -20,11 +20,16 @@ use tokio::sync::oneshot;
 
 use super::{
     ApplicationWorkflowClient,
-    impact::{MutationHints, RuntimeImpact},
-    mutation::{DomainChange, MutationReceipt, MutationRequest},
-    policy::CommandClass,
+    mutation::{DomainChange, MutationRequest},
 };
-use crate::client::runtime_error::{OwnerUnresponsiveSnafu, ack_of};
+use crate::{
+    client::runtime_error::{OwnerUnresponsiveSnafu, ack_of},
+    state::mutation::{
+        impact::{MutationHints, RuntimeImpact},
+        intent::CommandClass,
+        value::MutationReceipt,
+    },
+};
 
 pub(crate) struct ApplicationMutationParticipant<T> {
     operation_id: OperationId,

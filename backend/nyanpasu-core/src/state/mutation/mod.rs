@@ -1,6 +1,11 @@
 //! Startup-injected connection to the application transaction participant
 //! and the effects owner, and what a source tells its caller once the Runtime
 //! has settled a mutation.
+pub(crate) mod impact;
+pub(crate) mod intent;
+pub(crate) mod runtime_apply;
+pub mod value;
+
 use std::sync::Arc;
 
 use nyanpasu_core_manager::OperationId;
@@ -12,19 +17,23 @@ use serde::Serialize;
 use snafu::{IntoError, Snafu, ensure};
 use tokio::sync::{oneshot, watch};
 
-use crate::client::{
-    application_workflow::{
-        ApplicationWorkflowClient,
+use crate::{
+    client::{
+        application_workflow::{
+            ApplicationWorkflowClient, mutation::DomainChange,
+            participant::ApplicationMutationParticipant,
+        },
+        effects::ports::CommitNotifications,
+        runtime::{
+            CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
+        },
+        runtime_error::{RuntimeError, refusal_of},
+    },
+    state::mutation::{
         impact::{MutationHints, RuntimeImpact},
-        mutation::{DomainChange, MutationConclusion, MutationOutcomeKind, MutationReceipt},
-        participant::ApplicationMutationParticipant,
-        policy::CommandClass,
+        intent::CommandClass,
+        value::{MutationConclusion, MutationOutcomeKind, MutationReceipt},
     },
-    effects::ports::CommitNotifications,
-    runtime::{
-        CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
-    },
-    runtime_error::{RuntimeError, refusal_of},
 };
 
 #[derive(Clone)]

@@ -46,7 +46,7 @@ pub mod jobs;
 pub mod logs;
 #[cfg(test)]
 mod network_tests;
-mod ports;
+pub(crate) mod ports;
 pub mod profiles;
 pub mod runtime;
 pub mod runtime_build;

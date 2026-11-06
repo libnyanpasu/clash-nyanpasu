@@ -1,5 +1,5 @@
 //! Fixed source inputs and content for one runtime target and build.
-use super::impact;
+use crate::state::mutation::impact;
 use nyanpasu_config::{
     application::NyanpasuAppConfig,
     clash::config::ClashConfig,

@@ -30,11 +30,13 @@
 use nyanpasu_core_manager::CoreKind;
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
-use super::{application_workflow::policy::CoreRunIntent, runtime::RuntimeApplyReceipt};
-use crate::actor_v2::{
-    CoreStatusProjection,
-    endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::AppliedConfigBinding,
+use crate::{
+    actor_v2::{
+        CoreStatusProjection,
+        endpoint::{ExecutionHost, wire_core_type_to_kind},
+        facade::AppliedConfigBinding,
+    },
+    state::mutation::{intent::CoreRunIntent, runtime_apply::RuntimeApplyReceipt},
 };
 
 /// What the app can observe about the runtime right now. Built from a status

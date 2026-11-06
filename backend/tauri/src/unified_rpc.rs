@@ -1100,8 +1100,10 @@ mod tests {
             ));
         let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.host_adapters.debug_http =
-            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
+        args.host_adapters.debug_http = Some(crate::server::debug_http::tests::control_factory(
+            frontend,
+            routes.clone(),
+        ));
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -1219,8 +1221,10 @@ mod tests {
         let frontend_events = Arc::new(RecordingSink::default());
         args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.host_adapters.debug_http =
-            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
+        args.host_adapters.debug_http = Some(crate::server::debug_http::tests::control_factory(
+            frontend,
+            routes.clone(),
+        ));
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();

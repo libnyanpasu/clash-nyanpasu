@@ -28,6 +28,7 @@ use nyanpasu_core::client::{
             MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
             TrayError, TrayRefresher, WidgetController, WidgetError,
         },
+        presentation::PresentationEffectExecutor,
         status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{
@@ -204,15 +205,14 @@ async fn executor_with_owners(
     )
     .await
     .expect("the hotkey actor should spawn");
-    ApplicationEffectExecutor::new(
-        system_proxy,
+    let presentation = Arc::new(PresentationEffectExecutor::new(
         hotkeys,
         Arc::new(PlatformAcceleratorValidator),
         locale,
-        logger,
         widget,
         tray,
-    )
+    ));
+    ApplicationEffectExecutor::new(system_proxy, logger, Some(presentation))
 }
 
 /// A controller whose icon paths lead nowhere: the widget logo is the bundled
@@ -656,6 +656,96 @@ async fn a_widget_that_never_started_leaves_nothing_for_the_disable() {
         host.events(),
         ["spawn", "handshake dropped"],
         "nothing was left to stop"
+    );
+}
+
+#[tokio::test]
+async fn failed_full_refresh_is_retried_until_success_then_part_stays_part() {
+    let log: CallLog = Arc::default();
+    let full_calls = Arc::new(AtomicUsize::new(0));
+    let mut tray = MockTrayRefresher::new();
+    let full_log = log.clone();
+    let attempts = full_calls.clone();
+    tray.expect_refresh_full().times(2).returning(move |_| {
+        let first = attempts.fetch_add(1, Ordering::SeqCst) == 0;
+        record(&full_log, "refresh_full");
+        Box::pin(async move {
+            if first {
+                Err(TrayError::ScheduleTrayWork {
+                    source: "tray refused".into(),
+                })
+            } else {
+                Ok(())
+            }
+        })
+    });
+    let part_log = log.clone();
+    tray.expect_refresh_part().times(1).returning(move |_| {
+        record(&part_log, "refresh_part");
+        Box::pin(async { Ok(()) })
+    });
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(MockWidgetController::new()),
+        Arc::new(tray),
+    )
+    .await;
+    let view = inputs(NyanpasuAppConfig::default()).tray_view();
+
+    let failed = executor
+        .apply(
+            EffectRevision::new(1),
+            ApplicationEffectPlan::from_effects(vec![ApplicationEffect::Tray(
+                TrayRefresh::Full,
+                view,
+            )]),
+        )
+        .await;
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].kind, EffectKind::Tray);
+    assert_eq!(failed[0].desired_revision, EffectRevision::new(1));
+    assert_eq!(failed[0].applied_revision, EffectRevision::default());
+    assert!(matches!(
+        failed[0].health,
+        EffectHealth::Degraded {
+            code: EffectFailureCode::TrayRefreshFailed,
+            retryable: true,
+            ..
+        }
+    ));
+    assert_eq!(full_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(calls(&log), ["refresh_full"]);
+
+    let part =
+        ApplicationEffectPlan::from_effects(vec![ApplicationEffect::Tray(TrayRefresh::Part, view)]);
+    let retried = executor.apply(EffectRevision::new(2), part.clone()).await;
+    assert_eq!(
+        retried,
+        vec![EffectStatus {
+            kind: EffectKind::Tray,
+            desired_revision: EffectRevision::new(2),
+            applied_revision: EffectRevision::new(2),
+            health: EffectHealth::Healthy,
+        }]
+    );
+    assert_eq!(full_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(calls(&log), ["refresh_full", "refresh_full"]);
+
+    let refreshed = executor.apply(EffectRevision::new(3), part).await;
+    assert_eq!(
+        refreshed,
+        vec![EffectStatus {
+            kind: EffectKind::Tray,
+            desired_revision: EffectRevision::new(3),
+            applied_revision: EffectRevision::new(3),
+            health: EffectHealth::Healthy,
+        }]
+    );
+    assert_eq!(full_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        calls(&log),
+        ["refresh_full", "refresh_full", "refresh_part"]
     );
 }
 

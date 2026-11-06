@@ -29,7 +29,7 @@ use tokio_util::task::TaskTracker;
 use self::{
     actor::{HotkeyActor, Message},
     error::HotkeyEffectError,
-    ports::{HotkeyAction, HotkeyBindings},
+    ports::{HotkeyAction, HotkeyBindings, WindowError},
 };
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
 
@@ -139,8 +139,9 @@ fn stopped_health() -> EffectHealth {
 /// effect, leaving the stored config holding bindings that can never register.
 pub(crate) fn validate_bindings(
     raw: &[String],
-    accelerators: &dyn ports::AcceleratorValidator,
+    accelerators: Option<&dyn ports::AcceleratorValidator>,
 ) -> std::result::Result<(), ConfigError> {
+    let accelerators = accelerators.ok_or(ConfigError::ValidateHotkeyCapability)?;
     HotkeyBindings::parse(raw, accelerators).context(ValidateHotkeysSnafu)?;
     Ok(())
 }
@@ -154,7 +155,12 @@ impl NyanpasuClient {
     pub async fn dispatch_hotkey_action(&self, action: HotkeyAction) -> Result<()> {
         match action {
             HotkeyAction::OpenOrCloseDashboard => {
-                self.inner.window.toggle_dashboard().await?;
+                let window = self
+                    .inner
+                    .window
+                    .as_ref()
+                    .ok_or(WindowError::ToggleDashboardUnsupported)?;
+                window.toggle_dashboard().await?;
                 Ok(())
             }
             HotkeyAction::ClashModeRule => self.set_clash_mode(Mode::Rule).await,

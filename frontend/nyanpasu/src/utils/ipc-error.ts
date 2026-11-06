@@ -4,6 +4,7 @@ import type {
   ConfigError,
   CoreErrorKind,
   CoreFailure,
+  DebugHttpControlError,
   DegradationReason,
   EffectFailureCode,
   EffectsError,
@@ -44,6 +45,8 @@ export function ipcErrorMessage(
       return configErrorMessage(error.kind.error, profileLabel)
     case 'storage':
       return storageErrorMessage(error.kind.error)
+    case 'debug_http':
+      return debugHttpErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -215,6 +218,8 @@ export function configErrorMessage(
       })
     case 'invalid_latency_timeout':
       return m.error_config_invalid_latency_timeout({ reason: error.reason })
+    case 'validate_hotkey_capability':
+      return m.error_config_hotkey_capability_unsupported()
     case 'validate_hotkeys':
       return hotkeyParseMessage(error.source)
     case 'workflow_not_ready':
@@ -325,6 +330,19 @@ function osProxyErrorMessage(error: OsProxyError): string {
         host: error.host,
         port: error.port,
       })
+  }
+}
+
+function debugHttpErrorMessage(error: DebugHttpControlError): string {
+  switch (error.kind) {
+    case 'read_status_unsupported':
+      return m.error_debug_http_read_status_unsupported()
+    case 'change_enabled_unsupported':
+      return m.error_debug_http_change_enabled_unsupported()
+    case 'read_status':
+      return m.error_debug_http_read_status()
+    case 'change_enabled':
+      return m.error_debug_http_change_enabled()
   }
 }
 
@@ -675,6 +693,8 @@ function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
 /** Why a committed setting has not taken effect yet, localized by its code. */
 export function effectFailureMessage(code: EffectFailureCode): string {
   switch (code) {
+    case 'presentation_unsupported':
+      return m.effect_failure_presentation_unsupported()
     case 'hotkey_invalid_bindings':
       return m.effect_failure_hotkey_invalid_bindings()
     case 'hotkey_partial_registration':

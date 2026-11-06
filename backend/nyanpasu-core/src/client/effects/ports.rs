@@ -173,6 +173,22 @@ pub trait ApplicationEffectsPort: Send + Sync + 'static {
     ) -> Vec<EffectStatus>;
 }
 
+/// Executes only presentation items, in plan order, with one status per item.
+///
+/// The application executor delegates each item at its original position among
+/// shared effects. Failures are reported as health because configuration is
+/// already committed; the supplied revision is preserved in every result.
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
+#[async_trait::async_trait]
+pub trait PresentationEffectsPort: Send + Sync + 'static {
+    /// `plan` contains only locale, hotkey, widget, widget-logo and tray effects.
+    async fn apply(
+        &self,
+        revision: EffectRevision,
+        plan: ApplicationEffectPlan,
+    ) -> Vec<EffectStatus>;
+}
+
 /// Accepts every plan and changes nothing. The composition root now assembles
 /// a real executor, so this is only for tests that care about the pipeline
 /// rather than about any particular effect.

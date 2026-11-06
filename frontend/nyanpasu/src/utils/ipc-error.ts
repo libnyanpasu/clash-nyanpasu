@@ -1,4 +1,5 @@
 import { m } from '@/paraglide/messages'
+import { isIpcError } from '@nyanpasu/rpc'
 import type {
   CommitAborted,
   ConfigError,
@@ -27,6 +28,30 @@ import type {
   SystemDnsError,
 } from '@nyanpasu/rpc/types'
 import { stepParts, type ProfileLabel } from './profile-label'
+
+/** The persisted build ID carried by a structured check refusal. */
+export function rejectedSnapshotId(error: unknown): string | undefined {
+  if (!isIpcError(error)) return undefined
+  const kind = error.kind
+  if (kind.domain === 'runtime') {
+    return kind.error.kind === 'core_rejected_config'
+      ? (kind.error.rejected_snapshot_id ?? undefined)
+      : undefined
+  }
+  if (
+    (kind.domain === 'profiles' || kind.domain === 'config') &&
+    kind.error.kind === 'commit'
+  ) {
+    const commit = kind.error.source
+    if (commit.kind === 'runtime_refused' || commit.kind === 'runtime_failed') {
+      return (
+        commit.errors.find((error) => error.kind === 'core_rejected_config')
+          ?.rejected_snapshot_id ?? undefined
+      )
+    }
+  }
+  return undefined
+}
 
 /** The simplest message for a failed command, localized by its domain. */
 export function ipcErrorMessage(

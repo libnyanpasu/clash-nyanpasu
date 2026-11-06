@@ -719,6 +719,10 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
       ),
+    openRejectedConfigWindow: (snapshotId: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('open_rejected_config_window', { snapshotId }),
+      ),
     /**
      *  The calling window has rendered. Its label comes from the invoking webview,
      *  so a window can only report itself.

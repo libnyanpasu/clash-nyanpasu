@@ -528,6 +528,7 @@ mod tests {
                 "show_native_message_dialog",
                 "ask_native_dialog",
                 "open_native_file_dialog",
+                "open_rejected_config_window",
                 "set_tray_icon",
                 "get_app_update_state",
                 "check_app_update",

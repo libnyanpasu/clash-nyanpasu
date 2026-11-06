@@ -884,6 +884,12 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.createEditorWindow>) =>
         commands.createEditorWindow(...input),
     }),
+    openRejectedConfigWindow: mutationOptions({
+      mutationKey: ['openRejectedConfigWindow'],
+      mutationFn: (
+        input: Parameters<typeof commands.openRejectedConfigWindow>,
+      ) => commands.openRejectedConfigWindow(...input),
+    }),
     reportWindowReady: mutationOptions({
       mutationKey: ['reportWindowReady'],
       mutationFn: (input: Parameters<typeof commands.reportWindowReady>) =>

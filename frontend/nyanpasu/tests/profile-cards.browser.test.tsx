@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { render } from 'vitest-browser-react'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
@@ -10,13 +11,16 @@ import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
+import { ProfileCardUpdate } from '@/pages/(main)/main/profiles/_modules/profile-card-subscription'
 import ProfilesDndProvider from '@/pages/(main)/main/profiles/_modules/profiles-dnd-provider'
 import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
+import { useViewRejectedAction } from '@/pages/(main)/main/profiles/_modules/use-view-rejected-action'
 import ProfilesHeader from '@/pages/(main)/main/profiles/$type/_modules/profiles-header'
 import ProfilesList from '@/pages/(main)/main/profiles/$type/_modules/profiles-list'
 import { m } from '@/paraglide/messages'
 import { getLocale, overwriteGetLocale } from '@/paraglide/runtime'
-import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
+import { message } from '@/utils/notification'
+import type { IpcError, ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -24,7 +28,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider } from './query-provider'
 
 vi.hoisted(() => {
@@ -488,4 +492,107 @@ test('reorders profiles by dragging the whole card', async ({
   await expect
     .poll(() => layouts)
     .toEqual([{ folders: [], ungrouped: ['third', 'first', 'second'] }])
+})
+
+test('a rejected card refresh opens its persisted build window', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', true)
+  vi.mocked(message).mockClear()
+  const calls: { method: string; params: unknown }[] = []
+  const failure: IpcError = {
+    kind: {
+      domain: 'runtime',
+      error: {
+        kind: 'core_rejected_config',
+        core_kind: 'config_check_failed',
+        message: 'opaque',
+        rejected_snapshot_id: 'a'.repeat(21),
+      },
+    },
+    message: 'opaque',
+    detail: 'opaque',
+  }
+  mockIPC(
+    (command, args) => {
+      expect(command).toBe('call_rpc')
+      const call = args as (typeof calls)[number]
+      calls.push(call)
+      if (call.method === 'update_profile') return Promise.reject(failure)
+      if (call.method === 'open_rejected_config_window') return
+      throw new Error(`Unexpected RPC ${call.method}`)
+    },
+    { shouldMockEvents: true },
+  )
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  })
+  const view = await render(
+    <TestQueryProvider client={client}>
+      <BlockTaskProvider>
+        <TooltipProvider>
+          <SharedTooltip>
+            <ProfileCardUpdate
+              profile={profile('remote', true)}
+              disabled={false}
+            />
+          </SharedTooltip>
+        </TooltipProvider>
+      </BlockTaskProvider>
+    </TestQueryProvider>,
+  )
+  onTestFinished(async () => {
+    await view.unmount()
+    client.clear()
+    clearMocks()
+    vi.unstubAllGlobals()
+    vi.mocked(message).mockClear()
+  })
+  await userEvent.click(
+    page.getByRole('button', { name: m.profile_subscription_update() }),
+  )
+  await expect.poll(() => vi.mocked(message).mock.calls.length).toBe(1)
+  const action = vi.mocked(message).mock.calls[0][1]
+  if (typeof action !== 'object' || !action.action)
+    throw new Error('missing rejected action')
+  expect(action.action.label).toBe(m.error_runtime_core_rejected_config_view())
+  await action.action.onSelect()
+  expect(calls.at(-1)).toEqual({
+    method: 'open_rejected_config_window',
+    params: { snapshotId: 'a'.repeat(21) },
+  })
+})
+
+test('the WebUI does not offer a desktop rejected-window action', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', false)
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  let action: ReturnType<ReturnType<typeof useViewRejectedAction>>
+  function Probe() {
+    action = useViewRejectedAction()({
+      kind: {
+        domain: 'runtime',
+        error: {
+          kind: 'core_rejected_config',
+          core_kind: 'config_check_failed',
+          message: 'opaque',
+          rejected_snapshot_id: 'a'.repeat(21),
+        },
+      },
+      message: 'opaque',
+      detail: 'opaque',
+    })
+    return <span>probe</span>
+  }
+  onTestFinished(() => {
+    root.unmount()
+    host.remove()
+    vi.unstubAllGlobals()
+  })
+  root.render(<Probe />)
+  await expect.element(page.getByText('probe', { exact: true })).toBeVisible()
+  expect(action).toBeUndefined()
 })

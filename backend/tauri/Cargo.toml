@@ -43,6 +43,7 @@ nyanpasu-config = { path = '../nyanpasu-config', default-features = false, featu
   'nesting'
 ] }
 nyanpasu-platform = { path = '../nyanpasu-platform', default-features = false }
+nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }

@@ -26,16 +26,21 @@ const GUI: readonly PackageMatcher[] = [
 ]
 const FOUNDATION = ['nyanpasu-config', 'nyanpasu-contracts']
 const CORE_FAMILY = ['nyanpasu-core']
+const IMPLEMENTATION = ['nyanpasu-scripts']
 // Transitional: implements core ports and depends on core until it is retired.
 const PLATFORM = 'nyanpasu-platform'
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
-  ...[...FOUNDATION, ...CORE_FAMILY, PLATFORM, 'nyanpasu-diagnose'].map(
-    (name) => ({ package: name, forbids: GUI }),
-  ),
+  ...[
+    ...FOUNDATION,
+    ...CORE_FAMILY,
+    ...IMPLEMENTATION,
+    PLATFORM,
+    'nyanpasu-diagnose',
+  ].map((name) => ({ package: name, forbids: GUI })),
   ...FOUNDATION.map((name) => ({
     package: name,
-    forbids: [...CORE_FAMILY, PLATFORM],
+    forbids: [...CORE_FAMILY, ...IMPLEMENTATION, PLATFORM],
   })),
   {
     package: 'nyanpasu-config',
@@ -51,10 +56,22 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
       'nyanpasu-local-channel',
     ],
   },
-  ...CORE_FAMILY.map((name) => ({ package: name, forbids: [PLATFORM] })),
+  ...IMPLEMENTATION.map((name) => ({
+    package: name,
+    forbids: [
+      ...CORE_FAMILY,
+      ...IMPLEMENTATION.filter((other) => other !== name),
+      PLATFORM,
+    ],
+  })),
+  ...CORE_FAMILY.map((name) => ({
+    package: name,
+    forbids: [...IMPLEMENTATION, PLATFORM],
+  })),
+  { package: PLATFORM, forbids: IMPLEMENTATION },
   {
     package: 'nyanpasu-diagnose',
-    forbids: [...CORE_FAMILY, PLATFORM],
+    forbids: [...CORE_FAMILY, ...IMPLEMENTATION, PLATFORM],
   },
 ]
 

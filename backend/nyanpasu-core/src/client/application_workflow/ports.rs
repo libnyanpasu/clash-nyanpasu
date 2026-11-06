@@ -4,7 +4,11 @@ use crate::{
     enhance::RuntimeBuildError,
 };
 use async_trait::async_trait;
+use nyanpasu_config::runtime::executor::{PortError, ScriptRunner};
 use std::sync::Arc;
+
+/// Builds a script runner on the blocking thread that will use and drop it.
+pub type ScriptRunnerFactory = dyn Fn() -> Result<Box<dyn ScriptRunner>, PortError> + Send + Sync;
 
 #[async_trait]
 pub trait RuntimeBuildPort: Send + Sync + 'static {

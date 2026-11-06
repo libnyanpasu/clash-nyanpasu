@@ -997,6 +997,7 @@ for (const root of [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
   'backend/nyanpasu-contracts/src/',
+  'backend/nyanpasu-scripts/src/',
 ]) {
   test(`scanFile / evaluateGate: service statics fail in ${root}`, () => {
     const relPath = `${root}services/nested.rs`

@@ -8,8 +8,12 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
-use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
+use nyanpasu_core::{
+    client::application_workflow::ports::ScriptRunnerFactory,
+    enhance::{RuntimeBuildInput, RuntimeBuilder},
+};
+use nyanpasu_platform::enhance::FsProfileContentSource;
+use nyanpasu_scripts::{EnhanceScriptRunner, ScriptDirs};
 
 #[test]
 fn builder_runs_a_managed_script_through_the_platform_adapters() {
@@ -81,8 +85,11 @@ fn builder_runs_a_managed_script_through_the_platform_adapters() {
     input.clash.enable_clash_fields = false;
 
     let content = FsProfileContentSource::new(temp.path().to_path_buf());
-    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
-    let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
+    let dirs = ScriptDirs::under(temp.path());
+    let script_runner: Arc<ScriptRunnerFactory> =
+        Arc::new(move || Ok(Box::new(EnhanceScriptRunner::new(dirs.clone())?)));
+    let scripts = script_runner().unwrap();
+    let artifact = RuntimeBuilder::build(&input, &content, scripts.as_ref()).unwrap();
     let yaml = serde_yaml::to_value(&*artifact.final_config).unwrap();
 
     assert_eq!(yaml["mode"], serde_yaml::Value::from("rule"));

@@ -176,6 +176,7 @@ pub enum RuntimeError {
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
         message: String,
+        rejected_snapshot_id: Option<String>,
     },
     #[snafu(display("the configuration could not be checked: {reason:?}"))]
     CheckUnavailable { reason: RuntimeCheckUnavailable },

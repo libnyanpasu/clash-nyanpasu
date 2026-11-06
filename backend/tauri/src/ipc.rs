@@ -755,10 +755,31 @@ pub async fn inspect_runtime(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
+pub async fn inspect_rejected_runtime(
+    client: State<'_, NyanpasuClient>,
+    snapshot_id: String,
+) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspection> {
+    Ok(client.inspect_rejected_runtime(&snapshot_id).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
 pub async fn inspect_applied_runtime(
     client: State<'_, NyanpasuClient>,
 ) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
     Ok(client.inspect_applied_runtime().await)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn inspect_rejected_node(
+    client: State<'_, NyanpasuClient>,
+    snapshot_id: String,
+    node_id: u32,
+) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
+    Ok(client.inspect_rejected_node(&snapshot_id, node_id).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

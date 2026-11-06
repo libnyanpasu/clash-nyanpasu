@@ -4,6 +4,7 @@ import {
   degradationReasonMessage,
   effectFailureMessage,
   ipcErrorMessage,
+  rejectedSnapshotId,
 } from '@/utils/ipc-error'
 import type {
   ConfigError,
@@ -574,4 +575,85 @@ test('a retry that cannot reach the effects owner says it is not running', () =>
   expect(ipcErrorMessage(effects({ kind: 'effects_stopped' }))).toBe(
     m.error_effects_stopped(),
   )
+})
+
+const rejectedCheck: RuntimeError = {
+  kind: 'core_rejected_config',
+  core_kind: 'config_check_failed',
+  message: 'opaque core output',
+  rejected_snapshot_id: 'rejected-1',
+}
+
+test('the rejected snapshot ID comes from direct and nested structured errors', () => {
+  expect(rejectedSnapshotId(runtime(rejectedCheck))).toBe('rejected-1')
+  for (const kind of ['runtime_refused', 'runtime_failed'] as const) {
+    const source = {
+      kind,
+      runtime: { kind: 'untouched' as const },
+      errors: [{ kind: 'isolated' as const }, rejectedCheck],
+    }
+    expect(
+      rejectedSnapshotId(
+        profiles({
+          kind: 'commit',
+          uid,
+          path: 'p1.yaml',
+          source,
+        }),
+      ),
+    ).toBe('rejected-1')
+    expect(
+      rejectedSnapshotId(
+        config({
+          kind: 'commit',
+          domain: 'clash',
+          source,
+        }),
+      ),
+    ).toBe('rejected-1')
+  }
+})
+
+test('errors without a structured check rejection have no snapshot entry', () => {
+  for (const error of [
+    undefined,
+    new Error('core_rejected_config rejected_snapshot_id=rejected-1'),
+    runtime({ kind: 'core_rolled_back', reason: 'rejected-1' }),
+    runtime({
+      kind: 'check_unavailable',
+      reason: { cause: 'no_endpoint', reason: 'rejected-1' },
+    }),
+    profiles({ kind: 'profile_not_found', uid }),
+    config({
+      kind: 'commit',
+      domain: 'clash',
+      source: { kind: 'validate_state' },
+    }),
+    config({
+      kind: 'commit',
+      domain: 'clash',
+      source: {
+        kind: 'runtime_refused',
+        errors: [{ kind: 'isolated' }],
+        runtime: { kind: 'untouched' },
+      },
+    }),
+  ])
+    expect(rejectedSnapshotId(error)).toBeUndefined()
+})
+
+test('a check refusal without a persisted ID has no inspection entry', () => {
+  expect(
+    rejectedSnapshotId(
+      runtime({ ...rejectedCheck, rejected_snapshot_id: null }),
+    ),
+  ).toBeUndefined()
+  const { rejected_snapshot_id: _id, ...legacy } = rejectedCheck
+  expect(
+    rejectedSnapshotId({
+      kind: { domain: 'runtime', error: legacy },
+      message: 'opaque',
+      detail: 'opaque',
+    }),
+  ).toBeUndefined()
 })

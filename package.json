@@ -115,7 +115,7 @@
     "knip": "6.44.1",
     "lint-staged": "17.6.0",
     "npm-run-all2": "9.0.4",
-    "oxlint": "1.91.0",
+    "oxlint": "1.92.0",
     "playwright": "1.65.0",
     "postcss": "8.5.32",
     "postcss-html": "2.0.0",

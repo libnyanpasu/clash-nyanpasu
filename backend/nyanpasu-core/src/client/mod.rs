@@ -1561,7 +1561,7 @@ pub(crate) mod tests {
 
     /// The stamped file the application loads.
     fn write_application_config(path: &camino::Utf8Path, config: &NyanpasuAppConfig) {
-        use crate::format::Format as _;
+        use nyanpasu_persistence::format::Format as _;
 
         let mut content = Vec::new();
         crate::migration::modules::application::ApplicationFormat::default()

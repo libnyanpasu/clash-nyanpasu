@@ -1,6 +1,7 @@
 //! Failure report exchanged only between the migration subprocess and its parent.
 use std::path::{Path, PathBuf};
 
+use nyanpasu_persistence::write;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
@@ -57,10 +58,7 @@ pub enum Error {
     #[snafu(display("failed to encode migration result"))]
     Encode { source: serde_json::Error },
     #[snafu(display("failed to write migration result {}", path.display()))]
-    Write {
-        path: PathBuf,
-        source: super::fs::Error,
-    },
+    Write { path: PathBuf, source: write::Error },
     #[snafu(display("failed to read migration result {}", path.display()))]
     Read {
         path: PathBuf,
@@ -156,13 +154,13 @@ impl Failure {
                     | super::store::Error::OlderSchema { path, .. } => Some(path),
                     _ => None,
                 }
-            } else if let Some(error) = error.downcast_ref::<super::fs::Error>() {
+            } else if let Some(error) = error.downcast_ref::<write::Error>() {
                 match error {
-                    super::fs::Error::StampDocument { path, .. }
-                    | super::fs::Error::SerializeDocument { path, .. }
-                    | super::fs::Error::ValidateDestination { path, .. }
-                    | super::fs::Error::CreateDirectory { path, .. }
-                    | super::fs::Error::WriteFile { path, .. } => Some(path),
+                    write::Error::StampDocument { path, .. }
+                    | write::Error::SerializeDocument { path, .. }
+                    | write::Error::ValidateDestination { path, .. }
+                    | write::Error::CreateDirectory { path, .. }
+                    | write::Error::WriteFile { path, .. } => Some(path),
                 }
             } else if let Some(crate::session_state::Error::ReadState { path, .. }) =
                 error.downcast_ref::<crate::session_state::Error>()
@@ -207,7 +205,7 @@ impl Failure {
 
     pub fn write(&self, path: &Path) -> Result<(), Error> {
         let contents = serde_json::to_vec(self).context(EncodeSnafu)?;
-        super::fs::atomic_write(path, &contents).context(WriteSnafu { path })
+        write::atomic_write(path, &contents).context(WriteSnafu { path })
     }
 
     pub fn read(path: &Path) -> Result<Self, Error> {

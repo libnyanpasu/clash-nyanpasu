@@ -3,17 +3,15 @@ use atomicwrites::{AllowOverwrite, AtomicFile};
 use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
+use nyanpasu_persistence::format::{Format, YamlFormat};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{future::Future, io::Write, pin::Pin};
 
 use super::{super::error::*, *};
 
-use crate::{
-    format::{Format, YamlFormat},
-    state::{
-        DecisionHandle, PrepareReport, StateParticipant, Version,
-        coordinator::{ParticipantEntry, PendingOutcome},
-    },
+use crate::state::{
+    DecisionHandle, PrepareReport, StateParticipant, Version,
+    coordinator::{ParticipantEntry, PendingOutcome},
 };
 
 #[derive(Builder)]

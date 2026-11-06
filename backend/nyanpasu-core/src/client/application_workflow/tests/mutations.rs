@@ -438,7 +438,7 @@ pub(super) async fn mutate<T, F>(
     + 'static,
 ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -480,7 +480,7 @@ pub(super) async fn mutate_settling<T, F>(
     crate::state::mutation::Settlement,
 )
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -541,7 +541,7 @@ pub(super) async fn mutate_with_hints<T, F>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -599,7 +599,7 @@ pub(super) async fn simple_mutate<T, F>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send

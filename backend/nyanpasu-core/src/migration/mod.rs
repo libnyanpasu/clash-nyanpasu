@@ -186,7 +186,7 @@ pub enum MigrationCheckError {
     Stamp {
         path: PathBuf,
         #[source]
-        source: crate::format::StampError,
+        source: nyanpasu_persistence::format::StampError,
     },
     #[error("failed to migrate clash overrides in {}", path.display())]
     MigrateClashOverrides {

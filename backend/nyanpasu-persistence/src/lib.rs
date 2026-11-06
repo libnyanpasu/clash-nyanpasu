@@ -1,5 +1,10 @@
-//! Filesystem recovery policy for app-owned startup data. Only callers that
-//! have confirmed a data problem may preserve a node and rebuild its contents.
+//! Filesystem persistence for app-owned data: the stamped document format,
+//! crash-safe writes, and the recovery policy for startup data. Only callers
+//! that have confirmed a data problem may preserve a node and rebuild its
+//! contents.
+
+pub mod format;
+pub mod write;
 
 use std::{
     future::Future,

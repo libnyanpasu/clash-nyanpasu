@@ -432,7 +432,7 @@ correction above
 
 E2a uses schema-only Specta collection, retaining only `call_rpc` in the Tauri transport builder and byte-identical generated files. Its complete 104-command HTTP disposition table preserves host behavior through injected ports, including Tauri executable resolution and pure icon/file queries. E1b explicitly projects and decodes `CoreAgentSkill` as well as runtime values.
 
-Planned E3c shares one default endpoint per user/app data directory across desktop and server; the first binder owns it, a second live binder fails, and CLI may use `--endpoint`. Unix only reclaims a valid private-directory user-owned socket on connect refused; Windows uses first-instance exclusivity without stale cleanup. E3b delivers version/features, canonical JSON and the pure subscribe/unsubscribe/lag state machine, without a production listener. Planned E4 keeps the current Redb log store and observers fallback, and installs a neutral process panic policy before tasks start. HTTP/local/background-owner subprocess panic tests require non-zero exit with original panic evidence and no RPC-error conversion. Endpoint and process-panic behavior remain acceptance requirements for later cards.
+E3c delivers optional endpoint infrastructure sharing one default endpoint per user/app data directory across desktop and server; the first binder owns it, a second live binder fails, and CLI may use `--endpoint`. Unix only reclaims a valid private-directory user-owned socket on connect refused; Windows uses first-instance exclusivity without stale cleanup. E3b delivers version/features, canonical JSON and the pure subscribe/unsubscribe/lag state machine, without a production listener. Planned E4 keeps the current Redb log store and observers fallback, and installs a neutral process panic policy before tasks start. HTTP/local/background-owner subprocess panic tests require non-zero exit with original panic evidence and no RPC-error conversion. Endpoint tests cover Windows pipes and Unix sockets; process-panic behavior remains an acceptance requirement for E4.
 
 E2a moved the four shared HTTP response definitions before RPC extraction, with the icon-mode value owned by protocol and asset functions owned by the shell. E2b includes runtime-values unconditionally in dependency roots and reverse-edge policy. E3b now retains only full-value configuration/core/service status, app-update state when available, and core-log status, with an initial snapshot and fresh reset after local lag. The separate connection-detail contract is unchanged. All other event identities are excluded from E3 local subscriptions. Real-connection reset tests cover only those five identities; the thirteen-command allowlist is unchanged. O-46/V-63 defer invalidation/storage recovery to a separate reviewed card with round-3 findings 1–3 as acceptance criteria. E4a's real OS refusal-adapter tests use a narrowly scoped, default-off OS test-support feature enabled only by the server dev-dependency; production feature closure excludes it. Decisions O-40–O-45 and deviations V-56–V-62 record these changes and the Service-open lease limitation.
 
@@ -595,6 +595,18 @@ streams outside the global broadcast. E3b delivers local version-1 JSON frames
 with big-endian u32 lengths, the 4 MiB bound, explicit feature negotiation,
 never-reused request IDs and subscription ack/reset/lag ordering. Pure frame and
 session rules work without IO; the default-off `frame-io` feature adds Tokio
-helpers and is enabled explicitly by musl tests. No production listener is exposed.
-Endpoints, dispatch/resource cleanup, client recovery and the headless shell
-remain planned in E3c–E4; real-connection tests remain with their owning cards.
+helpers and is enabled explicitly by musl tests. E3c adds default-off
+`nyanpasu-rpc/local-server` endpoint listeners and shared UID/SID plus canonical
+app-data discovery. Unix uses private directories, a persistent OS-locked claim,
+refused-only stale reclamation and identity-checked cleanup; Windows uses a
+protected current-user DACL and first-instance exclusivity across repeated accepts.
+Musl enables local-server on the existing RPC library target; no package or static
+prefix is added. The local-channel parent-child API is unchanged. Dispatch/resource
+cleanup, client recovery and the headless shell remain planned in E3d–E4.
+
+| E3c platform             | Implementation | Validation                                                                                                       |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Windows named pipes      | Delivered      | Native reconnect, real DACL and competing-binder tests                                                           |
+| Linux/macOS Unix sockets | Delivered      | Permissions, refused-only stale, racing binders and replacement cleanup tests; platform execution required in CI |
+
+Desktop local service is not automatically enabled by these endpoint adapters.

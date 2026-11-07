@@ -25,7 +25,7 @@ use futures::{StreamExt, stream};
 use nyanpasu_observers::logs::CoreLogError;
 use nyanpasu_rpc_protocol::{
     COMMAND_CATALOG, CommandKind, CommandMetadata, EventName, Request, RpcError, RpcOwner,
-    RpcTarget, RpcValue,
+    RpcTarget, RpcValue, ShellCapability,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -326,22 +326,39 @@ fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError 
 #[derive(Clone)]
 struct RegisteredCommand {
     metadata: CommandMetadata,
+    capabilities_available: bool,
     handler: Option<RpcHandler>,
     tauri_handler: Option<TauriRpcHandler>,
 }
 
 impl RegisteredCommand {
-    fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
-        if !self.metadata.targets.contains(&target) {
-            return Err(RpcError::unsupported(self.metadata.name));
+    fn unavailable(&self, target: RpcTarget) -> RpcError {
+        if target == RpcTarget::Http {
+            RpcError::unsupported(self.metadata.name)
+        } else {
+            RpcError::new(
+                "unsupported",
+                format!(
+                    "command `{}` is unavailable in this shell",
+                    self.metadata.name
+                ),
+            )
         }
-        self.handler
-            .ok_or_else(|| RpcError::unsupported(self.metadata.name))
+    }
+
+    fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
+        if !self.metadata.targets.contains(&target) || !self.capabilities_available {
+            return Err(self.unavailable(target));
+        }
+        self.handler.ok_or_else(|| self.unavailable(target))
     }
 
     fn native_handler(&self) -> Result<TauriRpcHandler, RpcError> {
+        if !self.metadata.targets.contains(&RpcTarget::Desktop) || !self.capabilities_available {
+            return Err(self.unavailable(RpcTarget::Desktop));
+        }
         self.tauri_handler
-            .ok_or_else(|| RpcError::unsupported(self.metadata.name))
+            .ok_or_else(|| self.unavailable(RpcTarget::Desktop))
     }
 }
 
@@ -351,6 +368,7 @@ fn register_commands(
     catalog: &[CommandMetadata],
     entries: impl IntoIterator<Item = &'static CommandEntry>,
     native_entries: impl IntoIterator<Item = &'static TauriCommandEntry>,
+    provided: &[ShellCapability],
 ) -> Result<CommandHandlers, SetupError> {
     let mut commands = HashMap::new();
     for metadata in catalog {
@@ -359,6 +377,7 @@ fn register_commands(
                 metadata.name,
                 RegisteredCommand {
                     metadata: *metadata,
+                    capabilities_available: false,
                     handler: None,
                     tauri_handler: None,
                 },
@@ -375,6 +394,7 @@ fn register_commands(
             .entry(entry.metadata.name)
             .or_insert(RegisteredCommand {
                 metadata: entry.metadata,
+                capabilities_available: false,
                 handler: None,
                 tauri_handler: None,
             });
@@ -391,6 +411,15 @@ fn register_commands(
         if command.tauri_handler.replace(entry.handler).is_some() {
             return Err(SetupError::RegisterCommand { name: entry.name });
         }
+    }
+    // Validate every linked name before checking availability. Missing facilities
+    // never erase a known name, and optional effects are not admission requirements.
+    for command in commands.values_mut() {
+        command.capabilities_available = command
+            .metadata
+            .capabilities
+            .iter()
+            .all(|capability| provided.contains(capability));
     }
     Ok(Arc::new(commands))
 }
@@ -438,11 +467,15 @@ impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
 }
 
 impl UnifiedRpc {
-    pub fn new(dependencies: RpcDependencies) -> Result<Self, SetupError> {
+    pub fn new(
+        dependencies: RpcDependencies,
+        provided: &[ShellCapability],
+    ) -> Result<Self, SetupError> {
         let commands = register_commands(
             COMMAND_CATALOG,
             inventory::iter::<CommandEntry>,
             inventory::iter::<TauriCommandEntry>,
+            provided,
         )?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
@@ -777,6 +810,7 @@ mod tests {
             COMMAND_CATALOG,
             inventory::iter::<CommandEntry>,
             inventory::iter::<TauriCommandEntry>,
+            crate::setup::DESKTOP_RPC_CAPABILITIES,
         )
         .unwrap();
         for metadata in COMMAND_CATALOG {
@@ -809,7 +843,7 @@ mod tests {
                 }
             }
         }
-        let unlinked = register_commands(COMMAND_CATALOG, [], []).unwrap();
+        let unlinked = register_commands(COMMAND_CATALOG, [], [], &[]).unwrap();
         assert_eq!(unlinked.len(), COMMAND_CATALOG.len());
         for metadata in COMMAND_CATALOG
             .iter()
@@ -898,13 +932,16 @@ mod tests {
             // Prime a valid update so an opted-in handler would admit a job.
             client.fetch_latest_core_versions().await.unwrap();
             assert!(client.inspect_updater(1).await.is_err());
-            let app = UnifiedRpc::new(RpcDependencies {
-                audit: RpcAudit::new(Arc::new(AuditSink::default())),
-                client: client.clone(),
-                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-                paths,
-                events: EventBus::new(),
-            })
+            let app = UnifiedRpc::new(
+                RpcDependencies {
+                    audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                    client: client.clone(),
+                    storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                    paths,
+                    events: EventBus::new(),
+                },
+                crate::setup::DESKTOP_RPC_CAPABILITIES,
+            )
             .unwrap()
             .router();
 
@@ -946,13 +983,16 @@ mod tests {
         let logs_dir = paths.app_logs_dir();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            audit: RpcAudit::new(Arc::new(AuditSink::default())),
-            client,
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: events.clone(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                client,
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: events.clone(),
+            },
+            crate::setup::DESKTOP_RPC_CAPABILITIES,
+        )
         .unwrap();
         assert!(rpc.command_names().contains(&"get_debug_http_status"));
         assert!(rpc.command_names().contains(&"get_profiles"));
@@ -1338,13 +1378,16 @@ mod tests {
             ));
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            audit: RpcAudit::new(Arc::new(AuditSink::default())),
-            client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(),
+            },
+            crate::setup::DESKTOP_RPC_CAPABILITIES,
+        )
         .unwrap();
         let app = rpc.router();
         tauri::async_runtime::block_on(async {
@@ -1425,13 +1468,16 @@ mod tests {
         );
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            audit: RpcAudit::new(Arc::new(AuditSink::default())),
-            client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(),
+            },
+            crate::setup::DESKTOP_RPC_CAPABILITIES,
+        )
         .unwrap();
         let app = rpc.router();
 
@@ -1554,13 +1600,16 @@ mod tests {
         ));
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            audit: RpcAudit::new(Arc::new(AuditSink::default())),
-            client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(),
+            },
+            crate::setup::DESKTOP_RPC_CAPABILITIES,
+        )
         .unwrap();
         routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {
@@ -1677,13 +1726,16 @@ mod tests {
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            audit: RpcAudit::new(Arc::new(AuditSink::default())),
-            client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            paths,
-            events: events.clone(),
-        })
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: events.clone(),
+            },
+            crate::setup::DESKTOP_RPC_CAPABILITIES,
+        )
         .unwrap();
         routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {

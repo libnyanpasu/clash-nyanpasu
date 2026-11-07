@@ -909,6 +909,7 @@ mod tests {
 
     #[test]
     fn target_and_capability_metadata_is_generated_once() {
+        assert_production_capability_inventory();
         let expanded = expand(syn::parse_quote! {
             #[nyanpasu_macro::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation))]
             #[tauri::command]
@@ -931,6 +932,177 @@ mod tests {
         }
         assert!(expanded.contains("TauriCommandEntry"));
         assert!(expanded.contains("CommandKind :: Native"));
+    }
+
+    fn assert_production_capability_inventory() {
+        let commands = crate::command_catalog::production_declarations();
+        let mut snapshot = String::from("# name | targets | required | optional\n");
+        for platform in ["windows", "linux", "macos"] {
+            snapshot.push_str(&format!("\n[{platform}]\n"));
+            let mut rows = Vec::new();
+            for command in &commands {
+                let enabled = command
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+                    .all(|attr| match attr.to_token_stream().to_string().as_str() {
+                        "# [cfg (windows)]" => platform == "windows",
+                        "# [cfg (not (windows))]" => platform != "windows",
+                        guard => panic!("extend the platform inventory for {guard}"),
+                    });
+                if !enabled {
+                    continue;
+                }
+                let options = super::options(command).unwrap();
+                let mut targets = vec!["desktop"];
+                if options.http && super::can_share_with_neutral(&command.sig, options.owner) {
+                    targets.push("http");
+                }
+                assert!(
+                    !options.local,
+                    "{} must not silently opt into local RPC",
+                    command.sig.ident
+                );
+                let names = |values: &[syn::Ident]| {
+                    if values.is_empty() {
+                        "-".to_owned()
+                    } else {
+                        values
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    }
+                };
+                rows.push(format!(
+                    "{} | {} | {} | {}",
+                    command.sig.ident,
+                    targets.join(","),
+                    names(&options.capabilities),
+                    names(&options.optional_capabilities)
+                ));
+            }
+            rows.sort();
+            assert_eq!(rows.len(), 160, "{platform} command inventory");
+            snapshot.push_str(&rows.join("\n"));
+            snapshot.push('\n');
+        }
+        assert_eq!(
+            snapshot,
+            include_str!("../tests/fixtures/capability-inventory.txt").replace("\r\n", "\n")
+        );
+
+        let metadata = |name: &str| {
+            super::options(
+                commands
+                    .iter()
+                    .find(|command| command.sig.ident == name)
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        // Profile commits and lifecycle completion refresh the desktop tray indirectly.
+        for name in ["reorder_profile", "install_service", "select_proxy"] {
+            let options = metadata(name);
+            assert!(
+                options
+                    .optional_capabilities
+                    .iter()
+                    .any(|capability| capability == "presentation"),
+                "{name} reaches an optional tray refresh"
+            );
+            assert!(
+                !options
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "presentation"),
+                "{name} must remain available without presentation"
+            );
+        }
+        // Direct privileged operations require a facility. Conditional runtime
+        // switches, compensation and binary-copy fallback only describe reachability.
+        for name in [
+            "flush_system_dns_cache",
+            "install_service",
+            "uninstall_service",
+            "start_service",
+            "stop_service",
+            "restart_service",
+        ] {
+            assert!(
+                metadata(name)
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "elevation"),
+                "{name}"
+            );
+        }
+        for name in [
+            "patch_app_config",
+            "patch_clash_config",
+            "patch_runtime_overrides",
+            "retry_configuration_runtime",
+            "change_clash_core",
+            "restart_sidecar",
+            "enhance_profiles",
+            "import_profile",
+            "create_profile",
+            "update_profile",
+            "delete_profile",
+            "activate_profile",
+            "set_global_transforms",
+            "set_profile_valid_fields",
+            "patch_remote_profile_options",
+            "replace_profile_definition",
+            "save_profile_file",
+            "update_core",
+        ] {
+            let options = metadata(name);
+            assert!(
+                !options
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "elevation"),
+                "{name}"
+            );
+            assert!(
+                options
+                    .optional_capabilities
+                    .iter()
+                    .any(|capability| capability == "elevation"),
+                "{name}"
+            );
+        }
+        for name in [
+            "open_log_session",
+            "query_logs",
+            "close_log_session",
+            "report_frontend_events",
+        ] {
+            let options = metadata(name);
+            assert!(options.owner, "{name} needs neutral caller identity");
+            assert!(
+                options.capabilities.is_empty(),
+                "{name} does not need a native webview"
+            );
+        }
+        for name in [
+            "get_tray_icon",
+            "is_tray_icon_set",
+            "get_widget_icon",
+            "is_widget_icon_set",
+            "get_cached_icon",
+            "get_release_channel",
+            "set_release_channel",
+            "get_app_update_changelog",
+            "get_service_install_prompt",
+            "get_core_dir",
+        ] {
+            assert!(
+                metadata(name).capabilities.is_empty(),
+                "{name} only reads/formats values or edits configuration"
+            );
+        }
     }
 
     #[test]

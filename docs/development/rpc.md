@@ -61,9 +61,15 @@ compatibility, Result aliases and empty-object/null handling for zero inputs.
 complete surface. `capabilities(...)` and `optional_capabilities(...)` record
 required facilities and reachable conditional effects. Optional elevation is
 valid with `rpc(local)`; it is not a blanket rejection or an execution policy.
-E1a-c adds this syntax without changing production exposure or capability
-annotations. Required-capability admission remains E1a-d work, and production
-local opt-ins remain E3e work.
+Production declarations classify required facilities separately from conditional
+effects. Reachability includes indirect tray refreshes after profile commits,
+lifecycle completion and proxy-cache notifications, even for reads that refresh
+that cache. These presentation effects remain optional. Native admission errors
+name the unavailable shell command; HTTP retains its existing rejection message.
+The composition root explicitly supplies available capabilities; metadata
+describes availability, not authorization or elevation consent. Production local
+opt-ins remain E3e work: the initial allowlist is independent of HTTP and no
+command is exposed locally by signature compatibility.
 
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
 the same declarations as handler metadata. Its development-only extractor in
@@ -87,6 +93,28 @@ native wrappers, shared handlers and unlinked catalog entries. Regenerate the
 three frontend bindings as well; this seam must leave them unchanged.
 
 ### Declare capabilities and preserve transport semantics
+
+The registry first recognizes the command name, then checks the requested target
+and every required capability, and only then parses arguments and runs the handler.
+Missing required capabilities or an unlinked native wrapper return structured
+`unsupported`; only an unknown name returns `unknown_method`. All duplicate
+handler names fail registration before availability is considered. Rejections
+pass through `dispatch_audited`, and HTTP keeps its existing 501 mapping and
+`update_core` rejection before updater job admission.
+
+Use required metadata for clipboard, dialogs/notifications, native webviews and
+channels, windows, lifecycle, openers, tray/widget refresh, deep-link queues,
+application-update operations, and host accent/debug-HTTP facilities. Caller
+ownership is `rpc(owner)`, not a native-webview requirement. Icon/file queries,
+release-channel configuration, changelog HTTP reads and service-install prompt
+formatting do not require presentation, installation or elevation facilities.
+Direct DNS/service elevation operations require `elevation`; runtime service
+switches, compensation and `update_core`'s copy fallback record optional elevation.
+Config patch/hotkey/effect retries record their reachable optional effects, so
+missing presentation or elevation does not reject unrelated edits. Existing domain
+validation and injected execution policy still decide whether a particular effect
+can run; these annotations do not close the embedded WebUI's indirect elevation
+paths or provide per-call authority.
 
 All dispatched application calls enter `dispatch_audited`, including direct HTTP
 archive and subscription routes and dispatch-time parameter rejections. The
@@ -116,7 +144,7 @@ local socket/CLI must enter this same kernel at INFO.
 
 E1a-b moved `RpcOwner`, `RpcError`, `RpcValue`, the request envelope and the eleven shared `EventName` identities into `nyanpasu-rpc-protocol`. Desktop event wrappers remain in the shell and are checked against the protocol names. HTTP cookie parsing, status mapping and application error downcasts remain consumer-side free functions. This move preserves existing owner labels, HTTP errors and bindings.
 
-E1a-c separates neutral declarations from native wrappers and generates independent target/capability metadata and the neutral catalog. Existing native command declarations and transport exposure are unchanged. The remaining changes are planned in [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分). E1a-d will add required-capability admission while retaining known commands as `unsupported`; `unknown_method` remains reserved for unknown names. Optional effect metadata does not deny unrelated configuration edits and does not replace elevation policy.
+E1a-c separates neutral declarations from native wrappers and generates independent target/capability metadata and the neutral catalog. E1a-d annotates production declarations and enforces required-capability admission while retaining known commands as `unsupported`; `unknown_method` remains reserved for unknown names. Desktop/HTTP exposure and all three bindings are unchanged. Optional effect metadata does not deny unrelated configuration edits and does not replace elevation policy. The remaining changes are planned in [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分).
 
 E2 moves shared commands, registry, error conversion, HTTP infrastructure, event bus and `dispatch_audited`/`RpcAuditSink` and the Tauri-free production `TracingRpcAuditSink` into `nyanpasu-rpc`; both shells reuse that sink and its existing level/secret-exclusion tests. Native IPC/window/Channel binding and Tauri asset resolution stay in the shell. A schema-only Specta collector accepts neutral commands without generating Tauri handlers; `build_transport_builder` registers only `call_rpc`. Retained host HTTP facilities use explicitly injected ports, including the original Tauri executable resolver and pure icon/file queries. E2a compares the full HTTP exposure set before and after extraction. `nyanpasu-rpc-protocol` owns the envelope, identifiers and complete wire/receiving type closure below CORE_FAMILY; application downcasts stay in the registry. E1b references canonical foundation values, including D2e runtime-values, and uses receiving DTOs where skipped operational sources cannot be reconstructed.
 

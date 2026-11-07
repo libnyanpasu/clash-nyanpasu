@@ -1,6 +1,7 @@
 //! The concrete boundary implementations. This is the only file in the module
 //! allowed to name Tauri.
 
+use nyanpasu_rpc_protocol::values::TrayIcon;
 use std::sync::Arc;
 
 use nyanpasu_config::application::{
@@ -12,7 +13,7 @@ use snafu::{OptionExt as _, ResultExt as _};
 
 use super::ports::{WIDGET_STOP_BOUND, WidgetRuntime};
 use crate::{
-    core::tray::{Tray, TrayWork, icon::TrayIcon},
+    core::tray::{Tray, TrayWork},
     desktop::effects::ports::{
         LocaleSink, ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WidgetController, WidgetError,
     },

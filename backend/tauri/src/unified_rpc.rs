@@ -1,4 +1,6 @@
-//! Experimental HTTP transport for commands shared with the existing Tauri IPC surface.
+//! Shared command registry, audit kernel and experimental HTTP routes.
+
+pub mod native;
 
 use std::{
     collections::HashMap,
@@ -29,7 +31,6 @@ use nyanpasu_rpc_protocol::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use tauri::Manager;
 use tokio::sync::broadcast;
 
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
@@ -37,6 +38,11 @@ use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 /// Explicit inputs for shared handlers. Declarations use `RpcState` and `RpcCaller`
 /// for injected values that must not appear in request JSON or exported schemas.
 pub struct RpcDependencies {
+    pub icon_files: Option<Arc<dyn crate::rpc_commands::ports::HostIconFiles>>,
+    pub core_directory: Option<Arc<dyn crate::rpc_commands::ports::CoreDirectoryResolver>>,
+    pub service_prompt: Option<Arc<dyn crate::rpc_commands::ports::ServiceInstallPrompt>>,
+    pub accent_color: Option<Arc<dyn crate::rpc_commands::ports::AccentColorQuery>>,
+    pub host_environment: crate::rpc_commands::ports::HostEnvironment,
     pub client: NyanpasuClient,
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
@@ -45,13 +51,9 @@ pub struct RpcDependencies {
 }
 
 /// A borrowed dependency in a shared declaration, omitted from its wire schema.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "production shared declarations move in E2a")
-)]
-pub struct RpcState<'a, T>(&'a T);
+pub struct RpcState<'a, T: ?Sized>(&'a T);
 
-impl<T> std::ops::Deref for RpcState<'_, T> {
+impl<T: ?Sized> std::ops::Deref for RpcState<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -59,25 +61,17 @@ impl<T> std::ops::Deref for RpcState<'_, T> {
     }
 }
 
-impl<T> specta::function::FunctionArg for RpcState<'_, T> {
+impl<T: ?Sized> specta::function::FunctionArg for RpcState<'_, T> {
     fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
         None
     }
 }
 
 /// A transport-supplied caller in an owner declaration, omitted from its wire schema.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "production shared declarations move in E2a")
-)]
 pub struct RpcCaller(RpcOwner);
 
 impl RpcCaller {
     /// Preserve the caller label supplied by the transport without reconstructing it.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "production shared declarations move in E2a")
-    )]
     pub fn into_owner(self) -> RpcOwner {
         self.0
     }
@@ -239,19 +233,6 @@ impl EventBus {
     }
 }
 
-pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
-    use tauri::Listener;
-    for event in EventName::ALL {
-        let name = event.as_str();
-        let events = events.clone();
-        app.listen_any(name, move |event| {
-            if let Ok(payload) = serde_json::from_str(event.payload()) {
-                events.publish(name, payload);
-            }
-        });
-    }
-}
-
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
 
 fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
@@ -274,20 +255,12 @@ fn http_owner_or_anonymous(headers: &HeaderMap) -> RpcOwner {
 }
 
 pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
-pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
-
 pub struct CommandEntry {
     pub metadata: CommandMetadata,
     pub handler: RpcHandler,
 }
 
-pub struct TauriCommandEntry {
-    pub name: &'static str,
-    pub handler: TauriRpcHandler,
-}
-
 inventory::collect!(CommandEntry);
-inventory::collect!(TauriCommandEntry);
 
 /// Wrap a command failure, preserving domain errors and core retry metadata.
 pub(crate) fn application_error(error: impl std::error::Error + 'static) -> RpcError {
@@ -313,7 +286,7 @@ fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError 
             result.retryable = Some(core.retryable);
             result.operation_id = core.operation_id.map(|id| id.to_string());
         }
-        if let Some(ipc) = error.downcast_ref::<crate::ipc::IpcError>() {
+        if let Some(ipc) = error.downcast_ref::<crate::rpc_commands::error::IpcError>() {
             result.domain_error = serde_json::to_value(ipc)
                 .ok()
                 .map(|value| Box::new(RpcValue(value)));
@@ -328,7 +301,6 @@ struct RegisteredCommand {
     metadata: CommandMetadata,
     capabilities_available: bool,
     handler: Option<RpcHandler>,
-    tauri_handler: Option<TauriRpcHandler>,
 }
 
 impl RegisteredCommand {
@@ -350,15 +322,10 @@ impl RegisteredCommand {
         if !self.metadata.targets.contains(&target) || !self.capabilities_available {
             return Err(self.unavailable(target));
         }
-        self.handler.ok_or_else(|| self.unavailable(target))
-    }
-
-    fn native_handler(&self) -> Result<TauriRpcHandler, RpcError> {
-        if !self.metadata.targets.contains(&RpcTarget::Desktop) || !self.capabilities_available {
-            return Err(self.unavailable(RpcTarget::Desktop));
+        if target == RpcTarget::Desktop && self.metadata.kind == CommandKind::Native {
+            return Err(self.unavailable(target));
         }
-        self.tauri_handler
-            .ok_or_else(|| self.unavailable(RpcTarget::Desktop))
+        self.handler.ok_or_else(|| self.unavailable(target))
     }
 }
 
@@ -367,7 +334,6 @@ type CommandHandlers = Arc<HashMap<&'static str, RegisteredCommand>>;
 fn register_commands(
     catalog: &[CommandMetadata],
     entries: impl IntoIterator<Item = &'static CommandEntry>,
-    native_entries: impl IntoIterator<Item = &'static TauriCommandEntry>,
     provided: &[ShellCapability],
 ) -> Result<CommandHandlers, SetupError> {
     let mut commands = HashMap::new();
@@ -379,7 +345,6 @@ fn register_commands(
                     metadata: *metadata,
                     capabilities_available: false,
                     handler: None,
-                    tauri_handler: None,
                 },
             )
             .is_some()
@@ -396,7 +361,6 @@ fn register_commands(
                 metadata: entry.metadata,
                 capabilities_available: false,
                 handler: None,
-                tauri_handler: None,
             });
         if command.handler.replace(entry.handler).is_some() {
             return Err(SetupError::RegisterCommand {
@@ -404,14 +368,7 @@ fn register_commands(
             });
         }
     }
-    for entry in native_entries {
-        let command = commands
-            .get_mut(entry.name)
-            .expect("native wrappers must have a command declaration");
-        if command.tauri_handler.replace(entry.handler).is_some() {
-            return Err(SetupError::RegisterCommand { name: entry.name });
-        }
-    }
+
     // Validate every linked name before checking availability. Missing facilities
     // never erase a known name, and optional effects are not admission requirements.
     for command in commands.values_mut() {
@@ -471,12 +428,8 @@ impl UnifiedRpc {
         dependencies: RpcDependencies,
         provided: &[ShellCapability],
     ) -> Result<Self, SetupError> {
-        let commands = register_commands(
-            COMMAND_CATALOG,
-            inventory::iter::<CommandEntry>,
-            inventory::iter::<TauriCommandEntry>,
-            provided,
-        )?;
+        let commands =
+            register_commands(COMMAND_CATALOG, inventory::iter::<CommandEntry>, provided)?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
             commands,
@@ -498,10 +451,21 @@ impl UnifiedRpc {
             .with_state(self)
     }
 
-    async fn call(&self, method: &str, owner: RpcOwner, params: Value) -> Result<Value, RpcError> {
+    /// Dispatch a shared command, including desktop fallback for unlinked native names.
+    pub async fn call(
+        &self,
+        transport: RpcTransport,
+        method: &str,
+        owner: RpcOwner,
+        params: Value,
+    ) -> Result<Value, RpcError> {
+        let target = match transport {
+            RpcTransport::TauriIpc => RpcTarget::Desktop,
+            RpcTransport::Http => RpcTarget::Http,
+        };
         dispatch_audited(
             &self.dependencies.audit,
-            RpcTransport::Http,
+            transport,
             owner.clone(),
             || self.audit_command_name(method),
             async {
@@ -509,12 +473,38 @@ impl UnifiedRpc {
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method(method))?;
-                (handler.neutral_handler(RpcTarget::Http)?)(
-                    self.dependencies.clone(),
-                    owner,
-                    params,
-                )
-                .await
+                (handler.neutral_handler(target)?)(self.dependencies.clone(), owner, params).await
+            },
+        )
+        .await
+    }
+
+    /// Admit and audit a shell-bound invocation without accepting any shell handles.
+    /// The callback is invoked only after admission, under the same audit guard as
+    /// shared calls, so parameter failures and panics retain their existing semantics.
+    pub async fn call_native(
+        &self,
+        method: &str,
+        owner: RpcOwner,
+        call: impl FnOnce() -> RpcFuture,
+    ) -> Result<Value, RpcError> {
+        dispatch_audited(
+            &self.dependencies.audit,
+            RpcTransport::TauriIpc,
+            owner,
+            || self.audit_command_name(method),
+            async {
+                let command = self
+                    .commands
+                    .get(method)
+                    .ok_or_else(|| RpcError::unknown_method(method))?;
+                if command.metadata.kind != CommandKind::Native
+                    || !command.metadata.targets.contains(&RpcTarget::Desktop)
+                    || !command.capabilities_available
+                {
+                    return Err(command.unavailable(RpcTarget::Desktop));
+                }
+                call().await
             },
         )
         .await
@@ -524,42 +514,6 @@ impl UnifiedRpc {
         self.commands
             .get_key_value(method)
             .map_or("unknown_method", |(name, _)| *name)
-    }
-
-    async fn call_tauri(
-        &self,
-        app: tauri::AppHandle,
-        window: tauri::Window,
-        webview: tauri::Webview,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, RpcError> {
-        dispatch_audited(
-            &self.dependencies.audit,
-            RpcTransport::TauriIpc,
-            RpcOwner::desktop(window.label()),
-            || self.audit_command_name(method),
-            async {
-                let handler = self
-                    .commands
-                    .get(method)
-                    .ok_or_else(|| RpcError::unknown_method(method))?;
-                match handler.metadata.kind {
-                    CommandKind::Native => {
-                        (handler.native_handler()?)(app, window, webview, params).await
-                    }
-                    CommandKind::Shared => {
-                        (handler.neutral_handler(RpcTarget::Desktop)?)(
-                            self.dependencies.clone(),
-                            RpcOwner::desktop(window.label()),
-                            params,
-                        )
-                        .await
-                    }
-                }
-            },
-        )
-        .await
     }
 }
 
@@ -575,7 +529,7 @@ async fn http_logs_archive(
         async {
             let paths = rpc.dependencies.paths.clone();
             let archive =
-                crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
+                crate::rpc_commands::archive::logs_archive(paths, rpc.dependencies.client.clone())
                     .await
                     .map_err(|error| RpcError::new("application_error", error.to_string()))?;
             let file = tokio::fs::File::open(&archive)
@@ -666,23 +620,6 @@ fn connection_detail_events(
             }
         }
     })
-}
-
-// This is the transport entrypoint, not an application operation. All
-// application commands must use #[nyanpasu_macro::rpc] and its registry.
-#[tauri::command]
-#[specta::specta]
-pub async fn call_rpc(
-    app: tauri::AppHandle,
-    window: tauri::Window,
-    webview: tauri::Webview,
-    method: String,
-    params: RpcValue,
-) -> Result<RpcValue, RpcError> {
-    let rpc = app.state::<UnifiedRpc>();
-    rpc.call_tauri(app.clone(), window, webview, &method, params.0)
-        .await
-        .map(RpcValue)
 }
 
 #[derive(Deserialize)]
@@ -784,7 +721,7 @@ async fn http_call(
             .map_err(http_rpc_error);
         }
     };
-    rpc.call(&request.method, owner, request.params)
+    rpc.call(RpcTransport::Http, &request.method, owner, request.params)
         .await
         .map(Json)
         .map_err(|error| (http_status(&error), Json(error)))
@@ -809,10 +746,11 @@ mod tests {
         let commands = register_commands(
             COMMAND_CATALOG,
             inventory::iter::<CommandEntry>,
-            inventory::iter::<TauriCommandEntry>,
             crate::setup::DESKTOP_RPC_CAPABILITIES,
         )
         .unwrap();
+        let native =
+            native::register_native_commands(inventory::iter::<native::TauriCommandEntry>).unwrap();
         for metadata in COMMAND_CATALOG {
             let command = &commands[metadata.name];
             let entry = inventory::iter::<CommandEntry>
@@ -831,19 +769,19 @@ mod tests {
             );
             match metadata.kind {
                 CommandKind::Native => assert!(
-                    command.native_handler().is_ok(),
+                    native.contains_key(metadata.name),
                     "{} native handler",
                     metadata.name
                 ),
                 CommandKind::Shared => {
-                    assert!(command.tauri_handler.is_none());
+                    assert!(!native.contains_key(metadata.name));
                     for target in metadata.targets {
                         assert!(command.neutral_handler(*target).is_ok());
                     }
                 }
             }
         }
-        let unlinked = register_commands(COMMAND_CATALOG, [], [], &[]).unwrap();
+        let unlinked = register_commands(COMMAND_CATALOG, [], &[]).unwrap();
         assert_eq!(unlinked.len(), COMMAND_CATALOG.len());
         for metadata in COMMAND_CATALOG
             .iter()
@@ -851,7 +789,13 @@ mod tests {
         {
             let command = &unlinked[metadata.name];
             assert_eq!(command.metadata, *metadata);
-            assert_eq!(command.native_handler().unwrap_err().kind, "unsupported");
+            assert_eq!(
+                command
+                    .neutral_handler(RpcTarget::Desktop)
+                    .unwrap_err()
+                    .kind,
+                "unsupported"
+            );
         }
     }
 
@@ -934,6 +878,13 @@ mod tests {
             assert!(client.inspect_updater(1).await.is_err());
             let app = UnifiedRpc::new(
                 RpcDependencies {
+                    icon_files: None,
+                    core_directory: None,
+                    service_prompt: None,
+                    accent_color: None,
+                    host_environment: crate::rpc_commands::ports::HostEnvironment {
+                        is_appimage: false,
+                    },
                     audit: RpcAudit::new(Arc::new(AuditSink::default())),
                     client: client.clone(),
                     storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -985,6 +936,13 @@ mod tests {
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(
             RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: crate::rpc_commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client,
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1380,6 +1338,13 @@ mod tests {
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(
             RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: crate::rpc_commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1470,6 +1435,13 @@ mod tests {
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(
             RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: crate::rpc_commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client: client.clone(),
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1526,7 +1498,8 @@ mod tests {
             wire.code,
             Some(CoreErrorKind::BackendUnavailable.to_string())
         );
-        let ipc = crate::ipc::IpcError::from(std::io::Error::other("request failed"));
+        let ipc =
+            crate::rpc_commands::error::IpcError::from(std::io::Error::other("request failed"));
         let wire = application_error(ipc);
         let payload = serde_json::to_value(wire).unwrap();
         assert_eq!(payload["domain_error"]["kind"]["domain"], "unknown");
@@ -1602,6 +1575,13 @@ mod tests {
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(
             RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: crate::rpc_commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client: client.clone(),
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -1728,6 +1708,13 @@ mod tests {
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(
             RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: crate::rpc_commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client: client.clone(),
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),

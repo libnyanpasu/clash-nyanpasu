@@ -1,50 +1,6 @@
 use nyanpasu_paths::PathResolver;
-use serde::{Deserialize, Serialize};
-use specta::Type;
-use std::{
-    borrow::Cow,
-    fmt::{Display, Formatter},
-    path::PathBuf,
-};
-
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum TrayIcon {
-    #[default]
-    Normal,
-    Tun,
-    SystemProxy,
-}
-
-impl Display for TrayIcon {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TrayIcon::Normal => write!(f, "normal"),
-            TrayIcon::Tun => write!(f, "tun"),
-            TrayIcon::SystemProxy => write!(f, "system_proxy"),
-        }
-    }
-}
-
-impl From<TrayIcon> for &'static str {
-    fn from(icon: TrayIcon) -> Self {
-        match icon {
-            TrayIcon::Normal => "normal",
-            TrayIcon::Tun => "tun",
-            TrayIcon::SystemProxy => "system_proxy",
-        }
-    }
-}
-
-impl From<&TrayIcon> for &'static str {
-    fn from(icon: &TrayIcon) -> Self {
-        match icon {
-            TrayIcon::Normal => "normal",
-            TrayIcon::Tun => "tun",
-            TrayIcon::SystemProxy => "system_proxy",
-        }
-    }
-}
+use nyanpasu_rpc_protocol::values::TrayIcon;
+use std::{borrow::Cow, path::PathBuf};
 
 pub(crate) fn icon_path(config_dir: &std::path::Path, mode: &str) -> PathBuf {
     config_dir.join("icons").join(format!("{mode}.png"))
@@ -56,25 +12,11 @@ pub(crate) fn tray_icons_path(paths: &PathResolver, mode: &str) -> PathBuf {
     icon_path(config.as_std_path(), mode)
 }
 
-impl TrayIcon {
-    pub fn raw_bytes(&self) -> &'static [u8] {
-        match self {
-            TrayIcon::Normal => include_bytes!("../../../icons/tray/cat/normal.png"),
-            TrayIcon::Tun => include_bytes!("../../../icons/tray/cat/tun.png"),
-            TrayIcon::SystemProxy => include_bytes!("../../../icons/tray/cat/system-proxy.png"),
-        }
-    }
-
-    pub fn all_supported() -> &'static [TrayIcon] {
-        &[TrayIcon::Normal, TrayIcon::Tun, TrayIcon::SystemProxy]
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TrayIcon::Normal => "normal",
-            TrayIcon::Tun => "tun",
-            TrayIcon::SystemProxy => "system_proxy",
-        }
+pub fn raw_bytes(mode: &TrayIcon) -> &'static [u8] {
+    match mode {
+        TrayIcon::Normal => include_bytes!("../../../icons/tray/cat/normal.png"),
+        TrayIcon::Tun => include_bytes!("../../../icons/tray/cat/tun.png"),
+        TrayIcon::SystemProxy => include_bytes!("../../../icons/tray/cat/system-proxy.png"),
     }
 }
 
@@ -82,13 +24,13 @@ impl TrayIcon {
 pub fn get_raw_icon<'n>(paths: &PathResolver, mode: TrayIcon) -> Cow<'n, [u8]> {
     let path = tray_icons_path(paths, mode.as_str());
     if !path.exists() {
-        return Cow::Borrowed(mode.raw_bytes());
+        return Cow::Borrowed(raw_bytes(&mode));
     }
     match std::fs::read(path) {
         Ok(bytes) => Cow::Owned(bytes),
         Err(e) => {
             tracing::error!("failed to read icon file: {:?}", e);
-            Cow::Borrowed(mode.raw_bytes())
+            Cow::Borrowed(raw_bytes(&mode))
         }
     }
 }
@@ -169,11 +111,11 @@ pub fn get_icon(paths: &PathResolver, mode: &TrayIcon) -> Vec<u8> {
         }
         Err(e) => {
             tracing::error!("failed to read icon file: {:?}", e);
-            mode.raw_bytes().to_vec()
+            raw_bytes(mode).to_vec()
         }
         _ => {
             tracing::error!("invalid icon file: {:?}", cache_file);
-            mode.raw_bytes().to_vec()
+            raw_bytes(mode).to_vec()
         }
     }
 }
@@ -229,7 +171,7 @@ mod tests {
     #[test]
     fn the_bundled_icons_pass_the_check_and_a_corrupt_png_fails_it() {
         for mode in TrayIcon::all_supported() {
-            check_icon(mode.raw_bytes()).unwrap();
+            check_icon(raw_bytes(mode)).unwrap();
         }
         assert!(check_icon(b"\x89PNG\r\n\x1a\nnot an image").is_err());
     }

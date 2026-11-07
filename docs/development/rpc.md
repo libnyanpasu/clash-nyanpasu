@@ -49,7 +49,7 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 `rpc` generates a neutral handler and declaration metadata. An accompanying
 `#[tauri::command]` additionally generates and registers the native wrapper that
 extracts State, AppHandle, Window, Webview and Channel inputs. Shared declarations
-have no native wrapper: they declare `RpcState<'_, NyanpasuClient>` (or `Storage`
+live in `backend/tauri/src/rpc_commands/` and have no native wrapper: they declare `RpcState<'_, NyanpasuClient>` (or `Storage`
 or `PathResolver`) from the explicit `RpcDependencies` slots and use `rpc(owner)`
 with `RpcCaller` for the transport-supplied caller. These neutral declaration
 types live in `unified_rpc` and are omitted from Specta's schema. The handler
@@ -74,7 +74,8 @@ command is exposed locally by signature compatibility.
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
 the same declarations as handler metadata. Its development-only extractor in
 `nyanpasu-macro` follows the explicitly listed production roots (currently
-`tauri/src/ipc.rs`) through inline and ordinary external modules, inherits
+`tauri/src/ipc.rs` and `tauri/src/rpc_commands/mod.rs`) through inline and ordinary
+external modules, inherits
 ancestor `cfg`/`cfg_attr` guards and excludes test fixtures. It does not resolve
 arbitrary Rust module systems or add a protocol build dependency on application
 code. When commands move, migrate the roots, schema and handler inventories
@@ -91,6 +92,16 @@ loads catalog metadata before associating linked handlers, so an unlinked native
 wrapper leaves a known command returning `unsupported`. Coverage tests distinguish
 native wrappers, shared handlers and unlinked catalog entries. Regenerate the
 three frontend bindings as well; this seam must leave them unchanged.
+
+`build_specta_builder` uses `schema_commands!` to collect Specta function schemas
+from both native and shared declarations, without generating Tauri handlers.
+`build_transport_builder` registers only `unified_rpc::native::call_rpc`.
+The shell's `DesktopRpc` binds native handlers separately from `UnifiedRpc`;
+both native calls and shared desktop calls enter the same audit kernel exactly
+once. Shared HTTP commands retain their registry entries when an injected host
+port is absent and return `unsupported`. Executable resolution, icon files,
+service-install prompt formatting and accent queries use consumer-owned ports;
+the shell supplies the AppImage process value explicitly.
 
 ### Declare capabilities and preserve transport semantics
 
@@ -177,7 +188,7 @@ HTTP-enabled. Keep full detail frames out of the shared state event broadcast so
 inactive pages do not deserialize them. Native Channel delivery and HTTP SSE are
 transport adapters, not exceptions permitting standalone application commands.
 
-`build_transport_builder` registers only `unified_rpc::call_rpc`, the framework's
+`build_transport_builder` registers only `unified_rpc::native::call_rpc`, the framework's
 Tauri entrypoint. Put application metadata in `build_specta_builder` and regenerate
 all three binding files (`frontend/rpc/src/tauri-bindings.ts`,
 `frontend/rpc/src/rpc-bindings.ts`, and `frontend/query/src/query-bindings.ts`)

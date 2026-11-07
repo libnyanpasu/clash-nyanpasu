@@ -3,7 +3,7 @@
 pub mod routes;
 use std::{sync::Arc, time::Duration};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use axum::{
     Router,
     body::Body,
@@ -138,28 +138,25 @@ impl Actor for HttpServerActor {
                     Ok(state.status())
                 } else {
                     async {
-                        let frontend = state
-                            .frontend
-                            .clone()
-                            .context("HTTP frontend is unavailable")?;
                         let listener =
                             TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
                         let authority = listener.local_addr()?.to_string();
                         let access_token = uuid::Uuid::new_v4().to_string();
                         let url = format!("http://{authority}/?access_token={access_token}");
                         let cancellation = CancellationToken::new();
-                        let app = state
-                            .routes
-                            .build()?
-                            .fallback_service(frontend_router(frontend, cancellation.clone())?)
-                            .layer(middleware::from_fn_with_state(
-                                LocalSession {
-                                    authority,
-                                    access_token,
-                                    shutdown: cancellation.clone(),
-                                },
-                                local_session,
-                            ));
+                        let mut app = state.routes.build()?;
+                        if let Some(frontend) = state.frontend.clone() {
+                            app = app
+                                .fallback_service(frontend_router(frontend, cancellation.clone())?);
+                        }
+                        let app = app.layer(middleware::from_fn_with_state(
+                            LocalSession {
+                                authority,
+                                access_token,
+                                shutdown: cancellation.clone(),
+                            },
+                            local_session,
+                        ));
                         state.generation += 1;
                         let generation = state.generation;
                         let shutdown = cancellation.clone();
@@ -813,12 +810,227 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn unavailable_frontend_keeps_server_disabled() {
-        let server = HttpServerClient::spawn(None, Arc::new(|| Ok(Router::new())))
-            .await
-            .unwrap();
-        assert!(server.set_enabled(true).await.is_err());
+    async fn api_starts_without_frontend_assets() {
+        let fixture = crate::test_support::Fixture::new(false).await;
+        let routes = Arc::new(routes::RpcHttpRoutes::default());
+        routes.install(&fixture.rpc).unwrap();
+        let server = HttpServerClient::spawn(None, routes).await.unwrap();
         assert!(!server.status().await.unwrap().enabled);
+        let status = server.set_enabled(true).await.unwrap();
+        assert!(status.enabled);
+        let entry = status.url.unwrap();
+        assert_eq!(
+            url::Url::parse(&entry).unwrap().host_str(),
+            Some("127.0.0.1")
+        );
+        let (client, url) = authenticated_client(&entry).await;
+        for path in [
+            "/",
+            "/main/settings/debug",
+            "/assets/missing.js",
+            "/bridge/missing",
+        ] {
+            let response = client
+                .get(format!("{url}{path}"))
+                .header("accept", "text/html")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+        for (method, params, expected, body) in [
+            (
+                "audit_echo",
+                serde_json::json!({"value": "api only", "fail": false}),
+                StatusCode::OK,
+                serde_json::json!("api only"),
+            ),
+            (
+                "audit_echo",
+                serde_json::json!({"value": "api only", "fail": true}),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({
+                    "kind": "application_error", "message": "api only", "code": null,
+                    "retryable": null, "operation_id": null, "domain_error": null
+                }),
+            ),
+            (
+                "missing_command",
+                serde_json::json!({}),
+                StatusCode::NOT_FOUND,
+                serde_json::json!({
+                    "kind": "unknown_method", "message": "unknown command `missing_command`", "code": null,
+                    "retryable": null, "operation_id": null, "domain_error": null
+                }),
+            ),
+        ] {
+            let response = client
+                .post(format!("{url}/bridge/rpc"))
+                .json(&serde_json::json!({"method": method, "params": params}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected, "{method}");
+            assert_eq!(response.json::<serde_json::Value>().await.unwrap(), body);
+        }
+        server.shutdown().await.unwrap();
+        fixture.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn api_only_keeps_credentials_host_and_origin_checks() {
+        let fixture = crate::test_support::Fixture::new(false).await;
+        let routes = Arc::new(routes::RpcHttpRoutes::default());
+        routes.install(&fixture.rpc).unwrap();
+        let server = HttpServerClient::spawn(None, routes).await.unwrap();
+        let entry = server.set_enabled(true).await.unwrap().url.unwrap();
+        let url = url::Url::parse(&entry)
+            .unwrap()
+            .origin()
+            .ascii_serialization();
+        let unauthenticated = reqwest::Client::builder().no_proxy().build().unwrap();
+        let session = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
+        for path in [
+            "/",
+            "/assets/app.js",
+            "/bridge/rpc",
+            "/bridge/events",
+            "/bridge/connection-details",
+        ] {
+            for cookie in [
+                String::new(),
+                session.clone(),
+                format!("{session}; nyanpasu_http_access={}", uuid::Uuid::new_v4()),
+            ] {
+                assert_eq!(
+                    unauthenticated
+                        .get(format!("{url}{path}"))
+                        .header("cookie", cookie)
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::UNAUTHORIZED,
+                    "{path}"
+                );
+            }
+        }
+        assert_eq!(
+            unauthenticated
+                .post(format!("{url}/bridge/rpc"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            unauthenticated
+                .get(format!("{url}/?access_token=invalid"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        for (header, value) in [
+            ("host", "foreign.example"),
+            ("origin", "https://foreign.example"),
+        ] {
+            assert_eq!(
+                unauthenticated
+                    .get(&entry)
+                    .header(header, value)
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+        }
+        let cookie = cookie_from_entry(&entry).await;
+        let owner_cookie = cookie
+            .split("; ")
+            .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
+            .unwrap();
+        assert!(uuid::Uuid::parse_str(owner_cookie).is_ok());
+        let request = serde_json::json!({"method": "audit_echo", "params": {"value": "authenticated", "fail": false}});
+        for (header, value) in [
+            ("host", "foreign.example"),
+            ("origin", "https://foreign.example"),
+        ] {
+            assert_eq!(
+                unauthenticated
+                    .post(format!("{url}/bridge/rpc"))
+                    .header("cookie", &cookie)
+                    .header(header, value)
+                    .json(&request)
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+        }
+        for session_cookie in [&cookie, &cookie, &cookie_from_entry(&entry).await] {
+            let response = unauthenticated
+                .post(format!("{url}/bridge/rpc"))
+                .header("cookie", session_cookie)
+                .header("origin", &url)
+                .json(&request)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.json::<serde_json::Value>().await.unwrap(),
+                "authenticated"
+            );
+        }
+        {
+            let records = fixture.sink.records.lock();
+            assert_eq!(
+                records.len(),
+                3,
+                "rejected requests must not reach dispatch"
+            );
+            assert_eq!(records[0].owner, records[1].owner);
+            assert_ne!(records[0].owner, records[2].owner);
+        }
+        server.set_enabled(false).await.unwrap();
+        let next_entry = server.set_enabled(true).await.unwrap().url.unwrap();
+        assert_ne!(
+            url::Url::parse(&entry).unwrap().query(),
+            url::Url::parse(&next_entry).unwrap().query()
+        );
+        let next_url = url::Url::parse(&next_entry)
+            .unwrap()
+            .origin()
+            .ascii_serialization();
+        assert_eq!(
+            unauthenticated
+                .post(format!("{next_url}/bridge/rpc"))
+                .header("cookie", cookie)
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let (client, next_url) = authenticated_client(&next_entry).await;
+        assert_eq!(
+            client
+                .post(format!("{next_url}/bridge/rpc"))
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        server.shutdown().await.unwrap();
+        fixture.shutdown().await;
     }
 
     #[tokio::test]

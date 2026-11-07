@@ -268,6 +268,7 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'
 ] }

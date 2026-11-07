@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
-use crate::state::{DecisionHandle, StateDecision};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{DecisionHandle, StateDecision};
 
 use super::{
     mutation::{AppliedCandidate, DeferredTarget, KnownRuntimeState},

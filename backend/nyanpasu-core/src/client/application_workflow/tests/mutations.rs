@@ -18,14 +18,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    client::test_support::workflow::Installer,
-    state::{
-        Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
-        ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber,
-        StateChange, StateParticipant, SubscriberName, error::StateChangedError,
-    },
-};
+use crate::client::test_support::workflow::Installer;
 use camino::Utf8PathBuf;
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig, ReleaseChannel},
@@ -38,6 +31,11 @@ use nyanpasu_config::{
 use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_state_engine::{
+    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
+    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
+    StateParticipant, SubscriberName, error::StateChangedError,
+};
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::Notify;
 

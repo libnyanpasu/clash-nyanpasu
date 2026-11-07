@@ -13,11 +13,11 @@
 
 use std::sync::Arc;
 
-use crate::state::{Ack, DecisionHandle, StateChange};
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{Ack, DecisionHandle, StateChange};
 use tokio::sync::oneshot;
 
 use super::{

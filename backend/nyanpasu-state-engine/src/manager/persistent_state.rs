@@ -9,7 +9,7 @@ use std::{future::Future, io::Write, pin::Pin};
 
 use super::{super::error::*, *};
 
-use crate::state::{
+use crate::{
     DecisionHandle, PrepareReport, StateParticipant, Version,
     coordinator::{ParticipantEntry, PendingOutcome},
 };
@@ -453,7 +453,7 @@ where
     /// The raw store behind this manager, so tests can simulate a writer that
     /// bypassed the coordinator and force a CAS mismatch.
     #[cfg(test)]
-    pub(crate) fn state_store(&self) -> crate::state::coordinator::StateStore<State> {
+    pub(crate) fn state_store(&self) -> crate::coordinator::StateStore<State> {
         self.state_coordinator.state_store()
     }
 }
@@ -461,7 +461,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Ack, StateAckSubscriber, StateChange, SubscriberName};
+    use crate::{Ack, StateAckSubscriber, StateChange, SubscriberName};
     use serde::{Deserialize, Serialize};
     use std::sync::{
         Arc,
@@ -512,7 +512,7 @@ mod tests {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(crate::state::ack::test_ack_error("init ACK failed"))
+            Ack::Failed(crate::ack::test_ack_error("init ACK failed"))
         }
     }
 

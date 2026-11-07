@@ -9,7 +9,7 @@ use std::io::Write;
 
 use super::{super::error::*, *};
 
-use crate::state::PrepareReport;
+use crate::PrepareReport;
 
 /// Setup for [`WeakPersistentStateManager`].
 ///
@@ -291,7 +291,7 @@ mod tests {
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if self.should_fail.load(Ordering::SeqCst) {
-                return Ack::Failed(crate::state::ack::test_ack_error("mock ACK failure"));
+                return Ack::Failed(crate::ack::test_ack_error("mock ACK failure"));
             }
             Ack::Ok
         }

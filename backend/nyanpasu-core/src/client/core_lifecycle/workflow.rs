@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use crate::state::StateSnapshot;
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::core_install::{
     BinaryInstaller, CoreBinaryCompanionPaths, CoreBinaryInstallRequest,
 };
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_state_engine::StateSnapshot;
 use nyanpasu_updater::PreparedCoreBinary;
 use snafu::{ResultExt, ensure};
 

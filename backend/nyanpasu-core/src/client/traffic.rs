@@ -3,7 +3,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use crate::state::StateSnapshot;
 use nyanpasu_config::{
     application::{IpLookupProvider, NyanpasuAppConfig, StunServer},
     profile::Profiles,
@@ -11,6 +10,7 @@ use nyanpasu_config::{
 use nyanpasu_observers::traffic::{
     Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
 };
+use nyanpasu_state_engine::StateSnapshot;
 use nyanpasu_traffic::{
     ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
     TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,

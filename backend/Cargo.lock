@@ -1847,6 +1847,7 @@ dependencies = [
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
  "nyanpasu-scripts",
+ "nyanpasu-state-engine",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
  "nyanpasu-updater",
@@ -6777,11 +6778,9 @@ name = "nyanpasu-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arc-swap",
  "async-trait",
  "atomicwrites",
  "axum",
- "bon",
  "bytes",
  "camino",
  "chrono",
@@ -6814,6 +6813,7 @@ dependencies = [
  "nyanpasu-persistence",
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
+ "nyanpasu-state-engine",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
  "nyanpasu-updater",
@@ -7291,6 +7291,27 @@ dependencies = [
  "quote",
  "serde_derive_internals 0.30.0",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "nyanpasu-state-engine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "async-trait",
+ "atomicwrites",
+ "bon",
+ "camino",
+ "fs-err",
+ "indexmap 2.14.2",
+ "nyanpasu-persistence",
+ "serde",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

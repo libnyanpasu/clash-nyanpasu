@@ -4,13 +4,13 @@ macro_rules! impl_state_manager_delegates {
             self.state_coordinator.snapshot()
         }
 
-        pub fn snapshot_handle(&self) -> $crate::state::StateSnapshot<$state> {
+        pub fn snapshot_handle(&self) -> $crate::StateSnapshot<$state> {
             self.state_coordinator.snapshot_handle()
         }
 
         pub fn add_subscriber(
             &mut self,
-            subscriber: Box<dyn $crate::state::StateAckSubscriber<$state> + Send + Sync>,
+            subscriber: Box<dyn $crate::StateAckSubscriber<$state> + Send + Sync>,
         ) {
             self.state_coordinator.add_subscriber(subscriber);
         }
@@ -18,7 +18,7 @@ macro_rules! impl_state_manager_delegates {
         pub fn remove_subscriber(
             &mut self,
             name: &str,
-        ) -> Option<std::sync::Arc<dyn $crate::state::StateAckSubscriber<$state> + Send + Sync>> {
+        ) -> Option<std::sync::Arc<dyn $crate::StateAckSubscriber<$state> + Send + Sync>> {
             self.state_coordinator.remove_subscriber(name)
         }
     };

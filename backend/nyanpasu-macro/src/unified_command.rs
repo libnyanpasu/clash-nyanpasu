@@ -167,7 +167,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             #http_parse
             let output = #output?;
             ::serde_json::to_value(output)
-                .map_err(crate::unified_rpc::RpcError::application)
+                .map_err(crate::unified_rpc::application_error)
         }
     } else {
         quote! { Err(crate::unified_rpc::RpcError::unsupported(stringify!(#name))) }
@@ -233,7 +233,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                     #(#state_bindings)*
                     let output = #output?;
                     ::serde_json::to_value(output)
-                        .map_err(crate::unified_rpc::RpcError::application)
+                        .map_err(crate::unified_rpc::application_error)
                 })
             }
         }
@@ -300,7 +300,7 @@ fn call(
 fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenStream {
     match output {
         ReturnType::Type(_, ty) if result || is_result(ty) => {
-            quote!(#call.map_err(crate::unified_rpc::RpcError::application))
+            quote!(#call.map_err(crate::unified_rpc::application_error))
         }
         ReturnType::Type(_, _) => quote!(Ok(#call)),
         ReturnType::Default => quote!(Ok(#call)),

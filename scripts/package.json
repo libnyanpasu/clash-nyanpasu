@@ -28,8 +28,8 @@
     "@types/adm-zip": "0.5.7",
     "@types/d3": "7.4.3",
     "@types/figlet": "1.7.0",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "@types/semver": "7.7.1",
-    "@types/spdx-expression-parse": "3.0.5"
+    "@types/spdx-expression-parse": "4.0.0"
   }
 }

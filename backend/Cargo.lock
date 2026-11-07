@@ -7312,10 +7312,13 @@ dependencies = [
 name = "nyanpasu-rpc-protocol"
 version = "0.1.0"
 dependencies = [
+ "nyanpasu-config",
  "serde",
  "serde_json",
+ "snafu 0.8.9",
  "specta",
  "specta-typescript",
+ "tokio",
 ]
 
 [[package]]

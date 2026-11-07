@@ -160,6 +160,58 @@ local socket/CLI must enter this same kernel at INFO.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
 
+## Local frame and session contract
+
+E3b implements `nyanpasu-rpc-protocol::frame` and `session` without exposing a
+listener. A frame is a big-endian u32 byte length followed by UTF-8 JSON, limited
+to 4 MiB excluding the prefix. The incremental codec consumes one bounded frame
+at a time, supports fragmented/coalesced input, and becomes terminal on malformed,
+unknown, oversized or truncated input. `frame-io` is default-off and adds Tokio
+read/write helpers; pure values and session rules require no IO runtime.
+
+The first client frame is hello with `versions`, `requiredFeatures` and
+`optionalFeatures`. Version 1 is currently the only supported version; the server
+selects the highest common version. Both peers must support required `rpc`.
+Known optional features are `events` and `connection-details`; unknown optional
+features are ignored, unknown required features reject the connection. Accept
+passes through the sole ordered writer before request admission, and hello cannot
+be repeated. Invalid input/state produces an outer reject when safe to write,
+then closes; it never executes a command or adds a variant to `RpcError`.
+
+Request, subscribe and unsubscribe share strictly increasing positive u64 JSON
+integer IDs for the entire connection lifetime, including completed/rejected
+requests. They cannot wrap; exhaustion requires a new connection. Responses
+repeat the request ID and contain exactly one of `result`/`error`. Business
+errors preserve existing RpcError JSON and do not close the connection. Until
+E1b, result/error reception owns JSON rather than deserializing operational error
+sources or static strings. Frame failures never provide request payloads to audit.
+
+Each events subscription names exactly one of configuration status, core status,
+service status, app-update state (when available), or core-log status. The
+server-generated opaque subscription ID is distinct from its request ID and is
+never reused. The ordered output is subscribed acknowledgement → initial reset
+→ complete events; overflow requires lag → fresh reset → complete events. Reset
+contains the full current value, including the `{"status": ...}` wrapper for
+core logs, not log rows. The receiver replaces that stream's current value.
+Other event identities return `unknown_stream`; recovery does not add commands
+or issue recovery queries. There is no cross-source total-order promise.
+
+Connection details use separate subscribe/data frames, outside EVENT_NAMES/bus.
+After acknowledgement the adapter sends the current Some frame, or waits for the
+first Some; empty connections are valid. It coalesces to the latest bounded value
+and permits sequence gaps without lag/reset. Unsubscribe stops production and
+discards pending output before its idempotent acknowledgement; no event/data is
+permitted afterwards, including for repeated/unknown unsubscribe IDs.
+
+Establishment errors use `subscription_error` with request `id` and no ack;
+post-establishment errors use `subscription` and end that stream. Codes are
+`feature_not_negotiated`, `unsupported`, `unknown_stream`, `resource_limit` and
+`snapshot_unavailable`. The session bounds pending operations and subscriptions.
+E3d still owns capability checks, snapshots/race handling, continuous overflow
+failure, resource cleanup (including late completions), and audited admission.
+E3e owns real client reset application. Frame-only tests do not claim those
+dispatcher, demand-release or real-connection behaviors are delivered.
+
 ## Phase E ownership and planned transports
 
 E1a-b moved `RpcOwner`, `RpcError`, `RpcValue`, the request envelope and the eleven shared `EventName` identities into `nyanpasu-rpc-protocol`. Desktop event wrappers remain in the shell and are checked against the protocol names. HTTP cookie parsing, status mapping and application error downcasts remain consumer-side free functions. This move preserves existing owner labels, HTTP errors and bindings.
@@ -170,7 +222,7 @@ E2b moved shared commands, registry, error conversion, HTTP infrastructure, even
 
 E2c makes observations publish first to `nyanpasu-rpc::events::EventBus` through the seven-source `forward` module and bus adapters for state invalidations and app-update snapshots. Its injected Tauri delivery sink runs synchronously, preserving single-window/type/all-window targets, missing-window errors and payloads; it cannot lag behind an asynchronous native queue. SSE/local receivers are bounded and retain lag/resync. The `listen_any` input bridge is removed; native delivery must never re-enter publication. Acquire forwarder subscriptions synchronously after client construction but before reconciliation, stream activation and listener admission, with initial snapshots where needed. Preserve source order without promising a causal total order across independent producers. Full connection details remain demand-driven, outside the shared broadcast. Shell-originated shared events publish explicitly into the bus.
 
-E3a delivers API-only HTTP startup with optional frontend assets, preserving per-start credentials, owner cookies, loopback binding, default-disabled state and Host/Origin middleware. The frontend fallback is mounted only when supplied; authenticated missing static pages return 404. The remaining E3 local transport work is planned. Local RPC uses length-prefixed JSON with a version/feature handshake before dispatch, strictly increasing, never-reused per-connection IDs, bounded queues/resource tables and acknowledged event subscriptions. E3b defines canonical frames, negotiated features, lag notices and unsubscribe ordering. Unix sockets and Windows named pipes both require actual platform tests and secure endpoint ownership. One default endpoint per user and app data directory belongs to whichever shell binds first; a second live binder fails with a typed error. CLI uses this default or `--endpoint`. Unix only reclaims a valid user-owned socket in its private directory when connect is refused; all other existing endpoints are refused. Windows uses first-instance pipe exclusivity and needs no stale cleanup. The server generates transport-tagged connection owners; request JSON cannot supply one. Disconnect releases connection resources and subscriptions, including late App/Service log-session completions, without cancelling owner-started work. Successful completion tasks register returned IDs even after closure and promptly close them. A Service open whose upstream reply is lost or exceeds IpcServiceLogs’ five-second timeout has no ID to close; that unconfirmed session relies on the existing 45-second service lease (without renewal, measured from creation/last renewal). This is the explicit V-61 limitation, not a service-protocol change.
+E3a delivers API-only HTTP startup with optional frontend assets, preserving per-start credentials, owner cookies, loopback binding, default-disabled state and Host/Origin middleware. The frontend fallback is mounted only when supplied; authenticated missing static pages return 404. E3b delivers the pure local frame/session contract described below; production listeners, dispatch and clients remain E3c–E3e work. Unix sockets and Windows named pipes both require actual platform tests and secure endpoint ownership. One default endpoint per user and app data directory belongs to whichever shell binds first; a second live binder fails with a typed error. CLI uses this default or `--endpoint`. Unix only reclaims a valid user-owned socket in its private directory when connect is refused; all other existing endpoints are refused. Windows uses first-instance pipe exclusivity and needs no stale cleanup. The server generates transport-tagged connection owners; request JSON cannot supply one. Disconnect releases connection resources and subscriptions, including late App/Service log-session completions, without cancelling owner-started work. Successful completion tasks register returned IDs even after closure and promptly close them. A Service open whose upstream reply is lost or exceeds IpcServiceLogs’ five-second timeout has no ID to close; that unconfirmed session relies on the existing 45-second service lease (without renewal, measured from creation/last renewal). This is the explicit V-61 limitation, not a service-protocol change.
 
 Local dispatch and subscription admission enter the existing audit kernel at INFO, with no payloads or per-frame records; Tauri stays DEBUG and HTTP INFO. Every transport preserves fatal panic propagation, with no panic/JoinError conversion into `RpcError`. A dedicated transport task owns the client connection; dropping a call future does not interrupt a partial exchange or desynchronize the stream. Timeout/transport error closes the connection and reports an unknown outcome for potentially submitted calls; mutations are never retried automatically. The initial local allowlist and default-off desktop listener are specified by E3e, independently of HTTP exposure.
 

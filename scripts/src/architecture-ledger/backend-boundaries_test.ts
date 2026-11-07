@@ -1,6 +1,27 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { dependencyViolations } from './backend-boundaries.ts'
+
+test('protocol frame IO is opt-in and feature-off values need no IO runtime', () => {
+  const manifest = readFileSync(
+    new URL(
+      '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(manifest, /default = \[\]/)
+  assert.match(manifest, /frame-io = \['dep:tokio'\]/)
+  assert.match(manifest, /tokio = \{[^\n]*optional = true/)
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-rpc-protocol v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\nsnafu v0.8\n',
+    ),
+    [],
+  )
+})
 
 test('protocol accepts direct and transitive foundation values and libraries', () => {
   for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
@@ -15,6 +36,7 @@ test('protocol accepts direct and transitive foundation values and libraries', (
 })
 
 for (const dependency of [
+  'nyanpasu-server',
   'nyanpasu-core',
   'nyanpasu-state-engine',
   'nyanpasu-migration',

@@ -432,7 +432,7 @@ correction above
 
 E2a uses schema-only Specta collection, retaining only `call_rpc` in the Tauri transport builder and byte-identical generated files. Its complete 104-command HTTP disposition table preserves host behavior through injected ports, including Tauri executable resolution and pure icon/file queries. E1b explicitly projects and decodes `CoreAgentSkill` as well as runtime values.
 
-Planned E3 shares one default endpoint per user/app data directory across desktop and server; the first binder owns it, a second live binder fails, and CLI may use `--endpoint`. Unix only reclaims a valid private-directory user-owned socket on connect refused; Windows uses first-instance exclusivity without stale cleanup. E3b defines version/features, canonical JSON and subscribe/unsubscribe/lag ordering. Planned E4 keeps the current Redb log store and observers fallback, and installs a neutral process panic policy before tasks start. HTTP/local/background-owner subprocess panic tests require non-zero exit with original panic evidence and no RPC-error conversion. These are acceptance requirements, not delivered capabilities.
+Planned E3c shares one default endpoint per user/app data directory across desktop and server; the first binder owns it, a second live binder fails, and CLI may use `--endpoint`. Unix only reclaims a valid private-directory user-owned socket on connect refused; Windows uses first-instance exclusivity without stale cleanup. E3b delivers version/features, canonical JSON and the pure subscribe/unsubscribe/lag state machine, without a production listener. Planned E4 keeps the current Redb log store and observers fallback, and installs a neutral process panic policy before tasks start. HTTP/local/background-owner subprocess panic tests require non-zero exit with original panic evidence and no RPC-error conversion. Endpoint and process-panic behavior remain acceptance requirements for later cards.
 
 E2a moved the four shared HTTP response definitions before RPC extraction, with the icon-mode value owned by protocol and asset functions owned by the shell. E2b includes runtime-values unconditionally in dependency roots and reverse-edge policy. E3b now retains only full-value configuration/core/service status, app-update state when available, and core-log status, with an initial snapshot and fresh reset after local lag. The separate connection-detail contract is unchanged. All other event identities are excluded from E3 local subscriptions. Real-connection reset tests cover only those five identities; the thirteen-command allowlist is unchanged. O-46/V-63 defer invalidation/storage recovery to a separate reviewed card with round-3 findings 1–3 as acceptance criteria. E4a's real OS refusal-adapter tests use a narrowly scoped, default-off OS test-support feature enabled only by the server dev-dependency; production feature closure excludes it. Decisions O-40–O-45 and deviations V-56–V-62 record these changes and the Service-open lease limitation.
 
@@ -591,4 +591,10 @@ and the UI/app-update sinks through the bus, with synchronous targeted native
 delivery and bounded SSE lag/resync. Forwarders subscribe at construction before
 reconciliation, streams and listeners; root tasks own their shutdown. Deep links
 and window messages publish explicitly, and connection details remain demand
-streams outside the global broadcast. Local RPC and the headless shell remain planned.
+streams outside the global broadcast. E3b delivers local version-1 JSON frames
+with big-endian u32 lengths, the 4 MiB bound, explicit feature negotiation,
+never-reused request IDs and subscription ack/reset/lag ordering. Pure frame and
+session rules work without IO; the default-off `frame-io` feature adds Tokio
+helpers and is enabled explicitly by musl tests. No production listener is exposed.
+Endpoints, dispatch/resource cleanup, client recovery and the headless shell
+remain planned in E3c–E4; real-connection tests remain with their owning cards.

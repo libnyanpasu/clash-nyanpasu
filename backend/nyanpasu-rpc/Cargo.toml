@@ -7,8 +7,16 @@ authors.workspace = true
 
 [features]
 default = ['default-meta', 'nesting']
-default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
-nesting = ['nyanpasu-core/nesting', 'nyanpasu-config/nesting']
+default-meta = [
+  'nyanpasu-core/default-meta',
+  'nyanpasu-config/default-meta',
+  'nyanpasu-rpc-protocol/default-meta'
+]
+nesting = [
+  'nyanpasu-core/nesting',
+  'nyanpasu-config/nesting',
+  'nyanpasu-rpc-protocol/nesting'
+]
 local-server = [
   'nyanpasu-rpc-protocol/frame-io',
   'dep:tokio-util',
@@ -123,6 +131,12 @@ windows-sys = { version = '0.61', optional = true, features = [
 ] }
 
 [dev-dependencies]
+whoami = '2.0.0'
+atomicwrites = '0.4'
+redb = '4.0.0'
+nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
+nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
+
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
   'local-client'
 ] }

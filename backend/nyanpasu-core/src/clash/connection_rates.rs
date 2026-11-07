@@ -54,6 +54,20 @@ pub struct ConnectionDetails {
 }
 
 impl ConnectionDetails {
+    /// Borrow each connection and its derived rates in the original source order.
+    pub fn iter(&self) -> impl Iterator<Item = ClashConnection<'_>> {
+        self.snapshot
+            .connections
+            .iter()
+            .flatten()
+            .zip(&self.rates)
+            .map(|(connection, rate)| ClashConnection {
+                connection,
+                download_speed: rate.download,
+                upload_speed: rate.upload,
+            })
+    }
+
     pub fn new(snapshot: Arc<clash_api::ConnectionsSnapshot>, rates: Vec<TrafficRate>) -> Self {
         debug_assert_eq!(
             snapshot.connections.as_ref().map_or(0, Vec::len),
@@ -65,18 +79,7 @@ impl ConnectionDetails {
 
 impl Serialize for ConnectionDetails {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(
-            self.snapshot
-                .connections
-                .iter()
-                .flatten()
-                .zip(&self.rates)
-                .map(|(connection, rate)| ClashConnection {
-                    connection,
-                    download_speed: rate.download,
-                    upload_speed: rate.upload,
-                }),
-        )
+        serializer.collect_seq(self.iter())
     }
 }
 

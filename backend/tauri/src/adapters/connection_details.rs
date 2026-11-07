@@ -14,19 +14,13 @@ use std::{
     },
 };
 
+use nyanpasu_rpc::projection::IntoWire;
+use nyanpasu_rpc_protocol::wire::native::SubscriptionId;
 use tauri::Manager;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use nyanpasu_core::clash::ws::ClashConnectionDetails;
-
-/// Identifies one `subscribe_clash_connection_details` call, for a later
-/// `unsubscribe_clash_connection_details`.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type,
-)]
-#[serde(transparent)]
-pub struct SubscriptionId(u64);
 
 struct Subscription {
     webview: String,
@@ -112,9 +106,11 @@ pub trait DetailsSink: Send + Sync + 'static {
     fn send(&self, frame: &Arc<ClashConnectionDetails>) -> bool;
 }
 
-impl DetailsSink for tauri::ipc::Channel<Arc<ClashConnectionDetails>> {
+impl DetailsSink
+    for tauri::ipc::Channel<nyanpasu_rpc::projection::streams::ClashConnectionDetailsSend>
+{
     fn send(&self, frame: &Arc<ClashConnectionDetails>) -> bool {
-        tauri::ipc::Channel::send(self, Arc::clone(frame)).is_ok()
+        tauri::ipc::Channel::send(self, frame.into_wire()).is_ok()
     }
 }
 

@@ -68,6 +68,21 @@ Names are working names until the PR that creates each crate.
 
 E1a-b delivered protocol owner values, request/error envelopes, transparent JSON and the eleven event identities. Cookie parsing, HTTP status mapping and application error conversion live in `nyanpasu-rpc`; protocol uses Serde/JSON/Specta and Snafu, with optional Tokio IO behind the default-off `frame-io` feature delivered in E3b. The remaining Phase E work stays planned; [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分) defines its implementation cards. The protocol owns wire contracts and receiving projections, not application error downcasts or operational sources. Canonical foundation values stay in their existing owner. A separate local-client crate is deferred unless `protocol/local-client` cannot isolate the client dependency closure.
 
+E1b-a closes the protocol request/result/error/event graph for all 163 registered
+command declarations (160 distinct names, including mutually exclusive platform
+branches), not only the 104 HTTP declarations. `wire::closure_tests` is the typed
+inventory: it includes native values, canonical external nested values, every
+shared event and the separately delivered connection-detail payload. Native
+Channel descriptors remain shell bindings. Application snapshots are explicitly
+projected by `nyanpasu-rpc::projection`; canonical foundation values retain their
+owners, and `wire::receive` describes serialized failures without reconstructing
+skipped operational sources. The four shared responses moved into RPC by E2a/E2b
+now live in protocol. Schema features forward explicitly, foundation packages
+cannot depend back on protocol/RPC, and CLI may reach foundation values through
+protocol. Existing prefix/musl sets and runtime-values registration are unchanged.
+E1b-b still owns complete typed-client acceptance; this card does not widen local
+command or event opt-ins.
+
 The registry owns thin shared commands, the event bus and the C2f audited dispatch kernel. Bus-first event delivery remains E2c work. Tauri IPC/native channels and asset resolution remain shell adapters; HTTP and local-server are explicit registry features. Local client framing/decoding is a protocol feature with no registry dependency. Missing required capabilities leave known commands registered and return `unsupported`, not `unknown_method`.
 
 E1a-c adds neutral command target/capability values and the generated production

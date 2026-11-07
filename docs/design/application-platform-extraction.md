@@ -504,7 +504,7 @@ but local execution still needs the Playwright browser.
 | Step | Change                                                                                               | Done when                                                                                                                                       |
 | ---- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | E1a  | Neutral/native macro, protocol envelope, independent targets and capability admission; tasks E1a-a–d | Missing required capability is unsupported, not unknown; existing bindings and HTTP behavior unchanged                                          |
-| E1b  | Complete downward wire/receiving closure after D2e and E3e; tasks E1b-a/b                            | Canonical foundation values reused; skipped operational sources not fabricated; typed client has no core-family dependency                      |
+| E1b  | E1b-a: downward DTO/receiving closure delivered; E1b-b: typed-client acceptance pending              | Canonical foundation values reused; skipped operational sources not fabricated; typed client has no core-family dependency                      |
 | E2   | Move registry/commands/HTTP/audit and invert event publication; tasks E2a–c                          | No Tauri types in registry/kernel; one audit per admission; bus-first delivery without feedback                                                 |
 | E3   | API-only HTTP and negotiated Unix/Windows local RPC; tasks E3a–e                                     | Unchanged HTTP middleware; target/capability refusal; owner cleanup, INFO audit, bounded queues, timeout invalidation and fatal panic           |
 | E4   | Refusing composition, resident server, CLI and session integration; tasks E4a–d                      | One live client; indirect privileged paths refused only in separate server; production dependency gates and real consecutive CLI processes pass |
@@ -626,7 +626,15 @@ local allowlist is `get_profiles`, `create_profile`, `delete_profile`,
 `open_log_session`, `query_logs`, `close_log_session`; HTTP exposure is unchanged.
 Subscriptions use local control frames. Musl explicitly enables protocol/local-client
 and RPC/local-server on their existing library targets; no package/prefix is added.
-The complete typed receiving closure and headless shell remain E1b/E4 work.
+E1b-a supplies the full downward DTO and receiving closure, including native/cfg
+commands, agent skills, shared event payloads and skipped-source error projections.
+The executable inventory covers 163 declarations / 160 names; explicit RPC
+conversions preserve existing serialization and generated bindings. Canonical
+foundation and external values remain at their owners. The four E2 shared
+responses now live in protocol, without aliases at their previous RPC paths.
+Complete typed-client acceptance remains E1b-b work, and the headless shell remains
+E4 work. Neither the thirteen-command allowlist nor the five local event identities
+is expanded by the DTO closure.
 
 | E3c platform             | Implementation | Validation                                                                                                       |
 | ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------- |

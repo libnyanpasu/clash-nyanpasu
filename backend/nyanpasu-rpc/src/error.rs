@@ -169,6 +169,11 @@ fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError 
                 .ok()
                 .map(|value| Box::new(RpcValue(value)));
         }
+        if let Some(log) = error.downcast_ref::<nyanpasu_rpc_protocol::wire::logs::CoreLogError>() {
+            result.domain_error = serde_json::to_value(log)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
+        }
         if let Some(core) = error.downcast_ref::<nyanpasu_core_manager::CoreError>() {
             result.code = core.kind.map(|kind| kind.to_string());
             result.retryable = Some(core.retryable);

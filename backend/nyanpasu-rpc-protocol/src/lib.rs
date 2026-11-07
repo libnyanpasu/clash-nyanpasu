@@ -17,6 +17,7 @@ pub use request::Request;
 pub mod frame;
 pub mod session;
 pub mod values;
+pub mod wire;
 
 #[cfg(feature = "local-client")]
 pub mod client;

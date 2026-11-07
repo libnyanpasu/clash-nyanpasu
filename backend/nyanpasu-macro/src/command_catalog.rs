@@ -497,7 +497,10 @@ fn shared_signatures_have_no_shell_owned_types() {
                     assert!(
                         !imported.starts_with("crate::")
                             || imported.starts_with("crate::registry::")
-                            || imported.starts_with("crate::error::"),
+                            || imported.starts_with("crate::error::")
+                            // These traits convert values at the neutral RPC boundary.
+                            || imported == "crate::projection::IntoWire"
+                            || imported == "crate::projection::IntoApplication",
                         "shell-owned import: {imported}"
                     );
                 }

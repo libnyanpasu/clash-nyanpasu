@@ -362,3 +362,43 @@ async fn local_subscription_reset_and_details_errors_are_distinct() {
     );
     client.close().await;
 }
+
+#[tokio::test]
+async fn typed_client_decodes_core_agent_skills_without_core() {
+    use crate::wire::profiles::CoreAgentSkill;
+
+    let (client, mut server) = pair(4096).await;
+    for expected in [
+        json!([]),
+        json!([
+            {"name": "empty", "dir": "", "installed": false},
+            {"name": "Windows", "dir": "C:\\Users\\測試\\skills", "installed": true},
+            {"name": "Unix", "dir": "/home/user/skills", "installed": false}
+        ]),
+    ] {
+        let (reply, ()) = tokio::join!(client.call("get_core_agent_skills", json!({})), async {
+            let Some(Frame::Request { id, method, params }) =
+                frame::read_frame(&mut server).await.unwrap()
+            else {
+                panic!("request expected")
+            };
+            assert_eq!(method, "get_core_agent_skills");
+            assert_eq!(params, json!({}));
+            frame::write_frame(
+                &mut server,
+                &Frame::Response {
+                    id,
+                    reply: Reply::Result(expected.clone()),
+                },
+            )
+            .await
+            .unwrap();
+        });
+        let Reply::Result(value) = reply.unwrap() else {
+            panic!("result expected")
+        };
+        let skills: Vec<CoreAgentSkill> = serde_json::from_value(value).unwrap();
+        assert_eq!(serde_json::to_value(skills).unwrap(), expected);
+    }
+    client.close().await;
+}

@@ -3,7 +3,7 @@ use crate::host::HostInfo;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Default, Deserialize, specta::Type)]
+#[derive(Debug, Default, serde::Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PageCapabilities {
     #[specta(optional)]
@@ -19,12 +19,12 @@ pub struct PageCapabilities {
     #[specta(optional)]
     pub device_pixel_ratio: Option<f64>,
 }
-#[derive(Debug, Deserialize, specta::Type)]
+#[derive(Debug, serde::Serialize, Deserialize, specta::Type)]
 pub struct BrandVersion {
     pub brand: String,
     pub version: String,
 }
-#[derive(Debug, Default, Deserialize, specta::Type)]
+#[derive(Debug, Default, serde::Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct WebGl {
     #[specta(optional)]
@@ -32,13 +32,13 @@ pub struct WebGl {
     #[specta(optional)]
     pub renderer: Option<String>,
 }
-#[derive(Debug, Deserialize, specta::Type)]
+#[derive(Debug, serde::Serialize, Deserialize, specta::Type)]
 pub struct WebGpu {
     pub available: bool,
     #[specta(optional)]
     pub adapter: Option<WebGpuAdapter>,
 }
-#[derive(Debug, Default, Deserialize, specta::Type)]
+#[derive(Debug, Default, serde::Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct WebGpuAdapter {
     #[specta(optional)]

@@ -1,13 +1,17 @@
 //! Shared profiles command adapters.
-
 use nyanpasu_config::profile::{
     FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
     Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
 };
-use nyanpasu_core::{client::NyanpasuClient, state::profiles::actor::NewProfileRequest};
+use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_rpc_protocol::wire::profiles::{NewProfileRequest, ProfileSyncStatus};
 use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
 
-use crate::{error::Result, registry::RpcState};
+use crate::{
+    error::Result,
+    projection::{IntoApplication, IntoWire},
+    registry::RpcState,
+};
 
 #[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
@@ -64,6 +68,7 @@ pub async fn create_profile(
     request: NewProfileRequest,
     file_data: Option<String>,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
+    let request = request.into_application();
     // Must return the created ProfileId; never drop it on the wire.
     Ok(client.create_profile(request, file_data).await?)
 }
@@ -134,8 +139,8 @@ pub async fn create_profile_folder(
 pub async fn get_profile_sync_status(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
-) -> Result<nyanpasu_core::client::jobs::ProfileSyncStatus> {
-    Ok(client.profile_sync_status(uid).await?)
+) -> Result<ProfileSyncStatus> {
+    Ok((client.profile_sync_status(uid).await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]

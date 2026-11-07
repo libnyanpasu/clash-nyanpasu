@@ -37,14 +37,14 @@ pub struct ManifestVersion {
 // TODO: manifest v2 should be kebad-case
 #[derive(Deserialize, Serialize, Clone, Debug, Type)]
 pub struct ManifestVersionLatest {
-    mihomo: String,
-    mihomo_alpha: String,
-    clash_rs: String,
-    clash_rs_alpha: String,
-    clash_premium: String,
-    meow: String,
+    pub mihomo: String,
+    pub mihomo_alpha: String,
+    pub clash_rs: String,
+    pub clash_rs_alpha: String,
+    pub clash_premium: String,
+    pub meow: String,
     #[serde(default)]
-    meow_alpha: String,
+    pub meow_alpha: String,
 }
 
 #[derive(Deserialize, Serialize, Default, Clone, Debug)]

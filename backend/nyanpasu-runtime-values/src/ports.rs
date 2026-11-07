@@ -5,7 +5,7 @@ use serde::Serialize;
 use snafu::Snafu;
 
 /// The port a resolution was picking for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum PortField {
     Mixed,

@@ -1,8 +1,9 @@
+use nyanpasu_rpc_protocol::wire::native::CopyEnvOption;
 use std::{borrow::Cow, ops::ControlFlow};
 
 use crate::{
     ipc, log_err,
-    utils::{help, proxy_env, proxy_env::CopyEnvOption},
+    utils::{help, proxy_env},
     window::{
         WindowManager,
         kinds::{MainWindow, show_tray_menu_window},

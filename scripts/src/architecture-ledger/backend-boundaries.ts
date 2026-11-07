@@ -51,6 +51,16 @@ const IMPLEMENTATION = [
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
   { package: 'nyanpasu-rpc', forbids: [...GUI, ...IMPLEMENTATION] },
+  {
+    package: 'nyanpasu-cli',
+    forbids: [
+      ...GUI,
+      ...CORE_FAMILY,
+      ...IMPLEMENTATION,
+      'nyanpasu-rpc',
+      'nyanpasu-server',
+    ],
+  },
   ...[
     ...FOUNDATION,
     ...CORE_FAMILY,
@@ -74,7 +84,7 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
   ].map((name) => ({ package: name, forbids: GUI })),
   ...FOUNDATION.map((name) => ({
     package: name,
-    forbids: [...CORE_FAMILY, ...IMPLEMENTATION],
+    forbids: [...CORE_FAMILY, ...IMPLEMENTATION, 'nyanpasu-rpc-protocol'],
   })),
   ...FOUNDATION.filter((name) => name !== 'nyanpasu-runtime-values').map(
     (name) => ({
@@ -222,6 +232,8 @@ export async function main(): Promise<number> {
   )
   const packages = new Set(DEPENDENCY_RULES.map((rule) => rule.package))
   for (const owner of packages) {
+    // The CLI is composed in E4; its dependency policy already applies to fixtures.
+    if (owner === 'nyanpasu-cli' && !workspaceMembers.includes(owner)) continue
     const result = await runCommand('cargo', {
       cwd: WORKSPACE_ROOT,
       args: [

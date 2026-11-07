@@ -1,4 +1,5 @@
 //! Audited HTTP command, archive and subscription routes.
+use crate::projection::IntoWire;
 use std::{convert::Infallible, sync::Arc};
 
 use axum::{
@@ -180,7 +181,7 @@ pub(crate) fn connection_detail_events(
             let frame = receiver.borrow_and_update().clone();
             if let Some(frame) = frame {
                 let event = Event::default()
-                    .json_data(frame.as_ref())
+                    .json_data(frame.into_wire())
                     .expect("connection details serialize");
                 return Some((Ok::<_, Infallible>(event), (receiver, false)));
             }

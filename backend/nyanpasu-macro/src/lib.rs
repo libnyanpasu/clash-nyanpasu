@@ -8,6 +8,8 @@ mod enum_wrapper_combined;
 mod owned_fields;
 mod unified_command;
 mod verge_patch;
+#[cfg(test)]
+mod wire_closure;
 
 #[proc_macro_derive(BuilderUpdate, attributes(builder_update))]
 pub fn builder_update(input: TokenStream) -> TokenStream {

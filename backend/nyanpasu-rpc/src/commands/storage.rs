@@ -1,14 +1,15 @@
 //! Shared storage command adapters.
 
-use crate::error::Result;
-
 use nyanpasu_core::{
     client::NyanpasuClient,
-    storage::{Storage, StorageItem, StorageRevision, WebStorage as _},
+    storage::{Storage, WebStorage as _},
+};
+use nyanpasu_rpc_protocol::wire::{
+    host::StorageEntry,
+    storage::{StorageItem, StorageRevision},
 };
 
-use super::types::StorageEntry;
-use crate::registry::RpcState;
+use crate::{error::Result, projection::IntoWire, registry::RpcState};
 
 #[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
@@ -16,7 +17,7 @@ pub fn get_storage_item(
     storage: RpcState<'_, Storage>,
     key: String,
 ) -> Result<StorageItem<String>> {
-    Ok(storage.get_item(web_key(&key))?)
+    Ok(storage.get_item(web_key(&key))?.into_wire())
 }
 
 #[nyanpasu_macro::rpc(local, http)]
@@ -26,13 +27,13 @@ pub fn set_storage_item(
     key: String,
     value: String,
 ) -> Result<StorageRevision> {
-    Ok(storage.set_item(web_key(&key), &value)?)
+    Ok(storage.set_item(web_key(&key), &value)?.into_wire())
 }
 
 #[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub fn remove_storage_item(storage: RpcState<'_, Storage>, key: String) -> Result<StorageRevision> {
-    Ok(storage.remove_item(web_key(&key))?)
+    Ok(storage.remove_item(web_key(&key))?.into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]

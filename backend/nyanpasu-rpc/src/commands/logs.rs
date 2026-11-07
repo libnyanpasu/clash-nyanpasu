@@ -1,9 +1,10 @@
 //! Shared logs command adapters.
-
 use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_rpc_protocol::wire::logs::{FrontendEventBatch, LogSource};
 
 use crate::{
     error::Result,
+    projection::IntoApplication,
     registry::{RpcCaller, RpcState},
 };
 
@@ -11,8 +12,9 @@ use crate::{
 #[specta::specta]
 pub async fn list_log_files(
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: LogSource,
 ) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
+    let source = source.into_application();
     client.list_log_files(source).await
 }
 
@@ -21,9 +23,10 @@ pub async fn list_log_files(
 pub async fn open_log_session(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: LogSource,
     request: nyanpasu_logging::OpenLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
+    let source = source.into_application();
     client
         .open_log_session(source, window.label().to_string(), request)
         .await
@@ -34,9 +37,10 @@ pub async fn open_log_session(
 pub async fn query_logs(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: LogSource,
     request: nyanpasu_logging::QueryLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
+    let source = source.into_application();
     client
         .query_logs(source, window.label().to_string(), request)
         .await
@@ -47,9 +51,10 @@ pub async fn query_logs(
 pub async fn close_log_session(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: LogSource,
     session: String,
 ) -> nyanpasu_logging::LogResult<()> {
+    let source = source.into_application();
     client
         .close_log_session(source, window.label().to_string(), session)
         .await
@@ -60,8 +65,9 @@ pub async fn close_log_session(
 pub fn report_frontend_events(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    batch: nyanpasu_core::client::frontend_events::FrontendEventBatch,
+    batch: FrontendEventBatch,
 ) -> Result {
+    let batch = batch.into_application();
     client.report_frontend_events(window.label(), batch);
     Ok(())
 }

@@ -1,19 +1,7 @@
 //! The proxy environment the tray and the IPC command copy to the clipboard.
-use serde::{Deserialize, Serialize};
-use strum::EnumString;
+use nyanpasu_rpc_protocol::wire::native::CopyEnvOption;
 use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
-
-#[derive(Debug, Clone, Serialize, Deserialize, EnumString, specta::Type)]
-#[strum(serialize_all = "kebab-case")]
-pub enum CopyEnvOption {
-    #[serde(rename = "shell")]
-    Shell,
-    #[serde(rename = "cmd")]
-    Cmd,
-    #[serde(rename = "pwsh")]
-    Pwsh,
-}
 
 /// The commands that point `option`'s shell at the mixed proxy on `port`.
 pub fn proxy_env_text(port: u16, option: &CopyEnvOption) -> String {

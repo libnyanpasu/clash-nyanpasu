@@ -101,6 +101,78 @@ test('local client remains protocol-only and musl does not rely on desktop featu
   )
 })
 
+test('CLI wire closure accepts canonical runtime values and their foundation dependencies', () => {
+  const closure = [
+    'nyanpasu-rpc-protocol',
+    'nyanpasu-runtime-values',
+    'nyanpasu-config',
+    'nyanpasu-contracts',
+    'nyanpasu-profile-transform',
+  ]
+    .map((name) => `${name} v0.1.0`)
+    .join('\n')
+  for (const owner of ['nyanpasu-cli', 'nyanpasu-rpc-protocol']) {
+    assert.deepStrictEqual(dependencyViolations(owner, closure), [])
+  }
+  for (const dependency of [
+    'nyanpasu-core',
+    'nyanpasu-state-engine',
+    'nyanpasu-observers',
+    'nyanpasu-updater',
+  ]) {
+    for (const owner of ['nyanpasu-cli', 'nyanpasu-rpc-protocol']) {
+      assert.deepStrictEqual(
+        dependencyViolations(owner, `${closure}\n${dependency} v0.1.0`),
+        [`${owner} must not depend on ${dependency}`],
+      )
+    }
+  }
+})
+
+for (const foundation of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
+]) {
+  test(`${foundation} rejects protocol and RPC reverse edges`, () => {
+    for (const transport of ['nyanpasu-rpc-protocol', 'nyanpasu-rpc']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          foundation,
+          `${foundation} v0.1.0\n${transport} v0.1.0`,
+        ),
+        [`${foundation} must not depend on ${transport}`],
+      )
+    }
+  })
+}
+
+test('wire schema features forward explicitly without enabling application dependencies', () => {
+  const protocol = readFileSync(
+    new URL(
+      '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  const rpc = readFileSync(
+    new URL('../../../backend/nyanpasu-rpc/Cargo.toml', import.meta.url),
+    'utf8',
+  )
+  for (const feature of ['default-meta', 'nesting']) {
+    assert.ok(protocol.includes(`${feature} = ['nyanpasu-config/${feature}']`))
+    assert.ok(rpc.includes(`'nyanpasu-rpc-protocol/${feature}'`))
+  }
+  for (const dependency of ['nyanpasu-config', 'nyanpasu-runtime-values']) {
+    assert.match(
+      protocol,
+      new RegExp(`${dependency} = [{][^}]*default-features = false`),
+    )
+  }
+})
+
 test('protocol accepts direct and transitive foundation values and libraries', () => {
   for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
     assert.deepStrictEqual(

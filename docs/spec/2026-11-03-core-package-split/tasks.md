@@ -5,7 +5,7 @@
 ## 0. 全局约束
 
 1. 遵守 `AGENTS.md` 与 `docs/development/*`：不加全局单例；依赖显式注入；不给 core 族加 Tauri 依赖；`NyanpasuClient` 只是 facade。
-2. 移动与保行为接缝只移动代码、注入依赖、收窄依赖方向。行为改动单独成卡（A2b、C1 的不支持结果、C2 的同意策略、HTTP 限制与 RPC 审计），不夹在移动提交里；同一 PR 内的卡也分别提交。行为卡的前端例外仅限 design §9；移动中发现的现存问题记在 PR 描述里，不顺手改。
+2. 移动与保行为接缝只移动代码、注入依赖、收窄依赖方向。行为改动单独成卡（A2b、D2c 的严格结算时序、C1 的不支持结果、C2 的同意策略、HTTP 限制与 RPC 审计），不夹在移动提交里；同一 PR 内的卡也分别提交。行为卡的前端例外仅限 design §9；移动中发现的现存问题记在 PR 描述里，不顺手改。
 3. 每个提交可编译、测试通过、只做一件事；调用方在同一提交迁完，不留 re-export、别名或兼容层（design §7）。
 4. 每个新 crate 的提交同时更新：workspace `members` 与依赖项（指向 config、core 的边关默认 feature）、门禁集合与策略测试（design §3.2）、`STATIC_GATE_PREFIXES` 与覆盖测试、静态允许名单路径（design §4.6）。
 5. 被移走、但仍被原 crate 测试使用的夹具与 `pub(crate)` 项，同提交改为公开（测试夹具放在新 crate 的 `test-support` feature 后），原 crate 以 dev-dependency 开启该 feature，同时在原 crate 的 `test-support` 中转发给下游。
@@ -701,28 +701,376 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 
 ---
 
+## 4. A2b 与 Phase D 的 PR 划分
+
+本节细化 design §5.0/§5.3，源码行号记录于 `fa7e5050b`（A、B、C 已完成），按符号定位；新文件、符号与标为「新」的测试均为计划项。偏差见 design §8.1 V-23–V-29，决策见 §8.2 O-10–O-17，全局约束 §0 适用。本次文档提交是 PR-D0，不是实施卡；每张卡一个可独立编译、测试通过的提交，同一 PR 按箭头顺序实施，不把行为修正折进移动提交。
+
+- 缩写：`W/` = `C/client/application_workflow/`，`J/` = `backend/nyanpasu-scripts/src/`，`B/` = `backend/boa_utils/src/`；计划新包 `E/` = `backend/nyanpasu-state-engine/src/`、`V/` = `backend/nyanpasu-runtime-values/src/`，此处 `E/` 不是 Phase E。工作名按 O-4，建包时确认。父 workspace 指 `backend/Cargo.toml` 的成员，不把独立 runtime workspace 的中立工具当父 workspace 成员。
+- 实施栈固定为 D1 → D2 → D3 → D4 → A2b。A2b 的代码前置仍只有 A2；排在 D4 后是合入顺序，避免它的新 pipeline error 与 D4 的错误闭包迁移同时改两份定义。A2b-b 只改最终值 owner 引用的 config pipeline 错误，不复制 `RuntimeError`/`RuntimeBuildError`；不新增 E 卡，E 与 POC 仅记录 design O-13。
+- Rust 命令从 `backend/` 执行，`pnpm run` 从根目录执行。所有卡执行 §0.7；测试清单按 §0.8 保存、检查退出码/非空、排序比较，新增测试单列。命令用于后续实施，本次 PR-D0 不构建。源路径 `rg` 使用显式文件或 `--glob '*.rs'`，不用 shell 花括号；1 = 无匹配，2 = 检查失败；分组 `state::{...}`、别名和相对导入须另审阅，单条正则不能证明闭包已迁完。
+- 新包同提交更新 workspace/消费者 manifest、`S/backend-boundaries.ts:27-124` 和 `S/backend-boundaries_test.ts`、`S/policy.ts:81-95` 的 `STATIC_GATE_PREFIXES`、`S/architecture-ledger_test.ts:996-1010` 的覆盖矩阵，以及 `scripts/src/testing/test-backend-musl.ts:68-69,77-90` 的 `-p` 与 `expectedTargets`。新增集成测试目标必须登记；下列新 Rust 测试默认放 unit-test 模块，不暗增集成目标。无新包的卡明确保留这些注册。
+- 移动/保行为接缝运行 `cargo test -p clash-nyanpasu export_typescript_bindings`（`T/specta_export.rs:448,452,456,486`），三份 bindings 零 diff；不手改生成文件。A2b-b 只允许其验证块列出的 wire 变化。新模块错误用 snafu、按失败步骤命名；保留原错误对象、Display/source 链与 serde skip，不用字符串替代来源。原 engine 的 thiserror/anyhow 不顺手迁框架。
+- D1 无需 core 测试夹具。D2a 的 impact 测试含 macOS 分支（`W/impact.rs:934`），保留并交 macOS CI；D2e 只移定义，不移 `C/client/runtime.rs:427,559,609,621` 的 Unix IO 或 `C/actor_v2/local_host.rs:69-74` 的 macOS 装配。触及平台分支时按 §3 的 Linux 检查/macOS CI 规则，不把跨编译当平台行为测试。
+- 每卡完成后同步本卡/里程碑与路线图；建包或模块策略卡同步 backend-packages/architecture 的目标与已完成状态，未实施不标完成。engine 为泛型依赖约束，runtime-values 为 E1b 无 core 族 DTO 闭包，不为新包声称桌面编译收益。
+
+| PR     | 卡              | 依赖                | 说明                                                                                     |
+| ------ | --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
+| PR-D0  | 本次文档细化    | A、B、C             | 记录决策与卡，不实施代码                                                                 |
+| PR-D1  | D1a             | B1a                 | 完整泛型 engine 与全部测试同迁                                                           |
+| PR-D2  | D2a → D2b       | D1a、B、C           | core 内源契约/receipts 归位，然后反转工厂；两个提交                                      |
+| PR-D3  | D2c             | D2b                 | 独立 test-first 行为修正：`RecoveryRequired` 等待源权威决定                              |
+| PR-D4  | D2d → D2e → D2f | D2c                 | 错误接缝、公开值纯移动、模块策略分别提交；不建 control/workflow crate                    |
+| PR-A2b | A2b-a → A2b-b   | A2；合入在 PR-D4 后 | 扩展保行为接缝；feature/typed error/pipeline/wire/前端在一个行为提交内完成；代码不依赖 D |
+
+---
+
+## D1a — 完整泛型状态引擎
+
+本卡是纯移动；不改投票、持久化、CAS、回滚、drop、panic 或结算行为。
+
+- [ ] 新建 `nyanpasu-state-engine`，同迁 `C/state/manager.rs`、`manager/{persistent_builder,persistent_state,simple,weak_persistent_state}.rs`、`transaction.rs`、`transaction/notify.rs`（七文件 3,247 行），以及 `ack.rs`、`builder.rs`、`coordinator.rs`、`decision.rs`、`error.rs`、`snapshot.rs`、`version.rs` 和 `tests/` 全部；完整闭包约 7,000 行。`C/state/mod.rs:1-47` 的泛型声明/`VersionedState` 进 `E/lib.rs`，`:49-55` 的 application/clash/`config_error`/mutation/profiles/`session_state` 注册留 core。manager 是泛型机制，不把 `C/state/mutation.rs` 混入 engine。
+- [ ] `StateAckSubscriber`/`StateParticipant`（`ack.rs:143,202`）、`DecisionHandle`/私有 writer（`decision.rs:33,58`）、`StateCoordinator`/builder（`coordinator.rs:60,443`）、snapshot/version、各 manager/setup、`ReplaceIfVersionResult`/Error（`manager/persistent_state.rs:136,142`）与 transaction 一起移。修复 `manager.rs:7,13,21` 的 `$crate::state` 与文档链接；保留 `StateStore`/`DecisionWriter`/transaction 的私有边界，不为移动公开内部夹具或建 test-support feature。
+- [ ] 调用方同提交迁完：`C/client/{application,clash_config,profiles,session_state,traffic}.rs`（泛型导入分别在 `:4,4,11,3,6`）、`client/core_lifecycle/workflow.rs:3`、`client/runtime_error.rs:9`；`W/{attempt,mod,mutation,participant,preparation,tcc,workflow}.rs`（`:17,22,16,13,3,19,3`）；`C/state/{application,clash_config,session_state,config_error,mutation}.rs`、`state/profiles/actor.rs:6,1324-1325`。测试消费者包括 `C/client/mod.rs:1728,1743-1754,1765,3752`、`client/profiles.rs:614,1884`、`W/tests/{closing,mod,mutations,recovery,startup}.rs`（`:10,35,23,151,24`）、`T/ipc.rs:2265,2471`、`T/startup_failure_tests.rs:142`；无旧 re-export。
+- [ ] workspace 加 member；core 普通依赖 engine，tauri 因直接错误断言加 engine dev-dependency，均关默认 feature。engine 父 workspace 依赖仅 `nyanpasu-persistence = { path = "../nyanpasu-persistence", default-features = false }`；保留 anyhow、bon、arc-swap、async-trait、indexmap、thiserror、tokio、tracing、serde、atomicwrites、camino、fs-err 的现有版本/feature（core Cargo `:91-104`；workspace Tokio/full、fs-err/tokio 在 `backend/Cargo.toml:97,100`）。测试用 tempfile、`serde_yaml_ng`、Tokio test-util（core Cargo `:142-143`）。不为最小 feature 优化改写依赖；core 中仅删除全 crate 已无使用的直接依赖。
+- [ ] `S/backend-boundaries.ts` 将 engine 加 `CORE_FAMILY`，另禁所有其他 `CORE_FAMILY`；对父 workspace 成员采用仅自身/persistence 的允许集合，按 resolved normal/build 闭包拒绝其余成员，不误禁 persistence 带入的独立 runtime 中立工具。`backend-boundaries_test.ts` 正例 engine → persistence、core → engine；负例 engine → 各 core 族/config/contracts/transform/实现/GUI、foundation/实现 → engine，直接与传递路径都测。不靠「没有 import」代替依赖 gate。
+- [ ] `S/policy.ts` 加 `backend/nyanpasu-state-engine/src/`，`S/architecture-ledger_test.ts` 加同前缀覆盖；没有新增服务 static，`DecisionHandle` 的实例 `OnceLock` 不作全局允许项。musl 同加 `-p nyanpasu-state-engine`、`lib:nyanpasu_state_engine`。同步两份 development 指南和路线图的 engine 状态/叶依赖规则。
+- [ ] 内部夹具随迁：`ack.rs:277`、`tests/support.rs:16,30,34,49,53,60`、`coordinator.rs:127`、`manager/persistent_state.rs:455`、`manager/simple.rs:57`；不依赖 core 测试支持。三种 persistent manager 的 blocking panic 原 payload 传播（`persistent_state` `:270-275`、`persistent_builder` `:204-209`、`weak_persistent_state` `:187-194`）原样，不加 owner-support 边。
+
+**验证**
+
+- `cargo test -p nyanpasu-state-engine --lib`、`cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；移动前后按 §0.8 比较下列 102 例，唯一允许的名称变化为 engine 内去掉 `state::` 根前缀。source/workflow/tauri 留下的测试不漏跑；fixture hash 差异仅允许导入/模块路径修正，逐条说明。
+- 清单如下，路径相对 `C/state/`，数字为 fa7e5050b 的函数定义行，均为既有测试。inline 测试、test-only helper 与 `tests/` 同迁。
+
+```text
+ack.rs
+  289: advisory_rejected_counts_as_failure
+
+coordinator.rs
+  678: test_new_coordinator
+  689: test_initial_version_advances_next_change_id
+  711: test_upsert_state_success
+  735: test_upsert_with_builder_success
+  754: test_upsert_builder_validation_failure
+  769: test_required_ack_failure_prevents_commit
+  796: test_prepare_failure_does_not_consume_change_id
+  829: test_sequential_prepare_stops_after_required_failure
+  906: test_advisory_ack_failure_is_ok
+  938: test_degraded_ack
+  958: test_multiple_subscribers_success
+  984: test_state_update_sequence
+  1012: test_concurrent_upsert_state_uses_latest_committed_version
+  1112: test_blocked_required_prepare_is_waited_for
+  1163: test_prepare_ack_is_precommit
+  1174: test_with_pending_state_effect_success
+  1204: test_with_pending_state_effect_failure_no_commit
+  1238: test_with_pending_state_effect_failure_does_not_consume_change_id
+  1272: test_with_pending_state_commit_cas_mismatch_returns_error
+  1325: test_empty_subscribers_list
+  1338: test_snapshot_handle
+  1352: test_builder_initialized
+  1376: test_error_display
+  1389: test_sync_builder_to_async_conversion
+  1403: test_advisory_failure_report_helper
+  1436: test_remove_subscriber
+  1467: test_builder_duplicate_subscriber_replaces
+  1497: test_add_subscriber
+  1523: test_get_state
+
+decision.rs
+  89: the_first_complete_outcome_wins_and_wakes_all_readers
+  111: abort_publishes_resource_evidence_atomically
+
+manager/persistent_builder.rs
+  335: test_setup_load_success
+  356: test_setup_load_file_not_exist
+  373: test_setup_load_or_default_success
+  390: test_setup_load_or_default_file_not_exist
+  408: test_setup_from_builder
+  427: test_from_builder_ack_failure_returns_recoverable_manager
+  455: test_force_build_returns_manager_after_ack_failure
+  477: test_upsert_success
+  509: test_upsert_builder_validation_error
+  533: test_precommit_failure_does_not_update_current_builder
+  595: test_upsert_write_config_error_without_previous
+  617: test_upsert_write_config_error_no_commit
+  654: test_multiple_upserts
+  682: test_config_prefix_in_saved_file
+
+manager/persistent_state.rs
+  525: test_setup_load_success
+  542: test_setup_load_file_not_exist
+  559: test_setup_load_or_default_success
+  576: test_setup_load_or_default_file_not_exist
+  594: test_setup_from_state
+  611: test_from_state_ack_failure_returns_recoverable_manager
+  638: test_force_build_returns_manager_after_ack_failure
+  659: test_upsert_success
+  687: test_upsert_write_config_error_without_previous
+  708: test_upsert_write_config_error_no_commit
+  739: test_multiple_upserts
+  770: test_replace_if_version_success_advances_snapshot_version
+  798: test_replace_if_version_with_local_write_owns_the_write_and_its_recovery
+  878: test_replace_if_version_stale_version_returns_conflict
+  910: test_replace_if_version_persistence_failure_keeps_state_and_version
+  938: test_replace_if_version_versions_are_monotonic
+  971: test_config_prefix_in_saved_file
+
+manager/simple.rs
+  105: test_initialize_ack_failure_returns_recoverable_manager
+  128: test_force_build_returns_manager_after_ack_failure
+
+manager/weak_persistent_state.rs
+  301: test_setup_load_or_default_existing_file
+  318: test_setup_load_or_default_missing_file
+  337: test_setup_from_state
+  354: test_upsert_success
+  382: test_upsert_unreachable_path_still_commits
+  404: test_subscriber_ack_failure
+  435: test_precommit_failure_does_not_persist_rejected_state
+  472: test_force_build_returns_manager_after_ack_failure
+  497: test_write_failure_after_successful_commit_preserves_state
+
+tests/cascading_state_migration.rs
+  148: cascade_commit_a_to_b_to_c
+  168: cascade_no_commit_on_effect_failure
+  198: cascade_effect_failure_with_prev_state
+
+tests/mvcc_snapshot.rs
+  73: test_snapshot_reflects_committed_state
+  81: test_snapshot_updates_on_each_commit
+  93: test_snapshot_updated_even_on_post_commit_failure
+  106: test_snapshot_not_updated_on_effect_failure
+  127: test_snapshot_updated_on_effect_success
+  145: test_multiple_handles_see_same_snapshot
+  183: test_concurrent_fan_in_no_deadlock
+  235: test_concurrent_fan_in_eventual_convergence
+  313: test_three_source_concurrent_fan_in
+  388: test_snapshot_during_subscriber_reflects_committed_value
+  426: test_simple_manager_snapshot_handle
+
+tests/persistence_settlement.rs
+  15: upsert_reports_a_lost_commit_without_writing_the_config_back
+
+tests/single_shot_participant.rs
+  114: two_failed_attempts_keep_separate_participant_identities
+  220: a_committed_decision_is_readable_before_the_commit_notification_lands
+  277: the_local_write_runs_between_prepare_and_the_commit
+  358: a_failed_local_write_rolls_the_transaction_back
+  419: dropping_a_local_write_publishes_an_abort_that_needs_recovery
+  460: dropping_before_the_local_write_starts_leaves_the_flag_clear
+  529: a_lost_commit_after_a_completed_local_write_is_not_a_clean_rejection
+  586: a_version_conflict_settles_the_participant_decision
+  630: yaml_failure_waits_for_local_recovery_and_publishes_its_result
+
+transaction.rs
+  581: prepared_transaction_drop_publishes_the_abort
+  604: pending_prepare_future_drop_publishes_the_abort
+
+version.rs
+  77: version_next_panics_on_overflow
+  83: state_change_id_next_panics_on_overflow
+
+```
+
+- `rg 'crate::state|nyanpasu_core::state|ApplicationWorkflowClient|MutationReceipt|RuntimeApplyReceipt|nyanpasu_owner_support|ractor' backend/nyanpasu-state-engine/src --glob '*.rs'` 退出码 1；`rg 'state::(Ack|DecisionHandle|StateSnapshot|StateCoordinator|PersistentStateManager|ReplaceIfVersion)' backend/nyanpasu-core/src backend/tauri/src --glob '*.rs'` 退出码 1，另审阅分组 `state::{...}`；不禁止仍合法的 state::profiles 等领域路径。bindings 三份零 diff。
+- 反向检查：给 engine 加 core 或 owner-support 依赖，gate 失败；去掉新静态前缀，覆盖测试失败；提前通知但不发布 decision，使 `a_committed_decision_is_readable_before_the_commit_notification_lands` 失败；去掉 abort Drop，使两个 transaction drop 测试失败。保留 `upsert_reports_a_lost_commit_without_writing_the_config_back` 的磁盘证据断言，不加补偿性回写。
+- `pnpm run test:scripts`、两门禁、`pnpm run test:backend-musl`；musl 必须发现并运行新 lib 目标，不只成功构建原清单。
+
+---
+
+## D2a — 源参与契约与内部 receipts 归位
+
+本卡是纯移动（core 内部），不改参与策略、receipt 内容、公开 wire 或 actor 生命周期。
+
+- [ ] `C/state/mutation.rs` 变为 `C/state/mutation/mod.rs`，创建 impact.rs、intent.rs、value.rs、`runtime_apply`.rs。`W/impact.rs` 整体移到 source 的 impact.rs，包括 `RuntimeImpact`、`ActivationIntent`、`ContentDigest`、`StagedResourceToken`、`TouchedContent`、`RequestedRuntimeFields`、`MutationHints`、分类函数与测试；`W/policy.rs:46,62` 的 `CommandClass`/`CoreRunIntent` 移到 intent.rs；`W/mutation.rs:108-129` 的 `MutationDomain`/impl 移到 source impact。`policy_for` 等工作流决策仍留 W。
+- [ ] `W/mutation.rs:35,321,331,350,370` 的 `ConfigDomain`、`MutationOutcomeKind`、`MutationConclusion`、`CheckRecord`、`MutationReceipt` 进 value.rs；`C/client/runtime.rs:130-155` 的 `RuntimeApplyReceipt` 进 `runtime_apply`.rs，仅放宽为 core 内实际消费者可用的 `pub(crate)`。`RuntimeRevision`/`RuntimeSnapshotStore`、`CoreSpec`/`LocalIpcSettings`、`AppliedConfigBinding`、`CandidatePortBindings` 仍由现有 owner 提供，不搬 manager/runtime 实现，不导出成协议 DTO。两 receipt 留 core，不进 D2e 值包。
+- [ ] `DomainChange`、`MutationRequest`、admission、Try/Confirm/Cancel、journal 与 `ApplicationMutationParticipant` 留 W。内部 receipt 消费者同迁：`W/{mod,mutation,participant,tcc,attempt}.rs`、`W/tests/{mod,mutations,recovery}.rs`、`C/state/{config_error,mutation/mod}.rs`、profiles actor（`:539`）、`C/client/core_lifecycle/workflow.rs:178,628`、`client/ports.rs:21,216,285`、`client/runtime_recovery.rs:33,151,243`、runtime store 与 tests。迁完 intent/impact 的源 owner、facade、workflow、core-lifecycle 与测试导入，不留 W 转发 re-export。
+- [ ] **不移动 notifications**：`CommitNotifications`/tuple/no-op（`C/client/effects/ports.rs:148-226`）、`ApplicationEffectFields`/`ClashEffectFields`、`EffectKind`（`effects/plan.rs:37,60,200`）留 client/effects。`MutationHints`.`requested_owners` 仍消费它（原 `W/impact.rs:214`）。D2f 的源规则仅禁止 state 直接引用 workflow/具体 client，允许 effects、jobs、runtime 值与验证契约；本卡尚有 coordinator → workflow 边，D2b 消除后才启用规则。
+- [ ] 无新 crate/dependency，core/config 边继续 `default-features = false`；`S/backend-boundaries.ts`/测试、`STATIC_GATE_PREFIXES`/覆盖和 musl 两清单不新增。记录路线图源契约归属，不声称 module gate 已实施。impact 的 macOS 测试条件原样，现有 Display/source/serde 不变。
+
+**验证**
+
+- `cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；§0.8 比较 impact/policy/runtime、`application_workflow`、source/client/profile integration 清单，合计不变，只登记搬移模块前缀。重点保留 `cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interruption`（`W/tests/connection_policy.rs:715`）、`a_failed_save_restores_the_verified_runtime_baseline`（`W/tests/mutations.rs:1272`）、`a_restore_that_cannot_be_observed_is_not_a_clean_cancel`（`:2542`）、`the_shutdown_during_await_decision_waits_for_the_decision`（`W/tests/closing.rs:113`）。
+- `rg 'application_workflow::impact|application_workflow::policy::(CommandClass|CoreRunIntent)|runtime::RuntimeApplyReceipt' backend/nyanpasu-core/src backend/tauri/src --glob '*.rs'` 退出码 1，另审阅相对/分组导入；`rg -n 'struct (MutationReceipt|RuntimeApplyReceipt)' backend/nyanpasu-core/src/state/mutation --glob '*.rs'` 正向各一处。coordinator 仍有具体 workflow client 不算本卡失败。
+- 反向撤销一个新定义而保留迁后消费者，正常 `cargo check -p nyanpasu-core --lib` 必须失败；恢复旧路径定义使旧路径/唯一归属核对失败。bindings 三份零 diff，`ConfigDomain` 公开身份/serde 拼写不变；Linux 检查与 macOS CI 覆盖 impact 分支。
+
+---
+
+## D2b — 按域注入 mutation participant factory
+
+本卡是保行为接缝；不改 admission、vote、caller-drop、持久化或结算时序（已知 `RecoveryRequired` 例外留 D2c）。
+
+- [ ] 在 `C/state/mutation/ports.rs` 定义消费者自有 `MutationParticipantFactory<T>: Send + Sync + 'static`，`T: Clone + Send + Sync + 'static`，`make(&self, intent: MutationIntent, decision: DecisionHandle, settle: oneshot::Sender<MutationReceipt>) -> StateParticipant<T>`；intent 含原 `operation_id`、hints、class、impact（原 `C/state/mutation.rs:184-199`）。不放 engine/contracts，不加查找 actor 的接口。`W/participant.rs` 实现工厂，`DomainChange: From<StateChange<T>>` 只在此实现上，不反向泄漏给源 coordinator。
+- [ ] coordinator 改为 `MutationCoordinator<T>`，Ready 存 typed factory 与现有 effects 端口，不存 `ApplicationWorkflowClient`（原 `mutation.rs:31-38,54,61-67`）。保留 Pending、connect 只调用一次、test-support Isolated；按 application config、`ClashConfig`、Profiles 三域构造，不把 `session_state` 加入运行时参与。
+- [ ] 同迁四路径：`C/state/application.rs:164-177`、`clash_config.rs:121-134`、`profiles/actor.rs:481-494,1287-1300`；source 的 prepare/vote → local write/YAML → decision → settle 顺序不变。`C/client/mod.rs:322,327,523` 与 `new_typed_config_clients` 改为三份 pending/connection，由 facade 启动 workflow 后分别连接实现；`client/{application,clash_config,profiles}.rs` 的 args、isolated constructors、`test_support`、profile integration 和 W tests 同改。另显式迁 `C/client/startup_recovery_tests.rs:53-54` 的 `new_typed_config_clients`：三个域均注入各自的 isolated coordinator，不连接真实 workflow；启动恢复测试纳入本卡 §0.8 清单比较。
+- [ ] 保留 `W/participant.rs:103-117`：未送达是 Rejected，丢失 verdict 是 Failed/`OwnerUnresponsive`；不加 timeout，不因 settlement receiver 消失停止 owner。`W/mod.rs:267-272` 的 actor 等真实结果后记录/发送原样。新增测试（新）`participant_factory_receives_the_source_decision_and_intent`、`undelivered_mutation_is_rejected_but_lost_verdict_is_failed`、`dropping_the_settlement_receiver_does_not_cancel_owner_work`，用 typed clients 与 Notify/barrier，不能只测工厂 mock 或用 sleeps。
+- [ ] 无新 crate/dependency，已有 core/config defaults-off 与 test-support 接线不变；gate 集合、`STATIC_GATE_PREFIXES`、musl package/expectedTargets 不新增，源策略在 D2f 落地。同步路线图工厂接缝状态。
+
+**验证**
+
+- `cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；§0.8 清单 = D2a + 三新测试。保留 D2a 四例，以及 `a_lost_commit_notification_is_resolved_by_the_authoritative_decision`、`a_lost_rollback_notification_is_resolved_by_the_authoritative_decision`、`a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt`（`W/tests/mutations.rs:996,1041,1183`）、`a_conflicting_version_never_waits_for_a_settlement`、`every_settlement_arrives_whatever_the_journal_keeps`（`:4231,4376`）。
+- `rg 'ApplicationWorkflowClient|DomainChange' backend/nyanpasu-state-engine/src backend/nyanpasu-core/src/state --glob '*.rs'` 退出码 1；`rg -n 'MutationParticipantFactory' backend/nyanpasu-core/src/state/mutation backend/nyanpasu-core/src/client/application_workflow/participant.rs --glob '*.rs'` 正向核对 consumer/implementation，不全仓禁止具体 workflow client。
+- 反向把丢 verdict 改为 Rejected，使新增 verdict 测试失败；让 receiver drop 取消 actor 工作，使新增 caller-drop 测试失败；接错任一域 intent/decision，使工厂测试失败。bindings 三份零 diff；原错误对象和结构不变。
+
+---
+
+## D2c — `RecoveryRequired` 等待源权威决定
+
+本卡是行为变更：遇到 `RecoveryRequired`，调用方的终态 receipt 与 journal 完成记录只在源事务权威决定之后出现；结论仍为 `RecoveryRequired`，不伪装成拒绝或干净回滚。
+
+- [ ] **先写失败测试再修实现**：在 `W/tests/mutations.rs` 新增 `recovery_required_settlement_waits_for_the_source_decision`（新）。新 fixture 在启动源操作前创建 settlement channel，并把 receiver 留在测试任务；不得直接复用直到事务结束才返回 receiver 的 `mutate_settling`（`:516,541-542`）。用真实 workflow/typed source 驱动无法确认恢复的 `RecoveryRequired`，不是伪造 receipt；包装 participant，在收到 prepare verdict 后门控向源返回 ACK。采用 `#[tokio::test(flavor = "current_thread")]`，保证发送 verdict 的 workflow poll 已运行到旧提前返回或新 decision wait 后，测试才被唤醒；若改用多线程，必须加显式观测握手证明该分支已执行，不能仅凭收到 verdict 或 sleeps。源仍被 gate 阻塞时断言 decision 未发布、receiver 的 `try_recv` 为 Empty、journal 无该 operation 的终态；旧分支须在 receiver/journal 断言上失败。释放 ACK 后断言权威决定已发布、receipt 为真实 `RecoveryRequired` 且只结算一次、journal 同 operation 终态一致；保存修复前失败和修复后通过输出。
+- [ ] 改 `W/tcc.rs:193-201` 的 `RecoveryRequired` 路径：保留 `:180` 先发 vote，再等待同一 `DecisionHandle`；源决定后才 conclude/return，不运行假定 baseline 已知的 Confirm/Cancel，不抹掉 error/cause。`W/mod.rs:269-272` 继续等待结果、记 journal、发送 receipt。不要在发 vote 前等 decision，也不要让 source 等 receipt 才发 decision，二者都会环等。
+- [ ] 新增 `dropped_source_publishes_abort_and_releases_recovery_required_settlement`、`shutdown_waits_for_recovery_required_source_settlement`（新），验证显式丢弃源事务 future 时 engine drop guard 发布 abort 后释放等待、shutdown 等源决定；外部 caller 离开仍不取消 owner 已开始的工作，不提前停止 actor。保留 resource evidence，不把 lost verdict 改拒绝。用户可见变化只限终态时点，不新增错误变体/自动重试。
+- [ ] 无移动/新包/依赖，Cargo、gate 规则/测试、`STATIC_GATE_PREFIXES` 与 musl 两清单不变；同步 design §5.3 的例外已修复状态及路线图，不改历史 V-24 对 fa7e5050b 的记录。无平台分支修改。
+
+**验证**
+
+- `cargo test -p nyanpasu-core recovery_required_settlement_waits_for_the_source_decision` 修复前须失败、修复后通过；再 `cargo test -p nyanpasu-core application_workflow` 与全 core 测试。§0.8 清单 = D2b + 三新测试；既有 `the_shutdown_during_await_decision_waits_for_the_decision`（`W/tests/closing.rs:113`）、`a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt`（`W/tests/mutations.rs:1183`）、D2b caller-drop/lost-verdict 测试通过。
+- `rg -n 'RecoveryRequired|await_decision|request.answer|conclude_attempt' backend/nyanpasu-core/src/client/application_workflow/tcc.rs` 枚举并审阅两通道顺序，这是正向检查，不以退出码 1 判成功；本卡无旧路径删除，D2b scoped 无匹配检查继续通过。
+- 反向恢复 `:193-198` 提前返回，首个新测试必须失败；把 wait 移到 vote 前，门控测试必须暴露未送达 vote（有界测试驱动/显式断言，不给生产加 deadline）。断言 Display/source/serde 与 D2b 相同，bindings 三份零 diff。
+
+---
+
+## D2d — 公开错误闭包的消费端接缝
+
+本卡是保行为接缝；只消除后续值包的 engine/core-manager 类型依赖，不改变分类、Display/source 链或 wire。
+
+- [ ] 在 core 内分离 `C/state/mutation.rs:235-385` 的值定义与分类操作（D2a 后按符号定位）。`CommitAborted` 五个 skipped `ReplaceIfVersionError` source 字段（`:241,248,256,267,274`）改为 contracts 已有 `BoxedCause`；先按真实 engine 变体分类，再整体装箱，保留可 downcast 的原错误对象。`CommitAborted`::classify、`RuntimeAftermath`::of 改 source 模块自由函数，参数仍可收 engine error/内部 `MutationReceipt`，避免跨 crate 后给外部类型补 inherent impl。
+- [ ] `C/client/runtime_error.rs:37` 的 `CoreError` → `CoreFailure` 转换改 core-local 函数；所有 `source(from(CoreError, ...))` selectors 的消费者先 `map_err` 转 `CoreFailure` 再 context。`CoreFailure.kind` 直接引用中立 `nyanpasu-core-metadata::CoreErrorKind`（定义在 `backend/nyanpasu-runtime/crates/nyanpasu-core-metadata/src/error_kind.rs:13`；manager `src/error.rs:2` 只是 re-export），不复制枚举、不改 submodule。不能在 core 中保留两个外部类型之间的 From impl。`AckPayload`/`ack_of`/`refusal_of`（`runtime_error` `:256,267,274`）留 core acknowledgment adapter。
+- [ ] 同改非 selector 转换：`W/tcc.rs:1683,1684` 的 `submission_failure` 两个 `.into()` 显式调用 core-local 转换函数，分别覆盖 `NotSubmitted`/`Unchanged`/`Err` 与 `Unknown`；上述转换测试逐分支断言 kind/retryable/operation_id 不变。`W/ports.rs:59` 的 `RuntimeCheckUnavailable::Backend.kind` 同改为 metadata 自有 `CoreErrorKind`。`C/client/runtime_error.rs:26` 的 `CoreError` rustdoc 链接改为纯文本说明，不为修链接恢复 manager 导入。
+- [ ] `C/client/runtime.rs:818-827` 的 `From<&ApiError> for InterruptFailure` 移到 `C/actor_v2/api.rs`，与本地 `ApiError`（`:17`）同 owner；实现本体不变，`C/proxies.rs:260`、`W/tcc.rs:1170` 调用不变。D2e 后此 impl 仍可留 core，因为参数类型 `ApiError` 属于 core；只把值类型导入改为 foundation，不能让 control 为转换调用 client。分类回归覆盖四个 API 错误分支。
+- [ ] 准备 definition-only 模块供 D2e 原样移动：runtime 结果/降级、`RuntimeError`/`RestoreFailure`/`CoreFailure`、`PublishRuntimeError`、`PortField`/`PortResolveError`、`CoreSpecError`、`ExecutionHost`、`EvidenceGap`、`RuntimeCheckUnavailable`、`ProfilesError`/`ProfileContentError`/`MaterializationOperation`、`CommitAborted`/`RuntimeAftermath`/`NotReady`/`ConfigDomain`。在 core 内放 `runtime_values/`，旧路径不留 re-export，调用方同提交改导入。`ProfileFileError`/`SubscriptionFetchError` 仍在 contracts，`RuntimeBuildError` 留 transform；不移动运行时 IO、port resolver、`core_spec`、source actors 或内部 receipts。
+- [ ] 调用方同迁：`C/client/{runtime,runtime_error,runtime_inspection,ports,error,mod,profiles}.rs`、`core_lifecycle`、W 的 attempt/mutation/preparation/startup/tcc/workflow/tests、`C/state/{application,clash_config,config_error,mutation/mod}.rs`、profiles actor/error/jobs、`C/proxies.rs`、`service/profile_file/yaml.rs`、profile integration/`test_support`、`T/ipc.rs` 及 error assertions。测试对 `WriteConfig` cause 的 engine match 改为 downcast，不能删断言。
+- [ ] 补齐同提交消费者（D2e 继承全部清单）：control/fixtures 的 `C/actor_v2/mod.rs:53`、`facade.rs:16`、`api.rs:457`、`service_actor.rs:1246`、`test_support.rs:19`、`tests.rs:26`；binary resolution 的 `local_host.rs:101,118`；domain clients 的 `C/client/application.rs:16`、`clash_config.rs:17`、`clash_api.rs:63`、`hotkey/mod.rs:17`；`client/runtime_build.rs:13,21`、`runtime_recovery.rs:36`、`jobs.rs:198,206`；测试分支 `client/app_lifecycle.rs:104`、`geo_mode.rs:71`；`T/setup_tests.rs:16-18` 的 `endpoint::ExecutionHost`；workflow 的 `W/adapters.rs:79-80`（`RuntimeCheckUnavailable`、`ExecutionHost`）、`W/profiles.rs:3,10,14-21`（限定的 `runtime::Degradation*`）、`W/mod.rs:36` 与 `W/participant.rs:27`（`RuntimeError` 及 `OwnerUnavailableSnafu`/`OwnerUnresponsiveSnafu`）。混合导入要拆开：移走的错误类型与 selector 改从新定义 owner 导入，`ack_of` 留在 core 的 ack 适配处。同时迁限定 selector 引用与类型导入，逐文件搜旧路径（含 `runtime::Degradation*` 限定路径）；禁止以 re-export 补遗漏。上述生产/测试模块均纳入 §0.8 比较。
+- [ ] 新增（新）`boxed_commit_cause_preserves_display_and_source_chain`、`runtime_core_failure_conversion_preserves_kind_retryability_and_operation_id`、`runtime_error_serialization_preserves_existing_tags_and_fields`、`profile_commit_error_serialization_omits_operational_sources`、`interrupt_failure_mapping_preserves_all_api_error_categories`。覆盖 `RuntimeError` → `CoreFailure`、`ProfilesError` → `CommitAborted` → engine → 原 IO/YAML source 链，分类失败步骤与 serde skip 不变；Snafu selector 可见性只按真实消费者开放。
+- [ ] 无新 package；core 按需声明 metadata 直接依赖，删除 manager 依赖不是本卡目标；core/config 边仍 defaults off。gate/`STATIC_GATE_PREFIXES`/musl 两表不增加成员，运行既有策略测试；更新 design/路线图错误接缝状态。新模块采用 snafu，既有框架原样。
+
+**验证**
+
+- `cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；§0.8 清单 = D2c + 五新测试，只登记 definition/test 模块前缀变化；D2a–D2c 全部回归继续通过。`T/specta_export.rs:729-797` 的既有 shape assertions 保留；bindings 三份零 diff。
+- `rg 'nyanpasu_core_manager|ReplaceIfVersionError|StateChangedError|crate::client|application_workflow' backend/nyanpasu-core/src/runtime_values --glob '*.rs'` 退出码 1，另审查相对/分组导入；`rg -n 'classify|downcast_ref' backend/nyanpasu-core/src/state/mutation --glob '*.rs'` 正向确认分类仍在消费边界。旧定义路径按调用清单逐项搜，不全局禁止仍合法的 `runtime_error` adapter。
+- 反向把 source 装箱换字符串，source-chain/downcast 测试失败；丢 `operation_id`/kind/retryable，转换测试失败；改 serde tag 或 skipped source 字段，shape 测试失败。正常 `cargo check -p nyanpasu-core -p clash-nyanpasu --lib` 不开 test-support 也须编译，不用全 feature 掩盖生产 selector 缺失。
+
+---
+
+## D2e — 公开运行时值与错误闭包下移
+
+本卡是纯移动；D2d 已切断 operational source/conversion 的反向边，wire、Display 与 source 链不变。
+
+- [ ] 新建 `nyanpasu-runtime-values`，把 D2d 的 `C/runtime_values/` definition-only 模块与对应值/错误测试原样迁到 V，删除 core 旧模块，不留转发。清单对应基线：`C/client/runtime.rs:640,649,659,758,770,810,832` 的 `CommitReceipt`/`RuntimeCommitStatus`/`MutationOutcome`/Degradation/`DegradationReason`/`InterruptFailure`/`DegradationPhase`；`client/runtime_error.rs:29,63,230` 的 `CoreFailure`/`RuntimeError`/`RestoreFailure`；`runtime.rs:343` `PublishRuntimeError`；`client/ports.rs:27,37` `PortField`/`PortResolveError`；`actor_v2/local_host.rs:88` `CoreSpecError`；`actor_v2/endpoint.rs:34` `ExecutionHost`；`W/mutation.rs:35,205` `ConfigDomain`/`EvidenceGap`；`W/ports.rs:47` `RuntimeCheckUnavailable`；`state/profiles/error.rs:17,37,52` `ProfileContentError`/`MaterializationOperation`/`ProfilesError`；`state/mutation.rs:227,235,291` `NotReady`/`CommitAborted`/`RuntimeAftermath`，及纯格式化辅助。
+- [ ] 完整闭包允许下行引用 config 的 `ProfileId`/paths/validation/`PickPortError`、contracts 的 profile/install/service/version 错误、transform 的 `RuntimeBuildError` 及其 config pipeline/log/failure 值、中立 `CoreErrorKind`；原被 skip 的 IO/YAML/JSON/url/`JoinError` 等源照旧，不为「纯值」删除诊断。`MutationReceipt`/`RuntimeApplyReceipt` 留 `C/state/mutation/`，内部 `OperationId`/`CoreSpec`/`LocalIpcSettings`/binding 不进入值包。`InterruptFailure` 的 `ApiError` 转换、`CoreError` 转换、commit 分类与 ack 适配仍由 core 实现/调用；不在值包引入 core 类型。
+- [ ] D2d 全部消费者同提交直接 import 新包，包括 `C/proxies.rs:11-12`、source snapshots/outcomes、profile jobs、client/facade/workflow/lifecycle、tests、T/ipc.rs。`ProfilesError`::report 的纯方法随定义移动，只为跨包生产消费者开放所需可见性，不为测试暴露整个实现模块。`ConfigError`、`HotkeyParseError` 与其他 E1b DTO 不属于本卡新增闭包，留原 owner；E1b 另设计接收端 DTO，不给 Serialize-only operational error 强塞 Deserialize/伪造 source。
+- [ ] 按 §0.5 逐项核定跨包可见性：`RuntimeError::core_kind`（`C/client/runtime_error.rs:331`，消费 `W/tcc.rs:998`）、`retryable`（`:339`，消费 `C/client/core_lifecycle/workflow.rs:425`）及 `ProfilesError::report` 按实际消费者开放；`core_failure` 仅由迁后方法使用时仍私有。审阅 `RestoreFailure`（runtime_error `:229`）、`PublishRuntimeError`（runtime `:342`）、`ProfileContentError`（profiles/error `:15`）的受限 Snafu selectors，以及默认可见性的 `CoreSpecError`/`PortResolveError` selectors；只公开生产调用所需 selector，或同步改等价本地构造。不公开整个模块来迁就测试。正常无 test-support 的 core/tauri 检查与限定 selector 旧路径核对必须通过。
+- [ ] workspace/消费者 manifest 加包；core/tauri 普通依赖新值包、defaults off。值包实际 workspace 下行边为 config（defaults off，按实需显式 feature）、contracts、profile-transform（defaults off），另直接依赖独立 runtime 的 core-metadata；保留原 serde/rc、specta、snafu、url、IO/YAML/JSON/atomicwrites/Tokio 错误等所需库版本，不依赖 core/engine/core-manager。纯测试在值包 unit tests，core conversion/classification 测试原地；值包不加 core dev-dependency。
+- [ ] `S/backend-boundaries.ts` 将值包加入 `FOUNDATION` 上层；禁止所有 `CORE_FAMILY`（含 engine）、`IMPLEMENTATION`、GUI、core-manager。原 config/contracts/persistence/transform 四叶均显式禁止值包，不能只更新 config 的自动集合规则。`backend-boundaries_test.ts` 正例 core → values、values → config/contracts/transform/metadata；负例逐叶 → values、values → 各 core 族/engine/实现/GUI/core-manager，含直接/传递路径。现有 contracts → transform 禁令不放宽，不用尚不存在的 protocol 当真实 cargo tree 根。
+- [ ] `S/policy.ts` 加 `backend/nyanpasu-runtime-values/src/`，覆盖矩阵同加；musl 同加 `-p nyanpasu-runtime-values`、`lib:nyanpasu_runtime_values`。同步 backend-packages/architecture 的上层 foundation/反向禁令、路线图 D2 值闭包进度；不说 E1b 已完成。
+
+**验证**
+
+- `cargo test -p nyanpasu-runtime-values`、`cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；§0.8 三侧合计清单 = D2d，只允许 definition/test 所属包/模块前缀变化；五个错误闭包测试、D2a 四例与 D2c 三例保留。三份 bindings 零 diff，尤其 `MutationOutcome`<()>、递归 profile/runtime cause、蛇形 tag 与字段不变。
+- `rg 'nyanpasu_core::|nyanpasu_core_manager|nyanpasu_state_engine|ApplicationWorkflowClient|RuntimeApplyReceipt|struct MutationReceipt' backend/nyanpasu-runtime-values/src --glob '*.rs'` 退出码 1；`rg 'crate::runtime_values|nyanpasu_core::runtime_values' backend/nyanpasu-core/src backend/tauri/src --glob '*.rs'` 退出码 1；分组旧导入另审阅。core acknowledgment adapter 和 source 分类正向保留，不删业务断言清搜索。
+- 反向加 values → engine/core-manager 或任一 foundation 叶 → values，gate 失败；把 engine error 具体类型塞回值包，依赖/编译检查失败；删新静态 prefix，覆盖测试失败。`pnpm run test:scripts`、两门禁、`pnpm run test:backend-musl` 同时验证新增目标注册。
+- 只迁定义，不移动基线 Unix runtime IO/macOS `local_host` 装配；正常生产 consumers 检查不启用 test-support；Linux 检查及 macOS CI 继续验证平台条件下类型可用。
+
+---
+
+## D2f — core-control 与 application 的模块策略
+
+本卡是保行为接缝（静态边界验证），不移动 owner、不建 control/workflow crate、不改变运行结果。
+
+- [ ] 明确集合：control = `C/actor_v2/`、`C/clash/`、`C/proxies.rs`、`C/connections.rs`；application = `C/client/`，含 facade、`application_workflow`、`core_lifecycle`、effects；源 owner = `C/state/`。application 可调用 control，control 禁止引用 client，state 禁止直接引用 client::`application_workflow` 或其具体 `ApplicationWorkflowClient`；source → effects/jobs/runtime 值/验证契约仍允许。`C/actor_v2/service_actor.rs:34` 的 service compat 边允许，不把所有根模块强行分入 control/application。
+- [ ] `CommitNotifications`/`EffectKind` 等留 effects（D2a 已明确）；D2e 已把 `C/proxies.rs:11-12` 的结果/降级导入改为 foundation，此卡核对，不重复移动。factory 位于 state/mutation/ports.rs，workflow 实现消费它；内部 receipts 留源参与模块。不能声称消灭全部 state → client 边或证明模块传递无环。
+- [ ] 新建 `S/core-module-boundaries.ts` 与 `S/core-module-boundaries_test.ts`，接入 `S/backend-boundaries.ts:155-192`，真实违规使现有 gate 非零。`S/lexer.ts:1,48` 仅负责剥离注释/字面量，不提供解析或名称解析。实现有限语法守卫，不做类型/trait/宏展开或调用图解析：支持普通标识符路径、`crate`/`self`/重复 `super`、嵌套 grouped use-tree（含 `self`）、`as` 别名、`pub`/`pub(crate) use` 与限定路径引用；按文件模块和 inline `mod` 的词法作用域归一化，块内 use 只在该块生效，cfg 分支均检查。
+- [ ] provider 范围为 `C/` 全部普通 `.rs` 模块（由 `lib.rs` 的普通 `mod` 声明及 inline 模块建立索引），只索引模块声明和 import/re-export，不追踪函数实现依赖。消费规则仍仅作用于上列 control/state 路径。对消费路径触达的同 crate provider 导出沿显式别名/re-export 展开，最多 8 跳；循环、歧义、超限、不能定位的同 crate provider 或不支持的路径形式明确报错，不默默放行。普通外部 crate 根（如 `nyanpasu_ipc::client`）不当成 `crate::client`，仍交 Cargo gate 管。允许 `service` 的本地定义桥接，但若它 re-export 禁止的 client 类型，须拒绝。
+- [ ] policed consumers 及其触达的 provider 导出禁止 glob use；同样拒绝影响来源判断的宏生成 import、动态/不支持的模块定位（如未登记的 `#[path]`）和 alias 形式（如用 `type Alias = ...` 或 `extern crate ... as ...` 隐藏受检来源），给出路径/行号与改为显式 import 的提示。同卡将范围内既有 `use super::*` 等改为显式导入，含测试，保行为且不删测试；不扩展成通用 Rust resolver，也不全仓禁止与边界无关的语法。新增支持形式前先补正反 fixture。
+- [ ] 新增策略测试（新）`application_may_import_control`、`control_cannot_import_client`、`source_owners_cannot_import_workflow`、`source_owners_may_consume_effects_and_value_contracts`、`module_policy_resolves_grouped_relative_and_aliased_paths`、`module_policy_checks_tests_and_ignores_comments_and_strings`、`module_policy_allows_service_bridge_and_external_ipc_client`、`module_policy_rejects_indirect_forbidden_reexports`、`module_policy_rejects_globs_cycles_and_unsupported_forms`。覆盖允许 service 本地定义桥/外部 IPC client，禁止经 root/provider/多级 alias 引入 workflow，inline 与块作用域，8 跳边界、歧义和失败诊断；真实仓库扫描必须通过。Cargo gate 保留。
+- [ ] 无新包/Cargo feature，core/config defaults-off 不变；`STATIC_GATE_PREFIXES`/覆盖和 musl 两清单不新增。同步 architecture/backend-packages 精确模块规则与路线图 D2 完成条件；独立 control crate 等真实消费者出现后另立闭包盘点卡，server 需要两者、CLI 两者都不链接，不声称编译收益。
+
+**验证**
+
+- `pnpm run test:scripts`、`pnpm run lint:backend-boundaries`、`pnpm run lint:architecture-ledger`；Rust §0.8 清单无增删，`cargo test -p nyanpasu-core` 保留 `a_new_router_generation_is_not_evidence_that_a_submission_finished`（`C/actor_v2/facade.rs:1428`）、D2a cancellation/restore/closing 四例与 D2c 三例。新增的是上述九个脚本策略测试。
+- `rg 'ApplicationWorkflowClient' backend/nyanpasu-state-engine/src backend/nyanpasu-core/src/state --glob '*.rs'` 退出码 1；`rg 'crate::client|client::runtime' backend/nyanpasu-core/src/actor_v2 backend/nyanpasu-core/src/clash backend/nyanpasu-core/src/proxies.rs backend/nyanpasu-core/src/connections.rs --glob '*.rs'` 退出码 1；这两条只是 PR-time 辅助，分组/别名由新策略测试验证。
+- 反向在 control fixture 引入 `use crate::{client as app};` 后引用 app，或 source fixture 经 re-export 引用 workflow，策略测试须失败；真实源增加同样导入须让 gate 非零；允许的 effects import 不能误报。bindings 三份零 diff；无 error/platform 语义变动。
+
+---
+
+## A2b-a — 显式脚本扩展接缝
+
+本卡是保行为接缝；默认 JS/Lua、HTTP/文件/console、缓存、日志、错误结果与线程语义不变，不在本卡修缓存策略或加入不支持结果。
+
+- [ ] 在 `J/extensions.rs` 定义 runner 消费的扩展工厂，构造参数显式含 `JavaScript` loader/console、Lua 标准库/console 配置；`ScriptDirs`（`J/js.rs:32-47`）移到 engine-independent `J/runner.rs`，lib 直接导出新定义，不保留旧 js 路径。迁 `J/adapter.rs:29,67`、`runner.rs:53-77`、`js.rs:104-157,209-217`、`lua/mod.rs:10-21` 与 `T/setup.rs:422-429` 构造链。保留 core 的 `W/ports.rs:9` `ScriptRunnerFactory`、`C/client/runtime_build.rs:93-102` blocking-thread 构造，不让 scripts 依赖 core。
+- [ ] 在 `B/module/http.rs` 定义消费者自有 `HttpModuleSource` 端口，收 URL、异步返回现有 `CachedItem`（`:30-35`）或保留 source 的模块自有 snafu `LoadModule` 错误；Boa MIME/Module parse（`:58-82`）留 loader。把缓存路径/时钟、读取、fetch、写回机制（`:43-55,95-195`）与 reqwest client 构造移到 `T/adapters/script_extensions/http.rs`，shell 显式构造含 client、cache 路径、`max_age`、clock/执行 handle 的实现，再注入 loader factory。新错误保留原失败文本/source，不借接缝改变脚本错误分类；窄聚合端口避免把 HTTP cache 拆成多套服务或增加 crate。
+- [ ] `T/adapters/script_extensions/mod.rs` 装配本地/HTTP/builtin loader 和 console/Lua 扩展；工厂跨线程可 Send/Sync，实际 Boa/Lua/Rc loader 在使用/销毁它的线程创建。`J/js.rs:177-178` 的 root module identity/insert 保留；`J/js.rs:273-289` 的日志收集与 blocking 执行原样。显式注入 Tokio handle 代替 `B/module/http.rs:151` 的隐藏 utility runtime，不能移动 Rc context 到另一个线程或因 waiter drop 丢失已开始的工作。
+- [ ] 保留 redirect limit 5（http `:154`）、MIME fallback、缓存命中也写回（`:180-195`）、旧 cache key/TTL 和目录/相对 import 行为；Lua 默认仍 `ALL_SAFE`（`J/lua/mod.rs:12`），不趁机收紧脚本能力。console 仍捕获异常前日志并隔离并发运行。普通 script error 字符串化暂留 adapter，A2b-b 只给不可用引擎保留 typed 分支。
+- [ ] 迁现有 HTTP loader 测试（`B/module/http.rs:203` 的 `test_http_module_loader`）与机制 fixture 到 shell adapter，改受控 source/server；Boa 侧保留解析/注入测试。scripts 的 adapter/js/lua/console/`ordered_map`、boa builtin tests 和 transform `runtime_builder/script_tests.rs:17`、`runtime_builder/golden.rs:65` 的真实引擎消费者同改构造，不留旧默认构造兼容入口。
+- [ ] 中立测试扩展由各消费包的小型本地 fixture 显式装配：scripts 的 `cfg(test)` helper 与 transform 新 `runtime_builder/test_extensions.rs`（仅 `cfg(test)`，供 script_tests/golden 共用）使用真实引擎、临时目录、显式本地/builtin loader、受控 HTTP source/clock 与 console/Lua 配置；调用公开扩展构造接口，不依赖 Tauri，不新增共享 test-support feature。transform 的 scripts dev-dependency（`backend/nyanpasu-profile-transform/Cargo.toml:27`）只按需启用引擎。禁止 Tauri dev-dependency、隐式默认装配或替代 default-constructor shim；golden 输入/期望 fixture hashes 原样，§0.8 连同 golden 全清单比较。HTTP 专项测试使用受控服务，不让 golden 意外访问公网。
+- [ ] 无新 crate；`boa_utils` 删除不再使用的 reqwest/缓存机制依赖，shell 按实际使用声明 reqwest、async-fs/postcard 等迁入依赖与 loader 构造所需 Boa 依赖，保留版本/TLS。core/config 边 defaults off；不增加 scripts → core/net/其他实现边。`boa_utils` 的新端口不依赖 shell；`S/backend-boundaries.ts` 为 `boa_utils` 补 GUI/core-family/实现依赖禁令及正例 helper → 中立依赖、负例 helper → core/tauri/net，避免经 helper 绕过实现层。
+- [ ] `S/policy.ts` 与覆盖矩阵加入 `backend/boa_utils/src/`，仅为 `B/module/builtin.rs:14` 的既有不可变 `BUILTIN_MODULES` 登记 static 名称/路径/理由，不豁免运行时服务；musl `-p boa_utils` 与 `lib:boa_utils` 同加，迁入 shell 的机制测试由 tauri CI 跑，不虚报在 musl。同步路线图 A2b 接缝状态，不改引擎 feature 状态。
+
+**验证**
+
+- `cargo test -p boa_utils`、`cargo test -p nyanpasu-scripts`、`cargo test -p nyanpasu-profile-transform`、`cargo test -p clash-nyanpasu`；§0.8 四侧 inventory 合计 = 原清单 + 新测试，HTTP 机制测试仅改归属。scripts adapter 既有五例 `runs_javascript_transform_and_captures_logs`、`failing_script_returns_error`、`eval_item_errors_name_the_expression`、`eval_item_expr_keeps_the_item_key_order`、`eval_item_predicate_and_expr_use_lua_item_global`（`J/adapter.rs:122,146,159,178,195`）保留；js 的 `scripts_run_from_the_injected_dir`、`logs_written_before_a_throw_survive_the_failure`、`concurrent_runs_keep_their_logs_apart`（`:414,458,610`）、`test_process_honey_with_fetch`、`test_process_honey_with_builtin_modules`（`:804,869`）保留。完整 js/lua/console/`ordered_map`/builtin 清单按 §0.8 导出，不用重点测试代替全清单。
+- 新增（新）`module_fetch_uses_the_injected_client`、`module_cache_expiry_uses_the_injected_clock`、`cache_hit_preserves_existing_refresh_behavior`、`relative_imports_resolve_under_the_injected_root`、`root_module_identity_survives_loader_injection`、`module_load_error_preserves_display_and_source_chain`；网络/时钟均可控，不依赖公网或 sleeps。
+- `rg 'reqwest::Client|nyanpasu_utils::runtime' backend/boa_utils/src --glob '*.rs'` 退出码 1；`rg 'nyanpasu_core::|nyanpasu_net::|tauri::' backend/nyanpasu-scripts/src backend/boa_utils/src --glob '*.rs'` 退出码 1；grouped imports 另审阅。反向自建 client、忽略注入 clock、丢 root insert，分别使新增 fetch/cache/identity 测试失败；删除 boa prefix 使静态覆盖失败。两门禁、脚本测试、musl runner；bindings 三份零 diff，无新 wire 类型；没有新增 Unix/macOS 分支。
+
+---
+
+## A2b-b — 引擎 feature 与不可用错误贯通 wire
+
+本卡是行为变更，**一个提交**同时提供引擎 feature、typed port error、所有 executor 分支传播、wire/bindings 与前端消息。默认双引擎、shell 显式选择；任何可选 engine-off 构建都必须拒绝需要该引擎的操作，不能存在先开放 feature、后修 false/no-op 回退的中间提交。用户看到含 runtime/operation 的结构化失败；普通已启用引擎的脚本异常保持原语义。
+
+- [ ] `backend/nyanpasu-scripts/Cargo.toml` 新增 `default = ["javascript", "lua"]`；javascript 控制 Boa/`boa_utils`/oxc 等依赖与模块，lua 控制 mlua 与 Lua 模块；`J/lib.rs:7-10`、runner 注册（`:70-77`）、adapter run/eval_item_* 与 engine-specific tests 同 gated。公共 `ScriptDirs`/`ConfigValue`/console log 容器不依赖某个引擎类型；无引擎仍能构造 runner 并返回 typed 不支持。
+- [ ] shell 对 scripts 依赖 `default-features = false`，通过 shell 的 `script-javascript`/`script-lua` feature 显式转发，shell 默认均启用；A2b-a 新增的 Boa loader/HTTP adapter 依赖和模块随 shell javascript feature gated，Lua adapter 随 lua gated。core 不增加 JS/Lua feature、依赖或 engine 探测；transform 的 scripts dev-dependency 按测试所需显式启用引擎，不让多包测试 feature unification 冒充 scripts 单包 feature-off 验收。
+- [ ] 在 `Q/runtime/executor/script_error.rs` 新增并由 executor 导出 `ScriptExecutionError`（snafu）与 `ScriptOperation::{Transform, ItemPredicate, ItemExpression}`；错误变体 `StartEngine { runtime: ScriptRuntime, operation: ScriptOperation }`，Display 明确 build 中引擎不可用。serde/Specta 固定形状：错误 kind `snake_case`，operation `snake_case`，runtime 沿用 `ScriptRuntime`；本提交同时接入 pipeline/wire，按完整闭包重新生成 bindings。
+- [ ] adapter 先检查 runtime 是否编入，再执行 config 转换/脚本；不可用时直接装箱此错误到 `PortError`，不经 `J/adapter.rs:72` 的 `to_string`。Lua-off 的两个 overlay 入口（`:76-104`）同样返回 typed `StartEngine`，不返回 false/原 item/Ok，不把普通启用引擎的语法/执行错误误判为不可用；原 `PortError` 别名与其他内容读取端口不改。
+- [ ] 新增（新）`javascript_disabled_returns_start_engine_error`、`lua_disabled_returns_start_engine_error`、`lua_disabled_predicate_returns_start_engine_error`、`lua_disabled_expression_returns_start_engine_error`、`enabled_engine_errors_are_not_misclassified_as_unavailable`、`start_engine_error_keeps_display_and_serialized_fields`，分别按 feature 分组。默认双引擎的既有行为不变。
+- [ ] `Q/runtime/executor/error.rs:19` 新增 `RuntimePipelineError::ExecuteScript { source: ScriptExecutionError }`（wire `execute_script`，source 不 skip）；config 的 transform/overlay 路径遇到 typed `StartEngine` 向上传播，其余 `PortError` 保持原日志/失败策略。修改 `executor/mod.rs:184,226-233,354-374` 及 `overlay.rs:164-174,211-232` 的完整返回/调用链，含 builtin、composition-owned transforms 及其 direct-file base/contributors 的 scoped transforms（`Q/runtime/executor/scoped.rs:94`、`compose.rs:99-101`）；保留 `Q/profile/profiles.rs:510` 对嵌套 composition 的拒绝；不在最外层从错误字符串识别引擎。Result 传播与调用方同提交，源码不留成功 fallback。
+- [ ] transform 的 `RuntimeBuildError`::`RunPipeline`（`backend/nyanpasu-profile-transform/src/runtime_builder.rs:44`）保留原 wrapper，D4 后 values 的 `RuntimeError`::`BuildRuntime` 保留 source；core 分类/IPC 映射保留结构，不转 unknown 文本。测试经真实 executor → `RuntimeBuilder` → 公共错误序列化路径；包含非 strict transforms 的默认构建，不能只在 strict 模式拒绝。
+- [ ] config 新增（新）`disabled_transform_engine_is_a_structured_pipeline_failure`，在 `Q/runtime/executor/tests/{compose,include_all,builtin}.rs` 的本地 helper 中参数化 global、scoped、composition-owned、direct-file base scoped、每个 direct-file contributor scoped、builtin 路径；逐项覆盖独立调用/吞错点（`executor/mod.rs:226-233,354-374`、`scoped.rs:94`、`compose.rs:101`）。非 strict 默认执行下，每个 case 断言 `StartEngine` 的准确 runtime 与 `operation = Transform`，不能只复用 global 分支证明 builtin。
+- [ ] `Q/runtime/executor/tests/overlay.rs` 新增（新）`disabled_lua_filter_does_not_remove_an_item`、`disabled_lua_when_does_not_become_a_false_predicate`、`disabled_lua_expression_does_not_become_a_successful_noop`：分别断言 `ItemPredicate`/`ItemPredicate`/`ItemExpression` 及 Lua runtime；expression fake 必须先对 `when` 回 `Ok(true)`，再对 `eval_item_expr` 回 `StartEngine { runtime: Lua, operation: ItemExpression }`，并用调用计数证明进入表达式分支。三例均在非 strict 模式拒绝整次构建，不能只断言日志。新增 `ordinary_script_failure_keeps_existing_transform_semantics`（新）固定普通启用引擎错误的原回退行为。
+- [ ] transform 的 `runtime_builder.rs` 新增 `unsupported_engine_error_reaches_runtime_build_wire_shape`（新），从实际 executor 失败取得 `RuntimeBuildError` 再断言下层 wrapper；不得为此增加 transform → values/core/tauri 依赖。`J/adapter.rs` 新增 `disabled_engine_real_runner_reaches_pipeline`（新），真实 runner 调 executor：无引擎/单引擎配置断言禁用引擎的 typed 失败，默认双引擎配置断言启用引擎正常执行；覆盖单包四组 feature 配置；不新增 integration target。
+- [ ] core 的 `W/tests/mutations.rs` 新增 `unsupported_engine_is_rejected_before_source_persistence`（新）：经实际 `RuntimeBuilder` 失败驱动 config/profile 两类源 mutation，typed script fake 只在端口返回精确 unavailable；断言实际返回错误内 `RuntimeError::BuildRuntime` → `RuntimeBuildError::RunPipeline` → `RuntimePipelineError::ExecuteScript` → `StartEngine` 的 runtime/operation、source 链以及持久化/源版本未变，不只检查不落盘。若从 `ConfigError`/`ProfilesError` 进入，逐层断言实际 commit/aftermath cause，不手工拼造上层错误。
+- [ ] `T/ipc.rs` 的现有 unit-test 模块新增 `unsupported_engine_mutation_serializes_typed_ipc_envelope`（新）：用 shell 侧本地 fixture 执行上述实际失败的 config/profile mutation，将其真实返回错误经现有映射转换为 `IpcError`（`:55-72`）并序列化；逐项断言 config/profiles domain、commit/runtime/build/pipeline/script 嵌套、runtime/operation 和 message/detail 保留。共享行为可用既有 typed test 接口，不增加下层 → Tauri dev-dependency，不用手工构造 RuntimeError 替代实际失败构建。
+- [ ] 修订 `Q/runtime/executor/ports.rs:27` 的确定性契约：相同输入且注入扩展的网络/文件/时钟等观测相同时回复一致；不承诺 HTTP/缓存/`ALL_SAFE` 的无条件重放，不做冻结能力模式。同步 design §5.0 与路线图 A2b 状态，不改脚本已有能力/TTL。
+- [ ] 重新导出三份 bindings；只在 `frontend/nyanpasu/src/utils/ipc-error.ts:639-665` 的 pipelineMessage 加 `execute_script` 分支及私有脚本错误 mapper。新增 `error_runtime_script_start_engine` 消息，参数 runtime/operation；`frontend/nyanpasu/messages/en.json`、`ja.json`、`ko.json`、`ru.json`、`zh-cn.json`、`zh-tw.json` 六份齐全。通过 `pnpm run web:build` 的 Paraglide 插件（`frontend/nyanpasu/vite.config.ts:74-76`）重编译，不手改 src/paraglide，不改页面/组件。
+- [ ] `frontend/nyanpasu/tests/ipc-error.browser.test.ts` 新增参数化 `script_engine_unavailable_uses_its_message`（新），经公共 ipcErrorMessage 验证 runtime 以及上述 config/profile mutation 的实际 envelope 形状，覆盖两个 runtime、三种 operation 的消息，不为测试导出私有 mapper。前端例外按 design §9 A2b-b，仅此 mapper/消息/回归与生成 bindings。
+- [ ] 无新 crate；新增/可选依赖与 config、core、shell defaults-off 按本卡 feature wiring 同步；gate/prefix/覆盖/musl package 与 expectedTargets 无新增，新增测试使用既有 unit targets。运行默认 musl 和 scripts feature 矩阵，不用全 feature 替代；文档标明 A2b 完整验收。
+
+**验证**
+
+- 分别运行并按 §0.8 保存各配置非空清单，不把互斥测试跨配置比较：`cargo test -p nyanpasu-scripts --lib`；`cargo test -p nyanpasu-scripts --lib --no-default-features`；`cargo test -p nyanpasu-scripts --lib --no-default-features --features javascript`；`cargo test -p nyanpasu-scripts --lib --no-default-features --features lua`。再跑 config、transform、tauri 既有测试；默认 inventory = A2b-a + 本配置新测试，禁用引擎的测试逐项说明条件，不静默消失。
+- `cargo tree --offline -p nyanpasu-scripts --no-default-features -e normal,build` 不含 Boa/mlua；加 `--features javascript` 不含 mlua，加 `--features lua` 不含 Boa/oxc。shell 分别 `cargo check -p clash-nyanpasu --lib --no-default-features`、追加 `--features script-javascript`、追加 `--features script-lua`，再检查默认配置，证明扩展模块与依赖转发可裁剪。`rg -n 'StartEngine|eval_item_predicate|eval_item_expr|to_string' backend/nyanpasu-scripts/src/adapter.rs` 逐支审查 typed 分支先于字符串化；旧路径检查沿用 A2b-a。
+- 反向把 typed 不支持转 String、返回 false/原 item，相关新测试失败；cfg 外引用 Boa/mlua，无引擎编译失败；删 shell feature 转发，对应配置装配检查失败。新错误 Display/serde 字段测试通过；bindings/frontend 按下列 wire 预期同时变更；无新平台分支。
+- `cargo test -p nyanpasu-config`、`cargo test -p nyanpasu-profile-transform`、`cargo test -p nyanpasu-runtime-values`、`cargo test -p nyanpasu-core`、`cargo test -p clash-nyanpasu`；运行本卡四组 scripts feature 命令，按 §0.8 各清单 = A2b-a + 本卡所属新增测试。保留 `build_failures_reach_the_wire_with_their_context`（`backend/nyanpasu-profile-transform/src/runtime_builder.rs:528`）、`builder_runs_a_managed_script_through_the_platform_adapters`（`backend/nyanpasu-profile-transform/src/runtime_builder/script_tests.rs:17`）、A2b-a 日志/key-order/overlay 五例。
+- wire 预期 diff **仅**新增 `ScriptOperation` 的 transform/`item_predicate`/`item_expression`、`ScriptExecutionError` 的 `start_engine { runtime, operation }` 和 `RuntimePipelineError` 的 `execute_script { source }`；`ScriptRuntime` 既有拼写不变。RPC bindings 新增这些闭包；tauri/query 文件若仅引用 RPC 类型则应零 diff，不强造差异；命令名/参数、`MutationOutcome`/`RuntimeError` 既有字段/tag、普通失败 shape 不变。下层 wrapper、core typed cause 与 Tauri IPC envelope 三层测试分别断言 Display/source 链/JSON 嵌套；浏览器参数化 fixture 与 Tauri 序列化形状对应。
+- `pnpm run web:build`、`pnpm --filter @nyanpasu/rpc typecheck`、`pnpm --filter @nyanpasu/query typecheck`、`pnpm --filter @nyanpasu/nyanpasu typecheck`、`pnpm run test:frontend`；核对六种 locale 都有同名/同参数消息，不用 typecheck 代替浏览器行为断言。
+- `rg -n 'StartEngine|ExecuteScript|downcast_ref' backend/nyanpasu-config/src/runtime/executor backend/nyanpasu-scripts/src --glob '*.rs'` 正向审阅 typed 传播；`rg 'reqwest::Client' backend/boa_utils/src --glob '*.rs'` 仍退出码 1；`rg 'crate::runtime_values|nyanpasu_core::runtime_values' backend/nyanpasu-core/src backend/tauri/src --glob '*.rs'` 退出码 1，避免在 D4 旧路径补新变体。
+- 逐个反向恢复 global/scoped/composition-owned/member-scoped/builtin 的吞错分支，相应参数化 case 必须失败；恢复 overlay false/no-op，三个独立测试失败，尤其 `when = Ok(true)` 的表达式 case；把上层错误变成 unknown/字符串，core/Tauri envelope 测试失败；只在 strict 模式拒绝，默认模式测试失败；删 mapper 分支/某语言消息，typecheck/消息回归失败。两门禁、脚本测试、musl runner；无新 Unix/macOS 分支。
+
+---
+
 ## Phase B–E 里程碑卡
 
-每张卡开工前先细化为与 Phase A 同粒度的任务并审阅；B1a–B4 已细化为 §2 的卡，C1–C3 已细化为 §3 的卡。依赖图、决策、前置、不变量、完成判据见 design §5。
+每张卡开工前先细化为与 Phase A 同粒度的任务并审阅；B1a–B4 已细化为 §2 的卡，C1–C3 已细化为 §3 的卡，A2b 与 D1/D2 已细化为 §4 的卡。依赖图、决策、前置、不变量、完成判据见 design §5。
 
-| 卡  | 内容                                                                                                             | 前置                      | 完成判据（摘要）                                                               |
-| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------ |
-| A2b | 脚本扩展注入与引擎 feature                                                                                       | A2                        | design §5.0                                                                    |
-| B1a | persistence 收 format 与通用原子写；`session_state` 不依赖 migration                                             | A5b                       | 无 `session_state → migration`；两个恢复测试通过                               |
-| B1b | backup/migration 的存储端口；migration crate                                                                     | B1a                       | migration crate 不依赖 redb                                                    |
-| B2  | facade 签名去具体存储类型；traffic legacy 导入器 feature 化                                                      | B1b                       | `ClientSetupArgs` 类型闭包无 `Storage`/redb；traffic 无默认 redb               |
-| B3  | logs、traffic、geo 成 owner crate；`owner_shutdown` 按需建 crate                                                 | B2                        | owner 生产代码不含 clash/core-control/redb/notify；traffic 回归测试通过        |
-| B4  | updater crate；后端与其 HTTP 客户端由 shell 注入                                                                 | B3a                       | facade 不构造 `HttpUpdaterBackend`；facade 无归档依赖                          |
-| C1  | 展示能力可选、结构化不支持（已细化为 §3 C1a、C1b）                                                               | A                         | 无展示能力的装配测试；显式热键编辑在提交前被拒                                 |
-| C2  | `nyanpasu-os` 与提权同意端口；能力端口进 contracts；`update_core` 去掉 HTTP；RPC 审计切面（已细化为 §3 C2a–C2f） | A、B4                     | core 无提权执行点；拒绝策略不启动提权命令；经 HTTP 的 `update_core` 得到不支持 |
-| C3  | 桌面交互机制移入 tauri 外壳；共享收敛与展示效果分离（已细化为 §3 C3a）                                           | C1                        | core 族不含桌面机制、不直接依赖 widget-protocol；效果与热键回归测试通过        |
-| D1  | 状态引擎（约 7,000 行完整闭包）                                                                                  | B1a                       | 引擎测试名清单不变且通过；不依赖 core 族其他成员                               |
-| D2  | 反转 mutation 参与；运行时值下移；拆 core-control 与应用                                                         | D1、B3、B4、C1b、C2f、C3a | 无具体 workflow client；workflow 取消/恢复/关闭测试通过                        |
-| E1a | 宏中立声明、按目标 opt-in 与能力元数据；protocol 信封                                                            | A                         | protocol 无 core 族/Tauri；bindings 无 diff                                    |
-| E1b | 完整请求/响应 DTO 进 protocol                                                                                    | E1a、D2                   | protocol 类型闭包不经 core 族                                                  |
-| E2  | `nyanpasu-rpc` 注册表与事件总线                                                                                  | E1a、C2f                  | 注册表与审计端口无 Tauri 类型                                                  |
-| E3  | 纯 API WebUI；local socket 传输                                                                                  | E2                        | 无资源启动；未 opt-in 被拒；跨传输一致                                         |
-| E4  | `nyanpasu-server`，然后 `nyanpasu-cli`                                                                           | C2d、C3a、E1b、E3         | CLI 不链接 core 族；同一 server 会话；拒绝策略关闭 #6157 剩余路径              |
-| E5  | OpenWrt                                                                                                          | 用户明确恢复              | 单独验收                                                                       |
+| 卡  | 内容                                                                                                                   | 前置                      | 完成判据（摘要）                                                                             |
+| --- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
+| A2b | 扩展注入；默认双引擎 feature；typed 不支持经 pipeline 到 wire（已细化为 §4 的卡 A2b-a–A2b-b）                          | A2；合入在 D4 后          | 注入能力/条件确定性；四组 feature、禁用 Lua 不作 false/no-op；bindings/六语言/前端回归通过   |
+| B1a | persistence 收 format 与通用原子写；`session_state` 不依赖 migration                                                   | A5b                       | 无 `session_state → migration`；两个恢复测试通过                                             |
+| B1b | backup/migration 的存储端口；migration crate                                                                           | B1a                       | migration crate 不依赖 redb                                                                  |
+| B2  | facade 签名去具体存储类型；traffic legacy 导入器 feature 化                                                            | B1b                       | `ClientSetupArgs` 类型闭包无 `Storage`/redb；traffic 无默认 redb                             |
+| B3  | logs、traffic、geo 成 owner crate；`owner_shutdown` 按需建 crate                                                       | B2                        | owner 生产代码不含 clash/core-control/redb/notify；traffic 回归测试通过                      |
+| B4  | updater crate；后端与其 HTTP 客户端由 shell 注入                                                                       | B3a                       | facade 不构造 `HttpUpdaterBackend`；facade 无归档依赖                                        |
+| C1  | 展示能力可选、结构化不支持（已细化为 §3 C1a、C1b）                                                                     | A                         | 无展示能力的装配测试；显式热键编辑在提交前被拒                                               |
+| C2  | `nyanpasu-os` 与提权同意端口；能力端口进 contracts；`update_core` 去掉 HTTP；RPC 审计切面（已细化为 §3 C2a–C2f）       | A、B4                     | core 无提权执行点；拒绝策略不启动提权命令；经 HTTP 的 `update_core` 得到不支持               |
+| C3  | 桌面交互机制移入 tauri 外壳；共享收敛与展示效果分离（已细化为 §3 C3a）                                                 | C1                        | core 族不含桌面机制、不直接依赖 widget-protocol；效果与热键回归测试通过                      |
+| D1  | 完整泛型 `nyanpasu-state-engine`，CORE_FAMILY 叶（已细化为 §4 的卡 D1a）                                               | B1a                       | 102 例名称清单不变且通过；父 workspace 仅 persistence；gate/static/musl 同注册               |
+| D2  | 源工厂；独立严格结算行为修正；上层 foundation runtime-values；control/application 模块边界（已细化为 §4 的卡 D2a–D2f） | D1、B3、B4、C1b、C2f、C3a | 无源 → 具体 workflow client；终态在源决定后；值包依赖与源导入策略通过；移动 bindings 零 diff |
+| E1a | 宏中立声明、按目标 opt-in 与能力元数据；protocol 信封                                                                  | A                         | protocol 无 core 族/Tauri；bindings 无 diff                                                  |
+| E1b | 完整请求/响应 DTO 进 protocol                                                                                          | E1a、D2                   | protocol 类型闭包不经 core 族                                                                |
+| E2  | `nyanpasu-rpc` 注册表与事件总线                                                                                        | E1a、C2f                  | 注册表与审计端口无 Tauri 类型                                                                |
+| E3  | 纯 API WebUI；local socket 传输                                                                                        | E2                        | 无资源启动；未 opt-in 被拒；跨传输一致                                                       |
+| E4  | `nyanpasu-server`，然后 `nyanpasu-cli`                                                                                 | C2d、C3a、E1b、E3         | CLI 不链接 core 族；同一 server 会话；拒绝策略关闭 #6157 剩余路径                            |
+| E5  | OpenWrt                                                                                                                | 用户明确恢复              | 单独验收                                                                                     |
 
 B 结束时按 design §6 复测编译时间。

@@ -96,10 +96,18 @@ is the plan for the next stage:
   (an explicit, restricted allowlist) and the CLI over a local socket (a
   separate explicit allowlist). A command that needs a shell capability is
   registered only by a shell that provides it.
-- **The core package family** splits `nyanpasu-core` into owners, core control,
-  application and facade crates over a foundation layer (config, contracts,
-  persistence, profile transform), so that implementation crates depend on the
-  foundation layer and compile in parallel with core.
+- **The core package family** keeps facade, application and control as modules
+  in `nyanpasu-core`, above migration, owner-support, observers and updater.
+  Phase D plans `nyanpasu-state-engine` as a core-family leaf: among parent-workspace
+  packages it depends only on persistence, with default features disabled; other
+  core-family members and parent-workspace packages are forbidden. The purpose
+  is dependency enforcement, not an assumed compile-time gain.
+- **Foundation layers** retain config, contracts, persistence and profile transform
+  as leaves. Phase D plans `nyanpasu-runtime-values` above them for public mutation
+  results, degradation and runtime/profile errors, with their complete value
+  closure. Existing foundation leaves cannot depend on it. It may consume
+  config/contracts/transform and neutral core metadata, but not core family,
+  engine, implementation crates, GUI or core manager.
 - **Script runtimes** belong to profile enhancement: a script crate provides the
   runners and extension definitions over the `nyanpasu-config` ports, and a
   profile transform crate below core holds the runtime builder.
@@ -110,6 +118,25 @@ is the plan for the next stage:
   no desktop interaction crate.
 - **Implementation crates** (scripts, profile IO, HTTP, storage backends)
   depend on the foundation layer only, never on core or each other.
+
+The Phase D module boundary (implementation tracked in tasks §4) classifies
+`actor_v2/`, `clash/`, `proxies.rs` and `connections.rs` as control, `client/`
+as application/facade, and `state/` as source ownership. Application may import
+control; control must not import `client`. Source owners must not directly import
+`client::application_workflow` or `ApplicationWorkflowClient`. They consume the
+factory defined in `state/mutation/ports.rs`; `client/application_workflow/participant.rs`
+implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
+stay under `state/mutation/`; public wire values move to runtime-values. The
+notification contract and `EffectKind` remain in `client/effects`, so the policy
+allows source dependencies on effects, jobs and value/validation contracts. It
+uses a bounded syntax guard for explicit use trees/paths and lexical scopes,
+including tests. Same-core provider aliases/re-exports are followed for at most
+eight hops; globs, cycles, ambiguity and unsupported forms fail explicitly in
+the policed scope. Local service bridges and external `nyanpasu_ipc::client`
+remain allowed. This is not Rust type/macro resolution or a proof of transitive
+independence of `state` and `client`. D2f adds fixtures for these exact rules
+where Cargo cannot enforce an intra-crate direction. No control/application crates are
+created; a future independent consumer requires its own extraction inventory.
 
 The extraction record lists the known gaps and the order of the next stage. The
 [OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the

@@ -17,7 +17,7 @@ rules that apply today.
 
 Crate names in this document are working names; the PR that creates each crate
 settles its name. LOC figures count physical lines, tests included, on `main`
-at `0c22ade7`.
+at `0c22ade7`, except the Phase D engine closure re-counted at `fa7e5050b`.
 
 ## Target ownership
 
@@ -40,7 +40,8 @@ Shells (composition roots, RPC hosts)
              nyanpasu-config       schemas, pure runtime executor and its ports
 
 Foundation layer, usable by every crate above it:
-  nyanpasu-config, nyanpasu-contracts, nyanpasu-persistence, nyanpasu-profile-transform
+  leaves: nyanpasu-config, nyanpasu-contracts, nyanpasu-persistence, nyanpasu-profile-transform
+  planned upper foundation: nyanpasu-runtime-values (no reverse edge from leaves)
 
 Implementation crates, injected by shells, depend on the foundation layer only:
   nyanpasu-scripts, nyanpasu-profile-io, nyanpasu-net, storage backends
@@ -49,7 +50,9 @@ nyanpasu-cli --> nyanpasu-rpc-protocol + local-socket client --> a running shell
 ```
 
 Shared application decisions, profile/configuration transactions, core control,
-receipts, recovery and observations belong in the core package family. Config
+internal receipts, recovery and observations belong in the core package family.
+Public mutation results and their runtime/profile error closure move to the
+upper-foundation `nyanpasu-runtime-values` in D2. Config
 retains schemas, pure execution and its consumer-owned ports. Classify each
 component by responsibility, not merely by absence of Tauri types. Headless
 startup must not require fake GUI dependencies or successful no-op business
@@ -151,55 +154,75 @@ layer and compile independently of core. The remaining split aims at two things:
   below the application layer, so editing the facade or a workflow does not
   rebuild them.
 
-| Layer         | Package (working name)   | Moves from `nyanpasu-core/src`                                                                     | LOC     | Owns                                                                  |
-| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------- |
-| Facade        | `nyanpasu-core`          | `client/mod.rs` and assembly                                                                       | ~3,600  | `NyanpasuClient`, `ClientSetupArgs`                                   |
-| Application   | `nyanpasu-workflow`      | `client/application_workflow/`, convergence, domain state owners in `state/profiles/` and siblings | ~25,000 | Workflows, mutation participants, profile owners                      |
-| Core control  | `nyanpasu-core-control`  | `actor_v2/`, `clash/`, `proxies.rs`, `connections.rs`                                              | ~14,000 | `nyanpasu-ipc`, `nyanpasu-core-manager`, `clash-api`                  |
-| Owners        | `nyanpasu-observers`     | Owner parts of `logs/`, `traffic/`, `geo/`; their redb, file-watch and Clash adapters stay in core | ~6,700  | Log sessions, traffic accounting, geodata                             |
-| Updater       | `nyanpasu-updater`       | `updater/`, `download/`; the shell injects the backend through a factory                           | ~3,100  | `zip`, `tar`, `flate2`, `bolt-load`                                   |
-| State engine  | `nyanpasu-state-engine`  | `state/manager*`, `state/transaction*`                                                             | ~3,300  | Voting, CAS, rollback, settlement                                     |
-| Migration     | `nyanpasu-migration`     | `migration/`, `backup.rs`, `session_state.rs`, after storage ports exist                           | ~10,000 | Legacy schema migration, backups, session-state recovery              |
-| Persistence   | `nyanpasu-persistence`   | Generic recovery from `corrupt.rs`, `format.rs`, generic atomic writes                             | ~600    | Foundation layer: formats and file recovery; no redb or core-manager  |
-| Contracts     | `nyanpasu-contracts`     | `BundleMetadata` and ports implemented outside core, with their type closure                       | Unknown | Foundation layer; no `ractor`, `reqwest`, `redb`, Tauri or widget IPC |
-| Actor support | `nyanpasu-owner-support` | `owner_shutdown.rs` and `utils/blocking.rs`, once the first owner crate leaves core                | ~55     | Owner drain and blocking-join helpers over `ractor`                   |
+| Layer          | Package (working name)                | Moves from `nyanpasu-core/src`                                                                                                   | LOC                       | Owns                                                                                 |
+| -------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------ |
+| Facade         | `nyanpasu-core`                       | `client/mod.rs` and assembly                                                                                                     | ~3,600                    | `NyanpasuClient`, `ClientSetupArgs`                                                  |
+| Application    | `nyanpasu-core` modules; no new crate | `client/application_workflow/`, lifecycle/effects and source owners in `state/` stay in core                                     | Not a crate extraction    | Workflow, source participation and internal receipts                                 |
+| Core control   | `nyanpasu-core` modules; no new crate | `actor_v2/`, `clash/`, `proxies.rs`, `connections.rs` stay in core                                                               | ~14,000                   | Core-manager/IPC/API control; cannot import `client`                                 |
+| Owners         | `nyanpasu-observers`                  | Owner parts of `logs/`, `traffic/`, `geo/`; their redb, file-watch and Clash adapters stay in core                               | ~6,700                    | Log sessions, traffic accounting, geodata                                            |
+| Updater        | `nyanpasu-updater`                    | `updater/`, `download/`; the shell injects the backend through a factory                                                         | ~3,100                    | `zip`, `tar`, `flate2`, `bolt-load`                                                  |
+| State engine   | `nyanpasu-state-engine`               | Generic manager/transaction files plus ack, builder, coordinator, decision, error, snapshot, version, root definitions and tests | ~7,000                    | CORE_FAMILY leaf; only persistence among parent-workspace dependencies, defaults off |
+| Migration      | `nyanpasu-migration`                  | `migration/`, `backup.rs`, `session_state.rs`, after storage ports exist                                                         | ~10,000                   | Legacy schema migration, backups, session-state recovery                             |
+| Persistence    | `nyanpasu-persistence`                | Generic recovery from `corrupt.rs`, `format.rs`, generic atomic writes                                                           | ~600                      | Foundation layer: formats and file recovery; no redb or core-manager                 |
+| Contracts      | `nyanpasu-contracts`                  | `BundleMetadata` and ports implemented outside core, with their type closure                                                     | Unknown                   | Foundation layer; no `ractor`, `reqwest`, `redb`, Tauri or widget IPC                |
+| Runtime values | `nyanpasu-runtime-values`             | Public mutation results, degradation and runtime/profile error closure                                                           | Inventory in tasks §4 D2e | Upper foundation; no core-family/engine/implementation/GUI/core-manager dependency   |
+| Actor support  | `nyanpasu-owner-support`              | `owner_shutdown.rs` and `utils/blocking.rs`, once the first owner crate leaves core                                              | ~55                       | Owner drain and blocking-join helpers over `ractor`                                  |
+
+The 2026-11-07 refinement keeps application/control/facade in one core crate:
+the server needs all three and the CLI needs none. The original seven-file
+engine estimate is 3,247 lines at `fa7e5050b`; the full generic closure is about
+7,000 lines. New crates enforce dependency direction, not a measured desktop
+compile-time gain. See design §8.1 V-23–V-29 and tasks §4.
 
 Dependency rules:
 
-- Dependencies point down the table. Implementation and target crates depend
+- Package dependencies point toward their permitted lower owners; the module rows
+  above are not additional crates. Implementation and target crates depend
   on the foundation layer only, never on the facade, application or owner
   crates, and implementation crates do not depend on each other. Only shells
   and the RPC registry depend on the facade.
 - Contracts grow with real consumers: a port moves when a crate outside core
   implements it. Capability ports move with their target crates (phase C);
-  runtime values move below the application with their error closure (D2).
+  public runtime values move to runtime-values with their error closure (D2).
+  Original foundation leaves cannot depend on this upper-foundation package;
+  it cannot depend on core family, engine, implementations, GUI or core manager.
+  Internal `MutationReceipt`/`RuntimeApplyReceipt` stay in core's `state/mutation/`.
 - Contracts keep implementation types out of their errors. Causes such as
   `reqwest::Error` in `SubscriptionFetchError` (`state/profiles/error.rs:288`)
   and `WidgetIpcError` in `WidgetError` (`client/effects/ports.rs:13`) become
   boxed `Error + Send + Sync` sources, preserving serialized variants, `Display`
   and source chains.
 - Domain profile owners stay with the application workflow until mutation
-  participation is inverted: `state/mutation.rs:15` stores the concrete
+  participation is inverted: `state/mutation.rs:34` at `fa7e5050b` stores the concrete
   workflow client. The state engine never depends on the workflow to get a
-  runtime vote.
+  runtime vote. The factory is consumed in `state/mutation/ports.rs` and
+  implemented in `client/application_workflow/participant.rs`. D2f checks that
+  `state/` does not directly import the workflow or its concrete client; effects,
+  jobs and value/validation contracts remain allowed. `CommitNotifications` and
+  `EffectKind` stay in `client/effects`. Control modules cannot import `client`;
+  application may import control. The policy is a bounded syntactic guard over explicit use trees and paths,
+  including tests; it indexes same-core provider re-exports, allows local service
+  bridges and external `nyanpasu_ipc::client`, and rejects unsupported/glob imports
+  in the policed scope. It is not a Rust resolver or a proof of module independence.
 - Fewer, larger crates are cheaper than many small ones. Merge rows that turn
   out small or always change together; measure before adding a boundary
   ([Build measurement](#build-measurement)).
 
-Today the top-level modules of core form one strongly connected component of 16
-modules. These cuts remove most of it. Specify each cut by symbol and destination
-owner, not by arrow:
+Historical baseline (`0c22ade7`): the top-level core modules formed one strongly
+connected component of 16 modules. SCC/caller counts below are historical, not
+a measurement of HEAD; the D-specific anchors and cuts are updated for
+`fa7e5050b`. Specify each cut by symbol and destination owner:
 
-| Cycle                                                          | Cause                                                                                       | Cut                                                                                                              |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| logs, traffic, geo, clash, actor_v2, proxies, updater → client | `client/owner_shutdown.rs` lives under the facade                                           | Move it to a root core module                                                                                    |
-| migration, backup, utils, service, updater → client            | `client/bundle_metadata.rs` lives under the facade                                          | Move it to contracts                                                                                             |
-| state → client (24 lines, 62 paths)                            | Runtime values, plus operational calls: effect planning, commit notifications, jobs waiting | Move runtime values and their errors below the application in D2; cut the calls with the participation inversion |
-| enhance ↔ client                                               | `enhance/artifact_snapshot.rs:95-120` builds `client::runtime` snapshot types               | Keep the conversion in application, above the transform crate                                                    |
-| effects ↔ hotkey, system_proxy                                 | The executor calls owners that return effect status types                                   | Move effect result values below both                                                                             |
-| state ↔ application_workflow                                   | `state/mutation.rs:15` stores the concrete workflow client                                  | Inject the mutation participant boundary                                                                         |
-| updater → client                                               | `updater/ports.rs:8` uses `client::core_lifecycle` artifact types; version parsing, mirrors | Move the artifact types and mirrors below both, version parsing to contracts (B4)                                |
-| migration ↔ session_state                                      | `session_state.rs:27,72` uses `migration::fs` errors and atomic writes                      | Move generic atomic writes to persistence (B1a)                                                                  |
+| Cycle                                                          | Cause                                                                                       | Cut                                                                                                                                                                                                          |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| logs, traffic, geo, clash, actor_v2, proxies, updater → client | `client/owner_shutdown.rs` lives under the facade                                           | Move it to a root core module                                                                                                                                                                                |
+| migration, backup, utils, service, updater → client            | `client/bundle_metadata.rs` lives under the facade                                          | Move it to contracts                                                                                                                                                                                         |
+| state → client (24 lines, 62 paths)                            | Runtime values, plus operational calls: effect planning, commit notifications, jobs waiting | Move public runtime values/errors below application; invert only the concrete workflow participation dependency. Effect planning, commit notifications and jobs waiting remain permitted source dependencies |
+| enhance ↔ client                                               | `enhance/artifact_snapshot.rs:95-120` builds `client::runtime` snapshot types               | Keep the conversion in application, above the transform crate                                                                                                                                                |
+| effects ↔ hotkey, system_proxy                                 | The executor calls owners that return effect status types                                   | Move effect result values below both                                                                                                                                                                         |
+| state ↔ application_workflow                                   | `state/mutation.rs:34` at `fa7e5050b` stores the concrete workflow client                   | Inject the mutation participant boundary                                                                                                                                                                     |
+| updater → client                                               | `updater/ports.rs:8` uses `client::core_lifecycle` artifact types; version parsing, mirrors | Move the artifact types and mirrors below both, version parsing to contracts (B4)                                                                                                                            |
+| migration ↔ session_state                                      | `session_state.rs:27,72` uses `migration::fs` errors and atomic writes                      | Move generic atomic writes to persistence (B1a)                                                                                                                                                              |
 
 ### Script runtimes and profile transform
 
@@ -220,7 +243,13 @@ Script runtimes are part of profile enhancement, not platform infrastructure.
   core, and a shell can leave out an engine through features.
 - What a script may reach is part of its extension definition and is injected:
   module loading (including the JavaScript HTTP module loader), network,
-  filesystem and console. Runners keep the `ScriptRunner` determinism contract.
+  filesystem and console. A2b makes determinism conditional on fixed injected
+  capability observations, not a frozen reproducible mode. Both engine features
+  default on; shells disable dependency defaults and select engines explicitly.
+  A2b-a injects extensions without changing behavior. A2b-b is one atomic behavior
+  commit: selectable engine features, config's typed `StartEngine`, every pipeline
+  branch, wire/bindings, six locales and the browser regression land together.
+  Disabled Lua never becomes a false predicate or silent no-op in any commit.
 
 ### System capabilities and target crates
 
@@ -391,22 +420,26 @@ correction above
 Each step is one reviewable PR or a short stack. Each leaves a buildable tree,
 migrates its desktop callers in the same change and leaves no old-path
 re-export shims. The [core package split
-spec](../spec/2026-11-03-core-package-split/design.md) details phases A–C as
-executable tasks and phases D–E as milestones. After phase A, phase B and E1a
+spec](../spec/2026-11-03-core-package-split/design.md) details phases A–D and A2b as
+executable tasks; E remains at milestone granularity. After phase A, phase B and E1a
 can proceed as independent stacks; in phase C, OS integration (C2) waits for
 B4, and the desktop move (C3) waits for the presentation seam from C1. D2 waits
 for B and C; the complete protocol (E1b) waits for D2, so the server and CLI
-wait for C, D2 and E3.
+wait for C, D2 and E3. This documentation refinement is PR-D0; implementation
+stacks PR-D1 → PR-D2 → PR-D3 → PR-D4 → PR-A2b. A2b has no code dependency on D;
+it lands after the D4 value/error move so its new pipeline variant is added once
+against the final error ownership. E is not refined by this change.
 
 **Phase A: break the cycles and stop the leak**
 
-| Step | Change                                                                                                                                      | Done when                                                                                                    | Status    |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------- |
-| A1   | Move owner shutdown support to a root core module and `BundleMetadata` into `nyanpasu-contracts`; replace `ScriptType` with `ScriptRuntime` | No lower module imports `client::owner_shutdown` or `client::bundle_metadata`; `ScriptType` is gone          | Delivered |
-| A2   | Extract `nyanpasu-scripts` and inject a runner constructor into runtime building                                                            | Script engines do not depend on core; JS/Lua golden behavior unchanged                                       | Delivered |
-| A3   | Extract `nyanpasu-profile-transform`                                                                                                        | Transform depends on config only; artifact-to-snapshot conversion stays in application code                  | Delivered |
-| A4   | Move the ports implemented outside core into `nyanpasu-contracts`: profile and materialization, then network                                | Each group moves with its full type closure; contract errors box implementation causes, wire shape unchanged | Delivered |
-| A5   | Move runtime-build orchestration into core; extract `nyanpasu-persistence`, `nyanpasu-profile-io` and `nyanpasu-net`; retire platform       | Implementation crates depend on the foundation layer only; application integration tests move into core      | Delivered |
+| Step | Change                                                                                                                                      | Done when                                                                                                                                          | Status    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| A1   | Move owner shutdown support to a root core module and `BundleMetadata` into `nyanpasu-contracts`; replace `ScriptType` with `ScriptRuntime` | No lower module imports `client::owner_shutdown` or `client::bundle_metadata`; `ScriptType` is gone                                                | Delivered |
+| A2   | Extract `nyanpasu-scripts` and inject a runner constructor into runtime building                                                            | Script engines do not depend on core; JS/Lua golden behavior unchanged                                                                             | Delivered |
+| A2b  | Inject extensions; default-on JS/Lua features selected explicitly by shell; typed unavailable-engine errors reach the pipeline and wire     | No internal reqwest client construction; feature matrix and overlay refusal tests; six locales/Paraglide/frontend regression; tasks §4 A2b-a–A2b-b | Planned   |
+| A3   | Extract `nyanpasu-profile-transform`                                                                                                        | Transform depends on config only; artifact-to-snapshot conversion stays in application code                                                        | Delivered |
+| A4   | Move the ports implemented outside core into `nyanpasu-contracts`: profile and materialization, then network                                | Each group moves with its full type closure; contract errors box implementation causes, wire shape unchanged                                       | Delivered |
+| A5   | Move runtime-build orchestration into core; extract `nyanpasu-persistence`, `nyanpasu-profile-io` and `nyanpasu-net`; retire platform       | Implementation crates depend on the foundation layer only; application integration tests move into core                                            | Delivered |
 
 **Phase B: leaf owners and heavy dependencies**
 
@@ -428,10 +461,10 @@ wait for C, D2 and E3.
 
 **Phase D: transaction graph**
 
-| Step | Change                                                                 | Done when                                                                                                                   |
-| ---- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| D1   | Extract `nyanpasu-state-engine`                                        | Voting, CAS, rollback and settlement tests pass unchanged                                                                   |
-| D2   | Invert mutation participation, then split core control and application | State stores no concrete workflow client; generation fencing, receipts, compensation and caller-drop behavior are preserved |
+| Step | Change                                                                                                                                                      | Done when                                                                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1   | Extract the complete generic `nyanpasu-state-engine` closure as a core-family leaf                                                                          | All 102 engine tests retained; only persistence among parent-workspace dependencies; package/static/musl gates registered; tasks §4 D1a                                 |
+| D2   | Source-owned participant factory; separate strict-settlement behavior fix; public error/value closure into runtime-values; control/application stay modules | No source → concrete workflow client; strict terminal settlement; source-import policy enforces scoped module directions; bindings unchanged by moves; tasks §4 D2a–D2f |
 
 **Phase E: RPC targets and shells**
 
@@ -455,7 +488,9 @@ Compile time is a goal of the split, so measure it rather than assume it.
 Phases A and B measured no desktop compile-time gain from the new boundaries:
 the `clash-nyanpasu` library and the link still dominate incremental builds.
 Phase C therefore creates only `nyanpasu-os`, which the server needs, and keeps
-the desktop mechanisms in the Tauri shell.
+the desktop mechanisms in the Tauri shell. Phase D adds only the engine and
+public-value boundaries for dependency enforcement; it does not create control
+or workflow crates for presumed build gains.
 
 - Before A1, record a clean `cargo build --timings` of the desktop shell and
   incremental rebuild times after a one-line edit in each of: the facade

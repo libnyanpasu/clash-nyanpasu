@@ -3,7 +3,7 @@
 Use this guide when adding or changing an application command, frontend call, or
 shared event. See [architecture](architecture.md) for dependency and actor rules.
 
-Application commands use the neutral `nyanpasu-rpc` registry, with Tauri IPC and HTTP as transport adapters. The [target RPC layer](../design/application-platform-extraction.md#rpc-targets) will add the CLI over a local socket; the rules below currently cover Tauri IPC and HTTP (WebUI). Commands should be thin adapters. They should:
+Application commands use the neutral `nyanpasu-rpc` registry, with Tauri IPC, HTTP and opt-in local sockets as transport adapters. The [target RPC layer](../design/application-platform-extraction.md#rpc-targets) will add the CLI as a client of the local transport. Commands should be thin adapters. They should:
 
 - parse request DTOs;
 - call `NyanpasuClient`;
@@ -71,9 +71,8 @@ lifecycle completion and proxy-cache notifications, even for reads that refresh
 that cache. These presentation effects remain optional. Native admission errors
 name the unavailable shell command; HTTP retains its existing rejection message.
 The composition root explicitly supplies available capabilities; metadata
-describes availability, not authorization or elevation consent. Production local
-opt-ins remain E3e work: the initial allowlist is independent of HTTP and no
-command is exposed locally by signature compatibility.
+describes availability, not authorization or elevation consent. E3e enables the thirteen reviewed production local commands listed below.
+The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
 the same declarations as handler metadata. Its development-only extractor in
@@ -209,7 +208,7 @@ post-establishment errors use `subscription` and end that stream. Codes are
 `snapshot_unavailable`. The session bounds pending operations and subscriptions.
 E3d implements capability checks, snapshots/race handling, continuous overflow
 failure, resource cleanup (including late completions), and audited admission.
-E3e owns real client reset application. Frame-only tests do not claim those
+E3e implements real client reset application through `protocol/local-client`. Frame-only tests do not claim those
 dispatcher or demand-release behaviors; E3d tests those through real local connections.
 
 `local::server::LocalServer` owns accepted connections and drains them on shutdown.
@@ -259,7 +258,7 @@ E2b moved shared commands, registry, error conversion, HTTP infrastructure, even
 
 E2c makes observations publish first to `nyanpasu-rpc::events::EventBus` through the seven-source `forward` module and bus adapters for state invalidations and app-update snapshots. Its injected Tauri delivery sink runs synchronously, preserving single-window/type/all-window targets, missing-window errors and payloads; it cannot lag behind an asynchronous native queue. SSE/local receivers are bounded and retain lag/resync. The `listen_any` input bridge is removed; native delivery must never re-enter publication. Acquire forwarder subscriptions synchronously after client construction but before reconciliation, stream activation and listener admission, with initial snapshots where needed. Preserve source order without promising a causal total order across independent producers. Full connection details remain demand-driven, outside the shared broadcast. Shell-originated shared events publish explicitly into the bus.
 
-E3a delivers API-only HTTP startup with optional frontend assets, preserving per-start credentials, owner cookies, loopback binding, default-disabled state and Host/Origin middleware. The frontend fallback is mounted only when supplied; authenticated missing static pages return 404. E3b delivers the pure local frame/session contract described below; E3c delivers optional endpoint listeners; E3d delivers connection dispatch and resource cleanup; clients remain E3e work. Unix sockets and Windows named pipes both require actual platform tests and secure endpoint ownership. One default endpoint per user and app data directory belongs to whichever shell binds first; a second live binder fails with a typed error. CLI uses this default or `--endpoint`. Unix only reclaims a valid user-owned socket in its private directory when connect is refused; all other existing endpoints are refused. Windows uses first-instance pipe exclusivity and needs no stale cleanup. The server generates transport-tagged connection owners; request JSON cannot supply one. Disconnect releases connection resources and subscriptions, including late App/Service log-session completions, without cancelling owner-started work. Successful completion tasks register returned IDs even after closure and promptly close them. A Service open whose upstream reply is lost or exceeds IpcServiceLogs’ five-second timeout has no ID to close; that unconfirmed session relies on the existing 45-second service lease (without renewal, measured from creation/last renewal). This is the explicit V-61 limitation, not a service-protocol change.
+E3a delivers API-only HTTP startup with optional frontend assets, preserving per-start credentials, owner cookies, loopback binding, default-disabled state and Host/Origin middleware. The frontend fallback is mounted only when supplied; authenticated missing static pages return 404. E3b delivers the pure local frame/session contract described below; E3c delivers optional endpoint listeners; E3d delivers connection dispatch and resource cleanup; E3e delivers the client and opt-in desktop composition. Unix sockets and Windows named pipes both require actual platform tests and secure endpoint ownership. One default endpoint per user and app data directory belongs to whichever shell binds first; a second live binder fails with a typed error. CLI uses this default or `--endpoint`. Unix only reclaims a valid user-owned socket in its private directory when connect is refused; all other existing endpoints are refused. Windows uses first-instance pipe exclusivity and needs no stale cleanup. The server generates transport-tagged connection owners; request JSON cannot supply one. Disconnect releases connection resources and subscriptions, including late App/Service log-session completions, without cancelling owner-started work. Successful completion tasks register returned IDs even after closure and promptly close them. A Service open whose upstream reply is lost or exceeds IpcServiceLogs’ five-second timeout has no ID to close; that unconfirmed session relies on the existing 45-second service lease (without renewal, measured from creation/last renewal). This is the explicit V-61 limitation, not a service-protocol change.
 
 Local dispatch and subscription admission enter the existing audit kernel at INFO, with no payloads or per-frame records; Tauri stays DEBUG and HTTP INFO. Every transport preserves fatal panic propagation, with no panic/JoinError conversion into `RpcError`. A dedicated transport task owns the client connection; dropping a call future does not interrupt a partial exchange or desynchronize the stream. Timeout/transport error closes the connection and reports an unknown outcome for potentially submitted calls; mutations are never retried automatically. The initial local allowlist and default-off desktop listener are specified by E3e, independently of HTTP exposure.
 
@@ -331,6 +330,52 @@ user and root are trusted between the final identity check and unlink.
 Windows has no stale cleanup; accepted instances can retain the name after the
 listener closes. The byte-stream library can defer a Windows stream's close while
 flushing unread output; connection lifecycle code must account for that ownership.
-Neither endpoint construction nor this feature enables desktop service or dispatch.
+Endpoint construction alone does not enable desktop service or dispatch.
 The parent-child `nyanpasu-local-channel` API and wire protocol are unchanged.
 Musl explicitly enables `nyanpasu-rpc/local-server` on the existing RPC library target.
+
+## Desktop local client and listener
+
+E3e delivers `nyanpasu-rpc-protocol/local-client`, default-off and dependent only
+on frame IO and Tokio OS/client facilities. It has no RPC adapter, core, server,
+GUI or implementation-crate dependency. The desktop explicitly compiles
+`nyanpasu-rpc/local-server`; starting a listener still requires
+`NYANPASU_LOCAL_RPC=1` in the launching process environment. An optional
+`NYANPASU_LOCAL_RPC_ENDPOINT` overrides the discovered endpoint under the same
+security rules. With no enable value, no endpoint is discovered or bound.
+There is no frontend control. The listener uses the desktop's existing client,
+capabilities and elevation policy; it makes no global refusal-of-elevation claim.
+The separately composed E4 server remains responsible for its refusal policy.
+Root shutdown stops admission and joins accepted work and resource cleanup.
+
+The local command allowlist is exactly:
+
+- `get_profiles`, `create_profile`, `delete_profile`, `read_profile_file`
+- `get_configuration_status`, `get_core_status`
+- `get_storage_item`, `set_storage_item`, `remove_storage_item`
+- `list_log_files`, `open_log_session`, `query_logs`, `close_log_session`
+
+These declarations reuse shared handlers and retain the existing HTTP exposure.
+Profile mutations retain optional runtime/service/elevation effects. Known commands
+outside this list return `unsupported`; expanding it requires a separate behavior
+card. Event/details subscriptions use control frames, not native Channel commands.
+
+`LocalClient::connect(path, timeout)` negotiates an explicit Unix socket or Windows
+pipe. One task owns its byte stream, incremental decoder and bounded request queue;
+exchanges serialize, and dropping a call future cannot interrupt partial IO.
+Unsent queued requests can be discarded. `call_with_timeout` bounds the exchange
+once dequeued; it does not impose a domain deadline or cancel owner-started work.
+Timeout, partial IO, malformed replies and disconnect permanently invalidate the
+connection. Every failure after writing may have started reports outcome unknown;
+connect/negotiation and unsent submission failures remain distinct. No automatic
+retry or replay occurs. A fresh connection has fresh correlation state.
+
+The client applies initial/reset/event values by whole replacement for the five
+full-value identities. Lag clears trust in the old value until fresh reset;
+lag alone never means recovery. Its bounded latest-value receiver can coalesce
+complete values. Connection details decode separately, including independent
+subscription errors and permitted sequence gaps. Snapshot failure, size limits
+and continuous overflow remain explicit terminal subscription errors. Recovery
+never calls an RPC query, and independent sources promise no causal total order.
+Musl enables both protocol/local-client and RPC/local-server on the existing
+library targets; no static prefixes or package collections are added.

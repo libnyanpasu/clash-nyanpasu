@@ -9,7 +9,7 @@ use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
 
 use crate::{error::Result, registry::RpcState};
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub async fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<DomainProfiles> {
     Ok((*client.get_profiles().await?).clone())
@@ -53,7 +53,11 @@ pub async fn import_profile(
 }
 
 /// create a new profile
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+#[nyanpasu_macro::rpc(
+    local,
+    http,
+    optional_capabilities(elevation, os_integration, presentation)
+)]
 #[specta::specta]
 pub async fn create_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -165,7 +169,11 @@ pub async fn update_profile(
     Ok(client.refresh_profile(uid, option).await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+#[nyanpasu_macro::rpc(
+    local,
+    http,
+    optional_capabilities(elevation, os_integration, presentation)
+)]
 #[specta::specta]
 pub async fn delete_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -231,7 +239,7 @@ pub async fn replace_profile_definition(
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub async fn read_profile_file(
     client: RpcState<'_, NyanpasuClient>,

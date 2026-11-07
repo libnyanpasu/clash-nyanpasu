@@ -9,6 +9,14 @@ authors.workspace = true
 [features]
 default = []
 frame-io = ['dep:tokio']
+local-client = [
+  'frame-io',
+  'tokio/net',
+  'tokio/rt',
+  'tokio/sync',
+  'tokio/time',
+  'tokio/macros'
+]
 
 [dependencies]
 snafu = '0.8'
@@ -19,7 +27,7 @@ specta = { version = '^2.0.0-rc.25', features = ['derive'] }
 specta-typescript = { version = '0.0.12', features = ['serde'] }
 
 [dev-dependencies]
-tokio = { version = '1', features = ['macros', 'rt'] }
+tokio = { version = '1', features = ['macros', 'rt', 'test-util'] }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }

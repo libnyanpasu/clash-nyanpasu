@@ -94,7 +94,7 @@ pub async fn get_postprocessing_output(
         .unwrap_or_default())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub async fn get_core_status(
     client: RpcState<'_, NyanpasuClient>,

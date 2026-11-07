@@ -12,6 +12,7 @@ test('musl builds and requires the neutral RPC HTTP and local endpoint test targ
   assert.match(runner, /--features nyanpasu-rpc\/http /)
   assert.match(runner, /--features nyanpasu-rpc\/local-server /)
   assert.match(runner, /--features nyanpasu-rpc-protocol\/frame-io /)
+  assert.match(runner, /--features nyanpasu-rpc-protocol\/local-client /)
   assert.match(runner, /'lib:nyanpasu_rpc_protocol'/)
   assert.match(runner, /'lib:nyanpasu_rpc',/)
 })

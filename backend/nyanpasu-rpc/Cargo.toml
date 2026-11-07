@@ -123,6 +123,9 @@ windows-sys = { version = '0.61', optional = true, features = [
 ] }
 
 [dev-dependencies]
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
+  'local-client'
+] }
 tempfile = '3.9.0'
 tokio = { workspace = true, features = ['test-util'] }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [

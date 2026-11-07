@@ -5,4 +5,8 @@ pub(crate) mod jobs;
 mod scheduler;
 pub mod sources;
 
-pub use actor::*;
+pub use actor::{
+    CommitReport, ImportOperationToken, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
+    ProfilesActorMessage, ProfilesActorState, RefreshAttemptToken, RefreshOrigin, RefreshOutcome,
+    ReorderOp,
+};

@@ -1846,6 +1846,7 @@ dependencies = [
  "nyanpasu-persistence",
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
+ "nyanpasu-runtime-values",
  "nyanpasu-scripts",
  "nyanpasu-state-engine",
  "nyanpasu-traffic",
@@ -6799,6 +6800,7 @@ dependencies = [
  "nyanpasu-config",
  "nyanpasu-contracts",
  "nyanpasu-core-manager",
+ "nyanpasu-core-metadata",
  "nyanpasu-diagnose",
  "nyanpasu-geodata",
  "nyanpasu-ipc",
@@ -6813,6 +6815,7 @@ dependencies = [
  "nyanpasu-persistence",
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
+ "nyanpasu-runtime-values",
  "nyanpasu-state-engine",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
@@ -7242,6 +7245,24 @@ dependencies = [
  "snafu 0.9.2",
  "specta",
  "tempfile",
+]
+
+[[package]]
+name = "nyanpasu-runtime-values"
+version = "0.1.0"
+dependencies = [
+ "atomicwrites",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "nyanpasu-core-metadata",
+ "nyanpasu-profile-transform",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "snafu 0.9.2",
+ "specta",
+ "tokio",
+ "url",
 ]
 
 [[package]]

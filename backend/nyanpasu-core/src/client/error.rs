@@ -15,13 +15,13 @@ pub enum ClientError {
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
     #[error(transparent)]
-    Profiles(#[from] crate::state::profiles::ProfilesError),
+    Profiles(#[from] nyanpasu_runtime_values::profiles::ProfilesError),
     #[error(transparent)]
     Jobs(#[from] nyanpasu_jobs::Error),
     #[error(transparent)]
     Config(#[from] crate::state::config_error::ConfigError),
     #[error(transparent)]
-    Runtime(#[from] super::RuntimeError),
+    Runtime(#[from] nyanpasu_runtime_values::runtime_error::RuntimeError),
     #[error(transparent)]
     Window(#[from] super::hotkey::ports::WindowError),
     #[error("{0}")]

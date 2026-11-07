@@ -6,11 +6,12 @@ use nyanpasu_core_manager::{
     ControlOptions, CoreControl, CoreKind, CoreManager, CoreSpec, LocalIpcPolicy, ManagerOptions,
     native_store::{FsNativeStore, StoreOwner, legacy_kind},
 };
-use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
 use nyanpasu_paths::PathResolver;
 use nyanpasu_utils::process::AtomicStopStrategy;
+
+use nyanpasu_runtime_values::core_spec::{CoreSpecError, FindCoreBinarySnafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -80,19 +81,6 @@ pub async fn build(
         manager,
         ControlOptions::new(source_dir, working_dir),
     ))
-}
-
-/// A failure of locating the binary a core is started from.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum CoreSpecError {
-    #[snafu(display("could not find the {core} core binary"))]
-    FindCoreBinary {
-        #[specta(type = String)]
-        core: ClashCore,
-        #[serde(skip)]
-        source: std::io::Error,
-    },
 }
 
 pub fn core_spec(

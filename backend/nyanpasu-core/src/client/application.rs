@@ -17,8 +17,8 @@ use crate::state::{
         ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
     },
     config_error::{ConfigError, OwnerStoppedSnafu},
-    mutation::value::ConfigDomain,
 };
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {

@@ -10,7 +10,8 @@ use ractor::{ActorRef, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
-use super::{CommitReport, ProfilesActorMessage, ProfilesError};
+use super::{CommitReport, ProfilesActorMessage};
+use nyanpasu_runtime_values::profiles::ProfilesError;
 
 pub(crate) const SCOPE: &str = "profiles";
 pub(crate) fn sync_key(uid: &ProfileId) -> String {
@@ -52,7 +53,7 @@ struct SyncInput {
 }
 #[derive(Serialize)]
 struct SyncSummary {
-    commit: crate::client::runtime::CommitReceipt,
+    commit: nyanpasu_runtime_values::runtime::CommitReceipt,
     degradation_count: usize,
 }
 
@@ -114,9 +115,10 @@ impl ProfileJobs {
         if journal_unavailable {
             report
                 .runtime_degradations
-                .push(crate::client::runtime::Degradation {
-                    phase: crate::client::runtime::DegradationPhase::SystemEffect,
-                    reason: crate::client::runtime::DegradationReason::JobsJournalUnavailable,
+                .push(nyanpasu_runtime_values::runtime::Degradation {
+                    phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
+                    reason:
+                        nyanpasu_runtime_values::runtime::DegradationReason::JobsJournalUnavailable,
                     message: "Profile committed, but the sync journal is unavailable".into(),
                     retryable: true,
                 });

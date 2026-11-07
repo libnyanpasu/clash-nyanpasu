@@ -16,9 +16,10 @@ use tokio::sync::watch;
 
 use super::{
     CoreClient as CoreClientV2,
-    endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost},
+    endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
     service_actor::ServiceClient,
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 struct IdleEndpoint;
 

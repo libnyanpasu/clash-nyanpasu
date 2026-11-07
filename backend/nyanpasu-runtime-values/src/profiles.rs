@@ -8,11 +8,11 @@ use nyanpasu_contracts::profiles::error::{ErrorPath, ProfileFileError, Subscript
 use serde::Serialize;
 use snafu::Snafu;
 
-use crate::state::mutation::{CommitAborted, NotReady};
+use super::mutation::{CommitAborted, NotReady};
 
 /// Downloaded or read content that is not a valid profile document.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProfileContentError {
     #[snafu(display("the document is not a YAML mapping"))]
@@ -188,7 +188,62 @@ fn commit_subject(uid: &Option<ProfileId>, path: &Option<ManagedProfilePath>) ->
 
 impl ProfilesError {
     /// The error and its causes as one line, for outcomes that stay text.
-    pub(crate) fn report(&self) -> String {
+    pub fn report(&self) -> String {
         snafu::Report::from_error(self).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
+    use serde_json::json;
+
+    use super::{ProfileContentError, ProfilesError};
+    use crate::{
+        mutation::{CommitAborted, RuntimeAftermath},
+        runtime_error::RuntimeError,
+    };
+
+    #[test]
+    fn profile_commit_error_serialization_omits_operational_sources() {
+        let error = ProfilesError::Commit {
+            uid: Some(ProfileId("p1".into())),
+            path: Some(ManagedProfilePath::new("p1.yaml").unwrap()),
+            source: CommitAborted::WriteConfig {
+                runtime: RuntimeAftermath::RollbackFailed {
+                    detail: Arc::new(RuntimeError::OwnerUnresponsive {
+                        operation_id: "operation-1".into(),
+                    }),
+                },
+                source: Box::new(std::io::Error::other("private operational cause")),
+            },
+            cleanup_failures: vec![ProfilesError::ShuttingDown],
+        };
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            json!({
+                "kind": "commit", "uid": "p1", "path": "p1.yaml",
+                "source": { "kind": "write_config", "runtime": {
+                    "kind": "rollback_failed", "detail": { "kind": "owner_unresponsive", "operation_id": "operation-1" },
+                } },
+            })
+        );
+        let source = serde_yaml_ng::from_str::<serde_yaml_ng::Value>("[").unwrap_err();
+        assert_eq!(
+            serde_json::to_value(ProfilesError::ProfileContentRejected {
+                source: ProfileContentError::NotYamlMapping { source },
+            })
+            .unwrap(),
+            json!({"kind": "profile_content_rejected", "source": {"kind": "not_yaml_mapping"}})
+        );
+        assert_eq!(
+            serde_json::to_value(CommitAborted::ValidateState {
+                source: Box::new(std::io::Error::other("private validation cause")),
+            })
+            .unwrap(),
+            json!({"kind": "validate_state"})
+        );
     }
 }

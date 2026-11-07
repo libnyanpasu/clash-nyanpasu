@@ -1,8 +1,10 @@
 use super::super::runtime;
-use crate::{actor_v2::local_host::CoreSpecError, client::runtime::PublishRuntimeError};
+use nyanpasu_runtime_values::check::RuntimeCheckUnavailable;
+
 use async_trait::async_trait;
 use nyanpasu_config::runtime::executor::{PortError, ScriptRunner};
 use nyanpasu_profile_transform::RuntimeBuildError;
+use nyanpasu_runtime_values::{core_spec::CoreSpecError, publish::PublishRuntimeError};
 use std::sync::Arc;
 
 /// Builds a script runner on the blocking thread that will use and drop it.
@@ -38,28 +40,6 @@ pub trait RuntimeBuildPort: Send + Sync + 'static {
 pub(in crate::client) struct RuntimeCheckRequest<'a> {
     pub core_spec: nyanpasu_core_manager::CoreSpec,
     pub intent: &'a crate::actor_v2::intent::RuntimeIntent,
-}
-
-/// Why no check ran. Every variant is a reason, never a verdict: an absent
-/// check must not be reported as a passing one (v2 §2.4).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(tag = "cause", rename_all = "snake_case")]
-pub enum RuntimeCheckUnavailable {
-    /// No host owns the runtime, so there is nothing to check against.
-    NoEndpoint { reason: String },
-    /// The host owning the runtime exposes no check for this request.
-    HostUnsupported {
-        host: crate::actor_v2::endpoint::ExecutionHost,
-        reason: String,
-    },
-    /// The host reads the candidate from disk and it could not be staged.
-    CandidateUnavailable { reason: String },
-    /// The host has the capability but could not serve it.
-    Backend {
-        kind: Option<nyanpasu_core_manager::CoreErrorKind>,
-        message: String,
-        retryable: bool,
-    },
 }
 
 /// What the core said about a candidate document.

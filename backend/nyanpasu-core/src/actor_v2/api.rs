@@ -12,6 +12,7 @@ use nyanpasu_ipc::api::{core::v2::CoreApiConnection, status::CoreControllerInfo}
 use tokio_util::sync::CancellationToken;
 
 use super::endpoint::EndpointHandle;
+use nyanpasu_runtime_values::runtime::InterruptFailure;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -23,6 +24,17 @@ pub enum ApiError {
     Timeout,
     #[error(transparent)]
     Protocol(#[from] clash_api::Error),
+}
+
+impl From<&ApiError> for InterruptFailure {
+    fn from(error: &ApiError) -> Self {
+        match error {
+            ApiError::Stale => Self::Stale,
+            ApiError::Unavailable(_) => Self::Unavailable,
+            ApiError::Timeout => Self::Timeout,
+            ApiError::Protocol(_) => Self::Protocol,
+        }
+    }
 }
 
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(30);
@@ -454,9 +466,29 @@ pub(crate) mod tests {
     use super::*;
     use crate::actor_v2::{
         CoreClient,
-        endpoint::ExecutionHost,
         test_support::{Endpoint, endpoint, server},
     };
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
+
+    #[test]
+    fn interrupt_failure_mapping_preserves_all_api_error_categories() {
+        for (error, expected) in [
+            (ApiError::Stale, InterruptFailure::Stale),
+            (
+                ApiError::Unavailable("offline".into()),
+                InterruptFailure::Unavailable,
+            ),
+            (ApiError::Timeout, InterruptFailure::Timeout),
+            (
+                ApiError::Protocol(clash_api::Error::UnsupportedUrlScheme {
+                    scheme: "file".into(),
+                }),
+                InterruptFailure::Protocol,
+            ),
+        ] {
+            assert_eq!(InterruptFailure::from(&error), expected, "{error:?}");
+        }
+    }
 
     async fn revoked(api: &ApiClient) {
         tokio::time::timeout(Duration::from_secs(2), api.revoked.cancelled())
@@ -792,7 +824,7 @@ mod stream_tests {
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         let mut endpoint = endpoint("http://127.0.0.1:1/".into());
         std::sync::Arc::get_mut(&mut endpoint).unwrap().host =
-            crate::actor_v2::endpoint::ExecutionHost::Service;
+            nyanpasu_runtime_values::execution_host::ExecutionHost::Service;
         endpoint.binding.send_modify(|binding| {
             binding.as_mut().unwrap().controller = CoreControllerInfo::NamedPipe(path.into());
         });

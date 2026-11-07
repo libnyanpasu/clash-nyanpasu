@@ -32,8 +32,10 @@ use super::{
         ServiceRecovery,
     },
     runtime,
-    runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
+    runtime_error::ack_of,
 };
+#[cfg(test)]
+use crate::actor_v2::HandoffReport;
 use crate::{
     actor_v2::{
         CoreClient, CoreStatusProjection,
@@ -44,11 +46,14 @@ use crate::{
 };
 use mutation::{MutationJournal, MutationRequest};
 use nyanpasu_contracts::core_install::BinaryInstaller;
+#[cfg(test)]
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::runtime_error::{
+    OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError,
+};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
-#[cfg(test)]
-use {crate::actor_v2::HandoffReport, crate::actor_v2::endpoint::ExecutionHost};
 
 /// How many recent results the status and the journal keep.
 const HISTORY_LEN: usize = 32;

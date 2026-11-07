@@ -36,7 +36,6 @@ use super::{
 use crate::{
     actor_v2::{
         CoreStatusProjection, EndpointConnectivity,
-        endpoint::ExecutionHost,
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
         service_actor::{ServiceHostStatus, ServicePhase},
     },
@@ -44,10 +43,13 @@ use crate::{
         convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
         core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
-        runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
     state::mutation::{intent::CoreRunIntent, value::CheckRecord},
+};
+use nyanpasu_runtime_values::{
+    execution_host::ExecutionHost,
+    runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).

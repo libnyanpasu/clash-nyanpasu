@@ -3,9 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use super::super::runtime;
-use crate::{
-    actor_v2::local_host::CoreSpecError,
-    client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
+
+use nyanpasu_runtime_values::{
+    core_spec::CoreSpecError, publish::PublishRuntimeError, runtime_error::RuntimeError,
 };
 
 /// Application-owned runtime preparation; implementations never call the workflow actor.

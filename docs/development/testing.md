@@ -133,6 +133,6 @@ The shared audit fixture retains the production `TracingRpcAuditSink`.
 The remaining admission/owner/HTTP tests move to RPC; browser and native Channel
 checks stay in Tauri. Compare the combined test-name inventories using only the
 `unified_rpc` → `registry` and `server::debug_http` → `http` prefix changes.
-`http::tests::unavailable_frontend_keeps_server_disabled` preserves the pre-E3a
-startup refusal. The musl runner explicitly enables `nyanpasu-rpc/http` and requires
+E3a replaces `http::tests::unavailable_frontend_keeps_server_disabled` with
+`http::tests::api_starts_without_frontend_assets`. The musl runner explicitly enables `nyanpasu-rpc/http` and requires
 `lib:nyanpasu_rpc`; it must not rely on desktop feature unification.

@@ -138,7 +138,7 @@ The machinery at `b70bb66d7` blocks this in five places:
   inject `AppHandle` and are desktop-only.
 - The HTTP server refuses to start without frontend assets
   (`backend/tauri/src/server/debug_http.rs:138-141`), so there is no API-only
-  mode.
+  mode at this baseline. E3a removes this refusal in `nyanpasu-rpc/src/http`.
 - HTTP events are bridged from Tauri events and named by Tauri-Specta types
   (`backend/tauri/src/unified_rpc.rs:173-215`).
 
@@ -388,7 +388,7 @@ Known gaps against the target ownership:
 - E2b moved the shared RPC registry, commands, audit and HTTP server to
   `nyanpasu-rpc`. Native IPC and asset resolution stay in Tauri. E2c replaces
   the event input bridge with bus-first publication and synchronous targeted
-  native delivery; assets remain required until E3a.
+  native delivery. E3a makes frontend assets optional for HTTP startup.
 
 ### Core split stack
 
@@ -583,11 +583,12 @@ requirements and JS/Lua resource costs. The
 archive collection, registry/dependencies, the C2f audit kernel and production
 tracing sink, EventBus, and the neutral HTTP actor/router/assets port. Tauri keeps
 native dispatch, event derives, and the executable and asset resolvers. HTTP is
-default-off and enabled explicitly by the desktop; no-assets refusal and
-transport exposure are unchanged. E2c now publishes all seven observation sources
+default-off, bound to loopback and enabled explicitly by the desktop. E3a allows
+API-only startup without assets or a dev frontend, with authenticated missing
+static pages returning 404. Per-start credentials, owner cookies, Host/Origin
+checks and transport exposure are unchanged. E2c now publishes all seven observation sources
 and the UI/app-update sinks through the bus, with synchronous targeted native
 delivery and bounded SSE lag/resync. Forwarders subscribe at construction before
 reconciliation, streams and listeners; root tasks own their shutdown. Deep links
 and window messages publish explicitly, and connection details remain demand
-streams outside the global broadcast. E3a API-only startup, local RPC and the
-headless shell remain planned.
+streams outside the global broadcast. Local RPC and the headless shell remain planned.

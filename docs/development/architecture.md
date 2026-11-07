@@ -492,7 +492,7 @@ Use names that reveal the role:
 - `AppSupervisor` or `NyanpasuBootstrap` for the composition root.
 
 E2b keeps native entry/Channel binding, Tauri event derives and asset resolution
-in the shell. The neutral HTTP actor still requires frontend assets before it can
-enable. `http` is an explicit default-off feature of RPC, and its weak routes
+in the shell. Since E3a the neutral HTTP actor starts without frontend assets and
+mounts the frontend fallback only when assets are supplied. `http` is an explicit default-off feature of RPC, and its weak routes
 retain the existing client shutdown behavior. Lower layers cannot depend on RPC;
 RPC cannot depend on GUI or implementation crates.

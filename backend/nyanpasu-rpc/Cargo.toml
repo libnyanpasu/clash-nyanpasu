@@ -30,6 +30,7 @@ local-server = [
 ]
 http = [
   'dep:axum',
+  'dep:hyper-util',
   'dep:chrono',
   'dep:futures',
   'dep:ractor',
@@ -102,6 +103,11 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-attributes = '0.1'
 axum = { optional = true, version = '0.8', features = ['ws'] }
+hyper-util = { optional = true, version = '0.1', features = [
+  'server-auto',
+  'service',
+  'tokio'
+] }
 ractor = { version = '0.16', optional = true }
 reqwest = { optional = true, workspace = true }
 tokio-tungstenite = { version = '0.30', optional = true }

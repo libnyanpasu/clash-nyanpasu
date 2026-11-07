@@ -210,13 +210,19 @@ interface FeatureMetadata {
 export function serverProductionFeatureViolations(
   metadata: FeatureMetadata,
 ): string[] {
-  const os = metadata.packages.find((pkg) => pkg.name === 'nyanpasu-os')
-  const node = metadata.resolve.nodes.find((node) => node.id === os?.id)
-  return node?.features.includes('test-support')
-    ? [
-        'nyanpasu-server production closure must not enable nyanpasu-os/test-support',
-      ]
-    : []
+  const forbidden = [
+    ['nyanpasu-os', 'test-support'],
+    ['nyanpasu-server', 'panic-injection'],
+  ]
+  return forbidden.flatMap(([name, feature]) => {
+    const pkg = metadata.packages.find((pkg) => pkg.name === name)
+    const node = metadata.resolve.nodes.find((node) => node.id === pkg?.id)
+    return node?.features.includes(feature)
+      ? [
+          `nyanpasu-server production closure must not enable ${name}/${feature}`,
+        ]
+      : []
+  })
 }
 
 export async function checkServerProductionFeatures(
@@ -244,11 +250,15 @@ export async function checkServerProductionFeatures(
       }
     }
   }
+  // Explicitly opt in only to production features; defaults and transitive leaks are still checked.
+  const productionFeatures = features.filter(
+    (feature) => feature !== 'panic-injection',
+  )
   writeFileSync(
     path.join(directory, 'Cargo.toml'),
     `[package]\nname = "server-production-probe"\nversion = "0.0.0"\nedition = "2024"\n` +
       `[workspace]\nresolver = "2"\n[lib]\npath = "lib.rs"\n[dependencies]\n` +
-      `nyanpasu-server = { path = ${JSON.stringify(server)}, features = ${JSON.stringify(features)} }\n` +
+      `nyanpasu-server = { path = ${JSON.stringify(server)}, features = ${JSON.stringify(productionFeatures)} }\n` +
       stringifyToml({ patch: patches }),
   )
   writeFileSync(path.join(directory, 'lib.rs'), '')

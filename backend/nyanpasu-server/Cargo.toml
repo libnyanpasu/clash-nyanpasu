@@ -6,7 +6,18 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[[bin]]
+name = 'nyanpasu-server'
+path = 'src/main.rs'
+
+# Test-only fault injection; never enable in production.
+[features]
+panic-injection = ['dep:inventory', 'dep:serde_json', 'dep:struct-patch']
+
 [dependencies]
+inventory = { version = '0.3', optional = true }
+serde_json = { version = '1', optional = true }
+struct-patch = { version = '0.14', optional = true }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
   'default-meta',
   'nesting'
@@ -62,8 +73,26 @@ tokio = { workspace = true }
 tokio-util = { version = '0.7', features = ['full'] }
 tracing = { workspace = true }
 url = '2'
+snafu = { workspace = true }
+nyanpasu-panics = { path = '../nyanpasu-panics' }
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
+clap = { version = '4.5.4', features = ['derive'] }
+tracing-subscriber = { version = '0.3', features = ['env-filter', 'json'] }
+flexi_logger = { version = '0.31', default-features = false }
+
+[build-dependencies]
+chrono = '0.4'
+serde_json = '1'
 
 [dev-dependencies]
+nyanpasu-server = { path = '.', default-features = false, features = [
+  'panic-injection'
+] }
+inventory = '0.3'
+futures = '0.3'
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
+  'local-client'
+] }
 runas = { workspace = true }
 nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
   'test-support'

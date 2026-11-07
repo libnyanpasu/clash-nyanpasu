@@ -21,11 +21,22 @@ test('musl builds and requires the neutral RPC HTTP and local endpoint test targ
   )
   assert.match(
     runner,
-    /build --locked --manifest-path backend\/Cargo.toml -p nyanpasu-server --lib --jobs 12/,
+    /build --locked --manifest-path backend\/Cargo.toml -p nyanpasu-server --lib --bin nyanpasu-server --jobs 12/,
   )
   assert.match(
     runner,
     /-p nyanpasu-server --features nyanpasu-os\/test-support --lib --tests/,
   )
   assert.match(runner, /'lib:nyanpasu_server'/)
+  // Cargo --tests includes unit tests for binary targets. Every emitted test
+  // artifact must be registered; the runner continues to reject extras.
+  assert.match(runner, /'bin:nyanpasu-server'/)
+  assert.match(runner, /'test:panic_process'/)
+  const production = runner.match(
+    /build --locked[^\n]*-p nyanpasu-server[^\n]*/,
+  )?.[0]
+  assert.ok(production)
+  assert.doesNotMatch(production, /panic-injection|--all-features/)
+  assert.match(runner, /artifact\.profile\?\.test/)
+  assert.match(runner, /unexpected test target/)
 })

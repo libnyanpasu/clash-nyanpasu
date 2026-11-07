@@ -91,8 +91,8 @@ The [target ownership](../design/application-platform-extraction.md#target-owner
 is the plan for the next stage:
 
 - **Shells** compose the application and serve it over RPC. The desktop shell
-  runs core in process. `nyanpasu-server` has a headless composition library;
-  its long-lived executable remains planned. `nyanpasu-cli` (planned) is a
+  runs core in process. `nyanpasu-server` has a headless composition library and
+  long-lived executable. `nyanpasu-cli` (planned) is a
   client of a running shell, not a composition root. The router form is LuCI → CLI → server.
 - **RPC targets** are Tauri IPC (the full desktop surface), WebUI over HTTP
   (an explicit, restricted allowlist) and the CLI over a local socket (a
@@ -153,8 +153,19 @@ is the plan for the next stage:
   `RefuseElevation` into service control, DNS flush and binary installation.
   Metadata, paths, executable source and logger are explicit host inputs. Script
   engines use server-owned extension and IO adapters. Redb log storage retains
-  the observers unavailable fallback. E4b still owns executable startup, the
-  process panic policy, forwarder activation and listener lifecycle.
+  the observers unavailable fallback. E4b adds executable startup, a process
+  panic policy installed before Tokio, forwarder activation and listener lifecycle.
+  Forwarders subscribe before reconciliation and stream activation. Readiness
+  follows listener binding; transport admission stops before application owners
+  drain. Network drain deadlines do not bound owner cleanup. HTTP/local/owner
+  integration tests launch the real executable through `CARGO_BIN_EXE_nyanpasu-server`,
+  covering startup, composition and fatal exit without converting a panic to an RPC error.
+  The default-off `panic-injection` feature is enabled only by the server's own
+  dev-dependency; production closure checks reject it, and the separate musl
+  production build leaves it off. Musl collects the `panic_process` integration
+  target as well as the library and binary unit targets. Lifecycle tests gate
+  reconciliation and stream activation, capture events before readiness and
+  verify local and HTTP endpoint release after startup failure.
   This closes those paths only in the separate server; embedded desktop HTTP
   retains the desktop policy. E5/OpenWrt and LAN ticket login remain paused.
   The executable plan is [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分).

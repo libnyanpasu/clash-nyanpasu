@@ -125,7 +125,7 @@ test('server_production_closure_excludes_os_test_support', () => {
   }
 })
 
-test('server composition retains refusal, concrete effects and lib-only musl registration', () => {
+test('server composition retains refusal, concrete effects and all server musl targets', () => {
   const root = new URL('../../../', import.meta.url)
   const source = readFileSync(
     new URL('backend/nyanpasu-server/src/compose.rs', root),
@@ -152,13 +152,15 @@ test('server composition retains refusal, concrete effects and lib-only musl reg
     'utf8',
   )
   assert.doesNotMatch(manifest.split('[dev-dependencies]')[0], /test-support/)
-  assert.doesNotMatch(manifest, /\[\[bin\]\]/)
+  assert.match(manifest, /\[\[bin\]\]\s*name = 'nyanpasu-server'/)
   const musl = readFileSync(
     new URL('scripts/src/testing/test-backend-musl.ts', root),
     'utf8',
   )
   assert.match(musl, /-p nyanpasu-server/)
   assert.match(musl, /lib:nyanpasu_server/)
+  assert.match(musl, /bin:nyanpasu-server/)
+  assert.match(musl, /test:panic_process/)
   assert.match(musl, /nyanpasu-os\/test-support/)
   const tests = readFileSync(
     new URL('backend/nyanpasu-server/src/compose/tests.rs', root),
@@ -1270,3 +1272,32 @@ for (const owner of [
     }
   })
 }
+
+test('server production closure rejects panic injection while its own tests enable it', () => {
+  const metadata = (features: string[]) => ({
+    packages: [{ id: 'server', name: 'nyanpasu-server' }],
+    resolve: { nodes: [{ id: 'server', features }] },
+  })
+  assert.deepStrictEqual(serverProductionFeatureViolations(metadata([])), [])
+  assert.deepStrictEqual(
+    serverProductionFeatureViolations(metadata(['panic-injection'])),
+    [
+      'nyanpasu-server production closure must not enable nyanpasu-server/panic-injection',
+    ],
+  )
+  const root = new URL('../../../', import.meta.url)
+  const manifest = readFileSync(
+    new URL('backend/nyanpasu-server/Cargo.toml', root),
+    'utf8',
+  )
+  assert.match(
+    manifest.split('[dev-dependencies]')[1],
+    /nyanpasu-server = .*features = \[\s*['"]panic-injection['"]\s*\]/,
+  )
+  const tests = readFileSync(
+    new URL('backend/nyanpasu-server/tests/panic_process.rs', root),
+    'utf8',
+  )
+  assert.match(tests, /env!\("CARGO_BIN_EXE_nyanpasu-server"\)/)
+  assert.doesNotMatch(tests, /current_exe/)
+})

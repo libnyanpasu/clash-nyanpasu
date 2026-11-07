@@ -120,6 +120,38 @@ impl Owners {
 }
 
 impl Server {
+    #[cfg(test)]
+    pub(crate) async fn from_test_args(mut args: ClientSetupArgs, storage: Storage) -> Self {
+        let events = EventBus::new();
+        args.ui_sink = Arc::new(nyanpasu_rpc::events::BusUiEventSink::new(events.clone()));
+        let paths = args.paths.clone();
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: nyanpasu_rpc::commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
+                client: client.clone(),
+                storage: storage.clone(),
+                paths,
+                events: events.clone(),
+                audit: RpcAudit::new(Arc::new(nyanpasu_rpc::audit::TracingRpcAuditSink)),
+            },
+            &[],
+        )
+        .unwrap();
+        Self {
+            client,
+            rpc,
+            storage,
+            events,
+        }
+    }
+
     /// Constructs the owners and registry once, without activating transports or reconciliation.
     ///
     /// # Errors

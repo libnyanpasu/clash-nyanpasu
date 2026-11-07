@@ -3,6 +3,40 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { dependencyViolations } from './backend-boundaries.ts'
 
+test('RPC local endpoints are opt-in without widening protocol dependencies', () => {
+  const manifest = readFileSync(
+    new URL('../../../backend/nyanpasu-rpc/Cargo.toml', import.meta.url),
+    'utf8',
+  )
+  const defaults = manifest.match(/^default = (.+)$/m)?.[1]
+  assert.ok(defaults)
+  assert.doesNotMatch(defaults, /local-server/)
+  const local = manifest.match(/local-server = \[([^\]]+)\]/)?.[1]
+  assert.ok(local)
+  assert.match(local, /'nyanpasu-rpc-protocol\/frame-io'/)
+  for (const dependency of [
+    'interprocess',
+    'sha2',
+    'libc',
+    'socket2',
+    'widestring',
+    'windows-sys',
+  ]) {
+    assert.ok(local.includes(`'dep:${dependency}'`))
+    assert.match(
+      manifest,
+      new RegExp(`${dependency} = \\{[^\\n]*optional = true`),
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc',
+      'nyanpasu-rpc v0.1.0\ninterprocess v2.4.7\nnyanpasu-rpc-protocol v0.1.0\ntokio v1.0\n',
+    ),
+    [],
+  )
+})
+
 test('protocol frame IO is opt-in and feature-off values need no IO runtime', () => {
   const manifest = readFileSync(
     new URL(

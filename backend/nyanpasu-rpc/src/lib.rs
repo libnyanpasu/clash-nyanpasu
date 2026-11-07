@@ -9,6 +9,8 @@ pub mod events;
 pub mod forward;
 #[cfg(feature = "http")]
 pub mod http;
+#[cfg(feature = "local-server")]
+pub mod local;
 pub mod registry;
 #[cfg(all(feature = "http", any(test, feature = "test-support")))]
 pub mod test_support;

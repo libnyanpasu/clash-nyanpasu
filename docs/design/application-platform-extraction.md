@@ -386,8 +386,9 @@ Known gaps against the target ownership:
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).
 - E2b moved the shared RPC registry, commands, audit and HTTP server to
-  `nyanpasu-rpc`. Native IPC and asset resolution stay in Tauri; the old event
-  input bridge remains until E2c, and assets remain required until E3a.
+  `nyanpasu-rpc`. Native IPC and asset resolution stay in Tauri. E2c replaces
+  the event input bridge with bus-first publication and synchronous targeted
+  native delivery; assets remain required until E3a.
 
 ### Core split stack
 
@@ -581,7 +582,12 @@ requirements and JS/Lua resource costs. The
 `nyanpasu-rpc` now owns shared commands/responses, application error mapping,
 archive collection, registry/dependencies, the C2f audit kernel and production
 tracing sink, EventBus, and the neutral HTTP actor/router/assets port. Tauri keeps
-native dispatch, event derives, the executable and asset resolvers, and the old
-Tauri-to-bus input bridge. HTTP is default-off and enabled explicitly by the desktop;
-no-assets refusal and transport exposure are unchanged. E2c bus-first delivery,
-E3a API-only startup, local RPC and the headless shell remain planned.
+native dispatch, event derives, and the executable and asset resolvers. HTTP is
+default-off and enabled explicitly by the desktop; no-assets refusal and
+transport exposure are unchanged. E2c now publishes all seven observation sources
+and the UI/app-update sinks through the bus, with synchronous targeted native
+delivery and bounded SSE lag/resync. Forwarders subscribe at construction before
+reconciliation, streams and listeners; root tasks own their shutdown. Deep links
+and window messages publish explicitly, and connection details remain demand
+streams outside the global broadcast. E3a API-only startup, local RPC and the
+headless shell remain planned.

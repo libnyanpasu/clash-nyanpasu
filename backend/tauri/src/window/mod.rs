@@ -23,6 +23,8 @@ use nyanpasu_config::{
     application::{WindowCloseOverride, WindowCloseSettings},
     state::window::WindowState,
 };
+use nyanpasu_rpc::events::{DeliveryTarget, EventBus};
+use nyanpasu_rpc_protocol::EventName;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
@@ -261,7 +263,11 @@ pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessageEven
         .ok_or_else(|| anyhow::anyhow!("Window '{}' not found", message.to))?;
 
     let target = message.to.clone();
-    message.emit_to(app_handle, target)?;
+    app_handle.state::<EventBus>().publish_to(
+        EventName::WindowMessage.as_str(),
+        serde_json::to_value(message)?,
+        DeliveryTarget::Window(target),
+    )?;
     Ok(())
 }
 
@@ -283,7 +289,14 @@ pub fn broadcast_to_window_type(
         if app_handle.get_webview_window(&label).is_some() {
             let message = WindowMessageEvent::new(from, &label, event, payload.clone());
             trace_err!(
-                message.emit_to(app_handle, &label),
+                app_handle.state::<EventBus>().publish_to(
+                    EventName::WindowMessage.as_str(),
+                    serde_json::to_value(message)?,
+                    DeliveryTarget::WindowType {
+                        base_label: base_label.to_owned(),
+                        label
+                    },
+                ),
                 "failed to emit message"
             );
         }
@@ -299,7 +312,10 @@ pub fn broadcast_to_all_windows(
     event: &str,
     payload: serde_json::Value,
 ) -> Result<()> {
-    WindowMessageEvent::broadcast(from, event, payload).emit(app_handle)?;
+    app_handle.state::<EventBus>().publish_serialized(
+        EventName::WindowMessage,
+        &WindowMessageEvent::broadcast(from, event, payload),
+    )?;
     Ok(())
 }
 

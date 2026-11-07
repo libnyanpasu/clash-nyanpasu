@@ -5,6 +5,8 @@ extern crate self as nyanpasu_rpc;
 pub mod audit;
 pub mod commands;
 pub mod error;
+pub mod events;
+pub mod forward;
 #[cfg(feature = "http")]
 pub mod http;
 pub mod registry;

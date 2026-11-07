@@ -213,7 +213,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 ) -> Result<(), Error> {
     let app_handle = app.app_handle().clone();
     let rpc_events = crate::unified_rpc::EventBus::new();
-    crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
+    crate::unified_rpc::native::bridge_tauri_events(&app_handle, rpc_events.clone());
     app.manage(rpc_events);
     // Shared with the panic hook, which takes the main thread's work over
     // once the event loop is gone.
@@ -637,6 +637,13 @@ pub(crate) enum UnifiedRpcError {
 /// storage and the other Tauri state dependencies.
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
     let dependencies = crate::unified_rpc::RpcDependencies {
+        icon_files: Some(Arc::new(crate::adapters::rpc_host::DesktopIconFiles)),
+        core_directory: Some(Arc::new(crate::adapters::rpc_host::DesktopCoreDirectory)),
+        service_prompt: Some(Arc::new(crate::adapters::rpc_host::OsServiceInstallPrompt)),
+        accent_color: Some(Arc::new(crate::adapters::rpc_host::DesktopAccentColor)),
+        host_environment: crate::rpc_commands::ports::HostEnvironment {
+            is_appimage: *crate::consts::IS_APPIMAGE,
+        },
         audit: crate::unified_rpc::RpcAudit::new(Arc::new(
             crate::adapters::rpc_audit::TracingRpcAuditSink,
         )),
@@ -650,7 +657,8 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), U
     app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
-    snafu::ensure!(app.manage(rpc), RegisterStateSnafu);
+    let desktop = crate::unified_rpc::native::DesktopRpc::new(rpc).context(BuildRpcSnafu)?;
+    snafu::ensure!(app.manage(desktop), RegisterStateSnafu);
     Ok(())
 }
 

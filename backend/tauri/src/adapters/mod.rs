@@ -12,3 +12,5 @@ pub(crate) mod main_thread;
 pub(crate) mod rpc_audit;
 pub(crate) mod script_extensions;
 pub(crate) mod ui_effects;
+
+pub mod rpc_host;

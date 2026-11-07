@@ -9,7 +9,8 @@ use nyanpasu_config::application::NetworkStatisticWidgetLogoSource;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_widget_protocol::{Logo, LogoPreset};
 
-use crate::core::tray::icon::{TrayIcon, tray_icons_path};
+use crate::core::tray::icon::{self, tray_icons_path};
+use nyanpasu_rpc_protocol::values::TrayIcon;
 
 /// The largest side of an image logo sent to the widget. The widget's largest
 /// badge is 44 px, so this covers a scale factor of 5; anything larger only
@@ -29,7 +30,7 @@ pub fn get_raw_icon(paths: &PathResolver, state: TrayIcon) -> Cow<'static, [u8]>
             if error.kind() != std::io::ErrorKind::NotFound {
                 tracing::error!("failed to read the widget icon: {error}");
             }
-            Cow::Borrowed(state.raw_bytes())
+            Cow::Borrowed(icon::raw_bytes(&state))
         }
     }
 }
@@ -110,7 +111,7 @@ fn logo_for(state: TrayIcon, stored: Option<Vec<u8>>) -> Logo {
             return builtin;
         }
     };
-    let bundled = image::load_from_memory(state.raw_bytes())
+    let bundled = image::load_from_memory(icon::raw_bytes(&state))
         .expect("the bundled tray icons decode")
         .into_rgba8();
     if image == bundled {
@@ -181,10 +182,10 @@ mod tests {
     fn a_stored_copy_of_the_bundled_cat_is_drawn_from_its_vector_source() {
         // Re-encoded, as storing an icon does: other bytes, the same pixels.
         for state in TrayIcon::all_supported() {
-            let stored = png(&image::load_from_memory(state.raw_bytes())
+            let stored = png(&image::load_from_memory(icon::raw_bytes(state))
                 .unwrap()
                 .into_rgba8());
-            assert_ne!(stored, state.raw_bytes());
+            assert_ne!(stored, icon::raw_bytes(state));
             assert!(matches!(logo_for(*state, Some(stored)), Logo::Builtin(_)));
         }
     }

@@ -153,6 +153,13 @@ impl Fixture {
         });
         let rpc = UnifiedRpc::new(
             RpcDependencies {
+                icon_files: None,
+                core_directory: None,
+                service_prompt: None,
+                accent_color: None,
+                host_environment: crate::rpc_commands::ports::HostEnvironment {
+                    is_appimage: false,
+                },
                 audit: RpcAudit::new(sink.clone()),
                 client: nyanpasu_core::client::NyanpasuClient::try_new(args)
                     .await
@@ -212,9 +219,52 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
         fixture.sink.records.lock().clear();
     }
     // Native dispatch observes the same required-capability admission.
-    let native = &fixture.rpc.commands["read_clipboard_text"];
-    assert!(native.tauri_handler.is_some());
-    assert_eq!(native.native_handler().unwrap_err().kind, "unsupported");
+    assert_eq!(
+        fixture
+            .rpc
+            .call_native(
+                "read_clipboard_text",
+                RpcOwner::desktop("audit-window"),
+                || panic!("unavailable native handler must not run")
+            )
+            .await
+            .unwrap_err()
+            .kind,
+        "unsupported"
+    );
+    fixture.shutdown().await;
+
+    // A linked host entry remains known when its narrow implementation is absent.
+    // Required metadata is available, so these refusals exercise missing ports.
+    let fixture = Fixture::with_capabilities(false, crate::setup::DESKTOP_RPC_CAPABILITIES).await;
+    for method in [
+        "get_core_dir",
+        "get_tray_icon",
+        "is_tray_icon_set",
+        "get_widget_icon",
+        "is_widget_icon_set",
+        "set_tray_icon_from_bytes",
+        "set_widget_icon_from_bytes",
+        "get_service_install_prompt",
+        "get_system_accent_color",
+    ] {
+        assert!(fixture.rpc.command_names().contains(&method));
+        let (status, error) = fixture.call(method, json!({"mode": 7})).await;
+        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method}");
+        assert_eq!(error["kind"], "unsupported", "{method}");
+        let records = fixture.sink.records.lock();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].command, method);
+        assert!(matches!(
+            records[0].outcome,
+            RpcAuditOutcome::Failure {
+                kind: "unsupported",
+                ..
+            }
+        ));
+        drop(records);
+        fixture.sink.records.lock().clear();
+    }
     fixture.shutdown().await;
 }
 
@@ -281,13 +331,13 @@ fn duplicate_commands_fail_even_when_a_capability_is_missing() {
         .into_iter()
         .find(|entry| entry.metadata.name == "read_clipboard_text")
         .unwrap();
-    let native = inventory::iter::<super::TauriCommandEntry>
+    let native = inventory::iter::<super::native::TauriCommandEntry>
         .into_iter()
         .find(|entry| entry.name == "read_clipboard_text")
         .unwrap();
     for result in [
-        super::register_commands(COMMAND_CATALOG, [entry, entry], [], &[]),
-        super::register_commands(COMMAND_CATALOG, [entry], [native, native], &[]),
+        super::register_commands(COMMAND_CATALOG, [entry, entry], &[]).map(|_| ()),
+        super::native::register_native_commands([native, native]).map(|_| ()),
     ] {
         assert!(matches!(
             result,
@@ -301,7 +351,7 @@ fn duplicate_commands_fail_even_when_a_capability_is_missing() {
 #[tokio::test]
 async fn headless_registry_knows_unlinked_native_commands() {
     let mut fixture = Fixture::with_capabilities(false, &[]).await;
-    fixture.rpc.commands = super::register_commands(COMMAND_CATALOG, [], [], &[]).unwrap();
+    fixture.rpc.commands = super::register_commands(COMMAND_CATALOG, [], &[]).unwrap();
     assert_eq!(fixture.rpc.command_names().len(), COMMAND_CATALOG.len());
     for metadata in COMMAND_CATALOG
         .iter()
@@ -309,7 +359,10 @@ async fn headless_registry_knows_unlinked_native_commands() {
     {
         let command = &fixture.rpc.commands[metadata.name];
         assert_eq!(
-            command.native_handler().unwrap_err().kind,
+            command
+                .neutral_handler(RpcTarget::Desktop)
+                .unwrap_err()
+                .kind,
             "unsupported",
             "{}",
             metadata.name
@@ -328,16 +381,12 @@ async fn headless_registry_knows_unlinked_native_commands() {
         fixture.sink.records.lock()[0].command,
         "get_system_accent_color"
     );
-    let unlinked = super::register_commands(
-        COMMAND_CATALOG,
-        [],
-        [],
-        crate::setup::DESKTOP_RPC_CAPABILITIES,
-    )
-    .unwrap();
+    let unlinked =
+        super::register_commands(COMMAND_CATALOG, [], crate::setup::DESKTOP_RPC_CAPABILITIES)
+            .unwrap();
     assert_eq!(
         unlinked["read_clipboard_text"]
-            .native_handler()
+            .neutral_handler(RpcTarget::Desktop)
             .unwrap_err()
             .kind,
         "unsupported"
@@ -420,9 +469,9 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
         let capture = Capture::default();
         async {
             for fail in [false, true] {
-                let result = fixture
-                    .rpc
-                    .call_tauri(
+                let result = super::native::DesktopRpc::new(fixture.rpc.clone())
+                    .unwrap()
+                    .call(
                         app.handle().clone(),
                         window.as_ref().window(),
                         window.as_ref().clone(),
@@ -473,9 +522,9 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
             assert_eq!(calls.load(Ordering::SeqCst), 2);
             let fixture = Fixture::with_capabilities(false, &[]).await;
             for params in [json!({"value": SECRET, "fail": false}), json!({})] {
-                let error = fixture
-                    .rpc
-                    .call_tauri(
+                let error = super::native::DesktopRpc::new(fixture.rpc.clone())
+                    .unwrap()
+                    .call(
                         app.handle().clone(),
                         window.as_ref().window(),
                         window.as_ref().clone(),

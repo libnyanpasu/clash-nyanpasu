@@ -11,7 +11,9 @@
 //! the settled receipt goes back to the source on the channel it handed over.
 
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
+use nyanpasu_state_engine::{
+    Ack, DecisionHandle, StateAckSubscriber, StateChange, StateParticipant, SubscriberName,
+};
 use std::{
     marker::PhantomData,
     sync::{Arc, Mutex},
@@ -26,10 +28,34 @@ use crate::{
     client::runtime_error::{OwnerUnresponsiveSnafu, ack_of},
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
-        intent::CommandClass,
+        intent::{CommandClass, MutationIntent},
+        ports::MutationParticipantFactory,
         value::MutationReceipt,
     },
 };
+
+impl<T> MutationParticipantFactory<T> for ApplicationWorkflowClient
+where
+    T: Clone + Send + Sync + 'static,
+    DomainChange: From<StateChange<T>>,
+{
+    fn make(
+        &self,
+        intent: MutationIntent,
+        decision: DecisionHandle,
+        settle: oneshot::Sender<MutationReceipt>,
+    ) -> StateParticipant<T> {
+        ApplicationMutationParticipant::new(
+            intent.operation_id,
+            intent.hints,
+            intent.class,
+            intent.impact,
+            decision,
+            self.clone(),
+            settle,
+        )
+    }
+}
 
 pub(crate) struct ApplicationMutationParticipant<T> {
     operation_id: OperationId,

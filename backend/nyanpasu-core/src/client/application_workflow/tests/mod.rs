@@ -11,6 +11,7 @@ use crate::{
 mod closing;
 mod connection_policy;
 mod mutations;
+mod participant_factory;
 mod recovery;
 mod service_recovery;
 mod startup;

@@ -47,7 +47,7 @@ impl ApplicationSnapshot {
 }
 
 pub struct ApplicationActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<NyanpasuAppConfig>,
     pub manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     /// The channel of the installed build; only a nightly build is held to it.
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
@@ -57,7 +57,7 @@ pub struct ApplicationActorArgs {
 }
 
 pub struct ApplicationActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<NyanpasuAppConfig>,
     manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,

@@ -58,7 +58,7 @@ struct ApplicationClientInner {
 #[allow(dead_code)]
 impl ApplicationClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<NyanpasuAppConfig>,
         build_channel: ReleaseChannel,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
@@ -102,7 +102,7 @@ impl ApplicationClient {
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
     /// so a caller can register state subscribers before the actor claims it.
     pub(crate) async fn from_manager(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<NyanpasuAppConfig>,
         manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
         build_channel: ReleaseChannel,
         shutdown: CancellationToken,

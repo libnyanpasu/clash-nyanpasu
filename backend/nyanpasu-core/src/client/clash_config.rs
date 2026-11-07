@@ -52,7 +52,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<ClashConfig>,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,

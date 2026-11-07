@@ -3,6 +3,7 @@
 //! has settled a mutation.
 pub(crate) mod impact;
 pub(crate) mod intent;
+pub(crate) mod ports;
 pub(crate) mod runtime_apply;
 pub mod value;
 
@@ -10,8 +11,7 @@ use std::sync::Arc;
 
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_state_engine::{
-    AckStatus, DecisionHandle, ReplaceIfVersionError, StateChange, StateParticipant,
-    error::StateChangedError,
+    AckStatus, DecisionHandle, ReplaceIfVersionError, StateParticipant, error::StateChangedError,
 };
 use serde::Serialize;
 use snafu::{IntoError, Snafu, ensure};
@@ -19,10 +19,6 @@ use tokio::sync::{oneshot, watch};
 
 use crate::{
     client::{
-        application_workflow::{
-            ApplicationWorkflowClient, mutation::DomainChange,
-            participant::ApplicationMutationParticipant,
-        },
         effects::ports::CommitNotifications,
         runtime::{
             CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
@@ -31,16 +27,17 @@ use crate::{
     },
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
-        intent::CommandClass,
+        intent::{CommandClass, MutationIntent},
+        ports::MutationParticipantFactory,
         value::{MutationConclusion, MutationOutcomeKind, MutationReceipt},
     },
 };
 
 #[derive(Clone)]
-enum Connection {
+enum Connection<T: Clone + Send + Sync + 'static> {
     Pending,
     Ready {
-        workflow: ApplicationWorkflowClient,
+        factory: Arc<dyn MutationParticipantFactory<T>>,
         effects: Arc<dyn CommitNotifications>,
     },
     #[cfg(any(test, feature = "test-support"))]
@@ -60,20 +57,20 @@ pub(crate) type Settlement = oneshot::Receiver<MutationReceipt>;
 /// the effects owner are connected. The channel carries startup wiring, not
 /// shared mutable actor state.
 #[derive(Clone)]
-pub struct MutationCoordinator(watch::Sender<Connection>);
+pub struct MutationCoordinator<T: Clone + Send + Sync + 'static>(watch::Sender<Connection<T>>);
 
-impl MutationCoordinator {
+impl<T: Clone + Send + Sync + 'static> MutationCoordinator<T> {
     pub fn pending() -> Self {
         Self(watch::channel(Connection::Pending).0)
     }
 
-    pub fn connect(
+    pub(crate) fn connect(
         &self,
-        workflow: ApplicationWorkflowClient,
+        factory: Arc<dyn MutationParticipantFactory<T>>,
         effects: Arc<dyn CommitNotifications>,
     ) {
         assert!(matches!(*self.0.borrow(), Connection::Pending));
-        self.0.send_replace(Connection::Ready { workflow, effects });
+        self.0.send_replace(Connection::Ready { factory, effects });
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -190,7 +187,7 @@ impl MutationCoordinator {
     /// The Runtime's participant for one mutation that reaches the runtime,
     /// with the impact its source classified, and the settlement it will send
     /// back.
-    pub fn participant<T>(
+    pub fn participant(
         &self,
         operation_id: OperationId,
         hints: MutationHints,
@@ -202,23 +199,20 @@ impl MutationCoordinator {
             Settlement,
         ),
         NotReady,
-    >
-    where
-        T: Clone + Send + Sync + 'static,
-        DomainChange: From<StateChange<T>>,
-    {
+    > {
         let connection = self.0.borrow().clone();
         ensure!(!matches!(connection, Connection::Pending), NotReadySnafu);
         let (settle, settlement) = oneshot::channel();
         let participant = move |decision| -> StateParticipant<T> {
             match connection {
-                Connection::Ready { workflow, .. } => ApplicationMutationParticipant::new(
-                    operation_id,
-                    hints,
-                    class,
-                    impact,
+                Connection::Ready { factory, .. } => factory.make(
+                    MutationIntent {
+                        operation_id,
+                        hints,
+                        class,
+                        impact,
+                    },
                     decision,
-                    workflow,
                     settle,
                 ),
                 #[cfg(any(test, feature = "test-support"))]

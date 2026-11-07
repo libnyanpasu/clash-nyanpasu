@@ -1,5 +1,6 @@
 //! The kinds of window this app opens: what each looks like, where it loads
 //! from, and how it reacts to its own events. [`WindowManager`] does the rest.
+use nyanpasu_rpc_protocol::wire::native::EditorWindowType;
 
 use super::{
     AppWindow, WindowConfig, WindowManager, WindowParams, WindowParamsBuilder,
@@ -120,29 +121,17 @@ impl AppWindow for MainWindow {
     }
 }
 
-/// Type of content the editor window displays.
-/// Used to derive the window label (for singleton logic) and URL path params.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub enum EditorWindowType {
-    Profile,
-    CssEditor,
+fn editor_label_suffix(kind: &EditorWindowType) -> &str {
+    match kind {
+        EditorWindowType::Profile => "profile",
+        EditorWindowType::CssEditor => "css",
+    }
 }
 
-impl EditorWindowType {
-    /// Stable string used to build the window label suffix.
-    fn label_suffix(&self) -> &str {
-        match self {
-            Self::Profile => "profile",
-            Self::CssEditor => "css",
-        }
-    }
-
-    fn type_str(&self) -> &str {
-        match self {
-            Self::Profile => "profile",
-            Self::CssEditor => "css",
-        }
+fn editor_type_str(kind: &EditorWindowType) -> &str {
+    match kind {
+        EditorWindowType::Profile => "profile",
+        EditorWindowType::CssEditor => "css",
     }
 }
 
@@ -166,7 +155,7 @@ impl EditorWindow {
             }
             EditorWindowType::CssEditor => Self::css_editor(),
         };
-        let mut builder = WindowParamsBuilder::new().param("type", window_type.type_str());
+        let mut builder = WindowParamsBuilder::new().param("type", editor_type_str(&window_type));
         if let Some(u) = uid {
             builder = builder.param("uid", u);
         }
@@ -179,7 +168,7 @@ impl EditorWindow {
             label: format!(
                 "{}-{}-{}",
                 crate::consts::EDITOR_WINDOW_LABEL,
-                EditorWindowType::Profile.label_suffix(),
+                editor_label_suffix(&EditorWindowType::Profile),
                 uid
             ),
             window_type: EditorWindowType::Profile,
@@ -192,7 +181,7 @@ impl EditorWindow {
             label: format!(
                 "{}-{}",
                 crate::consts::EDITOR_WINDOW_LABEL,
-                EditorWindowType::CssEditor.label_suffix()
+                editor_label_suffix(&EditorWindowType::CssEditor)
             ),
             window_type: EditorWindowType::CssEditor,
         }
@@ -216,7 +205,7 @@ impl AppWindow for EditorWindow {
         let editor_type = params
             .and_then(|params| params.get("type"))
             .map(String::as_str)
-            .unwrap_or_else(|| self.window_type.type_str());
+            .unwrap_or_else(|| editor_type_str(&self.window_type));
 
         let query_params = params.map(|params| {
             params

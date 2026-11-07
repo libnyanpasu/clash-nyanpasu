@@ -13,7 +13,7 @@ use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::error;
+use crate::{error, projection::IntoWire};
 
 // Bound recovery work even when a publisher never becomes idle.
 const SNAPSHOT_ATTEMPTS: usize = 4;
@@ -61,19 +61,22 @@ impl SubscriptionSource for NyanpasuClient {
     async fn snapshot(&self, event: EventName) -> Result<Value, RpcError> {
         let value = match event {
             EventName::ConfigurationStatusChanged => {
-                serde_json::to_value(self.configuration_status())
+                serde_json::to_value(self.configuration_status().into_wire())
             }
             EventName::CoreStatusChanged => {
-                serde_json::to_value(CoreStatusInfo::from(self.core_status()))
+                serde_json::to_value(CoreStatusInfo::from(self.core_status()).into_wire())
             }
-            EventName::ServiceStatusChanged => serde_json::to_value(self.service_status()),
+            EventName::ServiceStatusChanged => {
+                serde_json::to_value(self.service_status().into_wire())
+            }
             EventName::AppUpdateStateChanged => serde_json::to_value(
                 self.get_app_update_state()
                     .await
-                    .map_err(error::application_error)?,
+                    .map_err(error::application_error)?
+                    .into_wire(),
             ),
             EventName::CoreLogsChanged => Ok(
-                serde_json::json!({"status": self.get_core_log_status().await.map_err(error::application_error)?}),
+                serde_json::json!({"status": self.get_core_log_status().await.map_err(error::application_error)?.into_wire()}),
             ),
             _ => unreachable!("local subscription admission only permits full-value events"),
         };
@@ -142,7 +145,7 @@ pub(super) async fn forward(
             Subscription::Details(mut receiver) => loop {
                 let current = receiver.borrow_and_update().clone();
                 if let Some(current) = current {
-                    let Ok(payload) = serde_json::to_value(current) else {
+                    let Ok(payload) = serde_json::to_value(current.into_wire()) else {
                         break;
                     };
                     if output

@@ -213,6 +213,11 @@ type PublishHook = Box<dyn Fn(&str) + Send + Sync>;
 pub struct StorageRevision(u64);
 
 impl StorageRevision {
+    /// The store's monotonic revision, for transport projections.
+    pub fn get(self) -> u64 {
+        self.0
+    }
+
     fn next(self) -> Self {
         Self(
             self.0

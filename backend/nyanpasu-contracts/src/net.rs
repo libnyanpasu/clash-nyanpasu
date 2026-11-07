@@ -62,7 +62,7 @@ impl ProbeSources {
 }
 
 /// One Binding request over one transport and family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StunAttempt {
     /// The server named the address the request came from.
@@ -83,7 +83,7 @@ impl StunAttempt {
 }
 
 /// What a test of a STUN server found over each transport and family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 pub struct StunServerTest {
     pub udp_ipv4: StunAttempt,
     pub udp_ipv6: StunAttempt,

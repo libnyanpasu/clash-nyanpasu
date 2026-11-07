@@ -1,18 +1,22 @@
 //! Shared traffic command adapters.
-
 use nyanpasu_core::client::NyanpasuClient;
-use nyanpasu_observers::logs::{
-    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
+use nyanpasu_rpc_protocol::wire::{
+    logs::{CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus},
+    streams::{ClashWsKind, ClashWsRecording, ClashWsSnapshot},
 };
 
-use crate::{error::Result, registry::RpcState};
+use crate::{
+    error::Result,
+    projection::{IntoApplication, IntoWire},
+    registry::RpcState,
+};
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::ws::ClashWsSnapshot> {
-    Ok(client.clash_ws_snapshot().await?)
+) -> Result<ClashWsSnapshot> {
+    Ok((client.clash_ws_snapshot().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http, result)]
@@ -21,7 +25,11 @@ pub async fn query_core_logs(
     client: RpcState<'_, NyanpasuClient>,
     query: CoreLogQuery,
 ) -> CoreLogResult<CoreLogPage> {
-    client.query_core_logs(query).await
+    client
+        .query_core_logs(query.into_application())
+        .await
+        .map(IntoWire::into_wire)
+        .map_err(IntoWire::into_wire)
 }
 
 #[nyanpasu_macro::rpc(http, result)]
@@ -30,7 +38,11 @@ pub async fn get_core_log(
     client: RpcState<'_, NyanpasuClient>,
     cursor: CoreLogCursor,
 ) -> CoreLogResult<CoreLogRecord> {
-    client.get_core_log(cursor).await
+    client
+        .get_core_log(cursor.into_application())
+        .await
+        .map(IntoWire::into_wire)
+        .map_err(IntoWire::into_wire)
 }
 
 #[nyanpasu_macro::rpc(http, result)]
@@ -38,13 +50,17 @@ pub async fn get_core_log(
 pub async fn get_core_log_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> CoreLogResult<CoreLogStatus> {
-    client.get_core_log_status().await
+    client
+        .get_core_log_status()
+        .await
+        .map(IntoWire::into_wire)
+        .map_err(IntoWire::into_wire)
 }
 
 #[nyanpasu_macro::rpc(http, result)]
 #[specta::specta]
 pub async fn clear_core_logs(client: RpcState<'_, NyanpasuClient>) -> CoreLogResult<()> {
-    client.clear_core_logs().await
+    client.clear_core_logs().await.map_err(IntoWire::into_wire)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -119,18 +135,20 @@ pub async fn query_traffic_active_connection_ids(
 #[specta::specta]
 pub async fn set_clash_ws_recording(
     client: RpcState<'_, NyanpasuClient>,
-    kind: nyanpasu_core::clash::ws::ClashWsKind,
+    kind: ClashWsKind,
     enabled: bool,
-) -> Result<nyanpasu_core::clash::ws::ClashWsRecording> {
-    Ok(client.set_clash_ws_recording(kind, enabled).await?)
+) -> Result<ClashWsRecording> {
+    let kind = kind.into_application();
+    Ok((client.set_clash_ws_recording(kind, enabled).await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub async fn clear_clash_ws_history(
     client: RpcState<'_, NyanpasuClient>,
-    kind: nyanpasu_core::clash::ws::ClashWsKind,
+    kind: ClashWsKind,
 ) -> Result {
+    let kind = kind.into_application();
     client.clear_clash_ws_history(kind).await?;
     Ok(())
 }

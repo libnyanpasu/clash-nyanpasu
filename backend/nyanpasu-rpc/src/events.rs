@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use crate::projection::IntoWire;
 use nyanpasu_core::client::{
     StateChanged, UiEventSink,
     app_update::{AppUpdateEventSink, AppUpdateSnapshot},
@@ -142,7 +143,10 @@ impl BusUiEventSink {
 
 impl UiEventSink for BusUiEventSink {
     fn state_changed(&self, state: StateChanged) {
-        if let Err(error) = self.0.publish_serialized(EventName::StateChanged, &state) {
+        if let Err(error) = self
+            .0
+            .publish_serialized(EventName::StateChanged, &state.into_wire())
+        {
             tracing::error!(target: "app", %error, "failed to publish state change");
         }
     }
@@ -162,7 +166,7 @@ impl AppUpdateEventSink for BusAppUpdateEventSink {
     fn publish(&self, snapshot: AppUpdateSnapshot) {
         if let Err(error) = self
             .0
-            .publish_serialized(EventName::AppUpdateStateChanged, &snapshot)
+            .publish_serialized(EventName::AppUpdateStateChanged, &snapshot.into_wire())
         {
             tracing::error!(target: "app", %error, "failed to publish application update");
         }

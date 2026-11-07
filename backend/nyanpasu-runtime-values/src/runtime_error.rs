@@ -23,7 +23,7 @@ use super::{
 
 /// The wire mirror of a `CoreError`, which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct CoreFailure {
     /// `None` when the core manager did not classify the failure.
     pub kind: Option<CoreErrorKind>,

@@ -22,7 +22,7 @@ use nyanpasu_config::{
 use serde::Serialize;
 use snafu::{ResultExt, Snafu, ensure};
 
-#[derive(Debug, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Serialize, specta::Type)]
 pub struct RuntimeBuildLog {
     pub tag: nyanpasu_config::runtime::snapshot::OperatorTag,
     pub entries: Vec<StepLogEntry>,

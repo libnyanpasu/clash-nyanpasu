@@ -1,7 +1,4 @@
 //! Shared runtime command adapters.
-
-use crate::error::Result;
-
 use nyanpasu_config::{
     application::{ClashCore, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::{
@@ -9,18 +6,20 @@ use nyanpasu_config::{
         features::ConfigFeatures,
     },
 };
-use nyanpasu_core::client::{NyanpasuClient, direct_egress::DirectEgress};
+use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_rpc_protocol::wire::{
+    core::CoreStatusInfo,
+    host::GetSysProxyResponse,
+    runtime::{ClashInfo, DirectEgress, RuntimeInspection, RuntimeInspectionContent},
+};
 
-use super::types::GetSysProxyResponse;
-use crate::registry::RpcState;
+use crate::{error::Result, projection::IntoWire, registry::RpcState};
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
-pub fn get_clash_info(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::clash_info::ClashInfo> {
-    Ok(client.clash_info())
+pub fn get_clash_info(client: RpcState<'_, NyanpasuClient>) -> Result<ClashInfo> {
+    Ok((client.clash_info()).into_wire())
 }
 
 /// get the runtime config
@@ -47,16 +46,16 @@ pub async fn get_runtime_yaml(client: RpcState<'_, NyanpasuClient>) -> Result<St
 #[specta::specta]
 pub async fn inspect_runtime(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
-    Ok(client.inspect_runtime().await)
+) -> Result<Option<RuntimeInspection>> {
+    Ok((client.inspect_runtime().await).map(|value| value.into_wire()))
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub async fn inspect_applied_runtime(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
-    Ok(client.inspect_applied_runtime().await)
+) -> Result<Option<RuntimeInspection>> {
+    Ok((client.inspect_applied_runtime().await).map(|value| value.into_wire()))
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -65,8 +64,8 @@ pub async fn inspect_runtime_node(
     client: RpcState<'_, NyanpasuClient>,
     snapshot_id: String,
     node_id: u32,
-) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
-    Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
+) -> Result<RuntimeInspectionContent> {
+    Ok((client.inspect_runtime_node(&snapshot_id, node_id).await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -95,16 +94,14 @@ pub async fn get_postprocessing_output(
 
 #[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
-pub async fn get_core_status(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::actor_v2::CoreStatusInfo> {
-    Ok(client.core_status().into())
+pub async fn get_core_status(client: RpcState<'_, NyanpasuClient>) -> Result<CoreStatusInfo> {
+    Ok((nyanpasu_core::actor_v2::CoreStatusInfo::from(client.core_status())).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub async fn probe_direct_egress(client: RpcState<'_, NyanpasuClient>) -> Result<DirectEgress> {
-    Ok(client.probe_direct_egress().await?)
+    Ok((client.probe_direct_egress().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]

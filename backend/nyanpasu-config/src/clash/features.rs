@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// Whether a core reads one config key, and which values it accepts there.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum FieldSupport<T> {
     /// The core does not read the key: Nyanpasu writes none and checks none.
@@ -80,7 +80,7 @@ impl<T: PartialEq + FromStr + AsRef<str>> FieldSupport<T> {
 }
 
 /// A value in the final runtime config that the selected core rejects.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct UnsupportedConfigValue {
     /// Dotted path in the final config, such as `tun.stack`.
     pub path: String,
@@ -91,7 +91,7 @@ pub struct UnsupportedConfigValue {
 }
 
 /// What the selected core reads, by config domain.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct ConfigFeatures {
     pub tun: TunFeatures,
 }
@@ -148,7 +148,7 @@ impl TunKey {
 }
 
 /// What the selected core reads under `tun`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct TunFeatures {
     pub stack: FieldSupport<TunStack>,
     /// Read only while the stack is mips.

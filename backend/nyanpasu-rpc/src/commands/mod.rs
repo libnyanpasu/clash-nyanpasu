@@ -11,5 +11,4 @@ pub mod runtime;
 pub mod status;
 pub mod storage;
 pub mod traffic;
-pub mod types;
 pub mod updater;

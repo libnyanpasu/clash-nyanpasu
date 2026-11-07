@@ -6,7 +6,7 @@ use similar::{Algorithm, ChangeTag, TextDiff};
 
 use super::ConfigSnapshot;
 
-#[derive(Debug, Clone, Serialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, specta::Type)]
 pub struct SnapshotDiffHunk {
     pub old_start: u32,
     pub old_lines: u32,

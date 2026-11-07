@@ -1,9 +1,11 @@
 //! Shared clash command adapters.
-
 use indexmap::IndexMap;
 use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_rpc_protocol::wire::clash::{
+    ClashConfig, ClashVersion, ProvidersRulesRes, Proxies, ProxyProviderSummary, RulesRes,
+};
 
-use crate::{error::Result, registry::RpcState};
+use crate::{error::Result, projection::IntoWire, registry::RpcState};
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
 #[specta::specta]
@@ -19,10 +21,8 @@ pub async fn clash_api_get_proxy_delay(
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
-pub async fn clash_api_get_configs(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ClashConfig> {
-    Ok(client.clash_configs().await?)
+pub async fn clash_api_get_configs(client: RpcState<'_, NyanpasuClient>) -> Result<ClashConfig> {
+    Ok((client.clash_configs().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -36,26 +36,22 @@ pub async fn clash_api_delete_connections(
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
-pub async fn clash_api_get_version(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ClashVersion> {
-    Ok(client.clash_version().await?)
+pub async fn clash_api_get_version(client: RpcState<'_, NyanpasuClient>) -> Result<ClashVersion> {
+    Ok((client.clash_version().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
-pub async fn clash_api_get_rules(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::RulesRes> {
-    Ok(client.clash_rules().await?)
+pub async fn clash_api_get_rules(client: RpcState<'_, NyanpasuClient>) -> Result<RulesRes> {
+    Ok((client.clash_rules().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub async fn clash_api_get_providers_rules(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ProvidersRulesRes> {
-    Ok(client.clash_rule_providers().await?)
+) -> Result<ProvidersRulesRes> {
+    Ok((client.clash_rule_providers().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -82,25 +78,23 @@ pub async fn clash_api_get_group_delay(
 #[specta::specta]
 pub async fn clash_api_get_providers_proxies(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<IndexMap<clash_api::ProviderName, nyanpasu_core::clash::proxies::ProxyProviderSummary>>
-{
-    Ok(client.proxy_providers().await?)
+) -> Result<IndexMap<clash_api::ProviderName, ProxyProviderSummary>> {
+    Ok((client.proxy_providers().await?)
+        .into_iter()
+        .map(|(key, value)| (key, value.into_wire()))
+        .collect())
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
 #[specta::specta]
-pub async fn get_proxies(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.get_proxies().await?)
+pub async fn get_proxies(client: RpcState<'_, NyanpasuClient>) -> Result<Proxies> {
+    Ok((client.get_proxies().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
 #[specta::specta]
-pub async fn mutate_proxies(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.refresh_proxies().await?)
+pub async fn mutate_proxies(client: RpcState<'_, NyanpasuClient>) -> Result<Proxies> {
+    Ok((client.refresh_proxies().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]

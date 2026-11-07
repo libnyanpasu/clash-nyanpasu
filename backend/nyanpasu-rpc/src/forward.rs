@@ -13,13 +13,14 @@ use nyanpasu_core::{
     actor_v2::CoreStatusInfo,
     clash::ws::{ClashWsPacket, ClashWsUpdate},
     client::{NyanpasuClient, StateChanged, UiEventSink},
-    storage::{self, Storage, StorageNotification, StorageRevision},
+    storage::{self, Storage, StorageNotification},
 };
 use nyanpasu_rpc_protocol::EventName;
 use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
 
-use nyanpasu_observers::logs::CoreLogStatus;
+use crate::projection::IntoWire;
+use nyanpasu_rpc_protocol::wire::{logs::CoreLogStatus, storage::StorageRevision};
 
 use crate::events::EventBus;
 
@@ -94,7 +95,7 @@ fn configuration_status(
             publish(
                 &events,
                 EventName::ConfigurationStatusChanged,
-                &client.configuration_status(),
+                &client.configuration_status().into_wire(),
             );
         }
     }
@@ -111,7 +112,7 @@ fn core_status(
                 Ok(status) => publish(
                     &events,
                     EventName::CoreStatusChanged,
-                    &CoreStatusInfo::from(status),
+                    &CoreStatusInfo::from(status).into_wire(),
                 ),
                 Err(RecvError::Lagged(_)) => continue,
                 Err(RecvError::Closed) => break,
@@ -140,7 +141,11 @@ fn service_status(
     async move {
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
-            publish(&events, EventName::ServiceStatusChanged, &status);
+            publish(
+                &events,
+                EventName::ServiceStatusChanged,
+                &status.into_wire(),
+            );
         }
     }
 }
@@ -153,7 +158,9 @@ fn core_logs(client: &NyanpasuClient, events: EventBus) -> impl Future<Output = 
             publish(
                 &events,
                 EventName::CoreLogsChanged,
-                &CoreLogsChanged { status },
+                &CoreLogsChanged {
+                    status: status.into_wire(),
+                },
             );
         }
     }
@@ -178,7 +185,7 @@ fn clash_ws(client: NyanpasuClient, events: EventBus) -> impl Future<Output = ()
                 },
                 Err(RecvError::Closed) => break,
             };
-            publish(&events, EventName::ClashWs, &packet);
+            publish(&events, EventName::ClashWs, &packet.into_wire());
         }
     }
 }
@@ -195,7 +202,7 @@ fn storage_changes(storage: &Storage, events: EventBus) -> impl Future<Output = 
                     value: change
                         .value
                         .map(|value| String::from_utf8_lossy(&value).into_owned()),
-                    revision: change.revision,
+                    revision: change.revision.into_wire(),
                 },
             ),
             StorageNotification::Resync => {

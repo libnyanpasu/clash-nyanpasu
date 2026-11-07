@@ -1,8 +1,8 @@
 use crate::{
-    utils::{help, proxy_env, proxy_env::CopyEnvOption},
+    utils::{help, proxy_env},
     window::{
         WindowManager, kinds,
-        kinds::{EditorWindow, EditorWindowType, MainWindow},
+        kinds::{EditorWindow, MainWindow},
     },
 };
 use chrono::Local;
@@ -10,8 +10,17 @@ use log::debug;
 use nyanpasu_contracts::net::StunServerTest;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
-use nyanpasu_rpc::error::{IpcError, Result};
-use nyanpasu_rpc_protocol::values::TrayIcon;
+use nyanpasu_rpc::{
+    error::{IpcError, Result},
+    projection::IntoWire,
+};
+use nyanpasu_rpc_protocol::{
+    values::TrayIcon,
+    wire::native::{
+        ConfigBackupInfo, CopyEnvOption, EditorWindowType, FileDialogFilter, NativeDialogButtons,
+        NativeDialogKind, ReleaseChannelInfo,
+    },
+};
 use nyanpasu_runtime_values::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -23,42 +32,6 @@ use tauri_plugin_dialog::{
     MessageDialogKind as TauriDialogKind, MessageDialogResult as TauriDialogResult,
 };
 use tauri_plugin_notification::NotificationExt;
-
-#[derive(Debug, Clone, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum NativeDialogKind {
-    Info,
-    Warning,
-    Error,
-}
-
-#[derive(Debug, Clone, Deserialize, specta::Type)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum NativeDialogButtons {
-    Ok,
-    OkCancel,
-    YesNo,
-    YesNoCancel,
-    OkCustom {
-        ok: String,
-    },
-    OkCancelCustom {
-        ok: String,
-        cancel: String,
-    },
-    YesNoCancelCustom {
-        yes: String,
-        no: String,
-        cancel: String,
-    },
-}
-
-#[derive(Debug, Clone, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct FileDialogFilter {
-    pub name: String,
-    pub extensions: Vec<String>,
-}
 
 #[nyanpasu_macro::rpc(capabilities(clipboard))]
 #[tauri::command]
@@ -228,12 +201,12 @@ pub async fn probe_profile_url(
     client: State<'_, NyanpasuClient>,
     url: String,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<nyanpasu_core::client::profiles::ProfileUrlProbe> {
+) -> Result<nyanpasu_rpc_protocol::wire::profiles::ProfileUrlProbe> {
     let url = snafu::ResultExt::context(
         url::Url::parse(&url),
         InvalidSubscriptionUrlSnafu { url: &url },
     )?;
-    Ok(client.probe_profile_url(url, option).await?)
+    Ok((client.probe_profile_url(url, option).await?).into_wire())
 }
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -347,12 +320,6 @@ pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
 pub fn open_app_data_dir(paths: State<'_, PathResolver>) -> Result<()> {
     (crate::utils::open::that(paths.app_data_dir()))?;
     Ok(())
-}
-
-#[derive(specta::Type, serde::Serialize)]
-pub struct ConfigBackupInfo {
-    pub name: String,
-    pub path: String,
 }
 
 #[nyanpasu_macro::rpc]
@@ -675,8 +642,8 @@ pub async fn subscribe_clash_connection_details(
         '_,
         crate::adapters::connection_details::ConnectionDetailSubscriptions,
     >,
-    on_frame: tauri::ipc::Channel<std::sync::Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>,
-) -> Result<crate::adapters::connection_details::SubscriptionId> {
+    on_frame: tauri::ipc::Channel<nyanpasu_rpc::projection::streams::ClashConnectionDetailsSend>,
+) -> Result<nyanpasu_rpc_protocol::wire::native::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details().await?;
     let parent = client.shutdown_child_token();
     let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
@@ -696,21 +663,13 @@ pub fn unsubscribe_clash_connection_details(
         '_,
         crate::adapters::connection_details::ConnectionDetailSubscriptions,
     >,
-    id: crate::adapters::connection_details::SubscriptionId,
+    id: nyanpasu_rpc_protocol::wire::native::SubscriptionId,
 ) -> Result {
     subscriptions.unsubscribe(id, window.label())?;
     Ok(())
 }
 
 // Updater block
-
-#[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct ReleaseChannelInfo {
-    /// The feed update checks follow.
-    current: ReleaseChannel,
-    /// The channel of the installed build; a nightly build cannot leave Nightly.
-    installed: ReleaseChannel,
-}
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
@@ -737,8 +696,8 @@ pub async fn set_release_channel(
 #[specta::specta]
 pub async fn get_app_update_state(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
-    Ok(client.get_app_update_state().await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateSnapshot> {
+    Ok((client.get_app_update_state().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc]
@@ -748,8 +707,8 @@ pub async fn get_app_update_changelog(
     client: State<'_, NyanpasuClient>,
     from: String,
     to: String,
-) -> Result<nyanpasu_core::client::app_update::changelog::AppUpdateChangelog> {
-    Ok(client.get_app_update_changelog(&from, &to).await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateChangelog> {
+    Ok((client.get_app_update_changelog(&from, &to).await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(capabilities(app_update))]
@@ -757,8 +716,8 @@ pub async fn get_app_update_changelog(
 #[specta::specta]
 pub async fn check_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
-    Ok(client.check_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateSnapshot> {
+    Ok((client.check_app_update().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(capabilities(app_update))]
@@ -766,8 +725,8 @@ pub async fn check_app_update(
 #[specta::specta]
 pub async fn download_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
-    Ok(client.download_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateSnapshot> {
+    Ok((client.download_app_update().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(capabilities(app_update))]
@@ -775,8 +734,8 @@ pub async fn download_app_update(
 #[specta::specta]
 pub async fn cancel_app_update_download(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
-    Ok(client.cancel_app_update_download().await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateSnapshot> {
+    Ok((client.cancel_app_update_download().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(capabilities(app_update))]
@@ -784,8 +743,8 @@ pub async fn cancel_app_update_download(
 #[specta::specta]
 pub async fn install_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
-    Ok(client.install_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateSnapshot> {
+    Ok((client.install_app_update().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(capabilities(app_update))]
@@ -793,8 +752,8 @@ pub async fn install_app_update(
 #[specta::specta]
 pub async fn discard_app_update_package(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
-    Ok(client.discard_app_update_package().await?)
+) -> Result<nyanpasu_rpc_protocol::wire::app_update::AppUpdateSnapshot> {
+    Ok((client.discard_app_update_package().await?).into_wire())
 }
 
 #[nyanpasu_macro::rpc(capabilities(window))]
@@ -885,7 +844,7 @@ pub async fn report_window_ready(
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ConfigurationStatusChanged(
-    pub nyanpasu_core::client::configuration_status::ConfigurationStatus,
+    pub nyanpasu_rpc_protocol::wire::configuration::ConfigurationStatus,
 );
 
 #[cfg(test)]
@@ -1363,6 +1322,6 @@ mod tests {
 pub async fn set_debug_http_enabled(
     client: State<'_, NyanpasuClient>,
     enabled: bool,
-) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
-    Ok(client.set_debug_http_enabled(enabled).await?)
+) -> Result<nyanpasu_rpc_protocol::wire::configuration::DebugHttpStatus> {
+    Ok((client.set_debug_http_enabled(enabled).await?).into_wire())
 }

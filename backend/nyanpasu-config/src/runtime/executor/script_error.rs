@@ -7,7 +7,7 @@ use specta::Type;
 use crate::profile::ScriptRuntime;
 
 /// The operation that requires a compiled script engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptOperation {
     Transform,

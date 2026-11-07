@@ -105,7 +105,7 @@ impl IpLookupProvider {
 }
 
 /// A provider and the endpoints it is asked at, for its privacy notice.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, Serialize, Type)]
 pub struct IpLookupProviderInfo {
     pub provider: IpLookupProvider,
     pub ipv4_url: String,

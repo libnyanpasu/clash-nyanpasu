@@ -1,11 +1,15 @@
 //! Shared status command adapters.
-
-use crate::error::Result;
-
 use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_rpc_protocol::wire::{
+    configuration::{ConfigurationStatus, DebugHttpStatus, EffectKind},
+    host::ServiceStatusInfo,
+};
 
-use super::types::ServiceStatusInfo;
-use crate::registry::RpcState;
+use crate::{
+    error::Result,
+    projection::{IntoApplication, IntoWire},
+    registry::RpcState,
+};
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
@@ -16,18 +20,16 @@ pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<Serv
         version: info.version,
         status: info.status,
         server: info.server,
-        compat: info.compat,
-        phase: info.phase,
+        compat: info.compat.into_wire(),
+        phase: info.phase.into_wire(),
         restart_attempts: info.restart_attempts,
     })
 }
 
 #[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
-pub fn get_configuration_status(
-    client: RpcState<'_, NyanpasuClient>,
-) -> nyanpasu_core::client::configuration_status::ConfigurationStatus {
-    client.configuration_status()
+pub fn get_configuration_status(client: RpcState<'_, NyanpasuClient>) -> ConfigurationStatus {
+    client.configuration_status().into_wire()
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
@@ -40,8 +42,9 @@ pub async fn retry_configuration_runtime(client: RpcState<'_, NyanpasuClient>) -
 #[specta::specta]
 pub fn retry_configuration_effect(
     client: RpcState<'_, NyanpasuClient>,
-    kind: nyanpasu_core::client::effects::plan::EffectKind,
+    kind: EffectKind,
 ) -> Result<()> {
+    let kind = kind.into_application();
     Ok(client.retry_effect_now(kind)?)
 }
 
@@ -49,6 +52,6 @@ pub fn retry_configuration_effect(
 #[specta::specta]
 pub async fn get_debug_http_status(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
-    Ok(client.debug_http_status().await?)
+) -> Result<DebugHttpStatus> {
+    Ok((client.debug_http_status().await?).into_wire())
 }

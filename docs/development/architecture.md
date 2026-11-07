@@ -103,7 +103,7 @@ is the plan for the next stage:
   envelopes, transparent JSON and shared event identities, with only Serde/JSON/Specta
   dependencies. Cookie parsing, HTTP status and application error conversion live
   in `nyanpasu-rpc`. E2b separates `nyanpasu-rpc-protocol` (neutral wire values
-  with the remaining receiving DTOs planned over approved foundation values, including D2e runtime-values)
+  and receiving DTOs over approved foundation values, including D2e runtime-values)
   from `nyanpasu-rpc` (thin application adapter over core). Protocol forbids GUI,
   CORE_FAMILY and IMPLEMENTATION; foundation/core/implementation crates cannot
   depend on the RPC adapter. The CLI links protocol/local-client, never the
@@ -138,6 +138,11 @@ is the plan for the next stage:
   panics remain fatal; a dedicated client transport task owns each connection,
   so dropping a call future cannot desynchronize partial IO. A timeout/error
   invalidates the connection without cancelling owner work or retrying mutations.
+  E1b-b adds typed Serde calls on that same client: successful results decode into
+  neutral receiving values, while remote errors retain their complete envelope
+  and separately decodable nested domain payload. The generic JSON API remains.
+  Client-only consumers compile without the RPC adapter or application crates;
+  receiving-only types are excluded from the existing frontend schema exports.
 - **Planned server composition** installs a neutral process panic policy before
   any tasks, owns one long-lived client, keeps shared effects
   and neutral sinks, and omits optional presentation capabilities. It injects

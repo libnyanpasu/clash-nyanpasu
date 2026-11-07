@@ -22,6 +22,8 @@ use crate::{
 mod tests;
 mod transport;
 
+pub mod typed;
+
 /// Maximum queued exchanges; only one request is written at a time.
 const REQUEST_CAPACITY: usize = 16;
 /// Maximum retained subscription values, each bounded by the frame limit.
@@ -179,7 +181,7 @@ impl LocalClient {
         })
     }
 
-    /// Calls a command, retaining success/error JSON separately until typed receiving is available.
+    /// Calls a command, retaining success/error JSON separately for generic consumers.
     ///
     /// # Errors
     /// A transport failure after submission has an unknown outcome; no call is replayed.

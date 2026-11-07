@@ -23,8 +23,32 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
 };
 
-use super::{mutation::MutationDomain, policy::CommandClass};
-use crate::state::profiles::ProfilesActor;
+use crate::state::{mutation::intent::CommandClass, profiles::ProfilesActor};
+
+/// Lets a source classify its own candidate, whichever source-config type it
+/// owns.
+pub(crate) trait MutationDomain {
+    /// How far the candidate moves the runtime, read off the two documents.
+    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact;
+}
+
+impl MutationDomain for NyanpasuAppConfig {
+    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
+        classify_application(previous, candidate)
+    }
+}
+
+impl MutationDomain for ClashConfig {
+    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
+        classify_clash(previous, candidate)
+    }
+}
+
+impl MutationDomain for Profiles {
+    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact {
+        classify_profiles(previous, candidate, hints)
+    }
+}
 
 /// How much of the running core a candidate forces to change.
 ///

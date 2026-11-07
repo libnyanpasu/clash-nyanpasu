@@ -1,13 +1,10 @@
-use crate::{
-    client::application_workflow::{
-        impact,
+use crate::state::{
+    config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
+    mutation::{
+        MutationCoordinator, impact,
         impact::{MutationHints, RequestedRuntimeFields},
-        mutation::ConfigDomain,
-        policy::CommandClass,
-    },
-    state::{
-        config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
-        mutation::MutationCoordinator,
+        intent::CommandClass,
+        value::ConfigDomain,
     },
 };
 use nyanpasu_core_manager::OperationId;
@@ -50,14 +47,14 @@ impl ClashConfigSnapshot {
 }
 
 pub struct ClashConfigActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<ClashConfig>,
     pub manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<ClashConfig>,
     manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
 }

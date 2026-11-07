@@ -5,6 +5,9 @@ use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
 #[derive(Default)]
 pub struct Options {
     http: bool,
+    local: bool,
+    capabilities: Vec<syn::Ident>,
+    optional_capabilities: Vec<syn::Ident>,
     result: bool,
     owner: bool,
 }
@@ -16,9 +19,25 @@ impl syn::parse::Parse for Options {
             let option: syn::Ident = input.parse()?;
             match option.to_string().as_str() {
                 "http" => options.http = true,
+                "local" => options.local = true,
+                "capabilities" | "optional_capabilities" => {
+                    let list;
+                    syn::parenthesized!(list in input);
+                    let values = list.parse_terminated(syn::Ident::parse, syn::Token![,])?;
+                    if option == "capabilities" {
+                        options.capabilities.extend(values);
+                    } else {
+                        options.optional_capabilities.extend(values);
+                    }
+                }
                 "result" => options.result = true,
                 "owner" => options.owner = true,
-                _ => return Err(Error::new(option.span(), "expected http, result or owner")),
+                _ => {
+                    return Err(Error::new(
+                        option.span(),
+                        "expected http, local, result, owner, capabilities(...) or optional_capabilities(...)",
+                    ));
+                }
             }
             if !input.is_empty() {
                 input.parse::<syn::Token![,]>()?;
@@ -29,9 +48,8 @@ impl syn::parse::Parse for Options {
 }
 
 #[cfg(test)]
-pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
-    let options = item
-        .attrs
+pub(super) fn options(item: &ItemFn) -> syn::Result<Options> {
+    item.attrs
         .iter()
         .find(|attr| {
             attr.path()
@@ -41,35 +59,110 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
         })
         .filter(|attr| matches!(attr.meta, syn::Meta::List(_)))
         .map(|attr| attr.parse_args())
-        .transpose()?
-        .unwrap_or_default();
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
+#[cfg(test)]
+pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
+    let options = options(&item)?;
     expand_with_options(item, options)
+}
+
+pub(super) fn is_native(item: &ItemFn) -> bool {
+    item.attrs.iter().any(|attr| {
+        let path = &attr.path().segments;
+        path.len() == 2 && path[0].ident == "tauri" && path[1].ident == "command"
+    })
+}
+
+pub(super) fn metadata(item: &ItemFn, options: &Options, protocol: TokenStream) -> TokenStream {
+    let name = item.sig.ident.to_string();
+    let kind = if is_native(item) {
+        quote!(Native)
+    } else {
+        quote!(Shared)
+    };
+    let mut targets = vec![quote!(#protocol::RpcTarget::Desktop)];
+    if options.http && can_share_with_neutral(&item.sig, options.owner) {
+        targets.push(quote!(#protocol::RpcTarget::Http));
+    }
+    if options.local {
+        targets.push(quote!(#protocol::RpcTarget::Local));
+    }
+    let capabilities = |values: &[syn::Ident]| {
+        values
+            .iter()
+            .map(|value| {
+                let name: String = value
+                    .to_string()
+                    .split('_')
+                    .map(|part| {
+                        let mut chars = part.chars();
+                        chars
+                            .next()
+                            .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                let variant = format_ident!("{}", name, span = value.span());
+                quote!(#protocol::ShellCapability::#variant)
+            })
+            .collect::<Vec<_>>()
+    };
+    let required = capabilities(&options.capabilities);
+    let optional = capabilities(&options.optional_capabilities);
+    quote! {
+        #protocol::CommandMetadata {
+            name: #name,
+            kind: #protocol::CommandKind::#kind,
+            targets: &[#(#targets),*],
+            capabilities: &[#(#required),*],
+            optional_capabilities: &[#(#optional),*],
+        }
+    }
 }
 
 pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenStream> {
     let original = &item.sig;
     let name = &original.ident;
     let implementation_name = format_ident!("__unified_impl_{}", name);
-    let http_handler = format_ident!("__unified_http_{}", name);
+    let neutral_handler = format_ident!("__unified_rpc_{}", name);
+    let native = is_native(&item);
+    let neutral_compatible = can_share_with_neutral(original, options.owner);
+    if !native && (!neutral_compatible || original.inputs.iter().any(|argument| {
+        matches!(argument, FnArg::Typed(argument) if (is_state(&argument.ty) && !is_context_type(&argument.ty, "RpcState")) || is_tauri_context(&argument.ty))
+    })) {
+        return Err(Error::new(original.span(), "a shared command requires a transport-neutral signature"));
+    }
+    if options.local && !neutral_compatible {
+        return Err(Error::new(
+            original.span(),
+            "rpc(local) requires a transport-neutral signature",
+        ));
+    }
+    let metadata = metadata(&item, &options, quote!(::nyanpasu_rpc_protocol));
     let tauri_handler = format_ident!("__unified_tauri_{}", name);
 
     let mut implementation = item.clone();
     implementation.attrs = item
         .attrs
         .iter()
-        .filter(|attribute| attribute.path().is_ident("cfg"))
+        .filter(|attribute| {
+            attribute.path().is_ident("cfg") || attribute.path().is_ident("cfg_attr")
+        })
         .cloned()
         .collect();
     implementation.vis = syn::Visibility::Inherited;
     implementation.sig.ident = implementation_name.clone();
 
     let mut wrapper_args = Vec::new();
-    let mut http_args = Vec::new();
+    let mut neutral_args = Vec::new();
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
     let mut tauri_fields = Vec::new();
     let mut tauri_field_names = Vec::new();
-    let mut http_supported = options.http && can_share_with_http(original, options.owner);
+    let mut neutral_supported = neutral_compatible && (options.http || options.local || !native);
     let mut tauri_supported = true;
 
     for argument in implementation.sig.inputs.iter_mut() {
@@ -92,31 +185,35 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             argument.ty = Box::new(syn::parse_quote!(&#state_type));
             wrapper_args.push(quote!(&*#ident));
             if state_name.as_deref() == Some("NyanpasuClient") {
-                http_args.push(quote!(&dependencies.client));
+                neutral_args.push(quote!(&dependencies.client));
             } else if state_name.as_deref() == Some("Storage") {
-                http_args.push(quote!(&dependencies.storage));
+                neutral_args.push(quote!(&dependencies.storage));
             } else if state_name.as_deref() == Some("PathResolver") {
-                http_args.push(quote!(&dependencies.paths));
+                neutral_args.push(quote!(&dependencies.paths));
             } else {
-                http_supported = false;
+                neutral_supported = false;
             }
+        } else if options.owner && is_context_type(&argument.ty, "RpcCaller") {
+            *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
+            wrapper_args.push(quote!(#ident.into_owner()));
+            neutral_args.push(quote!(owner.clone()));
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
-            http_supported = false;
+            neutral_supported = false;
         } else if options.owner && is_context_type(&argument.ty, "Window") {
             *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
             wrapper_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(#ident.label())));
-            http_args.push(quote!(owner.clone()));
+            neutral_args.push(quote!(owner.clone()));
         } else if is_context_type(&argument.ty, "Window")
             || is_context_type(&argument.ty, "Webview")
             || is_context_type(&argument.ty, "WebviewWindow")
         {
             wrapper_args.push(quote!(#ident));
-            http_supported = false;
+            neutral_supported = false;
         } else if is_tauri_channel(&argument.ty) {
             // Decode the frontend descriptor, then bind it to the invoking webview.
             // Channel commands remain unsupported over HTTP.
-            http_supported = false;
+            neutral_supported = false;
             wrapper_args.push(quote!(#ident));
             tauri_fields.push(quote!(#ident: ::tauri::ipc::JavaScriptChannelId));
             tauri_field_names.push(ident.clone());
@@ -127,7 +224,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             tauri_fields.push(quote!(#ident: #ty));
             tauri_field_names.push(ident.clone());
             wrapper_args.push(quote!(#ident));
-            http_args.push(quote!(#ident));
+            neutral_args.push(quote!(#ident));
             if contains_reference(&argument.ty) {
                 tauri_supported = false;
             }
@@ -154,26 +251,29 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     implementation.block = block.clone();
 
     let params_parser = parser(&fields, &field_names);
-    let http_parse = params_parser;
-    let http_call = call(
+    let neutral_parse = params_parser;
+    let neutral_call = call(
         &implementation_name,
-        &http_args,
+        &neutral_args,
         original.asyncness.is_some(),
         None,
     );
-    let http_handler_body = if http_supported && !matches!(original.output, ReturnType::Default) {
-        let output = output_value(&http_call, &original.output, options.result);
-        quote! {
-            #http_parse
-            let output = #output?;
-            ::serde_json::to_value(output)
-                .map_err(crate::unified_rpc::application_error)
-        }
-    } else {
-        quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
-    };
+    let neutral_handler_body =
+        if neutral_supported && !matches!(original.output, ReturnType::Default) {
+            let output = output_value(&neutral_call, &original.output, options.result);
+            quote! {
+                #neutral_parse
+                let output = #output?;
+                ::serde_json::to_value(output)
+                    .map_err(crate::unified_rpc::application_error)
+            }
+        } else {
+            quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
+        };
 
-    let tauri_handler_definition = if tauri_supported {
+    let tauri_handler_definition = if !native {
+        quote!()
+    } else if tauri_supported {
         let mut state_bindings = Vec::new();
         let mut tauri_args = Vec::new();
         for argument in &original.inputs {
@@ -253,29 +353,41 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         }
     };
 
+    let native_entry = native.then(|| {
+        quote! {
+            #(#cfg_attrs)*
+            ::inventory::submit! {
+                crate::unified_rpc::TauriCommandEntry {
+                    name: stringify!(#name),
+                    handler: #tauri_handler,
+                }
+            }
+        }
+    });
+
     Ok(quote! {
         #implementation
         #wrapper
 
         #(#cfg_attrs)*
-        fn #http_handler(
+        fn #neutral_handler(
             dependencies: ::std::sync::Arc<crate::unified_rpc::RpcDependencies>,
             owner: ::nyanpasu_rpc_protocol::RpcOwner,
             params: ::serde_json::Value,
         ) -> crate::unified_rpc::RpcFuture {
             ::std::boxed::Box::pin(async move {
-                #http_handler_body
+                #neutral_handler_body
             })
         }
 
         #tauri_handler_definition
+        #native_entry
 
         #(#cfg_attrs)*
         ::inventory::submit! {
             crate::unified_rpc::CommandEntry {
-                name: stringify!(#name),
-                http_handler: #http_handler,
-                tauri_handler: #tauri_handler,
+                metadata: #metadata,
+                handler: #neutral_handler,
             }
         }
     })
@@ -325,7 +437,7 @@ fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
     }
 }
 
-fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
+fn can_share_with_neutral(signature: &syn::Signature, owner: bool) -> bool {
     if signature
         .generics
         .params
@@ -349,6 +461,8 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
             {
                 return false;
             }
+        } else if owner && is_context_type(&argument.ty, "RpcCaller") {
+            continue;
         } else if is_context_type(&argument.ty, "AppHandle") {
             return false;
         } else if owner && is_context_type(&argument.ty, "Window") {
@@ -395,7 +509,7 @@ fn is_context_type(ty: &Type, expected: &str) -> bool {
 fn state_inner_type(ty: &Type) -> Option<Type> {
     let Type::Path(path) = ty else { return None };
     let segment = path.path.segments.last()?;
-    if segment.ident != "State" {
+    if segment.ident != "State" && segment.ident != "RpcState" {
         return None;
     }
     let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
@@ -443,6 +557,7 @@ mod tests {
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
         let command = syn::parse_quote! {
             #[nyanpasu_macro::rpc(http, result, owner)]
+            #[tauri::command]
             pub async fn query_logs(window: tauri::Window, request: Query) -> LogResult<Page> { todo!() }
         };
         let expanded = expand(command).unwrap().to_string();
@@ -471,6 +586,7 @@ mod tests {
     fn the_path_resolver_state_is_served_from_the_http_dependencies() {
         let command = syn::parse_quote! {
             #[nyanpasu_macro::rpc(http)]
+            #[tauri::command]
             pub fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> { todo!() }
         };
         let expanded = expand(command).unwrap().to_string();
@@ -483,6 +599,7 @@ mod tests {
     fn channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http() {
         let command = syn::parse_quote! {
             #[nyanpasu_macro::rpc(http, owner)]
+            #[tauri::command]
             pub fn stream(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>) -> Result<()> { todo!() }
         };
         let expanded = expand(command).unwrap().to_string();
@@ -498,6 +615,7 @@ mod tests {
     fn channel_parameter_json_parser_uses_camel_case_fields() {
         let command = syn::parse_quote! {
             #[nyanpasu_macro::rpc(http)]
+            #[tauri::command]
             pub fn stream(on_chunk: tauri::ipc::Channel<String>, page_size: usize) -> Result<()> {
                 todo!()
             }
@@ -514,27 +632,27 @@ mod tests {
     fn http_requires_opt_in_and_accepts_only_lifetime_generics() {
         for (source, supported) in [
             (
-                "pub fn open_that(path: String) -> Result<()> { todo!() }",
+                "#[tauri::command] pub fn open_that(path: String) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[nyanpasu_macro::rpc(http)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
+                "#[tauri::command] #[nyanpasu_macro::rpc(http)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
                 true,
             ),
             (
-                "#[nyanpasu_macro::rpc(http)] pub fn generic<T>() -> Result<T> { todo!() }",
+                "#[tauri::command] #[nyanpasu_macro::rpc(http)] pub fn generic<T>() -> Result<T> { todo!() }",
                 false,
             ),
             (
-                "#[nyanpasu_macro::rpc(http)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
+                "#[tauri::command] #[nyanpasu_macro::rpc(http)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
                 false,
             ),
             (
-                "#[nyanpasu_macro::rpc(http)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_macro::rpc(http)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[nyanpasu_macro::rpc(http)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_macro::rpc(http)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
                 false,
             ),
         ] {
@@ -550,11 +668,7 @@ mod tests {
 
     #[test]
     fn desktop_update_core_dispatch_remains_available() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
-        let source = std::fs::read_to_string(path).expect("failed to read IPC command source");
-        let file = syn::parse_file(&source).expect("failed to parse IPC command source");
-        let mut commands = Vec::new();
-        collect_rpc_commands(&file.items, &mut commands);
+        let commands = crate::command_catalog::production_declarations();
         let command = commands
             .into_iter()
             .find(|command| command.sig.ident == "update_core")
@@ -563,7 +677,7 @@ mod tests {
         assert!(
             expanded
                 .to_string()
-                .contains("tauri_handler : __unified_tauri_update_core"),
+                .contains("handler : __unified_tauri_update_core"),
             "update_core must register its generated desktop dispatcher"
         );
         let expanded = syn::parse2::<syn::File>(expanded).unwrap();
@@ -583,29 +697,54 @@ mod tests {
         let desktop = handler("__unified_tauri_update_core");
         assert!(desktop.contains("__unified_impl_update_core"));
         assert!(!desktop.contains("RpcError :: unsupported"));
-        let http = handler("__unified_http_update_core");
+        let http = handler("__unified_rpc_update_core");
         assert!(http.contains("RpcError :: unsupported (stringify ! (update_core))"));
         assert!(!http.contains("__unified_impl_update_core"));
     }
 
     #[test]
-    fn every_ipc_rpc_command_has_a_desktop_dispatcher() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
-        let source = std::fs::read_to_string(path).expect("failed to read IPC command source");
-        let file = syn::parse_file(&source).expect("failed to parse IPC command source");
-        let mut commands = Vec::new();
-        collect_rpc_commands(&file.items, &mut commands);
-        assert!(!commands.is_empty(), "expected RPC commands in ipc.rs");
-
+    fn dispatchers_cover_each_command_category() {
+        let mut commands = crate::command_catalog::production_declarations();
+        for (name, targets) in [
+            ("shared_desktop_fixture", quote::quote!()),
+            ("shared_http_fixture", quote::quote!(http)),
+            ("shared_local_fixture", quote::quote!(local)),
+            ("shared_dual_fixture", quote::quote!(http, local)),
+        ] {
+            let name = format_ident!("{name}");
+            commands.push(syn::parse_quote! {
+                #[nyanpasu_macro::rpc(owner, #targets)]
+                fn #name(client: RpcState<'_, NyanpasuClient>, owner: RpcCaller, value: String) -> String { value }
+            });
+        }
         for command in commands {
+            let native = super::is_native(&command);
+            let options = super::options(&command).expect("command options must parse");
             let name = command.sig.ident.to_string();
             let expanded =
                 expand(command).unwrap_or_else(|error| panic!("failed to expand {name}: {error}"));
             let expanded = syn::parse2::<syn::File>(expanded)
                 .unwrap_or_else(|error| panic!("failed to parse expansion for {name}: {error}"));
             let registration = expanded.to_token_stream().to_string();
-            assert!(registration.contains(&format!("http_handler : __unified_http_{name}")));
-            assert!(registration.contains(&format!("tauri_handler : __unified_tauri_{name}")));
+            assert!(registration.contains(&format!("handler : __unified_rpc_{name}")));
+            assert_eq!(
+                registration.contains(&format!("handler : __unified_tauri_{name}")),
+                native
+            );
+            if !native {
+                assert!(!registration.contains(":: tauri"));
+                assert_eq!(
+                    registration.contains("RpcTarget :: Http"),
+                    options.http,
+                    "{name}"
+                );
+                assert_eq!(
+                    registration.contains("RpcTarget :: Local"),
+                    options.local,
+                    "{name}"
+                );
+                assert!(!registration.contains("RpcError :: unsupported"));
+            }
             assert!(
                 !registration.contains("dispatch_audited"),
                 "handlers must not audit twice"
@@ -614,7 +753,11 @@ mod tests {
                 !registration.contains("RpcAudit"),
                 "the registry owns auditing"
             );
-            let handler_name = format_ident!("__unified_tauri_{name}");
+            let handler_name = if native {
+                format_ident!("__unified_tauri_{name}")
+            } else {
+                format_ident!("__unified_rpc_{name}")
+            };
             let handler = expanded
                 .items
                 .iter()
@@ -636,12 +779,11 @@ mod tests {
 
     #[test]
     fn every_ipc_tauri_command_uses_unified_rpc() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
-        let source = std::fs::read_to_string(path).expect("failed to read IPC command source");
-        let file = syn::parse_file(&source).expect("failed to parse IPC command source");
-        let mut commands = Vec::new();
-        collect_tauri_commands(&file.items, &mut commands);
-        assert!(!commands.is_empty(), "expected Tauri commands in ipc.rs");
+        let commands = crate::command_catalog::production_declarations();
+        assert!(
+            commands.iter().any(super::is_native),
+            "expected native commands"
+        );
 
         let plain_commands = commands
             .into_iter()
@@ -725,52 +867,86 @@ mod tests {
         assert!(!body.contains("generate_handler !"));
     }
 
-    fn collect_tauri_commands(items: &[Item], commands: &mut Vec<ItemFn>) {
-        for item in items {
-            match item {
-                Item::Fn(function)
-                    if function.attrs.iter().any(|attribute| {
-                        attribute
-                            .path()
-                            .segments
-                            .last()
-                            .is_some_and(|segment| segment.ident == "command")
-                    }) =>
-                {
-                    commands.push(function.clone())
-                }
-                Item::Mod(module) => {
-                    if let Some((_, nested)) = &module.content {
-                        collect_tauri_commands(nested, commands);
-                    }
-                }
-                _ => {}
-            }
+    #[test]
+    fn neutral_expansion_contains_no_tauri_types() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, local, owner, result)]
+            #[specta::specta]
+            pub async fn shared(
+                client: RpcState<'_, NyanpasuClient>, storage: RpcState<'_, Storage>, paths: RpcState<'_, PathResolver>,
+                caller: RpcCaller, page_size: usize,
+            ) -> SharedResult<String> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+        for forbidden in [
+            "tauri",
+            "AppHandle",
+            "JavaScriptChannelId",
+            "TauriCommandEntry",
+        ] {
+            assert!(
+                !expanded.contains(forbidden),
+                "neutral expansion contains {forbidden}"
+            );
         }
+        assert!(expanded.contains("specta :: specta"));
+        assert!(expanded.contains("& dependencies . client"));
+        assert!(expanded.contains("& dependencies . storage"));
+        assert!(expanded.contains("& dependencies . paths"));
+        assert!(expanded.contains("owner . clone ()"));
+        assert!(!expanded.contains("caller : RpcCaller , page_size : usize , }"));
+        assert!(expanded.contains("rename_all = \"camelCase\""));
+        assert!(expanded.contains("map_err (crate :: unified_rpc :: application_error)"));
+        assert!(!expanded.contains("deny_unknown_fields"));
+        let empty = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http)] fn empty() -> bool { true }
+        })
+        .unwrap()
+        .to_string();
+        assert!(empty.contains("params . is_null ()"));
+        assert!(empty.contains("map . is_empty ()"));
     }
 
-    fn collect_rpc_commands(items: &[Item], commands: &mut Vec<ItemFn>) {
-        for item in items {
-            match item {
-                Item::Fn(function)
-                    if function.attrs.iter().any(|attribute| {
-                        attribute
-                            .path()
-                            .segments
-                            .last()
-                            .is_some_and(|segment| segment.ident == "rpc")
-                    }) =>
-                {
-                    commands.push(function.clone())
-                }
-                Item::Mod(module) => {
-                    if let Some((_, nested)) = &module.content {
-                        collect_rpc_commands(nested, commands);
-                    }
-                }
-                _ => {}
-            }
+    #[test]
+    fn target_and_capability_metadata_is_generated_once() {
+        let expanded = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation))]
+            #[tauri::command]
+            fn copy(value: String) -> String { value }
+        }).unwrap().to_string();
+        assert_eq!(expanded.matches("CommandMetadata {").count(), 1);
+        for value in ["Desktop", "Http", "Local"] {
+            assert_eq!(
+                expanded.matches(&format!("RpcTarget :: {value}")).count(),
+                1
+            );
         }
+        for value in ["Clipboard", "Elevation"] {
+            assert_eq!(
+                expanded
+                    .matches(&format!("ShellCapability :: {value}"))
+                    .count(),
+                1
+            );
+        }
+        assert!(expanded.contains("TauriCommandEntry"));
+        assert!(expanded.contains("CommandKind :: Native"));
+    }
+
+    #[test]
+    fn local_optional_elevation_expands_and_registers() {
+        let expanded = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(local, optional_capabilities(elevation))]
+            fn profile_mutation(value: String) -> String { value }
+        })
+        .unwrap()
+        .to_string();
+        assert!(expanded.contains("RpcTarget :: Local"));
+        assert!(expanded.contains(
+            "optional_capabilities : & [:: nyanpasu_rpc_protocol :: ShellCapability :: Elevation]"
+        ));
+        assert!(expanded.contains("handler : __unified_rpc_profile_mutation"));
+        assert!(!expanded.contains("RpcError :: unsupported"));
     }
 
     use quote::{ToTokens, format_ident};

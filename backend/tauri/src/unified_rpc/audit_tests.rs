@@ -6,6 +6,8 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
+use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
+use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -17,8 +19,8 @@ use tracing_subscriber::{
 };
 
 use super::{
-    EventBus, RpcAudit, RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink,
-    RpcDependencies, RpcFuture, RpcTransport, UnifiedRpc,
+    EventBus, RpcAudit, RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink, RpcCaller,
+    RpcDependencies, RpcFuture, RpcState, RpcTransport, UnifiedRpc,
 };
 use crate::adapters::rpc_audit::TracingRpcAuditSink;
 
@@ -53,8 +55,62 @@ async fn audit_echo(value: String, fail: bool) -> Result<String, std::io::Error>
 }
 
 #[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+async fn audit_native_echo(value: String, fail: bool) -> Result<String, std::io::Error> {
+    audit_echo(value, fail).await
+}
+
+#[nyanpasu_macro::rpc(http)]
 async fn audit_panic() -> String {
     std::panic::panic_any(SECRET);
+}
+
+#[nyanpasu_macro::rpc(local, owner, optional_capabilities(elevation))]
+#[specta::specta]
+fn local_optional_effect(
+    _client: RpcState<'_, NyanpasuClient>,
+    _storage: RpcState<'_, Storage>,
+    _paths: RpcState<'_, PathResolver>,
+    caller: RpcCaller,
+    page_size: usize,
+) -> String {
+    format!("{}:{page_size}", caller.label())
+}
+
+#[tokio::test]
+async fn local_optional_elevation_expands_and_registers() {
+    use nyanpasu_rpc_protocol::{RpcTarget, ShellCapability};
+
+    let schema =
+        specta::function::fn_datatype!(local_optional_effect)(&mut specta::Types::default());
+    assert_eq!(
+        schema.args().len(),
+        1,
+        "injected inputs must not reach the wire schema"
+    );
+    assert_eq!(schema.args()[0].0, "page_size");
+    let fixture = Fixture::new(false).await;
+    let command = fixture.rpc.commands.get("local_optional_effect").unwrap();
+    assert!(command.metadata.capabilities.is_empty());
+    assert_eq!(
+        command.metadata.optional_capabilities,
+        &[ShellCapability::Elevation]
+    );
+    let handler = command.neutral_handler(RpcTarget::Local).unwrap();
+    let output = handler(
+        fixture.rpc.dependencies.clone(),
+        RpcOwner::new("injected-caller".to_owned()),
+        json!({"pageSize": 7, "caller": "untrusted", "unknownField": true}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output, "injected-caller:7");
+    assert_eq!(
+        command.neutral_handler(RpcTarget::Http).unwrap_err().kind,
+        "unsupported"
+    );
+    fixture.shutdown().await;
 }
 
 struct Fixture {
@@ -145,6 +201,21 @@ impl<S: Subscriber> Layer<S> for Capture {
     ignore = "a native Wry window needs the main thread on macOS and a display on Linux"
 )]
 fn tauri_dispatch_records_one_audit_event() {
+    assert_tauri_dispatch_records_one_audit_event("audit_echo");
+}
+
+#[test]
+// Wry needs the main thread on macOS and a display on Linux, which `cargo test`
+// does not have in CI; Windows runs this test.
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux"),
+    ignore = "a native Wry window needs the main thread on macOS and a display on Linux"
+)]
+fn native_tauri_dispatch_records_one_audit_event() {
+    assert_tauri_dispatch_records_one_audit_event("audit_native_echo");
+}
+
+fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
     // Wry's concrete handles are required by the production generated dispatcher.
     // Keep the native fixture invisible and use no application plugins or setup.
     let directory = tempfile::tempdir().unwrap();
@@ -174,7 +245,7 @@ fn tauri_dispatch_records_one_audit_event() {
                         app.handle().clone(),
                         window.as_ref().window(),
                         window.as_ref().clone(),
-                        "audit_echo",
+                        command,
                         json!({"value": SECRET, "fail": fail}),
                     )
                     .await;
@@ -188,7 +259,7 @@ fn tauri_dispatch_records_one_audit_event() {
             let records = fixture.sink.records.lock();
             assert_eq!(records.len(), 2);
             assert!(records.iter().all(|r| r.transport == RpcTransport::TauriIpc
-                && r.command == "audit_echo"
+                && r.command == command
                 && r.owner.as_str() == "audit-window"));
             assert_eq!(records[0].outcome, RpcAuditOutcome::Success);
             assert!(matches!(
@@ -431,7 +502,7 @@ async fn audited_failure_preserves_the_original_rpc_error() {
     Arc::make_mut(&mut fixture.rpc.commands)
         .get_mut("audit_echo")
         .unwrap()
-        .0 = fail;
+        .handler = Some(fail);
     let capture = Capture::default();
     let (status, error) = fixture
         .call("audit_echo", json!({}))
@@ -539,7 +610,7 @@ async fn dropping_audited_call_preserves_cancellation() {
     Arc::make_mut(&mut fixture.rpc.commands)
         .get_mut("audit_echo")
         .unwrap()
-        .0 = pending;
+        .handler = Some(pending);
     let mut sequence = fixture.rpc.dependencies.events.subscribe();
     let mut call = Box::pin(fixture.call("audit_echo", json!({})));
     assert!(matches!(futures::poll!(&mut call), Poll::Pending));

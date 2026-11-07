@@ -23,7 +23,10 @@ use axum::{
 };
 use futures::{StreamExt, stream};
 use nyanpasu_observers::logs::CoreLogError;
-use nyanpasu_rpc_protocol::{EventName, Request, RpcError, RpcOwner, RpcValue};
+use nyanpasu_rpc_protocol::{
+    COMMAND_CATALOG, CommandKind, CommandMetadata, EventName, Request, RpcError, RpcOwner,
+    RpcTarget, RpcValue,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use tauri::Manager;
@@ -31,12 +34,59 @@ use tokio::sync::broadcast;
 
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
+/// Explicit inputs for shared handlers. Declarations use `RpcState` and `RpcCaller`
+/// for injected values that must not appear in request JSON or exported schemas.
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
     pub events: EventBus,
     pub audit: RpcAudit,
+}
+
+/// A borrowed dependency in a shared declaration, omitted from its wire schema.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "production shared declarations move in E2a")
+)]
+pub struct RpcState<'a, T>(&'a T);
+
+impl<T> std::ops::Deref for RpcState<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        self.0
+    }
+}
+
+impl<T> specta::function::FunctionArg for RpcState<'_, T> {
+    fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
+        None
+    }
+}
+
+/// A transport-supplied caller in an owner declaration, omitted from its wire schema.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "production shared declarations move in E2a")
+)]
+pub struct RpcCaller(RpcOwner);
+
+impl RpcCaller {
+    /// Preserve the caller label supplied by the transport without reconstructing it.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "production shared declarations move in E2a")
+    )]
+    pub fn into_owner(self) -> RpcOwner {
+        self.0
+    }
+}
+
+impl specta::function::FunctionArg for RpcCaller {
+    fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
+        None
+    }
 }
 
 /// The injected audit sink and the per-process key for HTTP caller identities.
@@ -227,12 +277,17 @@ pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
 pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
 
 pub struct CommandEntry {
+    pub metadata: CommandMetadata,
+    pub handler: RpcHandler,
+}
+
+pub struct TauriCommandEntry {
     pub name: &'static str,
-    pub http_handler: RpcHandler,
-    pub tauri_handler: TauriRpcHandler,
+    pub handler: TauriRpcHandler,
 }
 
 inventory::collect!(CommandEntry);
+inventory::collect!(TauriCommandEntry);
 
 /// Wrap a command failure, preserving domain errors and core retry metadata.
 pub(crate) fn application_error(error: impl std::error::Error + 'static) -> RpcError {
@@ -268,7 +323,77 @@ fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError 
     result
 }
 
-type CommandHandlers = Arc<HashMap<&'static str, (RpcHandler, TauriRpcHandler)>>;
+#[derive(Clone)]
+struct RegisteredCommand {
+    metadata: CommandMetadata,
+    handler: Option<RpcHandler>,
+    tauri_handler: Option<TauriRpcHandler>,
+}
+
+impl RegisteredCommand {
+    fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
+        if !self.metadata.targets.contains(&target) {
+            return Err(RpcError::unsupported(self.metadata.name));
+        }
+        self.handler
+            .ok_or_else(|| RpcError::unsupported(self.metadata.name))
+    }
+
+    fn native_handler(&self) -> Result<TauriRpcHandler, RpcError> {
+        self.tauri_handler
+            .ok_or_else(|| RpcError::unsupported(self.metadata.name))
+    }
+}
+
+type CommandHandlers = Arc<HashMap<&'static str, RegisteredCommand>>;
+
+fn register_commands(
+    catalog: &[CommandMetadata],
+    entries: impl IntoIterator<Item = &'static CommandEntry>,
+    native_entries: impl IntoIterator<Item = &'static TauriCommandEntry>,
+) -> Result<CommandHandlers, SetupError> {
+    let mut commands = HashMap::new();
+    for metadata in catalog {
+        if commands
+            .insert(
+                metadata.name,
+                RegisteredCommand {
+                    metadata: *metadata,
+                    handler: None,
+                    tauri_handler: None,
+                },
+            )
+            .is_some()
+        {
+            return Err(SetupError::RegisterCommand {
+                name: metadata.name,
+            });
+        }
+    }
+    for entry in entries {
+        let command = commands
+            .entry(entry.metadata.name)
+            .or_insert(RegisteredCommand {
+                metadata: entry.metadata,
+                handler: None,
+                tauri_handler: None,
+            });
+        if command.handler.replace(entry.handler).is_some() {
+            return Err(SetupError::RegisterCommand {
+                name: entry.metadata.name,
+            });
+        }
+    }
+    for entry in native_entries {
+        let command = commands
+            .get_mut(entry.name)
+            .expect("native wrappers must have a command declaration");
+        if command.tauri_handler.replace(entry.handler).is_some() {
+            return Err(SetupError::RegisterCommand { name: entry.name });
+        }
+    }
+    Ok(Arc::new(commands))
+}
 
 #[derive(Clone)]
 pub struct UnifiedRpc {
@@ -314,18 +439,14 @@ impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
 
 impl UnifiedRpc {
     pub fn new(dependencies: RpcDependencies) -> Result<Self, SetupError> {
-        let mut commands = HashMap::new();
-        for entry in inventory::iter::<CommandEntry> {
-            if commands
-                .insert(entry.name, (entry.http_handler, entry.tauri_handler))
-                .is_some()
-            {
-                return Err(SetupError::RegisterCommand { name: entry.name });
-            }
-        }
+        let commands = register_commands(
+            COMMAND_CATALOG,
+            inventory::iter::<CommandEntry>,
+            inventory::iter::<TauriCommandEntry>,
+        )?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
-            commands: Arc::new(commands),
+            commands,
         })
     }
 
@@ -355,7 +476,12 @@ impl UnifiedRpc {
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method(method))?;
-                (handler.0)(self.dependencies.clone(), owner, params).await
+                (handler.neutral_handler(RpcTarget::Http)?)(
+                    self.dependencies.clone(),
+                    owner,
+                    params,
+                )
+                .await
             },
         )
         .await
@@ -385,7 +511,19 @@ impl UnifiedRpc {
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method(method))?;
-                (handler.1)(app, window, webview, params).await
+                match handler.metadata.kind {
+                    CommandKind::Native => {
+                        (handler.native_handler()?)(app, window, webview, params).await
+                    }
+                    CommandKind::Shared => {
+                        (handler.neutral_handler(RpcTarget::Desktop)?)(
+                            self.dependencies.clone(),
+                            RpcOwner::desktop(window.label()),
+                            params,
+                        )
+                        .await
+                    }
+                }
             },
         )
         .await
@@ -632,6 +770,56 @@ mod tests {
     use futures::StreamExt;
     use nyanpasu_observers::logs::{CoreLogRecord, CoreLogSource, PreparedCoreLog};
     use tower::ServiceExt;
+
+    #[test]
+    fn dispatchers_cover_each_command_category() {
+        let commands = register_commands(
+            COMMAND_CATALOG,
+            inventory::iter::<CommandEntry>,
+            inventory::iter::<TauriCommandEntry>,
+        )
+        .unwrap();
+        for metadata in COMMAND_CATALOG {
+            let command = &commands[metadata.name];
+            let entry = inventory::iter::<CommandEntry>
+                .into_iter()
+                .find(|entry| entry.metadata.name == metadata.name)
+                .unwrap();
+            assert_eq!(
+                entry.metadata, *metadata,
+                "{} catalog metadata",
+                metadata.name
+            );
+            assert!(
+                command.handler.is_some(),
+                "{} neutral handler",
+                metadata.name
+            );
+            match metadata.kind {
+                CommandKind::Native => assert!(
+                    command.native_handler().is_ok(),
+                    "{} native handler",
+                    metadata.name
+                ),
+                CommandKind::Shared => {
+                    assert!(command.tauri_handler.is_none());
+                    for target in metadata.targets {
+                        assert!(command.neutral_handler(*target).is_ok());
+                    }
+                }
+            }
+        }
+        let unlinked = register_commands(COMMAND_CATALOG, [], []).unwrap();
+        assert_eq!(unlinked.len(), COMMAND_CATALOG.len());
+        for metadata in COMMAND_CATALOG
+            .iter()
+            .filter(|metadata| metadata.kind == CommandKind::Native)
+        {
+            let command = &unlinked[metadata.name];
+            assert_eq!(command.metadata, *metadata);
+            assert_eq!(command.native_handler().unwrap_err().kind, "unsupported");
+        }
+    }
 
     #[test]
     fn http_update_core_is_unsupported_before_job_admission() {

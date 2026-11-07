@@ -14,14 +14,13 @@ use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    super::mutation::MutationConclusion,
     WaitScript,
     mutations::{
         Rejector, app_with_core, fixture, mutate, no_local_write, overrides, parked_local_write,
         plain, refused, scripted_fixture, settled, simple_mutate,
     },
 };
-use crate::client::application_workflow::policy::CommandClass;
+use crate::state::mutation::{intent::CommandClass, value::MutationConclusion};
 
 /// Long enough that only a stuck operation reaches it.
 const SETTLE: Duration = Duration::from_secs(5);

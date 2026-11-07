@@ -107,7 +107,7 @@ impl ProfilesClient {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn new_with_jobs(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<Profiles>,
         profiles_path: Utf8PathBuf,
         jobs: nyanpasu_jobs::JobsClient,
         fs: Arc<dyn ProfileFsPort>,
@@ -215,7 +215,7 @@ impl ProfilesClient {
 
     #[cfg(any(test, feature = "test-support"))]
     pub async fn new(
-        mutations: MutationCoordinator,
+        mutations: MutationCoordinator<Profiles>,
         profiles_path: Utf8PathBuf,
         fs: Arc<dyn ProfileFsPort>,
         fetcher: Arc<dyn SubscriptionFetcher>,

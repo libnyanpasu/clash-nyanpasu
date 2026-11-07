@@ -385,7 +385,7 @@ async fn an_accepted_submission_still_running_is_waited_out_before_recovery() {
     let error = f.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        crate::runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(
         error
@@ -440,7 +440,7 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     assert!(
         matches!(
             super::aftermath(&aborted),
-            crate::state::mutation::RuntimeAftermath::Unknown { .. }
+            crate::runtime_values::mutation::RuntimeAftermath::Unknown { .. }
         ),
         "{aborted:?}"
     );
@@ -552,7 +552,7 @@ async fn an_automatic_retry_never_recovers() {
         .err();
     assert!(matches!(
         refused,
-        Some(crate::client::RuntimeError::Isolated)
+        Some(crate::runtime_values::runtime_error::RuntimeError::Isolated)
     ));
     assert!(isolated(&f.client));
 
@@ -656,7 +656,7 @@ impl crate::actor_v2::service_actor::ServiceEndpointFactory for ParkedStop {
 /// Confirm owed without stopping the daemon a second time.
 #[tokio::test]
 async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
-    use crate::actor_v2::endpoint::ExecutionHost;
+    use crate::runtime_values::execution_host::ExecutionHost;
     let daemon = Arc::new(ParkedStop {
         delegate: crate::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
@@ -807,7 +807,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     let daemon = Arc::new(ParkedInstall {
         delegate: crate::actor_v2::test_support::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(
-                crate::actor_v2::endpoint::ExecutionHost::Service,
+                crate::runtime_values::execution_host::ExecutionHost::Service,
             ),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -856,7 +856,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     assert!(client.status().uncertain);
     assert!(matches!(
         client.start_service().await.unwrap_err(),
-        crate::client::RuntimeError::Isolated
+        crate::runtime_values::runtime_error::RuntimeError::Isolated
     ));
     let error = client.retry_runtime().await.unwrap_err();
     assert!(
@@ -915,7 +915,7 @@ async fn a_lost_handoff() -> super::startup::Graph {
     let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        crate::runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(
         error.to_string().contains("handoff to Local"),
@@ -954,7 +954,7 @@ async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() 
 /// domain.
 #[tokio::test]
 async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
-    use crate::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
+    use crate::{actor_v2::EndpointConnectivity, runtime_values::execution_host::ExecutionHost};
     let g = a_lost_handoff().await;
     let mut status = g.core.subscribe();
 
@@ -1021,7 +1021,7 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
 
     assert!(matches!(
         error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
+        crate::runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(isolated(&f.client));
     let view = recovery(&f.client);

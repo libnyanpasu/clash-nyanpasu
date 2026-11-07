@@ -276,7 +276,7 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             matches!(
                 outcome,
-                crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                crate::runtime_values::runtime::MutationOutcome::CommittedDegraded { .. }
             ),
             "auto-activation hard failure after commit must be CommittedDegraded"
         );
@@ -284,14 +284,14 @@ async fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
         assert!(
             outcome.degradations().iter().any(|item| matches!(
                 item.reason,
-                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                crate::runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
             )),
             "expected ProfileAutoActivationFailed, got {:?}",
             outcome.degradations()
         );
         assert!(
             outcome.degradations().iter().any(|item| {
-                item.phase == crate::client::runtime::DegradationPhase::SystemEffect
+                item.phase == crate::runtime_values::runtime::DegradationPhase::SystemEffect
                     && item.retryable
             }),
             "H2 degradation must be retryable SystemEffect"

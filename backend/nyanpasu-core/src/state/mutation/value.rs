@@ -1,19 +1,11 @@
 //! Source-domain identity and the internal settlement record of a mutation.
 
+use crate::runtime_values::mutation::ConfigDomain;
 use std::sync::Arc;
 
 use nyanpasu_core_manager::OperationId;
 
-use crate::client::runtime_error::RuntimeError;
-
-/// Which source domain a mutation belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum ConfigDomain {
-    Application,
-    Clash,
-    Profiles,
-}
+use crate::runtime_values::runtime_error::RuntimeError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MutationOutcomeKind {
@@ -66,7 +58,7 @@ pub enum CheckRecord {
 /// an `Ack::Degraded` payload (v2 §4.4).
 #[derive(Debug, Clone)]
 pub struct MutationReceipt {
-    pub degradations: Vec<crate::client::runtime::Degradation>,
+    pub degradations: Vec<crate::runtime_values::runtime::Degradation>,
     pub operation_id: OperationId,
     pub domain: ConfigDomain,
     pub check: CheckRecord,

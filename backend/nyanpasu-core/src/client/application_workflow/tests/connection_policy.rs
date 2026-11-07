@@ -16,7 +16,7 @@ use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
 use crate::{
-    actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost},
+    actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
     client::{
         NyanpasuClient,
         test_support::{
@@ -24,6 +24,7 @@ use crate::{
             test_client_args_with_endpoint, workflow::Installer,
         },
     },
+    runtime_values::execution_host::ExecutionHost,
 };
 
 #[derive(Default)]
@@ -248,7 +249,7 @@ async fn failed_reconcile_never_closes_connections() {
         assert_eq!(outcome.degradations().len(), 1);
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+            crate::runtime_values::runtime::DegradationReason::RuntimeDeferred { .. }
         ));
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
     })
@@ -272,7 +273,7 @@ async fn replacement_at_the_same_url_never_receives_source_interruption() {
             } else {
                 assert!(matches!(
                     outcome.degradations()[0].reason,
-                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                    crate::runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
                 ));
             }
             assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
@@ -294,7 +295,7 @@ async fn close_failure_is_committed_degraded_and_not_replayed() {
         assert_eq!(outcome.degradations().len(), 1);
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+            crate::runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
         ));
         assert!(!outcome.degradations()[0].retryable);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
@@ -326,7 +327,7 @@ async fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close
             } else {
                 assert!(matches!(
                     outcome.degradations()[0].reason,
-                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                    crate::runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
                 ));
             }
             assert_eq!(
@@ -403,7 +404,7 @@ async fn controller_rotation_invalidates_source_without_closing_through_new_cred
         let outcome = first.await.unwrap().unwrap();
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+            crate::runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
         ));
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
     })
@@ -536,7 +537,7 @@ async fn profile_reconcile_rejects_selection_but_interruption_failure_preserves_
             } else {
                 assert!(matches!(
                     result.unwrap().degradations()[0].reason,
-                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                    crate::runtime_values::runtime::DegradationReason::ProfileInterruptionFailed { .. }
                 ));
                 assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
                 assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
@@ -560,7 +561,7 @@ async fn profile_replacement_never_receives_source_interruption() {
             } else {
                 assert!(matches!(
                     outcome.degradations()[0].reason,
-                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                    crate::runtime_values::runtime::DegradationReason::ProfileInterruptionFailed { .. }
                 ));
             }
             assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
@@ -639,7 +640,7 @@ async fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interrupti
             } else {
                 assert!(matches!(
                     outcome.degradations()[0].reason,
-                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                    crate::runtime_values::runtime::DegradationReason::ProfileInterruptionFailed { .. }
                 ));
             }
             assert_eq!(
@@ -918,7 +919,8 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::actor_v2::local_host::CoreSpecError> {
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::runtime_values::core_spec::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -945,7 +947,7 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn publish(
         &self,
         snapshot: &crate::client::runtime::RuntimeSnapshot,
-    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+    ) -> Result<(), crate::runtime_values::publish::PublishRuntimeError> {
         if self.fail_publish {
             return Err(super::scripted_publish_failure());
         }

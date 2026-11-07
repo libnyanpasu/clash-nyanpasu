@@ -14,10 +14,8 @@ use snafu::{IntoError, Snafu};
 
 use crate::{
     client::hotkey::ports::HotkeyParseError,
-    state::mutation::{
-        CommitAborted, NotReady,
-        value::{ConfigDomain, MutationReceipt},
-    },
+    runtime_values::mutation::{CommitAborted, ConfigDomain, NotReady},
+    state::mutation::value::MutationReceipt,
 };
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]
@@ -94,7 +92,9 @@ impl ConfigError {
                 actual: *actual.as_ref(),
             }
             .build(),
-            error => CommitSnafu { domain }.into_error(CommitAborted::classify(error, settlement)),
+            error => CommitSnafu { domain }.into_error(
+                crate::state::mutation::classify_commit_aborted(error, settlement),
+            ),
         }
     }
 }

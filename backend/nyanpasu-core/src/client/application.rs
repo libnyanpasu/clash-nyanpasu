@@ -12,12 +12,14 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::{
-    application::{
-        ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
+use crate::{
+    runtime_values::mutation::ConfigDomain,
+    state::{
+        application::{
+            ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
+        },
+        config_error::{ConfigError, OwnerStoppedSnafu},
     },
-    config_error::{ConfigError, OwnerStoppedSnafu},
-    mutation::value::ConfigDomain,
 };
 
 #[derive(Debug, snafu::Snafu)]

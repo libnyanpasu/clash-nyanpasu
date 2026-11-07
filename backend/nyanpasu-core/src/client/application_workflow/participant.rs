@@ -25,7 +25,8 @@ use super::{
     mutation::{DomainChange, MutationRequest},
 };
 use crate::{
-    client::runtime_error::{OwnerUnresponsiveSnafu, ack_of},
+    client::runtime_error::ack_of,
+    runtime_values::runtime_error::OwnerUnresponsiveSnafu,
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
         intent::{CommandClass, MutationIntent},

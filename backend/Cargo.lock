@@ -6799,6 +6799,7 @@ dependencies = [
  "nyanpasu-config",
  "nyanpasu-contracts",
  "nyanpasu-core-manager",
+ "nyanpasu-core-metadata",
  "nyanpasu-diagnose",
  "nyanpasu-geodata",
  "nyanpasu-ipc",

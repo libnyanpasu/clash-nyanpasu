@@ -8,7 +8,7 @@ pub mod startup_recovery;
 pub mod workflow;
 
 #[cfg(test)]
-use super::{Result, runtime};
+use super::Result;
 #[cfg(test)]
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::{
@@ -37,11 +37,9 @@ use super::{
     host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
 };
 use crate::{
-    actor_v2::{
-        endpoint::ExecutionHost,
-        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
-    },
+    actor_v2::test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     client::test_support::workflow::{Installer, NoopSystemDnsCache},
+    runtime_values::execution_host::ExecutionHost,
     state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
@@ -810,7 +808,7 @@ pub async fn test_client_args_with_endpoint(
 pub(crate) async fn set_service_mode(
     client: &NyanpasuClient,
     enabled: bool,
-) -> Result<runtime::MutationOutcome<()>> {
+) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
     let mut patch = NyanpasuAppConfig::new_empty_patch();
     patch.enable_service_mode = Some(enabled);
     client.patch_app_config(patch).await
@@ -848,8 +846,10 @@ pub fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
 /// The fixed core spec tests inject in place of the on-disk lookup.
 pub fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> std::result::Result<nyanpasu_core_manager::CoreSpec, crate::actor_v2::local_host::CoreSpecError>
-{
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::runtime_values::core_spec::CoreSpecError,
+> {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
         nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,

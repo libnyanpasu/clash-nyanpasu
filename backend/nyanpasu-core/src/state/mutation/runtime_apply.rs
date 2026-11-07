@@ -7,8 +7,9 @@ use nyanpasu_core_manager::{CoreSpec, LocalIpcSettings};
 
 use super::intent::CoreRunIntent;
 use crate::{
-    actor_v2::{endpoint::ExecutionHost, facade::AppliedConfigBinding},
+    actor_v2::facade::AppliedConfigBinding,
     client::{ports::CandidatePortBindings, runtime::RuntimeRevision},
+    runtime_values::execution_host::ExecutionHost,
 };
 
 /// What the core actually accepted, recorded the moment it confirms an apply

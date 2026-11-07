@@ -2,9 +2,8 @@
 
 use crate::{
     client::profiles::ProfilesClient,
-    state::profiles::{
-        NewProfileRequest, ProfilesActorMessage, ProfilesError, sources::SourceStatus,
-    },
+    runtime_values::profiles::ProfilesError,
+    state::profiles::{NewProfileRequest, ProfilesActorMessage, sources::SourceStatus},
 };
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,

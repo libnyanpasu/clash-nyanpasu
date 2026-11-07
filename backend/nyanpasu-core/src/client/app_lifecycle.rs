@@ -101,7 +101,7 @@ mod tests {
     use crate::{
         actor_v2::endpoint::{
             CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
-            EndpointHandle, ExecutionHost,
+            EndpointHandle,
         },
         client::{
             effects::{
@@ -111,6 +111,7 @@ mod tests {
             },
             test_support::{TestControlEndpoint, test_client_args_with_endpoint},
         },
+        runtime_values::execution_host::ExecutionHost,
     };
 
     /// Flags its own drop, which is how a cancelled producer ends.

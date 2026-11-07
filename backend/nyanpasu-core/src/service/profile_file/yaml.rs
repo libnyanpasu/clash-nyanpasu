@@ -2,7 +2,7 @@
 
 use snafu::ResultExt as _;
 
-use crate::state::profiles::error::{
+use crate::runtime_values::profiles::{
     NotYamlMappingSnafu, ProfileContentError, ReserializeYamlSnafu,
 };
 

@@ -1,5 +1,7 @@
+import * as path from 'node:path'
 import { runCommand } from '../shared/command.ts'
 import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
+import { checkCoreModuleBoundaries } from './core-module-boundaries.ts'
 
 type PackageMatcher = string | { prefix: string }
 
@@ -199,7 +201,9 @@ export async function main(): Promise<number> {
   const workspaceMembers = metadata.packages
     .filter((pkg) => metadata.workspace_members.includes(pkg.id))
     .map((pkg) => pkg.name)
-  const problems: string[] = []
+  const problems = checkCoreModuleBoundaries(
+    path.join(WORKSPACE_ROOT, 'backend/nyanpasu-core/src'),
+  )
   const packages = new Set(DEPENDENCY_RULES.map((rule) => rule.package))
   for (const owner of packages) {
     const result = await runCommand('cargo', {

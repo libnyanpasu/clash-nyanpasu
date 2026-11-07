@@ -60,6 +60,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 const RESTART_BUDGET: u8 = 3;
 
+mod local_rpc;
+
 #[cfg(test)]
 #[path = "setup_tests.rs"]
 mod tests;
@@ -70,6 +72,9 @@ pub(crate) struct StartupOwners {
     shutdown: CancellationToken,
     tasks: TaskTracker,
     core: Option<nyanpasu_core::actor_v2::CoreClient>,
+    // StartupOwners clones share only the one-shot right to join the listener.
+    // The listener itself exclusively owns connections and resource state.
+    local_rpc: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl StartupOwners {
@@ -80,6 +85,14 @@ impl StartupOwners {
 
     pub(crate) async fn wait_shutdown(&self) {
         self.tasks.wait().await;
+        let local_rpc = self
+            .local_rpc
+            .lock()
+            .expect("listener join ownership is never panicked under lock")
+            .take();
+        if let Some(task) = local_rpc {
+            nyanpasu_owner_support::blocking::join(task.await);
+        }
         if let Some(core) = &self.core {
             core.finish_shutdown().await;
         }
@@ -596,6 +609,10 @@ async fn start_runtime_owners(
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum UnifiedRpcError {
+    #[snafu(display("failed to start desktop local RPC listener"))]
+    StartLocalRpc {
+        source: nyanpasu_rpc::local::endpoint::EndpointError,
+    },
     #[snafu(display("failed to build unified RPC"))]
     BuildRpc {
         source: nyanpasu_rpc::registry::SetupError,
@@ -610,7 +627,10 @@ pub(crate) enum UnifiedRpcError {
 
 /// Registers the unified RPC command table after `resolve_setup` has managed
 /// storage and the other Tauri state dependencies.
-pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
+pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
+    app: &M,
+    owners: &StartupOwners,
+) -> Result<(), UnifiedRpcError> {
     let dependencies = nyanpasu_rpc::registry::RpcDependencies {
         icon_files: Some(Arc::new(crate::adapters::rpc_host::DesktopIconFiles)),
         core_directory: Some(Arc::new(crate::adapters::rpc_host::DesktopCoreDirectory)),
@@ -632,6 +652,13 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), U
     app.state::<Arc<nyanpasu_rpc::http::routes::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
+    tauri::async_runtime::block_on(local_rpc::start(
+        local_rpc::LocalRpcConfig::from_environment(),
+        app.state::<PathResolver>().app_data_dir().as_std_path(),
+        rpc.clone(),
+        owners,
+    ))
+    .context(StartLocalRpcSnafu)?;
     let desktop = crate::unified_rpc::native::DesktopRpc::new(rpc).context(BuildRpcSnafu)?;
     snafu::ensure!(app.manage(desktop), RegisterStateSnafu);
     Ok(())

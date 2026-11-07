@@ -1,6 +1,105 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { dependencyViolations } from './backend-boundaries.ts'
+
+test('RPC local endpoints are opt-in without widening protocol dependencies', () => {
+  const manifest = readFileSync(
+    new URL('../../../backend/nyanpasu-rpc/Cargo.toml', import.meta.url),
+    'utf8',
+  )
+  const defaults = manifest.match(/^default = (.+)$/m)?.[1]
+  assert.ok(defaults)
+  assert.doesNotMatch(defaults, /local-server/)
+  const local = manifest.match(/local-server = \[([^\]]+)\]/)?.[1]
+  assert.ok(local)
+  assert.match(local, /'nyanpasu-rpc-protocol\/frame-io'/)
+  for (const dependency of [
+    'interprocess',
+    'sha2',
+    'libc',
+    'socket2',
+    'widestring',
+    'windows-sys',
+    'tokio-util',
+    'uuid',
+  ]) {
+    assert.ok(local.includes(`'dep:${dependency}'`))
+    assert.match(
+      manifest,
+      new RegExp(`${dependency} = \\{[^\\n]*optional = true`),
+    )
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc',
+      'nyanpasu-rpc v0.1.0\ninterprocess v2.4.7\nnyanpasu-rpc-protocol v0.1.0\ntokio v1.0\n',
+    ),
+    [],
+  )
+})
+
+test('protocol frame IO is opt-in and feature-off values need no IO runtime', () => {
+  const manifest = readFileSync(
+    new URL(
+      '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(manifest, /default = \[\]/)
+  assert.match(manifest, /frame-io = \['dep:tokio'\]/)
+  assert.match(manifest, /tokio = \{[^\n]*optional = true/)
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-rpc-protocol v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\nsnafu v0.8\n',
+    ),
+    [],
+  )
+})
+
+test('local client remains protocol-only and musl does not rely on desktop features', () => {
+  const protocol = readFileSync(
+    new URL(
+      '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(protocol, /default = \[\]/)
+  assert.match(protocol, /local-client = \[\s*'frame-io'/)
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-rpc-protocol v0.1.0\ntokio v1.0\nsnafu v0.8\n',
+    ),
+    [],
+  )
+  for (const dependency of [
+    'nyanpasu-rpc',
+    'nyanpasu-server',
+    'nyanpasu-core',
+    'nyanpasu-os',
+    'tauri',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-rpc-protocol',
+        `nyanpasu-rpc-protocol v0.1.0\n${dependency} v0.1.0\n`,
+      ),
+      [`nyanpasu-rpc-protocol must not depend on ${dependency}`],
+    )
+  }
+  const desktop = readFileSync(
+    new URL('../../../backend/tauri/Cargo.toml', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    desktop,
+    /nyanpasu-rpc = \{[^}]*default-features = false[^}]*'local-server'/,
+  )
+})
 
 test('protocol accepts direct and transitive foundation values and libraries', () => {
   for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
@@ -15,6 +114,7 @@ test('protocol accepts direct and transitive foundation values and libraries', (
 })
 
 for (const dependency of [
+  'nyanpasu-server',
   'nyanpasu-core',
   'nyanpasu-state-engine',
   'nyanpasu-migration',

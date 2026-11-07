@@ -1014,11 +1014,9 @@ mod tests {
                 if options.http && super::can_share_with_neutral(&command.sig, options.owner) {
                     targets.push("http");
                 }
-                assert!(
-                    !options.local,
-                    "{} must not silently opt into local RPC",
-                    command.sig.ident
-                );
+                if options.local {
+                    targets.push("local");
+                }
                 let names = |values: &[syn::Ident]| {
                     if values.is_empty() {
                         "-".to_owned()

@@ -470,7 +470,7 @@ pub fn run() -> std::process::ExitCode {
 
                     install_panic_hook(Some(app.handle().clone()));
                     resolve::resolve_setup(app);
-                    setup::setup_unified_rpc(app)
+                    setup::setup_unified_rpc(app, owners)
                         .map_err(|error| startup_failure::StartupFailure::from_rpc(&error))?;
 
                     // setup custom scheme

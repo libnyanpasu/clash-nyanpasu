@@ -25,7 +25,8 @@ toml = '1'
 
 [dependencies]
 nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
-  'http'
+  'http',
+  'local-server'
 ] }
 boa_utils = { path = '../boa_utils', optional = true }
 boa_engine = { workspace = true, optional = true, features = ['annex-b'] }
@@ -282,6 +283,9 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
+  'local-client'
+] }
 nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
   'test-support'
 ] }

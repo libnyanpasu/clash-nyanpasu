@@ -10,7 +10,7 @@ use nyanpasu_core::{
 use super::types::StorageEntry;
 use crate::registry::RpcState;
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub fn get_storage_item(
     storage: RpcState<'_, Storage>,
@@ -19,7 +19,7 @@ pub fn get_storage_item(
     Ok(storage.get_item(web_key(&key))?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub fn set_storage_item(
     storage: RpcState<'_, Storage>,
@@ -29,7 +29,7 @@ pub fn set_storage_item(
     Ok(storage.set_item(web_key(&key), &value)?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(local, http)]
 #[specta::specta]
 pub fn remove_storage_item(storage: RpcState<'_, Storage>, key: String) -> Result<StorageRevision> {
     Ok(storage.remove_item(web_key(&key))?)

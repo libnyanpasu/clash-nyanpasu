@@ -65,7 +65,7 @@ export async function main(args: string[]): Promise<void> {
         'toolchain_cargo=$(rustup which --toolchain nightly cargo)\n' +
         'export RUSTC=$(rustup which --toolchain nightly rustc)\n' +
         '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
-        '-p nyanpasu-rpc --features nyanpasu-rpc/http -p nyanpasu-rpc-protocol -p nyanpasu-contracts -p nyanpasu-core -p nyanpasu-state-engine -p nyanpasu-runtime-values -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts -p boa_utils ' +
+        '-p nyanpasu-rpc --features nyanpasu-rpc/http --features nyanpasu-rpc/local-server -p nyanpasu-rpc-protocol --features nyanpasu-rpc-protocol/frame-io --features nyanpasu-rpc-protocol/local-client -p nyanpasu-contracts -p nyanpasu-core -p nyanpasu-state-engine -p nyanpasu-runtime-values -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts -p boa_utils ' +
         '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater -p nyanpasu-os --lib --tests ' +
         '--no-run --message-format=json --jobs 4',
     ],

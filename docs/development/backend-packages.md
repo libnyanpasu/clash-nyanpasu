@@ -78,6 +78,15 @@ dependencies remain syntax/code-generation tools. Shared handlers consume the
 explicit dependency/caller interface in the desktop registry until E2b moves it;
 native extraction remains a separate shell wrapper. See the [catalog workflow](rpc.md#neutral-declarations-and-native-wrappers).
 
+E1a-d supplies desktop capabilities explicitly from the composition root and
+checks required facilities and target opt-in before argument parsing or handler
+execution. The registry keeps every known catalog name, including unlinked native
+commands, and audits `unsupported` rejections; duplicate handlers fail regardless
+of capability availability. Optional metadata describes reachable effects without
+denying unrelated operations. This is admission metadata, not per-call authority
+or an elevation policy. Existing HTTP exposure is unchanged, and production local
+opt-ins remain deferred to E3e. No package edges or boundary collections change.
+
 The server is a composition shell with no GUI/Tauri dependency. Its first composition injects `RefuseElevation` into service control, DNS flush and binary installation, keeps shared effects and supplies neutral sinks without presentation capabilities. This changes only the separate server; the embedded desktop WebUI retains the desktop policy. CLI production normal/build closure forbids CORE_FAMILY (including state-engine), IMPLEMENTATION, RPC adapter, server and GUI; foundation values reached through protocol are allowed. Test-only server fixtures do not authorize a production edge. Package creation must update dependency policy tests, static-prefix coverage and both musl package/expected-target lists together.
 
 Phase D boundaries are defined in [tasks §4](../spec/2026-11-03-core-package-split/tasks.md#4-a2b-与-phase-d-的-pr-划分). `nyanpasu-state-engine` enforces the generic transaction dependency boundary, not a compile-time claim. Its only parent-workspace dependency is `nyanpasu-persistence`, with default features disabled; dependencies brought by persistence from the separate runtime workspace do not authorize new direct engine dependencies. The gate rejects every other core-family member and every other parent-workspace package. The original foundation leaves explicitly reject the new upper-foundation values package, which in turn rejects core-family/implementation/GUI/core-manager dependencies.

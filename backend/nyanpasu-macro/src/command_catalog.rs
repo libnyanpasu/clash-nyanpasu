@@ -187,6 +187,7 @@ fn render(commands: &[ItemFn]) -> String {
     );
     for command in commands {
         let options = unified_command::options(command).expect("RPC options must parse");
+        unified_command::validate(command, &options).expect("RPC declaration must be valid");
         for attr in guards(&command.attrs) {
             output.push_str(&format!("    {}\n", attr.to_token_stream()));
         }

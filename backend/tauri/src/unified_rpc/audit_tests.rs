@@ -1,6 +1,14 @@
 //! Dispatch boundary tests, using generated commands and a synchronous recording sink.
 
-use std::{collections::BTreeMap, future::Future, sync::Arc, task::Poll};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    task::Poll,
+};
 
 use axum::{
     body::{Body, to_bytes},
@@ -8,7 +16,9 @@ use axum::{
 };
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 use nyanpasu_paths::PathResolver;
-use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
+use nyanpasu_rpc_protocol::{
+    COMMAND_CATALOG, CommandKind, RpcError, RpcOwner, RpcTarget, RpcValue, ShellCapability,
+};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
@@ -54,10 +64,15 @@ async fn audit_echo(value: String, fail: bool) -> Result<String, std::io::Error>
     }
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(capabilities(presentation))]
 #[tauri::command]
 #[specta::specta]
-async fn audit_native_echo(value: String, fail: bool) -> Result<String, std::io::Error> {
+async fn audit_native_echo(
+    calls: tauri::State<'_, AtomicUsize>,
+    value: String,
+    fail: bool,
+) -> Result<String, std::io::Error> {
+    calls.fetch_add(1, Ordering::SeqCst);
     audit_echo(value, fail).await
 }
 
@@ -80,8 +95,6 @@ fn local_optional_effect(
 
 #[tokio::test]
 async fn local_optional_elevation_expands_and_registers() {
-    use nyanpasu_rpc_protocol::{RpcTarget, ShellCapability};
-
     let schema =
         specta::function::fn_datatype!(local_optional_effect)(&mut specta::Types::default());
     assert_eq!(
@@ -90,7 +103,7 @@ async fn local_optional_elevation_expands_and_registers() {
         "injected inputs must not reach the wire schema"
     );
     assert_eq!(schema.args()[0].0, "page_size");
-    let fixture = Fixture::new(false).await;
+    let fixture = Fixture::with_capabilities(false, &[]).await;
     let command = fixture.rpc.commands.get("local_optional_effect").unwrap();
     assert!(command.metadata.capabilities.is_empty());
     assert_eq!(
@@ -121,6 +134,10 @@ struct Fixture {
 
 impl Fixture {
     async fn new(tracing: bool) -> Self {
+        Self::with_capabilities(tracing, crate::setup::DESKTOP_RPC_CAPABILITIES).await
+    }
+
+    async fn with_capabilities(tracing: bool, provided: &[ShellCapability]) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let args = crate::test_support::test_client_args_with_endpoint(
             &directory,
@@ -134,18 +151,21 @@ impl Fixture {
             tracing,
             ..AuditSink::default()
         });
-        let rpc = UnifiedRpc::new(RpcDependencies {
-            audit: RpcAudit::new(sink.clone()),
-            client: nyanpasu_core::client::NyanpasuClient::try_new(args)
-                .await
+        let rpc = UnifiedRpc::new(
+            RpcDependencies {
+                audit: RpcAudit::new(sink.clone()),
+                client: nyanpasu_core::client::NyanpasuClient::try_new(args)
+                    .await
+                    .unwrap(),
+                storage: nyanpasu_core::storage::Storage::try_new(
+                    &directory.path().join("storage.redb"),
+                )
                 .unwrap(),
-            storage: nyanpasu_core::storage::Storage::try_new(
-                &directory.path().join("storage.redb"),
-            )
-            .unwrap(),
-            paths,
-            events: EventBus::new(),
-        })
+                paths,
+                events: EventBus::new(),
+            },
+            provided,
+        )
         .unwrap();
         Self {
             rpc,
@@ -162,6 +182,167 @@ impl Fixture {
         self.rpc.dependencies.client.request_shutdown();
         self.rpc.dependencies.client.wait_shutdown().await;
     }
+}
+
+#[nyanpasu_macro::rpc(http, capabilities(clipboard))]
+fn requires_clipboard(value: String) -> String {
+    panic!("a command missing its required capability must not run: {value}");
+}
+
+#[tokio::test]
+async fn known_unavailable_command_is_unsupported_before_handler_runs() {
+    let fixture = Fixture::with_capabilities(false, &[]).await;
+    assert!(fixture.rpc.command_names().contains(&"requires_clipboard"));
+    // Both valid and invalid arguments must be rejected before parsing or execution.
+    for params in [json!({"value": "valid"}), json!({"value": 7})] {
+        let (status, error) = fixture.call("requires_clipboard", params).await;
+        assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(error["kind"], "unsupported");
+        let records = fixture.sink.records.lock();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].command, "requires_clipboard");
+        assert_eq!(
+            records[0].outcome,
+            RpcAuditOutcome::Failure {
+                kind: "unsupported",
+                code: None,
+            }
+        );
+        drop(records);
+        fixture.sink.records.lock().clear();
+    }
+    // Native dispatch observes the same required-capability admission.
+    let native = &fixture.rpc.commands["read_clipboard_text"];
+    assert!(native.tauri_handler.is_some());
+    assert_eq!(native.native_handler().unwrap_err().kind, "unsupported");
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn unknown_command_remains_unknown_method() {
+    let fixture = Fixture::with_capabilities(false, &[]).await;
+    let (status, error) = fixture.call("no_such_command", json!({})).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(error["kind"], "unknown_method");
+    assert_eq!(fixture.sink.records.lock()[0].command, "unknown_method");
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
+    let fixture = Fixture::with_capabilities(false, &[]).await;
+    let command = &fixture.rpc.commands["patch_app_config"];
+    assert!(command.metadata.capabilities.is_empty());
+    for capability in [
+        ShellCapability::Hotkey,
+        ShellCapability::Presentation,
+        ShellCapability::Elevation,
+    ] {
+        assert!(command.metadata.optional_capabilities.contains(&capability));
+    }
+    let (status, value) = fixture
+        .call(
+            "patch_app_config",
+            json!({"patch": {"proxy_layout_column": 4}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(
+        fixture
+            .rpc
+            .dependencies
+            .client
+            .get_app_config()
+            .await
+            .unwrap()
+            .proxy_layout_column,
+        4
+    );
+    assert_eq!(
+        fixture.sink.records.lock()[0].outcome,
+        RpcAuditOutcome::Success
+    );
+    // Optional effects never imply local exposure, even for a compatible signature.
+    assert_eq!(
+        command.neutral_handler(RpcTarget::Local).unwrap_err().kind,
+        "unsupported"
+    );
+    assert!(
+        COMMAND_CATALOG
+            .iter()
+            .all(|metadata| !metadata.targets.contains(&RpcTarget::Local))
+    );
+    fixture.shutdown().await;
+}
+
+#[test]
+fn duplicate_commands_fail_even_when_a_capability_is_missing() {
+    let entry = inventory::iter::<super::CommandEntry>
+        .into_iter()
+        .find(|entry| entry.metadata.name == "read_clipboard_text")
+        .unwrap();
+    let native = inventory::iter::<super::TauriCommandEntry>
+        .into_iter()
+        .find(|entry| entry.name == "read_clipboard_text")
+        .unwrap();
+    for result in [
+        super::register_commands(COMMAND_CATALOG, [entry, entry], [], &[]),
+        super::register_commands(COMMAND_CATALOG, [entry], [native, native], &[]),
+    ] {
+        assert!(matches!(
+            result,
+            Err(super::SetupError::RegisterCommand {
+                name: "read_clipboard_text"
+            })
+        ));
+    }
+}
+
+#[tokio::test]
+async fn headless_registry_knows_unlinked_native_commands() {
+    let mut fixture = Fixture::with_capabilities(false, &[]).await;
+    fixture.rpc.commands = super::register_commands(COMMAND_CATALOG, [], [], &[]).unwrap();
+    assert_eq!(fixture.rpc.command_names().len(), COMMAND_CATALOG.len());
+    for metadata in COMMAND_CATALOG
+        .iter()
+        .filter(|metadata| metadata.kind == CommandKind::Native)
+    {
+        let command = &fixture.rpc.commands[metadata.name];
+        assert_eq!(
+            command.native_handler().unwrap_err().kind,
+            "unsupported",
+            "{}",
+            metadata.name
+        );
+        assert_eq!(
+            command.neutral_handler(RpcTarget::Http).unwrap_err().kind,
+            "unsupported",
+            "{}",
+            metadata.name
+        );
+    }
+    let (status, error) = fixture.call("get_system_accent_color", json!({})).await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(error["kind"], "unsupported");
+    assert_eq!(
+        fixture.sink.records.lock()[0].command,
+        "get_system_accent_color"
+    );
+    let unlinked = super::register_commands(
+        COMMAND_CATALOG,
+        [],
+        [],
+        crate::setup::DESKTOP_RPC_CAPABILITIES,
+    )
+    .unwrap();
+    assert_eq!(
+        unlinked["read_clipboard_text"]
+            .native_handler()
+            .unwrap_err()
+            .kind,
+        "unsupported"
+    );
+    fixture.shutdown().await;
 }
 
 #[derive(Debug)]
@@ -219,7 +400,7 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
     // Wry's concrete handles are required by the production generated dispatcher.
     // Keep the native fixture invisible and use no application plugins or setup.
     let directory = tempfile::tempdir().unwrap();
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().manage(AtomicUsize::new(0));
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.any_thread();
     let app = builder
@@ -285,6 +466,56 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
             assert!(!format!("{:?}", capture.0.lock()).contains(SECRET));
         }
         fixture.shutdown().await;
+        if command == "audit_native_echo" {
+            use tauri::Manager as _;
+
+            let calls = app.state::<AtomicUsize>();
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+            let fixture = Fixture::with_capabilities(false, &[]).await;
+            for params in [json!({"value": SECRET, "fail": false}), json!({})] {
+                let error = fixture
+                    .rpc
+                    .call_tauri(
+                        app.handle().clone(),
+                        window.as_ref().window(),
+                        window.as_ref().clone(),
+                        command,
+                        params,
+                    )
+                    .await
+                    .unwrap_err();
+                assert_eq!(
+                    serde_json::to_value(error).unwrap(),
+                    json!({
+                        "kind": "unsupported",
+                        "message": "command `audit_native_echo` is unavailable in this shell",
+                        "code": null,
+                        "retryable": null,
+                        "operation_id": null,
+                        "domain_error": null,
+                    })
+                );
+                assert_eq!(
+                    calls.load(Ordering::SeqCst),
+                    2,
+                    "rejection must not run the handler"
+                );
+                let mut records = fixture.sink.records.lock();
+                assert_eq!(records.len(), 1, "each rejected dispatch is audited once");
+                let record = records.pop().unwrap();
+                assert_eq!(record.command, command);
+                assert_eq!(record.transport, RpcTransport::TauriIpc);
+                assert_eq!(record.owner.as_str(), "audit-window");
+                assert_eq!(
+                    record.outcome,
+                    RpcAuditOutcome::Failure {
+                        kind: "unsupported",
+                        code: None
+                    }
+                );
+            }
+            fixture.shutdown().await;
+        }
     });
     window.destroy().unwrap();
 }

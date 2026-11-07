@@ -84,7 +84,7 @@ pub(super) fn metadata(item: &ItemFn, options: &Options, protocol: TokenStream) 
         quote!(Shared)
     };
     let mut targets = vec![quote!(#protocol::RpcTarget::Desktop)];
-    if options.http && can_share_with_neutral(&item.sig, options.owner) {
+    if options.http {
         targets.push(quote!(#protocol::RpcTarget::Http));
     }
     if options.local {
@@ -123,17 +123,20 @@ pub(super) fn metadata(item: &ItemFn, options: &Options, protocol: TokenStream) 
     }
 }
 
-pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenStream> {
+pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
     let original = &item.sig;
-    let name = &original.ident;
-    let implementation_name = format_ident!("__unified_impl_{}", name);
-    let neutral_handler = format_ident!("__unified_rpc_{}", name);
-    let native = is_native(&item);
+    let native = is_native(item);
     let neutral_compatible = can_share_with_neutral(original, options.owner);
     if !native && (!neutral_compatible || original.inputs.iter().any(|argument| {
         matches!(argument, FnArg::Typed(argument) if (is_state(&argument.ty) && !is_context_type(&argument.ty, "RpcState")) || is_tauri_context(&argument.ty))
     })) {
         return Err(Error::new(original.span(), "a shared command requires a transport-neutral signature"));
+    }
+    if options.http && !neutral_compatible {
+        return Err(Error::new(
+            original.span(),
+            "rpc(http) requires a transport-neutral signature",
+        ));
     }
     if options.local && !neutral_compatible {
         return Err(Error::new(
@@ -141,6 +144,17 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             "rpc(local) requires a transport-neutral signature",
         ));
     }
+    Ok(())
+}
+
+pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenStream> {
+    validate(&item, &options)?;
+    let original = &item.sig;
+    let name = &original.ident;
+    let implementation_name = format_ident!("__unified_impl_{}", name);
+    let neutral_handler = format_ident!("__unified_rpc_{}", name);
+    let native = is_native(&item);
+    let neutral_compatible = can_share_with_neutral(original, options.owner);
     let metadata = metadata(&item, &options, quote!(::nyanpasu_rpc_protocol));
     let tauri_handler = format_ident!("__unified_tauri_{}", name);
 
@@ -550,8 +564,11 @@ fn is_result(ty: &Type) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::expand;
+    use std::collections::BTreeMap;
+
     use syn::{Item, ItemFn};
+
+    use super::expand;
 
     #[test]
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
@@ -598,7 +615,7 @@ mod tests {
     #[test]
     fn channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, owner)]
+            #[nyanpasu_macro::rpc(owner)]
             #[tauri::command]
             pub fn stream(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>) -> Result<()> { todo!() }
         };
@@ -614,7 +631,7 @@ mod tests {
     #[test]
     fn channel_parameter_json_parser_uses_camel_case_fields() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http)]
+            #[nyanpasu_macro::rpc]
             #[tauri::command]
             pub fn stream(on_chunk: tauri::ipc::Channel<String>, page_size: usize) -> Result<()> {
                 todo!()
@@ -657,11 +674,57 @@ mod tests {
             ),
         ] {
             let command: ItemFn = syn::parse_str(source).unwrap();
+            if !supported && source.contains("rpc(http)") {
+                assert_eq!(
+                    expand(command).unwrap_err().to_string(),
+                    "rpc(http) requires a transport-neutral signature",
+                    "{source}"
+                );
+                continue;
+            }
             let expanded = expand(command).unwrap().to_string();
             assert_eq!(
                 !expanded.contains("RpcError :: unsupported"),
                 supported,
                 "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn http_declaration_rejects_native_only_arguments() {
+        for (arguments, options) in [
+            (
+                quote::quote!(on_chunk: tauri::ipc::Channel<String>),
+                quote::quote!(http),
+            ),
+            (
+                quote::quote!(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>),
+                quote::quote!(http, owner),
+            ),
+            (quote::quote!(app: tauri::AppHandle), quote::quote!(http)),
+            (quote::quote!(window: tauri::Window), quote::quote!(http)),
+            (quote::quote!(webview: tauri::Webview), quote::quote!(http)),
+            (
+                quote::quote!(window: tauri::WebviewWindow),
+                quote::quote!(http),
+            ),
+            (
+                quote::quote!(state: tauri::State<'_, NativeState>),
+                quote::quote!(http),
+            ),
+            (quote::quote!(value: &str), quote::quote!(http)),
+        ] {
+            let command = syn::parse_quote! {
+                #[nyanpasu_macro::rpc(#options)]
+                #[tauri::command]
+                fn native(#arguments) -> Result<()> { todo!() }
+            };
+            let error = expand(command).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "rpc(http) requires a transport-neutral signature",
+                "{arguments}"
             );
         }
     }
@@ -909,6 +972,7 @@ mod tests {
 
     #[test]
     fn target_and_capability_metadata_is_generated_once() {
+        assert_production_capability_inventory();
         let expanded = expand(syn::parse_quote! {
             #[nyanpasu_macro::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation))]
             #[tauri::command]
@@ -931,6 +995,258 @@ mod tests {
         }
         assert!(expanded.contains("TauriCommandEntry"));
         assert!(expanded.contains("CommandKind :: Native"));
+    }
+
+    fn production_capability_inventory(commands: &[ItemFn]) -> String {
+        let mut inventories = Vec::new();
+        for platform in ["windows", "linux", "macos"] {
+            let mut rows = BTreeMap::new();
+            for command in commands {
+                let enabled = command
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+                    .all(|attr| match attr.to_token_stream().to_string().as_str() {
+                        "# [cfg (windows)]" => platform == "windows",
+                        "# [cfg (not (windows))]" => platform != "windows",
+                        guard => panic!("extend the platform inventory for {guard}"),
+                    });
+                if !enabled {
+                    continue;
+                }
+                let options = super::options(command).unwrap();
+                super::validate(command, &options).expect("RPC declaration must be valid");
+                let mut targets = vec!["desktop"];
+                if options.http {
+                    targets.push("http");
+                }
+                assert!(
+                    !options.local,
+                    "{} must not silently opt into local RPC",
+                    command.sig.ident
+                );
+                let names = |values: &[syn::Ident]| {
+                    if values.is_empty() {
+                        "-".to_owned()
+                    } else {
+                        values
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    }
+                };
+                let name = command.sig.ident.to_string();
+                let row = format!(
+                    "{name} | {} | {} | {}",
+                    targets.join(","),
+                    names(&options.capabilities),
+                    names(&options.optional_capabilities)
+                );
+                assert!(
+                    rows.insert(name, row).is_none(),
+                    "duplicate {platform} command"
+                );
+            }
+            assert_eq!(rows.len(), 161, "{platform} command inventory");
+            inventories.push((platform, rows));
+        }
+        render_capability_inventory(&inventories)
+    }
+
+    fn render_capability_inventory(inventories: &[(&str, BTreeMap<String, String>)]) -> String {
+        // Linux supplies the baseline; every other platform is compared in full.
+        let baseline = &inventories
+            .iter()
+            .find(|(platform, _)| *platform == "linux")
+            .unwrap()
+            .1;
+        let mut snapshot = String::from(
+            "# name | targets | required | optional\n# [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.\n\n[baseline]\n",
+        );
+        for row in baseline.values() {
+            snapshot.push_str(row);
+            snapshot.push('\n');
+        }
+        for (platform, rows) in inventories {
+            snapshot.push_str(&format!("\n[{platform}]\n"));
+            for name in baseline.keys().filter(|name| !rows.contains_key(*name)) {
+                snapshot.push_str(&format!("- {name}\n"));
+            }
+            for (name, row) in rows {
+                if baseline.get(name) != Some(row) {
+                    snapshot.push_str(&format!("+ {row}\n"));
+                }
+            }
+        }
+        snapshot
+    }
+
+    #[test]
+    #[ignore = "explicit generator; freshness checks never write"]
+    fn export_capability_inventory() {
+        std::fs::write(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/capability-inventory.txt"
+            ),
+            production_capability_inventory(&crate::command_catalog::production_declarations()),
+        )
+        .expect("capability inventory must be writable");
+    }
+
+    #[test]
+    fn capability_inventory_records_platform_additions_changes_and_removals() {
+        let rows = |values: &[&str]| -> BTreeMap<String, String> {
+            values
+                .iter()
+                .map(|row| {
+                    (
+                        row.split(" | ").next().unwrap().to_string(),
+                        row.to_string(),
+                    )
+                })
+                .collect()
+        };
+        let snapshot = render_capability_inventory(&[
+            (
+                "windows",
+                rows(&["added | desktop | - | -", "changed | desktop | window | -"]),
+            ),
+            (
+                "linux",
+                rows(&["changed | desktop | - | -", "removed | desktop | - | -"]),
+            ),
+            (
+                "macos",
+                rows(&["changed | desktop | - | -", "removed | desktop | - | -"]),
+            ),
+        ]);
+        assert_eq!(
+            snapshot,
+            "# name | targets | required | optional\n# [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.\n\n[baseline]\nchanged | desktop | - | -\nremoved | desktop | - | -\n\n[windows]\n- removed\n+ added | desktop | - | -\n+ changed | desktop | window | -\n\n[linux]\n\n[macos]\n"
+        );
+    }
+
+    fn assert_production_capability_inventory() {
+        let commands = crate::command_catalog::production_declarations();
+        assert_eq!(
+            production_capability_inventory(&commands),
+            include_str!("../tests/fixtures/capability-inventory.txt").replace("\r\n", "\n"),
+            "run export_capability_inventory explicitly after declaration changes"
+        );
+
+        let metadata = |name: &str| {
+            super::options(
+                commands
+                    .iter()
+                    .find(|command| command.sig.ident == name)
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        // Profile commits and lifecycle completion refresh the desktop tray indirectly.
+        for name in ["reorder_profile", "install_service", "select_proxy"] {
+            let options = metadata(name);
+            assert!(
+                options
+                    .optional_capabilities
+                    .iter()
+                    .any(|capability| capability == "presentation"),
+                "{name} reaches an optional tray refresh"
+            );
+            assert!(
+                !options
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "presentation"),
+                "{name} must remain available without presentation"
+            );
+        }
+        // Direct privileged operations require a facility. Conditional runtime
+        // switches, compensation and binary-copy fallback only describe reachability.
+        for name in [
+            "flush_system_dns_cache",
+            "install_service",
+            "uninstall_service",
+            "start_service",
+            "stop_service",
+            "restart_service",
+        ] {
+            assert!(
+                metadata(name)
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "elevation"),
+                "{name}"
+            );
+        }
+        for name in [
+            "patch_app_config",
+            "patch_clash_config",
+            "patch_runtime_overrides",
+            "retry_configuration_runtime",
+            "change_clash_core",
+            "restart_sidecar",
+            "enhance_profiles",
+            "import_profile",
+            "create_profile",
+            "update_profile",
+            "delete_profile",
+            "activate_profile",
+            "set_global_transforms",
+            "set_profile_valid_fields",
+            "patch_remote_profile_options",
+            "replace_profile_definition",
+            "save_profile_file",
+            "update_core",
+        ] {
+            let options = metadata(name);
+            assert!(
+                !options
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "elevation"),
+                "{name}"
+            );
+            assert!(
+                options
+                    .optional_capabilities
+                    .iter()
+                    .any(|capability| capability == "elevation"),
+                "{name}"
+            );
+        }
+        for name in [
+            "open_log_session",
+            "query_logs",
+            "close_log_session",
+            "report_frontend_events",
+        ] {
+            let options = metadata(name);
+            assert!(options.owner, "{name} needs neutral caller identity");
+            assert!(
+                options.capabilities.is_empty(),
+                "{name} does not need a native webview"
+            );
+        }
+        for name in [
+            "get_tray_icon",
+            "is_tray_icon_set",
+            "get_widget_icon",
+            "is_widget_icon_set",
+            "get_cached_icon",
+            "get_release_channel",
+            "set_release_channel",
+            "get_app_update_changelog",
+            "get_service_install_prompt",
+            "get_core_dir",
+        ] {
+            assert!(
+                metadata(name).capabilities.is_empty(),
+                "{name} only reads/formats values or edits configuration"
+            );
+        }
     }
 
     #[test]

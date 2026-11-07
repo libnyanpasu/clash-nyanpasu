@@ -1,6 +1,7 @@
 //! Setup logic for the app
 use nyanpasu_observers::{logs::UnavailableCoreLogStore, traffic::TrafficOwnerFactory};
 use nyanpasu_owner_support::shutdown::track_until_shutdown;
+use nyanpasu_rpc_protocol::ShellCapability;
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_net::{
@@ -644,13 +645,33 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), U
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };
-    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies).context(BuildRpcSnafu)?;
+    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies, DESKTOP_RPC_CAPABILITIES)
+        .context(BuildRpcSnafu)?;
     app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
     snafu::ensure!(app.manage(rpc), RegisterStateSnafu);
     Ok(())
 }
+
+/// Facilities supplied by the desktop composition, not per-call authorization.
+pub(crate) const DESKTOP_RPC_CAPABILITIES: &[ShellCapability] = &[
+    ShellCapability::Clipboard,
+    ShellCapability::Notification,
+    ShellCapability::Dialog,
+    ShellCapability::CallerWebview,
+    ShellCapability::Window,
+    ShellCapability::Lifecycle,
+    ShellCapability::Opener,
+    ShellCapability::Presentation,
+    ShellCapability::DeepLink,
+    ShellCapability::AppUpdate,
+    ShellCapability::Hotkey,
+    ShellCapability::OsIntegration,
+    ShellCapability::Elevation,
+    ShellCapability::AccentColor,
+    ShellCapability::DebugHttp,
+];
 
 #[derive(Debug, snafu::Snafu)]
 enum TrafficStoreError {

@@ -2,8 +2,10 @@
 
 use nyanpasu_core::client::NyanpasuClient;
 
-use super::error::Result;
-use crate::unified_rpc::{RpcCaller, RpcState};
+use crate::{
+    error::Result,
+    registry::{RpcCaller, RpcState},
+};
 
 #[nyanpasu_macro::rpc(http, result)]
 #[specta::specta]

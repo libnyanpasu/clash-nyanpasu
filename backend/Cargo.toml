@@ -5,6 +5,7 @@ members = [
   'boa_utils',
   'nyanpasu-macro',
   'nyanpasu-rpc-protocol',
+  'nyanpasu-rpc',
   'nyanpasu-core',
   'nyanpasu-state-engine',
   'nyanpasu-runtime-values',

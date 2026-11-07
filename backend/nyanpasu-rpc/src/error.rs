@@ -6,6 +6,8 @@ use nyanpasu_core::{
     state::config_error::ConfigError,
     storage::StorageOperationError,
 };
+use nyanpasu_observers::logs::CoreLogError;
+use nyanpasu_rpc_protocol::{RpcError, RpcValue};
 use nyanpasu_runtime_values::{profiles::ProfilesError, runtime_error::RuntimeError};
 use serde::Serialize;
 
@@ -146,4 +148,38 @@ impl IpcError {
             detail: format!("{error:?}"),
         }
     }
+}
+
+/// Wrap a command failure, preserving domain errors and core retry metadata.
+pub fn application_error(error: impl std::error::Error + 'static) -> RpcError {
+    application_error_ref(&error)
+}
+
+fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError {
+    let mut result = RpcError::new("application_error", error.to_string());
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(error) = source {
+        if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
+            result.domain_error = serde_json::to_value(log)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
+        }
+        if let Some(log) = error.downcast_ref::<CoreLogError>() {
+            result.domain_error = serde_json::to_value(log)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
+        }
+        if let Some(core) = error.downcast_ref::<nyanpasu_core_manager::CoreError>() {
+            result.code = core.kind.map(|kind| kind.to_string());
+            result.retryable = Some(core.retryable);
+            result.operation_id = core.operation_id.map(|id| id.to_string());
+        }
+        if let Some(ipc) = error.downcast_ref::<crate::error::IpcError>() {
+            result.domain_error = serde_json::to_value(ipc)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
+        }
+        source = error.source();
+    }
+    result
 }

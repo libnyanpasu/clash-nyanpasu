@@ -290,7 +290,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 #neutral_parse
                 let output = #output?;
                 ::serde_json::to_value(output)
-                    .map_err(crate::unified_rpc::application_error)
+                    .map_err(::nyanpasu_rpc::error::application_error)
             }
         } else {
             quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
@@ -352,13 +352,13 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 window: ::tauri::Window,
                 webview: ::tauri::Webview,
                 params: ::serde_json::Value,
-            ) -> crate::unified_rpc::RpcFuture {
+            ) -> ::nyanpasu_rpc::registry::RpcFuture {
                 ::std::boxed::Box::pin(async move {
                     #parser
                     #(#state_bindings)*
                     let output = #output?;
                     ::serde_json::to_value(output)
-                        .map_err(crate::unified_rpc::application_error)
+                        .map_err(::nyanpasu_rpc::error::application_error)
                 })
             }
         }
@@ -370,7 +370,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 _window: ::tauri::Window,
                 _webview: ::tauri::Webview,
                 _params: ::serde_json::Value,
-            ) -> crate::unified_rpc::RpcFuture {
+            ) -> ::nyanpasu_rpc::registry::RpcFuture {
                 ::std::boxed::Box::pin(async move {
                     Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))
                 })
@@ -396,10 +396,10 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
         #(#cfg_attrs)*
         fn #neutral_handler(
-            dependencies: ::std::sync::Arc<crate::unified_rpc::RpcDependencies>,
+            dependencies: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
             owner: ::nyanpasu_rpc_protocol::RpcOwner,
             params: ::serde_json::Value,
-        ) -> crate::unified_rpc::RpcFuture {
+        ) -> ::nyanpasu_rpc::registry::RpcFuture {
             ::std::boxed::Box::pin(async move {
                 #neutral_handler_body
             })
@@ -410,7 +410,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
         #(#cfg_attrs)*
         ::inventory::submit! {
-            crate::unified_rpc::CommandEntry {
+            ::nyanpasu_rpc::registry::CommandEntry {
                 metadata: #metadata,
                 handler: #neutral_handler,
             }
@@ -437,7 +437,7 @@ fn call(
 fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenStream {
     match output {
         ReturnType::Type(_, ty) if result || is_result(ty) => {
-            quote!(#call.map_err(crate::unified_rpc::application_error))
+            quote!(#call.map_err(::nyanpasu_rpc::error::application_error))
         }
         ReturnType::Type(_, _) => quote!(Ok(#call)),
         ReturnType::Default => quote!(Ok(#call)),
@@ -1015,7 +1015,7 @@ mod tests {
         assert!(expanded.contains("owner . clone ()"));
         assert!(!expanded.contains("caller : RpcCaller , page_size : usize , }"));
         assert!(expanded.contains("rename_all = \"camelCase\""));
-        assert!(expanded.contains("map_err (crate :: unified_rpc :: application_error)"));
+        assert!(expanded.contains("map_err (:: nyanpasu_rpc :: error :: application_error)"));
         assert!(!expanded.contains("deny_unknown_fields"));
         let empty = expand(syn::parse_quote! {
             #[nyanpasu_macro::rpc(http)] fn empty() -> bool { true }

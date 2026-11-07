@@ -1,12 +1,13 @@
 //! Shared host command adapters.
 
+use crate::error::Result;
+
 use nyanpasu_paths::PathResolver;
 
-use super::{
-    error::Result,
-    ports::{AccentColorQuery, CoreDirectoryResolver, HostEnvironment, ServiceInstallPrompt},
+use super::ports::{
+    AccentColorQuery, CoreDirectoryResolver, HostEnvironment, ServiceInstallPrompt,
 };
-use crate::unified_rpc::RpcState;
+use crate::registry::RpcState;
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

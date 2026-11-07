@@ -1,12 +1,14 @@
 //! Shared icons command adapters.
 
+use crate::error::Result;
+
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
-use super::{error::Result, ports::HostIconFiles, types::IconData};
-use crate::unified_rpc::RpcState;
+use super::{ports::HostIconFiles, types::IconData};
+use crate::registry::RpcState;
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

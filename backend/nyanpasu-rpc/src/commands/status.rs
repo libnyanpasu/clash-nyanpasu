@@ -1,9 +1,11 @@
 //! Shared status command adapters.
 
+use crate::error::Result;
+
 use nyanpasu_core::client::NyanpasuClient;
 
-use super::{error::Result, types::ServiceStatusInfo};
-use crate::unified_rpc::RpcState;
+use super::types::ServiceStatusInfo;
+use crate::registry::RpcState;
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

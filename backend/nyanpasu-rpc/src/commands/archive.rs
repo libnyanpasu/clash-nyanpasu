@@ -13,7 +13,8 @@ fn home() -> Option<String> {
     dirs::home_dir().map(|path| path.to_string_lossy().into_owned())
 }
 
-pub(crate) fn write_core(
+/// Add the already-redacted core log export to a shared diagnostics archive.
+pub fn write_core(
     archive: &mut Option<Archive>,
     report: &mut Report,
     export: CoreLogExport,

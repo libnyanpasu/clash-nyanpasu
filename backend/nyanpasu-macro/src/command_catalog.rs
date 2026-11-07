@@ -8,7 +8,7 @@ use syn::{Attribute, Item, ItemFn, Meta, Token, punctuated::Punctuated};
 use crate::unified_command;
 
 // Move these roots together with the schema and handler inventories when commands move.
-const DECLARATION_ROOTS: &[&str] = &["../tauri/src/ipc.rs", "../tauri/src/rpc_commands/mod.rs"];
+const DECLARATION_ROOTS: &[&str] = &["../tauri/src/ipc.rs", "../nyanpasu-rpc/src/commands/mod.rs"];
 const CATALOG: &str = "../nyanpasu-rpc-protocol/src/command_catalog.rs";
 
 pub(super) fn production_declarations() -> Vec<ItemFn> {
@@ -457,7 +457,7 @@ fn shared_signatures_have_no_shell_owned_types() {
             syn::UseTree::Glob(_) => panic!("neutral command imports must be explicit"),
         }
     }
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tauri/src/rpc_commands");
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../nyanpasu-rpc/src/commands");
     let mut count = 0;
     for entry in fs::read_dir(directory).unwrap() {
         let path = entry.unwrap().path();
@@ -497,7 +497,8 @@ fn shared_signatures_have_no_shell_owned_types() {
                 for imported in paths {
                     assert!(
                         !imported.starts_with("crate::")
-                            || imported.starts_with("crate::unified_rpc::"),
+                            || imported.starts_with("crate::registry::")
+                            || imported.starts_with("crate::error::"),
                         "shell-owned import: {imported}"
                     );
                 }

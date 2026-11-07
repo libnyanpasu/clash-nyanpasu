@@ -4,8 +4,7 @@ use nyanpasu_config::application::ClashCore;
 use nyanpasu_core::client::{NyanpasuClient, agent_skills::CoreAgentSkill};
 use nyanpasu_updater::ManifestVersionLatest;
 
-use super::error::Result;
-use crate::unified_rpc::RpcState;
+use crate::{error::Result, registry::RpcState};
 
 /// The agent skills a core ships. Their folders are on the host that runs
 /// Nyanpasu, which is also where an agent driving the core has to run.

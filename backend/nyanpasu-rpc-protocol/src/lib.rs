@@ -14,4 +14,6 @@ pub use event::EventName;
 pub use owner::RpcOwner;
 pub use request::Request;
 
+pub mod frame;
+pub mod session;
 pub mod values;

@@ -62,7 +62,7 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
   })),
   {
     package: 'nyanpasu-rpc-protocol',
-    forbids: [...GUI, ...CORE_FAMILY, ...IMPLEMENTATION],
+    forbids: [...GUI, ...CORE_FAMILY, ...IMPLEMENTATION, 'nyanpasu-server'],
   },
   { package: 'boa_utils', forbids: [...CORE_FAMILY, ...IMPLEMENTATION] },
   ...[

@@ -10,5 +10,7 @@ test('musl builds and requires the neutral RPC HTTP test target', () => {
   )
   assert.match(runner, /-p nyanpasu-rpc /)
   assert.match(runner, /--features nyanpasu-rpc\/http /)
+  assert.match(runner, /--features nyanpasu-rpc-protocol\/frame-io /)
+  assert.match(runner, /'lib:nyanpasu_rpc_protocol'/)
   assert.match(runner, /'lib:nyanpasu_rpc',/)
 })

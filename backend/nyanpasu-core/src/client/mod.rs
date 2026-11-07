@@ -1740,18 +1740,18 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::state::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
-        fn name(&self) -> crate::state::SubscriberName<'_> {
+    impl nyanpasu_state_engine::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
+        fn name(&self) -> nyanpasu_state_engine::SubscriberName<'_> {
             "test-parked-prepare".into()
         }
 
         async fn on_prepare(
             &self,
-            _change: crate::state::StateChange<NyanpasuAppConfig>,
-        ) -> crate::state::Ack {
+            _change: nyanpasu_state_engine::StateChange<NyanpasuAppConfig>,
+        ) -> nyanpasu_state_engine::Ack {
             self.entered.notify_one();
             self.release.notified().await;
-            crate::state::Ack::Ok
+            nyanpasu_state_engine::Ack::Ok
         }
     }
 
@@ -1762,7 +1762,7 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut manager = crate::state::PersistentStateManagerSetup::<
+        let mut manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
             nyanpasu_migration::modules::application::ApplicationFormat,
         >::builder()
@@ -3749,7 +3749,7 @@ mod setup_error_tests {
             result,
             Err(SetupError::LoadApplication {
                 source: application::Error::LoadState {
-                    source: crate::state::error::LoadError::DeserializeConfig(_),
+                    source: nyanpasu_state_engine::error::LoadError::DeserializeConfig(_),
                     ..
                 },
             })

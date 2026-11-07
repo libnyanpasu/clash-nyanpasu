@@ -547,7 +547,7 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::state::Version;
+    use crate::Version;
     use std::{
         sync::{
             Arc,
@@ -615,10 +615,10 @@ mod test {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             if self.should_fail.load(Ordering::SeqCst) {
-                return Ack::Failed(crate::state::ack::test_ack_error("mock ACK failure"));
+                return Ack::Failed(crate::ack::test_ack_error("mock ACK failure"));
             }
             if self.should_degrade.load(Ordering::SeqCst) {
-                return Ack::Degraded(crate::state::ack::test_ack_error("mock degraded"));
+                return Ack::Degraded(crate::ack::test_ack_error("mock degraded"));
             }
             Ack::Ok
         }
@@ -845,7 +845,7 @@ mod test {
                     .await
                     .push(format!("prepare:{}", self.name));
                 if self.should_fail {
-                    Ack::Failed(crate::state::ack::test_ack_error("prepare failed"))
+                    Ack::Failed(crate::ack::test_ack_error("prepare failed"))
                 } else {
                     Ack::Ok
                 }
@@ -914,7 +914,7 @@ mod test {
                 AckPolicy::Advisory
             }
             async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                Ack::Failed(crate::state::ack::test_ack_error("advisory failure"))
+                Ack::Failed(crate::ack::test_ack_error("advisory failure"))
             }
         }
 
@@ -1411,7 +1411,7 @@ mod test {
                 AckPolicy::Advisory
             }
             async fn on_prepare(&self, _: StateChange<TestState>) -> Ack {
-                Ack::Failed(crate::state::ack::test_ack_error("advisory error"))
+                Ack::Failed(crate::ack::test_ack_error("advisory error"))
             }
         }
 

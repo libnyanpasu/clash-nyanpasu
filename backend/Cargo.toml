@@ -5,6 +5,7 @@ members = [
   'boa_utils',
   'nyanpasu-macro',
   'nyanpasu-core',
+  'nyanpasu-state-engine',
   'nyanpasu-migration',
   'nyanpasu-owner-support',
   'nyanpasu-observers',

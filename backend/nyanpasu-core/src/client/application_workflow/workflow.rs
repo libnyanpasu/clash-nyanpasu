@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::state::StateSnapshot;
 use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::StateSnapshot;
 
 use super::{
     Command, Output,

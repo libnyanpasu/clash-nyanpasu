@@ -137,7 +137,7 @@ pub enum RollbackReason {
 ///    settles the in-flight attempt first, then compensates.
 ///
 /// The commit decision itself is never carried by these notifications alone: a
-/// single-shot participant also holds a [`crate::state::DecisionHandle`], which
+/// single-shot participant also holds a [`crate::DecisionHandle`], which
 /// stays readable when `on_committed` is dropped.
 #[async_trait::async_trait]
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {

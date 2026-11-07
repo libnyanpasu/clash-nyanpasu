@@ -461,6 +461,11 @@ against the final error ownership. E is not refined by this change.
 
 **Phase D: transaction graph**
 
+D1a is implemented: the complete generic engine and its 102 tests live in
+`nyanpasu-state-engine`. Package and static gates enforce the leaf boundary;
+the musl runner registers the new library, but local execution is blocked by
+the unavailable Docker daemon. D2 remains planned.
+
 | Step | Change                                                                                                                                                      | Done when                                                                                                                                                               |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D1   | Extract the complete generic `nyanpasu-state-engine` closure as a core-family leaf                                                                          | All 102 engine tests retained; only persistence among parent-workspace dependencies; package/static/musl gates registered; tasks §4 D1a                                 |

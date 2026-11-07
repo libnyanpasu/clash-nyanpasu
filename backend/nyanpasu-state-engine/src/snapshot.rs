@@ -1,7 +1,7 @@
 use arc_swap::ArcSwap;
 use std::sync::Arc;
 
-use crate::state::VersionedState;
+use crate::VersionedState;
 
 pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<VersionedState<T>>>);
 

@@ -9,7 +9,7 @@ use std::io::Write;
 
 use super::{super::error::*, *};
 
-use crate::state::PrepareReport;
+use crate::PrepareReport;
 
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
@@ -238,7 +238,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Ack, StateAckSubscriber, StateChange, SubscriberName};
+    use crate::{Ack, StateAckSubscriber, StateChange, SubscriberName};
     use serde::{Deserialize, Serialize};
     use std::sync::{
         Arc,
@@ -322,7 +322,7 @@ mod tests {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(crate::state::ack::test_ack_error("init ACK failed"))
+            Ack::Failed(crate::ack::test_ack_error("init ACK failed"))
         }
     }
 

@@ -3,10 +3,6 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::state::{
-    PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
-    error::StateChangedError,
-};
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
     ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
@@ -24,6 +20,10 @@ use nyanpasu_contracts::profiles::{
     },
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
+use nyanpasu_state_engine::{
+    PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
+    error::StateChangedError,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
@@ -1321,8 +1321,8 @@ impl ProfilesActor {
                 let before_write = matches!(
                     &result,
                     Ok(ReplaceIfVersionResult::Conflict { .. })
-                        | Err(crate::state::ReplaceIfVersionError::State(
-                            crate::state::error::StateChangedError::PrepareAck(_)
+                        | Err(nyanpasu_state_engine::ReplaceIfVersionError::State(
+                            nyanpasu_state_engine::error::StateChangedError::PrepareAck(_)
                         ))
                 );
                 let mut failures = Vec::new();

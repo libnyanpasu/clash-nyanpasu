@@ -32,7 +32,7 @@ use tokio::sync::Notify;
 /// What the source that hit `error` would classify it as, given the Runtime's
 /// receipt for the operation.
 fn classify(
-    error: crate::state::ReplaceIfVersionError,
+    error: nyanpasu_state_engine::ReplaceIfVersionError,
     receipt: &super::mutation::MutationReceipt,
 ) -> crate::state::mutation::CommitAborted {
     crate::state::mutation::CommitAborted::classify(error, Some(receipt))

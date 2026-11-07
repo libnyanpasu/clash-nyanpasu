@@ -13,7 +13,7 @@
 //! 10. Three-source concurrent fan-in: no deadlock
 //! 11. Snapshot during subscriber reflects committed value (post-commit)
 
-use crate::state::{error::*, *};
+use crate::{error::*, *};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -43,7 +43,7 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for FailAckSubscrib
     }
     async fn on_committed(&self, _change: StateChange<T>) -> Ack {
         if self.should_fail.load(Ordering::SeqCst) {
-            Ack::Failed(crate::state::ack::test_ack_error("forced ACK failure"))
+            Ack::Failed(crate::ack::test_ack_error("forced ACK failure"))
         } else {
             Ack::Ok
         }
@@ -174,7 +174,7 @@ impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static> StateAc
         let derived = (self.combiner)(change.current().clone(), sibling.state.clone());
         match self.derived.write().await.upsert(derived).await {
             Ok(_) => Ack::Ok,
-            Err(e) => Ack::Failed(crate::state::ack::test_ack_error(&e.to_string())),
+            Err(e) => Ack::Failed(crate::ack::test_ack_error(&e.to_string())),
         }
     }
 }
@@ -304,7 +304,7 @@ impl StateAckSubscriber<i32> for TriFanInAckSubscriber {
         };
         match self.derived.write().await.upsert((a, b, c)).await {
             Ok(_) => Ack::Ok,
-            Err(e) => Ack::Failed(crate::state::ack::test_ack_error(&e.to_string())),
+            Err(e) => Ack::Failed(crate::ack::test_ack_error(&e.to_string())),
         }
     }
 }

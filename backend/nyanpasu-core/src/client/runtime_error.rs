@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
-use crate::state::AckError;
 use nyanpasu_contracts::core_version::CoreVersionError;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_state_engine::AckError;
 use serde::Serialize;
 use snafu::Snafu;
 

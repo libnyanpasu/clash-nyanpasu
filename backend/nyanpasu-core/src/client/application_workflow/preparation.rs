@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crate::state::StateSnapshot;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
 };
 use nyanpasu_core_manager::{CoreSpec, LocalIpcPolicy, LocalIpcSettings};
+use nyanpasu_state_engine::StateSnapshot;
 use snafu::ResultExt;
 
 use super::{

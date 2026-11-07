@@ -613,3 +613,5 @@ mod fixture_content;
 mod golden;
 #[cfg(test)]
 mod script_tests;
+#[cfg(test)]
+mod test_extensions;

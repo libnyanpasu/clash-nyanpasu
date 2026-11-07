@@ -4,9 +4,42 @@ use nyanpasu_config::{
     runtime::executor::{StepLogEntry, StepLogLevel},
 };
 use serde_yaml::Mapping;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
+};
 
-use super::{ScriptDirs, ScriptWrapper, js, lua};
+use super::{ScriptWrapper, js, lua};
+use crate::extensions::ScriptExtensionFactory;
+
+/// Where the JavaScript runner keeps the modules it runs and the modules it
+/// downloads.
+#[derive(Debug, Clone)]
+pub struct ScriptDirs {
+    /// Module root the script's relative imports resolve against. The script
+    /// itself runs from memory; nothing is written here.
+    pub scripts: PathBuf,
+    /// Cache of the modules scripts import over HTTP.
+    pub cache: PathBuf,
+}
+
+impl ScriptDirs {
+    /// Uses the supplied module root and HTTP module cache paths.
+    pub fn new(scripts: PathBuf, cache: PathBuf) -> Self {
+        Self { scripts, cache }
+    }
+
+    /// Places the module root and cache in separate directories under `root`.
+    pub fn under(root: &Path) -> Self {
+        Self {
+            scripts: root.join("scripts"),
+            cache: root.join("cache"),
+        }
+    }
+}
 
 /// Collects the console output of one run. The engine's console callbacks
 /// hold clones; the runner drains it into the caller's logs once the run
@@ -15,10 +48,12 @@ use super::{ScriptDirs, ScriptWrapper, js, lua};
 pub struct ConsoleSink(Rc<RefCell<Vec<StepLogEntry>>>);
 
 impl ConsoleSink {
+    /// Appends an entry to this execution's console output.
     pub fn push(&self, level: StepLogLevel, message: String) {
         self.0.borrow_mut().push(StepLogEntry::new(level, message));
     }
 
+    /// Drains the collected entries in their original order.
     pub fn take(&self) -> Vec<StepLogEntry> {
         std::mem::take(&mut self.0.borrow_mut())
     }
@@ -53,13 +88,15 @@ pub trait Runner: Send + Sync {
 pub struct RunnerManager {
     runners: HashMap<ScriptRuntime, Box<dyn Runner>>,
     script_dirs: ScriptDirs,
+    extensions: Arc<dyn ScriptExtensionFactory>,
 }
 
 impl RunnerManager {
-    pub fn new(script_dirs: ScriptDirs) -> Self {
+    pub fn new(script_dirs: ScriptDirs, extensions: Arc<dyn ScriptExtensionFactory>) -> Self {
         Self {
             runners: HashMap::new(),
             script_dirs,
+            extensions,
         }
     }
     // If the script runner is not exist, it should be created.
@@ -69,10 +106,13 @@ impl RunnerManager {
     ) -> anyhow::Result<&dyn Runner> {
         if !self.runners.contains_key(script_type) {
             let runner = match script_type {
-                ScriptRuntime::JavaScript => {
-                    Box::new(js::JSRunner::new(&self.script_dirs)?) as Box<dyn Runner>
+                ScriptRuntime::JavaScript => Box::new(js::JSRunner::new(
+                    &self.script_dirs,
+                    self.extensions.clone(),
+                )?) as Box<dyn Runner>,
+                ScriptRuntime::Lua => {
+                    Box::new(lua::LuaRunner::new(self.extensions.lua())) as Box<dyn Runner>
                 }
-                ScriptRuntime::Lua => Box::new(lua::LuaRunner) as Box<dyn Runner>,
             };
             self.runners.insert(*script_type, runner);
         }

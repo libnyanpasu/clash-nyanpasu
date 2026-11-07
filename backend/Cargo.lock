@@ -1151,7 +1151,7 @@ name = "boa_utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-fs",
+ "async-trait",
  "boa_engine",
  "boa_parser",
  "brotli 9.1.1",
@@ -1161,16 +1161,12 @@ dependencies = [
  "log",
  "mime",
  "nyanpasu-log-preview",
- "nyanpasu-utils",
  "phf 0.14.0",
- "postcard",
- "reqwest 0.13.5",
  "serde",
  "serde_json",
  "smol",
- "tempfile",
+ "snafu 0.9.2",
  "test-log",
- "tokio",
  "tracing",
  "url",
 ]
@@ -1786,11 +1782,14 @@ dependencies = [
  "ambassador",
  "ansi-str",
  "anyhow",
+ "async-fs",
  "async-trait",
  "atomic_enum",
  "atomicwrites",
  "axum",
  "base64 0.23.1",
+ "boa_engine",
+ "boa_utils",
  "bolt-load",
  "camino",
  "chrono",
@@ -1821,6 +1820,7 @@ dependencies = [
  "log",
  "md-5",
  "mime",
+ "mlua",
  "mockall",
  "nanoid",
  "nix 0.31.3",
@@ -1863,6 +1863,7 @@ dependencies = [
  "os_pipe",
  "parking_lot 0.13.0",
  "percent-encoding",
+ "postcard",
  "ractor",
  "rand 0.10.3",
  "rayon",
@@ -7236,7 +7237,11 @@ dependencies = [
 name = "nyanpasu-profile-transform"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "boa_engine",
+ "boa_utils",
  "indexmap 2.14.2",
+ "mlua",
  "nyanpasu-config",
  "nyanpasu-scripts",
  "serde",
@@ -7245,6 +7250,7 @@ dependencies = [
  "snafu 0.9.2",
  "specta",
  "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -7292,6 +7298,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

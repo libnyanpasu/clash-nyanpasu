@@ -3,6 +3,8 @@
 //! whole pipeline can execute inside spawn_blocking (roadmap §4.0.4). Do NOT
 //! call it from an async context on a runtime worker thread.
 
+use std::sync::Arc;
+
 use nyanpasu_config::{
     profile::ScriptRuntime,
     runtime::{
@@ -13,25 +15,31 @@ use nyanpasu_config::{
 use tracing::Instrument;
 
 use super::{RunnerManager, ScriptDirs, ScriptWrapper, create_lua_context, ordered_map};
+use crate::extensions::ScriptExtensionFactory;
 
 /// Runs config transforms synchronously using a private current-thread runtime.
 /// Construct, use and drop it in a blocking context, outside async workers.
 pub struct EnhanceScriptRunner {
     runtime: tokio::runtime::Runtime,
     dirs: ScriptDirs,
+    extensions: Arc<dyn ScriptExtensionFactory>,
 }
 
 impl EnhanceScriptRunner {
-    /// Creates the runtime used for script execution with explicit module directories.
+    /// Creates the runtime with explicit module directories and host extension factories.
     ///
     /// # Errors
     /// Returns the IO error if the current-thread runtime cannot be created.
-    pub fn new(dirs: ScriptDirs) -> std::io::Result<Self> {
+    pub fn new(
+        dirs: ScriptDirs,
+        extensions: Arc<dyn ScriptExtensionFactory>,
+    ) -> std::io::Result<Self> {
         Ok(Self {
             runtime: tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?,
             dirs,
+            extensions,
         })
     }
 }
@@ -64,7 +72,8 @@ impl ScriptRunner for EnhanceScriptRunner {
             .runtime
             .block_on(
                 async {
-                    let mut manager = RunnerManager::new(self.dirs.clone());
+                    let mut manager =
+                        RunnerManager::new(self.dirs.clone(), self.extensions.clone());
                     manager.process_script(&wrapper, mapping, logs).await
                 }
                 .in_current_span(),
@@ -74,7 +83,8 @@ impl ScriptRunner for EnhanceScriptRunner {
     }
 
     fn eval_item_predicate(&self, expr: &str, item: &ConfigValue) -> Result<bool, PortError> {
-        let lua = create_lua_context().map_err(|e| format!("lua context: {e}"))?;
+        let lua =
+            create_lua_context(&self.extensions.lua()).map_err(|e| format!("lua context: {e}"))?;
         let item_yaml = serde_yaml::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
         let lua_item =
             ordered_map::to_lua(&lua, &item_yaml).map_err(|e| format!("item to lua: {e}"))?;
@@ -88,7 +98,8 @@ impl ScriptRunner for EnhanceScriptRunner {
     }
 
     fn eval_item_expr(&self, expr: &str, item: &ConfigValue) -> Result<ConfigValue, PortError> {
-        let lua = create_lua_context().map_err(|e| format!("lua context: {e}"))?;
+        let lua =
+            create_lua_context(&self.extensions.lua()).map_err(|e| format!("lua context: {e}"))?;
         let item_yaml = serde_yaml::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
         let lua_item =
             ordered_map::to_lua(&lua, &item_yaml).map_err(|e| format!("item to lua: {e}"))?;
@@ -121,7 +132,11 @@ mod tests {
     #[test]
     fn runs_javascript_transform_and_captures_logs() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = EnhanceScriptRunner::new(
+            ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let script = r#"
 function main(config) {
   console.log("hello from js");
@@ -145,7 +160,11 @@ function main(config) {
     #[test]
     fn failing_script_returns_error() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = EnhanceScriptRunner::new(
+            ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let result = runner.run(
             ScriptRuntime::JavaScript,
             "not valid js ][",
@@ -158,7 +177,11 @@ function main(config) {
     #[test]
     fn eval_item_errors_name_the_expression() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = EnhanceScriptRunner::new(
+            ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let item = value("name: test-node\n");
         let error = runner
             .eval_item_predicate("item.missing.field", &item)
@@ -177,7 +200,11 @@ function main(config) {
     #[test]
     fn eval_item_expr_keeps_the_item_key_order() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = EnhanceScriptRunner::new(
+            ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let item = value("name: node\ntype: ss\nserver: example.com\nport: 443\n");
         let renamed = runner
             .eval_item_expr(
@@ -194,7 +221,11 @@ function main(config) {
     #[test]
     fn eval_item_predicate_and_expr_use_lua_item_global() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = EnhanceScriptRunner::new(
+            ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let item = value("name: test-node\ntype: ss\n");
         assert!(
             runner

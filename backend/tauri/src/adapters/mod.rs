@@ -10,4 +10,5 @@ pub(crate) mod events;
 pub(crate) mod hotkey;
 pub(crate) mod main_thread;
 pub(crate) mod rpc_audit;
+pub(crate) mod script_extensions;
 pub(crate) mod ui_effects;

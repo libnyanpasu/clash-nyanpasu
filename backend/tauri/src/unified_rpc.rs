@@ -222,27 +222,28 @@ impl RpcOwner {
     pub fn desktop(label: &str) -> Self {
         Self(label.to_owned())
     }
-    fn http(headers: &HeaderMap) -> Result<Self, RpcError> {
-        let cookie = headers
-            .get("cookie")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let session = cookie
-            .split(';')
-            .map(str::trim)
-            .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
-            .and_then(|s| uuid::Uuid::parse_str(s).ok())
-            .ok_or_else(|| RpcError::invalid_params("HTTP session cookie is missing"))?;
-        Ok(Self(format!("http:{session}")))
-    }
     pub fn label(&self) -> &str {
         &self.0
     }
+}
 
-    fn http_or_anonymous(headers: &HeaderMap) -> Self {
-        // A session identifies an owner; authentication belongs to the listener.
-        Self::http(headers).unwrap_or_else(|_| Self(format!("http:{}", uuid::Uuid::new_v4())))
-    }
+fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
+    let cookie = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let session = cookie
+        .split(';')
+        .map(str::trim)
+        .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .ok_or_else(|| RpcError::invalid_params("HTTP session cookie is missing"))?;
+    Ok(RpcOwner(format!("http:{session}")))
+}
+
+fn http_owner_or_anonymous(headers: &HeaderMap) -> RpcOwner {
+    // A session identifies an owner; authentication belongs to the listener.
+    http_owner(headers).unwrap_or_else(|_| RpcOwner(format!("http:{}", uuid::Uuid::new_v4())))
 }
 
 pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
@@ -287,39 +288,6 @@ impl RpcError {
         Self::new("invalid_params", message)
     }
 
-    pub fn application(error: impl std::error::Error + 'static) -> Self {
-        Self::application_ref(&error)
-    }
-
-    pub fn application_ref(error: &(dyn std::error::Error + 'static)) -> Self {
-        let mut result = Self::new("application_error", error.to_string());
-        let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
-        while let Some(error) = source {
-            if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
-                result.domain_error = serde_json::to_value(log)
-                    .ok()
-                    .map(|value| Box::new(RpcValue(value)));
-            }
-            if let Some(log) = error.downcast_ref::<CoreLogError>() {
-                result.domain_error = serde_json::to_value(log)
-                    .ok()
-                    .map(|value| Box::new(RpcValue(value)));
-            }
-            if let Some(core) = error.downcast_ref::<nyanpasu_core_manager::CoreError>() {
-                result.code = core.kind.map(|kind| kind.to_string());
-                result.retryable = Some(core.retryable);
-                result.operation_id = core.operation_id.map(|id| id.to_string());
-            }
-            if let Some(ipc) = error.downcast_ref::<crate::ipc::IpcError>() {
-                result.domain_error = serde_json::to_value(ipc)
-                    .ok()
-                    .map(|value| Box::new(RpcValue(value)));
-            }
-            source = error.source();
-        }
-        result
-    }
-
     pub fn unsupported(name: &str) -> Self {
         Self::new(
             "unsupported",
@@ -330,15 +298,40 @@ impl RpcError {
     fn unknown_method(name: &str) -> Self {
         Self::new("unknown_method", format!("unknown command `{name}`"))
     }
+}
 
-    fn status(&self) -> StatusCode {
-        match self.kind {
-            "invalid_params" => StatusCode::BAD_REQUEST,
-            "unknown_method" => StatusCode::NOT_FOUND,
-            "unsupported" => StatusCode::NOT_IMPLEMENTED,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+/// Wrap a command failure, preserving domain errors and core retry metadata.
+pub(crate) fn application_error(error: impl std::error::Error + 'static) -> RpcError {
+    application_error_ref(&error)
+}
+
+fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError {
+    let mut result = RpcError::new("application_error", error.to_string());
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(error) = source {
+        if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
+            result.domain_error = serde_json::to_value(log)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
         }
+        if let Some(log) = error.downcast_ref::<CoreLogError>() {
+            result.domain_error = serde_json::to_value(log)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
+        }
+        if let Some(core) = error.downcast_ref::<nyanpasu_core_manager::CoreError>() {
+            result.code = core.kind.map(|kind| kind.to_string());
+            result.retryable = Some(core.retryable);
+            result.operation_id = core.operation_id.map(|id| id.to_string());
+        }
+        if let Some(ipc) = error.downcast_ref::<crate::ipc::IpcError>() {
+            result.domain_error = serde_json::to_value(ipc)
+                .ok()
+                .map(|value| Box::new(RpcValue(value)));
+        }
+        source = error.source();
     }
+    result
 }
 
 #[derive(Deserialize)]
@@ -479,7 +472,7 @@ async fn http_logs_archive(
     dispatch_audited(
         &rpc.dependencies.audit,
         RpcTransport::Http,
-        RpcOwner::http_or_anonymous(&headers),
+        http_owner_or_anonymous(&headers),
         || "logs_archive",
         async {
             let paths = rpc.dependencies.paths.clone();
@@ -489,7 +482,7 @@ async fn http_logs_archive(
                     .map_err(|error| RpcError::new("application_error", error.to_string()))?;
             let file = tokio::fs::File::open(&archive)
                 .await
-                .map_err(RpcError::application)?;
+                .map_err(application_error)?;
             let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
                 use tokio::io::AsyncReadExt;
 
@@ -509,15 +502,24 @@ async fn http_logs_archive(
                     format!("attachment; filename=\"{file_name}\""),
                 )
                 .body(Body::from_stream(body))
-                .map_err(RpcError::application)
+                .map_err(application_error)
         },
     )
     .await
     .map_err(http_rpc_error)
 }
 
+fn http_status(error: &RpcError) -> StatusCode {
+    match error.kind {
+        "invalid_params" => StatusCode::BAD_REQUEST,
+        "unknown_method" => StatusCode::NOT_FOUND,
+        "unsupported" => StatusCode::NOT_IMPLEMENTED,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
 fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
-    (error.status(), Json(error))
+    (http_status(&error), Json(error))
 }
 
 // Subscribe only while a page consumes full connection details. Dropping the
@@ -529,7 +531,7 @@ async fn http_connection_details(
     dispatch_audited(
         &rpc.dependencies.audit,
         RpcTransport::Http,
-        RpcOwner::http_or_anonymous(&headers),
+        http_owner_or_anonymous(&headers),
         || "connection_details_subscribe",
         async {
             let receiver = rpc
@@ -537,7 +539,7 @@ async fn http_connection_details(
                 .client
                 .subscribe_clash_connection_details()
                 .await
-                .map_err(RpcError::application)?;
+                .map_err(application_error)?;
             Ok(Sse::new(connection_detail_events(receiver))
                 .keep_alive(axum::response::sse::KeepAlive::default()))
         },
@@ -595,7 +597,7 @@ async fn http_events(
     headers: HeaderMap,
     request: Result<Query<EventRequest>, QueryRejection>,
 ) -> Response {
-    let owner = RpcOwner::http_or_anonymous(&headers);
+    let owner = http_owner_or_anonymous(&headers);
     let request = match request {
         Ok(Query(request)) => request,
         Err(error) => {
@@ -669,7 +671,7 @@ async fn http_call(
     headers: HeaderMap,
     request: Result<Json<Request>, JsonRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<RpcError>)> {
-    let owner = RpcOwner::http_or_anonymous(&headers);
+    let owner = http_owner_or_anonymous(&headers);
     let request = match request {
         Ok(Json(request)) => request,
         Err(error) => {
@@ -687,7 +689,7 @@ async fn http_call(
     rpc.call(&request.method, owner, request.params)
         .await
         .map(Json)
-        .map_err(|error| (error.status(), Json(error)))
+        .map_err(|error| (http_status(&error), Json(error)))
 }
 
 #[cfg(test)]
@@ -1360,7 +1362,7 @@ mod tests {
     fn errors_preserve_domain_codes_and_operation_identity() {
         use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
         let id = OperationId::generate();
-        let wire = RpcError::application(
+        let wire = application_error(
             CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false).with_operation(id),
         );
         assert_eq!(wire.operation_id, Some(id.to_string()));
@@ -1370,12 +1372,12 @@ mod tests {
             Some(CoreErrorKind::BackendUnavailable.to_string())
         );
         let ipc = crate::ipc::IpcError::from(std::io::Error::other("request failed"));
-        let wire = RpcError::application(ipc);
+        let wire = application_error(ipc);
         let payload = serde_json::to_value(wire).unwrap();
         assert_eq!(payload["domain_error"]["kind"]["domain"], "unknown");
         assert_eq!(payload["domain_error"]["message"], "request failed");
         assert!(payload["domain_error"]["detail"].is_string());
-        let log = RpcError::application(nyanpasu_logging::LogError::SessionExpired);
+        let log = application_error(nyanpasu_logging::LogError::SessionExpired);
         assert_eq!(
             serde_json::to_value(log).unwrap()["domain_error"],
             "session_expired"

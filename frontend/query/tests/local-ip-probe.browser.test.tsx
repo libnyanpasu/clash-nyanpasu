@@ -16,7 +16,11 @@ async function setup(
     get_clash_config: () => ({ enable_tun_mode: tun }),
     probe_direct_egress: () => ({
       kind: 'probed',
-      ipv4: '203.0.113.7',
+      ipv4: {
+        address: '203.0.113.7',
+        source: { kind: 'lookup', provider: 'ipify' },
+        country: null,
+      },
       ipv6: null,
     }),
   })

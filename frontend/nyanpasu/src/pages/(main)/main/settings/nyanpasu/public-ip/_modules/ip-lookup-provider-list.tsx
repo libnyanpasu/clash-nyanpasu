@@ -16,6 +16,7 @@ import {
 import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { IP_LOOKUP_PROVIDER_NAMES } from '@/utils/ip-lookup-provider'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useIpLookupProviders, useSetting } from '@nyanpasu/query'
@@ -30,14 +31,6 @@ import {
 } from '../../../../_modules/settings-card'
 import { stunChipVariants } from './stun-capabilities'
 
-/** Service names are brands and stay untranslated. */
-const PROVIDER_NAMES: Record<IpLookupProvider, string> = {
-  dnspod: 'DNSPod',
-  ip_sb: 'IP.SB',
-  ipify: 'ipify',
-  ident_me: 'ident.me',
-}
-
 function PrivacyNoticeDialog({
   provider,
   onAccept,
@@ -47,7 +40,7 @@ function PrivacyNoticeDialog({
   onAccept: (provider: IpLookupProvider) => void
   onCancel: () => void
 }) {
-  const name = provider ? PROVIDER_NAMES[provider.provider] : ''
+  const name = provider ? IP_LOOKUP_PROVIDER_NAMES[provider.provider] : ''
 
   return (
     <Modal open={provider != null} onOpenChange={(next) => !next && onCancel()}>
@@ -147,7 +140,7 @@ export default function IpLookupProviderList() {
 
       <SettingsGroup data-slot="ip-lookup-provider-items">
         {providers?.map((provider) => {
-          const name = PROVIDER_NAMES[provider.provider]
+          const name = IP_LOOKUP_PROVIDER_NAMES[provider.provider]
 
           return (
             <div

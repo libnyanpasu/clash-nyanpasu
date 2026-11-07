@@ -6,7 +6,7 @@ use nyanpasu_geodata::IpIndex;
 use nyanpasu_observers::traffic::{FrameNormalizer, LocalSourceIps};
 use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample};
 
-mod geo;
+pub(super) mod geo;
 #[cfg(test)]
 mod tests;
 

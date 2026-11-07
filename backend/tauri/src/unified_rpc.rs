@@ -1194,14 +1194,19 @@ mod tests {
             async fn ipv4(
                 &self,
                 _: &nyanpasu_contracts::net::ProbeSources,
-            ) -> Option<std::net::Ipv4Addr> {
+            ) -> Option<nyanpasu_contracts::net::EgressAnswer<std::net::Ipv4Addr>> {
                 self.0.fetch_add(1, Ordering::SeqCst);
-                Some("203.0.113.7".parse().unwrap())
+                Some(nyanpasu_contracts::net::EgressAnswer {
+                    address: "203.0.113.7".parse().unwrap(),
+                    source: nyanpasu_contracts::net::EgressSource::Lookup {
+                        provider: nyanpasu_config::application::IpLookupProvider::Ipify,
+                    },
+                })
             }
             async fn ipv6(
                 &self,
                 _: &nyanpasu_contracts::net::ProbeSources,
-            ) -> Option<std::net::Ipv6Addr> {
+            ) -> Option<nyanpasu_contracts::net::EgressAnswer<std::net::Ipv6Addr>> {
                 None
             }
             async fn test_stun_server(
@@ -1249,7 +1254,8 @@ mod tests {
                 rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
             assert_eq!(status, StatusCode::OK);
             assert_eq!(result["kind"], "probed");
-            assert_eq!(result["ipv4"], "203.0.113.7");
+            assert_eq!(result["ipv4"]["address"], "203.0.113.7");
+            assert_eq!(result["ipv4"]["source"]["provider"], "ipify");
             assert_eq!(probe.0.load(Ordering::SeqCst), 1);
             let (status, _) = rpc_for_test_call(
                 &app,

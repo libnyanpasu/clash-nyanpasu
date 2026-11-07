@@ -11,13 +11,14 @@ use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_contracts::{
-    net::StunServerTest, system_dns::SystemDnsError, system_proxy::OsProxyError,
+    net::{DirectEgress, StunServerTest},
+    system_dns::SystemDnsError,
+    system_proxy::OsProxyError,
 };
 use nyanpasu_core::{
     client::{
         ClientError, NyanpasuClient, RuntimeError, agent_skills::CoreAgentSkill,
-        debug_http::DebugHttpControlError, direct_egress::DirectEgress,
-        effects::error::EffectsError,
+        debug_http::DebugHttpControlError, effects::error::EffectsError,
     },
     state::{
         config_error::ConfigError,

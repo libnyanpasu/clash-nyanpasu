@@ -14,6 +14,21 @@ use serde::Serialize;
 use serde_json::Value;
 use url::Url;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DirectEgress {
+    Disabled,
+    /// Nothing was probed: TUN mode captures the app's own requests and routes
+    /// them by rule, so an echo could come back from a proxy exit.
+    TunEnabled,
+    /// `None` for a family no source gave an address over, such as a network
+    /// without IPv6.
+    Probed {
+        ipv4: Option<EgressAddress<Ipv4Addr>>,
+        ipv6: Option<EgressAddress<Ipv6Addr>>,
+    },
+}
+
 /// Fetches a text document; the adapter owns proxies and network deadlines.
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
@@ -35,6 +50,44 @@ pub trait SelfProxyPortSource: Send + Sync + 'static {
 pub trait ProbePermission: Send + Sync {
     fn allows_stun(&self, server: &StunServer) -> bool;
     fn allows_lookup(&self, provider: IpLookupProvider) -> bool;
+}
+
+/// One family's direct egress address, as the app reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct EgressAddress<A> {
+    pub address: A,
+    pub source: EgressSource,
+    /// An upper-case ISO code from the core's country database. `None` while
+    /// the core has no database, or the address is not in it.
+    pub country: Option<String>,
+}
+
+/// One family's answer, as the probe found it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EgressAnswer<A> {
+    pub address: A,
+    pub source: EgressSource,
+}
+
+/// What answered a probe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EgressSource {
+    Stun {
+        host: String,
+        port: u16,
+        transport: StunTransport,
+    },
+    Lookup {
+        provider: IpLookupProvider,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum StunTransport {
+    Udp,
+    Tcp,
 }
 
 /// Where a probe asks, in order: STUN servers, then accepted HTTP providers.
@@ -123,10 +176,8 @@ impl StunServerTest {
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
 pub trait DirectEgressProbe: Send + Sync + 'static {
-    /// Returns the IPv4 answer, or no answer when no source gives one.
-    async fn ipv4(&self, sources: &ProbeSources) -> Option<Ipv4Addr>;
-    /// Returns the IPv6 answer, or no answer when no source gives one.
-    async fn ipv6(&self, sources: &ProbeSources) -> Option<Ipv6Addr>;
+    async fn ipv4(&self, sources: &ProbeSources) -> Option<EgressAnswer<Ipv4Addr>>;
+    async fn ipv6(&self, sources: &ProbeSources) -> Option<EgressAnswer<Ipv6Addr>>;
     /// Sends one Binding request over each transport and family.
     async fn test_stun_server(&self, host: &str, port: u16) -> StunServerTest;
 }

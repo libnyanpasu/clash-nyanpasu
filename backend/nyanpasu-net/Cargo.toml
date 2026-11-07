@@ -33,3 +33,4 @@ nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false,
   'test-support'
 ] }
 serde = '1.0'
+tokio = { workspace = true, features = ['test-util'] }

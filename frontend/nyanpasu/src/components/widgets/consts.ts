@@ -2,6 +2,7 @@ import { memo, ReactNode } from 'react'
 import type { DndGridItemType } from '@nyanpasu/ui/dnd-grid'
 import { ActiveConnectionsWidget } from './widget-active-connections'
 import { WidgetId } from './widget-config'
+import { NetworkInfoWidget } from './widget-network-info'
 import { ProviderUpdatesWidget } from './widget-provider-updates'
 import { ProxyModeWidget } from './widget-proxy-mode'
 import { CoreShortcutsWidget, ProxyShortcutsWidget } from './widget-shortcut'
@@ -51,6 +52,7 @@ export const RENDER_MAP: Record<
   [WidgetId.RuleTraffic]: memo(RuleTrafficWidget),
   [WidgetId.ActiveConnections]: memo(ActiveConnectionsWidget),
   [WidgetId.ProviderUpdates]: memo(ProviderUpdatesWidget),
+  [WidgetId.NetworkInfo]: memo(NetworkInfoWidget),
 }
 
 /** Default layout, designed for a 12-column grid. */
@@ -125,6 +127,7 @@ export const WIDGET_MIN_SIZE_MAP: Record<
   [WidgetId.RuleTraffic]: { minW: 3, minH: 2 },
   [WidgetId.ActiveConnections]: { minW: 4, minH: 2 },
   [WidgetId.ProviderUpdates]: { minW: 3, minH: 2 },
+  [WidgetId.NetworkInfo]: { minW: 3, minH: 2 },
 }
 
 export const WIDGET_RECOMMENDED_SIZE_MAP: Partial<
@@ -140,6 +143,7 @@ export const WIDGET_RECOMMENDED_SIZE_MAP: Partial<
   [WidgetId.RuleTraffic]: { w: 4, h: 4 },
   [WidgetId.ActiveConnections]: { w: 6, h: 3 },
   [WidgetId.ProviderUpdates]: { w: 4, h: 3 },
+  [WidgetId.NetworkInfo]: { w: 4, h: 2 },
 }
 
 export type LayoutStorage = Record<string, DashboardItem[]>

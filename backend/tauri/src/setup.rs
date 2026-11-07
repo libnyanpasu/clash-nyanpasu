@@ -16,7 +16,11 @@ use nyanpasu_os::{
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use std::sync::Arc;
+#[cfg(feature = "script-javascript")]
+use std::time::{Duration, SystemTime};
 
+#[cfg(feature = "script-javascript")]
+use crate::adapters::script_extensions::http::CachedHttpModuleSource;
 use crate::{
     adapters::{
         event_sink::TauriUiEventSink,
@@ -26,6 +30,7 @@ use crate::{
             TauriWindowControl,
         },
         main_thread::TauriMainThread,
+        script_extensions::DesktopScriptExtensions,
         ui_effects::adapters::{
             RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
@@ -419,13 +424,30 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     },
                     runtime_paths.clone(),
                     {
+                        #[cfg(feature = "script-javascript")]
+                        let runtime = tauri::async_runtime::handle().inner().clone();
                         let dirs = nyanpasu_scripts::ScriptDirs::new(
                             paths.scripts_dir().into_std_path_buf(),
                             paths.cache_dir().into_std_path_buf(),
                         );
                         Arc::new(move || {
+                            #[cfg(feature = "script-javascript")]
+                            let source = CachedHttpModuleSource::new(
+                                reqwest::Client::builder()
+                                    .redirect(reqwest::redirect::Policy::limited(5))
+                                    .build()?,
+                                dirs.cache.clone(),
+                                Duration::from_secs(60 * 60 * 24 * 30),
+                                Arc::new(SystemTime::now),
+                                runtime.clone(),
+                            );
+                            #[cfg(feature = "script-javascript")]
+                            let extensions = DesktopScriptExtensions::new(Arc::new(source));
+                            #[cfg(not(feature = "script-javascript"))]
+                            let extensions = DesktopScriptExtensions {};
                             Ok(Box::new(nyanpasu_scripts::EnhanceScriptRunner::new(
                                 dirs.clone(),
+                                Arc::new(extensions),
                             )?))
                         })
                     },

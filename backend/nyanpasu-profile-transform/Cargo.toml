@@ -20,10 +20,24 @@ snafu = { workspace = true }
 specta = { version = '^2.0.0-rc.25', features = ['indexmap'] }
 
 [dev-dependencies]
+boa_utils = { path = '../boa_utils' }
+boa_engine = { workspace = true, features = ['annex-b'] }
+mlua = { version = '0.12', features = [
+  'lua54',
+  'async',
+  'serialize',
+  'vendored',
+  'error-send'
+] }
+async-trait = '0.1'
+url = '2'
 # Preserve the golden suite's default core from its original platform test target.
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'default-meta'
 ] }
-nyanpasu-scripts = { path = '../nyanpasu-scripts' }
+nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false, features = [
+  'javascript',
+  'lua'
+] }
 tempfile = '3'
 serde_json = { version = '1', features = ['preserve_order'] }

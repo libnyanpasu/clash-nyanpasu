@@ -63,153 +63,155 @@ impl Console {
     }
 }
 
-/// Installs `console` and points `print` at `console.log`. Everything goes
-/// to `sink`.
-pub fn register(lua: &Lua, sink: &ConsoleSink) -> LuaResult<()> {
-    let console = Console {
-        sink: sink.clone(),
-        state: Rc::default(),
-    };
-    let table = lua.create_table()?;
-    for (name, level) in [
-        ("log", StepLogLevel::Log),
-        ("info", StepLogLevel::Info),
-        ("warn", StepLogLevel::Warn),
-        ("error", StepLogLevel::Error),
-        ("debug", StepLogLevel::Log),
-    ] {
+impl ConsoleSink {
+    /// Installs `console` and points `print` at `console.log`. Everything goes
+    /// to `sink`.
+    pub fn register_lua(lua: &Lua, sink: &ConsoleSink) -> LuaResult<()> {
+        let console = Console {
+            sink: sink.clone(),
+            state: Rc::default(),
+        };
+        let table = lua.create_table()?;
+        for (name, level) in [
+            ("log", StepLogLevel::Log),
+            ("info", StepLogLevel::Info),
+            ("warn", StepLogLevel::Warn),
+            ("error", StepLogLevel::Error),
+            ("debug", StepLogLevel::Log),
+        ] {
+            console.add(
+                lua,
+                &table,
+                name,
+                move |lua, console, args: LuaMultiValue| {
+                    console.emit(level, &format_args(lua, args)?);
+                    Ok(())
+                },
+            )?;
+        }
+        console.add(lua, &table, "trace", |lua, console, args: LuaMultiValue| {
+            let message = format_args(lua, args)?;
+            // Level 1 starts the traceback at the script frame that called us.
+            let traceback = lua.traceback(Some(&message), 1)?;
+            console.emit(StepLogLevel::Log, &traceback.to_string_lossy());
+            Ok(())
+        })?;
         console.add(
             lua,
             &table,
-            name,
-            move |lua, console, args: LuaMultiValue| {
-                console.emit(level, &format_args(lua, args)?);
+            "assert",
+            |lua, console, (condition, args): (LuaValue, LuaMultiValue)| {
+                if !matches!(condition, LuaValue::Nil | LuaValue::Boolean(false)) {
+                    return Ok(());
+                }
+                let details = format_args(lua, args)?;
+                let message = if details.is_empty() {
+                    "Assertion failed".to_string()
+                } else {
+                    format!("Assertion failed: {details}")
+                };
+                console.emit(StepLogLevel::Error, &message);
                 Ok(())
             },
         )?;
-    }
-    console.add(lua, &table, "trace", |lua, console, args: LuaMultiValue| {
-        let message = format_args(lua, args)?;
-        // Level 1 starts the traceback at the script frame that called us.
-        let traceback = lua.traceback(Some(&message), 1)?;
-        console.emit(StepLogLevel::Log, &traceback.to_string_lossy());
-        Ok(())
-    })?;
-    console.add(
-        lua,
-        &table,
-        "assert",
-        |lua, console, (condition, args): (LuaValue, LuaMultiValue)| {
-            if !matches!(condition, LuaValue::Nil | LuaValue::Boolean(false)) {
-                return Ok(());
-            }
-            let details = format_args(lua, args)?;
-            let message = if details.is_empty() {
-                "Assertion failed".to_string()
-            } else {
-                format!("Assertion failed: {details}")
-            };
-            console.emit(StepLogLevel::Error, &message);
-            Ok(())
-        },
-    )?;
-    console.add(lua, &table, "count", |lua, console, label: LuaValue| {
-        let label = label_of(lua, label)?;
-        let count = {
-            let mut state = console.state.borrow_mut();
-            let count = state.counts.entry(label.clone()).or_default();
-            *count += 1;
-            *count
-        };
-        console.emit(StepLogLevel::Info, &format!("count {label}: {count}"));
-        Ok(())
-    })?;
-    console.add(
-        lua,
-        &table,
-        "countReset",
-        |lua, console, label: LuaValue| {
+        console.add(lua, &table, "count", |lua, console, label: LuaValue| {
             let label = label_of(lua, label)?;
-            let existed = console.state.borrow_mut().counts.remove(&label).is_some();
-            if !existed {
+            let count = {
+                let mut state = console.state.borrow_mut();
+                let count = state.counts.entry(label.clone()).or_default();
+                *count += 1;
+                *count
+            };
+            console.emit(StepLogLevel::Info, &format!("count {label}: {count}"));
+            Ok(())
+        })?;
+        console.add(
+            lua,
+            &table,
+            "countReset",
+            |lua, console, label: LuaValue| {
+                let label = label_of(lua, label)?;
+                let existed = console.state.borrow_mut().counts.remove(&label).is_some();
+                if !existed {
+                    console.emit(
+                        StepLogLevel::Warn,
+                        &format!("Count for '{label}' does not exist"),
+                    );
+                }
+                Ok(())
+            },
+        )?;
+        console.add(lua, &table, "time", |lua, console, label: LuaValue| {
+            let label = label_of(lua, label)?;
+            let started = {
+                let mut state = console.state.borrow_mut();
+                let absent = !state.timers.contains_key(&label);
+                if absent {
+                    state.timers.insert(label.clone(), Instant::now());
+                }
+                absent
+            };
+            if !started {
                 console.emit(
                     StepLogLevel::Warn,
-                    &format!("Count for '{label}' does not exist"),
+                    &format!("Timer '{label}' already exists"),
                 );
             }
             Ok(())
-        },
-    )?;
-    console.add(lua, &table, "time", |lua, console, label: LuaValue| {
-        let label = label_of(lua, label)?;
-        let started = {
-            let mut state = console.state.borrow_mut();
-            let absent = !state.timers.contains_key(&label);
-            if absent {
-                state.timers.insert(label.clone(), Instant::now());
-            }
-            absent
-        };
-        if !started {
-            console.emit(
-                StepLogLevel::Warn,
-                &format!("Timer '{label}' already exists"),
-            );
-        }
-        Ok(())
-    })?;
-    console.add(
-        lua,
-        &table,
-        "timeLog",
-        |lua, console, (label, args): (LuaValue, LuaMultiValue)| {
+        })?;
+        console.add(
+            lua,
+            &table,
+            "timeLog",
+            |lua, console, (label, args): (LuaValue, LuaMultiValue)| {
+                let label = label_of(lua, label)?;
+                let started = console.state.borrow().timers.get(&label).copied();
+                let Some(started) = started else {
+                    return missing_timer(console, &label);
+                };
+                let mut message = format!("{label}: {}", elapsed(started));
+                let details = format_args(lua, args)?;
+                if !details.is_empty() {
+                    message = format!("{message} {details}");
+                }
+                console.emit(StepLogLevel::Log, &message);
+                Ok(())
+            },
+        )?;
+        console.add(lua, &table, "timeEnd", |lua, console, label: LuaValue| {
             let label = label_of(lua, label)?;
-            let started = console.state.borrow().timers.get(&label).copied();
+            let started = console.state.borrow_mut().timers.remove(&label);
             let Some(started) = started else {
                 return missing_timer(console, &label);
             };
-            let mut message = format!("{label}: {}", elapsed(started));
-            let details = format_args(lua, args)?;
-            if !details.is_empty() {
-                message = format!("{message} {details}");
-            }
-            console.emit(StepLogLevel::Log, &message);
-            Ok(())
-        },
-    )?;
-    console.add(lua, &table, "timeEnd", |lua, console, label: LuaValue| {
-        let label = label_of(lua, label)?;
-        let started = console.state.borrow_mut().timers.remove(&label);
-        let Some(started) = started else {
-            return missing_timer(console, &label);
-        };
-        console.emit(
-            StepLogLevel::Info,
-            &format!("{label}: {} - timer removed", elapsed(started)),
-        );
-        Ok(())
-    })?;
-    for name in ["group", "groupCollapsed"] {
-        console.add(lua, &table, name, |lua, console, args: LuaMultiValue| {
             console.emit(
                 StepLogLevel::Info,
-                &format!("group: {}", format_args(lua, args)?),
+                &format!("{label}: {} - timer removed", elapsed(started)),
             );
-            console.state.borrow_mut().groups += 1;
             Ok(())
         })?;
-    }
-    console.add(lua, &table, "groupEnd", |_, console, ()| {
-        let mut state = console.state.borrow_mut();
-        state.groups = state.groups.saturating_sub(1);
-        Ok(())
-    })?;
+        for name in ["group", "groupCollapsed"] {
+            console.add(lua, &table, name, |lua, console, args: LuaMultiValue| {
+                console.emit(
+                    StepLogLevel::Info,
+                    &format!("group: {}", format_args(lua, args)?),
+                );
+                console.state.borrow_mut().groups += 1;
+                Ok(())
+            })?;
+        }
+        console.add(lua, &table, "groupEnd", |_, console, ()| {
+            let mut state = console.state.borrow_mut();
+            state.groups = state.groups.saturating_sub(1);
+            Ok(())
+        })?;
 
-    let globals = lua.globals();
-    // Without this `print` writes to the process's stdout, where nobody sees it.
-    globals.set("print", table.get::<LuaFunction>("log")?)?;
-    globals.set("console", table)?;
-    Ok(())
+        let globals = lua.globals();
+        // Without this `print` writes to the process's stdout, where nobody sees it.
+        globals.set("print", table.get::<LuaFunction>("log")?)?;
+        globals.set("console", table)?;
+        Ok(())
+    }
 }
 
 fn missing_timer(console: &Console, label: &str) -> LuaResult<()> {
@@ -327,13 +329,16 @@ mod tests {
     use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel::*};
 
     use super::*;
-    use crate::create_lua_context;
+    use crate::{
+        extensions::ScriptExtensionFactory as _, lua::create_lua_context,
+        test_extensions::TestExtensions,
+    };
 
     /// Runs `script` with `config` loaded from YAML and returns what it logged.
     fn logs(config: &str, script: &str) -> Vec<StepLogEntry> {
-        let lua = create_lua_context().unwrap();
+        let lua = create_lua_context(&TestExtensions.lua().unwrap()).unwrap();
         let sink = ConsoleSink::default();
-        register(&lua, &sink).unwrap();
+        ConsoleSink::register_lua(&lua, &sink).unwrap();
         let config: serde_yaml::Value = serde_yaml::from_str(config).unwrap();
         lua.globals()
             .set("config", ordered_map::to_lua(&lua, &config).unwrap())

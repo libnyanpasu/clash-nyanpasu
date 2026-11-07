@@ -10,15 +10,13 @@ authors.workspace = true
 doctest = false
 
 [dependencies]
+async-trait = '0.1'
+snafu = { workspace = true }
 boa_engine = { workspace = true, features = ['annex-b'] }
 boa_parser = { version = '0.22', features = ['annex-b'] }
-tokio = { workspace = true }
-nyanpasu-utils = { workspace = true }
 nyanpasu-log-preview = { workspace = true }
-reqwest = { workspace = true }
 futures-util = '0.3'
 futures-concurrency = '7'
-smol = '2'
 tracing = '0.1'
 url = '2'
 log = '0.4'
@@ -26,16 +24,13 @@ anyhow = '1.0'
 include_url_macro = { workspace = true }
 phf = { version = '0.14.0', features = ['macros'] }
 
-# for cacheing
 mime = '0.3.17'
-async-fs = '2.1.2'
 
 # for encoding/decoding
 serde = { version = '1.0', features = ['derive'] }
-postcard = { version = '1.1.1', features = ['use-std'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
 brotli = '9.0.0'
 
 [dev-dependencies]
+smol = '2'
 test-log = { workspace = true }
-tempfile = '3.17'

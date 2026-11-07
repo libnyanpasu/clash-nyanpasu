@@ -84,7 +84,8 @@ fn builder_runs_a_managed_script_through_the_platform_adapters() {
 
     let content = FixtureContentSource::new(temp.path().to_path_buf());
     let dirs = ScriptDirs::under(temp.path());
-    let scripts = EnhanceScriptRunner::new(dirs).unwrap();
+    let scripts =
+        EnhanceScriptRunner::new(dirs, Arc::new(super::test_extensions::TestExtensions)).unwrap();
     let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
     let yaml = serde_yaml_ng::to_value(&*artifact.final_config).unwrap();
 

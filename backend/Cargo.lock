@@ -1846,6 +1846,7 @@ dependencies = [
  "nyanpasu-persistence",
  "nyanpasu-profile-io",
  "nyanpasu-profile-transform",
+ "nyanpasu-rpc-protocol",
  "nyanpasu-runtime-values",
  "nyanpasu-scripts",
  "nyanpasu-state-engine",
@@ -7251,6 +7252,16 @@ dependencies = [
  "specta",
  "tempfile",
  "url",
+]
+
+[[package]]
+name = "nyanpasu-rpc-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "specta",
+ "specta-typescript",
 ]
 
 [[package]]

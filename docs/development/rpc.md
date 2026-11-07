@@ -44,6 +44,48 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 - Frontend application calls use generated protocol types and transport adapters from `@nyanpasu/rpc`, then query/mutation bindings from `@nyanpasu/query`. The app injects the RPC client/context into query providers. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.
 - Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_macro::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
 
+### Neutral declarations and native wrappers
+
+`rpc` generates a neutral handler and declaration metadata. An accompanying
+`#[tauri::command]` additionally generates and registers the native wrapper that
+extracts State, AppHandle, Window, Webview and Channel inputs. Shared declarations
+have no native wrapper: they declare `RpcState<'_, NyanpasuClient>` (or `Storage`
+or `PathResolver`) from the explicit `RpcDependencies` slots and use `rpc(owner)`
+with `RpcCaller` for the transport-supplied caller. These neutral declaration
+types live in `unified_rpc` and are omitted from Specta's schema. The handler
+passes borrowed dependencies and `RpcOwner` to the implementation; neither is
+decoded from request JSON. Both paths preserve camelCase inputs, unknown-field
+compatibility, Result aliases and empty-object/null handling for zero inputs.
+
+`rpc(http)` and `rpc(local)` declare independent targets; desktop remains the
+complete surface. `capabilities(...)` and `optional_capabilities(...)` record
+required facilities and reachable conditional effects. Optional elevation is
+valid with `rpc(local)`; it is not a blanket rejection or an execution policy.
+E1a-c adds this syntax without changing production exposure or capability
+annotations. Required-capability admission remains E1a-d work, and production
+local opt-ins remain E3e work.
+
+The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
+the same declarations as handler metadata. Its development-only extractor in
+`nyanpasu-macro` follows the explicitly listed production roots (currently
+`tauri/src/ipc.rs`) through inline and ordinary external modules, inherits
+ancestor `cfg`/`cfg_attr` guards and excludes test fixtures. It does not resolve
+arbitrary Rust module systems or add a protocol build dependency on application
+code. When commands move, migrate the roots, schema and handler inventories
+together. Run from `backend/`:
+
+```sh
+cargo test -p nyanpasu-macro --features syn/full export_rpc_command_catalog -- --ignored
+cargo test -p nyanpasu-macro --features syn/full rpc_command_catalog_is_fresh
+```
+
+The exporter writes explicitly; the freshness test only compares. Regenerate
+after changing names, targets, capabilities or declaration guards. The registry
+loads catalog metadata before associating linked handlers, so an unlinked native
+wrapper leaves a known command returning `unsupported`. Coverage tests distinguish
+native wrappers, shared handlers and unlinked catalog entries. Regenerate the
+three frontend bindings as well; this seam must leave them unchanged.
+
 ### Declare capabilities and preserve transport semantics
 
 All dispatched application calls enter `dispatch_audited`, including direct HTTP
@@ -74,7 +116,7 @@ local socket/CLI must enter this same kernel at INFO.
 
 E1a-b moved `RpcOwner`, `RpcError`, `RpcValue`, the request envelope and the eleven shared `EventName` identities into `nyanpasu-rpc-protocol`. Desktop event wrappers remain in the shell and are checked against the protocol names. HTTP cookie parsing, status mapping and application error downcasts remain consumer-side free functions. This move preserves existing owner labels, HTTP errors and bindings.
 
-The remaining changes are planned in [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分), not implemented by the documentation refinement. E1a splits neutral declarations from native wrappers and adds independent target/capability metadata. Known commands remain registered when a shell lacks a required capability and return `unsupported`; `unknown_method` is reserved for unknown names. Optional effect metadata does not deny unrelated configuration edits and does not replace elevation policy.
+E1a-c separates neutral declarations from native wrappers and generates independent target/capability metadata and the neutral catalog. Existing native command declarations and transport exposure are unchanged. The remaining changes are planned in [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分). E1a-d will add required-capability admission while retaining known commands as `unsupported`; `unknown_method` remains reserved for unknown names. Optional effect metadata does not deny unrelated configuration edits and does not replace elevation policy.
 
 E2 moves shared commands, registry, error conversion, HTTP infrastructure, event bus and `dispatch_audited`/`RpcAuditSink` and the Tauri-free production `TracingRpcAuditSink` into `nyanpasu-rpc`; both shells reuse that sink and its existing level/secret-exclusion tests. Native IPC/window/Channel binding and Tauri asset resolution stay in the shell. A schema-only Specta collector accepts neutral commands without generating Tauri handlers; `build_transport_builder` registers only `call_rpc`. Retained host HTTP facilities use explicitly injected ports, including the original Tauri executable resolver and pure icon/file queries. E2a compares the full HTTP exposure set before and after extraction. `nyanpasu-rpc-protocol` owns the envelope, identifiers and complete wire/receiving type closure below CORE_FAMILY; application downcasts stay in the registry. E1b references canonical foundation values, including D2e runtime-values, and uses receiving DTOs where skipped operational sources cannot be reconstructed.
 

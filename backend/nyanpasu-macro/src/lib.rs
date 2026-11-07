@@ -2,6 +2,8 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
 mod builder_update;
+#[cfg(test)]
+mod command_catalog;
 mod enum_wrapper_combined;
 mod owned_fields;
 mod unified_command;

@@ -19,7 +19,7 @@ dependency rules.
 | `nyanpasu-observers`         | Core-log, traffic and country-index owners over injected store, frame and mode ports              | Implementation crates, `redb`, `clash-api`, core manager, `notify`, `notify-debouncer-full`, Tauri, egui/eframe or Slint      |
 | `nyanpasu-migration`         | Configuration upgrades, backups and session document reads through storage ports                  | Implementation crates, `redb`, core manager, Tauri, egui/eframe or Slint                                                      |
 | `nyanpasu-updater`           | Core update owner, artifact preparation, downloads and unpacking over an injected backend factory | Implementation crates, Tauri, egui/eframe or Slint                                                                            |
-| `nyanpasu-rpc-protocol`      | RPC owner values, request/error envelopes, transparent JSON and shared event names                | GUI, every core-family member (including state-engine) and implementation crates                                              |
+| `nyanpasu-rpc-protocol`      | RPC envelopes, owner/event values, command metadata and generated catalog                         | GUI, every core-family member (including state-engine) and implementation crates                                              |
 | `nyanpasu-runtime-values`    | Public mutation results, degradation and runtime/profile error values                             | Core family, engine, implementation crates, GUI and core manager                                                              |
 | `nyanpasu-state-engine`      | Generic state coordination, persistence, snapshots and transaction settlement                     | Every parent-workspace package except persistence; other core-family packages and GUI                                         |
 | `nyanpasu-core`              | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and source state owners | Implementation crates, Tauri, egui/eframe or Slint                                                                            |
@@ -68,6 +68,15 @@ Names are working names until the PR that creates each crate.
 E1a-b delivered protocol owner values, request/error envelopes, transparent JSON and the eleven event identities. Cookie parsing, HTTP status mapping and application error conversion remain in the desktop consumer; protocol currently has only Serde/JSON/Specta dependencies. The remaining Phase E work stays planned; [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分) defines its implementation cards. The protocol owns wire contracts and receiving projections, not application error downcasts or operational sources. Canonical foundation values stay in their existing owner. A separate local-client crate is deferred unless `protocol/local-client` cannot isolate the client dependency closure.
 
 The planned registry owns thin shared commands, bus-first event delivery and the C2f audited dispatch kernel. Tauri IPC/native channels and asset resolution remain shell adapters; HTTP and local-server are explicit registry features. Local client framing/decoding is a protocol feature with no registry dependency. Missing required capabilities leave known commands registered and return `unsupported`, not `unknown_method`.
+
+E1a-c adds neutral command target/capability values and the generated production
+command catalog to protocol. The catalog retains conditional declarations and
+known native names independently of linked handlers. Its scoped extractor runs
+only as explicit development tooling in the macro tests; protocol has no normal
+or build dependency on the macro crate, application declarations or core. Macro
+dependencies remain syntax/code-generation tools. Shared handlers consume the
+explicit dependency/caller interface in the desktop registry until E2b moves it;
+native extraction remains a separate shell wrapper. See the [catalog workflow](rpc.md#neutral-declarations-and-native-wrappers).
 
 The server is a composition shell with no GUI/Tauri dependency. Its first composition injects `RefuseElevation` into service control, DNS flush and binary installation, keeps shared effects and supplies neutral sinks without presentation capabilities. This changes only the separate server; the embedded desktop WebUI retains the desktop policy. CLI production normal/build closure forbids CORE_FAMILY (including state-engine), IMPLEMENTATION, RPC adapter, server and GUI; foundation values reached through protocol are allowed. Test-only server fixtures do not authorize a production edge. Package creation must update dependency policy tests, static-prefix coverage and both musl package/expected-target lists together.
 

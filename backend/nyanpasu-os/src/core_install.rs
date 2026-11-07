@@ -24,12 +24,25 @@ use crate::elevation::runner::{CommandRunner, OsCommandRunner};
 /// Copies a staged binary, falling back to elevation, then publishes its companion.
 pub struct FsBinaryInstaller {
     consent: Arc<dyn ElevationConsent>,
+    runner: Arc<dyn CommandRunner>,
 }
 
 impl FsBinaryInstaller {
     /// Uses the shell's policy only when an ordinary copy needs an elevated fallback.
     pub fn new(consent: Arc<dyn ElevationConsent>) -> Self {
-        Self { consent }
+        Self {
+            consent,
+            runner: Arc::new(OsCommandRunner),
+        }
+    }
+
+    /// Intercepts fallback commands while retaining ordinary copy and staging ownership.
+    #[cfg(feature = "test-support")]
+    pub fn new_with_runner(
+        consent: Arc<dyn ElevationConsent>,
+        runner: Arc<dyn CommandRunner>,
+    ) -> Self {
+        Self { consent, runner }
     }
 }
 
@@ -39,7 +52,7 @@ impl BinaryInstaller for FsBinaryInstaller {
         &self,
         request: &CoreBinaryInstallRequest,
     ) -> Result<(), InstallCoreBinaryError> {
-        install_binary(request, self.consent.as_ref(), Arc::new(OsCommandRunner)).await?;
+        install_binary(request, self.consent.as_ref(), self.runner.clone()).await?;
         // Nothing Nyanpasu runs uses the companion, so failing to publish it fails no
         // core installation; the previous companion stays in place.
         if let Some(companion) = &request.companion

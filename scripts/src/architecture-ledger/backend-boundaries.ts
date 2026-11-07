@@ -1,4 +1,11 @@
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import * as path from 'node:path'
+import {
+  parse as parseToml,
+  stringify as stringifyToml,
+  type TomlTable,
+} from 'smol-toml'
 import { runCommand } from '../shared/command.ts'
 import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 import { checkCoreModuleBoundaries } from './core-module-boundaries.ts'
@@ -50,6 +57,7 @@ const IMPLEMENTATION = [
 ]
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
+  { package: 'nyanpasu-server', forbids: GUI },
   { package: 'nyanpasu-rpc', forbids: [...GUI, ...IMPLEMENTATION] },
   ...[
     ...FOUNDATION,
@@ -193,6 +201,78 @@ export function dependencyViolations(
     .map((name) => `${owner} must not depend on ${name}`)
 }
 
+interface FeatureMetadata {
+  packages: { id: string; name: string }[]
+  resolve: { nodes: { id: string; features: string[] }[] }
+}
+
+/** Only call with an independently resolved production consumer, never a test-unified graph. */
+export function serverProductionFeatureViolations(
+  metadata: FeatureMetadata,
+): string[] {
+  const os = metadata.packages.find((pkg) => pkg.name === 'nyanpasu-os')
+  const node = metadata.resolve.nodes.find((node) => node.id === os?.id)
+  return node?.features.includes('test-support')
+    ? [
+        'nyanpasu-server production closure must not enable nyanpasu-os/test-support',
+      ]
+    : []
+}
+
+export async function checkServerProductionFeatures(
+  features: string[],
+  backendRoot: string,
+): Promise<string[]> {
+  // An external consumer excludes the server's dev edges before Cargo unifies features.
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'nyanpasu-server-production-'),
+  )
+  const server = path.join(backendRoot, 'nyanpasu-server').replaceAll('\\', '/')
+  const workspace = parseToml(
+    readFileSync(path.join(backendRoot, 'Cargo.toml'), 'utf8'),
+  )
+  const patches = (workspace.patch ?? {}) as Record<
+    string,
+    Record<string, TomlTable>
+  >
+  for (const dependencies of Object.values(patches)) {
+    for (const dependency of Object.values(dependencies)) {
+      if (typeof dependency.path === 'string') {
+        dependency.path = path
+          .resolve(backendRoot, dependency.path)
+          .replaceAll('\\', '/')
+      }
+    }
+  }
+  writeFileSync(
+    path.join(directory, 'Cargo.toml'),
+    `[package]\nname = "server-production-probe"\nversion = "0.0.0"\nedition = "2024"\n` +
+      `[workspace]\nresolver = "2"\n[lib]\npath = "lib.rs"\n[dependencies]\n` +
+      `nyanpasu-server = { path = ${JSON.stringify(server)}, features = ${JSON.stringify(features)} }\n` +
+      stringifyToml({ patch: patches }),
+  )
+  writeFileSync(path.join(directory, 'lib.rs'), '')
+  copyFileSync(
+    path.join(backendRoot, 'Cargo.lock'),
+    path.join(directory, 'Cargo.lock'),
+  )
+  const result = await runCommand('cargo', {
+    cwd: WORKSPACE_ROOT,
+    args: [
+      'metadata',
+      '--offline',
+      '--format-version',
+      '1',
+      '--manifest-path',
+      path.join(directory, 'Cargo.toml'),
+    ],
+  })
+  if (!result.success) throw new Error(result.stderr.toString('utf8'))
+  return serverProductionFeatureViolations(
+    JSON.parse(result.stdout.toString('utf8')),
+  )
+}
+
 export async function main(): Promise<number> {
   const metadataResult = await runCommand('cargo', {
     cwd: WORKSPACE_ROOT,
@@ -211,7 +291,7 @@ export async function main(): Promise<number> {
     return metadataResult.code || 1
   }
   const metadata: {
-    packages: { id: string; name: string }[]
+    packages: { id: string; name: string; features: Record<string, string[]> }[]
     workspace_members: string[]
   } = JSON.parse(metadataResult.stdout.toString('utf8'))
   const workspaceMembers = metadata.packages
@@ -220,6 +300,14 @@ export async function main(): Promise<number> {
   const problems = checkCoreModuleBoundaries(
     path.join(WORKSPACE_ROOT, 'backend/nyanpasu-core/src'),
   )
+  const server = metadata.packages.find((pkg) => pkg.name === 'nyanpasu-server')
+  if (server)
+    problems.push(
+      ...(await checkServerProductionFeatures(
+        Object.keys(server.features),
+        path.join(WORKSPACE_ROOT, 'backend'),
+      )),
+    )
   const packages = new Set(DEPENDENCY_RULES.map((rule) => rule.package))
   for (const owner of packages) {
     const result = await runCommand('cargo', {

@@ -91,9 +91,9 @@ The [target ownership](../design/application-platform-extraction.md#target-owner
 is the plan for the next stage:
 
 - **Shells** compose the application and serve it over RPC. The desktop shell
-  runs core in process. `nyanpasu-server` (planned) is a long-lived headless
-  shell, and `nyanpasu-cli` (planned) is a client of a running shell, not a
-  composition root. The router form is LuCI → CLI → server.
+  runs core in process. `nyanpasu-server` has a headless composition library;
+  its long-lived executable remains planned. `nyanpasu-cli` (planned) is a
+  client of a running shell, not a composition root. The router form is LuCI → CLI → server.
 - **RPC targets** are Tauri IPC (the full desktop surface), WebUI over HTTP
   (an explicit, restricted allowlist) and the CLI over a local socket (a
   separate explicit allowlist). Planned E1a keeps known commands registered:
@@ -142,10 +142,19 @@ is the plan for the next stage:
   panics remain fatal; a dedicated client transport task owns each connection,
   so dropping a call future cannot desynchronize partial IO. A timeout/error
   invalidates the connection without cancelling owner work or retrying mutations.
-- **Planned server composition** installs a neutral process panic policy before
-  any tasks, owns one long-lived client, keeps shared effects
+  Typed calls go through the thirteen `RpcOperation` contracts: the client sends
+  the contract's request and decodes its receiving response, while remote errors
+  retain their complete envelope and separately decodable domain payload. The
+  generic JSON API remains. Client-only consumers compile without the RPC adapter
+  or application crates.
+- **Server composition (E4a)** provides a library composition root with one
+  client and registry, keeps shared effects
   and neutral sinks, and omits optional presentation capabilities. It injects
   `RefuseElevation` into service control, DNS flush and binary installation.
+  Metadata, paths, executable source and logger are explicit host inputs. Script
+  engines use server-owned extension and IO adapters. Redb log storage retains
+  the observers unavailable fallback. E4b still owns executable startup, the
+  process panic policy, forwarder activation and listener lifecycle.
   This closes those paths only in the separate server; embedded desktop HTTP
   retains the desktop policy. E5/OpenWrt and LAN ticket login remain paused.
   The executable plan is [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分).
@@ -231,6 +240,7 @@ Rules for maintaining the separation:
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-state-engine/src/`,
   `backend/nyanpasu-runtime-values/src/`, `backend/nyanpasu-rpc-protocol/src/`,
   `backend/nyanpasu-rpc/src/`,
+  `backend/nyanpasu-server/src/`,
   `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/boa_utils/src/`,
   `backend/nyanpasu-profile-transform/src/`,
@@ -239,7 +249,7 @@ Rules for maintaining the separation:
   `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
   `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All eighteen use the same explicit path-and-name allowlist; other backend library
+  All nineteen use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

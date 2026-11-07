@@ -64,9 +64,14 @@ export async function main(args: string[]): Promise<void> {
         'rustup toolchain install nightly --profile minimal >&2\n' +
         'toolchain_cargo=$(rustup which --toolchain nightly cargo)\n' +
         'export RUSTC=$(rustup which --toolchain nightly rustc)\n' +
+        // Resolve the client library separately: test/dev and RPC features must not mask omissions.
+        '"$toolchain_cargo" build --locked --manifest-path backend/Cargo.toml ' +
+        '-p nyanpasu-rpc-protocol --lib --no-default-features --features local-client --jobs 12 >&2\n' +
+        '"$toolchain_cargo" build --locked --manifest-path backend/Cargo.toml -p nyanpasu-server --lib --jobs 12 >&2\n' +
+        // The independent production closure is checked by lint:backend-boundaries.
         '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
         '-p nyanpasu-rpc --features nyanpasu-rpc/http --features nyanpasu-rpc/local-server -p nyanpasu-rpc-protocol --features nyanpasu-rpc-protocol/frame-io --features nyanpasu-rpc-protocol/local-client -p nyanpasu-contracts -p nyanpasu-core -p nyanpasu-state-engine -p nyanpasu-runtime-values -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts -p boa_utils ' +
-        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater -p nyanpasu-os --lib --tests ' +
+        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater -p nyanpasu-os -p nyanpasu-server --features nyanpasu-os/test-support --lib --tests ' +
         '--no-run --message-format=json --jobs 4',
     ],
     stdout: 'piped',
@@ -77,6 +82,7 @@ export async function main(args: string[]): Promise<void> {
   const expectedTargets = new Set([
     'lib:nyanpasu_rpc_protocol',
     'lib:nyanpasu_rpc',
+    'lib:nyanpasu_server',
     'lib:nyanpasu_contracts',
     'lib:nyanpasu_core',
     'lib:nyanpasu_state_engine',

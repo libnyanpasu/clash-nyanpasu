@@ -346,6 +346,11 @@ security rules. With no enable value, no endpoint is discovered or bound.
 There is no frontend control. The listener uses the desktop's existing client,
 capabilities and elevation policy; it makes no global refusal-of-elevation claim.
 The separately composed E4 server remains responsible for its refusal policy.
+E4a delivers its library composition: one client and registry, neutral event/audit
+sinks, no presentation capabilities, and `RefuseElevation` on service, DNS and
+binary installation. HTTP/local features are compiled, but executable startup and
+listener activation remain E4b. Embedded desktop HTTP and local RPC continue to
+use the desktop composition's policy.
 Root shutdown stops admission and joins accepted work and resource cleanup.
 
 The local command allowlist is exactly:

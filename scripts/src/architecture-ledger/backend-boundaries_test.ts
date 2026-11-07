@@ -1,7 +1,183 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
 import { test } from 'node:test'
-import { dependencyViolations } from './backend-boundaries.ts'
+import {
+  checkServerProductionFeatures,
+  dependencyViolations,
+  serverProductionFeatureViolations,
+} from './backend-boundaries.ts'
+
+test('server production probe retains workspace patches with relative paths', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'server-patched-policy-'))
+  for (const name of ['nyanpasu-server', 'patched-os']) {
+    mkdirSync(path.join(directory, name))
+    writeFileSync(path.join(directory, name, 'lib.rs'), '')
+  }
+  writeFileSync(
+    path.join(directory, 'Cargo.toml'),
+    '[workspace]\nmembers = ["nyanpasu-server"]\nresolver = "2"\n' +
+      '[patch.crates-io]\nnyanpasu-os = { path = "patched-os" }\n',
+  )
+  writeFileSync(
+    path.join(directory, 'nyanpasu-server/Cargo.toml'),
+    '[package]\nname = "nyanpasu-server"\nversion = "0.0.0"\nedition = "2024"\n' +
+      '[lib]\npath = "lib.rs"\n[dependencies]\nnyanpasu-os = "=99.98.97"\n',
+  )
+  writeFileSync(
+    path.join(directory, 'patched-os/Cargo.toml'),
+    '[package]\nname = "nyanpasu-os"\nversion = "99.98.97"\nedition = "2024"\n' +
+      '[lib]\npath = "lib.rs"\n[features]\ndefault = ["test-support"]\ntest-support = []\n',
+  )
+  execFileSync(
+    'cargo',
+    [
+      'metadata',
+      '--offline',
+      '--format-version',
+      '1',
+      '--manifest-path',
+      path.join(directory, 'Cargo.toml'),
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  assert.deepStrictEqual(await checkServerProductionFeatures([], directory), [
+    'nyanpasu-server production closure must not enable nyanpasu-os/test-support',
+  ])
+})
+
+test('server shell accepts core and implementation dependencies but rejects transitive GUI dependencies', () => {
+  const allowed =
+    'nyanpasu-server v0.1.0\nnyanpasu-core v0.1.0\nnyanpasu-os v0.1.0\nnyanpasu-net v0.1.0'
+  assert.deepStrictEqual(dependencyViolations('nyanpasu-server', allowed), [])
+  for (const dependency of [
+    'tauri',
+    'tauri-runtime',
+    'clash-nyanpasu',
+    'egui',
+    'slint',
+    'i-slint-core',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-server',
+        `${allowed}\n${dependency} v1.0.0`,
+      ),
+      [`nyanpasu-server must not depend on ${dependency}`],
+    )
+  }
+})
+
+test('server_production_closure_excludes_os_test_support', () => {
+  // Resolve real Cargo fixtures: dev unification is different from production resolution.
+  for (const kind of [
+    'dev-dependencies',
+    'dependencies',
+    'build-dependencies',
+  ]) {
+    for (const transitive of [false, true]) {
+      const directory = mkdtempSync(
+        path.join(tmpdir(), 'server-feature-policy-'),
+      )
+      const manifest = (name: string, extra: string) => {
+        const dir = path.join(directory, name)
+        mkdirSync(dir)
+        writeFileSync(
+          path.join(dir, 'Cargo.toml'),
+          `[package]\nname = "${name}"\nversion = "0.0.0"\nedition = "2024"\n[lib]\npath = "lib.rs"\n${extra}`,
+        )
+        writeFileSync(path.join(dir, 'lib.rs'), '')
+      }
+      manifest('nyanpasu-os', '[features]\ntest-support = []\n')
+      manifest(
+        'middle',
+        '[dependencies]\nnyanpasu-os = { path = "../nyanpasu-os", features = ["test-support"] }\n',
+      )
+      const enabling = transitive
+        ? 'middle = { path = "../middle" }'
+        : 'nyanpasu-os = { path = "../nyanpasu-os", features = ["test-support"] }'
+      manifest('nyanpasu-server', `[${kind}]\n${enabling}\n`)
+      manifest(
+        'consumer',
+        '[workspace]\nresolver = "2"\n[dependencies]\nnyanpasu-server = { path = "../nyanpasu-server" }\n',
+      )
+      const output = execFileSync(
+        'cargo',
+        [
+          'metadata',
+          '--offline',
+          '--format-version',
+          '1',
+          '--manifest-path',
+          path.join(directory, 'consumer/Cargo.toml'),
+        ],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+      const violations = serverProductionFeatureViolations(JSON.parse(output))
+      assert.equal(
+        violations.length,
+        kind === 'dev-dependencies' ? 0 : 1,
+        `${kind}, transitive=${transitive}`,
+      )
+    }
+  }
+})
+
+test('server composition retains refusal, concrete effects and lib-only musl registration', () => {
+  const root = new URL('../../../', import.meta.url)
+  const source = readFileSync(
+    new URL('backend/nyanpasu-server/src/compose.rs', root),
+    'utf8',
+  )
+  assert.doesNotMatch(
+    source,
+    /InteractiveElevationConsent|UnsupportedEffects|NoopApplicationEffects|nyanpasu_core::logs::UnavailableCoreLogStore/,
+  )
+  assert.match(source, /Arc::new\(RefuseElevation\)/)
+  for (const constructor of [
+    'OsServiceProcessControl',
+    'OsSystemDnsCache',
+    'FsBinaryInstaller',
+  ]) {
+    assert.match(source, new RegExp(`${constructor}::new\\([^;]*?consent`, 's'))
+  }
+  assert.match(
+    source,
+    /ApplicationEffectExecutor::new\(system_proxy, logger, None\)/,
+  )
+  const manifest = readFileSync(
+    new URL('backend/nyanpasu-server/Cargo.toml', root),
+    'utf8',
+  )
+  assert.doesNotMatch(manifest.split('[dev-dependencies]')[0], /test-support/)
+  assert.doesNotMatch(manifest, /\[\[bin\]\]/)
+  const musl = readFileSync(
+    new URL('scripts/src/testing/test-backend-musl.ts', root),
+    'utf8',
+  )
+  assert.match(musl, /-p nyanpasu-server/)
+  assert.match(musl, /lib:nyanpasu_server/)
+  assert.match(musl, /nyanpasu-os\/test-support/)
+  const tests = readFileSync(
+    new URL('backend/nyanpasu-server/src/compose/tests.rs', root),
+    'utf8',
+  )
+  for (const suffix of [
+    'config_on',
+    'config_off',
+    'retry',
+    'compensation',
+    'copy_fallback',
+  ]) {
+    assert.ok(
+      tests.includes(
+        `server_refuses_elevation_on_config_retry_compensation_and_copy_paths_${suffix}`,
+      ),
+    )
+  }
+})
 
 test('RPC local endpoints are opt-in without widening protocol dependencies', () => {
   const manifest = readFileSync(

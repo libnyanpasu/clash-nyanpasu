@@ -21,12 +21,25 @@ use crate::elevation::runner::{CommandRunner, OsCommandRunner};
 /// Flushes the operating system DNS caches using the existing authorization mechanism.
 pub struct OsSystemDnsCache {
     consent: Arc<dyn ElevationConsent>,
+    runner: Arc<dyn CommandRunner>,
 }
 
 impl OsSystemDnsCache {
     /// Uses the shell's policy before requesting OS authorization.
     pub fn new(consent: Arc<dyn ElevationConsent>) -> Self {
-        Self { consent }
+        Self {
+            consent,
+            runner: Arc::new(OsCommandRunner),
+        }
+    }
+
+    /// Intercepts commands while retaining this adapter's consent checks.
+    #[cfg(feature = "test-support")]
+    pub fn new_with_runner(
+        consent: Arc<dyn ElevationConsent>,
+        runner: Arc<dyn CommandRunner>,
+    ) -> Self {
+        Self { consent, runner }
     }
 }
 
@@ -45,7 +58,7 @@ const MACOS_SCRIPT: &str = concat!(
 
 impl SystemDnsCache for OsSystemDnsCache {
     fn flush(&self) -> Result<(), SystemDnsError> {
-        flush_system_dns_cache(self.consent.as_ref(), &OsCommandRunner)
+        flush_system_dns_cache(self.consent.as_ref(), self.runner.as_ref())
     }
 }
 

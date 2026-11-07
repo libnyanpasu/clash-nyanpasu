@@ -15,4 +15,17 @@ test('musl builds and requires the neutral RPC HTTP and local endpoint test targ
   assert.match(runner, /--features nyanpasu-rpc-protocol\/local-client /)
   assert.match(runner, /'lib:nyanpasu_rpc_protocol'/)
   assert.match(runner, /'lib:nyanpasu_rpc',/)
+  assert.match(
+    runner,
+    /'"\$toolchain_cargo" build --locked --manifest-path backend\/Cargo.toml ' \+\s*'-p nyanpasu-rpc-protocol --lib --no-default-features --features local-client --jobs 12 >&2\\n'/,
+  )
+  assert.match(
+    runner,
+    /build --locked --manifest-path backend\/Cargo.toml -p nyanpasu-server --lib --jobs 12/,
+  )
+  assert.match(
+    runner,
+    /-p nyanpasu-server --features nyanpasu-os\/test-support --lib --tests/,
+  )
+  assert.match(runner, /'lib:nyanpasu_server'/)
 })

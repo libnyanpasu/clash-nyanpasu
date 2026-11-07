@@ -186,30 +186,31 @@ pub async fn update_service(
     service_binary: &Path,
     data_dir: &Path,
 ) -> Result<(), ServiceCommandError> {
-    let args = async {
-        #[cfg(unix)]
-        let args = vec![
-            "update".into(),
-            "--user".into(),
-            whoami::username().context(ResolveServiceUserSnafu)?.into(),
-            "--nyanpasu-data-dir".into(),
-            data_dir.into(),
-        ];
-        #[cfg(windows)]
-        let args = {
-            let _ = data_dir;
-            vec!["update".into()]
-        };
-        Ok(args)
-    };
     run_elevated(
         ServiceCommand::Update,
         service_binary,
-        args,
+        service_update_args(data_dir),
         consent,
         Arc::new(OsCommandRunner),
     )
     .await
+}
+
+async fn service_update_args(data_dir: &Path) -> Result<Vec<OsString>, ServiceCommandError> {
+    #[cfg(unix)]
+    let args = vec![
+        "update".into(),
+        "--user".into(),
+        whoami::username().context(ResolveServiceUserSnafu)?.into(),
+        "--nyanpasu-data-dir".into(),
+        data_dir.into(),
+    ];
+    #[cfg(windows)]
+    let args = {
+        let _ = data_dir;
+        vec!["update".into()]
+    };
+    Ok(args)
 }
 
 /// Removes the service through its elevated command.
@@ -273,15 +274,25 @@ pub async fn restart_service(
 }
 
 /// Returns raw UTF-8 status output after checking the service process exit status.
-#[tracing::instrument]
 pub async fn status(service_binary: &Path) -> Result<String, ServiceCommandError> {
+    status_with_runner(service_binary, &OsCommandRunner).await
+}
+
+#[tracing::instrument(name = "status", skip(runner))]
+async fn status_with_runner(
+    service_binary: &Path,
+    runner: &dyn CommandRunner,
+) -> Result<String, ServiceCommandError> {
     #[cfg(windows)]
     ensure_session_active()?;
     let mut cmd = tokio::process::Command::new(service_binary);
     cmd.args(["status", "--json"]);
     #[cfg(windows)]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    let output = cmd.output().await.context(RunServiceStatusSnafu)?;
+    let output = runner
+        .output(&mut cmd)
+        .await
+        .context(RunServiceStatusSnafu)?;
     ensure!(
         output.status.success(),
         ServiceStatusExitSnafu {
@@ -311,6 +322,7 @@ pub struct OsServiceProcessControl {
     service_binary: PathBuf,
     paths: nyanpasu_paths::PathResolver,
     consent: Arc<dyn ElevationConsent>,
+    runner: Arc<dyn CommandRunner>,
 }
 
 impl OsServiceProcessControl {
@@ -325,6 +337,23 @@ impl OsServiceProcessControl {
             service_binary,
             paths,
             consent,
+            runner: Arc::new(OsCommandRunner),
+        }
+    }
+
+    /// Intercepts status probes and elevated launches while retaining the real adapter.
+    #[cfg(feature = "test-support")]
+    pub fn new_with_runner(
+        service_binary: PathBuf,
+        paths: nyanpasu_paths::PathResolver,
+        consent: Arc<dyn ElevationConsent>,
+        runner: Arc<dyn CommandRunner>,
+    ) -> Self {
+        Self {
+            service_binary,
+            paths,
+            consent,
+            runner,
         }
     }
 }
@@ -332,7 +361,7 @@ impl OsServiceProcessControl {
 #[async_trait::async_trait]
 impl ServiceProcessControl for OsServiceProcessControl {
     async fn probe(&self) -> Result<String, ServiceCommandError> {
-        status(&self.service_binary).await
+        status_with_runner(&self.service_binary, self.runner.as_ref()).await
     }
 
     async fn install(&self) -> Result<(), ServiceCommandError> {
@@ -340,33 +369,60 @@ impl ServiceProcessControl for OsServiceProcessControl {
             .paths
             .app_install_dir()
             .context(ResolveServiceDirsSnafu)?;
-        install_service(
-            self.consent.as_ref(),
+        run_elevated(
+            ServiceCommand::Install,
             &self.service_binary,
-            self.paths.app_data_dir().as_std_path(),
-            self.paths.app_config_dir().as_std_path(),
-            app_dir.as_std_path(),
+            get_service_install_args(
+                self.paths.app_data_dir().as_std_path(),
+                self.paths.app_config_dir().as_std_path(),
+                app_dir.as_std_path(),
+            ),
+            self.consent.as_ref(),
+            self.runner.clone(),
         )
         .await
     }
 
     async fn uninstall(&self) -> Result<(), ServiceCommandError> {
-        uninstall_service(self.consent.as_ref(), &self.service_binary).await
+        run_elevated(
+            ServiceCommand::Uninstall,
+            &self.service_binary,
+            async { Ok(vec!["uninstall".into()]) },
+            self.consent.as_ref(),
+            self.runner.clone(),
+        )
+        .await
     }
 
     async fn start_daemon(&self) -> Result<(), ServiceCommandError> {
-        start_service(self.consent.as_ref(), &self.service_binary).await
+        run_elevated(
+            ServiceCommand::Start,
+            &self.service_binary,
+            async { Ok(vec!["start".into()]) },
+            self.consent.as_ref(),
+            self.runner.clone(),
+        )
+        .await
     }
 
     async fn stop_daemon(&self) -> Result<(), ServiceCommandError> {
-        stop_service(self.consent.as_ref(), &self.service_binary).await
+        run_elevated(
+            ServiceCommand::Stop,
+            &self.service_binary,
+            async { Ok(vec!["stop".into()]) },
+            self.consent.as_ref(),
+            self.runner.clone(),
+        )
+        .await
     }
 
     async fn update(&self) -> Result<(), ServiceCommandError> {
-        update_service(
-            self.consent.as_ref(),
+        run_elevated(
+            ServiceCommand::Update,
             &self.service_binary,
-            self.paths.app_data_dir().as_std_path(),
+            service_update_args(self.paths.app_data_dir().as_std_path()),
+            self.consent.as_ref(),
+            self.runner.clone(),
         )
         .await
     }
@@ -441,9 +497,16 @@ mod tests {
             }
         }
         struct RecordingRunner(Mutex<Vec<OsString>>, AtomicI32);
+        #[async_trait::async_trait]
         impl CommandRunner for RecordingRunner {
             fn runas(&self, _: &mut runas::Command) -> std::io::Result<ExitStatus> {
                 panic!("Linux service must use pkexec directly")
+            }
+            async fn output(
+                &self,
+                _: &mut tokio::process::Command,
+            ) -> std::io::Result<std::process::Output> {
+                panic!("an elevated service command does not read status output")
             }
             fn command(&self, command: &mut std::process::Command) -> std::io::Result<ExitStatus> {
                 assert_eq!(command.get_program(), "pkexec");

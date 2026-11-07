@@ -7412,6 +7412,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "boa_engine",
+ "boa_utils",
+ "mlua",
+ "nyanpasu-config",
+ "nyanpasu-contracts",
+ "nyanpasu-core",
+ "nyanpasu-core-manager",
+ "nyanpasu-ipc",
+ "nyanpasu-jobs",
+ "nyanpasu-logging",
+ "nyanpasu-migration",
+ "nyanpasu-net",
+ "nyanpasu-observers",
+ "nyanpasu-os",
+ "nyanpasu-paths",
+ "nyanpasu-profile-io",
+ "nyanpasu-rpc",
+ "nyanpasu-rpc-protocol",
+ "nyanpasu-runtime-values",
+ "nyanpasu-scripts",
+ "nyanpasu-tsdb",
+ "nyanpasu-updater",
+ "nyanpasu-utils",
+ "postcard",
+ "reqwest 0.13.5",
+ "runas",
+ "serde_json",
+ "struct-patch",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "nyanpasu-state-engine"
 version = "0.1.0"
 dependencies = [

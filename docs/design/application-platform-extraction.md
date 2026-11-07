@@ -5,7 +5,8 @@ Status: the Tauri extraction baseline is delivered through Part 24
 `NyanpasuClient` and the shared application layer live in `nyanpasu-core`, and
 core no longer depends on Tauri. The Phase A foundation and implementation split
 is also delivered, and the transitional `nyanpasu-platform` crate is retired.
-Phase B (B1a–B4) is delivered as well.
+Phases B–D and A2b are delivered as well; remaining platform/musl/browser
+execution checks are recorded in tasks §4.
 Package ownership is not final. This document plans the next stage: the shells
 and RPC targets the backend serves, the core package family, and where
 target-specific and concrete
@@ -41,7 +42,7 @@ Shells (composition roots, RPC hosts)
 
 Foundation layer, usable by every crate above it:
   leaves: nyanpasu-config, nyanpasu-contracts, nyanpasu-persistence, nyanpasu-profile-transform
-  planned upper foundation: nyanpasu-runtime-values (no reverse edge from leaves)
+  delivered upper foundation: nyanpasu-runtime-values (no reverse edge from leaves)
 
 Implementation crates, injected by shells, depend on the foundation layer only:
   nyanpasu-scripts, nyanpasu-profile-io, nyanpasu-net, storage backends
@@ -51,8 +52,8 @@ nyanpasu-cli --> nyanpasu-rpc-protocol + local-socket client --> a running shell
 
 Shared application decisions, profile/configuration transactions, core control,
 internal receipts, recovery and observations belong in the core package family.
-Public mutation results and their runtime/profile error closure move to the
-upper-foundation `nyanpasu-runtime-values` in D2. Config
+Public mutation results and their runtime/profile error closure live in the
+upper-foundation `nyanpasu-runtime-values`, delivered in D2. Config
 retains schemas, pure execution and its consumer-owned ports. Classify each
 component by responsibility, not merely by absence of Tauri types. Headless
 startup must not require fake GUI dependencies or successful no-op business
@@ -191,7 +192,7 @@ Dependency rules:
   and the RPC registry depend on the facade.
 - Contracts grow with real consumers: a port moves when a crate outside core
   implements it. Capability ports move with their target crates (phase C);
-  public runtime values move to runtime-values with their error closure (D2).
+  public runtime values and their error closure live in runtime-values (delivered D2).
   Original foundation leaves cannot depend on this upper-foundation package;
   it cannot depend on core family, engine, implementations, GUI or core manager.
   Internal `MutationReceipt`/`RuntimeApplyReceipt` stay in core's `state/mutation/`.
@@ -200,9 +201,9 @@ Dependency rules:
   and `WidgetIpcError` in `WidgetError` (`client/effects/ports.rs:13`) become
   boxed `Error + Send + Sync` sources, preserving serialized variants, `Display`
   and source chains.
-- Domain profile owners stay with the application workflow until mutation
-  participation is inverted: `state/mutation.rs:34` at `fa7e5050b` stores the concrete
-  workflow client. The state engine never depends on the workflow to get a
+- Domain profile owners stay in core; D2b inverted mutation participation.
+  The concrete workflow client formerly stored at `state/mutation.rs:34`
+  (`fa7e5050b`) has been replaced by a typed factory. The state engine never depends on the workflow to get a
   runtime vote. The factory is consumed in `state/mutation/ports.rs` and
   implemented in `client/application_workflow/participant.rs`. D2f checks that
   `state/` does not directly import the workflow or its concrete client; effects,
@@ -210,8 +211,10 @@ Dependency rules:
   `EffectKind` stay in `client/effects`. Control modules cannot import `client`;
   application may import control. The policy is a bounded syntactic guard over explicit use trees and paths,
   including tests; it indexes same-core provider re-exports, allows local service
-  bridges and external `nyanpasu_ipc::client`, and rejects unsupported/glob imports
-  in the policed scope. It is not a Rust resolver or a proof of module independence.
+  bridges and external `nyanpasu_ipc::client`. It accepts `self::*`/`super::*`
+  only from policed modules and recursively resolves inherited alias bindings at
+  their declaration scope. Other globs (including provider re-export globs),
+  `r#` anywhere in checked paths and unsupported forms are rejected. It is not a Rust resolver or a proof of module independence.
 - Fewer, larger crates are cheaper than many small ones. Merge rows that turn
   out small or always change together; measure before adding a boundary
   ([Build measurement](#build-measurement)).
@@ -251,12 +254,15 @@ Script runtimes are part of profile enhancement, not platform infrastructure.
   core, and a shell can leave out an engine through features.
 - What a script may reach is part of its extension definition and is injected:
   module loading (including the JavaScript HTTP module loader), network,
-  filesystem and console. A2b makes determinism conditional on fixed injected
+  filesystem and console. A2b made determinism conditional on fixed injected
   capability observations, not a frozen reproducible mode. Both engine features
   default on; shells disable dependency defaults and select engines explicitly.
-  A2b-a injects extensions without changing behavior. A2b-b is one atomic behavior
+  A2b-a delivered injected extensions without changing behavior. A2b-b delivered one atomic behavior
   commit: selectable engine features, config's typed `StartEngine`, every pipeline
-  branch, wire/bindings, six locales and the browser regression land together.
+  branch, wire/bindings, six locales and the browser regression landed together.
+  Factory engine methods decline by default; both a compiled scripts engine
+  and shell-provided extensions are required, otherwise `StartEngine` is returned.
+  This keeps shell dependencies optional under Cargo feature unification.
   Disabled Lua never becomes a false predicate or silent no-op in any commit.
 
 ### System capabilities and target crates
@@ -366,8 +372,6 @@ installation in the independently assembled server.
 
 Known gaps against the target ownership:
 
-- Script extension capabilities still need explicit injection (A2b); extracting
-  the runners and injecting their constructor did not change extension behavior.
 - C2e rejects HTTP `update_core` before job admission with unsupported / 501;
   desktop updates retain the binary install copy fallback
   ([#6157](https://github.com/libnyanpasu/clash-nyanpasu/issues/6157)). The embedded
@@ -435,11 +439,11 @@ Round-2 refinement remains planned: E2a moves the four shared HTTP response defi
 Each card is one buildable commit; a PR may contain an ordered short stack.
 Callers migrate together without old-path shims, and moves never include behavior
 changes. [Tasks §4](../spec/2026-11-03-core-package-split/tasks.md#4-a2b-与-phase-d-的-pr-划分)
-retains PR-D1 → PR-D2 → PR-D3 → PR-D4 → PR-A2b. A2b lands after D4 to add its
+records the delivered PR-D1 → PR-D2 → PR-D3 → PR-D4 → PR-A2b stack. A2b landed after D4 to add its
 pipeline variant against final value ownership, not because it depends on D.
 [Tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分)
-fixes the remaining order: PR-D2 → PR-D3 → PR-D4 → PR-A2b → PR-E1 → PR-E2 →
-PR-E3 → PR-E4 → PR-E5 → PR-E6 → PR-E7 → PR-E8. No E card lands before D/A2b;
+fixes the remaining order: PR-E1 → PR-E2 → PR-E3 → PR-E4 → PR-E5 →
+PR-E6 → PR-E7 → PR-E8, after the delivered D/A2b stack;
 their consumer lists remain unchanged. E assumes D2e runtime-values exists.
 PR-E4/E5 complete DTO receiving closure after E3e; PR-E6–E8 assemble and verify
 the server/CLI after E1b. Every E package and feature updates Cargo,
@@ -448,14 +452,14 @@ planned; their Rust/platform verification has not been run by this docs change.
 
 **Phase A: break the cycles and stop the leak**
 
-| Step | Change                                                                                                                                      | Done when                                                                                                                                          | Status    |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| A1   | Move owner shutdown support to a root core module and `BundleMetadata` into `nyanpasu-contracts`; replace `ScriptType` with `ScriptRuntime` | No lower module imports `client::owner_shutdown` or `client::bundle_metadata`; `ScriptType` is gone                                                | Delivered |
-| A2   | Extract `nyanpasu-scripts` and inject a runner constructor into runtime building                                                            | Script engines do not depend on core; JS/Lua golden behavior unchanged                                                                             | Delivered |
-| A2b  | Inject extensions; default-on JS/Lua features selected explicitly by shell; typed unavailable-engine errors reach the pipeline and wire     | No internal reqwest client construction; feature matrix and overlay refusal tests; six locales/Paraglide/frontend regression; tasks §4 A2b-a–A2b-b | Planned   |
-| A3   | Extract `nyanpasu-profile-transform`                                                                                                        | Transform depends on config only; artifact-to-snapshot conversion stays in application code                                                        | Delivered |
-| A4   | Move the ports implemented outside core into `nyanpasu-contracts`: profile and materialization, then network                                | Each group moves with its full type closure; contract errors box implementation causes, wire shape unchanged                                       | Delivered |
-| A5   | Move runtime-build orchestration into core; extract `nyanpasu-persistence`, `nyanpasu-profile-io` and `nyanpasu-net`; retire platform       | Implementation crates depend on the foundation layer only; application integration tests move into core                                            | Delivered |
+| Step | Change                                                                                                                                      | Done when                                                                                                                                          | Status                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| A1   | Move owner shutdown support to a root core module and `BundleMetadata` into `nyanpasu-contracts`; replace `ScriptType` with `ScriptRuntime` | No lower module imports `client::owner_shutdown` or `client::bundle_metadata`; `ScriptType` is gone                                                | Delivered                                  |
+| A2   | Extract `nyanpasu-scripts` and inject a runner constructor into runtime building                                                            | Script engines do not depend on core; JS/Lua golden behavior unchanged                                                                             | Delivered                                  |
+| A2b  | Inject extensions; default-on JS/Lua features selected explicitly by shell; typed unavailable-engine errors reach the pipeline and wire     | No internal reqwest client construction; feature matrix and overlay refusal tests; six locales/Paraglide/frontend regression; tasks §4 A2b-a–A2b-b | Delivered (browser/musl execution pending) |
+| A3   | Extract `nyanpasu-profile-transform`                                                                                                        | Transform depends on config only; artifact-to-snapshot conversion stays in application code                                                        | Delivered                                  |
+| A4   | Move the ports implemented outside core into `nyanpasu-contracts`: profile and materialization, then network                                | Each group moves with its full type closure; contract errors box implementation causes, wire shape unchanged                                       | Delivered                                  |
+| A5   | Move runtime-build orchestration into core; extract `nyanpasu-persistence`, `nyanpasu-profile-io` and `nyanpasu-net`; retire platform       | Implementation crates depend on the foundation layer only; application integration tests move into core                                            | Delivered                                  |
 
 **Phase B: leaf owners and heavy dependencies**
 
@@ -477,15 +481,21 @@ planned; their Rust/platform verification has not been run by this docs change.
 
 **Phase D: transaction graph**
 
-D1a is implemented: the complete generic engine and its 102 tests live in
-`nyanpasu-state-engine`. Package and static gates enforce the leaf boundary;
-the musl runner registers the new library, but local execution is blocked by
-the unavailable Docker daemon. D2 remains planned.
+Delivered: #6224 PR-D1 (D1a), #6229 PR-D2 (D2a/D2b), #6231 PR-D3
+(D2c) and #6232 PR-D4 (D2d/D2e/D2f). The complete generic engine and its
+102 tests live in `nyanpasu-state-engine`; public results/errors live in
+`nyanpasu-runtime-values`. Source owners consume a typed participant factory,
+`RecoveryRequired` waits for the source decision, and the module guard enforces
+the scoped directions. D2d's generated RPC bindings changed by one JSDoc line
+(`CoreError` link to plain text); wire shapes are unchanged by D moves/seams.
+No Phase D implementation remains open. Docker/musl and Linux/macOS execution
+remain pending as listed in tasks §4. A2b's browser regression is implemented,
+but local execution still needs the Playwright browser.
 
-| Step | Change                                                                                                                                                      | Done when                                                                                                                                                               |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1   | Extract the complete generic `nyanpasu-state-engine` closure as a core-family leaf                                                                          | All 102 engine tests retained; only persistence among parent-workspace dependencies; package/static/musl gates registered; tasks §4 D1a                                 |
-| D2   | Source-owned participant factory; separate strict-settlement behavior fix; public error/value closure into runtime-values; control/application stay modules | No source → concrete workflow client; strict terminal settlement; source-import policy enforces scoped module directions; bindings unchanged by moves; tasks §4 D2a–D2f |
+| Step | Change                                                                                                                                                      | Done when                                                                                                                                                               | Status    |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| D1   | Extract the complete generic `nyanpasu-state-engine` closure as a core-family leaf                                                                          | All 102 engine tests retained; only persistence among parent-workspace dependencies; package/static/musl gates registered; tasks §4 D1a                                 | Delivered |
+| D2   | Source-owned participant factory; separate strict-settlement behavior fix; public error/value closure into runtime-values; control/application stay modules | No source → concrete workflow client; strict terminal settlement; source-import policy enforces scoped module directions; bindings unchanged by moves; tasks §4 D2a–D2f | Delivered |
 
 **Phase E: RPC targets and shells**
 

@@ -24,6 +24,9 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
+  'http'
+] }
 boa_utils = { path = '../boa_utils', optional = true }
 boa_engine = { workspace = true, optional = true, features = ['annex-b'] }
 mlua = { version = '0.12', optional = true, features = [
@@ -123,8 +126,6 @@ rfd = { version = '0.17', default-features = false, features = [
 rust-i18n = '4'
 
 # Networking Libraries
-axum = { version = '0.8', features = ['ws'] }
-tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }
@@ -281,6 +282,9 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'
@@ -298,8 +302,6 @@ nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features 
   'test-support'
 ] }
 http-body-util = '0.1'
-tower = { version = '0.5', features = ['util'] }
-axum = { version = '0.8', features = ['ws'] }
 mockall = '0.15'
 # Test-only protocol helpers + binary discovery for later process-lifecycle
 # matrix tests. A dev-dependency does NOT build the fake-core binary and does
@@ -326,7 +328,11 @@ script-lua = ['nyanpasu-scripts/lua', 'dep:mlua']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = ['nyanpasu-core/verge-dev', 'nyanpasu-os/verge-dev']
-default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
+default-meta = [
+  'nyanpasu-rpc/default-meta',
+  'nyanpasu-core/default-meta',
+  'nyanpasu-config/default-meta'
+]
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see
@@ -336,4 +342,11 @@ trace-chrome = ['dep:tracing-chrome']
 # logs directory.
 dhat-heap = ['dep:dhat']
 # Keep the configuration and application patch derives on the same feature.
-nesting = ['nyanpasu-config/nesting', 'nyanpasu-core/nesting']
+nesting = [
+  'nyanpasu-rpc/nesting',
+  'nyanpasu-config/nesting',
+  'nyanpasu-core/nesting'
+]
+
+# Expose shared neutral fixtures only to downstream host tests.
+test-support = ['nyanpasu-rpc/test-support']

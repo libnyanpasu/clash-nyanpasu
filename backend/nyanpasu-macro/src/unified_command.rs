@@ -158,6 +158,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
     let mut wrapper_args = Vec::new();
     let mut neutral_args = Vec::new();
+    let mut dependency_bindings = Vec::new();
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
     let mut tauri_fields = Vec::new();
@@ -190,6 +191,15 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 neutral_args.push(quote!(&dependencies.storage));
             } else if state_name.as_deref() == Some("PathResolver") {
                 neutral_args.push(quote!(&dependencies.paths));
+            } else if state_name.as_deref() == Some("HostEnvironment") {
+                neutral_args.push(quote!(&dependencies.host_environment));
+            } else if let Some(slot) = host_port_slot(state_name.as_deref()) {
+                let slot = format_ident!("{slot}");
+                dependency_bindings.push(quote! {
+                    let #ident = dependencies.#slot.as_deref().ok_or_else(||
+                        ::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))?;
+                });
+                neutral_args.push(quote!(#ident));
             } else {
                 neutral_supported = false;
             }
@@ -262,10 +272,11 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         if neutral_supported && !matches!(original.output, ReturnType::Default) {
             let output = output_value(&neutral_call, &original.output, options.result);
             quote! {
+                #(#dependency_bindings)*
                 #neutral_parse
                 let output = #output?;
                 ::serde_json::to_value(output)
-                    .map_err(crate::unified_rpc::application_error)
+                    .map_err(::nyanpasu_rpc::error::application_error)
             }
         } else {
             quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
@@ -327,13 +338,13 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 window: ::tauri::Window,
                 webview: ::tauri::Webview,
                 params: ::serde_json::Value,
-            ) -> crate::unified_rpc::RpcFuture {
+            ) -> ::nyanpasu_rpc::registry::RpcFuture {
                 ::std::boxed::Box::pin(async move {
                     #parser
                     #(#state_bindings)*
                     let output = #output?;
                     ::serde_json::to_value(output)
-                        .map_err(crate::unified_rpc::application_error)
+                        .map_err(::nyanpasu_rpc::error::application_error)
                 })
             }
         }
@@ -345,7 +356,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 _window: ::tauri::Window,
                 _webview: ::tauri::Webview,
                 _params: ::serde_json::Value,
-            ) -> crate::unified_rpc::RpcFuture {
+            ) -> ::nyanpasu_rpc::registry::RpcFuture {
                 ::std::boxed::Box::pin(async move {
                     Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))
                 })
@@ -357,7 +368,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         quote! {
             #(#cfg_attrs)*
             ::inventory::submit! {
-                crate::unified_rpc::TauriCommandEntry {
+                crate::unified_rpc::native::TauriCommandEntry {
                     name: stringify!(#name),
                     handler: #tauri_handler,
                 }
@@ -371,10 +382,10 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
         #(#cfg_attrs)*
         fn #neutral_handler(
-            dependencies: ::std::sync::Arc<crate::unified_rpc::RpcDependencies>,
+            dependencies: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
             owner: ::nyanpasu_rpc_protocol::RpcOwner,
             params: ::serde_json::Value,
-        ) -> crate::unified_rpc::RpcFuture {
+        ) -> ::nyanpasu_rpc::registry::RpcFuture {
             ::std::boxed::Box::pin(async move {
                 #neutral_handler_body
             })
@@ -385,7 +396,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
         #(#cfg_attrs)*
         ::inventory::submit! {
-            crate::unified_rpc::CommandEntry {
+            ::nyanpasu_rpc::registry::CommandEntry {
                 metadata: #metadata,
                 handler: #neutral_handler,
             }
@@ -412,7 +423,7 @@ fn call(
 fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenStream {
     match output {
         ReturnType::Type(_, ty) if result || is_result(ty) => {
-            quote!(#call.map_err(crate::unified_rpc::application_error))
+            quote!(#call.map_err(::nyanpasu_rpc::error::application_error))
         }
         ReturnType::Type(_, _) => quote!(Ok(#call)),
         ReturnType::Default => quote!(Ok(#call)),
@@ -455,9 +466,18 @@ fn can_share_with_neutral(signature: &syn::Signature, owner: bool) -> bool {
             return false;
         }
         if is_state(&argument.ty) {
-            if !["NyanpasuClient", "Storage", "PathResolver"]
-                .iter()
-                .any(|name| is_state_of(&argument.ty, name))
+            if ![
+                "NyanpasuClient",
+                "Storage",
+                "PathResolver",
+                "HostEnvironment",
+                "HostIconFiles",
+                "CoreDirectoryResolver",
+                "ServiceInstallPrompt",
+                "AccentColorQuery",
+            ]
+            .iter()
+            .any(|name| is_state_of(&argument.ty, name))
             {
                 return false;
             }
@@ -526,11 +546,29 @@ fn is_state(ty: &Type) -> bool {
 }
 
 fn is_state_of(ty: &Type, expected: &str) -> bool {
-    state_inner_type(ty).is_some_and(|inner| is_context_type(&inner, expected))
+    state_inner_type(ty).is_some_and(|inner| type_name(&inner).as_deref() == Some(expected))
+}
+
+fn host_port_slot(name: Option<&str>) -> Option<&'static str> {
+    match name? {
+        "HostIconFiles" => Some("icon_files"),
+        "CoreDirectoryResolver" => Some("core_directory"),
+        "ServiceInstallPrompt" => Some("service_prompt"),
+        "AccentColorQuery" => Some("accent_color"),
+        _ => None,
+    }
 }
 
 fn type_name(ty: &Type) -> Option<String> {
     match ty {
+        Type::TraitObject(object) => object.bounds.iter().find_map(|bound| match bound {
+            syn::TypeParamBound::Trait(bound) => bound
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.to_string()),
+            _ => None,
+        }),
         Type::Path(path) => path
             .path
             .segments
@@ -719,6 +757,14 @@ mod tests {
         }
         for command in commands {
             let native = super::is_native(&command);
+            let needs_host_port = command.sig.inputs.iter().any(|arg| {
+                let syn::FnArg::Typed(arg) = arg else {
+                    return false;
+                };
+                super::state_inner_type(&arg.ty).is_some_and(|ty| {
+                    super::host_port_slot(super::type_name(&ty).as_deref()).is_some()
+                })
+            });
             let options = super::options(&command).expect("command options must parse");
             let name = command.sig.ident.to_string();
             let expanded =
@@ -743,7 +789,7 @@ mod tests {
                     options.local,
                     "{name}"
                 );
-                assert!(!registration.contains("RpcError :: unsupported"));
+                assert!(needs_host_port || !registration.contains("RpcError :: unsupported"));
             }
             assert!(
                 !registration.contains("dispatch_audited"),
@@ -767,11 +813,20 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("missing Tauri handler for {name}"));
             assert!(
-                !handler
+                handler
                     .block
                     .to_token_stream()
                     .to_string()
-                    .contains("RpcError :: unsupported"),
+                    .contains(&format!("__unified_impl_{name}")),
+                "{name} must call its implementation even when a host port can be absent"
+            );
+            assert!(
+                needs_host_port
+                    || !handler
+                        .block
+                        .to_token_stream()
+                        .to_string()
+                        .contains("RpcError :: unsupported"),
                 "Tauri command {name} was compiled into an unsupported dispatcher"
             );
         }
@@ -806,7 +861,7 @@ mod tests {
         );
         let source = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../tauri/src/unified_rpc.rs"
+            "/../tauri/src/unified_rpc/native.rs"
         ))
         .unwrap();
         let file = syn::parse_file(&source).unwrap();
@@ -819,7 +874,8 @@ mod tests {
             })
             .unwrap();
         let body = transport.block.to_token_stream().to_string();
-        assert!(body.contains("call_tauri"));
+        assert!(body.contains("DesktopRpc"));
+        assert!(body.contains("rpc . call"));
         assert!(
             !body.contains("handler"),
             "call_rpc must enter the registry dispatcher"
@@ -848,7 +904,7 @@ mod tests {
         assert_eq!(body.matches(". commands (").count(), 1);
         assert_eq!(body.matches("collect_commands !").count(), 1);
         assert!(
-            body.contains(". commands (collect_commands ! [unified_rpc :: call_rpc])"),
+            body.contains(". commands (collect_commands ! [unified_rpc :: native :: call_rpc])"),
             "only call_rpc may be registered on the runtime transport: {body}"
         );
         let source =
@@ -896,7 +952,7 @@ mod tests {
         assert!(expanded.contains("owner . clone ()"));
         assert!(!expanded.contains("caller : RpcCaller , page_size : usize , }"));
         assert!(expanded.contains("rename_all = \"camelCase\""));
-        assert!(expanded.contains("map_err (crate :: unified_rpc :: application_error)"));
+        assert!(expanded.contains("map_err (:: nyanpasu_rpc :: error :: application_error)"));
         assert!(!expanded.contains("deny_unknown_fields"));
         let empty = expand(syn::parse_quote! {
             #[nyanpasu_macro::rpc(http)] fn empty() -> bool { true }

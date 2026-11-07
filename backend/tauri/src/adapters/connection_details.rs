@@ -96,7 +96,7 @@ impl ConnectionDetailSubscriptions {
 
 /// Ends every subscription owned by `webview`, from the app's page-load and
 /// window-event hooks. A no-op before `ConnectionDetailSubscriptions` is
-/// managed (state is registered in `adapters::clash_events::setup`, which always runs
+/// managed (state is registered in `setup::setup`, which always runs
 /// before any webview can load a page).
 pub fn cancel_for_webview<R: tauri::Runtime>(manager: &impl Manager<R>, webview: &str) {
     if let Some(subscriptions) = manager.try_state::<ConnectionDetailSubscriptions>() {

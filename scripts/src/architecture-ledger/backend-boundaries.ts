@@ -50,6 +50,16 @@ const IMPLEMENTATION = [
 ]
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
+  { package: 'nyanpasu-rpc', forbids: [...GUI, ...IMPLEMENTATION] },
+  ...[
+    ...FOUNDATION,
+    ...CORE_FAMILY,
+    ...IMPLEMENTATION,
+    'nyanpasu-rpc-protocol',
+  ].map((name) => ({
+    package: name,
+    forbids: ['nyanpasu-rpc'],
+  })),
   {
     package: 'nyanpasu-rpc-protocol',
     forbids: [...GUI, ...CORE_FAMILY, ...IMPLEMENTATION],

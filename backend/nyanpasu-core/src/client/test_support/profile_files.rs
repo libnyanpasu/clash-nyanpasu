@@ -1,9 +1,6 @@
 //! Generated profile-port mocks with explicit content for application tests.
 
-use crate::client::host_adapters::ProfileFileFactory;
-#[cfg(test)]
-use crate::client::host_adapters::ProfileFilePorts;
-#[cfg(test)]
+use crate::client::host_adapters::{ProfileFileFactory, ProfileFilePorts};
 use nyanpasu_contracts::profiles::{
     error::ProfileFileError,
     ports::{
@@ -11,26 +8,21 @@ use nyanpasu_contracts::profiles::{
         PreparedCleanup, PreparedMaterialization, SubscriptionFetcher,
     },
 };
-use std::sync::Arc;
-#[cfg(test)]
 use std::{
     collections::BTreeMap,
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
 };
 
-#[cfg(test)]
 type Files = BTreeMap<String, String>;
-#[cfg(test)]
 type PreparedFiles = BTreeMap<String, (String, String, Option<String>)>;
 
 pub(crate) fn unused_profile_file_factory() -> Arc<ProfileFileFactory> {
     Arc::new(|_| panic!("the preassembled facade must not construct profile ports"))
 }
 
-#[cfg(test)]
 pub(crate) fn fixed_profile_file_factory(ports: ProfileFilePorts) -> Arc<ProfileFileFactory> {
     Arc::new(move |_| ProfileFilePorts {
         fs: ports.fs.clone(),
@@ -39,7 +31,6 @@ pub(crate) fn fixed_profile_file_factory(ports: ProfileFilePorts) -> Arc<Profile
     })
 }
 
-#[cfg(test)]
 pub(crate) fn scripted_profile_file_ports(
     fetcher: Arc<dyn SubscriptionFetcher>,
 ) -> ProfileFilePorts {
@@ -150,7 +141,6 @@ pub(crate) fn scripted_profile_file_ports(
     }
 }
 
-#[cfg(test)]
 fn prepare(
     files: &Mutex<Files>,
     prepared: &Mutex<PreparedFiles>,

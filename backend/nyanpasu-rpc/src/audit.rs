@@ -1,8 +1,9 @@
 //! Emits RPC dispatch metadata through the shell's tracing subscriber.
 
-use crate::unified_rpc::{RpcAuditRecord, RpcAuditSink, RpcTransport};
+use crate::registry::{RpcAuditRecord, RpcAuditSink, RpcTransport};
 
-pub(crate) struct TracingRpcAuditSink;
+/// Write payload-free dispatch metadata at the existing transport-specific level.
+pub struct TracingRpcAuditSink;
 
 impl RpcAuditSink for TracingRpcAuditSink {
     fn record(&self, record: &RpcAuditRecord) {

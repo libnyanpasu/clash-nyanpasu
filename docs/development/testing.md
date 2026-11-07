@@ -109,3 +109,30 @@ only when the application quits normally, for example from the tray menu.
 - Relevant checks pass, generated bindings are current, and remaining limitations are documented.
 - Language style follows the [Rust](rust.md) or [TypeScript and React](typescript.md) guide. Review React slots, shared constants, logical grouping, and project UI reuse as well as lint results.
 - The commit is atomic and only related files are staged.
+
+## RPC extraction test ownership
+
+E2b runs neutral registry/audit/HTTP tests in `nyanpasu-rpc` with Tokio and injected
+profile/runtime fixtures. Shell tests enable `nyanpasu-rpc/test-support` through a
+dev-dependency; the shell's `test-support` feature forwards it for downstream tests.
+The shared audit fixture retains the production `TracingRpcAuditSink`.
+
+| Existing audit test                                         | Owner after E2b                 |
+| ----------------------------------------------------------- | ------------------------------- |
+| `tauri_dispatch_records_one_audit_event`                    | Tauri                           |
+| `native_tauri_dispatch_records_one_audit_event`             | Tauri                           |
+| `duplicate_commands_fail_even_when_a_capability_is_missing` | Tauri, checking both registries |
+| `http_dispatch_records_one_audit_event`                     | RPC                             |
+| `direct_http_routes_use_the_same_audit_seam`                | RPC                             |
+| `audit_never_records_payloads_or_error_details`             | RPC, production sink            |
+| `audited_failure_preserves_the_original_rpc_error`          | RPC                             |
+| `audit_level_follows_transport_not_outcome`                 | RPC, production sink            |
+| `dropping_audited_call_preserves_cancellation`              | RPC                             |
+| `audited_command_panic_keeps_its_payload`                   | RPC                             |
+
+The remaining admission/owner/HTTP tests move to RPC; browser and native Channel
+checks stay in Tauri. Compare the combined test-name inventories using only the
+`unified_rpc` → `registry` and `server::debug_http` → `http` prefix changes.
+`http::tests::unavailable_frontend_keeps_server_disabled` preserves the pre-E3a
+startup refusal. The musl runner explicitly enables `nyanpasu-rpc/http` and requires
+`lib:nyanpasu_rpc`; it must not rely on desktop feature unification.

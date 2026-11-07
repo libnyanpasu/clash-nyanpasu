@@ -1,3 +1,6 @@
+//! Loopback HTTP actor, authenticated frontend and injected assets.
+
+pub mod routes;
 use std::{sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
@@ -536,19 +539,6 @@ pub(crate) mod tests {
     use axum::{body::to_bytes, http::Request as HttpRequest, routing::get};
     use tower::ServiceExt;
 
-    pub(crate) fn control_factory(
-        frontend: Option<Frontend>,
-        routes: Arc<dyn HttpRoutes>,
-    ) -> Arc<nyanpasu_core::client::host_adapters::DebugHttpFactory> {
-        Arc::new(move || {
-            let (frontend, routes) = (frontend.clone(), routes.clone());
-            Box::pin(async move {
-                let server = HttpServerClient::spawn(frontend, routes).await?;
-                Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
-            })
-        })
-    }
-
     async fn cookie_from_entry(entry: &str) -> String {
         let response = reqwest::Client::builder()
             .no_proxy()
@@ -929,5 +919,22 @@ pub(crate) mod tests {
                 .is_ok()
         );
         upstream_task.abort();
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    use super::*;
+    pub fn control_factory(
+        frontend: Option<Frontend>,
+        routes: Arc<dyn HttpRoutes>,
+    ) -> Arc<nyanpasu_core::client::host_adapters::DebugHttpFactory> {
+        Arc::new(move || {
+            let (frontend, routes) = (frontend.clone(), routes.clone());
+            Box::pin(async move {
+                let server = HttpServerClient::spawn(frontend, routes).await?;
+                Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
+            })
+        })
     }
 }

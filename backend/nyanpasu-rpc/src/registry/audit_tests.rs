@@ -512,7 +512,11 @@ async fn audit_level_follows_transport_not_outcome() {
                 }
             );
         }
-        for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
+        for transport in [
+            RpcTransport::Http,
+            RpcTransport::Local,
+            RpcTransport::TauriIpc,
+        ] {
             for outcome in [
                 RpcAuditOutcome::Success,
                 RpcAuditOutcome::Failure {
@@ -536,9 +540,13 @@ async fn audit_level_follows_transport_not_outcome() {
     .await;
     {
         let events = capture.0.lock();
-        assert_eq!(events.len(), 10, "captured audit events: {events:?}");
-        assert!(events[..6].iter().all(|e| e.level == tracing::Level::INFO));
-        assert!(events[6..].iter().all(|e| e.level == tracing::Level::DEBUG));
+        assert_eq!(events.len(), 14, "captured audit events: {events:?}");
+        assert!(events[..10].iter().all(|e| e.level == tracing::Level::INFO));
+        assert!(
+            events[10..]
+                .iter()
+                .all(|e| e.level == tracing::Level::DEBUG)
+        );
         assert!(
             events
                 .iter()

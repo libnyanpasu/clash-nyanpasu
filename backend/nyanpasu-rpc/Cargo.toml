@@ -11,6 +11,8 @@ default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
 nesting = ['nyanpasu-core/nesting', 'nyanpasu-config/nesting']
 local-server = [
   'nyanpasu-rpc-protocol/frame-io',
+  'dep:tokio-util',
+  'dep:uuid',
   'dep:interprocess',
   'dep:sha2',
   'dep:libc',

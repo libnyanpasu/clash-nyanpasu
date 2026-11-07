@@ -195,6 +195,9 @@ impl ApplicationWorkflow {
         };
 
         if let RuntimePrepareOutcome::RecoveryRequired(error) = outcome {
+            // The source must settle before its terminal receipt, even though
+            // the unknown runtime cannot safely be confirmed or cancelled.
+            self.await_decision(&request).await;
             receipt.detail = Some(error.to_string());
             receipt.conclusion = MutationConclusion::RecoveryRequired;
             self.conclude_attempt(Some(error.to_string()));

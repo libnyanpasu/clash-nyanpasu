@@ -330,13 +330,13 @@ mod tests {
 
     use super::*;
     use crate::{
-        create_lua_context, extensions::ScriptExtensionFactory as _,
+        extensions::ScriptExtensionFactory as _, lua::create_lua_context,
         test_extensions::TestExtensions,
     };
 
     /// Runs `script` with `config` loaded from YAML and returns what it logged.
     fn logs(config: &str, script: &str) -> Vec<StepLogEntry> {
-        let lua = create_lua_context(&TestExtensions.lua()).unwrap();
+        let lua = create_lua_context(&TestExtensions.lua().unwrap()).unwrap();
         let sink = ConsoleSink::default();
         ConsoleSink::register_lua(&lua, &sink).unwrap();
         let config: serde_yaml::Value = serde_yaml::from_str(config).unwrap();

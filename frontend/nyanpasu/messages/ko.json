@@ -703,6 +703,7 @@
   "error_runtime_core_not_started": "코어를 시작하지 못했습니다",
   "error_runtime_recovery_unresolved": "런타임을 복구하지 못했습니다",
   "error_runtime_build_runtime": "런타임 구성을 만들지 못했습니다",
+  "error_runtime_script_start_engine": "이 빌드에서는 {operation}에 필요한 {runtime} 엔진을 사용할 수 없습니다",
   "error_runtime_build_start_script_runner": "스크립트 엔진을 시작하지 못했습니다",
   "error_runtime_build_validate_profiles": "프로필에 잘못된 항목이 있습니다",
   "error_runtime_build_transforms_failed": "다음 변환이 실패했습니다: {names}",

@@ -35,6 +35,9 @@ url = '2'
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'default-meta'
 ] }
-nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false }
+nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false, features = [
+  'javascript',
+  'lua'
+] }
 tempfile = '3'
 serde_json = { version = '1', features = ['preserve_order'] }

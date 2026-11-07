@@ -1,18 +1,28 @@
-use async_trait::async_trait;
-use nyanpasu_config::{
-    profile::ScriptRuntime,
-    runtime::executor::{StepLogEntry, StepLogLevel},
-};
-use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
-    collections::HashMap,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
 };
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use std::{collections::HashMap, sync::Arc};
 
-use super::{ScriptWrapper, js, lua};
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use async_trait::async_trait;
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use nyanpasu_config::profile::ScriptRuntime;
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use nyanpasu_config::runtime::executor::{ScriptExecutionError, ScriptOperation};
+use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use serde_yaml::Mapping;
+
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use super::ScriptWrapper;
+#[cfg(feature = "javascript")]
+use super::js;
+#[cfg(feature = "lua")]
+use super::lua;
+#[cfg(any(feature = "javascript", feature = "lua"))]
 use crate::extensions::ScriptExtensionFactory;
 
 /// Where the JavaScript runner keeps the modules it runs and the modules it
@@ -61,6 +71,7 @@ impl ConsoleSink {
 
 /// Everything a script logs goes to `logs`, including what it logged before
 /// failing.
+#[cfg(any(feature = "javascript", feature = "lua"))]
 #[async_trait]
 pub trait Runner: Send + Sync {
     #[allow(dead_code)]
@@ -85,16 +96,22 @@ pub trait Runner: Send + Sync {
     }
 }
 
+#[cfg(any(feature = "javascript", feature = "lua"))]
 pub struct RunnerManager {
     runners: HashMap<ScriptRuntime, Box<dyn Runner>>,
+    #[cfg(feature = "javascript")]
     script_dirs: ScriptDirs,
     extensions: Arc<dyn ScriptExtensionFactory>,
 }
 
+#[cfg(any(feature = "javascript", feature = "lua"))]
 impl RunnerManager {
     pub fn new(script_dirs: ScriptDirs, extensions: Arc<dyn ScriptExtensionFactory>) -> Self {
+        #[cfg(not(feature = "javascript"))]
+        let _ = &script_dirs;
         Self {
             runners: HashMap::new(),
+            #[cfg(feature = "javascript")]
             script_dirs,
             extensions,
         }
@@ -106,12 +123,37 @@ impl RunnerManager {
     ) -> anyhow::Result<&dyn Runner> {
         if !self.runners.contains_key(script_type) {
             let runner = match script_type {
+                #[cfg(feature = "javascript")]
                 ScriptRuntime::JavaScript => Box::new(js::JSRunner::new(
                     &self.script_dirs,
                     self.extensions.clone(),
                 )?) as Box<dyn Runner>,
+                #[cfg(feature = "lua")]
                 ScriptRuntime::Lua => {
-                    Box::new(lua::LuaRunner::new(self.extensions.lua())) as Box<dyn Runner>
+                    let extensions =
+                        self.extensions
+                            .lua()
+                            .ok_or(ScriptExecutionError::StartEngine {
+                                runtime: *script_type,
+                                operation: ScriptOperation::Transform,
+                            })?;
+                    Box::new(lua::LuaRunner::new(extensions)) as Box<dyn Runner>
+                }
+                #[cfg(not(feature = "javascript"))]
+                ScriptRuntime::JavaScript => {
+                    return Err(ScriptExecutionError::StartEngine {
+                        runtime: *script_type,
+                        operation: ScriptOperation::Transform,
+                    }
+                    .into());
+                }
+                #[cfg(not(feature = "lua"))]
+                ScriptRuntime::Lua => {
+                    return Err(ScriptExecutionError::StartEngine {
+                        runtime: *script_type,
+                        operation: ScriptOperation::Transform,
+                    }
+                    .into());
                 }
             };
             self.runners.insert(*script_type, runner);

@@ -85,7 +85,7 @@ mod tests {
         use crate::runner::Runner;
         use serde_yaml::Mapping;
 
-        let runner = LuaRunner::new(TestExtensions.lua());
+        let runner = LuaRunner::new(TestExtensions.lua().unwrap());
         let mapping = r#"
         proxies:
         - 123
@@ -128,7 +128,7 @@ mod tests {
         use nyanpasu_config::runtime::executor::StepLogLevel;
 
         let mut logs = Vec::new();
-        let result = LuaRunner::new(TestExtensions.lua())
+        let result = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(
                 Mapping::new(),
                 r#"console.log("before"); error("boom")"#,
@@ -153,7 +153,7 @@ mod tests {
             config.omega = 3
             return config
         "#;
-        let result = LuaRunner::new(TestExtensions.lua())
+        let result = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(config, script, &mut Vec::new())
             .await
             .unwrap();
@@ -168,7 +168,7 @@ mod tests {
         use super::*;
         use crate::runner::Runner;
 
-        let error = LuaRunner::new(TestExtensions.lua())
+        let error = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(Mapping::new(), "return { 1, 2 }", &mut Vec::new())
             .await
             .unwrap_err();
@@ -184,7 +184,7 @@ mod tests {
         use crate::runner::Runner;
 
         let script = "local function helper()\n  error('boom')\nend\nhelper()\n";
-        let error = LuaRunner::new(TestExtensions.lua())
+        let error = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(Mapping::new(), script, &mut Vec::new())
             .await
             .unwrap_err()

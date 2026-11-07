@@ -1,6 +1,6 @@
 //! Overlay (= legacy Merge chain item) directive semantics.
-//! Authority: spec §7.3 table; legacy source enhance/merge.rs. Never fails:
-//! every abnormal path logs and skips that key (merge.rs:242-318 parity).
+//! Authority: spec §7.3 table; legacy source enhance/merge.rs. Ordinary failures
+//! log and skip that key; missing script engines reject the pipeline.
 
 use std::sync::Arc;
 
@@ -8,6 +8,7 @@ use crate::runtime::value::ConfigValue;
 
 use super::{
     artifact::StepLogEntry,
+    error::{self, RuntimePipelineError},
     ports::ScriptRunner,
     value_util::{deep_merge_value, get_at, parse_dotted_path, remove_at, replace_at},
 };
@@ -17,13 +18,13 @@ pub(super) fn apply_overlay(
     mut config: ConfigValue,
     runner: &dyn ScriptRunner,
     logs: &mut Vec<StepLogEntry>,
-) -> (ConfigValue, bool) {
+) -> Result<(ConfigValue, bool), RuntimePipelineError> {
     let mut failed = false;
     let Some(entries) = overlay.as_object_arc() else {
         logs.push(StepLogEntry::warn(
             "overlay document is not a mapping, skipped",
         ));
-        return (config, true);
+        return Ok((config, true));
     };
 
     // IndexMap iteration = document order (parity with Mapping iteration).
@@ -38,12 +39,12 @@ pub(super) fn apply_overlay(
         } else if let Some(field) = lowered.strip_prefix("override__") {
             config = override_path(config, field, value, logs);
         } else if let Some(field) = lowered.strip_prefix("filter__") {
-            config = filter_path(config, field, value, runner, logs, &mut failed);
+            config = filter_path(config, field, value, runner, logs, &mut failed)?;
         } else {
             config = bare_key_merge(config, key, value);
         }
     }
-    (config, failed)
+    Ok((config, failed))
 }
 
 fn strip_any<'a>(key: &'a str, prefixes: &[&str]) -> Option<&'a str> {
@@ -130,23 +131,23 @@ fn filter_path(
     runner: &dyn ScriptRunner,
     logs: &mut Vec<StepLogEntry>,
     failed: &mut bool,
-) -> ConfigValue {
+) -> Result<ConfigValue, RuntimePipelineError> {
     let segments = parse_dotted_path(field);
     let Some(target) = get_at(&config, &segments) else {
         logs.push(StepLogEntry::warn(format!(
             "field `{field}` not found, skipped"
         )));
-        return config;
+        return Ok(config);
     };
     let Some(existing) = target.as_array_arc() else {
         logs.push(StepLogEntry::warn(format!(
             "field `{field}` is not a sequence, skipped"
         )));
-        return config;
+        return Ok(config);
     };
 
-    let filtered = apply_filter(existing.to_vec(), filter, runner, logs, failed);
-    replace_at(&config, &segments, ConfigValue::Array(Arc::from(filtered))).unwrap_or(config)
+    let filtered = apply_filter(existing.to_vec(), filter, runner, logs, failed)?;
+    Ok(replace_at(&config, &segments, ConfigValue::Array(Arc::from(filtered))).unwrap_or(config))
 }
 
 fn apply_filter(
@@ -155,30 +156,37 @@ fn apply_filter(
     runner: &dyn ScriptRunner,
     logs: &mut Vec<StepLogEntry>,
     failed: &mut bool,
-) -> Vec<ConfigValue> {
+) -> Result<Vec<ConfigValue>, RuntimePipelineError> {
     match filter {
         // Sequence of filters: composable multi-pass (merge.rs do_filter).
-        ConfigValue::Array(filters) => filters.iter().fold(items, |acc, sub| {
+        ConfigValue::Array(filters) => filters.iter().try_fold(items, |acc, sub| {
             apply_filter(acc, sub, runner, logs, failed)
         }),
         // String: Lua boolean predicate; eval error removes the item (parity).
-        ConfigValue::String(expr) => items
-            .into_iter()
-            .filter(|item| match runner.eval_item_predicate(expr, item) {
-                Ok(keep) => keep,
-                Err(error) => {
-                    *failed = true;
-                    logs.push(StepLogEntry::warn(format!(
-                        "filter expr failed, item removed: {error}"
-                    )));
-                    false
+        ConfigValue::String(expr) => {
+            let mut kept = Vec::new();
+            for item in items {
+                let keep = match runner.eval_item_predicate(expr, &item) {
+                    Ok(keep) => keep,
+                    Err(error) => {
+                        let error = error::ordinary_script_error(error)?;
+                        *failed = true;
+                        logs.push(StepLogEntry::warn(format!(
+                            "filter expr failed, item removed: {error}"
+                        )));
+                        false
+                    }
+                };
+                if keep {
+                    kept.push(item);
                 }
-            })
-            .collect(),
+            }
+            Ok(kept)
+        }
         ConfigValue::Object(actions) => {
             let Some(ConfigValue::String(when)) = actions.get("when") else {
                 logs.push(StepLogEntry::warn("invalid filter: missing `when`"));
-                return items;
+                return Ok(items);
             };
             // Action selection mirrors the legacy match-arm order and typed
             // guards (merge.rs:122-231): an action whose guard fails falls
@@ -203,7 +211,7 @@ fn apply_filter(
                 FilterAction::Remove(paths)
             } else {
                 logs.push(StepLogEntry::warn("invalid filter: no action"));
-                return items;
+                return Ok(items);
             };
             items
                 .into_iter()
@@ -211,6 +219,7 @@ fn apply_filter(
                     let hit = match runner.eval_item_predicate(when, &item) {
                         Ok(hit) => hit,
                         Err(error) => {
+                            let error = error::ordinary_script_error(error)?;
                             *failed = true;
                             logs.push(StepLogEntry::warn(format!(
                                 "filter `when` failed, treated as false: {error}"
@@ -219,12 +228,13 @@ fn apply_filter(
                         }
                     };
                     if !hit {
-                        return item;
+                        return Ok(item);
                     }
-                    match &action {
+                    Ok(match &action {
                         FilterAction::Expr(expr) => match runner.eval_item_expr(expr, &item) {
                             Ok(next) => next,
                             Err(error) => {
+                                let error = error::ordinary_script_error(error)?;
                                 *failed = true;
                                 logs.push(StepLogEntry::warn(format!(
                                     "filter `expr` failed, item kept: {error}"
@@ -241,18 +251,18 @@ fn apply_filter(
                                 logs.push(StepLogEntry::warn(
                                     "filter `merge` target item is not a mapping, item kept",
                                 ));
-                                return item;
+                                return Ok(item);
                             }
                             deep_merge_value(Some(&item), merge)
                         }
                         FilterAction::Remove(paths) => remove_from_item(item, paths, logs),
-                    }
+                    })
                 })
                 .collect()
         }
         _ => {
             logs.push(StepLogEntry::warn("invalid filter value, skipped"));
-            items
+            Ok(items)
         }
     }
 }

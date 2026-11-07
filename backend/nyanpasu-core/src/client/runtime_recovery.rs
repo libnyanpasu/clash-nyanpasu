@@ -34,9 +34,9 @@ use crate::{
     actor_v2::{
         CoreStatusProjection, endpoint::wire_core_type_to_kind, facade::AppliedConfigBinding,
     },
-    runtime_values::execution_host::ExecutionHost,
     state::mutation::{intent::CoreRunIntent, runtime_apply::RuntimeApplyReceipt},
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 /// What the app can observe about the runtime right now. Built from a status
 /// read, or from the report of the operation that claimed to restore it.

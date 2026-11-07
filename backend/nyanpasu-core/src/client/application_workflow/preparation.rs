@@ -14,11 +14,11 @@ use super::{
 use crate::{
     actor_v2::intent::RuntimeIntentBuilder,
     client::core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
-    runtime_values::{
-        core_spec::CoreSpecError,
-        publish::PublishRuntimeError,
-        runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
-    },
+};
+use nyanpasu_runtime_values::{
+    core_spec::CoreSpecError,
+    publish::PublishRuntimeError,
+    runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
 };
 
 /// Builds runtime candidates from committed source config. It holds read-only

@@ -1242,11 +1242,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
-        runtime_values::execution_host::ExecutionHost,
-    };
+    use crate::actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission};
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
     use std::borrow::Cow;
 
     /// A scriptable daemon: `state` drives what probe answers; commands

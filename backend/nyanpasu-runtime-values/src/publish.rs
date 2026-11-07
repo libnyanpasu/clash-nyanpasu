@@ -7,7 +7,7 @@ use snafu::Snafu;
 /// A failure of publishing the derived runtime config file.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum PublishRuntimeError {
     #[snafu(display("could not create the runtime directory {path}"))]
     CreateRuntimeDirectory {

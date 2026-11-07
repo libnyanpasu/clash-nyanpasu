@@ -18,23 +18,22 @@ use tokio::sync::{oneshot, watch};
 
 use crate::{
     client::{effects::ports::CommitNotifications, runtime_error::refusal_of},
-    runtime_values::{
-        mutation::{
-            CommitAborted, NotReady, NotReadySnafu, RecoverAfterWriteFailureSnafu,
-            RuntimeAftermath, RuntimeFailedSnafu, RuntimeRefusedSnafu, ValidateStateSnafu,
-            WriteConfigSnafu,
-        },
-        runtime::{
-            CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
-        },
-        runtime_error::RuntimeError,
-    },
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
         intent::{CommandClass, MutationIntent},
         ports::MutationParticipantFactory,
         value::{MutationConclusion, MutationOutcomeKind, MutationReceipt},
     },
+};
+use nyanpasu_runtime_values::{
+    mutation::{
+        CommitAborted, NotReady, NotReadySnafu, RecoverAfterWriteFailureSnafu, RuntimeAftermath,
+        RuntimeFailedSnafu, RuntimeRefusedSnafu, ValidateStateSnafu, WriteConfigSnafu,
+    },
+    runtime::{
+        CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
+    },
+    runtime_error::RuntimeError,
 };
 
 #[derive(Clone)]

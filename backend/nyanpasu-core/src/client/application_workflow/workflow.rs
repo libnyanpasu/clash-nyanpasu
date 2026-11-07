@@ -11,13 +11,11 @@ use super::{
     preparation::RuntimePreparation,
     startup::StartupReport,
 };
-use crate::{
-    client::{
-        core_lifecycle::{Command as CoreCommand, CoreLifecycleWorkflow},
-        runtime,
-    },
-    runtime_values::runtime_error::RuntimeError,
+use crate::client::{
+    core_lifecycle::{Command as CoreCommand, CoreLifecycleWorkflow},
+    runtime,
 };
+use nyanpasu_runtime_values::runtime_error::RuntimeError;
 
 /// Applies already committed source config to the running core. The two state
 /// handles are read-only and are sampled only once the actor has admitted the

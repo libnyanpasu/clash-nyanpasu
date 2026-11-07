@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use super::super::runtime;
 
-use crate::runtime_values::{
+use nyanpasu_runtime_values::{
     core_spec::CoreSpecError, publish::PublishRuntimeError, runtime_error::RuntimeError,
 };
 

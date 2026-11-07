@@ -12,7 +12,7 @@ use nyanpasu_ipc::api::{core::v2::CoreApiConnection, status::CoreControllerInfo}
 use tokio_util::sync::CancellationToken;
 
 use super::endpoint::EndpointHandle;
-use crate::runtime_values::runtime::InterruptFailure;
+use nyanpasu_runtime_values::runtime::InterruptFailure;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -464,13 +464,11 @@ pub(crate) mod tests {
     use tokio::sync::{Notify, watch};
 
     use super::*;
-    use crate::{
-        actor_v2::{
-            CoreClient,
-            test_support::{Endpoint, endpoint, server},
-        },
-        runtime_values::execution_host::ExecutionHost,
+    use crate::actor_v2::{
+        CoreClient,
+        test_support::{Endpoint, endpoint, server},
     };
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
     #[test]
     fn interrupt_failure_mapping_preserves_all_api_error_categories() {
@@ -826,7 +824,7 @@ mod stream_tests {
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         let mut endpoint = endpoint("http://127.0.0.1:1/".into());
         std::sync::Arc::get_mut(&mut endpoint).unwrap().host =
-            crate::runtime_values::execution_host::ExecutionHost::Service;
+            nyanpasu_runtime_values::execution_host::ExecutionHost::Service;
         endpoint.binding.send_modify(|binding| {
             binding.as_mut().unwrap().controller = CoreControllerInfo::NamedPipe(path.into());
         });

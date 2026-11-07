@@ -45,11 +45,11 @@ use crate::{
         runtime::ConfirmedRuntime,
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
-    runtime_values::{
-        execution_host::ExecutionHost,
-        runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
-    },
     state::mutation::{intent::CoreRunIntent, value::CheckRecord},
+};
+use nyanpasu_runtime_values::{
+    execution_host::ExecutionHost,
+    runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).

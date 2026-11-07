@@ -27,28 +27,26 @@ use nyanpasu_state_engine::{
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
-use crate::{
-    runtime_values::profiles::{
-        BlockingTaskCancelledSnafu, CommitSnafu, EmptyScriptSnafu, FetchSubscriptionSnafu,
-        FingerprintDefinitionSnafu, MaterializationOperation, MaterializationSnafu,
-        MissingProxiesSnafu, NotARemoteProfileSnafu, NotYamlMappingSnafu,
-        ProfileChangedDuringRefreshSnafu, ProfileContentError, ProfileContentRejectedSnafu,
-        ProfileDeletedDuringRefreshSnafu, ProfileFileNotWritableSnafu, ProfileHasNoFileSnafu,
-        ProfileIdCollisionSnafu, ProfileInUseSnafu, ProfileNotFoundSnafu, ProfilesError,
-        ReadExternalProfileSnafu, RefreshInProgressSnafu, ReorderListDuplicateSnafu,
-        ReorderListSizeMismatchSnafu, ValidationFailedSnafu, VersionConflictSnafu,
+use crate::state::mutation::{
+    MutationCoordinator, impact,
+    impact::{
+        ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+        StagedResourceToken, TouchedContent,
     },
-    state::mutation::{
-        MutationCoordinator, impact,
-        impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
-            StagedResourceToken, TouchedContent,
-        },
-        intent::CommandClass,
-        value::MutationReceipt,
-    },
+    intent::CommandClass,
+    value::MutationReceipt,
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_runtime_values::profiles::{
+    BlockingTaskCancelledSnafu, CommitSnafu, EmptyScriptSnafu, FetchSubscriptionSnafu,
+    FingerprintDefinitionSnafu, MaterializationOperation, MaterializationSnafu,
+    MissingProxiesSnafu, NotARemoteProfileSnafu, NotYamlMappingSnafu,
+    ProfileChangedDuringRefreshSnafu, ProfileContentError, ProfileContentRejectedSnafu,
+    ProfileDeletedDuringRefreshSnafu, ProfileFileNotWritableSnafu, ProfileHasNoFileSnafu,
+    ProfileIdCollisionSnafu, ProfileInUseSnafu, ProfileNotFoundSnafu, ProfilesError,
+    ReadExternalProfileSnafu, RefreshInProgressSnafu, ReorderListDuplicateSnafu,
+    ReorderListSizeMismatchSnafu, ValidationFailedSnafu, VersionConflictSnafu,
+};
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -64,8 +62,8 @@ pub struct CommitReport {
     pub snapshot: Arc<Profiles>,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub degradations: Vec<ProfileDegradation>,
-    pub(crate) receipt: crate::runtime_values::runtime::CommitReceipt,
-    pub(crate) runtime_degradations: Vec<crate::runtime_values::runtime::Degradation>,
+    pub(crate) receipt: nyanpasu_runtime_values::runtime::CommitReceipt,
+    pub(crate) runtime_degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
     /// Server-generated uid (D13); set by Add / import commit, consumed by
     /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
@@ -474,8 +472,8 @@ impl ProfilesActor {
         (
             Arc<Profiles>,
             (
-                crate::runtime_values::runtime::CommitReceipt,
-                Vec<crate::runtime_values::runtime::Degradation>,
+                nyanpasu_runtime_values::runtime::CommitReceipt,
+                Vec<nyanpasu_runtime_values::runtime::Degradation>,
             ),
         ),
         ProfilesError,

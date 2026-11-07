@@ -10,11 +10,8 @@ use nyanpasu_state_engine::{
 use serde::Serialize;
 use snafu::{IntoError, Snafu};
 
-use crate::{
-    client::hotkey::ports::HotkeyParseError,
-    runtime_values::mutation::{CommitAborted, ConfigDomain, NotReady},
-    state::mutation::value::MutationReceipt,
-};
+use crate::{client::hotkey::ports::HotkeyParseError, state::mutation::value::MutationReceipt};
+use nyanpasu_runtime_values::mutation::{CommitAborted, ConfigDomain, NotReady};
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[snafu(visibility(pub(crate)))]

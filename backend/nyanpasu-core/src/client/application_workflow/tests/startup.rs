@@ -67,9 +67,9 @@ use crate::{
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    runtime_values::execution_host::ExecutionHost,
     state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
 
@@ -1201,7 +1201,7 @@ async fn an_unobserved_startup_submission_isolates_until_its_operation_ends() {
     let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        crate::runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
+        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
     ));
     assert!(
         error.to_string().contains("core operation"),
@@ -1545,7 +1545,7 @@ async fn a_dependency_wait_on_a_spent_budget_blocks_at_once() {
     assert!(
         matches!(
             error,
-            crate::runtime_values::runtime_error::RuntimeError::CoreNotStarted {
+            nyanpasu_runtime_values::runtime_error::RuntimeError::CoreNotStarted {
                 retryable: true,
                 ..
             }

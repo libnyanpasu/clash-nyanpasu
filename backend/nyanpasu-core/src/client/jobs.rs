@@ -195,14 +195,15 @@ impl super::NyanpasuClient {
         let snapshot = self.inner.profiles.snapshot();
         let item = snapshot.items.get(uid).ok_or_else(|| {
             super::ClientError::Profiles(
-                crate::runtime_values::profiles::ProfileNotFoundSnafu { uid: uid.clone() }.build(),
+                nyanpasu_runtime_values::profiles::ProfileNotFoundSnafu { uid: uid.clone() }
+                    .build(),
             )
         })?;
         if !matches!(
             item.definition.source(),
             Some(nyanpasu_config::profile::ProfileSource::Remote { .. })
         ) {
-            return Err(crate::runtime_values::profiles::NotARemoteProfileSnafu {
+            return Err(nyanpasu_runtime_values::profiles::NotARemoteProfileSnafu {
                 uid: uid.clone(),
             }
             .build()

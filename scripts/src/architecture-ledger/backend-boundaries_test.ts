@@ -2,6 +2,88 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { dependencyViolations } from './backend-boundaries.ts'
 
+test('runtime values are available to core and the desktop shell', () => {
+  for (const owner of ['nyanpasu-core', 'clash-nyanpasu']) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        owner,
+        `${owner} v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-profile-transform v0.1.0\nnyanpasu-core-metadata v0.1.0\n`,
+      ),
+      [],
+    )
+  }
+})
+
+test('runtime values consume only the approved foundation closure', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-runtime-values',
+      'nyanpasu-runtime-values v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-profile-transform v0.1.0\nnyanpasu-core-metadata v0.1.0\nserde v1.0\nspecta v2.0\n',
+    ),
+    [],
+  )
+})
+
+for (const dependency of [
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'clash-nyanpasu',
+  'nyanpasu-egui',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'slint',
+  'slint-build',
+  'i-slint-core',
+  'winit',
+  'eframe',
+  'egui',
+  'gtk',
+  'webkit2gtk',
+  'tauri',
+  'tauri-runtime',
+  'nyanpasu-core-manager',
+]) {
+  test(`runtime values reject direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-runtime-values',
+          `nyanpasu-runtime-values v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-runtime-values must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+]) {
+  test(`${owner} rejects direct and transitive runtime values`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          owner,
+          `${owner} v0.1.0\n${intermediate}nyanpasu-runtime-values v0.1.0\n`,
+        ),
+        [`${owner} must not depend on nyanpasu-runtime-values`],
+      )
+    }
+    assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
+  })
+}
+
 test('the desktop shell constructs OS implementations over foundation contracts', () => {
   assert.deepStrictEqual(
     dependencyViolations(

@@ -1,5 +1,5 @@
-use crate::runtime_values::runtime;
 use nyanpasu_contracts::profiles::ports::ProfileDegradation;
+use nyanpasu_runtime_values::runtime;
 
 /// Map crate-internal profile materialization degradations onto the public
 /// wire. Actor-internal Cleanup/Reconcile phases collapse to

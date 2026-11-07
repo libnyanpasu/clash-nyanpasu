@@ -12,7 +12,7 @@
 //! lifecycle state (invariant I-R3). The normalized snapshot below is a
 //! field-by-field projection of what the host published, nothing more.
 
-use crate::runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use nyanpasu_core_manager::{

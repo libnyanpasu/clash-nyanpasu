@@ -17,7 +17,7 @@ pub enum PortField {
 /// A failure of resolving the ports a candidate runtime would bind.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum PortResolveError {
     #[snafu(display("failed to resolve the {field:?} port: {source}"))]
     ResolvePort {

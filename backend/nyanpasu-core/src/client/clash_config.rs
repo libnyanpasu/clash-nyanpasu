@@ -13,15 +13,13 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    runtime_values::mutation::ConfigDomain,
-    state::{
-        clash_config::{
-            ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
-        },
-        config_error::{ConfigError, OwnerStoppedSnafu},
+use crate::state::{
+    clash_config::{
+        ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
     },
+    config_error::{ConfigError, OwnerStoppedSnafu},
 };
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {

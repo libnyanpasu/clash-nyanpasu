@@ -12,7 +12,7 @@ use super::mutation::{CommitAborted, NotReady};
 
 /// Downloaded or read content that is not a valid profile document.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProfileContentError {
     #[snafu(display("the document is not a YAML mapping"))]
@@ -188,7 +188,7 @@ fn commit_subject(uid: &Option<ProfileId>, path: &Option<ManagedProfilePath>) ->
 
 impl ProfilesError {
     /// The error and its causes as one line, for outcomes that stay text.
-    pub(crate) fn report(&self) -> String {
+    pub fn report(&self) -> String {
         snafu::Report::from_error(self).to_string()
     }
 }
@@ -201,7 +201,7 @@ mod tests {
     use serde_json::json;
 
     use super::{ProfileContentError, ProfilesError};
-    use crate::runtime_values::{
+    use crate::{
         mutation::{CommitAborted, RuntimeAftermath},
         runtime_error::RuntimeError,
     };

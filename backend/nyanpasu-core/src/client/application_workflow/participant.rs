@@ -26,7 +26,6 @@ use super::{
 };
 use crate::{
     client::runtime_error::ack_of,
-    runtime_values::runtime_error::OwnerUnresponsiveSnafu,
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
         intent::{CommandClass, MutationIntent},
@@ -34,6 +33,7 @@ use crate::{
         value::MutationReceipt,
     },
 };
+use nyanpasu_runtime_values::runtime_error::OwnerUnresponsiveSnafu;
 
 impl<T> MutationParticipantFactory<T> for ApplicationWorkflowClient
 where

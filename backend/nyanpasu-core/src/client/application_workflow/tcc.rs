@@ -46,24 +46,24 @@ use crate::{
         runtime_error,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
-    runtime_values::{
-        check::{EvidenceGap, RuntimeCheckUnavailable},
-        execution_host::ExecutionHost,
-        runtime::{DegradationReason, InterruptFailure},
-        runtime_error::{
-            ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
-            CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
-            HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
-            PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
-            RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
-            SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
-        },
-    },
     state::mutation::{
         impact,
         intent::CoreRunIntent,
         runtime_apply::RuntimeApplyReceipt,
         value::{CheckRecord, MutationConclusion, MutationReceipt},
+    },
+};
+use nyanpasu_runtime_values::{
+    check::{EvidenceGap, RuntimeCheckUnavailable},
+    execution_host::ExecutionHost,
+    runtime::{DegradationReason, InterruptFailure},
+    runtime_error::{
+        ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
+        CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
+        HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
+        PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
+        RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
+        SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
     },
 };
 
@@ -1166,7 +1166,7 @@ impl ApplicationWorkflow {
         outcome: RuntimePrepareOutcome,
         request: &MutationRequest,
         interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
-        degradations: &mut Vec<crate::runtime_values::runtime::Degradation>,
+        degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
     ) -> (
         MutationConclusion,
         Option<String>,
@@ -1185,8 +1185,8 @@ impl ApplicationWorkflow {
                         .await
                     {
                         let cause = InterruptFailure::from(&error);
-                        degradations.push(crate::runtime_values::runtime::Degradation {
-                            phase: crate::runtime_values::runtime::DegradationPhase::SystemEffect,
+                        degradations.push(nyanpasu_runtime_values::runtime::Degradation {
+                            phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
                             reason: if request.hints.mode_requested {
                                 DegradationReason::ModeInterruptionFailed { cause }
                             } else {
@@ -1250,7 +1250,7 @@ impl ApplicationWorkflow {
     pub(super) async fn finish_applied(
         &mut self,
         applied: &AppliedVerdict,
-        degradations: &mut Vec<crate::runtime_values::runtime::Degradation>,
+        degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
     ) -> Option<String> {
         // The runtime reached the target, so whatever gap was outstanding is
         // closed and its budget is no longer owed.
@@ -1264,8 +1264,8 @@ impl ApplicationWorkflow {
             .await;
         self.lifecycle.runtime.accept_transition();
         if let Some(cause) = &failure {
-            degradations.push(crate::runtime_values::runtime::Degradation {
-                phase: crate::runtime_values::runtime::DegradationPhase::RuntimeBuild,
+            degradations.push(nyanpasu_runtime_values::runtime::Degradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::RuntimeBuild,
                 message: cause.to_string(),
                 reason: DegradationReason::RuntimeProductPublishFailed {
                     cause: cause.clone(),
@@ -1278,8 +1278,8 @@ impl ApplicationWorkflow {
         if applied.releases_service
             && let Some(cause) = self.release_service().await
         {
-            degradations.push(crate::runtime_values::runtime::Degradation {
-                phase: crate::runtime_values::runtime::DegradationPhase::SystemEffect,
+            degradations.push(nyanpasu_runtime_values::runtime::Degradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
                 message: cause.to_string(),
                 reason: DegradationReason::ServiceStopFailed { cause },
                 retryable: true,
@@ -1744,14 +1744,14 @@ mod tests {
             },
         },
         client::runtime_error,
-        runtime_values::{
-            execution_host::ExecutionHost,
-            runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError},
-        },
     };
     use nyanpasu_ipc::api::{
         core::v2::{OperationOutputInfo, ReconcileOutcomeInfo, ReconcileOutcomeKind},
         status::ConfigRevisionInfo,
+    };
+    use nyanpasu_runtime_values::{
+        execution_host::ExecutionHost,
+        runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError},
     };
 
     #[test]

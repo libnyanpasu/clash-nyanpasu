@@ -66,13 +66,11 @@ mod tests {
     use tokio::{sync::mpsc, time::Instant};
 
     use super::*;
-    use crate::{
-        actor_v2::{
-            endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
-            test_support::{self, Endpoint},
-        },
-        runtime_values::execution_host::ExecutionHost,
+    use crate::actor_v2::{
+        endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
+        test_support::{self, Endpoint},
     };
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
     struct ObservedEndpoint {
         inner: Arc<Endpoint>,

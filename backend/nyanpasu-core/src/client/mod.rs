@@ -76,13 +76,6 @@ use crate::{
         facade::{ReconcileReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
     },
-    runtime_values::{
-        profiles::{
-            ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu, ProfileNotFoundSnafu, ProfilesError,
-            ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        },
-        runtime_error::RuntimeError,
-    },
     state::profiles::{CommitReport, NewProfileRequest, ReorderOp},
 };
 use nyanpasu_config::{
@@ -102,6 +95,13 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
 };
 use nyanpasu_contracts::{net::SelfProxyPortSource, profiles::ports::ProfileFsPort};
+use nyanpasu_runtime_values::{
+    profiles::{
+        ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu, ProfileNotFoundSnafu, ProfilesError,
+        ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
+    },
+    runtime_error::RuntimeError,
+};
 use nyanpasu_updater::{BackendFactory, BackendFactoryError, PreparedCoreBinary};
 use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
@@ -822,7 +822,7 @@ impl NyanpasuClient {
     pub async fn set_release_channel(
         &self,
         channel: ReleaseChannel,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(Some(channel));
         self.patch_app_config(patch).await
@@ -921,7 +921,7 @@ impl NyanpasuClient {
     pub async fn update_core(
         &self,
         core: nyanpasu_config::application::ClashCore,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.core = Some(core);
         self.patch_app_config(patch).await
@@ -964,7 +964,7 @@ impl NyanpasuClient {
     ) -> std::result::Result<String, RuntimeError> {
         snafu::ResultExt::context(
             self.inner.core_versions.read(core).await,
-            crate::runtime_values::runtime_error::ReadCoreVersionSnafu,
+            nyanpasu_runtime_values::runtime_error::ReadCoreVersionSnafu,
         )
     }
 
@@ -1044,7 +1044,7 @@ impl NyanpasuClient {
     pub async fn patch_app_config(
         &self,
         patch: NyanpasuAppConfigPatch,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
             hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_deref())?;
         }
@@ -1077,15 +1077,15 @@ impl NyanpasuClient {
     pub async fn save_main_window_geometry(
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let snapshot = self.inner.session_state.save_main_window(geometry).await?;
         Ok(
-            crate::runtime_values::runtime::MutationOutcome::from_parts((), Vec::new())
-                .with_commit(crate::runtime_values::runtime::CommitReceipt {
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), Vec::new())
+                .with_commit(nyanpasu_runtime_values::runtime::CommitReceipt {
                     operation_id: None,
                     domain: "session".into(),
                     source_version: snapshot.version,
-                    runtime: crate::runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+                    runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
                 }),
         )
     }
@@ -1131,7 +1131,7 @@ impl NyanpasuClient {
     pub async fn patch_runtime_overrides(
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
         let outcome = client.patch_overrides(patch).await?.outcome();
         self.request_proxy_refresh();
@@ -1141,7 +1141,7 @@ impl NyanpasuClient {
     pub async fn patch_clash_config(
         &self,
         patch: ClashConfigPatch,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
         Ok(client.patch(patch).await?.outcome())
     }
@@ -1155,10 +1155,10 @@ impl NyanpasuClient {
     async fn collect_post_commit_degradations(
         &self,
         report: &CommitReport,
-    ) -> Vec<crate::runtime_values::runtime::Degradation> {
+    ) -> Vec<nyanpasu_runtime_values::runtime::Degradation> {
         // Post-commit side-effect failures are degraded results, not transaction
         // failures (T04 contract): state is already persisted, so surface them.
-        let mut degradations: Vec<crate::runtime_values::runtime::Degradation> = report
+        let mut degradations: Vec<nyanpasu_runtime_values::runtime::Degradation> = report
             .degradations
             .iter()
             .map(|degradation| {
@@ -1179,8 +1179,8 @@ impl NyanpasuClient {
     async fn after_commit(
         &self,
         report: &CommitReport,
-    ) -> crate::runtime_values::runtime::MutationOutcome<()> {
-        crate::runtime_values::runtime::MutationOutcome::from_parts(
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
             (),
             self.collect_post_commit_degradations(report).await,
         )
@@ -1193,16 +1193,16 @@ impl NyanpasuClient {
     fn auto_activation_failure_degradation(
         profile: ProfileId,
         error: ProfilesError,
-    ) -> crate::runtime_values::runtime::Degradation {
+    ) -> nyanpasu_runtime_values::runtime::Degradation {
         tracing::warn!(
             %error,
             "profile auto-activation failed after commit; retaining committed profile id",
         );
-        crate::runtime_values::runtime::Degradation {
-            phase: crate::runtime_values::runtime::DegradationPhase::SystemEffect,
+        nyanpasu_runtime_values::runtime::Degradation {
+            phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
             message: error.to_string(),
             reason:
-                crate::runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed {
+                nyanpasu_runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed {
                     profile,
                     cause: Arc::new(error),
                 },
@@ -1219,16 +1219,19 @@ impl NyanpasuClient {
     async fn try_auto_activate_if_none(
         &self,
         uid: ProfileId,
-    ) -> crate::runtime_values::runtime::MutationOutcome<()> {
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
         // The conditional stays atomic inside the profiles actor: a facade-level
         // read-then-write could lose a concurrent selection.
         let report = match self.inner.profiles.set_current_if_none(uid.clone()).await {
             Ok(None) => {
-                return crate::runtime_values::runtime::MutationOutcome::from_parts((), Vec::new());
+                return nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
+                    (),
+                    Vec::new(),
+                );
             }
             Ok(Some(report)) => report,
             Err(error) => {
-                return crate::runtime_values::runtime::MutationOutcome::from_parts(
+                return nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
                     (),
                     vec![Self::auto_activation_failure_degradation(uid, error)],
                 );
@@ -1245,7 +1248,7 @@ impl NyanpasuClient {
         &self,
         request: NewProfileRequest,
         initial_file: Option<String>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<ProfileId>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
         // Create/add do not download: a remote source would be committed
         // unmaterialized (and auto-activation would rebuild against a missing
         // file). Remote subscriptions must use import_profile.
@@ -1257,11 +1260,13 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an add commits the uid it generated");
-        Ok(crate::runtime_values::runtime::MutationOutcome::from_parts(
-            created,
-            self.collect_post_commit_degradations(&report).await,
+        Ok(
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
+                created,
+                self.collect_post_commit_degradations(&report).await,
+            )
+            .with_commit(report.receipt.clone()),
         )
-        .with_commit(report.receipt.clone()))
     }
 
     /// Create a profile from a fully-specified request and apply the design §9
@@ -1272,7 +1277,7 @@ impl NyanpasuClient {
         &self,
         request: NewProfileRequest,
         initial_file: Option<String>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<ProfileId>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
         // Kind is fixed by the request; avoid a post-commit get() that could turn
         // a successful add into a hard error and erase the committed ProfileId.
         let is_config = matches!(request.definition, ProfileDefinition::Config { .. });
@@ -1324,7 +1329,7 @@ impl NyanpasuClient {
         options: Option<RemoteProfileOptionsPatch>,
         transform: Option<TransformKind>,
         folder: Option<FolderId>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<ProfileId>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
         let update_interval_explicit = options
             .as_ref()
             .and_then(|patch| patch.update_interval_minutes)
@@ -1357,7 +1362,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an import commits the uid it generated");
-        let outcome = crate::runtime_values::runtime::MutationOutcome::from_parts(
+        let outcome = nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
             created.clone(),
             self.collect_post_commit_degradations(&report).await,
         )
@@ -1371,7 +1376,7 @@ impl NyanpasuClient {
     pub async fn delete_profile(
         &self,
         uid: ProfileId,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.delete(uid).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1380,7 +1385,7 @@ impl NyanpasuClient {
         &self,
         active: ProfileId,
         over: ProfileId,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self
             .inner
             .profiles
@@ -1392,7 +1397,7 @@ impl NyanpasuClient {
     pub async fn reorder_profiles_by_list(
         &self,
         list: Vec<ProfileId>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.reorder(ReorderOp::ByList(list)).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1401,7 +1406,7 @@ impl NyanpasuClient {
     pub async fn set_profile_layout(
         &self,
         layout: ProfileLayout,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_layout(layout).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1412,7 +1417,7 @@ impl NyanpasuClient {
         &self,
         profile: ProfileId,
         layout: ProxyGroupLayout,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self
             .inner
             .profiles
@@ -1440,18 +1445,20 @@ impl NyanpasuClient {
         profile: ProfileId,
         name: String,
         members: Vec<String>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<FolderId>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
         let (report, folder) = self
             .inner
             .profiles
             .create_proxy_group_folder(profile, name, members)
             .await?;
         self.inner.proxies.notify_rearranged();
-        Ok(crate::runtime_values::runtime::MutationOutcome::from_parts(
-            folder,
-            self.collect_post_commit_degradations(&report).await,
+        Ok(
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
+                folder,
+                self.collect_post_commit_degradations(&report).await,
+            )
+            .with_commit(report.receipt.clone()),
         )
-        .with_commit(report.receipt.clone()))
     }
 
     /// Create a folder around `members`, which leave the folders they were in.
@@ -1459,20 +1466,22 @@ impl NyanpasuClient {
         &self,
         name: String,
         members: Vec<ProfileId>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<FolderId>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
         let (report, folder) = self.inner.profiles.create_folder(name, members).await?;
-        Ok(crate::runtime_values::runtime::MutationOutcome::from_parts(
-            folder,
-            self.collect_post_commit_degradations(&report).await,
+        Ok(
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
+                folder,
+                self.collect_post_commit_degradations(&report).await,
+            )
+            .with_commit(report.receipt.clone()),
         )
-        .with_commit(report.receipt.clone()))
     }
 
     pub async fn refresh_profile(
         &self,
         uid: ProfileId,
         patch: Option<RemoteProfileOptionsPatch>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.sync(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1481,7 +1490,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         patch: ProfileMetadataPatch,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.patch_metadata(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1490,7 +1499,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         patch: RemoteProfileOptionsPatch,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.patch_remote_options(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1499,7 +1508,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         definition: ProfileDefinition,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self
             .inner
             .profiles
@@ -1511,7 +1520,7 @@ impl NyanpasuClient {
     pub async fn activate_profile(
         &self,
         uid: Option<ProfileId>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_current(uid).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1519,7 +1528,7 @@ impl NyanpasuClient {
     pub async fn set_global_transforms(
         &self,
         ids: Vec<ProfileId>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_global_transforms(ids).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1527,7 +1536,7 @@ impl NyanpasuClient {
     pub async fn set_profile_valid_fields(
         &self,
         fields: Vec<String>,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_valid_fields(fields).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1575,7 +1584,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         data: String,
-    ) -> Result<crate::runtime_values::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.save_file(uid, data).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1620,7 +1629,6 @@ pub(crate) mod tests {
             },
             workflow::{Installer, NoopSystemDnsCache},
         },
-        runtime_values::execution_host::ExecutionHost,
         utils::test_support::test_paths,
     };
     use nyanpasu_config::{
@@ -1641,6 +1649,7 @@ pub(crate) mod tests {
         system_dns::MockSystemDnsCache,
         system_proxy::{MockOsProxyPort, OsProxyConfig, OsProxyError},
     };
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
@@ -2348,7 +2357,7 @@ pub(crate) mod tests {
             let outcome = set_service_mode(&client, true).await.unwrap();
             assert!(matches!(
                 outcome,
-                crate::runtime_values::runtime::MutationOutcome::Committed { .. }
+                nyanpasu_runtime_values::runtime::MutationOutcome::Committed { .. }
             ));
             assert!(client.get_app_config().await.unwrap().enable_service_mode);
         })
@@ -2380,7 +2389,7 @@ pub(crate) mod tests {
             let outcome = set_service_mode(&client, false).await.unwrap();
             assert!(matches!(
                 outcome,
-                crate::runtime_values::runtime::MutationOutcome::Committed { .. }
+                nyanpasu_runtime_values::runtime::MutationOutcome::Committed { .. }
             ));
             assert!(!client.get_app_config().await.unwrap().enable_service_mode);
         })
@@ -3486,7 +3495,7 @@ pub(crate) mod tests {
             assert!(
                 matches!(
                     outcome,
-                    crate::runtime_values::runtime::MutationOutcome::Committed { .. }
+                    nyanpasu_runtime_values::runtime::MutationOutcome::Committed { .. }
                 ),
                 "skipped auto-activation (existing current) must stay applied"
             );
@@ -3529,7 +3538,7 @@ pub(crate) mod tests {
             assert!(
                 matches!(
                     second,
-                    crate::runtime_values::runtime::MutationOutcome::Committed { .. }
+                    nyanpasu_runtime_values::runtime::MutationOutcome::Committed { .. }
                 ),
                 "Ok(None) auto-activation must not invent degradations"
             );
@@ -3560,29 +3569,29 @@ pub(crate) mod tests {
                 NyanpasuClient::auto_activation_failure_degradation(uid.clone(), error);
             assert!(matches!(
                 degradation.reason,
-                crate::runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                nyanpasu_runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
             ));
             assert_eq!(
                 degradation.phase,
-                crate::runtime_values::runtime::DegradationPhase::SystemEffect
+                nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect
             );
             assert!(degradation.retryable);
             assert!(!degradation.message.is_empty());
 
             // Protocol both create and import use after a successful durable commit.
-            let prior = vec![crate::runtime_values::runtime::Degradation {
-                phase: crate::runtime_values::runtime::DegradationPhase::ProfileMaterialization,
-                reason: crate::runtime_values::runtime::DegradationReason::CleanupDeferred,
+            let prior = vec![nyanpasu_runtime_values::runtime::Degradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::ProfileMaterialization,
+                reason: nyanpasu_runtime_values::runtime::DegradationReason::CleanupDeferred,
                 message: "materialization cleanup deferred".into(),
                 retryable: true,
             }];
             let outcome =
-                crate::runtime_values::runtime::MutationOutcome::from_parts(uid.clone(), prior)
+                nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(uid.clone(), prior)
                     .extend_degradations(vec![degradation]);
             assert!(
                 matches!(
                     outcome,
-                    crate::runtime_values::runtime::MutationOutcome::CommittedDegraded { .. }
+                    nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { .. }
                 ),
                 "activation hard error after commit must be CommittedDegraded"
             );
@@ -3591,13 +3600,13 @@ pub(crate) mod tests {
                 matches!(
                     outcome.degradations(),
                     [
-                        crate::runtime_values::runtime::Degradation {
-                            reason: crate::runtime_values::runtime::DegradationReason::CleanupDeferred,
+                        nyanpasu_runtime_values::runtime::Degradation {
+                            reason: nyanpasu_runtime_values::runtime::DegradationReason::CleanupDeferred,
                             ..
                         },
-                        crate::runtime_values::runtime::Degradation {
+                        nyanpasu_runtime_values::runtime::Degradation {
                             reason:
-                                crate::runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed { .. },
+                                nyanpasu_runtime_values::runtime::DegradationReason::ProfileAutoActivationFailed { .. },
                             ..
                         },
                     ]

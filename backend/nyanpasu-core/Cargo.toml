@@ -24,6 +24,7 @@ test-support = [
 ]
 
 [dependencies]
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }

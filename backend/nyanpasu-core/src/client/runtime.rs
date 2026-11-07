@@ -2,10 +2,10 @@
 //! rebuild, plus the product/candidate config file locations. Runtime is a
 //! pure derivation — there is no writable runtime state anywhere else.
 
-use crate::runtime_values::publish::{
+use nyanpasu_paths::PathResolver;
+use nyanpasu_runtime_values::publish::{
     CreateRuntimeDirectorySnafu, PublishRuntimeError, WriteRuntimeConfigSnafu,
 };
-use nyanpasu_paths::PathResolver;
 
 use std::{
     fs::OpenOptions,
@@ -638,7 +638,7 @@ pub(crate) mod tests {
                 source_hash: "source".into(),
                 effective_hash: "effective".into(),
             },
-            host: crate::runtime_values::execution_host::ExecutionHost::Local,
+            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             generation: 0,
         }
     }
@@ -727,7 +727,7 @@ pub(crate) mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::runtime_values::execution_host::ExecutionHost::Local,
+            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,

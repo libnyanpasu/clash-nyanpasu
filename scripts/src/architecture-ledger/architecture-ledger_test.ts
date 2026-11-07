@@ -1006,6 +1006,7 @@ for (const root of [
   'backend/nyanpasu-os/src/',
   'backend/nyanpasu-contracts/src/',
   'backend/nyanpasu-scripts/src/',
+  'backend/boa_utils/src/',
   'backend/nyanpasu-profile-transform/src/',
   'backend/nyanpasu-persistence/src/',
   'backend/nyanpasu-profile-io/src/',

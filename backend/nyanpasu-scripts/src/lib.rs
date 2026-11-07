@@ -6,7 +6,10 @@ mod adapter;
 pub use adapter::EnhanceScriptRunner;
 mod js;
 mod lua;
-pub use js::ScriptDirs;
+pub use runner::{ConsoleSink, ScriptDirs};
+pub mod extensions;
+#[cfg(test)]
+mod test_extensions;
 use lua::{create_lua_context, ordered_map};
 mod runner;
 use runner::RunnerManager;

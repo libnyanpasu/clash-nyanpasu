@@ -41,5 +41,6 @@ tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+url = '2'
 tempfile = '3'
 test-log = { workspace = true }

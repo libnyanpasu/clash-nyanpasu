@@ -854,3 +854,27 @@ for (const owner of [
     assert.deepStrictEqual(dependencyViolations(owner, 'serde v1.0\n'), [])
   })
 }
+
+test('Boa helper accepts neutral dependencies without a host or implementation edge', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'boa_utils',
+      'boa_engine v0.22\nnyanpasu-log-preview v0.1.0\nurl v2\n',
+    ),
+    [],
+  )
+})
+
+for (const dependency of ['nyanpasu-core', 'tauri', 'nyanpasu-net']) {
+  test(`Boa helper rejects direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-helper v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'boa_utils',
+          `boa_utils v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`boa_utils must not depend on ${dependency}`],
+      )
+    }
+  })
+}

@@ -32,12 +32,13 @@ use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 use nyanpasu_migration::modules::application::ApplicationFormat;
 use nyanpasu_state_engine::{
-    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
-    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
-    StateParticipant, SubscriberName, error::StateChangedError,
+    AbortResourceState, Ack, AckPolicy, AckStatus, DecisionHandle, PersistentStateManager,
+    PersistentStateManagerSetup, ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason,
+    StateAckSubscriber, StateChange, StateDecision, StateParticipant, SubscriberName,
+    error::StateChangedError,
 };
 use serde::{Serialize, de::DeserializeOwned};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc, oneshot};
 
 use super::{
     super::{
@@ -2501,6 +2502,251 @@ async fn an_unobserved_apply_after_a_handoff_keeps_its_recovery_context() {
         operation_id
     );
     assert!(!application.snapshot().enable_service_mode);
+}
+
+// -- RecoveryRequired settles only after the authoritative source decision --
+
+/// Holds the real prepare vote before the source can decide. On a current-thread
+/// runtime, the workflow's sending poll reaches its decision wait (or the old
+/// early return) before this participant can wake the test.
+struct GatedRecoveryVote {
+    inner: StateParticipant<ClashConfig>,
+    decision: DecisionHandle,
+    prepared: mpsc::UnboundedSender<(DecisionHandle, Arc<RuntimeError>)>,
+    release: Arc<Notify>,
+}
+
+#[async_trait::async_trait]
+impl StateAckSubscriber<ClashConfig> for GatedRecoveryVote {
+    fn name(&self) -> SubscriberName<'_> {
+        self.inner.name()
+    }
+
+    fn policy(&self) -> AckPolicy {
+        self.inner.policy()
+    }
+
+    async fn on_prepare(&self, change: StateChange<ClashConfig>) -> Ack {
+        let ack = self.inner.on_prepare(change).await;
+        let Ack::Failed(error) = &ack else {
+            panic!("an unobserved apply must produce a failed vote: {ack:?}");
+        };
+        let cause = refusal_of(&self.name().to_string(), error);
+        assert!(matches!(*cause, RuntimeError::SubmissionUnobserved { .. }));
+        self.prepared.send((self.decision.clone(), cause)).unwrap();
+        self.release.notified().await;
+        ack
+    }
+}
+
+struct GatedRecoveryMutation {
+    operation_id: OperationId,
+    settlement: oneshot::Receiver<MutationReceipt>,
+    prepared: mpsc::UnboundedReceiver<(DecisionHandle, Arc<RuntimeError>)>,
+    release: Arc<Notify>,
+    source: tokio::task::JoinHandle<Result<ReplaceIfVersionResult, ReplaceIfVersionError>>,
+}
+
+/// Retains the terminal receiver before starting the source transaction.
+fn start_gated_recovery_mutation(
+    mut clash: PersistentStateManager<ClashConfig>,
+    client: ApplicationWorkflowClient,
+) -> GatedRecoveryMutation {
+    let operation_id = OperationId::generate();
+    let (settle, settlement) = oneshot::channel();
+    let (prepared, observed) = mpsc::unbounded_channel();
+    let release = Arc::new(Notify::new());
+    let gate = release.clone();
+    let source = tokio::spawn(async move {
+        let next = overrides(serde_json::json!({"mode": "global"}));
+        let current = clash.snapshot_handle().load();
+        let hints = MutationHints::default();
+        let class = CommandClass::Save;
+        let impact = runtime_impact(&current.state, &next, &hints, class).unwrap();
+        clash
+            .replace_if_version_with_participant(
+                current.version,
+                next,
+                move |decision| {
+                    Arc::new(GatedRecoveryVote {
+                        inner: ApplicationMutationParticipant::new(
+                            operation_id,
+                            hints,
+                            class,
+                            impact,
+                            decision.clone(),
+                            client,
+                            settle,
+                        ),
+                        decision,
+                        prepared,
+                        release: gate,
+                    })
+                },
+                no_local_write,
+                || async { Ok(()) },
+            )
+            .await
+    });
+    GatedRecoveryMutation {
+        operation_id,
+        settlement,
+        prepared: observed,
+        release,
+        source,
+    }
+}
+
+impl GatedRecoveryMutation {
+    async fn vote(&mut self) -> (DecisionHandle, Arc<RuntimeError>) {
+        // A bounded test driver exposes a wait incorrectly placed before the vote.
+        tokio::time::timeout(Duration::from_secs(5), self.prepared.recv())
+            .await
+            .expect("the prepare vote must arrive before the source decision")
+            .expect("the source must retain its prepare participant")
+    }
+
+    fn assert_pending(&mut self, decision: &DecisionHandle, client: &ApplicationWorkflowClient) {
+        assert_eq!(decision.decision(), StateDecision::Undecided);
+        let receipt = self.settlement.try_recv();
+        let completed = client.mutation_journal().completed;
+        assert!(
+            matches!(receipt, Err(oneshot::error::TryRecvError::Empty))
+                && !completed
+                    .iter()
+                    .any(|entry| entry.operation_id == self.operation_id),
+            "no terminal receipt or journal record before the source decision: \
+             receipt={receipt:?}, completed={completed:?}"
+        );
+    }
+
+    async fn assert_settled(
+        &mut self,
+        decision: &DecisionHandle,
+        cause: &Arc<RuntimeError>,
+        client: &ApplicationWorkflowClient,
+    ) {
+        use std::error::Error as _;
+
+        assert_eq!(
+            decision.decision(),
+            StateDecision::Aborted {
+                resources: AbortResourceState::Restored
+            }
+        );
+        let receipt = tokio::time::timeout(Duration::from_secs(5), &mut self.settlement)
+            .await
+            .expect("the source decision must release settlement")
+            .unwrap();
+        assert_eq!(receipt.operation_id, self.operation_id);
+        assert_eq!(receipt.outcome, MutationOutcomeKind::RecoveryRequired);
+        assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
+        let received_cause = receipt.cause.as_ref().unwrap();
+        assert!(
+            Arc::ptr_eq(received_cause, cause),
+            "preserve the original cause"
+        );
+        assert_eq!(receipt.detail.as_deref(), Some(cause.to_string().as_str()));
+        assert_eq!(
+            received_cause.source().unwrap().to_string(),
+            cause.source().unwrap().to_string()
+        );
+        assert_eq!(
+            serde_json::to_value(received_cause).unwrap(),
+            serde_json::to_value(cause).unwrap()
+        );
+        assert!(matches!(
+            self.settlement.try_recv(),
+            Err(oneshot::error::TryRecvError::Closed)
+        ));
+        let journal = client.mutation_journal();
+        let completed: Vec<_> = journal
+            .completed
+            .iter()
+            .filter(|entry| entry.operation_id == self.operation_id)
+            .collect();
+        assert_eq!(completed.len(), 1, "exactly one terminal journal record");
+        assert_eq!(completed[0].outcome, receipt.outcome);
+        assert_eq!(completed[0].conclusion, receipt.conclusion);
+        assert_eq!(completed[0].detail, receipt.detail);
+        assert!(Arc::ptr_eq(completed[0].cause.as_ref().unwrap(), cause));
+        assert_eq!(journal.recovery.unwrap().operation_id, self.operation_id);
+        assert!(
+            client.status().uncertain,
+            "the abort cannot prove a runtime rollback"
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recovery_required_settlement_waits_for_the_source_decision() {
+    let f = fixture().await;
+    f.endpoint.set_result_missing(true);
+    let mut mutation = start_gated_recovery_mutation(f.clash, f.client.clone());
+    let (decision, cause) = mutation.vote().await;
+    mutation.assert_pending(&decision, &f.client);
+
+    mutation.release.notify_one();
+    let result = (&mut mutation.source).await.unwrap();
+    assert!(refused(&result), "{result:?}");
+    mutation.assert_settled(&decision, &cause, &f.client).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn dropped_source_publishes_abort_and_releases_recovery_required_settlement() {
+    let f = fixture().await;
+    f.endpoint.set_result_missing(true);
+    let mut mutation = start_gated_recovery_mutation(f.clash, f.client.clone());
+    let (decision, cause) = mutation.vote().await;
+    mutation.assert_pending(&decision, &f.client);
+    let submissions = f.endpoint.submissions();
+
+    // Drop the source transaction itself, not an external caller's waiter.
+    // Its engine guard must publish the abort without a prepare ACK returning.
+    mutation.source.abort();
+    assert!((&mut mutation.source).await.unwrap_err().is_cancelled());
+    mutation.assert_settled(&decision, &cause, &f.client).await;
+    assert_eq!(
+        f.endpoint.submissions(),
+        submissions,
+        "no speculative restore"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn shutdown_waits_for_recovery_required_source_settlement() {
+    let f = fixture().await;
+    f.endpoint.set_result_missing(true);
+    let mut mutation = start_gated_recovery_mutation(f.clash, f.client.clone());
+    let (decision, cause) = mutation.vote().await;
+    mutation.assert_pending(&decision, &f.client);
+    let submissions = f.endpoint.submissions();
+
+    f.shutdown.cancel();
+    f.tasks.close();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), f.tasks.wait())
+            .await
+            .is_err(),
+        "shutdown must wait for the source decision"
+    );
+    mutation.assert_pending(&decision, &f.client);
+    assert_eq!(
+        f.endpoint.submissions(),
+        submissions,
+        "the core is not stopped early"
+    );
+
+    // The pending apply remains unknown, but let the shutdown's later stop answer.
+    f.endpoint.set_result_missing(false);
+    mutation.release.notify_one();
+    let result = (&mut mutation.source).await.unwrap();
+    assert!(refused(&result), "{result:?}");
+    mutation.assert_settled(&decision, &cause, &f.client).await;
+    tokio::time::timeout(Duration::from_secs(5), f.tasks.wait())
+        .await
+        .expect("shutdown must finish after source settlement");
+    assert_eq!(f.endpoint.submissions(), submissions + 1, "then one stop");
 }
 
 // -- C4: a restore is proven by a fresh observation, never by a cached one ---

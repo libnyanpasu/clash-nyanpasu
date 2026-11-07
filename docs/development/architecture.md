@@ -110,10 +110,12 @@ is the plan for the next stage:
   registry/server/core-family/implementation/GUI production closure; foundation
   values through protocol remain allowed. E2b moved the registry, event bus and
   C2f audit kernel and neutral production `TracingRpcAuditSink` together.
-  E2c will make observations publish to the bus; an injected synchronous native sink preserves
-  window targeting/errors, while SSE/local use bounded asynchronous receivers
-  with lag/resync. The current shell `listen_any` input bridge remains until E2c.
-  Forwarders acquire subscriptions before reconciliation/stream/listener activation.
+  E2c publishes observations through `nyanpasu-rpc::events` and `forward`.
+  The injected native sink finishes delivery synchronously, preserving window
+  targeting/errors; SSE and future local receivers use the bounded broadcast
+  with lag/resync. The shell input bridge is removed. Forwarder construction
+  acquires all seven subscriptions before reconciliation/stream/listener
+  activation; the composition root tracks their futures until shutdown.
   E2a first closes shared command signatures; protocol owns the shared icon-mode
   value, while asset access remains shell functions. Local subscription control
   supplies initial snapshots and lag resets only for full-value configuration,

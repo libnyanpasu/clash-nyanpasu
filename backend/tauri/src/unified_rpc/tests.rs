@@ -3,8 +3,9 @@ use std::sync::Arc;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 use nyanpasu_observers::logs::{CoreLogRecord, CoreLogSource, PreparedCoreLog};
 use nyanpasu_rpc::{
+    events::EventBus,
     http::routes::RpcHttpRoutes,
-    registry::{EventBus, RpcAudit, RpcDependencies, UnifiedRpc},
+    registry::{RpcAudit, RpcDependencies, UnifiedRpc},
     test_support::AuditSink,
 };
 use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandKind};
@@ -109,6 +110,13 @@ fn browser_debug_page_and_real_rpc() {
     let paths = args.paths.clone();
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
     let events = EventBus::new();
+    let storage = Storage::try_new(&directory.path().join("web-storage.redb")).unwrap();
+    let forwarders = nyanpasu_rpc::forward::forwarders(
+        &client,
+        &storage,
+        &events,
+        Arc::new(nyanpasu_rpc::events::BusUiEventSink::new(events.clone())),
+    );
     let rpc = UnifiedRpc::new(
         RpcDependencies {
             icon_files: None,
@@ -118,7 +126,7 @@ fn browser_debug_page_and_real_rpc() {
             host_environment: nyanpasu_rpc::commands::ports::HostEnvironment { is_appimage: false },
             audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
-            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            storage,
             paths,
             events: events.clone(),
         },
@@ -127,18 +135,11 @@ fn browser_debug_page_and_real_rpc() {
     .unwrap();
     routes.install(&rpc).unwrap();
     tauri::async_runtime::block_on(async {
-        // The headless fixture has no Tauri event bridge; forward the real owner watch.
-        let mut logs = client.subscribe_core_logs();
-        let bridge = tokio::spawn(async move {
-            while logs.changed().await.is_ok() {
-                let status = logs.borrow_and_update().clone();
-                events.publish(
-                    <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
-                    serde_json::to_value(crate::adapters::events::CoreLogsChanged { status })
-                        .unwrap(),
-                );
-            }
-        });
+        let mut tasks = tokio::task::JoinSet::new();
+        for forwarder in forwarders {
+            let token = client.shutdown_child_token();
+            tasks.spawn(client.track_until_shutdown(&token, forwarder));
+        }
         let url = client
             .set_debug_http_enabled(true)
             .await
@@ -159,7 +160,7 @@ fn browser_debug_page_and_real_rpc() {
         )
         .await;
         client.shutdown_debug_http().await.unwrap();
-        bridge.abort();
+        tasks.shutdown().await;
         let output = output.unwrap().unwrap();
         assert!(
             output.status.success(),

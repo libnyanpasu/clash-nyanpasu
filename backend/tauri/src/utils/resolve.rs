@@ -47,9 +47,6 @@ pub fn resolve_setup(app: &mut App) {
         log_err!(client.start_background_sources());
     }
 
-    log::trace!("init clash connection connector");
-    log_err!(crate::adapters::clash_events::setup(app));
-
     log_err!(tauri::async_runtime::block_on(
         app.state::<nyanpasu_core::client::NyanpasuClient>()
             .start_clash_streams()

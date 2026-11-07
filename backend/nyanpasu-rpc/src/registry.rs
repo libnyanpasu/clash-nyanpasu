@@ -13,9 +13,10 @@ use nyanpasu_rpc_protocol::{
     COMMAND_CATALOG, CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, ShellCapability,
 };
 use serde_json::Value;
-use tokio::sync::broadcast;
 
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
+
+use crate::events::EventBus;
 
 /// Explicit inputs for shared handlers. Declarations use `RpcState` and `RpcCaller`
 /// for injected values that must not appear in request JSON or exported schemas.
@@ -195,25 +196,6 @@ pub async fn dispatch_audited<T>(
         },
     });
     result
-}
-
-#[derive(Clone)]
-pub struct EventBus(broadcast::Sender<(&'static str, Value)>);
-
-impl EventBus {
-    pub fn new() -> Self {
-        let (sender, _) = broadcast::channel(256);
-        Self(sender)
-    }
-
-    pub fn publish(&self, name: &'static str, payload: Value) {
-        let _ = self.0.send((name, payload));
-    }
-
-    #[cfg(feature = "http")]
-    pub(crate) fn subscribe(&self) -> broadcast::Receiver<(&'static str, Value)> {
-        self.0.subscribe()
-    }
 }
 
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;

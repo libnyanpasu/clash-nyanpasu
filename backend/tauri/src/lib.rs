@@ -29,7 +29,6 @@ mod window;
 use crate::utils::{init, resolve};
 use specta_typescript::Typescript;
 use tauri::Manager;
-use tauri_specta::Event;
 
 rust_i18n::i18n!("./locales");
 
@@ -137,7 +136,12 @@ backtrace:
 fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
     app_handle.state::<crate::ipc::PendingDeepLinks>().push(url);
     log_err!(
-        crate::ipc::SchemeRequestReceivedEvent.emit(app_handle),
+        app_handle
+            .state::<nyanpasu_rpc::events::EventBus>()
+            .publish_serialized(
+                nyanpasu_rpc_protocol::EventName::SchemeRequestReceived,
+                &crate::ipc::SchemeRequestReceivedEvent,
+            ),
         "failed to emit scheme-request-received event"
     );
 }

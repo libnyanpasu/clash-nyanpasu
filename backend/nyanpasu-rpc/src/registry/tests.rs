@@ -15,9 +15,10 @@ use nyanpasu_rpc_protocol::EventName;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use super::{EventBus, RpcAudit, RpcDependencies, UnifiedRpc};
+use super::{RpcAudit, RpcDependencies, UnifiedRpc};
 use crate::{
     error::application_error,
+    events::EventBus,
     http::routes::{RpcHttpRoutes, connection_detail_events},
     test_support::{AuditSink, rpc_for_test_call},
 };

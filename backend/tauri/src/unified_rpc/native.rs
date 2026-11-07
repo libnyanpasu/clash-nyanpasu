@@ -2,24 +2,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use nyanpasu_rpc_protocol::{EventName, RpcError, RpcOwner, RpcValue};
+use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
 use serde_json::Value;
 use tauri::Manager as _;
 
-use nyanpasu_rpc::registry::{EventBus, RpcFuture, RpcTransport, SetupError, UnifiedRpc};
-
-pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
-    use tauri::Listener;
-    for event in EventName::ALL {
-        let name = event.as_str();
-        let events = events.clone();
-        app.listen_any(name, move |event| {
-            if let Ok(payload) = serde_json::from_str(event.payload()) {
-                events.publish(name, payload);
-            }
-        });
-    }
-}
+use nyanpasu_rpc::registry::{RpcFuture, RpcTransport, SetupError, UnifiedRpc};
 
 pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
 

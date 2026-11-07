@@ -15,7 +15,8 @@ use tracing_subscriber::{Layer, layer::Context};
 
 use crate::{
     audit::TracingRpcAuditSink,
-    registry::{EventBus, RpcAudit, RpcAuditRecord, RpcAuditSink, RpcDependencies, UnifiedRpc},
+    events::EventBus,
+    registry::{RpcAudit, RpcAuditRecord, RpcAuditSink, RpcDependencies, UnifiedRpc},
 };
 
 pub const SECRET: &str = "c2f-secret-86a9b379-never-audit";
@@ -203,4 +204,20 @@ pub fn assert_duplicate_commands_rejected(entry: &'static crate::registry::Comma
         crate::registry::register_commands(COMMAND_CATALOG, [entry, entry], &[]),
         Err(crate::registry::SetupError::RegisterCommand { name }) if name == entry.metadata.name
     ));
+}
+
+/// Open the real SSE route without polling its body, so adapter tests can force lag.
+pub async fn event_stream(rpc: UnifiedRpc) -> impl futures::Stream<Item = String> + use<> {
+    use futures::StreamExt as _;
+
+    let response = rpc
+        .router()
+        .oneshot(Request::get("/bridge/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    response
+        .into_body()
+        .into_data_stream()
+        .map(|data| String::from_utf8(data.unwrap().to_vec()).unwrap())
 }

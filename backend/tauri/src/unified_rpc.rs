@@ -23,7 +23,8 @@ use axum::{
 };
 use futures::{StreamExt, stream};
 use nyanpasu_observers::logs::CoreLogError;
-use serde::{Deserialize, Serialize};
+use nyanpasu_rpc_protocol::{EventName, Request, RpcError, RpcOwner, RpcValue};
+use serde::Deserialize;
 use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
@@ -170,20 +171,6 @@ pub async fn dispatch_audited<T>(
     result
 }
 
-const EVENT_NAMES: &[&str] = &[
-    <crate::adapters::events::AppUpdateStateChanged as tauri_specta::Event>::NAME,
-    <crate::adapters::events::ClashWsEvent as tauri_specta::Event>::NAME,
-    <crate::adapters::events::CoreLogsChanged as tauri_specta::Event>::NAME,
-    <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
-    <crate::adapters::events::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
-    <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
-    <crate::adapters::events::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
-    <crate::adapters::events::StorageValueChangedEvent as tauri_specta::Event>::NAME,
-    <crate::adapters::events::StorageResyncEvent as tauri_specta::Event>::NAME,
-    <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    <crate::adapters::events::StateChangedEvent as tauri_specta::Event>::NAME,
-];
-
 #[derive(Clone)]
 pub struct EventBus(broadcast::Sender<(&'static str, Value)>);
 
@@ -204,7 +191,8 @@ impl EventBus {
 
 pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
     use tauri::Listener;
-    for &name in EVENT_NAMES {
+    for event in EventName::ALL {
+        let name = event.as_str();
         let events = events.clone();
         app.listen_any(name, move |event| {
             if let Ok(payload) = serde_json::from_str(event.payload()) {
@@ -215,17 +203,6 @@ pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
 }
 
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RpcOwner(String);
-
-impl RpcOwner {
-    pub fn desktop(label: &str) -> Self {
-        Self(label.to_owned())
-    }
-    pub fn label(&self) -> &str {
-        &self.0
-    }
-}
 
 fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
     let cookie = headers
@@ -238,12 +215,12 @@ fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
         .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
         .and_then(|s| uuid::Uuid::parse_str(s).ok())
         .ok_or_else(|| RpcError::invalid_params("HTTP session cookie is missing"))?;
-    Ok(RpcOwner(format!("http:{session}")))
+    Ok(RpcOwner::new(format!("http:{session}")))
 }
 
 fn http_owner_or_anonymous(headers: &HeaderMap) -> RpcOwner {
     // A session identifies an owner; authentication belongs to the listener.
-    http_owner(headers).unwrap_or_else(|_| RpcOwner(format!("http:{}", uuid::Uuid::new_v4())))
+    http_owner(headers).unwrap_or_else(|_| RpcOwner::new(format!("http:{}", uuid::Uuid::new_v4())))
 }
 
 pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
@@ -256,49 +233,6 @@ pub struct CommandEntry {
 }
 
 inventory::collect!(CommandEntry);
-
-#[derive(Debug, Serialize, specta::Type)]
-pub struct RpcError {
-    pub kind: &'static str,
-    pub message: String,
-    pub code: Option<String>,
-    pub retryable: Option<bool>,
-    pub operation_id: Option<String>,
-    pub domain_error: Option<Box<RpcValue>>,
-}
-
-/// Specta 0.0.12 cannot recursively export `serde_json::Value` directly.
-/// Keep the JSON wire transparent while exporting it as TypeScript `any`.
-#[derive(Debug, Serialize, Deserialize, specta::Type)]
-#[serde(transparent)]
-pub struct RpcValue(#[specta(type = specta_typescript::Any)] Value);
-
-impl RpcError {
-    fn new(kind: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-            code: None,
-            retryable: None,
-            operation_id: None,
-            domain_error: None,
-        }
-    }
-    pub fn invalid_params(message: impl Into<String>) -> Self {
-        Self::new("invalid_params", message)
-    }
-
-    pub fn unsupported(name: &str) -> Self {
-        Self::new(
-            "unsupported",
-            format!("command `{name}` is unavailable over HTTP"),
-        )
-    }
-
-    fn unknown_method(name: &str) -> Self {
-        Self::new("unknown_method", format!("unknown command `{name}`"))
-    }
-}
 
 /// Wrap a command failure, preserving domain errors and core retry metadata.
 pub(crate) fn application_error(error: impl std::error::Error + 'static) -> RpcError {
@@ -332,13 +266,6 @@ fn application_error_ref(error: &(dyn std::error::Error + 'static)) -> RpcError 
         source = error.source();
     }
     result
-}
-
-#[derive(Deserialize)]
-struct Request {
-    method: String,
-    #[serde(default)]
-    params: Value,
 }
 
 type CommandHandlers = Arc<HashMap<&'static str, (RpcHandler, TauriRpcHandler)>>;
@@ -621,7 +548,7 @@ async fn http_events(
             if request
                 .name
                 .as_ref()
-                .is_some_and(|name| !EVENT_NAMES.contains(&name.as_str()))
+                .is_some_and(|name| !EventName::ALL.iter().any(|event| event.as_str() == name))
             {
                 return Err(RpcError::unknown_method(request.name.as_deref().unwrap()));
             }

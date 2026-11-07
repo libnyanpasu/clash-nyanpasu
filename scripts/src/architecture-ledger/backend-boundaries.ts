@@ -50,6 +50,10 @@ const IMPLEMENTATION = [
 ]
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
+  {
+    package: 'nyanpasu-rpc-protocol',
+    forbids: [...GUI, ...CORE_FAMILY, ...IMPLEMENTATION],
+  },
   { package: 'boa_utils', forbids: [...CORE_FAMILY, ...IMPLEMENTATION] },
   ...[
     ...FOUNDATION,

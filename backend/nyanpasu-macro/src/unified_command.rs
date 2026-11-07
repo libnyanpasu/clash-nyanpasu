@@ -104,8 +104,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             wrapper_args.push(quote!(#ident));
             http_supported = false;
         } else if options.owner && is_context_type(&argument.ty, "Window") {
-            *argument.ty = syn::parse_quote!(crate::unified_rpc::RpcOwner);
-            wrapper_args.push(quote!(crate::unified_rpc::RpcOwner::desktop(#ident.label())));
+            *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
+            wrapper_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(#ident.label())));
             http_args.push(quote!(owner.clone()));
         } else if is_context_type(&argument.ty, "Window")
             || is_context_type(&argument.ty, "Webview")
@@ -170,7 +170,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 .map_err(crate::unified_rpc::application_error)
         }
     } else {
-        quote! { Err(crate::unified_rpc::RpcError::unsupported(stringify!(#name))) }
+        quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
     };
 
     let tauri_handler_definition = if tauri_supported {
@@ -192,7 +192,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             } else if is_context_type(&argument.ty, "AppHandle") {
                 tauri_args.push(quote!(app.clone()));
             } else if options.owner && is_context_type(&argument.ty, "Window") {
-                tauri_args.push(quote!(crate::unified_rpc::RpcOwner::desktop(
+                tauri_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(
                     window.label()
                 )));
             } else if is_context_type(&argument.ty, "Window") {
@@ -247,7 +247,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 _params: ::serde_json::Value,
             ) -> crate::unified_rpc::RpcFuture {
                 ::std::boxed::Box::pin(async move {
-                    Err(crate::unified_rpc::RpcError::unsupported(stringify!(#name)))
+                    Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))
                 })
             }
         }
@@ -260,7 +260,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         #(#cfg_attrs)*
         fn #http_handler(
             dependencies: ::std::sync::Arc<crate::unified_rpc::RpcDependencies>,
-            owner: crate::unified_rpc::RpcOwner,
+            owner: ::nyanpasu_rpc_protocol::RpcOwner,
             params: ::serde_json::Value,
         ) -> crate::unified_rpc::RpcFuture {
             ::std::boxed::Box::pin(async move {
@@ -311,7 +311,7 @@ fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
     if fields.is_empty() {
         quote! {
             if !params.is_null() && !matches!(&params, ::serde_json::Value::Object(map) if map.is_empty()) {
-                return Err(crate::unified_rpc::RpcError::invalid_params("expected an empty input object"));
+                return Err(::nyanpasu_rpc_protocol::RpcError::invalid_params("expected an empty input object"));
             }
         }
     } else {
@@ -320,7 +320,7 @@ fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
             #[serde(rename_all = "camelCase")]
             struct Args { #(#fields,)* }
             let Args { #(#names,)* } = ::serde_json::from_value(params)
-                .map_err(|error| crate::unified_rpc::RpcError::invalid_params(error.to_string()))?;
+                .map_err(|error| ::nyanpasu_rpc_protocol::RpcError::invalid_params(error.to_string()))?;
         }
     }
 }

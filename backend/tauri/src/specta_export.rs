@@ -478,6 +478,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn protocol_event_names_match_desktop_names() {
+        use nyanpasu_rpc_protocol::EventName;
+        use tauri_specta::Event as _;
+
+        use crate::{adapters::events, ipc, window};
+
+        let desktop_names = [
+            (
+                EventName::AppUpdateStateChanged,
+                events::AppUpdateStateChanged::NAME,
+            ),
+            (EventName::ClashWs, events::ClashWsEvent::NAME),
+            (EventName::CoreLogsChanged, events::CoreLogsChanged::NAME),
+            (
+                EventName::ConfigurationStatusChanged,
+                ipc::ConfigurationStatusChanged::NAME,
+            ),
+            (
+                EventName::CoreStatusChanged,
+                events::CoreStatusChangedEvent::NAME,
+            ),
+            (
+                EventName::SchemeRequestReceived,
+                ipc::SchemeRequestReceivedEvent::NAME,
+            ),
+            (
+                EventName::ServiceStatusChanged,
+                events::ServiceStatusChangedEvent::NAME,
+            ),
+            (
+                EventName::StorageValueChanged,
+                events::StorageValueChangedEvent::NAME,
+            ),
+            (EventName::StorageResync, events::StorageResyncEvent::NAME),
+            (EventName::WindowMessage, window::WindowMessageEvent::NAME),
+            (EventName::StateChanged, events::StateChangedEvent::NAME),
+        ];
+        assert_eq!(EventName::ALL.len(), desktop_names.len());
+        for (event, (expected_event, desktop_name)) in EventName::ALL.into_iter().zip(desktop_names)
+        {
+            assert_eq!(event, expected_event);
+            assert_eq!(event.as_str(), desktop_name);
+        }
+    }
+
     /// Regenerates the committed TS bindings in place (same path and header as
     /// the debug-run export in lib.rs), then asserts every profile domain type
     /// exports as a named TS type. CI enforces freshness via

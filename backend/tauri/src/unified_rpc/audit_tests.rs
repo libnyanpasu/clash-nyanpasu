@@ -6,6 +6,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
+use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
@@ -17,7 +18,7 @@ use tracing_subscriber::{
 
 use super::{
     EventBus, RpcAudit, RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink,
-    RpcDependencies, RpcError, RpcFuture, RpcOwner, RpcTransport, RpcValue, UnifiedRpc,
+    RpcDependencies, RpcFuture, RpcTransport, UnifiedRpc,
 };
 use crate::adapters::rpc_audit::TracingRpcAuditSink;
 

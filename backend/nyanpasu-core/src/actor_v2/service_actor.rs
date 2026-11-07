@@ -1242,8 +1242,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::actor_v2::endpoint::{
-        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
+    use crate::{
+        actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
+        runtime_values::execution_host::ExecutionHost,
     };
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};
     use std::borrow::Cow;

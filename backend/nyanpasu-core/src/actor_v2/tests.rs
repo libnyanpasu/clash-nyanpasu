@@ -23,8 +23,9 @@ use nyanpasu_ipc::api::{
 use super::{
     CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
     ShutdownReport, SubmitFailure,
-    endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
+    endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle},
 };
+use crate::runtime_values::execution_host::ExecutionHost;
 
 /// The three answers a host gives are scripted independently, because the
 /// defect class this suite guards against is a router filling one in from

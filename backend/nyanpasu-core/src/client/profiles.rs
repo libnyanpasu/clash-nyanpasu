@@ -25,10 +25,14 @@ use snafu::ResultExt as _;
 use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::profiles::{
-    CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
-    ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
-    ReorderOp, sources::SourcesSnapshot,
+use crate::{
+    runtime_values::profiles::{
+        FetchSubscriptionSnafu, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
+    },
+    state::profiles::{
+        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
+        ReorderOp, sources::SourcesSnapshot,
+    },
 };
 use nyanpasu_contracts::profiles::{
     error::ProfileFileError,
@@ -610,10 +614,8 @@ mod tests {
             ok_fetch, overlay_item, remote_config_item, round_trip, seeded_profiles,
             suggested_fetch, wait_for_source, yaml,
         },
-        state::{
-            mutation::CommitAborted,
-            profiles::{RefreshOrigin, error::MaterializationOperation},
-        },
+        runtime_values::{mutation::CommitAborted, profiles::MaterializationOperation},
+        state::profiles::RefreshOrigin,
     };
     use nyanpasu_config::profile::{
         ConfigDefinition, ExternalMode, FolderId, LocalBinding, ManagedProfilePath,
@@ -1878,19 +1880,18 @@ mod tests {
             .await
             .expect_err("compound materialization failure");
         let ProfilesError::Commit {
-            source:
-                CommitAborted::RecoverAfterWriteFailure {
-                    source:
-                        ReplaceIfVersionError::ResourceRecovery {
-                            cause,
-                            recovery_error,
-                        },
-                    ..
-                },
+            source: CommitAborted::RecoverAfterWriteFailure { source, .. },
             ..
         } = &err
         else {
             panic!("compound failure expected, got: {err:?}");
+        };
+        let Some(ReplaceIfVersionError::ResourceRecovery {
+            cause,
+            recovery_error,
+        }) = source.downcast_ref::<ReplaceIfVersionError>()
+        else {
+            panic!("compound engine failure expected, got: {source:?}");
         };
         assert!(
             format!("{cause:#}").contains("disk full")

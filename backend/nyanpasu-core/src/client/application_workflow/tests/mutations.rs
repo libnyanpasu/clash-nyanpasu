@@ -43,22 +43,26 @@ use tokio::sync::{Notify, mpsc, oneshot};
 use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
-        mutation::{DEFERRED_RETRY_BUDGET, EvidenceGap},
-        participant::ApplicationMutationParticipant,
+        mutation::DEFERRED_RETRY_BUDGET, participant::ApplicationMutationParticipant,
     },
     RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
-    actor_v2::{CoreClient, endpoint::ExecutionHost, service_actor::ServiceClient},
+    actor_v2::{CoreClient, service_actor::ServiceClient},
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
         runtime,
-        runtime_error::{RuntimeError, refusal_of},
+        runtime_error::refusal_of,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
+    runtime_values::{
+        check::EvidenceGap,
+        execution_host::ExecutionHost,
+        mutation::{CommitAborted, RuntimeAftermath},
+        runtime_error::RuntimeError,
+    },
     state::mutation::{
-        CommitAborted, RuntimeAftermath,
         impact::{
             ActivationIntent, ContentDigest, MutationDomain, MutationHints, RequestedRuntimeFields,
             RuntimeImpact, TouchedContent, runtime_impact,
@@ -97,7 +101,8 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::actor_v2::local_host::CoreSpecError> {
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::runtime_values::core_spec::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -119,7 +124,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn publish(
         &self,
         snapshot: &runtime::RuntimeSnapshot,
-    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+    ) -> Result<(), crate::runtime_values::publish::PublishRuntimeError> {
         if self.fail_publish.load(Ordering::SeqCst) {
             return Err(super::scripted_publish_failure());
         }
@@ -206,7 +211,7 @@ pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
             version: None,
             features: Vec::new(),
         },
-        host: crate::actor_v2::endpoint::ExecutionHost::Local,
+        host: crate::runtime_values::execution_host::ExecutionHost::Local,
         run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings {
             policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
@@ -219,7 +224,7 @@ pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
                 source_hash: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
                 effective_hash: "effective".into(),
             },
-            host: crate::actor_v2::endpoint::ExecutionHost::Local,
+            host: crate::runtime_values::execution_host::ExecutionHost::Local,
             generation: 0,
         },
         ports: SessionPortResolver::default()
@@ -1574,16 +1579,15 @@ async fn an_abort_that_owes_a_resource_recovery_still_rolls_the_runtime_back() {
         "the Cancel put the baseline back"
     );
     let aborted = classify(result.unwrap_err(), &receipt);
-    let CommitAborted::RecoverAfterWriteFailure {
-        runtime,
-        source:
-            ReplaceIfVersionError::ResourceRecovery {
-                cause,
-                recovery_error,
-            },
-    } = &aborted
-    else {
+    let CommitAborted::RecoverAfterWriteFailure { runtime, source } = &aborted else {
         panic!("{aborted:?}");
+    };
+    let Some(ReplaceIfVersionError::ResourceRecovery {
+        cause,
+        recovery_error,
+    }) = source.downcast_ref::<ReplaceIfVersionError>()
+    else {
+        panic!("{source:?}");
     };
     // Both failures reach the caller with their causes.
     assert!(
@@ -3684,7 +3688,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     assert_eq!(receipt.operation_id, None);
     assert_eq!(
         receipt.runtime,
-        crate::client::runtime::RuntimeCommitStatus::Unchanged
+        crate::runtime_values::runtime::RuntimeCommitStatus::Unchanged
     );
     assert!(saved.degradations.is_empty());
     assert_eq!(f.endpoint.status_reads(), status_reads);
@@ -3702,7 +3706,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
 /// a core the user stopped is never started by either kind of save.
 #[tokio::test]
 async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
-    use crate::client::runtime::RuntimeCommitStatus;
+    use crate::runtime_values::runtime::RuntimeCommitStatus;
     use nyanpasu_config::application::ThemeMode;
     use struct_patch::Patch;
     let f = fixture().await;
@@ -4680,11 +4684,11 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
     );
     assert_eq!(
         commit.runtime,
-        crate::client::runtime::RuntimeCommitStatus::RecoveryRequired
+        crate::runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired
     );
     assert_eq!(degradations.len(), 1);
     assert!(matches!(
         degradations[0].reason,
-        crate::client::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
+        crate::runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
     ));
 }

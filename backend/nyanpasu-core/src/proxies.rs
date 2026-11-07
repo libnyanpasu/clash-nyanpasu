@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use crate::client::runtime::{
+use crate::runtime_values::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
 };
 use anyhow::{Context, Result};
@@ -863,7 +863,7 @@ mod tests {
         assert_eq!(outcome.degradations().len(), 1);
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::ProxyInterruptionFailed { .. }
+            crate::runtime_values::runtime::DegradationReason::ProxyInterruptionFailed { .. }
         ));
         assert!(
             outcome.degradations()[0]
@@ -1067,7 +1067,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::ProxyCacheRefreshFailed
+            crate::runtime_values::runtime::DegradationReason::ProxyCacheRefreshFailed
         ));
         assert!(client.snapshot().nodes.is_empty());
         assert_eq!(
@@ -1214,7 +1214,7 @@ mod tests {
             assert_eq!(outcome.degradations().len(), 1);
             assert!(matches!(
                 outcome.degradations()[0].reason,
-                crate::client::runtime::DegradationReason::ProxyInterruptionFailed { .. }
+                crate::runtime_values::runtime::DegradationReason::ProxyInterruptionFailed { .. }
             ));
             assert!(!outcome.degradations()[0].retryable);
             assert_eq!(*fixture.selected.lock().unwrap(), NODE);

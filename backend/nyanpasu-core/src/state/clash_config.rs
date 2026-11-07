@@ -1,10 +1,12 @@
-use crate::state::{
-    config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
-    mutation::{
-        MutationCoordinator, impact,
-        impact::{MutationHints, RequestedRuntimeFields},
-        intent::CommandClass,
-        value::ConfigDomain,
+use crate::{
+    runtime_values::mutation::ConfigDomain,
+    state::{
+        config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
+        mutation::{
+            MutationCoordinator, impact,
+            impact::{MutationHints, RequestedRuntimeFields},
+            intent::CommandClass,
+        },
     },
 };
 use nyanpasu_core_manager::OperationId;
@@ -23,13 +25,14 @@ use tokio_util::sync::CancellationToken;
 pub struct ClashConfigSnapshot {
     pub state: ClashConfig,
     pub version: u64,
-    pub(crate) receipt: Option<crate::client::runtime::CommitReceipt>,
-    pub(crate) degradations: Vec<crate::client::runtime::Degradation>,
+    pub(crate) receipt: Option<crate::runtime_values::runtime::CommitReceipt>,
+    pub(crate) degradations: Vec<crate::runtime_values::runtime::Degradation>,
 }
 
 impl ClashConfigSnapshot {
-    pub(crate) fn outcome(self) -> crate::client::runtime::MutationOutcome<()> {
-        let outcome = crate::client::runtime::MutationOutcome::from_parts((), self.degradations);
+    pub(crate) fn outcome(self) -> crate::runtime_values::runtime::MutationOutcome<()> {
+        let outcome =
+            crate::runtime_values::runtime::MutationOutcome::from_parts((), self.degradations);
         match self.receipt {
             Some(receipt) => outcome.with_commit(receipt),
             None => outcome,

@@ -22,10 +22,8 @@ use super::{
     workflow::ApplicationWorkflow,
 };
 use crate::{
-    client::{
-        runtime::RuntimeSnapshot,
-        runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
-    },
+    client::runtime::RuntimeSnapshot,
+    runtime_values::runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
     state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 

@@ -12,10 +12,11 @@ use super::{
     ports::RuntimeBuildPort,
 };
 use crate::{
-    actor_v2::{intent::RuntimeIntentBuilder, local_host::CoreSpecError},
-    client::{
-        core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
-        runtime::PublishRuntimeError,
+    actor_v2::intent::RuntimeIntentBuilder,
+    client::core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
+    runtime_values::{
+        core_spec::CoreSpecError,
+        publish::PublishRuntimeError,
         runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
     },
 };

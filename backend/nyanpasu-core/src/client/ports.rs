@@ -10,37 +10,16 @@
 use nyanpasu_config::{
     clash::config::{
         ClashConfig,
-        clash_strategy::port::{ExternalControllerStrategy, PickPortError, PortStrategy},
+        clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
     },
     runtime::executor::ResolvedPortBindings,
 };
-use serde::Serialize;
-use snafu::{ResultExt, Snafu};
+use snafu::ResultExt;
 
+use crate::runtime_values::ports::{PortField, PortResolveError, ResolvePortSnafu};
 #[cfg(test)]
 use crate::state::mutation::runtime_apply::RuntimeApplyReceipt;
 use nyanpasu_contracts::net::SelfProxyPortSource;
-
-/// The port a resolution was picking for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum PortField {
-    Mixed,
-    Http,
-    Socks,
-    ExternalController,
-}
-
-/// A failure of resolving the ports a candidate runtime would bind.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PortResolveError {
-    #[snafu(display("failed to resolve the {field:?} port: {source}"))]
-    ResolvePort {
-        field: PortField,
-        source: PickPortError,
-    },
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsFingerprint {
@@ -294,7 +273,7 @@ mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::actor_v2::endpoint::ExecutionHost::Local,
+            host: crate::runtime_values::execution_host::ExecutionHost::Local,
             run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
@@ -307,7 +286,7 @@ mod tests {
                     source_hash: "source".into(),
                     effective_hash: "effective".into(),
                 },
-                host: crate::actor_v2::endpoint::ExecutionHost::Local,
+                host: crate::runtime_values::execution_host::ExecutionHost::Local,
                 generation: 0,
             },
             ports: candidate,

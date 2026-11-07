@@ -38,23 +38,25 @@ use tokio::sync::Notify;
 fn classify(
     error: nyanpasu_state_engine::ReplaceIfVersionError,
     receipt: &MutationReceipt,
-) -> crate::state::mutation::CommitAborted {
-    crate::state::mutation::CommitAborted::classify(error, Some(receipt))
+) -> crate::runtime_values::mutation::CommitAborted {
+    crate::state::mutation::classify_commit_aborted(error, Some(receipt))
 }
 
 /// The errors a required participant gave for refusing a candidate.
 fn refusals(
-    aborted: &crate::state::mutation::CommitAborted,
-) -> Vec<std::sync::Arc<crate::client::runtime_error::RuntimeError>> {
+    aborted: &crate::runtime_values::mutation::CommitAborted,
+) -> Vec<std::sync::Arc<crate::runtime_values::runtime_error::RuntimeError>> {
     match aborted {
-        crate::state::mutation::CommitAborted::RuntimeRefused { errors, .. } => errors.clone(),
+        crate::runtime_values::mutation::CommitAborted::RuntimeRefused { errors, .. } => {
+            errors.clone()
+        }
         other => panic!("expected a refusal, got {other:?}"),
     }
 }
 
 /// A publication that fails the way a full disk does.
-pub(super) fn scripted_publish_failure() -> crate::client::runtime::PublishRuntimeError {
-    crate::client::runtime::PublishRuntimeError::CreateRuntimeDirectory {
+pub(super) fn scripted_publish_failure() -> crate::runtime_values::publish::PublishRuntimeError {
+    crate::runtime_values::publish::PublishRuntimeError::CreateRuntimeDirectory {
         path: std::path::PathBuf::from("runtime").into(),
         source: std::io::Error::other("scripted publish failure"),
     }
@@ -82,7 +84,8 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::actor_v2::local_host::CoreSpecError> {
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::runtime_values::core_spec::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -106,7 +109,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn publish(
         &self,
         snapshot: &runtime::RuntimeSnapshot,
-    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+    ) -> Result<(), crate::runtime_values::publish::PublishRuntimeError> {
         self.delegate.publish(snapshot).await
     }
 }
@@ -560,7 +563,7 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         endpoint.release.notify_one();
         assert!(matches!(
             switch.await.unwrap().unwrap(),
-            runtime::MutationOutcome::Committed { .. }
+            crate::runtime_values::runtime::MutationOutcome::Committed { .. }
         ));
         assert!(matches!(
             uninstall.await.unwrap_err(),

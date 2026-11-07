@@ -27,21 +27,32 @@ use nyanpasu_state_engine::{
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
-use crate::state::mutation::{
-    CommitAborted, MutationCoordinator, impact,
-    impact::{
-        ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
-        StagedResourceToken, TouchedContent,
+use crate::{
+    runtime_values::profiles::{
+        BlockingTaskCancelledSnafu, CommitSnafu, EmptyScriptSnafu, FetchSubscriptionSnafu,
+        FingerprintDefinitionSnafu, MaterializationOperation, MaterializationSnafu,
+        MissingProxiesSnafu, NotARemoteProfileSnafu, NotYamlMappingSnafu,
+        ProfileChangedDuringRefreshSnafu, ProfileContentError, ProfileContentRejectedSnafu,
+        ProfileDeletedDuringRefreshSnafu, ProfileFileNotWritableSnafu, ProfileHasNoFileSnafu,
+        ProfileIdCollisionSnafu, ProfileInUseSnafu, ProfileNotFoundSnafu, ProfilesError,
+        ReadExternalProfileSnafu, RefreshInProgressSnafu, ReorderListDuplicateSnafu,
+        ReorderListSizeMismatchSnafu, ValidationFailedSnafu, VersionConflictSnafu,
     },
-    intent::CommandClass,
-    value::MutationReceipt,
+    state::mutation::{
+        MutationCoordinator, impact,
+        impact::{
+            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+            StagedResourceToken, TouchedContent,
+        },
+        intent::CommandClass,
+        value::MutationReceipt,
+    },
 };
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    error::*,
     jobs::{ProfileJobs, ProfileSyncContext},
     scheduler::ExternalWatchers,
     sources::{SourceLedger, SourceOrigin, SourceOutcome, SourcesSnapshot},
@@ -53,8 +64,8 @@ pub struct CommitReport {
     pub snapshot: Arc<Profiles>,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub degradations: Vec<ProfileDegradation>,
-    pub(crate) receipt: crate::client::runtime::CommitReceipt,
-    pub(crate) runtime_degradations: Vec<crate::client::runtime::Degradation>,
+    pub(crate) receipt: crate::runtime_values::runtime::CommitReceipt,
+    pub(crate) runtime_degradations: Vec<crate::runtime_values::runtime::Degradation>,
     /// Server-generated uid (D13); set by Add / import commit, consumed by
     /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
@@ -463,8 +474,8 @@ impl ProfilesActor {
         (
             Arc<Profiles>,
             (
-                crate::client::runtime::CommitReceipt,
-                Vec<crate::client::runtime::Degradation>,
+                crate::runtime_values::runtime::CommitReceipt,
+                Vec<crate::runtime_values::runtime::Degradation>,
             ),
         ),
         ProfilesError,
@@ -553,7 +564,9 @@ impl ProfilesActor {
                 path,
                 cleanup_failures,
             }
-            .into_error(CommitAborted::classify(error, settlement)),
+            .into_error(crate::state::mutation::classify_commit_aborted(
+                error, settlement,
+            )),
         }
     }
 

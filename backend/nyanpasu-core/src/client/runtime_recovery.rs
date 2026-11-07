@@ -32,10 +32,9 @@ use nyanpasu_ipc::api::status::CoreStateDetail;
 
 use crate::{
     actor_v2::{
-        CoreStatusProjection,
-        endpoint::{ExecutionHost, wire_core_type_to_kind},
-        facade::AppliedConfigBinding,
+        CoreStatusProjection, endpoint::wire_core_type_to_kind, facade::AppliedConfigBinding,
     },
+    runtime_values::execution_host::ExecutionHost,
     state::mutation::{intent::CoreRunIntent, runtime_apply::RuntimeApplyReceipt},
 };
 

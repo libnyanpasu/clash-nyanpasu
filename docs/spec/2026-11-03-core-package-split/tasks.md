@@ -5,7 +5,7 @@
 ## 0. 全局约束
 
 1. 遵守 `AGENTS.md` 与 `docs/development/*`：不加全局单例；依赖显式注入；不给 core 族加 Tauri 依赖；`NyanpasuClient` 只是 facade。
-2. 移动与保行为接缝只移动代码、注入依赖、收窄依赖方向。行为改动单独成卡（A2b、D2c 的严格结算时序、C1 的不支持结果、C2 的同意策略、HTTP 限制与 RPC 审计），不夹在移动提交里；同一 PR 内的卡也分别提交。行为卡的前端例外仅限 design §9；移动中发现的现存问题记在 PR 描述里，不顺手改。
+2. 移动与保行为接缝只移动代码、注入依赖、收窄依赖方向。行为改动单独成卡（A2b、D2c 的严格结算时序、C1 的不支持结果、C2 的同意策略、HTTP 限制与 RPC 审计，E 的能力 admission/API-only/local/server/CLI），不夹在移动提交里；同一 PR 内的卡也分别提交。行为卡的前端例外仅限 design §9；移动中发现的现存问题记在 PR 描述里，不顺手改。
 3. 每个提交可编译、测试通过、只做一件事；调用方在同一提交迁完，不留 re-export、别名或兼容层（design §7）。
 4. 每个新 crate 的提交同时更新：workspace `members` 与依赖项（指向 config、core 的边关默认 feature）、门禁集合与策略测试（design §3.2）、`STATIC_GATE_PREFIXES` 与覆盖测试、静态允许名单路径（design §4.6）。
 5. 被移走、但仍被原 crate 测试使用的夹具与 `pub(crate)` 项，同提交改为公开（测试夹具放在新 crate 的 `test-support` feature 后），原 crate 以 dev-dependency 开启该 feature，同时在原 crate 的 `test-support` 中转发给下游。
@@ -706,7 +706,7 @@ A5 各卡按 design §8.2 已定的 O-1 a（`nyanpasu-persistence`）与 O-2 c�
 本节细化 design §5.0/§5.3，源码行号记录于 `fa7e5050b`（A、B、C 已完成），按符号定位；新文件、符号与标为「新」的测试均为计划项。偏差见 design §8.1 V-23–V-29，决策见 §8.2 O-10–O-17，全局约束 §0 适用。本次文档提交是 PR-D0，不是实施卡；每张卡一个可独立编译、测试通过的提交，同一 PR 按箭头顺序实施，不把行为修正折进移动提交。
 
 - 缩写：`W/` = `C/client/application_workflow/`，`J/` = `backend/nyanpasu-scripts/src/`，`B/` = `backend/boa_utils/src/`；计划新包 `E/` = `backend/nyanpasu-state-engine/src/`、`V/` = `backend/nyanpasu-runtime-values/src/`，此处 `E/` 不是 Phase E。工作名按 O-4，建包时确认。父 workspace 指 `backend/Cargo.toml` 的成员，不把独立 runtime workspace 的中立工具当父 workspace 成员。
-- 实施栈固定为 D1 → D2 → D3 → D4 → A2b。A2b 的代码前置仍只有 A2；排在 D4 后是合入顺序，避免它的新 pipeline error 与 D4 的错误闭包迁移同时改两份定义。A2b-b 只改最终值 owner 引用的 config pipeline 错误，不复制 `RuntimeError`/`RuntimeBuildError`；不新增 E 卡，E 与 POC 仅记录 design O-13。
+- 实施栈固定为 D1 → D2 → D3 → D4 → A2b。A2b 的代码前置仍只有 A2；排在 D4 后是合入顺序，避免它的新 pipeline error 与 D4 的错误闭包迁移同时改两份定义。A2b-b 只改最终值 owner 引用的 config pipeline 错误，不复制 `RuntimeError`/`RuntimeBuildError`；PR-D0 当时不写 E 卡；后续 E 细化见 §5，E 与 POC 决策仍由 design O-13 约束。
 - Rust 命令从 `backend/` 执行，`pnpm run` 从根目录执行。所有卡执行 §0.7；测试清单按 §0.8 保存、检查退出码/非空、排序比较，新增测试单列。命令用于后续实施，本次 PR-D0 不构建。源路径 `rg` 使用显式文件或 `--glob '*.rs'`，不用 shell 花括号；1 = 无匹配，2 = 检查失败；分组 `state::{...}`、别名和相对导入须另审阅，单条正则不能证明闭包已迁完。
 - 新包同提交更新 workspace/消费者 manifest、`S/backend-boundaries.ts:27-124` 和 `S/backend-boundaries_test.ts`、`S/policy.ts:81-95` 的 `STATIC_GATE_PREFIXES`、`S/architecture-ledger_test.ts:996-1010` 的覆盖矩阵，以及 `scripts/src/testing/test-backend-musl.ts:68-69,77-90` 的 `-p` 与 `expectedTargets`。新增集成测试目标必须登记；下列新 Rust 测试默认放 unit-test 模块，不暗增集成目标。无新包的卡明确保留这些注册。
 - 移动/保行为接缝运行 `cargo test -p clash-nyanpasu export_typescript_bindings`（`T/specta_export.rs:448,452,456,486`），三份 bindings 零 diff；不手改生成文件。A2b-b 只允许其验证块列出的 wire 变化。新模块错误用 snafu、按失败步骤命名；保留原错误对象、Display/source 链与 serde skip，不用字符串替代来源。原 engine 的 thiserror/anyhow 不顺手迁框架。
@@ -1049,9 +1049,437 @@ version.rs
 
 ---
 
+## 5. Phase E 的 PR 划分
+
+本节细化 design §5.4；源码锚点记录于 `b70bb66d7`（A、B、C、D1 已完成），按符号定位，不能用行号覆盖后续 D 提交。偏差见 design §8.1 V-30–V-63，决策见 §8.2 O-18–O-46；O-13 的维护者选择与全局约束 §0 适用。每卡一个可独立编译、测试通过的提交，同 PR 按箭头顺序；纯移动、保行为接缝与行为变更分别提交。以下均未实施，新增文件/符号/测试是计划项。
+
+- 固定实施顺序：PR-D2 → PR-D3 → PR-D4 → PR-A2b → PR-E1 → PR-E2 → PR-E3 → PR-E4 → PR-E5 → PR-E6 → PR-E7 → PR-E8；所有 E 卡均不得先于 D/A2b 合入。D/A2b 保留 §4 现有消费者与验证清单，E 一律消费已存在的 D2e `nyanpasu-runtime-values` 及 A2b 扩展工厂；E1b-a 必须在 E3e 后，才能验证 `local-server` 与 typed-client 消费侧。此为实施顺序，不新增下层到 RPC 的架构依赖。E5/OpenWrt 与 LAN ticket login 继续暂停，不新增实施卡。
+- 缩写：`R/` = 计划的 `backend/nyanpasu-rpc/src/`，`P/` 在本节专指计划的 `backend/nyanpasu-rpc-protocol/src/`（不是历史 platform），`H/` = 计划的 `backend/nyanpasu-server/src/`，`L/` = 计划的 `backend/nyanpasu-cli/src/`。POC 一律通过 `git show 4a4a3a0d3:<path>` 读取；冒号后的行号属于该 revision，不能与 HEAD 混用。不整支 cherry-pick。
+- Rust 命令从 `backend/` 执行；脚本命令从根目录执行。每卡执行 §0.7/§0.8；清单检查 cargo 成功、非空、保留 stderr、排序后比较，只允许登记的模块前缀变化，新增测试单列。新测试默认 unit target；只有 E4d 新增 `tests/session.rs`。本文命令供后续实施，本次文档修改不运行 Rust 编译/测试。
+- **接线约定 G：** 建包同提交更新 `backend/Cargo.toml` members/消费者 manifest、`S/backend-boundaries.ts:28,34,42` 集合/规则及 `S/backend-boundaries_test.ts` 正反例、`S/policy.ts:81` 的 `STATIC_GATE_PREFIXES` 与 `S/architecture-ledger_test.ts:996` 覆盖矩阵、musl runner `scripts/src/testing/test-backend-musl.ts:68,77` 的 `-p` 与 `expectedTargets` 两清单。检查 resolved normal/build、all-features/all-targets 的直接及传递边；dev-only 测试装配另验，不误禁合法 dev 边。指向 core/config 的每条边 `default-features = false`，显式转发所需 feature；不得用全 feature 通过掩盖单包 feature 泄漏。无新包的卡明确保留/调整 G，不能漏掉 feature 或 target 注册。
+- **接线约定 B：** 每卡重导出 `T/specta_export.rs:486` 的三份 bindings（路径 `:448,452,456`），相对该卡父提交零 diff，包括 D/A2b 已合法新增的类型；不得回退到本次旧基线。现有命令名、camelCase 参数、query/mutation 分类、错误字段、十一事件名/载荷不变。新增 local 帧不进入既有前端 schema；本轮 E 无页面、组件、i18n 或前端传输修改例外。
+- **接线约定 V：** 每卡跑所列 Rust 测试、§0.7 两门禁/Clippy、`pnpm run test:scripts`、`pnpm run test:architecture-ledger`；新包/feature/target 跑 `pnpm run test:backend-musl`，核实发现并执行目标。Windows 本地可用时执行，否则 Windows CI；Linux 行为测试与 GNU 检查交 Linux CI，macOS 分支交 macOS CI；跨编译不替代平台行为测试。musl 只验证 Linux 中立目标，不声称覆盖命名管道或 OpenWrt SDK/硬件。`rg` 限定 crate 与 `--glob '*.rs'`，1 = 无匹配、2 = 检查失败；另审 grouped/relative/aliased imports。
+- 每卡更新本卡、design §5.4/里程碑与路线图实施状态；建包卡同步 backend-packages/architecture，registry/transport/event/audit 卡同步 rpc 指南。文档中的计划不能提前写成已交付。G/B/V 在每卡验证中引用，均是必做项。
+
+| PR    | 卡                            | 前置/合入顺序             | 内容                                                        |
+| ----- | ----------------------------- | ------------------------- | ----------------------------------------------------------- |
+| PR-E1 | E1a-a → E1a-b → E1a-c → E1a-d | PR-A2b（D2 → D3 → D4 后） | 错误接缝、protocol 纯移动、宏接缝、能力 admission 行为      |
+| PR-E2 | E2a → E2b → E2c               | PR-E1、C2f                | 共享命令接缝、registry/audit/HTTP 纯移动、bus-first 接缝    |
+| PR-E3 | E3a → E3b → E3c → E3d → E3e   | PR-E2                     | API-only；帧/协商、端点、连接资源、client 与桌面 local 接入 |
+| PR-E4 | E1b-a                         | PR-E3（含 E3e）、D2e      | 完整 DTO 闭包及显式接收投影                                 |
+| PR-E5 | E1b-b                         | PR-E4、E3e                | typed client 闭包与全部命令/schema 验收                     |
+| PR-E6 | E4a → E4b                     | PR-E5、C2d、C3a           | 首次装配即拒绝提权；长期进程/listener 生命周期              |
+| PR-E7 | E4c                           | PR-E6                     | 小型 CLI，仅连接既有 shell                                  |
+| PR-E8 | E4d                           | PR-E7                     | 独立 CLI 进程共享会话/断连/owner 隔离集成验收               |
+
+---
+
+## E1a-a — 错误转换留在注册表消费侧
+
+本卡是保行为接缝；不移动类型，不改错误分类、HTTP status、Display 或 domain payload。
+
+- [ ] 将 `T/unified_rpc.rs:290,294` 的 `RpcError::application`/`application_ref` 改为本模块自由函数；宏 `M/unified_command.rs:300`、HTTP 路由 `T/unified_rpc.rs:475,525,667` 与全部调用者同改。`RpcError` 仍在原文件，为下一卡跨包后不能补 inherent impl/orphan From 做准备。
+- [ ] 保留 LogError、observers `CoreLogError`、core-manager `CoreError`、`T/ipc.rs:55` `IpcError` 的逐项 downcast，以及 code/retryable/operation_id/domain_error。`IpcErrorKind::DebugHttp`（`:77`）不能被 POC 旧映射覆盖；Tauri error 转换（`:164`）暂留 shell。
+- [ ] 同卡把 `RpcOwner::http/http_or_anonymous`（`T/unified_rpc.rs:225,242`）的 HeaderMap/cookie 解析与 `RpcError::status:334` 改 shell 自由函数，所有 HTTP 调用点直接迁；协议值只留纯构造/label/字段。HTTP UUID owner、无 cookie 匿名行为、status 映射保持原样，下一卡不再切逻辑。
+- [ ] 参考 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/error.rs` 的 `application_error_ref:159`，只取自由函数形状；丢弃旧 core/log/OS 路径。`RpcError::status`（HEAD `:334`）仍属 HTTP adapter，不随 envelope 下移。
+- [ ] 无新包/feature；G 的集合、prefix、musl 两表不变，既有策略正反例继续运行。更新 rpc 指南的转换 owner，不改传输语义。
+
+**验证**
+
+- `cargo test -p clash-nyanpasu errors_preserve_domain_codes_and_operation_identity`（`T/unified_rpc.rs:1354`）、`audited_failure_preserves_the_original_rpc_error`（`audit_tests.rs:425`）；按 §0.8 原测试清单无增删，执行 B/V。
+- `rg 'RpcError::application(_ref)?' backend/tauri/src backend/nyanpasu-macro/src --glob '*.rs'` 退出码 1；正向审阅四类 downcast。反向删 code/operation_id 或把 domain_error 转字符串，上述测试必须失败；不以重写期望值掩盖差异。
+
+## E1a-b — 中立协议基础定义
+
+本卡是纯移动；不启用 local、不改变 owner 字符串或已知错误形状。
+
+- [ ] 新建 `nyanpasu-rpc-protocol`；移动 `T/unified_rpc.rs:219,260,273,345` 的 owner 值、错误信封、JSON 值和请求信封到 P；HTTP cookie 解析（`:225`）、HTTP status 和 E1a-a 转换留消费侧。将 `EVENT_NAMES`（`:173`）的字符串定义归入 protocol，Tauri wrapper 仍在 shell，测试逐项与 `tauri_specta::Event::NAME` 相等。
+- [ ] 迁 T/unified_rpc、ipc、specta_export、宏的协议类型引用与测试，不留旧 re-export。采用 `git show 4a4a3a0d3:backend/nyanpasu-rpc-protocol/src/event.rs` 的 `EventName:7`/`as_str:36` 及 `error.rs` 的信封分层；不带其新增 internal 错误语义、local owner 或 HTTP policy。
+- [ ] G：workspace 加包；tauri 普通依赖 protocol，serde/json/specta 等依赖按实际类型闭包保留。protocol 属独立中立层，禁 GUI、全部 CORE_FAMILY（含 state-engine）、IMPLEMENTATION；foundation/core/implementation 禁上行 RPC adapter 的规则在 E2b 建包时注册。本卡 protocol 尚不依赖 core 或 D2e 值包。
+- [ ] 策略正例 protocol → serde/config 值，负例 protocol → core/state-engine/observers/updater/OS/Tauri（含传递）；静态 prefix 加 `backend/nyanpasu-rpc-protocol/src/`，删除 prefix 的覆盖负例。musl 加 `-p nyanpasu-rpc-protocol`、`lib:nyanpasu_rpc_protocol`。同步 backend-packages/architecture/路线图。
+
+**验证**
+
+- `cargo test -p nyanpasu-rpc-protocol`、`cargo test -p clash-nyanpasu`；§0.8 两侧清单合计保留原测试，新增（新）`protocol_event_names_match_desktop_names`、`protocol_envelope_preserves_existing_wire_shape`；B/V。
+- `rg 'tauri|nyanpasu_core::|nyanpasu_observers|nyanpasu_updater|downcast_ref|HeaderMap' backend/nyanpasu-rpc-protocol/src --glob '*.rs'` 退出码 1；T 中旧定义消失，cookie/status/conversion 正向保留。反向给 protocol 加 core/OS 依赖或改变事件字符串，gate/对应测试失败。
+
+## E1a-c — 中立声明与 native wrapper 分离
+
+本卡是保行为接缝；宏产生的内部结构改变，现有两传输暴露集合、参数与结果不变。
+
+- [ ] 分离 `M/unified_command.rs:49,90,176,274`：中立声明只生成中立 schema/handler；native wrapper 独立做 `State`/AppHandle/Window/Webview/Channel 提取。共享 handler 的 dependency/caller 接口先定义在 T/unified_rpc，E2b 原样迁 R；不新增可配置 registry-path 兼容模式。
+- [ ] 新增目标/能力元数据定义与 `rpc(local)`、required/optional 能力语法，但本卡所有生产命令仍只维持既有目标；admission/生产标注留 E1a-d，真实 local opt-in 留 E3e。命令名/目标/能力从声明生成单一 metadata 来源，不手写第二份名单；P/command_catalog.rs 是由窄范围生产声明 metadata extractor 生成并提交的中立 Rust artifact，保留 cfg guards，覆盖未链接 native handler 的已知名字。新增（新）`export_rpc_command_catalog` 显式生成，`rpc_command_catalog_is_fresh` 只比较不写；开发期读取声明不形成 protocol 的 normal/build 上行依赖。E1a-d/E3e 改标注时同提交重生成；既有三份前端 bindings 仍零 diff。registry 先从 catalog 建全部已知 metadata，再关联实际 handler；没有 native handler 视为缺能力 unsupported，不能因 headless 未链接 Tauri inventory 就丢名字。
+- [ ] 适配 `git show 4a4a3a0d3:backend/nyanpasu-macro/src/unified_command.rs` 的 native 判断 `:79`、中立 handler `:361`、parser `:435`；保留 HEAD parser `:310` 的 camelCase、零参/null、未知参数兼容。不移入 ticket 注入，也不把 POC 固定 registry 路径当兼容 shim。
+- [ ] Tauri channel reconstruction 保留（HEAD `:116`）；`rpc(owner)`/Result alias 保留。`T/specta_export.rs` 仍收集完整 schema、transport builder 仍只注册 call_rpc；完整 command inventory 包含 cfg 分支，不把 163 声明当单平台同时注册数。
+- [ ] G 无新包，protocol 新 metadata 值无 core 边；宏依赖保持 proc-macro 工具依赖，不链接应用 runtime。prefix/musl 两表不增；同步 rpc 指南的计划/当前状态。
+
+- [ ] extractor 只遍历显式列出的生产声明根及其 inline/external `mod`，继承祖先 `cfg`/`cfg_attr` 条件，排除 `cfg(test)` 与测试 fixture；不扩展为任意 Rust 模块解析框架。HEAD `M/unified_command.rs:593,639` 只读 T/ipc.rs，`:752,764` 丢祖先属性，不能直接复用；Windows 模块 `T/ipc.rs:1446` 的条件必须保留。E2a 根改为 T/ipc.rs + T/rpc_commands，E2b 改为 T/ipc.rs + R/commands；声明根、catalog freshness、schema/handler 集合同时迁移。
+- [ ] dispatcher 覆盖按类别断言：native 声明有 native dispatcher；shared 声明有中立 handler 与其 opt-in transport dispatch；catalog 的未链接 native 名保留 unsupported metadata。原 `every_ipc_rpc_command_has_a_desktop_dispatcher:592` 改为这些分类断言，§0.8 逐项登记替换，不原样套用到中立命令。新增（新）`catalog_preserves_mutually_exclusive_platform_cfg`、`catalog_follows_external_shared_modules`、`catalog_excludes_test_fixtures`、`dispatchers_cover_each_command_category`；反向丢祖先 cfg、外部模块或引入 fixture，测试失败。
+- [ ] 明确丢弃 POC `git show 4a4a3a0d3:backend/nyanpasu-macro/src/unified_command.rs:101-110` 拒绝 `rpc(local)` + optional elevation 的检查；optional reachable elevation 不否定合法 local 声明。新增（新）`local_optional_elevation_expands_and_registers`（宏展开与 registry admission 两侧，E3e 用已审 profile mutation 固定）；required 能力仍按 E1a-d 判定，server 的拒绝由 E4 注入策略保证。
+
+**验证**
+
+- `cargo test -p nyanpasu-macro`、`cargo test -p clash-nyanpasu`；保留 `explicit_result_alias_is_unwrapped_and_owner_is_injected:443`、`channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http:483`、`http_requires_opt_in_and_accepts_only_lifetime_generics:514`、`desktop_update_core_dispatch_remains_available:552` 与 inventory tests `:638,688`；`:592` 按下述类别测试替换，路径均 M/unified_command.rs。新增（新）`neutral_expansion_contains_no_tauri_types`、`target_and_capability_metadata_is_generated_once`、上述 catalog 生成/只读 freshness 两测试；§0.8/B/V。
+- `rg -n 'AppHandle|JavaScriptChannelId|tauri_handler|neutral_handler' backend/nyanpasu-macro/src/unified_command.rs` 是正向分支审查，不要求整个宏无 Tauri token；反向让 neutral 分支生成 native handler，新增展开测试失败。protocol 中 Tauri 搜索仍零匹配。
+
+## E1a-d — 按目标与能力拒绝 admission
+
+本卡是行为变更：缺少 required 能力的 shell 对已知命令（含未链接 native handler）返回结构化 `unsupported`，不执行 handler、不伪装成 `unknown_method`；现有桌面/HTTP 行为保持不变。
+
+- [ ] 按 design §5.4 的能力表逐项标注 T/ipc.rs；caller identity 与 native Channel/Webview 分开；required 与 optional/reachable effects 分开，不能因某字段可能需要展示就拒绝所有 config patch。标注不是 per-call authority；不改 O-5。
+- [ ] `CommandEntry`（HEAD `T/unified_rpc.rs:251`）保存目标与能力元数据，registry 先辨识已知命令，再检目标/required capabilities，最后解析/调用；未知命令才 unknown_method。拒绝经过 `dispatch_audited:142`；保留 HTTP unsupported/501 和 `update_core` admission 前拒绝。全部重复 handler 名在能力判定前检查；native handler 未链接也保留 E1a-c catalog metadata。
+- [ ] 参考 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/registry.rs` 的 metadata `:38`、target dispatch `:186`；丢弃 `new:137` 对缺能力条目的删除及测试 `commands_needing_a_missing_capability_are_not_registered:330`。不以 POC 的空 required-capability inventory 代替有效 registry。
+- [ ] G 无新包；构造根显式传当前桌面可用能力，无隐藏探测或 global。prefix/musl 两表不变；补宏与 registry policy 正反测试，更新 rpc 指南 admission 规则。
+
+**验证**
+
+- 新增（新）`known_unavailable_command_is_unsupported_before_handler_runs`、`unknown_command_remains_unknown_method`、`optional_effect_metadata_does_not_reject_unrelated_config_edits`、`duplicate_commands_fail_even_when_a_capability_is_missing`、`headless_registry_knows_unlinked_native_commands`。§0.8 原清单加五例，B/V；保留 `http_update_core_is_unsupported_before_job_admission`（T/unified_rpc.rs:708）与 `audit_records_rejected_dispatches`（audit_tests.rs:286）。
+- `rg -n 'unsupported|unknown_method|capabilit|dispatch_audited' backend/tauri/src/unified_rpc.rs` 审 admission 顺序；反向删除已知条目、先调用 handler 或不审计拒绝，新增/既有测试失败。无旧路径移动，沿用 E1a-b 协议依赖反向检查。
+
+---
+
+## E2a — 共享命令与特殊路由的中立接缝
+
+本卡是保行为接缝；先在 Tauri crate 内切开 native/shared，下一卡只移已中立的模块。
+
+- [ ] 将 T/ipc.rs 的共享 profile/config/runtime/Clash API/storage/log/traffic/status thin commands 分组到临时规范位置 `T/rpc_commands/`，调用方直接迁移，不在 ipc 留 re-export；只替换 Tauri State/Window 为 E1a-c 的显式依赖/caller。原生命令仍在 ipc；`subscribe_clash_connection_details:1951` 的 Channel 不伪装为 JSON 共享参数。`specta_export` 使用下述 schema-only collector 收集新位置。
+- [ ] `IpcError`/映射（T/ipc.rs:55,67,128）进入中立命令模块；`tauri::Error` 的旧自动转换改 shell 调用点显式 `map_err`，保留 unknown 的 Display/detail，不让新错误模块依赖 Tauri。引用 D2e 已落地的 runtime-values，不恢复 core 旧值路径。
+- [ ] 拆 `T/unified_rpc.rs:249,450,575` 的 native handler registry/IPC binding 与 shared registry；native fallback 和 shared handler 均只进入一次 C2f kernel。`RpcHttpRoutes:362` 保留 weak/实例 OnceLock 语义；不形成 client/router 强引用环。
+- [ ] `T/utils/collect.rs:211` 的 archive-only 编排及必要 `write_core` 辅助分离为中立模块，供 HTTP `T/unified_rpc.rs:475` 与 native save-dialog `T/ipc.rs:1124` 共用；报告窗口、webview 信息、crash reporter 不跟随。HTTP special-route admission 仍审计，SSE 生命周期不塞入 kernel。
+- [ ] 适配 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/commands.rs` 的分组 `:17`、`registry.rs` 的 `State:61`/`Caller:81` 与 `backend/tauri/src/unified_rpc.rs` 的 DesktopRpc；不直接照搬 POC 的 HTTP exposure，不迁 lifecycle 新命令/tickets。现有每个 HTTP 命令必须有迁/留清单，留 shell 的 host 命令有明确能力原因。
+- [ ] 无新 crate；G 不增加集合/prefix/musl target，tauri manifest 清理仅本卡产生的未用项；core/config defaults-off 不变。更新 rpc 指南的 schema/native binding 入口。
+
+- [ ] 在 `T/specta_export.rs:34` 将 schema 收集改为只收 Specta functions 的 `schema_commands!`，适配 `git show 4a4a3a0d3:backend/tauri/src/specta_export.rs:36`；不能调用会生成 `tauri::generate_handler!` 的 `tauri_specta::collect_commands!` 来收中立函数。`build_transport_builder` 仍只注册 `call_rpc`（宏测试 `M/unified_command.rs:688`）；三份 B 生成文件逐字节不变。新增（新）`schema_collector_accepts_neutral_external_commands`、`full_http_exposure_is_preserved_across_shared_split`，后者按平台/cfg 比较拆分前后完整集合，POC 为 85 个 extracted RPC HTTP 声明加 20 个 retained shell 声明，共 105 个不同名字，不能替代 HEAD 104 项基线。
+- [ ] 下表穷尽 HEAD 104 个 HTTP 声明；共享入口迁 T/rpc_commands 后随 E2b 迁 R/commands。留 shell 的实现通过 RPC 消费侧定义的窄 port 注入：shared HTTP entry 仍注册在同一 registry 并进入一次 audit，不留仅 native registry 能调用的 HTTP handler。端口缺失只使已知命令 unsupported。E2a/E2b 同步迁 extractor 根，验证外部模块声明未漏。纯文件/icon 查询不是 presentation capability；不要因无窗口而禁用查询。
+
+POC exposure 差异：`git show 4a4a3a0d3:backend/nyanpasu-rpc/src/commands.rs`（:41 起及 production 子模块）共 85 个 HTTP 声明（root 13、子模块 72），`backend/tauri/src/ipc.rs`（:236–1154）保留 20 个，共 105 个不同名字。HEAD 独有 `get_ip_lookup_providers`（T/ipc.rs:849）；POC 额外暴露 `get_core_version` 与 HTTP `update_core`（POC T/ipc.rs:520）。E 不恢复后者 HTTP 权限。
+
+HTTP 迁/留处置（锚点均为 `T/ipc.rs` 的函数；共 104 声明，无删除/新增 HTTP opt-in）：
+
+| 声明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 迁移/注入                                                                     | 语义约束                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `get_profiles`（:392）、`is_portable`（:399）、`enhance_profiles`（:408）、`import_profile`（:433）、`create_profile`（:494）、`reorder_profile`（:506）、`reorder_profiles_by_list`（:517）、`set_profile_layout`（:527）、`set_proxy_group_layout`（:537）、`create_proxy_group_folder`（:548）、`create_profile_folder`（:562）、`get_profile_sync_status`（:573）、`get_profile_sync_runs`（:583）、`get_profile_sync_logs`（:594）、`update_profile`（:606）、`delete_profile`（:617）、`activate_profile`（:627）、`set_global_transforms`（:637）、`set_profile_valid_fields`（:647）、`patch_profile_metadata`（:657）、`patch_remote_profile_options`（:668）、`replace_profile_definition`（:679）、`read_profile_file`（:702）、`save_profile_file`（:712） | 迁 shared profiles / 路径值 组；原 client/path 依赖显式注入                   | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `get_clash_info`（:723）、`get_runtime_config`（:735）、`get_runtime_yaml`（:747）、`inspect_runtime`（:754）、`inspect_applied_runtime`（:763）、`inspect_runtime_node`（:772）、`get_runtime_exists`（:783）、`get_postprocessing_output`（:795）、`get_core_status`（:809）、`probe_direct_egress`（:842）、`get_ip_lookup_providers`（:849）、`get_app_config`（:882）、`patch_app_config`（:889）、`get_clash_config`（:899）、`get_config_features`（:906）、`patch_clash_config`（:913）、`patch_runtime_overrides`（:925）、`get_hotkey_functions`（:958）、`change_clash_core`（:968）、`restart_sidecar`（:977）、`get_sys_proxy`（:987）、`get_core_agent_skills`（:1079）                                                                                  | 迁 shared runtime / config / core / host 状态 组；原 client/path 依赖显式注入 | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `get_core_dir`（:1065）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 保留 executable resolver 实现，注入 CoreDirectoryResolver（新）               | 沿用 `tauri::utils::platform::current_exe`（:1066）、parent/canonicalize/error；禁静默换 std::env::current_exe |
+| `fetch_latest_core_versions`（:1105）、`inspect_updater`（:1162）、`clash_api_get_proxy_delay`（:1172）、`clash_api_get_configs`（:1185）、`clash_api_delete_connections`（:1194）、`clash_api_get_version`（:1204）、`clash_api_get_rules`（:1213）、`clash_api_get_providers_rules`（:1222）、`clash_api_update_providers_rules`（:1231）、`clash_api_get_group_delay`（:1241）、`clash_api_get_providers_proxies`（:1253）、`get_proxies`（:1263）、`mutate_proxies`（:1272）、`select_proxy`（:1281）、`clear_proxy_fixed`（:1292）、`update_proxy_provider`（:1302）、`clash_api_healthcheck_proxy_provider`（:1309）                                                                                                                                             | 迁 shared updater / Clash API / 平台值 组；原 client/path 依赖显式注入        | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `get_cached_icon`（:1421）、`status_service`（:1597）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 迁 shared cached icon / service status 组；原 client/path 依赖显式注入        | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `get_tray_icon`（:1431）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 保留 icon 实现，注入 HostIconFiles（新）                                      | 纯读取 PNG，不需要展示能力                                                                                     |
+| `set_tray_icon_from_bytes`（:1489）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 文件写入注入 HostIconFiles；refresh 仍调用 client                             | 保留解码/1 MiB/校验错误与 presentation refresh 顺序                                                            |
+| `is_tray_icon_set`（:1505）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 保留 icon 实现，注入 HostIconFiles（新）                                      | 纯文件查询，不需要展示能力                                                                                     |
+| `get_widget_icon`（:1531）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 保留 icon 实现，注入 HostIconFiles（新）                                      | 纯读取 PNG，不需要展示能力                                                                                     |
+| `is_widget_icon_set`（:1541）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 保留 icon 实现，注入 HostIconFiles（新）                                      | 纯文件查询，不需要展示能力                                                                                     |
+| `set_widget_icon_from_bytes`（:1564）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 文件写入注入 HostIconFiles；refresh 仍调用 client                             | 保留解码/1 MiB 与 presentation refresh 顺序                                                                    |
+| `get_service_install_prompt`（:1666）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 保留 OS 参数解析，注入 ServiceInstallPrompt（新）                             | 只生成文字，不提权；保留平台 quoting/error，R 不依赖 OS                                                        |
+| `get_storage_item`（:1714）、`set_storage_item`（:1721）、`remove_storage_item`（:1732）、`get_hotkeys`（:1739）、`set_hotkeys`（:1746）、`get_all_storage_items`（:1772）、`clear_storage`（:1792）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 迁 shared storage / hotkeys 组；原 client/path 依赖显式注入                   | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `get_clash_ws_snapshot`（:1808）、`query_core_logs`（:1817）、`get_core_log`（:1827）、`get_core_log_status`（:1837）、`clear_core_logs`（:1846）、`get_traffic_summary`（:1853）、`query_traffic_report`（:1862）、`query_traffic_usage`（:1872）、`query_traffic_usage_by_keys`（:1888）、`query_traffic_closed_connections`（:1902）、`query_traffic_active_connection_ids`（:1917）、`set_clash_ws_recording`（:1927）、`clear_clash_ws_history`（:1938）                                                                                                                                                                                                                                                                                                          | 迁 shared logs / traffic / streams 组；原 client/path 依赖显式注入            | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `list_log_files`（:1990）、`open_log_session`（:1999）、`query_logs`（:2012）、`close_log_session`（:2025）、`report_frontend_events`（:2038）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 迁 shared log sessions / frontend events 组；原 client/path 依赖显式注入      | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `get_system_accent_color`（:2227）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 保留 host 查询，注入 AccentColorQuery（新）                                   | 只查颜色，不等同 native webview capability；保留 Option                                                        |
+| `get_configuration_status`（:2239）、`retry_configuration_runtime`（:2247）、`retry_configuration_effect`（:2253）、`get_debug_http_status`（:2561）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 迁 shared configuration / debug HTTP 组；原 client/path 依赖显式注入          | 结果、错误、HTTP exposure 不变；可选效果按既有 client 能力判断                                                 |
+| `is_appimage`（:1339）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 注入 HostEnvironment 值（新），保留 shell 对 `IS_APPIMAGE` 的计算             | 不把 shell const/global 引入 R；相同进程结果不变，无 presentation 要求                                         |
+
+- [ ] 在定义 host ports 前先闭合最小 shared signature：`GetSysProxyResponse`（T/ipc.rs:369）、`IconData`（:1414）、`service::ServiceStatusInfo`（:1584）、`StorageEntry`（:1761）随对应命令移到 T/rpc_commands 的中立类型模块，E2b 一起移 R；这四者已供 HTTP 使用，不是 native-only DTO。保留字段、serde/Specta 名称与内层 core 类型，完整向下投影留 E1b；不让共享签名引用 T/ipc 或 tray 模块。
+- [ ] `TrayIcon`（T/core/tray/icon.rs:12）作为 shared wire mode 先移 P 的中立值模块；`Normal/Tun/SystemProxy`、snake_case、Display/From、`as_str`/`all_supported` 等纯值实现同迁。`:59,60` 的 asset `raw_bytes` 改 T 的 free function，`get_raw_icon:82` 与 tray/widget/native IPC 等所有调用者直接更新；禁止在 shell 对外部 `TrayIcon` 写 inherent impl，不留 re-export。HostIconFiles 签名只引用 P/TrayIcon；基础包不依赖 protocol。
+- [ ] G/B/V：协议已有包/prefix/musl 两清单不变；tauri 直接引用 protocol mode，E2b 的 R 通过已有 protocol 边消费，core/config defaults-off 保留。新增（新）`shared_signatures_have_no_shell_owned_types`、`tray_icon_wire_mode_matches_existing_schema`；原 shell icon 测试按 §0.8 跟随 free function 调用迁移，不删案例。scoped `rg 'crate::ipc::(GetSysProxyResponse|IconData|StorageEntry)|crate::ipc::service::ServiceStatusInfo|crate::core::tray::icon::TrayIcon'` 检查 T/rpc_commands 与迁后 R 零匹配；另审 alias/group imports。反向恢复 shell 类型边或 foreign inherent impl，依赖/编译与 bindings 检查失败。
+
+**验证**
+
+- `cargo test -p clash-nyanpasu`、`cargo test -p nyanpasu-macro`；§0.8 原清单不减，含 `shared_profile_command_over_experimental_http:813`、`errors_preserve_domain_codes_and_operation_identity:1354`、`connection_details_send_current_and_new_frames_and_release_demand:1380`（T/unified_rpc.rs），audit_tests 全部保留；B/V。
+- `rg 'tauri::|AppHandle|Webview|JavaScriptChannelId' backend/tauri/src/rpc_commands --glob '*.rs'` 退出码 1；按迁移清单检查 ipc 旧函数/旧 imports，无 re-export。反向丢 owner、把 native 调用绕过 audit、archive 带回 reporter，各对应 owner/audit/依赖审查失败；不只靠整个 crate 可编译。
+
+## E2b — 注册表、审计与 HTTP 中立模块同迁
+
+本卡是纯移动；保留 Tauri → bus 的旧输入桥到 E2c，保留无 assets 不能启用到 E3a。
+
+- [ ] 新建 `nyanpasu-rpc`，迁 E2a shared registry/dependencies/commands/error/archive 及 `T/server/debug_http.rs` 中立 actor/router/assets port，按职责放 R/registry.rs、commands/、error.rs、http/。`T/unified_rpc.rs:42,80,111,142` 的 RpcAudit/sink/guard/kernel 同迁；T/adapters/rpc_audit.rs:5,20 的 Tauri-free `TracingRpcAuditSink` 同迁 R，两个 shell 注入并复用同一个中立生产实现，保留 DEBUG/INFO 分级与 secret exclusion。不能另造一个 local audit 实现。
+- [ ] 迁 EventBus（T/unified_rpc.rs:188），暂由 shell 的 `bridge_tauri_events:205` 调新 bus。native entry/call_rpc、Tauri event derives、`T/setup.rs:832` 的 AssetResolver 留 shell；T/setup.rs:615 的 registry/routes 装配、lib 模块注册、宏生成路径、Specta、所有测试 import 同提交迁完。删除 T/server 的旧中立模块与 T/rpc_commands，不留旧路径转发。
+- [ ] HEAD application_error 的 LogError/observers/CoreError/IpcError 映射随迁；可复用 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/registry.rs` 的 WeakUnifiedRpc `:111`，不替换 C2f kernel；POC `registry.rs:186` 的无审计直调和 shell archive 无审计路径丢弃。
+- [ ] G：RPC 是 core 上方的应用适配层，依赖 protocol/core（defaults off）、实际消费的其他中立包；禁 GUI/IMPLEMENTATION。对 FOUNDATION、CORE_FAMILY（含 engine）、IMPLEMENTATION 逐项新增禁止依赖 rpc；protocol 继续禁 core。正例 rpc → core → foundation、tauri → rpc；负例 rpc → OS/net/Tauri、core/values/engine/各实现 → rpc，含传递路径。D2e 已完成；现有 `nyanpasu-runtime-values` 无条件纳入实际 tree roots、FOUNDATION 规则与 values → rpc 禁止边的正反 fixtures，不保留条件接线。
+- [ ] HTTP 依赖放 `http` feature，默认不隐式启用；tauri 显式开 http，保持原 feature/TLS。core/config 边均 defaults-off、转发 default-meta/nesting 等实际 schema feature。静态 prefix 加 `backend/nyanpasu-rpc/src/`；musl 加 `-p nyanpasu-rpc` 与 `lib:nyanpasu_rpc`，构建参数显式启用 rpc/http；不靠 tauri feature unification。
+- [ ] 中立测试在 R 用 Tokio 与注入 fixture；native audit/browser/Channel 测试留 T，依赖 test-support 按 §0.5 开，不能从 rpc 测试依赖 Tauri。同步四份 development/路线图相关归属。
+
+**验证**
+
+- `cargo test -p nyanpasu-rpc --features http`、`cargo test -p clash-nyanpasu`、`cargo test -p nyanpasu-macro`；§0.8 两侧合计保持 E2a 清单，逐项记录 audit_tests 的迁/留：`tauri_dispatch_records_one_audit_event:146` 留 T，HTTP `:221`、special routes `:242`、secret exclusion `:376`、error preservation `:425`、level `:460`、drop `:515`、panic payload `:567` 迁 R 的中立 fixture；其中 secret exclusion/level 仍调用实际 `TracingRpcAuditSink`，原测试原样迁移（`audit_tests.rs:22,38,487,500`），不得换测试副本；E3d 在同一生产 sink 增 Local INFO 覆盖。B/V。
+- `rg 'tauri::|tauri_specta|AppHandle|crate::ipc|crate::utils::collect' backend/nyanpasu-rpc/src --glob '*.rs'` 退出码 1；T 中 scoped 搜旧 `server::debug_http`/rpc_commands 与已迁 kernel 定义，须消失。反向 rpc 加 tauri/OS、core 加 rpc、删新 prefix 或 musl target，分别 gate/覆盖/目标检查失败。移动后无 assets 仍拒绝，证明未混 E3a。
+
+## E2c — 观测先发布到总线
+
+本卡是保行为接缝；共享事件的名字、载荷、每源顺序与 lag/resync 不变，headless 可观测性由同一发布路径提供。
+
+- [ ] 将 `T/setup.rs:334,776` 的 storage/configuration/core/proxy/service forwarders、`T/adapters/clash_events.rs:21` 的 logs/ws 发布接到 R/forward.rs；C/client/event_sink.rs:28 的 UiEventSink 用 bus adapter，app-update sink（T/adapters/app_update.rs:242）同理。client 构造（T/setup.rs:368）已经启动 owners，不改变 pre-owner-start 构造。forwarder 构造同步获取订阅（:783,801,816,823），在 startup reconciliation、stream activation、listener admission 前完成；需要时获取初始 snapshot，root tasks/shutdown 显式拥有 forwarders。
+- [ ] bus 拥有注入的同步 native delivery sink（Tauri adapter），publish 返回前完成 native delivery，不增加 native 异步队列；HTTP SSE/local 才用有界异步 receiver；删除已迁事件的 `listen_any` bridge（原 T/unified_rpc.rs:205），deep-link/window-message 等 shell-originated 事件显式 publish，不走回声桥。native Channel 与 `/bridge/connection-details` 仍是 demand stream，完整详情不进全局广播。
+- [ ] 适配 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/events.rs` 的 publish/subscribe `:45,56` 与 `forward.rs:59` 的七源分组；更新旧 logs/storage 路径。native 同步 sink 保留现有 emit 时点且不得重入发布者；SSE/local 用现有有界 broadcast，慢消费者 lag 后 resync，不加无界队列。保留每源顺序，不承诺跨源因果全序。前端 native `listenResync` 无恢复实现，不能声称 native 异步丢失可 resync。
+- [ ] G 无新包/feature/target；静态 prefix/musl 两表保留；新增 bus 正例（无 shell 发布）/负例（回声、lag 丢失）测试，更新 architecture/rpc/路线图的 bus-first 状态。
+
+- [ ] 内部 delivery envelope 携带 single-window / window-type / all-windows target，不改变 wire payload。保留 `T/window/mod.rs:257,264,286,302` 的目标验证、`emit_to`/全局 emit 与不存在窗口的失败；丢弃 POC `git show 4a4a3a0d3:backend/tauri/src/unified_rpc.rs:79` 无条件全局 emit。新增（新）`native_delivery_preserves_single_window_target`、`native_delivery_preserves_window_type_target`、`native_delivery_preserves_all_windows_payload`、`native_delivery_rejects_missing_window`。
+- [ ] 新增（新）`tauri_delivery_survives_async_subscriber_overflow`：实际 Tauri delivery adapter 边界的可注入 emitter 记录每次同步交付，塞满 SSE/local receiver，断言 native 无丢失、无延迟队列且异步侧收到 lag/resync；不能只测试 broadcast receiver。forwarder 新测试在构造后、首次 poll 前发布，断言事件不丢且 snapshot/stream 激活无缺口；不新增前端修改。
+
+**验证**
+
+- 新增（新）`shared_events_publish_without_tauri`、`bus_adapters_do_not_echo_events`、`bus_preserves_source_order_and_reports_lag`、`forwarder_captures_publication_before_first_poll`。参考 POC `events.rs:80,104` 的测试意图，不把它们称为 HEAD 既有测试；§0.8 登记新增清单（含下述 adapter/target cases），B/V。
+- 保留 `C/storage.rs:790` 的 `a_lag_becomes_a_resync_and_forwarding_continues_until_closed`、T/unified_rpc.rs:1380 的 details demand 测试；`rg 'bridge_tauri_events|listen_any' backend/nyanpasu-rpc/src backend/tauri/src/unified_rpc.rs --glob '*.rs'` 退出码 1，另逐源审 setup/adapters 不重复 emit。反向加回 bridge、把 queue 改无界或订阅延迟到 first poll，回声/lag/启动测试须失败。
+
+---
+
+## E3a — 无前端资源的 HTTP API
+
+本卡是行为变更：未提供 assets/dev frontend 时也能启动 API；静态页面缺失返回正常 404，现有认证与 API 结果不变。
+
+- [ ] 在 E2b 后 R/http 的启动分支去掉原 `T/server/debug_http.rs:138-141` 的必需 frontend，仅 Some 时挂 `frontend_router` fallback（原 `:151`）；同迁后的 HttpRoutes/actor 调用链一起改，不增加第二个 API server。
+- [ ] 保留原 `local_session:271` 的 per-start credential、owner cookie、Host/Origin 检查、loopback 与默认 disabled；assets 可选不等于公开 LAN。参考 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/http/listener.rs` 的 `bind_loopback:34`/middleware `:87`；不引入 router_listener、WebTickets 或 ticket 登录。
+- [ ] G 无新包，http feature/prefix/musl 两表保留；更新 rpc/路线图 API-only 状态。无前端源码/生成文件差异。
+
+**验证**
+
+- 原 `unavailable_frontend_keeps_server_disabled`（T/server/debug_http.rs:826）明确替换为（新）`api_starts_without_frontend_assets`，按 §0.8 登记唯一预期删除/新增；新增（新）`api_only_keeps_credentials_host_and_origin_checks`。保留原 `embedded_frontend_serves_assets_spa_and_real_404s:606`、`actor_serializes_start_stop_and_rejects_foreign_origins:662`、`stopping_closes_an_open_event_stream:788`、`dev_proxy_preserves_query_status_and_websocket_protocol:835`；迁后路径按符号定位，B/V。
+- `rg 'HTTP frontend is unavailable|WebTickets|ticket=' backend/nyanpasu-rpc/src/http --glob '*.rs'` 退出码 1；反向恢复 None 拒绝/移除中间件，两个新测试失败。测试覆盖原 assets 模式，不只测空 router。
+
+## E3b — local 帧与握手协议
+
+本卡是行为变更（新增协议能力），尚不暴露生产 listener；协商成功前不接受命令。
+
+- [ ] P/frame.rs 定义长度前缀 JSON request/response/error/event/subscription 帧、请求关联与显式 hello/accept/reject。适配 `git show 4a4a3a0d3:backend/nyanpasu-rpc-protocol/src/frame.rs` 的 `encode:98`/read `:131`/write `:162`；采用其大端 u32、4 MiB 上限作为初版，固定测试；不采用仅每请求比较 `v == 1` 代替协商。
+- [ ] 初版协议 version 1；hello 提供支持版本/feature，server 选择共同版本与支持 feature，未知必需 feature 或无共同版本先拒绝且不 dispatch。IDs 为每连接严格递增正 u64 整数，完成后也永不复用，回复关联同 ID；订阅帧区分 request ID/subscription ID。JSON RpcError 内层保持既有字段，协议失败放 local 外层，不给 HTTP/Tauri 加 internal 变体。E1b 前的 local client 以拥有所有权的 JSON 值接收 result/error，不能要求 Deserialize 一个含 static str 或 skipped source 的生产错误；完整 typed receiving 在 E1b 完成。
+- [ ] 超限/截断/非法帧终止连接，未协商或非递增 ID（包括已完成 ID 的复用） 不执行命令；明确 frame/session 状态机，用有界缓冲 codec 处理分片/粘包。错误模块用 snafu，不暴露任意请求内容到 audit。
+- [ ] G：protocol 加无默认启用的 `frame-io`（可选 Tokio/codec 依赖），纯值层不要求 IO；server/client 后续分别启用。无新包/prefix；musl 仍同 lib target，但显式加入 protocol/frame-io 构建与测试；增加 feature-off 正例与引入 core/server 的负例。同步 rpc 协议说明。
+
+- [ ] 初始 features 固定为 `rpc`（必需）、`events`、`connection-details`（可选）；server 选 hello 与 server 支持集合的最高共同 version（初版只有 1），features 返回必需集加可选交集，未知 optional 忽略，未知 required 拒绝。握手只允许一次；字符串字段 UTF-8，version/length 为 u32，request `id` 为正 u64 JSON 整数（拒浮点/溢出），subscription 为服务端生成、不复用的 opaque string；耗尽 ID 后新建连接，不能回绕。
+- [ ] 规范 JSON 示例（每行一个长度前缀帧；RPC response 的 `result`/`error` 二选一，error 内层仍为既有 RpcError）：
+
+```jsonl
+{"type":"hello","versions":[1],"requiredFeatures":["rpc"],"optionalFeatures":["events","connection-details"]}
+{"type":"accept","version":1,"features":["rpc","events","connection-details"]}
+{"type":"request","id":1,"method":"get_profiles","params":null}
+{"type":"response","id":1,"result":{"valid":[],"items":[]}}
+{"type":"subscribe","id":2,"stream":"events","event":"core-logs-changed"}
+{"type":"subscribed","id":2,"subscription":"s1"}
+{"type":"reset","subscription":"s1","event":"core-logs-changed","snapshot":{"status":{"generation":"g1","version":0,"first":null,"head":null,"bytes":0,"error":null,"discarded":0}}}
+{"type":"event","subscription":"s1","name":"core-logs-changed","payload":{"status":{"generation":"g1","version":0,"first":null,"head":null,"bytes":0,"error":null,"discarded":0}}}
+{"type":"lag","subscription":"s1","reason":"overflow","resync":true}
+{"type":"reset","subscription":"s1","event":"core-logs-changed","snapshot":{"status":{"generation":"g1","version":0,"first":null,"head":null,"bytes":0,"error":null,"discarded":0}}}
+{"type":"unsubscribe","id":3,"subscription":"s1"}
+{"type":"unsubscribed","id":3,"subscription":"s1"}
+{"type":"reject","code":"unsupported_version"}
+```
+
+- [ ] 示例 event/reset 是完整 CoreLogStatus wrapper（`backend/nyanpasu-observers/src/logs/model.rs:129-136`），不代表日志行；生产保持 EVENT_NAMES 对应完整载荷。状态机：握手 → ready → subscribe pending → subscribed ack → active events；ack 前不得发 event。unsubscribe 停止生产、清理或丢弃排队事件后发 ack，ack 后该 ID 无 event；ack 前允许已排队 event，迟到完成走 E3d cleanup。重复/未知 subscription unsubscribe 回幂等 ack；未订阅事件流不得发送。lag notice 后必须先发下表的 reset，客户端仅凭 reset 重建该流当前状态，再继续 event；不能调用未 allowlist 的 query。reset 与 unsubscribe ack 同受有序 writer 约束；不承诺跨源全序。
+- [ ] 坏 JSON/未知 frame type/非法字段类型/超长/截断/握手前 dispatch/非递增 ID：无命令执行，能安全写时发外层 protocol reject 后关连接，否则直接关；无共同版本/缺 required feature 同样 reject 并关。已协商的合法 RPC 业务错误仍关联 id 回复，不关闭连接。新增（新）`completed_request_ids_cannot_be_reused`、`unsubscribe_ack_prevents_late_events`、`subscription_ack_and_lag_order_are_preserved`、`malformed_frames_never_dispatch`；反向放行已完成 ID 或 ack 后 event，测试失败。
+
+- [ ] `get_profiles` 示例为 `Profiles` 对象，`valid`/`items` 必需，未设置的 optional document fields 省略（`nyanpasu-config/src/profile/profiles.rs:12,22,32`）；新增（新）`canonical_local_examples_decode_as_real_command_results`，不能只把示例 parse 成任意 JSON 就算通过。
+- [ ] 初版 `events` 每次 subscribe 必须给 `event`（EVENT_NAMES 字符串），每个 subscription 只恢复该流；没有“订阅全部并忽略未知流”的隐式接口。恢复契约如下，所有载荷沿既有 serde shape，E1b 再闭合 typed receiving；不增加十三命令 allowlist。reset 外层为 `{"type":"reset","subscription":"s1","event":"configuration-status-changed","snapshot":...}`，`snapshot` 必须是表中完整值，不是 `resync: true`。订阅 ack 后先发 initial reset，lag 后先 lag 再 fresh reset，之后才恢复完整值交付。
+
+| 本地 events identity                                    | 完整值证据与 initial/reset snapshot                                                                                                                                     | E3 范围                                                                                    |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `configuration-status-changed`                          | T/setup.rs:797 每次读取完整 `ConfigurationStatus`；C/client/configuration_status.rs:63 `configuration_status()`                                                         | 保留；event/reset 均替换当前 configuration status                                          |
+| `core-status-changed-event`                             | T/adapters/events.rs:25 的 `CoreStatusInfo`，T/setup.rs:807 完整投影；C/client/mod.rs:892 `core_status()` 同投影                                                        | 保留；event/reset 均替换当前 core status                                                   |
+| `service-status-changed-event`                          | T/adapters/events.rs:28 的 `ServiceHostStatus`，T/setup.rs:826-827 克隆完整 watch 值；C/client/mod.rs:898 `service_status()`                                            | 保留；event/reset 均替换当前 service status                                                |
+| `app-update-state-changed`                              | T/adapters/events.rs:20-22 transparent `AppUpdateSnapshot`；T/adapters/app_update.rs:242-244 发布完整 snapshot；C/client/mod.rs:739 `get_app_update_state()`            | 保留；能力存在才可订阅，缺能力 structured unsupported；event/reset 均替换当前 update state |
+| `core-logs-changed`                                     | T/adapters/events.rs:31-33 的 `{"status": CoreLogStatus}`；T/adapters/clash_events.rs:33-35 克隆完整 watch status；C/client/clash_streams.rs:21 `get_core_log_status()` | 保留的仅是完整日志状态，不是日志行/历史；initial/reset 保留同一 status wrapper             |
+| `clash-ws-event`                                        | T/adapters/events.rs:36-38；C/clash/ws.rs:157-164 混合 reset 与局部 update/history-cleared                                                                              | 排除；并非每个 event 都是完整当前值，不能沿用 snapshot-plus-delta 恢复                     |
+| `state-changed-event`                                   | C/client/event_sink.rs:15 的 invalidation hints                                                                                                                         | 排除；恢复另经下述延期卡审议                                                               |
+| `storage-value-changed-event`、`storage-resync-event`   | T/adapters/events.rs:54,59；T/setup.rs:341,349                                                                                                                          | 排除；单 key delta 与 source resync，不是完整 map；恢复另经下述延期卡审议                  |
+| `scheme-request-received-event`、`window-message-event` | T/unified_rpc.rs:179,183 的瞬时请求/定向消息 identities                                                                                                                 | 排除；无可恢复完整当前状态，保留既有 shell 交付                                            |
+
+- [ ] E3 仅为上表五个 full-value identities 构建 initial/reset snapshot；客户端逐 event 整体替换该流描述的值，不需 query 或 reducer 重建增量。reset 由 R subscription control 调现有 facade，十三命令 allowlist 不变。沿用同步订阅、有限缓冲和源内顺序；snapshot 期间的发布由既有启动/race 测试固定，不能在 reset 后回放更旧的排队值。持续溢出、读取失败、超过 4 MiB 上限仍沿已有 subscription_error/resource_limit 契约结束订阅，不静默截断或加无界队列。
+- [ ] E3d/E3e 保留真实本地连接测试（新）`local_overflow_reset_reconstructs_each_recoverable_stream`，仅对上述五个 full-value identities 参数化：阻塞 writer 造成 local lag，恢复后只用 fresh reset 与后续完整 event 重建当前值，不发 recovery query。保留（新）`local_reset_preserves_updates_during_snapshot`；将拒绝测试限定为（新）`local_non_full_value_streams_are_rejected`，覆盖其余六个 identities，返回已有 unknown_stream 且不分配资源。不在 E3 实现/测试 storage reset、key mapping 或 state-invalidation recovery。
+
+- [ ] connection-details 不在 EVENT_NAMES/bus 中，规范帧如下；`data.payload` 是 C/clash/ws.rs:52 `ClashConnectionDetails`（sequence + connections），空 connections 也是合法当前帧：
+
+```jsonl
+{"type":"subscribe","id":4,"stream":"connection-details"}
+{"type":"subscribed","id":4,"subscription":"d1"}
+{"type":"data","subscription":"d1","stream":"connection-details","payload":{"sequence":7,"connections":[]}}
+{"type":"subscription_error","id":5,"code":"feature_not_negotiated"}
+{"type":"subscription_error","id":6,"code":"unknown_stream"}
+{"type":"subscription_error","id":7,"code":"resource_limit"}
+{"type":"subscription_error","subscription":"d1","code":"snapshot_unavailable"}
+```
+
+- [ ] `events` 需要 negotiated `events` feature，details 需要 `connection-details`；未协商以关联 request id 的 feature_not_negotiated 拒绝且不分配资源；未知 stream/event（含初版排除的 identity）返回 unknown_stream，表满返回 resource_limit，连接保持可用。控制错误是 local 外层，不给 RpcError 加新 variant；建立失败不发 ack。建立后异步失败用 subscription 字段、无 request id，结束并释放资源。合法 subscription admission 走 E3d 同一审计 kernel，包括上述拒绝。
+- [ ] details ack 后立即发当前 Some frame（T/unified_rpc.rs:549-565）；当前 None 时等待首个 Some，不伪造空帧。后续保持 watch-style latest-only coalescing，允许 sequence 跳跃，不虚称每帧必达，不为跳跃生成事件流 lag/reset。慢 writer 只保留当前/最新有界帧；unsubscribe/disconnect 释放 watch receiver/demand，ack 后不再 data，late receiver 走 E3d cleanup。E3b 只定义与测试帧/状态机，E3d 实施并执行（新）`local_details_requires_negotiated_feature`、`local_subscriptions_reject_unknown_stream_and_resource_limit`、`local_details_ack_precedes_current_frame`、`local_details_coalesce_and_release_demand`，必须经过 local dispatcher/真实连接，不只测 codec。
+
+**验证**
+
+- 新增（新）`local_frames_preserve_json_and_big_endian_lengths`、`local_codec_handles_fragmented_and_coalesced_frames`、`local_handshake_rejects_incompatible_versions_before_dispatch`、`local_required_features_are_negotiated`、`local_frame_limits_and_duplicate_ids_are_enforced`。`cargo test -p nyanpasu-rpc-protocol --no-default-features` 与 `--features frame-io` 各存 §0.8 清单，B/V。
+- protocol 的 core/Tauri scoped 无匹配检查继续有效；`rg -n 'PROTOCOL_VERSION|MAX_FRAME|Hello|subscription' backend/nyanpasu-rpc-protocol/src` 正向审契约。反向绕过 handshake、删除长度上限、混用 ID，新增测试失败；不复制 local-channel 的同 build type-name fingerprint 作为协议协商。
+
+## E3c — Unix 与 Windows 可发现端点
+
+本卡是行为变更（新增持久监听基础设施），不自动启用桌面 local 服务。
+
+- [ ] R/local/endpoint.rs 提供反复 accept 的 Unix socket/Windows named-pipe listener；借鉴 `backend/nyanpasu-local-channel/src/name.rs:77,237,255` 的当前用户 ACL、私有目录/owner/mode 校验。`tokio.rs:81` 的 OneShotServer 消费 self 不能直接当长期 listener。默认每用户、每 app data directory 只有一个端点；desktop/server 哪个先 bind 就拥有它，第二个 live binder 以 typed error 启动失败。服务端/client 共用 discovery，CLI 用默认或 `--endpoint`，不以 router `/var/run` 硬编码作为所有平台默认。
+- [ ] 适配 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/local.rs` 的 accept `:68`、bind `:119`；丢弃任何 connect 错误都当 stale、固定 `.binding` 覆盖与无所有权校验 cleanup。Unix 仅在已校验的私有、当前用户目录内，现有项为当前用户拥有且 mode 合法的 socket、connect 明确 refused 时视为 crashed-owner residue 并在 bind 前删除；live、不可访问、foreign owner、wrong mode、symlink、目录外项全部拒绝。校验身份并串行化 stale 检查/claim，防 racing binder 删除新 live socket；正常 shutdown 只删除仍属本 listener 的端点，保留 replacement-safe cleanup。
+- [ ] Windows named pipe 无 stale cleanup；首实例以 first-instance exclusivity 创建，保留当前用户 ACL，后续 accept instances 归同一 listener，竞争 shell 必须失败；不能用 non-Unix unsupported stub 达成 E3。共享端点错误为模块 snafu，本卡只复用 local-channel 的端点安全技术，在 RPC 端点 adapter 实现所需持久监听，不修改原 parent-child API/线协议；避免为一次性 channel 加服务端协议职责。
+- [ ] G：rpc 新 `local-server` feature，依赖 protocol/frame-io 与实际 OS socket 库；新端点辅助不得引入 IMPLEMENTATION/core 到 protocol。无新包/prefix；musl 显式启用 rpc/local-server，同 target；local-channel 未改，不扩 musl 的 package/target 集合；其既有安全测试作为实现证据，RPC 新测试必须独立固定相同安全条件。更新 rpc/路线图平台支持表。
+
+- [ ] 默认 endpoint identity 由当前 OS 用户 UID/SID 与规范化 app data directory 确定，不含 shell 类型/PID；Unix 在经 local-channel 同等安全校验的用户私有目录内，Windows 在当前用户命名管道命名空间。共同 discovery 函数固定该映射，两 shell/CLI 不能各自推导；`--endpoint` 只覆盖位置，不放宽安全校验。新增（新）`second_live_binder_is_rejected`、`racing_binders_have_one_winner`、`inaccessible_existing_endpoint_is_refused`、`crashed_owner_socket_is_reclaimed_only_in_private_directory`、`windows_pipe_name_competition_is_exclusive`、`desktop_and_server_share_default_endpoint_for_data_directory`；加到 §0.8/G/V 平台清单，Windows competition 必须 Windows 实跑。
+
+**验证**
+
+- 新增（新）`local_endpoint_accepts_consecutive_connections`、`local_endpoint_refuses_foreign_or_symlinked_paths`、`local_endpoint_cleanup_cannot_remove_a_replacement`、`named_pipe_accepts_reconnects_with_current_user_acl`。参考且不删除 local-channel 的 `a_loosened_fallback_dir_is_refused:316`、`a_symlinked_fallback_dir_is_refused:331`、`the_pipe_dacl_names_only_the_current_user:421`（name.rs）；§0.8/B/V，Windows named pipe 必须实际执行、Unix 权限由 Linux/macOS CI 验证。
+- `rg -n 'remove_file|permissions|security_descriptor|accept' backend/nyanpasu-rpc/src/local --glob '*.rs'` 审所有删除/权限/循环点；无旧路径删除时不伪造零匹配证明。反向放宽 ACL/目录模式、把一次 accept 当长期服务或无条件 unlink，新测试失败。
+
+## E3d — 连接 owner、订阅与统一审计
+
+本卡是行为变更（新增 local dispatch/订阅），连接断开清理连接资源，但不取消 owner 已开始的工作。
+
+- [ ] R/local dispatcher 使用服务端生成的 transport-tagged instance/connection 身份，P/RpcOwner 不接受 request JSON owner；原 desktop/window 与 HTTP/session 行为保留。参考 `git show 4a4a3a0d3:backend/nyanpasu-rpc-protocol/src/owner.rs` 的 `local_connection:21`，加实例命名空间，不复用重启后的 bare counter。
+- [ ] 握手后每个调用进入 E2b 的 `dispatch_audited`，新增 Local transport，R 的共享生产 `TracingRpcAuditSink` 记 INFO；固定 command 名、脱敏 owner、耗时/结果，不记 params/result/token/error detail。目标/能力/参数拒绝同样审计；握手认证错误仍在 RPC kernel 外。special subscription establishment 只记一次，不逐帧审计。
+- [ ] 有界 in-flight、输出 queue 及每连接 resource/subscription table（容量满时在 admission 前拒绝新增资源），slow peer 只影响该连接；建立资源表拥有 log sessions、bus subscriptions、connection-detail demand。迁/接通 `T/ipc.rs:1999,2012,2025` 对应 facade owner API；断开/取消订阅/shutdown 丢 receiver、关闭本 owner 资源，不能跨 owner 清理。所有成功返回资源 ID 的 resource-producing completion 即使连接已关闭仍登记结果并立即 close，包括 late subscription 与 App/Service `open_log_session`；completion task 活到登记/清理完成，不随 reply receiver 丢弃。`C/client/logs.rs:117` 需要 source/owner/returned session ID；已返回 ID 的成功完成不能靠 lease 弥补漏清理；未确认的远端 Service 创建例外见下述 V-61。
+- [ ] 已接纳工作由 server task/业务 owner 持有，与 reader/writer 生命周期分开；root tasks 观测失败、正常 shutdown drain。panic 保留原 payload 并走 fatal supervision，不能 catch_unwind、吞 JoinError 或转 RpcError；不为 audit 另 spawn/timeout。丢弃 `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/local.rs` 的无界 queue `:200` 和 panic-to-internal `:248-267`，只参考 reader/writer 分离。
+- [ ] G 无新包/prefix/target，local-server feature 的实际依赖闭包重验；新增审计 sink 的共享 enum 分支要求两个 shell 显式处理。更新 rpc/architecture/路线图连接生命周期与事件归属。
+
+- [ ] 新增（新）`delayed_app_log_session_is_reclaimed_on_disconnect`、`delayed_service_log_session_is_reclaimed_on_disconnect`、`shutdown_reclaims_delayed_app_and_service_log_sessions`：barrier 卡住成功 open completion（Service 必须仍在 IpcServiceLogs 上游 5 秒窗口内返回 ID），断连/关闭后释放，断言立刻登记并调用真实 close(source, owner, returned ID)，session 不存在，不等待 lease；这只证明拿到 ID 的成功完成，不代表丢失 Service 回复也可立即清理。新增（新）`connection_resource_table_is_bounded`；Local INFO 检查必须使用 E2b 的生产 sink 与原 level/secret fixture，不能只计数 fake sink。
+
+- [ ] 明确生产限制 V-61：`C/client/logs.rs:43-50,62-67` 的 IpcServiceLogs 内置 5 秒 timeout；服务可能已创建 session 却丢失/超时回复，local 只拿到 Unavailable、没有 ID，无法调用 `close:117`。此类未确认 Service open 依服务现有 45 秒 lease（`backend/nyanpasu-runtime/crates/nyanpasu-logging/src/session.rs:9,295-315`，从创建/最后续租计时）过期；不得宣称从 local 断连起立刻或固定 45 秒内完成所有物理 store 回收，store 另有 GRACE（:10）。不改 runtime submodule/service 协议、不新增 owner-close-all/correlation API。
+- [ ] 新增（新）`service_open_lost_response_reports_unavailable_without_session_id`：使用实际 IpcServiceLogs 的受控 IPC peer，证明远端创建后回复丢失或超过 5 秒时只回 Unavailable、没有伪造 close ID；用受控时钟/时间推进，不 sleep。成功 late-completion 测试与此案例分开；现有 logging lease 实现为此限制的依据，不用最终返回 ID 的 fake port 证明未确认创建已回收。文档写清 lease bound 与前提（无续租），改变协议须另卡审议。
+
+- [ ] 本卡实现 E3b 表中 reset builders、订阅 capability/error admission 与 details demand adapter，仅消费五个 full-value 流的现有 facade，不调用 public RPC query 来绕过 allowlist；执行 E3b 列出的四个 local dispatcher/details 测试及 full-value reset snapshot-race/非完整值流拒绝测试，全部按 §0.8 计入本卡新增清单。frame-only 的 E3b 不提前运行尚未存在的 dispatcher；client 端真实 overflow 重建验收在 E3e。
+
+**验证**
+
+- 新增（新）`local_dispatch_records_one_info_audit_event`、`local_owners_cannot_use_each_others_resources`、`disconnect_reclaims_late_subscriptions_without_cancelling_mutations`、`slow_local_peer_has_bounded_buffers`、`local_handler_panic_reaches_fatal_supervision`；barrier/Notify 驱动，不 sleeps。保留 C2f `audit_never_records_payloads_or_error_details:376`、`dropping_audited_call_preserves_cancellation:515`、`audited_command_panic_keeps_its_payload:567`；§0.8/B/V。
+- `rg 'catch_unwind|unbounded_channel|RpcErrorKind::Internal' backend/nyanpasu-rpc/src/local --glob '*.rs'` 退出码 1；逐项审 JoinHandle result 不字符串化 panic。反向信任 JSON owner、断 reader 取消 owner、漏 late cleanup、降为 DEBUG/绕过 kernel，对应新测试失败。
+
+## E3e — local client 与桌面接入
+
+本卡是行为变更：显式启用 local 的桌面 shell 可被本机客户端调用；client 超时后连接失效，结果未知，不自动重试 mutation。
+
+- [ ] P/client.rs 增加 `local-client` feature（依赖 frame-io，仅协议/OS client 库，无 rpc/core）；同一 transport 支持 Unix/Windows、握手、请求关联、订阅与断开。适配 `git show 4a4a3a0d3:backend/nyanpasu-rpc-protocol/src/client.rs` 的 call `:98`；替换 `call_with_timeout:110` 后继续读旧连接的策略，超时/半帧导致连接不可再用，旧回复不能归到新连接。
+- [ ] 明确发送前连接失败与发送后结果未知；deadline 只在 client/transport，不下传取消 owner。所有可能已提交但未收到确定回复的 IO/decode/disconnect 失败保守报 unknown，不只把 TimedOut/Disconnected 当未知；不自动重放。
+- [ ] 桌面 composition 显式配置 listener/enable 与 root shutdown，默认不开启，不增加前端控件。初版 local opt-in 限既有 `get_profiles`、`create_profile`、`delete_profile`、`read_profile_file`、`get_configuration_status`、`get_core_status`、`get_storage_item`、`set_storage_item`、`remove_storage_item`、`list_log_files`、`open_log_session`、`query_logs`、`close_log_session`（HEAD T/ipc.rs:392,494,617,702,2239,809,1714,1721,1732,1990,1999,2012,2025）；逐项复用 shared handler，不改变 HTTP 集合。local event/detail subscriptions 属传输控制帧，不把 native Channel 命令标 local。
+- [ ] metadata 如实记录 mutation 的间接 runtime/service 效果；桌面 local 与桌面 client 共用其既有策略，不声称全局无提权；E4 的独立 server 负责拒绝。新增 durable-stop/host-bound-core/lifecycle RPC 不在本卡。local allowlist 扩展需独立行为卡。
+- [ ] G：protocol/local-client 独立 tree 禁 core/rpc/server/GUI/IMPLEMENTATION；tauri 显式 local-server feature/配置，core/config defaults-off 保留。musl 同时测 protocol/local-client 与 rpc/local-server，仍同 lib targets；prefix 不新增。同步 rpc/路线图 allowlist、启用方式与 timeout 契约。
+
+- [ ] 连接由独立 transport task 独占，call 通过有界 channel 提交请求并等待关联 reply；drop call future 不取消半帧 exchange，transport task 完成交换或丢弃无人接收的 reply，保持流同步。timeout/transport error 关闭连接，所有可能已提交的调用报告 outcome unknown，不自动 retry mutation；drop future 不触发重放。未提交的排队请求可取消，不能把不确定的 partial write 当未提交。新增（新）`cancel_during_partial_request_write_keeps_stream_synchronized`、`cancel_during_partial_response_read_keeps_stream_synchronized`，用可控 IO/barrier 分片，不 sleep；下一调用只能使用完整同步流或新连接，mutation 执行次数不增加。丢弃 POC `client.rs:110` 对借用 exchange 做 timeout 的连接所有权安排。
+
+- [ ] 本卡 client 实现 E3b 的 reset 应用与独立 details data/error 解码；执行（新）`local_overflow_reset_reconstructs_each_recoverable_stream`，真实连接覆盖五个允许的 full-value event identities、无 query recovery、当前值整体替换，验证既有十三命令名单逐项不变。持续溢出/快照超过上限必须显式失败，不能收到 lag 就宣称恢复。按 §0.8 将本测试加入 client/server 两侧适用清单，B/V；Windows 与 Unix 实跑。
+
+**验证**
+
+- 新增（新）`timed_out_local_connection_cannot_be_reused`、`partial_reply_timeout_never_retries_a_mutation`、`local_allowlist_matches_the_reviewed_existing_commands`、`desktop_local_listener_is_opt_in_and_joins_shutdown`；适配 POC client 测试 `:172` 的 unknown 断言，丢弃 late-reply skip 后可复用断言。两平台实际 client/server roundtrip，§0.8/B/V。
+- `cargo tree --offline -p nyanpasu-rpc-protocol --no-default-features --features local-client -e normal,build` 核对 client-only；`rg 'nyanpasu_rpc::|nyanpasu_core::|tauri::' backend/nyanpasu-rpc-protocol/src --glob '*.rs'` 退出码 1。反向超时后继续用 stream/自动重试/默认启用 listener，各新测试失败；未 opt-in 命令明确 unsupported。
+
+---
+
+## E1b-a — 完整 DTO 闭包与接收投影
+
+本卡是保行为接缝，前置 D2e、A2b 与 E3e 全部完成；不再移动 D2e 的定义，不改业务结果或 wire。基础值保持 canonical；只有不适合基础层的应用输出/不可重建来源使用 protocol projection。
+
+- [ ] 逐 registered command 建 request/result/error/event 闭包清单，含 native-only schema、cfg 分支与外部 crate 嵌套值。现有基础 DTO 直接引用；D2e 的 MutationOutcome/RuntimeError/ProfilesError 从 values 引用。Serialize-only 错误含 skipped operational sources 时，新建显式 receiving DTO，不伪造 IO/engine cause、不给 domain error 强塞 Deserialize、不把内部 MutationReceipt/RuntimeApplyReceipt 导出。
+- [ ] profiles：T/ipc.rs:392-712；`C/state/profiles/actor.rs:66` NewProfileRequest、`client/profiles.rs:89` ProfileUrlProbe、`client/jobs.rs:184` ProfileSyncStatus 与 jobs DTO。config/runtime：T/ipc.rs:723-977、2239-2253；`C/client/runtime_inspection.rs:50,65,77,84`、`configuration_status.rs:15,27,34,42,55`、`state/config_error.rs:24`，effects/source status 的嵌套类型不能漏。core-control/status DTO 的 operational projection impl 留 core，协议投影在 R 转换。
+- [ ] 其余组逐项闭合：Clash API/proxy（T/ipc.rs:1172-1309）、storage（:1714-1792，C/storage.rs:213,227）、streams/details（:1808,1927,1938,1951）、observers core logs（:1817-1846，`backend/nyanpasu-observers/src/logs/model.rs:14,35,120,129,140`）、traffic（:1853-1917）、日志 sessions/frontend batch（:1990-2038）、core updater（:1105,1162）、app updater（:2058-2134）、debug HTTP（:2561,2569）及 common IpcError/domain_error。须覆盖 HEAD 104 项；POC 是 85 个 extracted RPC HTTP 声明 + 20 个 retained shell 声明，共 105 项，不是小子集。
+- [ ] native-only 值也登记：T/ipc.rs:178,186,207 的 dialog/filter、:1026 backup、:2048 ReleaseChannelInfo，及 CopyEnvOption/EditorWindowType/PageCapabilities。native Channel descriptor 是 shell binding，local 订阅帧不冒充该 DTO。每个 pure scalar/unit 命令也登记 error closure，不能因 result 简单漏项。
+- [ ] 对仍属 CORE_FAMILY 的应用 DTO，P 定义 transport/receive projections，R 在应用边界转换；不把 observer/updater owner、config error 的操作 helper 移进 P，也不让 foundation 为 RPC 反向依赖 protocol。能直接引用的 canonical foundation 值不重复定义；wire projection 名与既有 Specta 名保持一致，接收专用类型不额外注册为新前端 export。POC `git show 4a4a3a0d3:backend/nyanpasu-rpc/src/commands.rs` 的 `create_profile:50` 的 core DTO 签名只作缺口证据，不复制为 protocol 依赖。
+- [ ] G：protocol 按闭包新增批准的 foundation 值依赖（包括 runtime-values，config defaults-off）、必要中立外部 value 依赖；不依赖 CORE_FAMILY/IMPLEMENTATION/GUI。新增 gate 正例 CLI → protocol → values → config/contracts/transform；负例 protocol → core/engine/observers/updater，及 foundation → protocol/rpc 的倒置。不要复制 POC 的 CLI 禁全部 FOUNDATION 规则。prefix/musl package/target 保留，schema feature 显式转发，D2e 的值包注册不能被覆盖。
+- [ ] 调用者为 R commands/error/events/http/local、T native DTO/schema 注册与 typed client；core 业务 API/操作 helpers 保持原 owner，删除被完全替代的 shell wire 定义/导入，不留转发。同步 backend-packages/路线图 E1b 状态，尚不宣布 typed-client 验收完成。
+
+- [ ] 闭包显式包含 `get_core_agent_skills`（T/ipc.rs:1079）与 `C/client/agent_skills.rs:8` 的 Serialize-only `CoreAgentSkill`；P 的 projection/receiving shape 保留 `name`、`dir`、`installed`，R 转换，不能引用 core 类型或伪造 host 路径。新增（新）`core_agent_skill_projection_preserves_serialization`、`typed_client_decodes_core_agent_skills_without_core`，覆盖空/多项、路径与 bool；此类型不在 D2e move 清单，不能因已完成 D2e 漏掉。
+
+- [ ] E2a/E2b 已把四个 HTTP/shared response（GetSysProxyResponse、IconData、ServiceStatusInfo、StorageEntry）移入 R，TrayIcon 已在 P；本卡不再声称它们是 shell/native-only 值或首次抽离。对四者仅完成仍有必要的向下投影及 receiving closure（尤其 ServiceStatusInfo 的 core 嵌套值），已中立且闭合的值可纯移动到 P，保持现有 wire/Specta 名；不能复刻同名 canonical 定义。
+
+**验证**
+
+- 新增（新）`every_registered_command_has_a_neutral_wire_closure`、`receiving_errors_decode_without_operational_sources`、`wire_projections_match_application_serialization`，按上述组参数化全部 variant/optional/default/serde tag。`cargo test -p nyanpasu-rpc-protocol`、`cargo test -p nyanpasu-rpc --features http,local-server`、`cargo test -p clash-nyanpasu`，§0.8 原清单加新测试，保留 T/specta_export.rs:728 的 shape assertions；B/V。
+- `rg 'nyanpasu_core::|nyanpasu_state_engine|nyanpasu_observers|nyanpasu_updater|MutationReceipt|RuntimeApplyReceipt' backend/nyanpasu-rpc-protocol/src --glob '*.rs'` 退出码 1；旧 shell DTO 按实际迁移清单 scoped 检查，不全局禁止合法 domain 定义。反向嵌 core error/删除 receiving variant/改变空值或 source skip，tree/schema/接收测试失败。
+
+## E1b-b — typed client 与闭包验收
+
+本卡是保行为接缝；合并原独立的 client/schema integrity 验收，不新增业务命令。
+
+- [ ] P 的 typed request/response decoding 接 E3e client；generic JSON call 保留，typed API 必须可在不链接 R/core 的消费 crate 单独使用。接收端 error 保留 RpcError kind/code/retryable/operation_id/domain_error，不能以成功 JSON 包裹失败。
+- [ ] metadata/DTO 清单覆盖当前所有平台声明与实际 registry，生成绑定用同一命令声明来源；别名/同名 Serialize/Deserialize schema 不制造 frontend duplicate 类型。新接收类型只在 Rust client 使用时不加入现有 Specta export。
+- [ ] G 无新包/prefix/musl target；protocol local-client 单包 features 与 rpc/server features 分别测，不靠 workspace feature unification。新增 policy 正例仅 protocol/client 的消费闭包，负例偷偷引入 rpc/server/core；同步 E1b 完成条件和路线图。
+
+**验证**
+
+- 新增（新）`typed_local_client_decodes_mutations_and_domain_errors`、`typed_client_builds_without_application_dependencies`；§0.8 protocol/R/T 清单不减，沿 E1b-a 完整闭包参数化回归，B/V。单独 `cargo test -p nyanpasu-rpc-protocol --no-default-features --features local-client`。
+- client tree 及 E1b-a scoped 无匹配检查继续通过；反向给 client 加 core、把 error 当 Ok、遗漏接收嵌套 cause，策略/typed roundtrip 失败。三份 bindings 零 diff 是硬条件，不用「语义相同」接受文本 drift。
+
+---
+
+## E4a — 首次 headless 装配即拒绝提权
+
+本卡是行为变更（新增 headless shell 装配）；不从 Tauri 复制出一个无拒绝策略的中间版本，不改变桌面策略。
+
+- [ ] 新建 `nyanpasu-server` 的 H/compose.rs，按 `C/client/mod.rs:110` 的 ClientSetupArgs 装配一个 client。参照 HEAD `T/setup.rs:257,270,289,331,357,368,409,434,459,480,499,505,659,702` 的迁移、core/service、storage snapshot、geo/net/profile IO、runtime/script、logging/updater、traffic owner 与 shared effects；依赖从 shell 注入，不能把生产实现边加回 core/R。
+- [ ] C1 的 app-update/window/accelerator 能力用 None，C3 shared effects 保留 logger/OS/PAC/proxy 收敛，presentation executor None；UiEventSink/FrontendLogSink/audit sink 用中立实现。A2b 已合入，server 显式构造其公开扩展工厂与 server-owned IO adapter，不导入 Tauri 的 script_extensions、不恢复 hidden 默认构造；无新共享交互 crate。
+- [ ] 同一拒绝策略显式注入 `nyanpasu-os/src/service.rs:300`、`system_dns.rs:28`、`core_install.rs:31` 三构造器；使用 `elevation/mod.rs:9` RefuseElevation。真实 bundle metadata/path/executable source 从 server 参数/build metadata 来，不伪造 desktop 信息；保留 B2 owner 级 stores/factories 与 staging 生命周期。
+- [ ] 参考 `git show 4a4a3a0d3:backend/nyanpasu-server/src/compose.rs` 的 assemble `:171`、shutdown `:148`；重写 old core adapters/concrete storage，丢弃 `adapters/effects.rs:17` UnsupportedEffects、假 windows/accelerators 和未注入拒绝的 DNS/install。POC 的 host-bound core/持久 stop/新 lifecycle 命令另立行为卡，不在本卡修改 runtime submodule。
+- [ ] 直接与间接路径同卡固定：service-mode config 开/关、runtime retry、失败补偿、binary-copy fallback 经真实 client 到拒绝 adapter，计数 runner 证明提权命令未启动；允许普通非提权 IO，不声称 server 不做任何 OS 操作。嵌入式 desktop WebUI 仍走桌面策略（O-5）。
+- [ ] G：workspace 加 server；shell 可依赖 core（defaults-off）、R/http/local-server、协议、基础/实现/owner crates；显式选 core/config/scripts features，不依赖 Tauri/GUI。policy 正例 server → core/OS/net，负例 server → Tauri/egui/Slint（含传递）；静态 prefix `backend/nyanpasu-server/src/`，musl 加 `-p nyanpasu-server`、`lib:nyanpasu_server`。本卡只 lib 组合根，二进制在 E4b；同步 development/路线图。
+
+- [ ] 正向要求现行 concrete logging composition：`nyanpasu_core::logs::RedbCoreLogStore::open`（T/setup.rs:460，定义 C/logs/redb.rs:32、导出 C/logs/mod.rs:6），失败用当前 `nyanpasu_observers` 的 `UnavailableCoreLogStore`（T/setup.rs:466），并保留 FsLogFiles/MonotonicClock/IpcServiceLogs。禁止的历史 POC symbol 逐项为旧 owner 路径 `nyanpasu_core::logs::UnavailableCoreLogStore`、`UnsupportedEffects`，不能用 `nyanpasu_core::logs` 整个 namespace 当禁止表达式，也不要求额外存储提取。新增（新）`server_logging_uses_redb_with_current_unavailable_fallback`，反向删 fallback/换假 store 测试失败。
+
+- [ ] 本卡补最小 OS 测试接缝：`backend/nyanpasu-os/Cargo.toml:9` 新增默认关闭 `test-support`，仅公开真实 service/DNS/core-install adapter 的 test constructors/factories 与必要 intercepting CommandRunner 接口。依据 `service.rs:300`、`system_dns.rs:28,48`、`core_install.rs:31,43` 与 `elevation/runner.rs:5,25-27`；不能把 cfg(test) 私有 CountingRunner 当跨 crate 可用接口。生产构造器和默认 OsCommandRunner 不变；测试 runner 能拦截并计数所有实际命令，RefuseElevation 仍注入真实 adapter。
+- [ ] server 仅 dev-dependency 启用 `nyanpasu-os/test-support`，normal/build 边不启用、不由 server 生产 feature 转发；config/retry/compensation/copy-fallback 四条测试经真实 client + 三个真实 OS adapter/test constructors，断言 elevated runner 零调用，不用 fake refusal port 替代。无新增 crate/target，既有 OS/server 静态 prefix 与 musl 两清单保留；musl 的 server 测试装配显式包含此 dev feature，生产构建独立核验关闭。
+- [ ] G 策略在 S/backend-boundaries.ts + backend-boundaries_test.ts 增 dev-only 正例、normal/build feature 直启/传递泄漏负例；S/policy.ts STATIC_GATE_PREFIXES 与 S/architecture-ledger_test.ts 覆盖已在 OS 前缀内的新模块，不新增盲区。`cargo tree --offline -p nyanpasu-server -e normal,build,features` 与独立 production metadata feature 闭包必须无 `nyanpasu-os/test-support`；test/all-targets feature-unified 图单独检查、不可当生产图。新增（新）`server_production_closure_excludes_os_test_support` 策略测试，反向 normal edge 启用该 feature 必须失败；按 §0.8 登记 seam 与四条真实路径测试，B/V，生产构造行为零变化。
+
+**验证**
+
+- 新增（新）`server_composes_without_presentation_capabilities`、`server_refuses_elevation_on_config_retry_compensation_and_copy_paths`（每条路径独立 case，不用只测 RefuseElevation 本身代替）。保留 OS `refused_service_command_never_spawns`（service.rs:361）、`refused_dns_flush_never_spawns`（system_dns.rs:144）、`refused_copy_fallback_never_spawns`、`install_request_keeps_staging_when_waiter_is_dropped`（core_install.rs:256,308）。§0.8 server 新清单单列，原 core/OS/R 清单无删；B/V。
+- `rg 'tauri::|InteractiveElevationConsent|UnsupportedEffects|nyanpasu_core::updater' backend/nyanpasu-server/src --glob '*.rs'` 退出码 1；正向逐构造器查 RefuseElevation。反向任一构造器换 interactive、丢 compensation case、用 fake all-effects，新增对应 case/gate 失败；不宣称修复桌面嵌入式 HTTP。
+
+## E4b — 长期 server 进程与关闭
+
+本卡是行为变更：提供一个长期运行的 server，local 与可选 loopback HTTP 共享同一 client，会话不随请求重建。
+
+- [ ] H/main.rs/run.rs 只解析显式目录/端点/HTTP 开关并调用 E4a 组合根；一次 try_new，复用 registry/client。启动 observations/Clash streams、E2c forwarders；listener ready 后才发布就绪，HTTP assets 可选，凭据/Host/Origin 原样，默认不打开 HTTP。无 LAN ticket。
+- [ ] root token/task tracker 拥有所有 owner/forwarder/listener；启动失败反向收尾，shutdown 先停止接纳/关闭传输资源，再等 owner 工作与资源回收，不以网络 drain timeout 取消业务 owner。所有 JoinHandle panic 交 fatal supervision，普通 IO 失败是模块 snafu，不借 POC `.await` 错误日志吞 panic。
+- [ ] 适配 `git show 4a4a3a0d3:backend/nyanpasu-server/src/run.rs` 的 run `:60` 与 serve `:70`；保留启动 streams 的意图，去除 WebTickets/RouterListener。endpoint discovery 与 client 共用 E3c 规则；不新增 core 生命周期 API。
+- [ ] G：server 新 bin target `nyanpasu-server`，musl 两清单保留 package 并加 `bin:nyanpasu-server`，确认 `--lib --tests` 产物收集确实运行该 bin test；必要时显式 `--bins` 并登记全部新产物，不能忽略 unexpected target。prefix/边规则不变；同步 roadmap/server 使用契约。
+
+- [ ] 在任何 runtime/owner/request task 启动前安装中立 process panic policy，fatal 通知通道/退出边界也先就绪；对齐 desktop `T/lib.rs:282` 安装的 panic hook 的非 GUI 语义：记录原 panic payload/位置，保留原 unwind/payload，不合成 RpcError；运行中 hook 通知 process supervisor 后返回，让原任务 unwind 并释放资源，随后 server 非零退出、不继续提供服务；退出边界不可用的启动期直接非零终止，对齐 desktop 无 AppHandle 分支（T/lib.rs:119-131）。不能只靠 root TaskTracker：逐项审 owned handles 与 Axum/library-spawned request tasks，覆盖原 `T/server/debug_http.rs:163,211-214` 的 spawn/丢 handle 及 `:82-87` shutdown join；panic hook 覆盖库内部 task，所有可持有 handle 的 panic 继续向 fatal supervisor 传播，不能吞 JoinError。
+- [ ] 新增（新）`http_handler_panic_terminates_server_process`、`local_handler_panic_terminates_server_process`、`background_owner_panic_terminates_server_process`：在真实 server 子进程注入唯一 panic payload，分别触发三条路径，断言非零退出、日志保留 payload/位置、没有 RpcError response。测试父进程有受控 watchdog 防挂死，不能把 watchdog kill 算通过；证明 unwind/payload 传播仍由原 `audited_command_panic_keeps_its_payload` 覆盖。lib/bin 测试清单登记 subprocess 三例，进程证据不能用 spawned unit task 代替。
+
+**验证**
+
+- 新增（新）`server_builds_one_application_for_all_transports`、`server_readiness_waits_for_listeners_and_forwarders`、`server_shutdown_drains_admitted_owner_work`、`server_startup_failure_releases_bound_endpoints`；显式 barrier，不 sleeps。§0.8 lib/bin 清单登记，B/V；两 OS 的 listener/startup/shutdown 行为 CI 运行。
+- `rg 'WebTickets|RouterListener|ticket=|catch_unwind' backend/nyanpasu-server/src --glob '*.rs'` 退出码 1，正向审 try_new 只在组合根；反向每连接建 client、漏启动 stream、先 abort owners，新增测试失败。
+
+## E4c — 只连接既有 shell 的 CLI
+
+本卡是行为变更（新增 CLI），不在 CLI 内启动或恢复应用图。
+
+- [ ] 新建 nyanpasu-cli，L/lib.rs/main.rs 提供 `call <method>`、JSON params/params-file、endpoint/timeout 参数；复用 E3e client 和 E1b 接收类型。无参数时的 usage/错误明确；不增加 lifecycle/reconcile/redacted-YAML 等业务命令，不为 CLI 加通用 service locator。
+- [ ] 适配 `git show 4a4a3a0d3:backend/nyanpasu-cli/src/lib.rs` 的 parse `:92`、execute `:185`、transport_failure `:220`；保留 JSON stdout、result exit 0、RpcError exit 1、usage/transport exit 2，诊断写 stderr。去掉 router-only 默认路径，使用 E3c discovery。超时连接失效、outcome_unknown，不自动重试。
+- [ ] G：生产依赖 protocol/local-client 与参数/JSON/错误/async 工具，不链接 R/server/core/IMPLEMENTATION/GUI；foundation 经 protocol 的值闭包允许。gate 正例 CLI → protocol → values，负例 CLI → rpc/server/core/engine/OS/Tauri 直接或传递；不能照搬 POC 对 FOUNDATION 的禁令。core/config 的新边不存在，若 transitively 由 protocol 使用仍 defaults-off。
+- [ ] 静态 prefix `backend/nyanpasu-cli/src/`，musl 两表加 `-p nyanpasu-cli`、`lib:nyanpasu_cli`、`bin:nyanpasu-cli`；无 integration target 到 E4d。独立客户端 crate 暂不建，只有 feature 隔离不足再审。同步 backend-packages/architecture/路线图 CLI 层。
+
+**验证**
+
+- 新增（新）`cli_success_and_rpc_error_keep_distinct_exit_codes`、`cli_timeout_reports_unknown_without_retry`、`cli_never_constructs_an_application`、`cli_endpoint_override_works_on_unix_and_windows`；POC `lib.rs:364,384,400` 仅为参考测试，不冒充 HEAD 清单。`cargo test -p nyanpasu-cli`，§0.8 新 lib/bin inventory，B/V。
+- `cargo tree --offline -p nyanpasu-cli -e normal,build` 满足 gate；`rg 'NyanpasuClient|nyanpasu_core::|nyanpasu_rpc::|nyanpasu_server::|tauri::' backend/nyanpasu-cli/src --glob '*.rs'` 退出码 1。反向把 transport error 当业务错误/输出成功或偷偷构造 core，测试/gate 失败。
+
+## E4d — 连续 CLI 调用的同会话验收
+
+本卡是保行为接缝（集成验证），不新增公开测试命令或生产 session API。
+
+- [ ] 新建 `backend/nyanpasu-cli/tests/session.rs`，通过 server 的受控 ready/shutdown handle 启动一个长期服务，再运行真实 CLI 子进程；一次 create profile、另一次查询同一结果，并用 test-only composition counter 或 volatile owner/session 证据证明不是各自从磁盘重建。生产依赖不因 fixture 加 server/core。
+- [ ] 同测两连接不能访问彼此 log session/subscription；连接 A 的 admitted mutation 被 gate 暂停，断开 A 后释放 gate，从 B 观察完成；late subscribe/disconnect 回收 demand。每个等待使用 readiness/barrier/Notify，测试 deadline 只作失败边界，不在生产 owner 加 timeout。
+- [ ] `git show 4a4a3a0d3:backend/nyanpasu-cli/tests/session.rs` 的 `consecutive_calls_observe_the_one_server_session:44` 的连续进程场景可借鉴，`:56` 的无参 server.rpc 已与 POC compose.rs:133 不符，`:60` 的 sleep readiness 不保留；不声称该 POC fixture 已通过本栈测试。
+- [ ] G：CLI dev-dependency server 的 test-support 按 §0.5 最小开放，仅 fake adapter/readiness/计数组合接口，生产 graph 不变；musl 保留 CLI package 并加实际 integration identity `test:session`，新增 integration artifact 不忽略。prefix 已覆盖生产源码；现有测试扫描策略照旧，positive production/negative leaked normal-edge tests 保留。同步 E4 完成证据，E5 仍暂停。
+
+**验证**
+
+- 新增（新）`consecutive_cli_processes_observe_one_server_session`、`cli_disconnect_does_not_cancel_an_admitted_mutation`、`separate_cli_connections_cannot_reuse_owned_resources`；`cargo test -p nyanpasu-cli --test session`。§0.8 单列 integration 清单，lib/bin 清单不减；Windows CI 跑命名管道，Linux/musl 跑 Unix socket，macOS CI 跑 Unix路径/关闭；B/V。
+- production tree 与 E4c scoped rg 仍无禁边；反向每次 call 装配新 client、断连取消 owner 或共享 owner label，分别使三例失败。只观察同一持久文件不能替代同会话断言。无公开 wire/生成绑定/前端 diff。
+
+---
+
+### 延期项：local invalidation/storage 恢复（非 E3 卡，须另经审议）
+
+此项不加入当前 PR 栈、测试清单或 E3 完成判据；未来暴露 `state-changed-event`、storage 或其他非完整值流，须先建立独立行为卡。三轮审计 findings 1–3 是该卡的最低验收条件：
+
+- 普通 state invalidation 在 initial reset 之后、没有 local overflow 时仍能更新订阅状态（可有界合并为 fresh reset）；storage source receiver 的 Resync 必须重置每个受影响 storage 订阅，不依赖订阅者选择另一 identity。真实连接分别测普通 invalidation 与 local 快速消费时的上游 source overflow，不能用 writer overflow 替代。
+- 本地 live storage 映射须过滤非 `web:` key，保留既有 event payload 表示，接收端将带 `web:` 的 key 归一到 reset map 的 namespace，并一致解释 raw JSON-string value；真实连接验证 reset → update → removal 同一 key、内部 key 从不交付。不能改变 Tauri/SSE payload。
+- storage snapshot 必须在现有 revision 同步下同时返回数据与 revision（水位仅属于恢复边界，不改既有 HTTP/Tauri result）；丢弃 snapshot 已覆盖的旧通知。确定性延迟旧 update/deletion 到较新 reset 之后，状态不得倒退。证据：C/storage.rs:254,374,412,440,459,466；T/setup.rs:341,349；frontend/query/src/provider/kv-storage-state.ts:52、mutation-provider.tsx:14,92。
+
+这些未来工作不扩当前十三命令 allowlist，不改变 admission-only audit。其他被排除流也需独立定义恢复语义后再审议，不能因已有 bus identity 自动开放。
+
 ## Phase B–E 里程碑卡
 
-每张卡开工前先细化为与 Phase A 同粒度的任务并审阅；B1a–B4 已细化为 §2 的卡，C1–C3 已细化为 §3 的卡，A2b 与 D1/D2 已细化为 §4 的卡。依赖图、决策、前置、不变量、完成判据见 design §5。
+每张卡开工前先细化为与 Phase A 同粒度的任务并审阅；B1a–B4 已细化为 §2 的卡，C1–C3 已细化为 §3 的卡，A2b 与 D1/D2 已细化为 §4 的卡，E1a–E4 已细化为 §5 的卡；E5 仍仅保留暂停里程碑。依赖图、决策、前置、不变量、完成判据见 design §5。
 
 | 卡  | 内容                                                                                                                   | 前置                      | 完成判据（摘要）                                                                             |
 | --- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
@@ -1066,11 +1494,11 @@ version.rs
 | C3  | 桌面交互机制移入 tauri 外壳；共享收敛与展示效果分离（已细化为 §3 C3a）                                                 | C1                        | core 族不含桌面机制、不直接依赖 widget-protocol；效果与热键回归测试通过                      |
 | D1  | 完整泛型 `nyanpasu-state-engine`，CORE_FAMILY 叶（D1a 已实施；musl 执行待 Docker 环境）                                | B1a                       | 102 例名称清单不变且通过；父 workspace 仅 persistence；gate/static/musl 同注册               |
 | D2  | 源工厂；独立严格结算行为修正；上层 foundation runtime-values；control/application 模块边界（已细化为 §4 的卡 D2a–D2f） | D1、B3、B4、C1b、C2f、C3a | 无源 → 具体 workflow client；终态在源决定后；值包依赖与源导入策略通过；移动 bindings 零 diff |
-| E1a | 宏中立声明、按目标 opt-in 与能力元数据；protocol 信封                                                                  | A                         | protocol 无 core 族/Tauri；bindings 无 diff                                                  |
-| E1b | 完整请求/响应 DTO 进 protocol                                                                                          | E1a、D2                   | protocol 类型闭包不经 core 族                                                                |
-| E2  | `nyanpasu-rpc` 注册表与事件总线                                                                                        | E1a、C2f                  | 注册表与审计端口无 Tauri 类型                                                                |
-| E3  | 纯 API WebUI；local socket 传输                                                                                        | E2                        | 无资源启动；未 opt-in 被拒；跨传输一致                                                       |
-| E4  | `nyanpasu-server`，然后 `nyanpasu-cli`                                                                                 | C2d、C3a、E1b、E3         | CLI 不链接 core 族；同一 server 会话；拒绝策略关闭 #6157 剩余路径                            |
-| E5  | OpenWrt                                                                                                                | 用户明确恢复              | 单独验收                                                                                     |
+| E1a | 宏接缝/独立目标与能力 admission；protocol 信封（已细化为 §5 的卡 E1a-a–d）                                             | A；实施在 PR-A2b 后       | 中立展开无 Tauri；缺能力 unsupported；bindings 零 diff                                       |
+| E1b | 完整 DTO 低于 core 族，canonical 基础值/receiving 投影（已细化为 §5 的卡 E1b-a/b）                                     | E3e、D2e、A2b             | 独立 typed client；全部命令含 cfg/native 闭包；bindings 零 diff                              |
+| E2  | 中立 registry/commands/HTTP/audit/bus（已细化为 §5 的卡 E2a–c）                                                        | E1a、C2f                  | 无 Tauri 类型；audit 恰一次；bus-first 无回声、lag/resync                                    |
+| E3  | API-only、协商/两平台 local/连接资源/client（已细化为 §5 的卡 E3a–e）                                                  | E2                        | 两 allowlist；INFO audit；timeout invalidate；owner 隔离/断连不取消工作                      |
+| E4  | 拒绝提权的长期 server、小 CLI 与同会话集成（已细化为 §5 的卡 E4a–d）                                                   | C2d、C3a、E1b、E3；A2b 后 | server/CLI 无 GUI；CLI 无 core 族/实现/rpc/server；仅独立 server 关闭 #6157 剩余路径         |
+| E5  | OpenWrt/LAN ticket login 暂停；§5 不设实施卡                                                                           | E4 完成且用户明确恢复     | 恢复后另细化授权、procd、打包与硬件，musl 不替代                                             |
 
 B 结束时按 design §6 复测编译时间。

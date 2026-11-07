@@ -1,5 +1,18 @@
 //! Source command classification and the desired core run state.
 
+use nyanpasu_core_manager::OperationId;
+
+use super::impact::{MutationHints, RuntimeImpact};
+
+/// The source's identity and classification for one runtime participation.
+#[derive(Debug, Clone)]
+pub(crate) struct MutationIntent {
+    pub operation_id: OperationId,
+    pub hints: MutationHints,
+    pub class: CommandClass,
+    pub impact: RuntimeImpact,
+}
+
 /// What kind of command produced the candidate.
 ///
 /// The split is the one the policy table needs, and it follows the command, not

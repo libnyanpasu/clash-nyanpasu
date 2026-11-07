@@ -3413,7 +3413,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
-        f.client.clone(),
+        Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
@@ -3462,7 +3462,7 @@ async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
-        f.client.clone(),
+        Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
@@ -3815,7 +3815,7 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
-        f.client.clone(),
+        Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
     let snapshot = f.application.snapshot_handle();
@@ -3851,7 +3851,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
-        f.client.clone(),
+        Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
@@ -4421,9 +4421,9 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
     assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
     let settlement = settlement.await.ok();
     assert!(settlement.is_none());
-    let coordinator = crate::state::mutation::MutationCoordinator::pending();
+    let coordinator = crate::state::mutation::MutationCoordinator::<ClashConfig>::pending();
     coordinator.connect(
-        f.client.clone(),
+        Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
     let (commit, degradations) = coordinator.committed(

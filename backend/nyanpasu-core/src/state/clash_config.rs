@@ -47,14 +47,14 @@ impl ClashConfigSnapshot {
 }
 
 pub struct ClashConfigActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<ClashConfig>,
     pub manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<ClashConfig>,
     manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
 }

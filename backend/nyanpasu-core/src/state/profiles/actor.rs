@@ -77,7 +77,7 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<Profiles>,
     pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
     pub fetcher: Arc<dyn SubscriptionFetcher>,
@@ -89,7 +89,7 @@ pub struct ProfilesActorArgs {
 }
 
 pub struct ProfilesActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<Profiles>,
     manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,

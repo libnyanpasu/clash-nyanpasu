@@ -6,32 +6,50 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+default = ['javascript', 'lua']
+javascript = [
+  'dep:boa_utils',
+  'dep:boa_engine',
+  'dep:boa_runtime',
+  'dep:dunce',
+  'dep:oxc_allocator',
+  'dep:oxc_ast',
+  'dep:oxc_ast_visit',
+  'dep:oxc_parser',
+  'dep:oxc_span',
+  'dep:oxc_syntax'
+]
+lua = ['dep:mlua']
+
 [dependencies]
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
-boa_utils = { path = '../boa_utils' }
+boa_utils = { path = '../boa_utils', optional = true }
 nyanpasu-log-preview = { workspace = true }
 
 anyhow = '1'
 async-trait = '0.1'
-boa_engine = { workspace = true, features = ['annex-b'] }
-boa_runtime = { version = '0.22', default-features = false, features = ['url'] }
-dunce = '1.0.5'
+boa_engine = { workspace = true, optional = true, features = ['annex-b'] }
+boa_runtime = { version = '0.22', optional = true, default-features = false, features = [
+  'url'
+] }
+dunce = { version = '1.0.5', optional = true }
 indexmap = { version = '2.2.3', features = ['serde'] }
-mlua = { version = '0.12', features = [
+mlua = { version = '0.12', optional = true, features = [
   'lua54',
   'async',
   'serialize',
   'vendored',
   'error-send'
 ] }
-oxc_allocator = '0.157'
-oxc_ast = '0.157'
-oxc_ast_visit = '0.157'
-oxc_parser = '0.157'
-oxc_span = '0.157'
-oxc_syntax = '0.157'
+oxc_allocator = { version = '0.157', optional = true }
+oxc_ast = { version = '0.157', optional = true }
+oxc_ast_visit = { version = '0.157', optional = true }
+oxc_parser = { version = '0.157', optional = true }
+oxc_span = { version = '0.157', optional = true }
+oxc_syntax = { version = '0.157', optional = true }
 serde_json = { version = '1', features = ['preserve_order'] }
 serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [
   'specta'
@@ -41,5 +59,6 @@ tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+url = '2'
 tempfile = '3'
 test-log = { workspace = true }

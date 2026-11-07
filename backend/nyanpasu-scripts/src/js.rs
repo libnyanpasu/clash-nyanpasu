@@ -1,4 +1,8 @@
 use super::runner::{ConsoleSink, Runner};
+use crate::{
+    ScriptDirs,
+    extensions::{JavaScriptExtensions, ScriptExtensionFactory},
+};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
@@ -11,13 +15,16 @@ use boa_engine::{
     object::builtins::JsPromise,
 };
 use boa_runtime::console::{Console, ConsoleState, Logger};
-use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
-use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+use nyanpasu_config::{
+    profile::ScriptRuntime,
+    runtime::executor::{ScriptExecutionError, ScriptOperation, StepLogEntry, StepLogLevel},
+};
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
     time::Duration,
 };
 use utils::wrap_script_if_not_esm;
@@ -25,32 +32,6 @@ use utils::wrap_script_if_not_esm;
 use std::result::Result as StdResult;
 
 type Result<T, E = JsRunnerError> = StdResult<T, E>;
-
-/// Where the JavaScript runner keeps the modules it runs and the modules it
-/// downloads.
-#[derive(Debug, Clone)]
-pub struct ScriptDirs {
-    /// Module root the script's relative imports resolve against. The script
-    /// itself runs from memory; nothing is written here.
-    pub scripts: PathBuf,
-    /// Cache of the modules scripts import over HTTP.
-    pub cache: PathBuf,
-}
-
-impl ScriptDirs {
-    /// Uses the supplied module root and HTTP module cache paths.
-    pub fn new(scripts: PathBuf, cache: PathBuf) -> Self {
-        Self { scripts, cache }
-    }
-
-    /// Places the module root and cache in separate directories under `root`.
-    pub fn under(root: &Path) -> Self {
-        Self {
-            scripts: root.join("scripts"),
-            cache: root.join("cache"),
-        }
-    }
-}
 
 // define a JsRunnerError due to boa engine error is not Send
 #[derive(Debug, thiserror::Error)]
@@ -70,6 +51,14 @@ impl Finalize for ConsoleSink {}
 // SAFETY: the sink holds no `Gc` pointers.
 unsafe impl Trace for ConsoleSink {
     boa_engine::gc::empty_trace!();
+}
+
+impl ConsoleSink {
+    /// Installs an isolated JavaScript console that records this run's log entries.
+    pub fn register_javascript(self, context: &mut Context) -> JsResult<()> {
+        Console::register_with_logger(self, context)?;
+        Ok(())
+    }
 }
 
 impl Logger for ConsoleSink {
@@ -97,11 +86,14 @@ impl Logger for ConsoleSink {
 pub struct JSRunner {
     /// Canonical, like the root the module loader resolves imports against.
     scripts_dir: PathBuf,
-    cache_dir: PathBuf,
+    extensions: Arc<dyn ScriptExtensionFactory>,
 }
 
 impl JSRunner {
-    pub fn new(dirs: &ScriptDirs) -> anyhow::Result<Self> {
+    pub fn new(
+        dirs: &ScriptDirs,
+        extensions: Arc<dyn ScriptExtensionFactory>,
+    ) -> anyhow::Result<Self> {
         std::fs::create_dir_all(&dirs.scripts).with_context(|| {
             format!(
                 "failed to create the scripts dir {}",
@@ -110,7 +102,7 @@ impl JSRunner {
         })?;
         Ok(Self {
             scripts_dir: dunce::canonicalize(&dirs.scripts)?,
-            cache_dir: dirs.cache.clone(),
+            extensions,
         })
     }
 }
@@ -131,31 +123,24 @@ pub struct BoaRunner {
     ctx: Rc<RefCell<Context>>,
     simple_loader: Rc<SimpleModuleLoader>,
     scripts_dir: PathBuf,
+    console: fn(ConsoleSink, &mut Context) -> JsResult<()>,
 }
 
 impl BoaRunner {
-    pub fn try_new(scripts_dir: PathBuf, cache_dir: PathBuf) -> Result<Self> {
-        let loader = Rc::new(CombineModuleLoader::new(
-            SimpleModuleLoader::new(&scripts_dir)?,
-            HttpModuleLoader::new(cache_dir, Duration::from_secs(60 * 60 * 24 * 30)),
-        ));
-        let simple_loader = loader.clone_simple();
+    pub fn try_new(scripts_dir: PathBuf, extensions: JavaScriptExtensions) -> Result<Self> {
+        let simple_loader = extensions.loader.clone_simple();
         let queue = Rc::new(SimpleJobExecutor::new());
         let mut context = Context::builder()
             .job_executor(queue)
-            .module_loader(loader.clone())
+            .module_loader(extensions.loader)
             .build()?;
         register_web_apis(&mut context)?;
         Ok(Self {
             ctx: Rc::new(RefCell::new(context)),
             simple_loader,
             scripts_dir,
+            console: extensions.console,
         })
-    }
-
-    pub fn setup_console(&self, logger: impl Logger + 'static) -> Result<()> {
-        Console::register_with_logger(logger, &mut self.ctx.borrow_mut())?;
-        Ok(())
     }
 
     pub fn get_ctx(&self) -> Rc<RefCell<Context>> {
@@ -208,13 +193,13 @@ fn settle(promise: &JsPromise, ctx: &mut Context) -> Result<JsValue> {
 /// `console`.
 fn run_module(
     scripts_dir: PathBuf,
-    cache_dir: PathBuf,
+    extensions: JavaScriptExtensions,
     script: &str,
     mapping: Mapping,
     console: ConsoleSink,
 ) -> Result<Mapping> {
-    let boa_runner = BoaRunner::try_new(scripts_dir, cache_dir)?;
-    boa_runner.setup_console(console)?;
+    let boa_runner = BoaRunner::try_new(scripts_dir, extensions)?;
+    (boa_runner.console)(console, &mut boa_runner.ctx.borrow_mut())?;
     let module = boa_runner.parse_module(script, "main")?;
     boa_runner.execute_module(&module)?;
 
@@ -267,20 +252,32 @@ impl Runner for JSRunner {
         script: &str,
         logs: &mut Vec<StepLogEntry>,
     ) -> anyhow::Result<Mapping> {
-        let script = wrap_script_if_not_esm(script)?.into_owned();
+        let script = script.to_owned();
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
-        let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
+        let scripts_dir = self.scripts_dir.clone();
+        let extensions = self.extensions.clone();
         let res = tokio::task::spawn_blocking(move || {
             // The sink is not Send, so it lives on this thread with the boa
             // context and only its entries cross back.
             let console = ConsoleSink::default();
-            let result = run_module(scripts_dir, cache_dir, &script, mapping, console.clone())
-                .map_err(|e| {
-                    // Display, not Debug: a JsError's Display carries the
-                    // script's stack with file, line and column.
-                    tracing::error!("error: {e}");
-                    anyhow::anyhow!("{e}")
-                });
+            let result = (|| {
+                let extensions = extensions
+                    .javascript(&scripts_dir)
+                    .map_err(|error| anyhow::anyhow!("{}", JsRunnerError::from(error)))?
+                    .ok_or(ScriptExecutionError::StartEngine {
+                        runtime: ScriptRuntime::JavaScript,
+                        operation: ScriptOperation::Transform,
+                    })?;
+                let script = wrap_script_if_not_esm(&script)?;
+                run_module(scripts_dir, extensions, &script, mapping, console.clone()).map_err(
+                    |e| {
+                        // Display, not Debug: a JsError's Display carries the
+                        // script's stack with file, line and column.
+                        tracing::error!("error: {e}");
+                        anyhow::anyhow!("{e}")
+                    },
+                )
+            })();
             (result, console.take())
         })
         .await;
@@ -407,16 +404,64 @@ mod utils {
 #[cfg(test)]
 mod test {
     use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn relative_imports_resolve_under_the_injected_root() {
+        use crate::{runner::Runner as _, test_extensions::TestExtensions};
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = crate::ScriptDirs::under(dir.path());
+        let runner = super::JSRunner::new(&dirs, Arc::new(TestExtensions)).unwrap();
+        std::fs::create_dir(dirs.scripts.join("nested")).unwrap();
+        std::fs::write(dirs.scripts.join("value.mjs"), "export const value = 42;").unwrap();
+        std::fs::write(
+            dirs.scripts.join("nested/module.mjs"),
+            "export { value } from '../value.mjs';",
+        )
+        .unwrap();
+        let result = runner.process_honey(serde_yaml::Mapping::new(),
+            "import { value } from './nested/module.mjs'; export default config => { config.value = value; return config; };",
+            &mut Vec::new()).await.unwrap();
+        assert_eq!(result["value"], serde_yaml::Value::from(42));
+    }
+
+    #[test]
+    fn root_module_identity_survives_loader_injection() {
+        use crate::{
+            extensions::ScriptExtensionFactory as _, runner::ConsoleSink,
+            test_extensions::TestExtensions,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        // Match SimpleModuleLoader's canonical root, including Windows' path prefix.
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let extensions = TestExtensions.javascript(&root).unwrap().unwrap();
+        let result = super::run_module(
+            root,
+            extensions,
+            r#"
+            import { marker as imported } from './main.mjs';
+            export const marker = {};
+            export default config => { config.same = marker === imported; return config; };
+        "#,
+            serde_yaml::Mapping::new(),
+            ConsoleSink::default(),
+        )
+        .unwrap();
+        assert_eq!(result["same"], serde_yaml::Value::Bool(true));
+        assert!(!dir.path().join("main.mjs").exists());
+    }
 
     /// The runner creates its scripts dir where it is told, runs the script
     /// from there and leaves nothing behind.
     #[tokio::test]
     async fn scripts_run_from_the_injected_dir() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
         let dirs = ScriptDirs::under(dir.path());
-        let runner = JSRunner::new(&dirs).unwrap();
+        let runner =
+            JSRunner::new(&dirs, Arc::new(crate::test_extensions::TestExtensions)).unwrap();
         assert!(dirs.scripts.is_dir());
 
         let result = runner
@@ -433,10 +478,15 @@ mod test {
 
     #[tokio::test]
     async fn yaml_template_preserves_nested_config_through_runner() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let input = serde_yaml::from_str("existing: true").unwrap();
         let script = r#"
             import { yaml } from 'nyan:utils';
@@ -456,10 +506,15 @@ mod test {
 
     #[tokio::test]
     async fn logs_written_before_a_throw_survive_the_failure() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let mut logs = Vec::new();
         let result = runner
             .process_honey(
@@ -473,10 +528,15 @@ mod test {
     }
 
     async fn run_js(script: &str, input: &str) -> serde_yaml::Mapping {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let mut logs = Vec::new();
         runner
             .process_honey(serde_yaml::from_str(input).unwrap(), script, &mut logs)
@@ -550,10 +610,15 @@ mod test {
     }
 
     async fn run_js_error(script: &str) -> String {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         runner
             .process_honey(serde_yaml::Mapping::new(), script, &mut Vec::new())
             .await
@@ -584,10 +649,15 @@ mod test {
 
     #[tokio::test]
     async fn a_default_export_that_is_not_a_function_fails() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let error = runner
             .process_honey(
                 serde_yaml::Mapping::new(),
@@ -608,10 +678,15 @@ mod test {
     /// never see each other's logs.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn concurrent_runs_keep_their_logs_apart() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
 
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let script = |tag: &str| {
             format!(
                 "export default function main(config) {{ for (let i = 0; i < 50; i++) console.log('{tag}'); return config; }}"
@@ -737,9 +812,14 @@ const foreignNameservers = [
 
     #[test]
     fn test_process_honey() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let mapping = serde_yaml::from_str(
             r#"
         rules:
@@ -802,9 +882,14 @@ const foreignNameservers = [
 
     #[test_log::test]
     fn test_process_honey_with_fetch() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let mapping = serde_yaml::from_str(
             r#"
         rules:
@@ -867,9 +952,14 @@ const foreignNameservers = [
 
     #[test_log::test]
     fn test_process_honey_with_builtin_modules() {
-        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        use super::{super::runner::Runner, JSRunner};
+        use crate::ScriptDirs;
         let dir = tempfile::tempdir().unwrap();
-        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let runner = JSRunner::new(
+            &ScriptDirs::under(dir.path()),
+            Arc::new(crate::test_extensions::TestExtensions),
+        )
+        .unwrap();
         let mapping = serde_yaml::from_str(
             r#"
         rules:

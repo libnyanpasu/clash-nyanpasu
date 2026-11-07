@@ -2,23 +2,29 @@ use mlua::prelude::*;
 use nyanpasu_config::runtime::executor::StepLogEntry;
 use serde_yaml::{Mapping, Value};
 
+use crate::extensions::LuaExtensions;
+
 use super::runner::{ConsoleSink, Runner};
 
 mod console;
 pub mod ordered_map;
 
-pub fn create_lua_context() -> Result<Lua, anyhow::Error> {
-    let lua = Lua::new();
-    lua.load_std_libs(LuaStdLib::ALL_SAFE)?;
+pub fn create_lua_context(extensions: &LuaExtensions) -> Result<Lua, anyhow::Error> {
+    let lua = Lua::new_with(extensions.standard_libraries, LuaOptions::default())?;
     ordered_map::register(&lua)?;
     Ok(lua)
 }
 
 /// Runs `script` against `mapping`. Everything the script logs goes to
 /// `console`.
-fn run_script(mapping: Mapping, script: &str, console: &ConsoleSink) -> anyhow::Result<Mapping> {
-    let lua = create_lua_context()?;
-    console::register(&lua, console)?;
+fn run_script(
+    extensions: &LuaExtensions,
+    mapping: Mapping,
+    script: &str,
+    console: &ConsoleSink,
+) -> anyhow::Result<Mapping> {
+    let lua = create_lua_context(extensions)?;
+    (extensions.console)(&lua, console)?;
     let config = ordered_map::to_lua(&lua, &Value::Mapping(mapping))
         .context("Failed to convert mapping to value")?;
     lua.globals()
@@ -36,7 +42,15 @@ fn run_script(mapping: Mapping, script: &str, console: &ConsoleSink) -> anyhow::
     }
 }
 
-pub struct LuaRunner;
+pub struct LuaRunner {
+    extensions: LuaExtensions,
+}
+
+impl LuaRunner {
+    pub fn new(extensions: LuaExtensions) -> Self {
+        Self { extensions }
+    }
+}
 
 #[async_trait::async_trait]
 impl Runner for LuaRunner {
@@ -56,20 +70,22 @@ impl Runner for LuaRunner {
         logs: &mut Vec<StepLogEntry>,
     ) -> anyhow::Result<Mapping> {
         let console = ConsoleSink::default();
-        let result = run_script(mapping, script, &console);
+        let result = run_script(&self.extensions, mapping, script, &console);
         logs.extend(console.take());
         result
     }
 }
 
+#[cfg(test)]
 mod tests {
+    use crate::{extensions::ScriptExtensionFactory as _, test_extensions::TestExtensions};
     #[test]
     fn test_process_honey() {
         use super::*;
         use crate::runner::Runner;
         use serde_yaml::Mapping;
 
-        let runner = LuaRunner;
+        let runner = LuaRunner::new(TestExtensions.lua().unwrap());
         let mapping = r#"
         proxies:
         - 123
@@ -112,7 +128,7 @@ mod tests {
         use nyanpasu_config::runtime::executor::StepLogLevel;
 
         let mut logs = Vec::new();
-        let result = LuaRunner
+        let result = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(
                 Mapping::new(),
                 r#"console.log("before"); error("boom")"#,
@@ -137,7 +153,7 @@ mod tests {
             config.omega = 3
             return config
         "#;
-        let result = LuaRunner
+        let result = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(config, script, &mut Vec::new())
             .await
             .unwrap();
@@ -152,7 +168,7 @@ mod tests {
         use super::*;
         use crate::runner::Runner;
 
-        let error = LuaRunner
+        let error = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(Mapping::new(), "return { 1, 2 }", &mut Vec::new())
             .await
             .unwrap_err();
@@ -168,7 +184,7 @@ mod tests {
         use crate::runner::Runner;
 
         let script = "local function helper()\n  error('boom')\nend\nhelper()\n";
-        let error = LuaRunner
+        let error = LuaRunner::new(TestExtensions.lua().unwrap())
             .process_honey(Mapping::new(), script, &mut Vec::new())
             .await
             .unwrap_err()

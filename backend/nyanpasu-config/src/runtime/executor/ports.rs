@@ -24,7 +24,9 @@ pub trait ProfileContentSource {
 ///    on mapping order (legacy lua runner's `correct_original_mapping_order`).
 /// 2. Temp files, module loaders and thread hops are adapter-internal.
 /// 3. `eval_item_*` carry legacy `use_merge` Lua-only semantics.
-/// 4. Identical inputs must produce identical replies (determinism contract).
+/// 4. Identical inputs produce identical replies when injected extensions observe
+///    the same network, filesystem, clock and other capability values. HTTP caches
+///    and Lua standard libraries do not promise unconditional replay.
 pub trait ScriptRunner {
     /// Everything the script logs goes to `logs`, including what it logged
     /// before failing.

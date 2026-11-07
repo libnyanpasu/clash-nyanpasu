@@ -4692,3 +4692,194 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
         nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
     ));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unsupported_engine_is_rejected_before_source_persistence() {
+    use std::error::Error as _;
+
+    use nyanpasu_config::{
+        profile::ScriptRuntime,
+        runtime::{
+            executor::{
+                PortError, ProfileContentSource, RuntimePipelineError, ScriptExecutionError,
+                ScriptOperation, ScriptRunner, StepLogEntry,
+            },
+            value::ConfigValue,
+        },
+    };
+    use nyanpasu_profile_transform::RuntimeBuildError;
+    use nyanpasu_runtime_values::profiles::ProfilesError;
+    use struct_patch::Patch as _;
+
+    use crate::{
+        client::{ClientError, NyanpasuClient, runtime_build::RuntimeBuildService, test_support},
+        state::config_error::ConfigError,
+    };
+
+    struct Scripts(Arc<AtomicBool>);
+    impl ScriptRunner for Scripts {
+        fn run(
+            &self,
+            runtime: ScriptRuntime,
+            _: &str,
+            config: &ConfigValue,
+            _: &mut Vec<StepLogEntry>,
+        ) -> Result<ConfigValue, PortError> {
+            if self.0.load(Ordering::SeqCst) {
+                Err(ScriptExecutionError::StartEngine {
+                    runtime,
+                    operation: ScriptOperation::Transform,
+                }
+                .into())
+            } else {
+                Ok(config.clone())
+            }
+        }
+        fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
+            panic!("builtin transform")
+        }
+        fn eval_item_expr(&self, _: &str, _: &ConfigValue) -> Result<ConfigValue, PortError> {
+            panic!("builtin transform")
+        }
+    }
+    struct Content;
+    impl ProfileContentSource for Content {
+        fn read(&self, _: &ManagedProfilePath) -> Result<String, PortError> {
+            Ok("proxies: []".into())
+        }
+    }
+
+    for (core, runtime) in [
+        (ClashCore::Mihomo, ScriptRuntime::JavaScript),
+        (ClashCore::ClashRs, ScriptRuntime::Lua),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let mut args = test_support::test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+            test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        let unavailable = Arc::new(AtomicBool::new(false));
+        args.host_adapters.runtime_build = Arc::new(RuntimeBuildService::new(
+            Arc::new(Content),
+            Arc::new(test_support::runtime_core_spec),
+            args.runtime_paths.clone(),
+            {
+                let unavailable = unavailable.clone();
+                Arc::new(move || Ok(Box::new(Scripts(unavailable.clone()))))
+            },
+        ));
+        let app_path = args.paths.application_config_path();
+        let profiles_path = args.paths.profiles_path();
+        let shutdown = args.shutdown.clone();
+        let tasks = args.tasks.clone();
+        let client = NyanpasuClient::try_new(args).await.unwrap();
+        endpoint.prime(&client).await;
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.core = Some(core);
+        patch.enable_builtin_enhanced = Some(true);
+        client.patch_app_config(patch).await.unwrap();
+        let uid = client
+            .add_profile(
+                test_support::minimal_file_profile_request(),
+                Some("proxies: []".into()),
+            )
+            .await
+            .unwrap()
+            .into_value();
+        let before = client.configuration_status().source_versions;
+        let app_bytes = std::fs::read(&app_path).ok();
+        let profiles_bytes = std::fs::read(&profiles_path).ok();
+        let checked = endpoint.checked().len();
+        unavailable.store(true, Ordering::SeqCst);
+
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.core = Some(core);
+        let config_error = client.patch_app_config(patch).await.unwrap_err();
+        let profile_error = client.activate_profile(Some(uid)).await.unwrap_err();
+        for (domain, error) in [("config", config_error), ("profiles", profile_error)] {
+            let commit = match &error {
+                ClientError::Config(ConfigError::Commit { source, .. }) if domain == "config" => {
+                    source
+                }
+                ClientError::Profiles(ProfilesError::Commit { source, .. })
+                    if domain == "profiles" =>
+                {
+                    source
+                }
+                other => panic!("unexpected {domain} error: {other:?}"),
+            };
+            let CommitAborted::RuntimeRefused {
+                errors,
+                runtime: aftermath,
+                ..
+            } = commit
+            else {
+                panic!("{commit:?}")
+            };
+            assert!(matches!(aftermath, RuntimeAftermath::Untouched));
+            assert_eq!(errors.len(), 1);
+            let RuntimeError::BuildRuntime { source: build } = errors[0].as_ref() else {
+                panic!("{errors:?}")
+            };
+            let RuntimeBuildError::RunPipeline { source: pipeline } = build else {
+                panic!("{build:?}")
+            };
+            assert!(
+                matches!(
+                    pipeline,
+                    RuntimePipelineError::ExecuteScript {
+                        source: ScriptExecutionError::StartEngine {
+                            runtime: actual,
+                            operation: ScriptOperation::Transform,
+                        }
+                    } if *actual == runtime
+                ),
+                "{pipeline:?}"
+            );
+            let source = errors[0]
+                .source()
+                .unwrap()
+                .downcast_ref::<RuntimeBuildError>()
+                .unwrap();
+            let source = source
+                .source()
+                .unwrap()
+                .downcast_ref::<RuntimePipelineError>()
+                .unwrap();
+            let source = source
+                .source()
+                .unwrap()
+                .downcast_ref::<ScriptExecutionError>()
+                .unwrap();
+            assert!(errors[0].to_string().contains(&source.to_string()));
+            assert!(
+                commit.source().is_some(),
+                "coordinator cause must remain available"
+            );
+            assert_eq!(
+                serde_json::to_value(errors[0].as_ref()).unwrap()["source"]["source"]["source"],
+                serde_json::json!({
+                    "kind": "start_engine", "runtime": runtime, "operation": "transform",
+                })
+            );
+        }
+        let after = client.configuration_status().source_versions;
+        assert_eq!(
+            (after.application, after.clash, after.profiles),
+            (before.application, before.clash, before.profiles)
+        );
+        assert_eq!(std::fs::read(&app_path).ok(), app_bytes);
+        assert_eq!(std::fs::read(&profiles_path).ok(), profiles_bytes);
+        assert_eq!(
+            endpoint.checked().len(),
+            checked,
+            "failure precedes core validation"
+        );
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+}

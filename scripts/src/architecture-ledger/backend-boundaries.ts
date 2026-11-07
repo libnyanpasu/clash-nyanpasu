@@ -50,11 +50,13 @@ const IMPLEMENTATION = [
 ]
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
+  { package: 'boa_utils', forbids: [...CORE_FAMILY, ...IMPLEMENTATION] },
   ...[
     ...FOUNDATION,
     ...CORE_FAMILY,
     ...IMPLEMENTATION,
     'nyanpasu-diagnose',
+    'boa_utils',
   ].map((name) => ({ package: name, forbids: GUI })),
   ...FOUNDATION.map((name) => ({
     package: name,

@@ -35,8 +35,8 @@ Use these terms consistently:
 ## Core and frontend separation
 
 The Tauri extraction baseline is complete: core no longer depends on Tauri. The
-Phase A package split is delivered; the remaining core family and shell work is
-planned below. The current layout is:
+Phase A–D package split and A2b script extension work are delivered; the
+remaining RPC and shell work is planned below. The current layout is:
 
 ```text
 backend/tauri/src/
@@ -137,7 +137,7 @@ is the plan for the next stage:
   core-family members and parent-workspace packages are forbidden. The purpose
   is dependency enforcement, not an assumed compile-time gain.
 - **Foundation layers** retain config, contracts, persistence and profile transform
-  as leaves. Phase D plans `nyanpasu-runtime-values` above them for public mutation
+  as leaves. Phase D delivered `nyanpasu-runtime-values` above them for public mutation
   results, degradation and runtime/profile errors, with their complete value
   closure. Existing foundation leaves cannot depend on it. It may consume
   config/contracts/transform and neutral core metadata, but not core family,
@@ -153,24 +153,36 @@ is the plan for the next stage:
 - **Implementation crates** (scripts, profile IO, HTTP, storage backends)
   depend on the foundation layer only, never on core or each other.
 
-The Phase D module boundary (implementation tracked in tasks §4) classifies
+The delivered Phase D module boundary (tasks §4) classifies
 `actor_v2/`, `clash/`, `proxies.rs` and `connections.rs` as control, `client/`
 as application/facade, and `state/` as source ownership. Application may import
 control; control must not import `client`. Source owners must not directly import
 `client::application_workflow` or `ApplicationWorkflowClient`. They consume the
 factory defined in `state/mutation/ports.rs`; `client/application_workflow/participant.rs`
 implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
-stay under `state/mutation/`; public wire values move to runtime-values. The
+stay under `state/mutation/`; public wire values live in runtime-values. The
 notification contract and `EffectKind` remain in `client/effects`, so the policy
 allows source dependencies on effects, jobs and value/validation contracts. It
 uses a bounded syntax guard for explicit use trees/paths and lexical scopes,
 including tests. Same-core provider aliases/re-exports are followed for at most
-eight hops; globs, cycles, ambiguity and unsupported forms fail explicitly in
-the policed scope. Local service bridges and external `nyanpasu_ipc::client`
+eight hops; cycles, ambiguity and unsupported forms fail explicitly in
+the policed scope. `self::*` and `super::*` are allowed only when the named module
+is also policed, with inherited alias bindings resolved recursively at their
+declaration scope. Other globs, including provider re-export globs, are rejected;
+`r#` anywhere in a checked path is rejected too. Local service bridges and external `nyanpasu_ipc::client`
 remain allowed. This is not Rust type/macro resolution or a proof of transitive
-independence of `state` and `client`. D2f adds fixtures for these exact rules
+independence of `state` and `client`. D2f supplies fixtures for these exact rules
 where Cargo cannot enforce an intra-crate direction. No control/application crates are
 created; a future independent consumer requires its own extraction inventory.
+
+D2c makes `RecoveryRequired` wait for the source's authoritative decision before
+terminal receipt and journal settlement. A2b delivers shell-injected script
+extensions and explicit JavaScript/Lua features. An engine is available only
+when scripts compiles it and the shell supplies its extensions; the factory's
+default methods decline with typed `StartEngine`. Pipeline and wire errors
+preserve that runtime/operation, including Lua predicates and expressions.
+Script determinism assumes equal observations of injected network, files and
+clock. These boundaries make no desktop compile-time gain claim.
 
 The extraction record lists the known gaps and the order of the next stage. The
 [OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the
@@ -197,14 +209,16 @@ Rules for maintaining the separation:
   must not need the Tauri runtime.
 - The architecture-ledger static gate covers `backend/tauri/src/`,
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-state-engine/src/`,
+  `backend/nyanpasu-runtime-values/src/`,
   `backend/nyanpasu-contracts/src/`,
-  `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
+  `backend/nyanpasu-scripts/src/`, `backend/boa_utils/src/`,
+  `backend/nyanpasu-profile-transform/src/`,
   `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
   `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/`,
   `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
   `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All fourteen use the same explicit path-and-name allowlist; other backend library
+  All sixteen use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

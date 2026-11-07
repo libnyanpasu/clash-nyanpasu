@@ -703,6 +703,7 @@
   "error_runtime_core_not_started": "無法啟動核心",
   "error_runtime_recovery_unresolved": "無法復原執行階段",
   "error_runtime_build_runtime": "無法產生執行階段設定",
+  "error_runtime_script_start_engine": "此組建中無法使用 {runtime} 引擎執行 {operation}",
   "error_runtime_build_start_script_runner": "無法啟動指令碼引擎",
   "error_runtime_build_validate_profiles": "設定檔含有無效項目",
   "error_runtime_build_transforms_failed": "下列轉換失敗：{names}",

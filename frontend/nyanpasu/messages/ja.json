@@ -692,6 +692,7 @@
   "error_runtime_core_not_started": "コアを起動できませんでした",
   "error_runtime_recovery_unresolved": "ランタイムを回復できませんでした",
   "error_runtime_build_runtime": "ランタイム設定を生成できませんでした",
+  "error_runtime_script_start_engine": "このビルドでは {operation} に必要な {runtime} エンジンを利用できません",
   "error_runtime_build_start_script_runner": "スクリプトエンジンを起動できませんでした",
   "error_runtime_build_validate_profiles": "ファイルに無効な項目が含まれています",
   "error_runtime_build_transforms_failed": "次の変換が失敗しました: {names}",

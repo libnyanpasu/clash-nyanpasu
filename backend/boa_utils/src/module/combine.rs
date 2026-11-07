@@ -18,11 +18,12 @@ impl CombineModuleLoader {
     pub fn new(
         simple: boa_engine::module::SimpleModuleLoader,
         http: super::http::HttpModuleLoader,
+        builtin: BuiltinModuleLoader,
     ) -> Self {
         Self {
             simple: Rc::new(simple),
             http: Rc::new(http),
-            builtin: Rc::new(BuiltinModuleLoader),
+            builtin: Rc::new(builtin),
         }
     }
 

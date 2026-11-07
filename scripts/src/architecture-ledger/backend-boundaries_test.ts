@@ -129,6 +129,36 @@ test('CLI wire closure accepts canonical runtime values and their foundation dep
   }
 })
 
+test('typed client consumers accept only the protocol and foundation closure', () => {
+  const client = [
+    'nyanpasu-rpc-protocol v0.1.0',
+    'tokio v1.0',
+    'serde v1.0',
+    'nyanpasu-runtime-values v0.1.0',
+    'nyanpasu-config v0.1.0',
+    'nyanpasu-contracts v0.1.0',
+    'nyanpasu-profile-transform v0.1.0',
+  ].join('\n')
+  for (const owner of ['nyanpasu-cli', 'nyanpasu-rpc-protocol']) {
+    assert.deepStrictEqual(dependencyViolations(owner, client), [])
+    for (const application of [
+      'nyanpasu-rpc',
+      'nyanpasu-server',
+      'nyanpasu-core',
+    ]) {
+      for (const intermediate of ['', 'neutral-client v0.1.0\n']) {
+        assert.deepStrictEqual(
+          dependencyViolations(
+            owner,
+            `${client}\n${intermediate}${application} v0.1.0`,
+          ),
+          [`${owner} must not depend on ${application}`],
+        )
+      }
+    }
+  }
+})
+
 for (const foundation of [
   'nyanpasu-config',
   'nyanpasu-contracts',

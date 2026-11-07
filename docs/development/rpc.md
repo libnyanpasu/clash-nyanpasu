@@ -172,9 +172,10 @@ Request, subscribe and unsubscribe share strictly increasing positive u64 JSON
 integer IDs for the entire connection lifetime, including completed/rejected
 requests. They cannot wrap; exhaustion requires a new connection. Responses
 repeat the request ID and contain exactly one of `result`/`error`. Business
-errors preserve existing RpcError JSON and do not close the connection. Until
-E1b, result/error reception owns JSON rather than deserializing operational error
-sources or static strings. Frame failures never provide request payloads to audit.
+errors preserve existing RpcError JSON and do not close the connection. The generic
+API retains result/error JSON; E1b-b additionally decodes owned receiving values
+without reconstructing operational error sources or static strings. Frame failures
+never provide request payloads to audit.
 
 Each events subscription names exactly one of configuration status, core status,
 service status, app-update state (when available), or core-log status. The
@@ -370,3 +371,18 @@ and continuous overflow remain explicit terminal subscription errors. Recovery
 never calls an RPC query, and independent sources promise no causal total order.
 Musl enables both protocol/local-client and RPC/local-server on the existing
 library targets; no static prefixes or package collections are added.
+
+E1b-b adds `LocalClient::call_typed` and `call_typed_with_timeout` on that same
+connection owner. Parameters implement Serde `Serialize`; results use the neutral
+wire/receiving closure and `DeserializeOwned`. The generic JSON `call` remains
+available. `client::typed::TypedCallError` distinguishes unsent encoding failures,
+transport failures, invalid reply shapes and remote errors. A remote failure is
+always `Err`, even with a JSON result type; its owned `wire::receive::RpcError`
+retains kind, code, retryable, operation ID and the complete domain payload.
+`decode_domain_error` decodes that payload into the command's receiving type;
+absent payloads stay absent and skipped operational sources are never fabricated.
+An invalid reply shape closes the connection and reports an unknown outcome.
+Receiving-only Rust types are not added to Specta exports. Acceptance combines
+the full declaration/catalog/DTO inventory, an independent consumer doctest and
+client-only dependency tree, mutation/nested-error roundtrips, and byte-identical
+regeneration of all three frontend bindings.

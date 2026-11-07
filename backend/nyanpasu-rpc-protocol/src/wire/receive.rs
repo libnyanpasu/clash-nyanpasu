@@ -38,6 +38,22 @@ pub struct RpcError {
     pub domain_error: Option<serde_json::Value>,
 }
 
+impl RpcError {
+    /// Decodes the command's domain payload without inventing skipped operational sources.
+    /// Absence remains `None`; a malformed or unrecognized nested cause remains a decode error.
+    ///
+    /// # Errors
+    /// Returns Serde's error when the payload does not match the requested receiving type.
+    pub fn decode_domain_error<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<Option<T>, serde_json::Error> {
+        self.domain_error
+            .as_ref()
+            .map(|value| serde_json::from_value(value.clone()))
+            .transpose()
+    }
+}
+
 /// A failure of an operation on the running core or the runtime workflow.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

@@ -80,8 +80,16 @@ skipped operational sources. The four shared responses moved into RPC by E2a/E2b
 now live in protocol. Schema features forward explicitly, foundation packages
 cannot depend back on protocol/RPC, and CLI may reach foundation values through
 protocol. Existing prefix/musl sets and runtime-values registration are unchanged.
-E1b-b still owns complete typed-client acceptance; this card does not widen local
-command or event opt-ins.
+E1b-b connects typed Serde requests/results to `protocol/local-client`, with owned
+error envelopes and explicit nested domain-error decoding. `test:backend-musl`
+first builds the protocol library alone with `--no-default-features --features
+local-client`, in a separate Cargo invocation without dev-dependencies or RPC/server
+feature unification. The consumer doctest exercises the public typed API but shares
+the crate's dev-dependencies; the backend-boundaries gate checks production dependency
+trees for RPC, server, core-family, implementation and GUI leaks. The complete declaration/DTO
+inventory, unchanged test inventories plus the named additions, and zero diff in
+all three generated bindings are the acceptance conditions. Package, feature,
+prefix and musl target registrations and local command/event opt-ins are unchanged.
 
 The registry owns thin shared commands, the event bus and the C2f audited dispatch kernel. Bus-first event delivery remains E2c work. Tauri IPC/native channels and asset resolution remain shell adapters; HTTP and local-server are explicit registry features. Local client framing/decoding is a protocol feature with no registry dependency. Missing required capabilities leave known commands registered and return `unsupported`, not `unknown_method`.
 

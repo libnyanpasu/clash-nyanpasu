@@ -11,6 +11,7 @@
 //! the source state, and the runtime revision orders published views. None of
 //! them substitutes for another.
 
+use nyanpasu_runtime_values::check::EvidenceGap;
 use std::sync::Arc;
 
 use nyanpasu_config::{
@@ -22,17 +23,15 @@ use tokio::sync::oneshot;
 
 use super::policy::TryCauseKind;
 use crate::{
-    client::{
-        runtime::RuntimeSnapshot,
-        runtime_error::{RuntimeError, ack_of},
-    },
+    client::{runtime::RuntimeSnapshot, runtime_error::ack_of},
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
         intent::CommandClass,
         runtime_apply::RuntimeApplyReceipt,
-        value::{ConfigDomain, MutationOutcomeKind, MutationReceipt},
+        value::{MutationOutcomeKind, MutationReceipt},
     },
 };
+use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime_error::RuntimeError};
 
 /// The candidate of one mutation, and the committed value it replaces where
 /// the Runtime reads that.
@@ -163,31 +162,6 @@ pub(crate) enum KnownRuntimeState {
     /// Nothing has been applied in this session, so there is no runtime to put
     /// back — only one to take away.
     NeverApplied,
-}
-
-/// Evidence a mutation needed and did not have, before anything was tried.
-///
-/// Not a Try outcome. Nothing was submitted, so there is no result to classify
-/// and this attempt made nothing less certain than it already was — which is
-/// why it is a plain refusal the caller may retry (v2 §2.4, first row) and
-/// never the isolated state §11.4 reserves for "结果可能已经执行".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum EvidenceGap {
-    /// The core is mid-transition — starting, restarting, switching or
-    /// stopping. That is an answer, but not one that says what a candidate
-    /// would be applied on top of.
-    CoreTransitioning,
-    /// The host published no runtime state, or the read failed, and no stop
-    /// this workflow recorded settles the question either.
-    BaselineUnconfirmed,
-    /// A core is running that this session never applied to, so no receipt
-    /// describes what it is running. The Try could be submitted, but its Cancel
-    /// would have nothing to put back — and a mutation that cannot be undone
-    /// must not be attempted (R10). The gap is known before anything is
-    /// submitted, which is what keeps it a refusal rather than the isolated
-    /// state a post-submission unknown earns.
-    NoRestorableBaseline,
 }
 
 /// Why a mutation was refused, keeping the two kinds of refusal apart.

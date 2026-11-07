@@ -15,13 +15,10 @@ use nyanpasu_config::{
 use serde::Serialize;
 use snafu::{OptionExt, ResultExt, ensure};
 
-use super::{
-    NyanpasuClient,
-    runtime::RuntimeSnapshot,
-    runtime_error::{
-        ConvertRuntimeConfigSnafu, NoRuntimeConfigSnafu, RuntimeError, RuntimeNodeNotFoundSnafu,
-        RuntimeSnapshotChangedSnafu, SerializeRuntimeConfigSnafu,
-    },
+use super::{NyanpasuClient, runtime::RuntimeSnapshot};
+use nyanpasu_runtime_values::runtime_error::{
+    ConvertRuntimeConfigSnafu, NoRuntimeConfigSnafu, RuntimeError, RuntimeNodeNotFoundSnafu,
+    RuntimeSnapshotChangedSnafu, SerializeRuntimeConfigSnafu,
 };
 
 #[derive(Debug, Clone)]
@@ -38,7 +35,7 @@ pub(crate) struct RuntimeInspectionData {
 #[derive(Debug)]
 pub(crate) struct EffectiveInspection {
     pub config: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
-    pub host: (crate::actor_v2::endpoint::ExecutionHost, u64),
+    pub host: (nyanpasu_runtime_values::execution_host::ExecutionHost, u64),
     /// The final node the effective document is compared against.
     parent: Idx,
     tag: OperatorTag,
@@ -90,7 +87,7 @@ impl RuntimeSnapshot {
     pub(crate) fn with_effective_config(
         &self,
         effective: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
-        host: crate::actor_v2::endpoint::ExecutionHost,
+        host: nyanpasu_runtime_values::execution_host::ExecutionHost,
         generation: u64,
     ) -> anyhow::Result<Self> {
         let binding = self
@@ -476,13 +473,13 @@ pub(crate) mod tests {
         };
         generated.applied_binding = Some(crate::actor_v2::facade::AppliedConfigBinding {
             revision: effective.revision.clone(),
-            host: crate::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             generation: 1,
         });
         let applied = generated
             .with_effective_config(
                 effective,
-                crate::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
                 1,
             )
             .unwrap();
@@ -555,7 +552,7 @@ pub(crate) mod tests {
         assert!(
             next.with_effective_config(
                 effective.clone(),
-                crate::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
                 1
             )
             .is_err()
@@ -564,7 +561,7 @@ pub(crate) mod tests {
         assert!(
             next.with_effective_config(
                 effective.clone(),
-                crate::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
                 2
             )
             .is_err()
@@ -572,7 +569,7 @@ pub(crate) mod tests {
         let recovered = next
             .with_effective_config(
                 effective,
-                crate::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
                 1,
             )
             .unwrap();
@@ -652,7 +649,7 @@ pub(crate) mod tests {
         };
         generated.applied_binding = Some(crate::actor_v2::facade::AppliedConfigBinding {
             revision: revision.clone(),
-            host: crate::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             generation: 1,
         });
         let stamped = generated
@@ -662,7 +659,7 @@ pub(crate) mod tests {
                     revision,
                     config: "mode: global\n".into(),
                 },
-                crate::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
                 1,
             )
             .unwrap();

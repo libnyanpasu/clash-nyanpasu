@@ -1,12 +1,8 @@
 //! Scripted runtime replies and installer ownership fixtures shared by tests.
 
-use crate::{
-    actor_v2::endpoint::ExecutionHost,
-    client::{
-        NyanpasuClient,
-        runtime_error::RuntimeError,
-        test_support::{TestControlEndpoint, test_client_args_with_endpoint},
-    },
+use crate::client::{
+    NyanpasuClient,
+    test_support::{TestControlEndpoint, test_client_args_with_endpoint},
 };
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_contracts::{
@@ -14,6 +10,7 @@ use nyanpasu_contracts::{
     system_dns::{SystemDnsCache, SystemDnsError},
 };
 use nyanpasu_core_manager::{CoreError, OperationId};
+use nyanpasu_runtime_values::{execution_host::ExecutionHost, runtime_error::RuntimeError};
 use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary};
 use std::{
     sync::{
@@ -26,9 +23,9 @@ use struct_patch::Patch;
 use tokio::sync::Notify;
 /// What became of the runtime after the aborted commit.
 pub fn aftermath(
-    aborted: &crate::state::mutation::CommitAborted,
-) -> &crate::state::mutation::RuntimeAftermath {
-    use crate::state::mutation::CommitAborted::*;
+    aborted: &nyanpasu_runtime_values::mutation::CommitAborted,
+) -> &nyanpasu_runtime_values::mutation::RuntimeAftermath {
+    use nyanpasu_runtime_values::mutation::CommitAborted::*;
     match aborted {
         WriteConfig { runtime, .. }
         | RecoverAfterWriteFailure { runtime, .. }

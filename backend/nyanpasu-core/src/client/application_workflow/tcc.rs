@@ -25,34 +25,25 @@ use super::{
     attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
     mutation::{
         AppliedCandidate, ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, DomainChange,
-        EvidenceGap, KnownRuntimeState, MutationRequest, MutationStage, RefusalCause,
-        RetryableCause, RuntimePrepareOutcome, TargetOrigin,
+        KnownRuntimeState, MutationRequest, MutationStage, RefusalCause, RetryableCause,
+        RuntimePrepareOutcome, TargetOrigin,
     },
     policy::{
         BaselineAvailability, CommandPolicy, FailureDisposition, TryCauseKind, TryFailureFacts,
         disposition, policy_for,
     },
-    ports::{RuntimeCheckOutcome, RuntimeCheckRequest, RuntimeCheckUnavailable},
+    ports::{RuntimeCheckOutcome, RuntimeCheckRequest},
     workflow::ApplicationWorkflow,
 };
 use crate::{
     actor_v2::{
-        endpoint::ExecutionHost,
         facade::{AppliedConfigBinding, ReconcileResult},
         intent::RuntimeIntent,
     },
     client::{
         convergence::{OutcomeClass, next_wait},
         core_lifecycle::{RuntimeSubmission, effective_host, ports::RuntimePreparationPort},
-        runtime::{DegradationReason, InterruptFailure},
-        runtime_error::{
-            ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
-            CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
-            HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
-            PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
-            RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
-            SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
-        },
+        runtime_error,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
     state::mutation::{
@@ -60,6 +51,19 @@ use crate::{
         intent::CoreRunIntent,
         runtime_apply::RuntimeApplyReceipt,
         value::{CheckRecord, MutationConclusion, MutationReceipt},
+    },
+};
+use nyanpasu_runtime_values::{
+    check::{EvidenceGap, RuntimeCheckUnavailable},
+    execution_host::ExecutionHost,
+    runtime::{DegradationReason, InterruptFailure},
+    runtime_error::{
+        ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
+        CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
+        HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
+        PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
+        RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
+        SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
     },
 };
 
@@ -889,9 +893,9 @@ impl ApplicationWorkflow {
                                                 cause: RefusalCause::Try(not_submitted_cause(
                                                     error.kind,
                                                 )),
-                                                error: Arc::new(
-                                                    RefreshStatusSnafu.into_error(error),
-                                                ),
+                                                error: Arc::new(RefreshStatusSnafu.into_error(
+                                                    runtime_error::core_failure(error),
+                                                )),
                                             },
                                             restored: baseline.state.clone(),
                                         },
@@ -942,7 +946,8 @@ impl ApplicationWorkflow {
                             },
                             invalid_item: false,
                             target_digest: target.clone(),
-                            error: MoveHostSnafu { host: target_host }.into_error(error.error),
+                            error: MoveHostSnafu { host: target_host }
+                                .into_error(runtime_error::core_failure(error.error)),
                         },
                     );
                 }
@@ -988,14 +993,19 @@ impl ApplicationWorkflow {
                     .build(),
                 },
             ),
-            Ok(RuntimeSubmission::Unknown(uncertain)) => RuntimePrepareOutcome::RecoveryRequired(
-                Arc::new(SubmissionUnobservedSnafu.into_error(uncertain.error)),
-            ),
+            Ok(RuntimeSubmission::Unknown(uncertain)) => {
+                RuntimePrepareOutcome::RecoveryRequired(Arc::new(
+                    SubmissionUnobservedSnafu
+                        .into_error(runtime_error::core_failure(uncertain.error)),
+                ))
+            }
             Ok(RuntimeSubmission::NotSubmitted(error)) => RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: MutationStage::TryingCritical,
                     cause: RefusalCause::Try(not_submitted_cause(error.kind)),
-                    error: Arc::new(ApplyRuntimeSnafu.into_error(error)),
+                    error: Arc::new(
+                        ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)),
+                    ),
                 },
                 restored: baseline.state.clone(),
             },
@@ -1022,7 +1032,7 @@ impl ApplicationWorkflow {
                         },
                         invalid_item: cause == TryCauseKind::Deterministic,
                         target_digest: target.clone(),
-                        error: ApplyRuntimeSnafu.into_error(error),
+                        error: ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)),
                     },
                 )
             }
@@ -1156,7 +1166,7 @@ impl ApplicationWorkflow {
         outcome: RuntimePrepareOutcome,
         request: &MutationRequest,
         interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
-        degradations: &mut Vec<crate::client::runtime::Degradation>,
+        degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
     ) -> (
         MutationConclusion,
         Option<String>,
@@ -1175,8 +1185,8 @@ impl ApplicationWorkflow {
                         .await
                     {
                         let cause = InterruptFailure::from(&error);
-                        degradations.push(crate::client::runtime::Degradation {
-                            phase: crate::client::runtime::DegradationPhase::SystemEffect,
+                        degradations.push(nyanpasu_runtime_values::runtime::Degradation {
+                            phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
                             reason: if request.hints.mode_requested {
                                 DegradationReason::ModeInterruptionFailed { cause }
                             } else {
@@ -1240,7 +1250,7 @@ impl ApplicationWorkflow {
     pub(super) async fn finish_applied(
         &mut self,
         applied: &AppliedVerdict,
-        degradations: &mut Vec<crate::client::runtime::Degradation>,
+        degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
     ) -> Option<String> {
         // The runtime reached the target, so whatever gap was outstanding is
         // closed and its budget is no longer owed.
@@ -1254,8 +1264,8 @@ impl ApplicationWorkflow {
             .await;
         self.lifecycle.runtime.accept_transition();
         if let Some(cause) = &failure {
-            degradations.push(crate::client::runtime::Degradation {
-                phase: crate::client::runtime::DegradationPhase::RuntimeBuild,
+            degradations.push(nyanpasu_runtime_values::runtime::Degradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::RuntimeBuild,
                 message: cause.to_string(),
                 reason: DegradationReason::RuntimeProductPublishFailed {
                     cause: cause.clone(),
@@ -1268,8 +1278,8 @@ impl ApplicationWorkflow {
         if applied.releases_service
             && let Some(cause) = self.release_service().await
         {
-            degradations.push(crate::client::runtime::Degradation {
-                phase: crate::client::runtime::DegradationPhase::SystemEffect,
+            degradations.push(nyanpasu_runtime_values::runtime::Degradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
                 message: cause.to_string(),
                 reason: DegradationReason::ServiceStopFailed { cause },
                 retryable: true,
@@ -1301,7 +1311,8 @@ impl ApplicationWorkflow {
         self.pending_release = failure
             .as_ref()
             .map(|error| format!("service_stop_failed: {error}"));
-        failure.map(|error| Arc::new(StopServiceSnafu.into_error(error)))
+        failure
+            .map(|error| Arc::new(StopServiceSnafu.into_error(runtime_error::core_failure(error))))
     }
 
     // -- Cancelling --------------------------------------------------------
@@ -1392,13 +1403,15 @@ impl ApplicationWorkflow {
                     // Ownership is where the failure left it, which is not a
                     // fact about who is holding the candidate's ports.
                     self.invalidate_unproven_ports();
-                    return Err(MoveHostBackSnafu { host: receipt.host }.into_error(error.error));
+                    return Err(MoveHostBackSnafu { host: receipt.host }
+                        .into_error(runtime_error::core_failure(error.error)));
                 }
                 let expected = self
                     .lifecycle
                     .core
                     .refresh_status()
                     .await
+                    .map_err(runtime_error::core_failure)
                     .context(ReadStatusSnafu)?;
                 let submitted = self
                     .lifecycle
@@ -1687,8 +1700,10 @@ fn submission_failure(
     use crate::actor_v2::facade::ReconcileResult;
     match submitted {
         Ok(ReconcileResult::NotSubmitted(error) | ReconcileResult::Unchanged(error))
-        | Err(error) => Some(error.clone().into()),
-        Ok(ReconcileResult::Unknown(uncertain)) => Some(uncertain.error.clone().into()),
+        | Err(error) => Some(runtime_error::core_failure(error.clone())),
+        Ok(ReconcileResult::Unknown(uncertain)) => {
+            Some(runtime_error::core_failure(uncertain.error.clone()))
+        }
         Ok(ReconcileResult::Reconciled(_) | ReconcileResult::RolledBack(_)) => None,
     }
 }
@@ -1708,5 +1723,134 @@ fn describe_submission(
         ),
         Ok(ReconcileResult::Unknown(uncertain)) => format!("unobserved ({})", uncertain.error),
         Err(error) => format!("failed ({error})"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error as _;
+
+    use nyanpasu_core_manager::{CoreError, OperationId};
+    use nyanpasu_core_metadata::CoreErrorKind;
+    use snafu::ResultExt as _;
+
+    use super::submission_failure;
+    use crate::{
+        actor_v2::{
+            CoreStatusProjection, EndpointConnectivity,
+            facade::{
+                AppliedConfigBinding, ReconcileReport, ReconcileResult, RolledBackReport,
+                UncertainReconcile,
+            },
+        },
+        client::runtime_error,
+    };
+    use nyanpasu_ipc::api::{
+        core::v2::{OperationOutputInfo, ReconcileOutcomeInfo, ReconcileOutcomeKind},
+        status::ConfigRevisionInfo,
+    };
+    use nyanpasu_runtime_values::{
+        execution_host::ExecutionHost,
+        runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError},
+    };
+
+    #[test]
+    fn runtime_core_failure_conversion_preserves_kind_retryability_and_operation_id() {
+        for kind in [
+            None,
+            Some(CoreErrorKind::ApplyFailed),
+            Some(CoreErrorKind::BackendUnavailable),
+        ] {
+            for retryable in [false, true] {
+                for operation_id in [None, Some(OperationId::generate())] {
+                    let error = CoreError {
+                        kind,
+                        message: "original failure".into(),
+                        retryable,
+                        operation_id,
+                    };
+                    let expected = CoreFailure {
+                        kind,
+                        message: error.message.clone(),
+                        retryable,
+                        operation_id: operation_id.map(|id| id.to_string()),
+                    };
+                    let runtime: RuntimeError = Err::<(), _>(error.clone())
+                        .map_err(runtime_error::core_failure)
+                        .context(ApplyRuntimeSnafu)
+                        .unwrap_err();
+                    assert_eq!(
+                        runtime.source().unwrap().downcast_ref::<CoreFailure>(),
+                        Some(&expected)
+                    );
+                    assert_eq!(
+                        runtime.to_string(),
+                        format!("could not apply the runtime configuration: {}", error)
+                    );
+                    for submitted in [
+                        Ok(ReconcileResult::NotSubmitted(error.clone())),
+                        Ok(ReconcileResult::Unchanged(error.clone())),
+                        Err(error.clone()),
+                        Ok(ReconcileResult::Unknown(UncertainReconcile {
+                            error: error.clone(),
+                            status: CoreStatusProjection {
+                                host: ExecutionHost::Local,
+                                generation: 1,
+                                connectivity: EndpointConnectivity::Connected,
+                                snapshot: None,
+                            },
+                        })),
+                    ] {
+                        assert_eq!(
+                            submission_failure(&submitted),
+                            Some(expected.clone()),
+                            "{submitted:?}"
+                        );
+                    }
+                }
+            }
+        }
+        let binding = AppliedConfigBinding {
+            revision: ConfigRevisionInfo {
+                epoch: 1,
+                generation: 1,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            host: ExecutionHost::Local,
+            generation: 1,
+        };
+        let status = CoreStatusProjection {
+            host: ExecutionHost::Local,
+            generation: 1,
+            connectivity: EndpointConnectivity::Connected,
+            snapshot: None,
+        };
+        for submitted in [
+            Ok(ReconcileResult::Reconciled(ReconcileReport {
+                applied: binding.clone(),
+                effective_config: None,
+                output: OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
+                    outcome: ReconcileOutcomeKind::Started,
+                    revision: binding.revision.clone(),
+                    warning: None,
+                    failed_apply: None,
+                }),
+                status: status.clone(),
+            })),
+            Ok(ReconcileResult::RolledBack(RolledBackReport {
+                restored: binding.clone(),
+                failed_apply: Some("apply failed".into()),
+                output: OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
+                    outcome: ReconcileOutcomeKind::RolledBack,
+                    revision: binding.revision,
+                    warning: None,
+                    failed_apply: Some("apply failed".into()),
+                }),
+                status,
+            })),
+        ] {
+            assert_eq!(submission_failure(&submitted), None, "{submitted:?}");
+        }
     }
 }

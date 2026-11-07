@@ -6,10 +6,10 @@ use crate::state::{
         MutationCoordinator, impact,
         impact::{MutationHints, RequestedRuntimeFields},
         intent::CommandClass,
-        value::ConfigDomain,
     },
 };
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_migration::modules::application::ApplicationFormat;
@@ -23,13 +23,14 @@ use tokio_util::sync::CancellationToken;
 pub struct ApplicationSnapshot {
     pub state: NyanpasuAppConfig,
     pub version: u64,
-    pub(crate) receipt: Option<crate::client::runtime::CommitReceipt>,
-    pub(crate) degradations: Vec<crate::client::runtime::Degradation>,
+    pub(crate) receipt: Option<nyanpasu_runtime_values::runtime::CommitReceipt>,
+    pub(crate) degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
 }
 
 impl ApplicationSnapshot {
-    pub(crate) fn outcome(self) -> crate::client::runtime::MutationOutcome<()> {
-        let outcome = crate::client::runtime::MutationOutcome::from_parts((), self.degradations);
+    pub(crate) fn outcome(self) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        let outcome =
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), self.degradations);
         match self.receipt {
             Some(receipt) => outcome.with_commit(receipt),
             None => outcome,

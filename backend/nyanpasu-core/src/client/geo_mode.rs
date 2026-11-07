@@ -67,11 +67,10 @@ mod tests {
 
     use super::*;
     use crate::actor_v2::{
-        endpoint::{
-            ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
-        },
+        endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
         test_support::{self, Endpoint},
     };
+    use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
     struct ObservedEndpoint {
         inner: Arc<Endpoint>,

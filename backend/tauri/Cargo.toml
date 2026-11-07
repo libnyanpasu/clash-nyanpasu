@@ -24,6 +24,7 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }

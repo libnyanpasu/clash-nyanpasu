@@ -147,7 +147,7 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
         assert_eq!(outcome.degradations().len(), 1);
         assert!(matches!(
             outcome.degradations()[0].reason,
-            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+            nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { .. }
         ));
         assert_eq!(
             client.configuration_status().runtime.health,
@@ -205,14 +205,16 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
             );
             let crate::client::ClientError::Config(
                 crate::state::config_error::ConfigError::Commit {
-                    domain: crate::state::mutation::value::ConfigDomain::Clash,
+                    domain: nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
                     source: aborted,
                 },
             ) = &error
             else {
                 panic!("{error:?}");
             };
-            let crate::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted else {
+            let nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig { source, .. } =
+                aborted
+            else {
                 panic!("{aborted:?}");
             };
             assert!(
@@ -228,7 +230,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 assert!(
                     matches!(
                         aftermath(aborted),
-                        crate::state::mutation::RuntimeAftermath::RollbackFailed { .. }
+                        nyanpasu_runtime_values::mutation::RuntimeAftermath::RollbackFailed { .. }
                     ),
                     "{aborted:?}"
                 );
@@ -237,7 +239,7 @@ async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged(
                 assert!(
                     matches!(
                         aftermath(aborted),
-                        crate::state::mutation::RuntimeAftermath::RolledBack
+                        nyanpasu_runtime_values::mutation::RuntimeAftermath::RolledBack
                     ),
                     "{aborted:?}"
                 );

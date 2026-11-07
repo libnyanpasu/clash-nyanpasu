@@ -2,9 +2,7 @@
 
 use crate::{
     client::profiles::ProfilesClient,
-    state::profiles::{
-        NewProfileRequest, ProfilesActorMessage, ProfilesError, sources::SourceStatus,
-    },
+    state::profiles::{NewProfileRequest, ProfilesActorMessage, sources::SourceStatus},
 };
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
@@ -13,6 +11,7 @@ use nyanpasu_config::profile::{
     TransformDefinition,
 };
 use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+use nyanpasu_runtime_values::profiles::ProfilesError;
 pub fn add_placeholder_request() -> NewProfileRequest {
     NewProfileRequest {
         metadata: file_config_item("placeholder").metadata,

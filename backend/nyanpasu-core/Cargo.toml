@@ -24,6 +24,7 @@ test-support = [
 ]
 
 [dependencies]
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
@@ -55,6 +56,7 @@ notify-debouncer-full = '0.7.0'
 zstd = '0.14.0'
 tempfile = '3.9.0'
 nyanpasu-core-manager = { workspace = true }
+nyanpasu-core-metadata = { path = '../nyanpasu-runtime/crates/nyanpasu-core-metadata' }
 clash-api = { workspace = true }
 futures-util = '0.3'
 axum = { version = '0.8', features = ['ws'], optional = true }

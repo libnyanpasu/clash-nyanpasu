@@ -17,17 +17,17 @@ use nyanpasu_core_manager::CoreSpec;
 use nyanpasu_profile_transform::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 
 use crate::{
-    actor_v2::local_host::CoreSpecError,
     client::{
         application_workflow::{
             inputs::{FrozenProfileContent, RuntimeInputs},
             ports::RuntimeBuildPort,
         },
         runtime,
-        runtime::{PublishRuntimeError, RuntimePaths, RuntimeRevision, RuntimeSnapshot},
+        runtime::{RuntimePaths, RuntimeRevision, RuntimeSnapshot},
     },
     state::profiles::ProfilesActor,
 };
+use nyanpasu_runtime_values::{core_spec::CoreSpecError, publish::PublishRuntimeError};
 
 type CaptureContent = dyn Fn(&Profiles) -> FrozenProfileContent + Send + Sync;
 

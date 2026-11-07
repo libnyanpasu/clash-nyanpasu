@@ -124,8 +124,17 @@ is the plan for the next stage:
   connection details remain a separate demand stream. Successful late resource results are
   closed promptly; unconfirmed Service log opens rely on the existing service
   lease because no returned ID is available (design V-61).
-  All E cards follow D2 → D3 → D4 → A2b, then E1a → E2 → E3 → E1b → E4. E3 adds negotiated local JSON framing on Unix and Windows,
-  connection-owned resources and INFO audit through the same kernel. Fatal
+  All E cards follow D2 → D3 → D4 → A2b, then E1a → E2 → E3 → E1b → E4. E3 adds negotiated local JSON framing on Unix and Windows.
+  E3d delivers connection-owned resources and INFO audit through the same kernel.
+  Its server drains accepted work after reader/writer closure, registers and
+  closes successful late resources, and observes task panics with their original
+  payload. A shared bounded capacity budget covers pending/established resources;
+  unsubscribe releases receivers before acknowledgement. Full-value snapshots
+  come from the facade, with bounded retry when publication races a read; local
+  event notifications refresh that value so old queued observations cannot
+  regress a reset. Independent sources retain no causal total-order promise.
+  Service opens without a returned ID remain subject to the existing lease and
+  separate physical-store grace, not an immediate disconnect cleanup guarantee. Fatal
   panics remain fatal; a dedicated client transport task owns each connection,
   so dropping a call future cannot desynchronize partial IO. A timeout/error
   invalidates the connection without cancelling owner work or retrying mutations.

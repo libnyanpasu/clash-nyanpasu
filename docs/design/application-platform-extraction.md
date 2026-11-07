@@ -601,8 +601,20 @@ app-data discovery. Unix uses private directories, a persistent OS-locked claim,
 refused-only stale reclamation and identity-checked cleanup; Windows uses a
 protected current-user DACL and first-instance exclusivity across repeated accepts.
 Musl enables local-server on the existing RPC library target; no package or static
-prefix is added. The local-channel parent-child API is unchanged. Dispatch/resource
-cleanup, client recovery and the headless shell remain planned in E3d–E4.
+prefix is added. The local-channel parent-child API is unchanged. E3d delivers
+bounded connection dispatch, full-value subscriptions and separate detail demand,
+with server-generated instance/connection owners and the shared INFO audit kernel.
+Accepted work survives disconnect and normal shutdown drains its completions;
+successful late App/Service log-session IDs are registered and closed. A lost or
+timed-out Service reply has no ID and relies on the existing 45-second lease
+without renewal, measured from creation/last renewal; physical stores have a
+separate 30-second grace period. No service protocol changes are implied.
+Subscription resets read the facade with bounded race retries; notifications
+refresh the current full value instead of replaying older queued values. Source
+order and bounded lag/resync do not promise cross-source causal order. Unsubscribe
+releases demand before acknowledgement. Task panics retain their original payload
+through root supervision. Client recovery, production command opt-ins, desktop
+listener composition and the headless shell remain planned in E3e–E4.
 
 | E3c platform             | Implementation | Validation                                                                                                       |
 | ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------- |

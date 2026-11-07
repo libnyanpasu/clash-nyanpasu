@@ -21,6 +21,8 @@ test('RPC local endpoints are opt-in without widening protocol dependencies', ()
     'socket2',
     'widestring',
     'windows-sys',
+    'tokio-util',
+    'uuid',
   ]) {
     assert.ok(local.includes(`'dep:${dependency}'`))
     assert.match(

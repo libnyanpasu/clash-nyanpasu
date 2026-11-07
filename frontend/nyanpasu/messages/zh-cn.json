@@ -758,6 +758,7 @@
   "error_runtime_core_not_started": "无法启动内核",
   "error_runtime_recovery_unresolved": "无法恢复运行时",
   "error_runtime_build_runtime": "无法生成运行时配置",
+  "error_runtime_script_start_engine": "此构建中无法使用 {runtime} 引擎执行 {operation}",
   "error_runtime_build_start_script_runner": "无法启动脚本引擎",
   "error_runtime_build_validate_profiles": "配置文件存在无效项",
   "error_transparent_proxy_unsupported_target": "透明代理仅支持 Linux 和 Mihomo",

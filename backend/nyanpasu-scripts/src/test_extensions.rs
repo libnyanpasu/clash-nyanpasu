@@ -1,40 +1,53 @@
 //! Local capabilities for real-engine tests; HTTP never leaves this fixture.
+#[cfg(feature = "javascript")]
 use std::{path::Path, rc::Rc, sync::Arc};
 
+#[cfg(feature = "javascript")]
 use boa_engine::{JsResult, module::SimpleModuleLoader};
+#[cfg(feature = "javascript")]
 use boa_utils::module::{
     builtin::BuiltinModuleLoader,
     combine::CombineModuleLoader,
     http::{CachedItem, HttpModuleError, HttpModuleLoader, HttpModuleSource},
 };
 
-use crate::{
-    ConsoleSink,
-    extensions::{JavaScriptExtensions, LuaExtensions, ScriptExtensionFactory},
-};
+#[cfg(any(feature = "javascript", feature = "lua"))]
+use crate::ConsoleSink;
+#[cfg(feature = "javascript")]
+use crate::extensions::JavaScriptExtensions;
+#[cfg(feature = "lua")]
+use crate::extensions::LuaExtensions;
+use crate::extensions::ScriptExtensionFactory;
 
 pub(super) struct TestExtensions;
 
 impl ScriptExtensionFactory for TestExtensions {
-    fn javascript(&self, scripts_dir: &Path) -> JsResult<JavaScriptExtensions> {
+    #[cfg(feature = "javascript")]
+    fn javascript(&self, scripts_dir: &Path) -> JsResult<Option<JavaScriptExtensions>> {
         let loader = Rc::new(CombineModuleLoader::new(
             SimpleModuleLoader::new(scripts_dir)?,
             HttpModuleLoader::new(Arc::new(FixtureSource)),
             BuiltinModuleLoader,
         ));
-        Ok(JavaScriptExtensions::new(
+        Ok(Some(JavaScriptExtensions::new(
             loader,
             ConsoleSink::register_javascript,
-        ))
+        )))
     }
 
-    fn lua(&self) -> LuaExtensions {
-        LuaExtensions::new(mlua::StdLib::ALL_SAFE, ConsoleSink::register_lua)
+    #[cfg(feature = "lua")]
+    fn lua(&self) -> Option<LuaExtensions> {
+        Some(LuaExtensions::new(
+            mlua::StdLib::ALL_SAFE,
+            ConsoleSink::register_lua,
+        ))
     }
 }
 
+#[cfg(feature = "javascript")]
 struct FixtureSource;
 
+#[cfg(feature = "javascript")]
 #[async_trait::async_trait]
 impl HttpModuleSource for FixtureSource {
     async fn load(&self, url: &url::Url) -> Result<CachedItem, HttpModuleError> {

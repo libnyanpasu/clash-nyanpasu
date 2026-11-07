@@ -1,4 +1,4 @@
-//! Structural failures only; transform-level failures go to step logs (spec D7).
+//! Structural and missing-capability failures; ordinary script failures go to step logs.
 
 use serde::Serialize;
 use snafu::Snafu;
@@ -9,7 +9,7 @@ use crate::{
     runtime::snapshot::SnapshotBuildError,
 };
 
-use super::ports::PortError;
+use super::{ports::PortError, script_error::ScriptExecutionError};
 
 /// Wire shape for the app's error channel: library sources are skipped and
 /// reach the user only through the error's `Debug` detail.
@@ -17,6 +17,9 @@ use super::ports::PortError;
 #[snafu(visibility(pub(crate)))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RuntimePipelineError {
+    #[snafu(display("could not execute script: {source}"))]
+    ExecuteScript { source: ScriptExecutionError },
+
     #[snafu(display("selected profile {profile} not found"))]
     SelectedProfileNotFound { profile: ProfileId },
 
@@ -50,4 +53,12 @@ pub enum RuntimePipelineError {
     /// Theoretically unreachable invariant breaks (e.g. guard serialization).
     #[snafu(display("internal executor invariant: {message}"))]
     Internal { message: String },
+}
+
+/// Preserve missing capabilities while leaving ordinary port errors to their existing policy.
+pub(super) fn ordinary_script_error(error: PortError) -> Result<PortError, RuntimePipelineError> {
+    match error.downcast::<ScriptExecutionError>() {
+        Ok(source) => Err(RuntimePipelineError::ExecuteScript { source: *source }),
+        Err(error) => Ok(error),
+    }
 }

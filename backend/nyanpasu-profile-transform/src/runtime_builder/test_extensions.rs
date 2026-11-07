@@ -15,20 +15,23 @@ use nyanpasu_scripts::{
 pub(super) struct TestExtensions;
 
 impl ScriptExtensionFactory for TestExtensions {
-    fn javascript(&self, scripts_dir: &Path) -> JsResult<JavaScriptExtensions> {
+    fn javascript(&self, scripts_dir: &Path) -> JsResult<Option<JavaScriptExtensions>> {
         let loader = Rc::new(CombineModuleLoader::new(
             SimpleModuleLoader::new(scripts_dir)?,
             HttpModuleLoader::new(Arc::new(FixtureSource)),
             BuiltinModuleLoader,
         ));
-        Ok(JavaScriptExtensions::new(
+        Ok(Some(JavaScriptExtensions::new(
             loader,
             ConsoleSink::register_javascript,
-        ))
+        )))
     }
 
-    fn lua(&self) -> LuaExtensions {
-        LuaExtensions::new(mlua::StdLib::ALL_SAFE, ConsoleSink::register_lua)
+    fn lua(&self) -> Option<LuaExtensions> {
+        Some(LuaExtensions::new(
+            mlua::StdLib::ALL_SAFE,
+            ConsoleSink::register_lua,
+        ))
     }
 }
 

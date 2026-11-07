@@ -5160,6 +5160,7 @@ export type RuntimeInspectionNode = {
  *  reach the user only through the error's `Debug` detail.
  */
 export type RuntimePipelineError =
+  | { kind: 'execute_script'; source: ScriptExecutionError }
   | { kind: 'selected_profile_not_found'; profile: ProfileId }
   | { kind: 'selected_profile_not_config'; profile: ProfileId }
   | {
@@ -5182,6 +5183,16 @@ export type RuntimePipelineError =
  *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
  */
 export type SchemeRequestReceivedEvent = null
+
+/**  A missing engine rejects the entire build, even when transforms are lenient. */
+export type ScriptExecutionError = {
+  kind: 'start_engine'
+  runtime: ScriptRuntime
+  operation: ScriptOperation
+}
+
+/**  The operation that requires a compiled script engine. */
+export type ScriptOperation = 'transform' | 'item_predicate' | 'item_expression'
 
 export type ScriptRuntime = 'javascript' | 'lua'
 

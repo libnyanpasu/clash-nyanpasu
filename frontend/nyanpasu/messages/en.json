@@ -758,6 +758,7 @@
   "error_runtime_core_not_started": "Could not start the core",
   "error_runtime_recovery_unresolved": "Could not recover the runtime",
   "error_runtime_build_runtime": "Could not build the runtime configuration",
+  "error_runtime_script_start_engine": "The {runtime} engine is unavailable in this build for {operation}",
   "error_runtime_build_start_script_runner": "Could not start the script engine",
   "error_runtime_build_validate_profiles": "The profiles contain invalid items",
   "error_transparent_proxy_unsupported_target": "Transparent proxy requires Linux and Mihomo",

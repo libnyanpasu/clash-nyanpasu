@@ -93,7 +93,7 @@ pub(super) fn build_scoped_file(
 
     for (index, transform_id) in file.transforms.iter().enumerate() {
         let (next, kind, entries, failed) =
-            apply_transform(profiles, content, runner, transform_id, &value);
+            apply_transform(profiles, content, runner, transform_id, &value)?;
         let tag = OperatorTag::ScopedTransform {
             host_profile_id: profile_id.clone(),
             role: role.clone(),

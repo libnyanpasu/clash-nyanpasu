@@ -15,7 +15,10 @@ use boa_engine::{
     object::builtins::JsPromise,
 };
 use boa_runtime::console::{Console, ConsoleState, Logger};
-use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+use nyanpasu_config::{
+    profile::ScriptRuntime,
+    runtime::executor::{ScriptExecutionError, ScriptOperation, StepLogEntry, StepLogLevel},
+};
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
@@ -190,13 +193,12 @@ fn settle(promise: &JsPromise, ctx: &mut Context) -> Result<JsValue> {
 /// `console`.
 fn run_module(
     scripts_dir: PathBuf,
-    extensions: Arc<dyn ScriptExtensionFactory>,
+    extensions: JavaScriptExtensions,
     script: &str,
     mapping: Mapping,
     console: ConsoleSink,
 ) -> Result<Mapping> {
-    let capabilities = extensions.javascript(&scripts_dir)?;
-    let boa_runner = BoaRunner::try_new(scripts_dir, capabilities)?;
+    let boa_runner = BoaRunner::try_new(scripts_dir, extensions)?;
     (boa_runner.console)(console, &mut boa_runner.ctx.borrow_mut())?;
     let module = boa_runner.parse_module(script, "main")?;
     boa_runner.execute_module(&module)?;
@@ -250,7 +252,7 @@ impl Runner for JSRunner {
         script: &str,
         logs: &mut Vec<StepLogEntry>,
     ) -> anyhow::Result<Mapping> {
-        let script = wrap_script_if_not_esm(script)?.into_owned();
+        let script = script.to_owned();
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let scripts_dir = self.scripts_dir.clone();
         let extensions = self.extensions.clone();
@@ -258,13 +260,24 @@ impl Runner for JSRunner {
             // The sink is not Send, so it lives on this thread with the boa
             // context and only its entries cross back.
             let console = ConsoleSink::default();
-            let result = run_module(scripts_dir, extensions, &script, mapping, console.clone())
-                .map_err(|e| {
-                    // Display, not Debug: a JsError's Display carries the
-                    // script's stack with file, line and column.
-                    tracing::error!("error: {e}");
-                    anyhow::anyhow!("{e}")
-                });
+            let result = (|| {
+                let extensions = extensions
+                    .javascript(&scripts_dir)
+                    .map_err(|error| anyhow::anyhow!("{}", JsRunnerError::from(error)))?
+                    .ok_or(ScriptExecutionError::StartEngine {
+                        runtime: ScriptRuntime::JavaScript,
+                        operation: ScriptOperation::Transform,
+                    })?;
+                let script = wrap_script_if_not_esm(&script)?;
+                run_module(scripts_dir, extensions, &script, mapping, console.clone()).map_err(
+                    |e| {
+                        // Display, not Debug: a JsError's Display carries the
+                        // script's stack with file, line and column.
+                        tracing::error!("error: {e}");
+                        anyhow::anyhow!("{e}")
+                    },
+                )
+            })();
             (result, console.take())
         })
         .await;
@@ -414,13 +427,17 @@ mod test {
 
     #[test]
     fn root_module_identity_survives_loader_injection() {
-        use crate::{runner::ConsoleSink, test_extensions::TestExtensions};
+        use crate::{
+            extensions::ScriptExtensionFactory as _, runner::ConsoleSink,
+            test_extensions::TestExtensions,
+        };
         let dir = tempfile::tempdir().unwrap();
         // Match SimpleModuleLoader's canonical root, including Windows' path prefix.
         let root = std::fs::canonicalize(dir.path()).unwrap();
+        let extensions = TestExtensions.javascript(&root).unwrap().unwrap();
         let result = super::run_module(
             root,
-            Arc::new(TestExtensions),
+            extensions,
             r#"
             import { marker as imported } from './main.mjs';
             export const marker = {};

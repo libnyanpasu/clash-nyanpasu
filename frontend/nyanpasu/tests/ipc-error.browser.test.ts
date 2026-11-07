@@ -13,9 +13,17 @@ import type {
   OsProxyError,
   ProfilesError,
   RuntimeError,
+  ScriptOperation,
+  ScriptRuntime,
   StorageOperationError,
   SystemDnsError,
 } from '@nyanpasu/rpc/types'
+import enMessages from '../messages/en.json'
+import jaMessages from '../messages/ja.json'
+import koMessages from '../messages/ko.json'
+import ruMessages from '../messages/ru.json'
+import zhCnMessages from '../messages/zh-cn.json'
+import zhTwMessages from '../messages/zh-tw.json'
 
 const profiles = (error: ProfilesError): IpcError => ({
   kind: { domain: 'profiles', error },
@@ -697,3 +705,66 @@ test('core_copy_elevation_refusal_uses_the_elevation_message', () => {
     ),
   ).toBe(m.error_elevation_authorize())
 })
+
+const scriptOperations: ScriptOperation[] = [
+  'transform',
+  'item_predicate',
+  'item_expression',
+]
+const scriptRuntimes: ScriptRuntime[] = ['javascript', 'lua']
+
+test.each(
+  scriptRuntimes.flatMap((engine) =>
+    scriptOperations.map((operation) => ({ engine, operation })),
+  ),
+)(
+  'script_engine_unavailable_uses_its_message ($engine, $operation)',
+  ({ engine, operation }) => {
+    const error: RuntimeError = {
+      kind: 'build_runtime',
+      source: {
+        kind: 'run_pipeline',
+        source: {
+          kind: 'execute_script',
+          source: { kind: 'start_engine', runtime: engine, operation },
+        },
+      },
+    }
+    for (const messages of [
+      enMessages,
+      jaMessages,
+      koMessages,
+      ruMessages,
+      zhCnMessages,
+      zhTwMessages,
+    ]) {
+      expect(messages.error_runtime_script_start_engine).toContain('{runtime}')
+      expect(messages.error_runtime_script_start_engine).toContain(
+        '{operation}',
+      )
+    }
+    const message = m.error_runtime_script_start_engine({
+      runtime: engine,
+      operation,
+    })
+    expect(message).toContain(engine)
+    expect(message).toContain(operation)
+    expect(ipcErrorMessage(runtime(error))).toBe(message)
+    const source = {
+      kind: 'runtime_refused' as const,
+      errors: [error],
+      runtime: { kind: 'untouched' as const },
+    }
+    const expected = m.error_commit_runtime_refused({ reason: message })
+    expect(
+      ipcErrorMessage(
+        config({ kind: 'commit', domain: 'application', source }),
+      ),
+    ).toBe(expected)
+    expect(
+      ipcErrorMessage(
+        profiles({ kind: 'commit', uid: 'p1', path: 'p1.yaml', source }),
+      ),
+    ).toBe(expected)
+  },
+)

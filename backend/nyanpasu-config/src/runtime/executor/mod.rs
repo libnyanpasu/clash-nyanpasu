@@ -10,6 +10,7 @@ mod overlay;
 mod plan;
 mod ports;
 mod scoped;
+mod script_error;
 mod value_util;
 
 #[cfg(test)]
@@ -23,6 +24,7 @@ pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel, Transfo
 pub use builtin::known_fields;
 pub use error::RuntimePipelineError;
 pub use ports::{PortError, ProfileContentSource, ScriptRunner};
+pub use script_error::{ScriptExecutionError, ScriptOperation};
 
 use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 
@@ -177,8 +179,9 @@ impl LogSink {
 }
 
 /// Shared transform application (scoped / composition / global). Lenient by
-/// design: every failure passes the config through and logs (spec D7). The
-/// `TransformKind::Overlay` placeholder on defensive paths is display-only —
+/// design: ordinary failures pass the config through and log (spec D7); missing
+/// engines reject the pipeline. The `TransformKind::Overlay` placeholder on
+/// defensive paths is display-only —
 /// `node_key()` drops the kind.
 #[tracing::instrument(skip_all, fields(transform_id = ?transform_id))]
 pub(crate) fn apply_transform(
@@ -187,20 +190,20 @@ pub(crate) fn apply_transform(
     runner: &dyn ScriptRunner,
     transform_id: &ProfileId,
     current: &Arc<ConfigValue>,
-) -> (Arc<ConfigValue>, TransformKind, Vec<StepLogEntry>, bool) {
+) -> Result<(Arc<ConfigValue>, TransformKind, Vec<StepLogEntry>, bool), RuntimePipelineError> {
     let mut entries = Vec::new();
 
     let Some(item) = profiles.items.get(transform_id) else {
         entries.push(StepLogEntry::error(format!(
             "transform {transform_id} not found, passthrough"
         )));
-        return (current.clone(), TransformKind::Overlay, entries, true);
+        return Ok((current.clone(), TransformKind::Overlay, entries, true));
     };
     let ProfileDefinition::Transform { transform } = &item.definition else {
         entries.push(StepLogEntry::error(format!(
             "profile {transform_id} is not a transform, passthrough"
         )));
-        return (current.clone(), TransformKind::Overlay, entries, true);
+        return Ok((current.clone(), TransformKind::Overlay, entries, true));
     };
 
     let kind = transform.kind();
@@ -211,15 +214,15 @@ pub(crate) fn apply_transform(
             entries.push(StepLogEntry::error(format!(
                 "read transform {transform_id} source at {path} failed, passthrough: {error}"
             )));
-            return (current.clone(), kind, entries, true);
+            return Ok((current.clone(), kind, entries, true));
         }
     };
 
-    match transform {
+    Ok(match transform {
         TransformDefinition::Overlay(_) => match parse_config_document(&text) {
             Ok(document) => {
                 let (next, failed) =
-                    overlay::apply_overlay(&document, (**current).clone(), runner, &mut entries);
+                    overlay::apply_overlay(&document, (**current).clone(), runner, &mut entries)?;
                 (Arc::new(next), kind, entries, failed)
             }
             Err(message) => {
@@ -233,17 +236,19 @@ pub(crate) fn apply_transform(
             match runner.run(script.runtime, &text, current, &mut entries) {
                 Ok(next) => (Arc::new(next), kind, entries, false),
                 Err(error) => {
+                    let error = error::ordinary_script_error(error)?;
                     // Parity: enhance/utils.rs:118 — error log + passthrough.
                     entries.push(StepLogEntry::error(error.to_string()));
                     (current.clone(), kind, entries, true)
                 }
             }
         }
-    }
+    })
 }
 
 /// Executes the full pipeline for one target (spec §7.1 table + shared tail).
-/// Strict on structural failures, lenient on transform failures (spec D7).
+/// Rejects structural failures and missing engines; ordinary transform failures
+/// remain lenient (spec D7).
 pub fn execute(
     inputs: &RuntimePipelineInputs<'_>,
     content: &dyn ProfileContentSource,
@@ -306,7 +311,7 @@ pub fn execute(
     // diffing the trees.
     for (index, transform_id) in inputs.profiles.global_transforms.iter().enumerate() {
         let (next, kind, entries, failed) =
-            apply_transform(inputs.profiles, content, runner, transform_id, &working);
+            apply_transform(inputs.profiles, content, runner, transform_id, &working)?;
         let tag = OperatorTag::GlobalTransform {
             selected_profile_id: selected.clone(),
             transform_profile_id: transform_id.clone(),
@@ -371,6 +376,7 @@ pub fn execute(
         let next = match result {
             Ok(value) => Arc::new(value),
             Err(error) => {
+                let error = error::ordinary_script_error(error)?;
                 // Parity: builtin errors are swallowed with a log (mod.rs:136-141),
                 // now retained instead of discarded (spec §13 #7).
                 entries.push(StepLogEntry::error(error.to_string()));

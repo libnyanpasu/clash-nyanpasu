@@ -95,8 +95,41 @@ is the plan for the next stage:
   composition root. The router form is LuCI → CLI → server.
 - **RPC targets** are Tauri IPC (the full desktop surface), WebUI over HTTP
   (an explicit, restricted allowlist) and the CLI over a local socket (a
-  separate explicit allowlist). A command that needs a shell capability is
-  registered only by a shell that provides it.
+  separate explicit allowlist). Planned E1a keeps known commands registered:
+  missing required capabilities return structured `unsupported`; only unknown
+  names return `unknown_method`. Capability metadata is not per-call authority.
+- **Planned RPC packages** separate `nyanpasu-rpc-protocol` (neutral wire values
+  and receiving DTOs over approved foundation values, including D2e runtime-values)
+  from `nyanpasu-rpc` (thin application adapter over core). Protocol forbids GUI,
+  CORE_FAMILY and IMPLEMENTATION; foundation/core/implementation crates cannot
+  depend on the RPC adapter. The CLI links protocol/local-client, never the
+  registry/server/core-family/implementation/GUI production closure; foundation
+  values through protocol remain allowed. E2 moves the registry, event bus and
+  C2f audit kernel and neutral production `TracingRpcAuditSink` together.
+  Observations publish to the bus; an injected synchronous native sink preserves
+  window targeting/errors, while SSE/local use bounded asynchronous receivers
+  with lag/resync. There is no migrated `listen_any` feedback bridge.
+  Forwarders acquire subscriptions before reconciliation/stream/listener activation.
+  E2a first closes shared command signatures; protocol owns the shared icon-mode
+  value, while asset access remains shell functions. Local subscription control
+  supplies initial snapshots and lag resets only for full-value configuration,
+  core, service, app-update and core-log status events; other event identities
+  are excluded from E3 local subscriptions. The command allowlist is unchanged;
+  connection details remain a separate demand stream. Successful late resource results are
+  closed promptly; unconfirmed Service log opens rely on the existing service
+  lease because no returned ID is available (design V-61).
+  All E cards follow D2 → D3 → D4 → A2b, then E1a → E2 → E3 → E1b → E4. E3 adds negotiated local JSON framing on Unix and Windows,
+  connection-owned resources and INFO audit through the same kernel. Fatal
+  panics remain fatal; a dedicated client transport task owns each connection,
+  so dropping a call future cannot desynchronize partial IO. A timeout/error
+  invalidates the connection without cancelling owner work or retrying mutations.
+- **Planned server composition** installs a neutral process panic policy before
+  any tasks, owns one long-lived client, keeps shared effects
+  and neutral sinks, and omits optional presentation capabilities. It injects
+  `RefuseElevation` into service control, DNS flush and binary installation.
+  This closes those paths only in the separate server; embedded desktop HTTP
+  retains the desktop policy. E5/OpenWrt and LAN ticket login remain paused.
+  The executable plan is [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分).
 - **The core package family** keeps facade, application and control as modules
   in `nyanpasu-core`, above migration, owner-support, observers and updater.
   D1 delivered `nyanpasu-state-engine` as a core-family leaf: among parent-workspace

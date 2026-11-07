@@ -82,22 +82,23 @@ more RPC targets. Only a shell constructs `NyanpasuClient`.
 
 ### RPC targets
 
-The RPC layer serves three targets. Each command declares which targets expose
+The planned RPC layer serves three targets; HEAD currently serves Tauri IPC and HTTP. Each command declares which targets expose
 it and which shell capabilities it needs.
 Every dispatched call passes one audit seam in the RPC layer, whatever the
 transport. It records metadata only (transport, command, caller, duration and
 outcome), never payloads; the shell decides where the records go.
-E2 moves `dispatch_audited` and its injected synchronous sink port with the
-registry into `nyanpasu-rpc`. E3's local socket/CLI enters the same kernel at INFO,
+E2 moves `dispatch_audited`, its injected synchronous sink port and the neutral
+production `TracingRpcAuditSink` with its level/secret-exclusion tests into
+`nyanpasu-rpc`; both shells reuse this implementation. E3's local socket/CLI enters the same kernel at INFO,
 as HTTP does; Tauri IPC stays at DEBUG regardless of outcome. Direct HTTP archive
 and subscription establishment also enter this kernel, without auditing frames
 or retaining streams.
 
-| Target | Transport                                                        | Caller                              | Exposed commands                                                                                                                                            | Authorization                                                                                           |
-| ------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Tauri  | Tauri IPC                                                        | Desktop webview                     | All desktop commands, including those that need shell capabilities                                                                                          | Process boundary                                                                                        |
-| WebUI  | HTTP and SSE, loopback, per-start credential, Host/Origin checks | Browser                             | Explicit, reviewed allowlist (`rpc(http)` today: 104 of 161 declarations). No OS integration, elevation, desktop-only server controls or shell capabilities | Credential and session cookie, as in [Unified RPC](../development/rpc.md)                               |
-| CLI    | Local socket (Unix socket, Windows named pipe)                   | `nyanpasu-cli`, and LuCI through it | Explicit allowlist (working name `rpc(local)`): administrative operations a headless host can perform; no presentation capabilities                         | OS permissions on the socket (owner and mode, pipe ACL); LuCI applies rpcd ACLs before invoking the CLI |
+| Target | Transport                                                        | Caller                              | Exposed commands                                                                                                                                                                                                      | Authorization                                                                                           |
+| ------ | ---------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Tauri  | Tauri IPC                                                        | Desktop webview                     | All desktop commands, including those that need shell capabilities                                                                                                                                                    | Process boundary                                                                                        |
+| WebUI  | HTTP and SSE, loopback, per-start credential, Host/Origin checks | Browser                             | Explicit, reviewed allowlist (`rpc(http)` at `b70bb66d7`: 104 of 163 declarations across cfg branches). Direct privileged commands stay restricted; indirect desktop service paths remain the documented O-5/V-19 gap | Credential and session cookie, as in [Unified RPC](../development/rpc.md)                               |
+| CLI    | Local socket (Unix socket, Windows named pipe)                   | `nyanpasu-cli`, and LuCI through it | Explicit allowlist (working name `rpc(local)`): administrative operations a headless host can perform; no presentation capabilities                                                                                   | OS permissions on the socket (owner and mode, pipe ACL); LuCI applies rpcd ACLs before invoking the CLI |
 
 Command exposure and shell capabilities:
 
@@ -105,8 +106,9 @@ Command exposure and shell capabilities:
   explicit opt-ins, each reviewed for that caller; one does not imply the other.
 - A command that needs a shell capability (clipboard, window identity, a
   webview Channel, native dialogs, notifications, elevation consent) declares
-  it. A shell registers such a command only if it provides the capability.
-  Another target receives a structured unsupported error from the registry,
+  it. Known commands remain registered when a shell lacks a required capability.
+  Missing capability or target opt-in returns structured `unsupported`; only an
+  unknown command name returns `unknown_method`,
   never a silent no-op.
 - Owner identity stays transport-neutral (`RpcOwner`): a Tauri window, an HTTP
   session cookie, or a local-socket connection.
@@ -115,29 +117,35 @@ Command exposure and shell capabilities:
 
 RPC packages:
 
-| Package (planned)       | Owns                                                                                                        | Depends on                                |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `nyanpasu-rpc-protocol` | Command names, request/response types, structured `RpcError`, event names, exposure and capability metadata | Config and contracts, not core            |
-| `nyanpasu-rpc`          | Neutral command implementations and registry over `NyanpasuClient`, neutral event bus                       | Core and protocol; not Tauri              |
-| HTTP (WebUI) transport  | API-only router with optional static assets, SSE, credential and Host/Origin checks                         | `nyanpasu-rpc`                            |
-| Local-socket transport  | Server and client sides behind separate features; evaluate reusing the `nyanpasu-local-channel` framing     | Protocol; server side also `nyanpasu-rpc` |
-| Tauri IPC binding       | Stays in `backend/tauri`                                                                                    | `nyanpasu-rpc`                            |
+| Package (planned)       | Owns                                                                                                               | Depends on                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `nyanpasu-rpc-protocol` | Command names, request/response types, structured `RpcError`, event names, exposure and capability metadata        | Approved foundation values, including D2e runtime-values; no GUI, CORE_FAMILY or IMPLEMENTATION |
+| `nyanpasu-rpc`          | Neutral command implementations and registry over `NyanpasuClient`, neutral event bus                              | Core and protocol; not Tauri                                                                    |
+| HTTP (WebUI) transport  | API-only router with optional static assets, SSE, credential and Host/Origin checks                                | `nyanpasu-rpc`                                                                                  |
+| Local-socket transport  | Negotiated length-prefixed JSON; server/client features separate; reuse local-channel endpoint security techniques | Protocol; server side also `nyanpasu-rpc`                                                       |
+| Tauri IPC binding       | Stays in `backend/tauri`                                                                                           | `nyanpasu-rpc`                                                                                  |
 
-The current machinery blocks this in five places:
+The machinery at `b70bb66d7` blocks this in five places:
 
 - `CommandEntry` holds a `TauriRpcHandler` typed over `AppHandle`, `Window` and
-  `Webview` (`backend/tauri/src/unified_rpc.rs:98-99`), so the registry cannot
+  `Webview` (`backend/tauri/src/unified_rpc.rs:249-255`), so the registry cannot
   leave the Tauri crate.
 - `nyanpasu-macro` always emits a Tauri handler next to the HTTP handler
-  (`backend/nyanpasu-macro/src/unified_command.rs:190-274`). It needs a neutral
+  (`backend/nyanpasu-macro/src/unified_command.rs:176-279`). It needs a neutral
   declaration with per-transport wrappers and per-target opt-ins.
-- The 161 command declarations live in `backend/tauri/src/ipc.rs`; 16 of them
+- The 163 command declarations (160 distinct names across cfg branches) live in `backend/tauri/src/ipc.rs`; 16 of them
   inject `AppHandle` and are desktop-only.
 - The HTTP server refuses to start without frontend assets
   (`backend/tauri/src/server/debug_http.rs:138-141`), so there is no API-only
   mode.
 - HTTP events are bridged from Tauri events and named by Tauri-Specta types
-  (`backend/tauri/src/unified_rpc.rs:28-71`).
+  (`backend/tauri/src/unified_rpc.rs:173-215`).
+
+Phase E is planned in [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分). The neutral protocol owns complete wire/receiving closure, not every domain definition: canonical foundation values remain in place; explicit receiving projections handle skipped operational sources. Error downcasts belong in the registry. Core/foundation/implementation crates cannot depend on `nyanpasu-rpc`; the registry cannot depend on implementation crates. CLI production closure excludes registry, server, CORE_FAMILY, IMPLEMENTATION and GUI, while foundation values through protocol are allowed.
+
+E3 requires version/features negotiation before dispatch, strictly increasing never-reused connection IDs, bounded queues/resource tables, acknowledged connection-owned subscriptions and server-generated transport-tagged owners. Unix sockets and Windows named pipes are both acceptance platforms. A dedicated transport task owns the client connection; dropping a call future cannot cancel partial IO. Timeouts/transport failures close the connection, report unknown outcome and never retry mutations automatically. Successful late resource-producing completions register returned IDs and promptly close results after disconnect, including App/Service log sessions. Unconfirmed Service opens whose upstream reply is lost or exceeds the five-second timeout have no ID and rely on the existing 45-second session lease without renewal (V-61); runtime service-protocol changes remain out of scope. All transports preserve fatal panics; no JoinError-to-RpcError conversion. The bus delivers native events synchronously through an injected sink, preserving single-window/type/all-window targeting and missing-window errors. SSE/local receivers are bounded with lag/resync; source order is preserved without a global causal order. Forwarders subscribe synchronously before reconciliation, stream activation and listener admission, after client owners are constructed. Migrated events no longer use a Tauri `listen_any` bridge.
+
+The maintainer chose selective adaptation of keiko233's POC (`4a4a3a0d3`): macro split, command grouping, bus-first forwarding, API-only listener and small CLI. Server assembly, connection lifecycle, refusal and audit integration are rebuilt against B–D. Fake effect substitutes and panic conversion are rejected. Durable stop, host-bound core and new lifecycle commands need separate behavior cards; E5 and LAN ticket login stay paused.
 
 ### Core package family
 
@@ -368,7 +376,8 @@ Known gaps against the target ownership:
   compensation (`client/application_workflow/tcc.rs`). C2 adds no per-call
   permission context or second client. The separately assembled server (E4)
   must inject the refusing policy and verify that all these paths cannot show
-  an authorization dialog.
+  an authorization dialog. This does not change the embedded desktop WebUI
+  policy or introduce per-call authority.
 - Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).
@@ -415,20 +424,27 @@ Part 24 (M10) documents the delivered layout. Review of that PR recorded the own
 correction above
 ([comment](https://github.com/libnyanpasu/clash-nyanpasu/pull/6108#issuecomment-6545500519)).
 
+Planned E2a uses schema-only Specta collection, retaining only `call_rpc` in the Tauri transport builder and byte-identical generated files. Its complete 104-command HTTP disposition table preserves host behavior through injected ports, including Tauri executable resolution and pure icon/file queries. E1b explicitly projects and decodes `CoreAgentSkill` as well as runtime values.
+
+Planned E3 shares one default endpoint per user/app data directory across desktop and server; the first binder owns it, a second live binder fails, and CLI may use `--endpoint`. Unix only reclaims a valid private-directory user-owned socket on connect refused; Windows uses first-instance exclusivity without stale cleanup. E3b defines version/features, canonical JSON and subscribe/unsubscribe/lag ordering. Planned E4 keeps the current Redb log store and observers fallback, and installs a neutral process panic policy before tasks start. HTTP/local/background-owner subprocess panic tests require non-zero exit with original panic evidence and no RPC-error conversion. These are acceptance requirements, not delivered capabilities.
+
+Round-2 refinement remains planned: E2a moves the four shared HTTP response definitions before RPC extraction, with the icon-mode value owned by protocol and asset functions owned by the shell. E2b includes runtime-values unconditionally. E3b now retains only full-value configuration/core/service status, app-update state when available, and core-log status, with an initial snapshot and fresh reset after local lag. The separate connection-detail contract is unchanged. All other event identities are excluded from E3 local subscriptions. Real-connection reset tests cover only those five identities; the thirteen-command allowlist is unchanged. O-46/V-63 defer invalidation/storage recovery to a separate reviewed card with round-3 findings 1–3 as acceptance criteria. E4a's real OS refusal-adapter tests use a narrowly scoped, default-off OS test-support feature enabled only by the server dev-dependency; production feature closure excludes it. Decisions O-40–O-45 and deviations V-56–V-62 record these changes and the Service-open lease limitation.
+
 ## Next stage
 
-Each step is one reviewable PR or a short stack. Each leaves a buildable tree,
-migrates its desktop callers in the same change and leaves no old-path
-re-export shims. The [core package split
-spec](../spec/2026-11-03-core-package-split/design.md) details phases A–D and A2b as
-executable tasks; E remains at milestone granularity. After phase A, phase B and E1a
-can proceed as independent stacks; in phase C, OS integration (C2) waits for
-B4, and the desktop move (C3) waits for the presentation seam from C1. D2 waits
-for B and C; the complete protocol (E1b) waits for D2, so the server and CLI
-wait for C, D2 and E3. This documentation refinement is PR-D0; implementation
-stacks PR-D1 → PR-D2 → PR-D3 → PR-D4 → PR-A2b. A2b has no code dependency on D;
-it lands after the D4 value/error move so its new pipeline variant is added once
-against the final error ownership. E is not refined by this change.
+Each card is one buildable commit; a PR may contain an ordered short stack.
+Callers migrate together without old-path shims, and moves never include behavior
+changes. [Tasks §4](../spec/2026-11-03-core-package-split/tasks.md#4-a2b-与-phase-d-的-pr-划分)
+retains PR-D1 → PR-D2 → PR-D3 → PR-D4 → PR-A2b. A2b lands after D4 to add its
+pipeline variant against final value ownership, not because it depends on D.
+[Tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分)
+fixes the remaining order: PR-D2 → PR-D3 → PR-D4 → PR-A2b → PR-E1 → PR-E2 →
+PR-E3 → PR-E4 → PR-E5 → PR-E6 → PR-E7 → PR-E8. No E card lands before D/A2b;
+their consumer lists remain unchanged. E assumes D2e runtime-values exists.
+PR-E4/E5 complete DTO receiving closure after E3e; PR-E6–E8 assemble and verify
+the server/CLI after E1b. Every E package and feature updates Cargo,
+dependency/static policy tests and both musl target lists. These E cards remain
+planned; their Rust/platform verification has not been run by this docs change.
 
 **Phase A: break the cycles and stop the leak**
 
@@ -473,14 +489,14 @@ the unavailable Docker daemon. D2 remains planned.
 
 **Phase E: RPC targets and shells**
 
-| Step | Change                                                                                                                                           | Done when                                                                                                                                                                               |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E1a  | Give the macro neutral declarations, per-target opt-ins and capability metadata; start `nyanpasu-rpc-protocol` with names and the error envelope | Command metadata, errors and event names have no Tauri type; bindings regenerate unchanged                                                                                              |
-| E1b  | Move the complete request and response DTOs into the protocol after D2                                                                           | The protocol's type closure does not reach the core family                                                                                                                              |
-| E2   | Extract `nyanpasu-rpc` with the neutral registry and event bus; keep the Tauri IPC binding in the shell                                          | No Tauri type in registration or in the audit seam; Tauri events become one subscriber                                                                                                  |
-| E3   | Add the API-only WebUI transport and the local-socket transport                                                                                  | WebUI and CLI allowlists are enforced by the registry; owner and error behavior match across targets                                                                                    |
-| E4   | Assemble `nyanpasu-server`, then `nyanpasu-cli`                                                                                                  | One long-lived server owns `NyanpasuClient` and injects the refusing elevation policy, closing the remaining #6157 paths; the CLI links no core crate and preserves structured outcomes |
-| E5   | OpenWrt, after explicit resume                                                                                                                   | LuCI → CLI → server authorization, procd lifecycle, packaging and hardware acceptance verified separately                                                                               |
+| Step | Change                                                                                               | Done when                                                                                                                                       |
+| ---- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1a  | Neutral/native macro, protocol envelope, independent targets and capability admission; tasks E1a-a–d | Missing required capability is unsupported, not unknown; existing bindings and HTTP behavior unchanged                                          |
+| E1b  | Complete downward wire/receiving closure after D2e and E3e; tasks E1b-a/b                            | Canonical foundation values reused; skipped operational sources not fabricated; typed client has no core-family dependency                      |
+| E2   | Move registry/commands/HTTP/audit and invert event publication; tasks E2a–c                          | No Tauri types in registry/kernel; one audit per admission; bus-first delivery without feedback                                                 |
+| E3   | API-only HTTP and negotiated Unix/Windows local RPC; tasks E3a–e                                     | Unchanged HTTP middleware; target/capability refusal; owner cleanup, INFO audit, bounded queues, timeout invalidation and fatal panic           |
+| E4   | Refusing composition, resident server, CLI and session integration; tasks E4a–d                      | One live client; indirect privileged paths refused only in separate server; production dependency gates and real consecutive CLI processes pass |
+| E5   | OpenWrt and LAN ticket login remain paused                                                           | E4 complete and explicit user resume, then separate authorization/procd/package/hardware cards                                                  |
 
 Extend `pnpm run lint:backend-boundaries` as each crate appears, so the
 direction rules in [Target ownership](#target-ownership) stay enforced: no

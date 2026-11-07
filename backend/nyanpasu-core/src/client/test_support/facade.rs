@@ -4,29 +4,19 @@ use super::{
     temp_config_path, test_backup_deps, test_materialization_port, test_typed_config_clients,
     unused_test_adapters,
 };
-#[cfg(unix)]
-use crate::state::profiles::ports::ProfileMaterializationPort;
-#[cfg(test)]
-use crate::state::profiles::ports::SubscriptionFetcher;
 use crate::{
     actor_v2::test_support::test_v2_clients,
     client::{
-        NoopSystemDnsCache, NyanpasuClient, RuntimePaths, SessionPortResolver, SystemDnsCache,
+        NyanpasuClient, RuntimePaths, SessionPortResolver,
         application::ApplicationClient,
-        bundle_metadata::BundleMetadata,
         clash_config::ClashConfigClient,
-        core_lifecycle,
-        direct_egress::DirectEgressProbe,
         effects,
         host_adapters::ClientHostAdapters,
         hotkey, logs, profiles,
         session_state::SessionStateClient,
-        system_proxy::ports::{MockOsProxyPort, OsProxyPort},
+        test_support::workflow::{Installer, NoopSystemDnsCache},
     },
-    state::profiles::{
-        NewProfileRequest,
-        ports::{MockProfileFsPort, MockSubscriptionFetcher},
-    },
+    state::profiles::NewProfileRequest,
     utils::test_support::test_paths,
 };
 use nyanpasu_config::{
@@ -35,6 +25,17 @@ use nyanpasu_config::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
         ProfileDefinition, ProfileMetadata, ProfileSource,
     },
+};
+#[cfg(unix)]
+use nyanpasu_contracts::profiles::ports::ProfileMaterializationPort;
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::SubscriptionFetcher;
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{DirectEgressProbe, MockDirectEgressProbe},
+    profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
+    system_dns::SystemDnsCache,
+    system_proxy::{MockOsProxyPort, OsProxyPort},
 };
 use std::{path::PathBuf, sync::Arc};
 use tempfile::TempDir;
@@ -61,8 +62,8 @@ pub(crate) async fn test_client_with_ports(
         session_state,
         clash_config,
         system_dns,
-        Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(MockDirectEgressProbe::new()),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         os_proxy,
     )
     .await
@@ -75,7 +76,7 @@ pub(crate) async fn test_client_from_typed_clients(
     clash_config: ClashConfigClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
-    geo_index: Arc<dyn crate::geo::CountryIndexSource>,
+    geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
     os_proxy: Arc<dyn OsProxyPort>,
 ) -> NyanpasuClient {
     let profiles = profiles::ProfilesClient::new(
@@ -99,7 +100,7 @@ pub(crate) async fn test_client_from_typed_clients(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         logs::test_setup(
             test_paths(dir.path(), dir.path().join("data"))
@@ -116,7 +117,7 @@ pub(crate) async fn test_client_from_typed_clients(
         dir.path().join("profiles"),
         PathBuf::new(),
         backup_paths,
-        storage,
+        Arc::new(storage),
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
         ClientHostAdapters {
             runtime_build: Arc::new(
@@ -128,6 +129,7 @@ pub(crate) async fn test_client_from_typed_clients(
             ..unused_test_adapters(&test_paths(dir.path(), dir.path().join("data")))
         },
         Arc::new(crate::client::event_sink::NoopUiEventSink),
+        Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
         None,
         None,
         core_v2,
@@ -136,11 +138,11 @@ pub(crate) async fn test_client_from_typed_clients(
         direct_egress,
         geo_index,
         os_proxy,
-        Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-        Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+        Arc::new(Installer::succeeding()),
+        Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
         Arc::new(effects::ports::NoopApplicationEffects),
-        Arc::new(hotkey::ports::MockWindowControl::new()),
-        Arc::new(crate::client::test_support::AnyAccelerator),
+        Some(Arc::new(hotkey::ports::MockWindowControl::new())),
+        Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
@@ -162,7 +164,7 @@ pub(crate) async fn test_client_with_direct_egress(
         clash_config,
         Arc::new(NoopSystemDnsCache),
         direct_egress,
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
     )
     .await
@@ -197,7 +199,7 @@ pub async fn test_client_with_profile_ports(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         logs::test_setup(
             test_paths(dir.path(), dir.path().join("data"))
@@ -214,23 +216,24 @@ pub async fn test_client_with_profile_ports(
         paths.app_profiles_dir().into_std_path_buf(),
         PathBuf::new(),
         backup_paths,
-        storage,
+        Arc::new(storage),
         RuntimePaths::from_resolver(&paths),
         host_adapters,
         Arc::new(crate::client::event_sink::NoopUiEventSink),
+        Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
         None,
         None,
         core_v2,
         service,
         Arc::new(NoopSystemDnsCache),
-        Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(MockDirectEgressProbe::new()),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
-        Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-        Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+        Arc::new(Installer::succeeding()),
+        Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
         Arc::new(effects::ports::NoopApplicationEffects),
-        Arc::new(hotkey::ports::MockWindowControl::new()),
-        Arc::new(crate::client::test_support::AnyAccelerator),
+        Some(Arc::new(hotkey::ports::MockWindowControl::new())),
+        Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
@@ -309,7 +312,7 @@ pub async fn test_client_with_materialization(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         logs::test_setup(
             test_paths(dir.path(), dir.path().join("data"))
@@ -326,7 +329,7 @@ pub async fn test_client_with_materialization(
         dir.path().join("profiles"),
         PathBuf::new(),
         backup_paths,
-        storage,
+        Arc::new(storage),
         RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
         ClientHostAdapters {
             runtime_build: Arc::new(
@@ -338,19 +341,20 @@ pub async fn test_client_with_materialization(
             ..unused_test_adapters(&test_paths(dir.path(), dir.path().join("data")))
         },
         Arc::new(crate::client::event_sink::NoopUiEventSink),
+        Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
         None,
         None,
         core_v2,
         service,
         Arc::new(NoopSystemDnsCache),
-        Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
-        Arc::new(crate::geo::NoopCountryIndexSource),
+        Arc::new(MockDirectEgressProbe::new()),
+        Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         Arc::new(MockOsProxyPort::new()),
-        Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-        Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+        Arc::new(Installer::succeeding()),
+        Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
         Arc::new(effects::ports::NoopApplicationEffects),
-        Arc::new(hotkey::ports::MockWindowControl::new()),
-        Arc::new(crate::client::test_support::AnyAccelerator),
+        Some(Arc::new(hotkey::ports::MockWindowControl::new())),
+        Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),

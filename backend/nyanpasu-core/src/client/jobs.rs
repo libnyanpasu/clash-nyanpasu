@@ -34,9 +34,11 @@ pub async fn start(
     let mut service = match start_service(&path, capture.clone()).await {
         Err(error) if error.unusable_journal() => {
             let journal = path.clone();
-            crate::utils::blocking::join(
-                tokio::task::spawn_blocking(move || crate::corrupt::preserve(&journal, &error))
-                    .await,
+            nyanpasu_owner_support::blocking::join(
+                tokio::task::spawn_blocking(move || {
+                    nyanpasu_persistence::preserve(&journal, &error)
+                })
+                .await,
             )
             .context(PreserveStoreSnafu)?;
             tracing::warn!(path = %path.display(), action = "reset_jobs_journal",
@@ -67,7 +69,7 @@ pub async fn start(
 async fn start_service(path: &Path, capture: LogCapture) -> Result<JobsService, Error> {
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
     let store_path = path.to_owned();
-    let store = crate::utils::blocking::join(
+    let store = nyanpasu_owner_support::blocking::join(
         tokio::task::spawn_blocking(move || open_store(&store_path)).await,
     )?;
     let mut limits = Limits::default();
@@ -83,8 +85,8 @@ async fn start_service(path: &Path, capture: LogCapture) -> Result<JobsService, 
 
 fn open_store(path: &Path) -> Result<RedbJobStore, Error> {
     use crate::corrupt;
-    match corrupt::retry_io(|| std::fs::symlink_metadata(path)) {
-        Ok(metadata) if !metadata.is_file() || corrupt::is_link(&metadata) => {
+    match nyanpasu_persistence::retry_io(|| std::fs::symlink_metadata(path)) {
+        Ok(metadata) if !metadata.is_file() || nyanpasu_persistence::is_link(&metadata) => {
             return NotAFileSnafu { path }.fail();
         }
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
@@ -92,7 +94,7 @@ fn open_store(path: &Path) -> Result<RedbJobStore, Error> {
         }
         _ => {}
     }
-    corrupt::retry(
+    nyanpasu_persistence::retry(
         || RedbJobStore::open(path),
         |error| corrupt::error_io(error) == Some(IoFailure::Transient),
     )
@@ -153,7 +155,7 @@ pub enum Error {
     #[snafu(display("failed to start jobs owner"))]
     StartOwner { source: nyanpasu_jobs::Error },
     #[snafu(display("failed to preserve the unusable jobs journal"))]
-    PreserveStore { source: crate::corrupt::Error },
+    PreserveStore { source: nyanpasu_persistence::Error },
 }
 
 impl Error {

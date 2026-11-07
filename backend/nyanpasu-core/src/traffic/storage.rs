@@ -1,13 +1,20 @@
 //! Desktop file opener. Only startup may discard incompatible/corrupted statistics;
 //! recovery always reopens the existing dataset, so it can restore its surviving state.
-use super::TrafficStorage;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use nyanpasu_observers::traffic::{
+    SpawnError, TrafficArgs, TrafficClient, TrafficOwnerFactory, TrafficStartArgs, TrafficStorage,
+};
 use nyanpasu_traffic::{TrafficDb, store::Opened};
 use nyanpasu_tsdb::{
     ErrorKind, OpenError, Profile, RecoveryError,
     storage::{StorageError, redb::RedbStorage},
 };
 use nyanpasu_utils::redb_ext::{RedbFailure, find_failure};
-use std::path::{Path, PathBuf};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub struct TrafficFileStorage {
     path: PathBuf,
@@ -75,6 +82,33 @@ impl TrafficFileStorage {
         self.initialize_store(profile)
     }
 }
+
+#[async_trait::async_trait]
+impl TrafficOwnerFactory for TrafficFileStorage {
+    async fn spawn(
+        self: Arc<Self>,
+        args: TrafficStartArgs,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<TrafficClient, SpawnError> {
+        TrafficClient::spawn(
+            TrafficArgs::<RedbStorage> {
+                storage: self,
+                profile: args.profile,
+                profiles: args.profiles,
+                retention: args.retention,
+                clock: args.clock,
+                frames: args.frames,
+                geo: args.geo,
+                local_source: args.local_source,
+            },
+            shutdown,
+            tasks,
+        )
+        .await
+    }
+}
+
 impl TrafficStorage<RedbStorage> for TrafficFileStorage {
     fn open(&self) -> Result<RedbStorage, StorageError> {
         RedbStorage::open(&self.path, self.cache_bytes)

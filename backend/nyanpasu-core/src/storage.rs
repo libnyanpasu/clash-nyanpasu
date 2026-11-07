@@ -1,3 +1,8 @@
+use nyanpasu_contracts::BoxedCause;
+use nyanpasu_migration::{
+    backup::StorageSnapshot,
+    modules::storage::{HotkeyStore, HotkeyStoreOpener},
+};
 use nyanpasu_utils::{
     io::IoFailure,
     redb_ext::{RedbFailure, find_failure},
@@ -7,7 +12,7 @@ use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use snafu::{ResultExt as _, Snafu};
 use specta::Type;
-use std::{fs, ops::Deref, result::Result as StdResult, sync::Arc};
+use std::{fs, ops::Deref, path::Path, result::Result as StdResult, sync::Arc};
 use tokio::sync::broadcast::{self, Receiver, Sender, error::RecvError};
 
 /// What a storage operation failed with. Library causes stay in `source`
@@ -32,7 +37,7 @@ pub enum StorageOperationError {
     #[snafu(display("failed to preserve the unusable database"))]
     PreserveDatabase {
         #[serde(skip)]
-        source: crate::corrupt::Error,
+        source: nyanpasu_persistence::Error,
     },
     #[snafu(display("failed to start a storage transaction"))]
     BeginTransaction {
@@ -86,6 +91,8 @@ pub enum StorageOperationError {
     },
 }
 
+const HOTKEYS_KEY: &str = "hotkeys";
+
 pub const NYANPASU_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("clash-nyanpasu");
 
 type Result<T> = StdResult<T, StorageOperationError>;
@@ -136,6 +143,43 @@ impl Storage {
             }
         }
         write_txn.commit().context(CommitTransactionSnafu)
+    }
+}
+
+impl StorageSnapshot for Storage {
+    fn export_to(&self, destination: &Path) -> StdResult<(), BoxedCause> {
+        Storage::export_to(self, destination).map_err(BoxedCause::from)
+    }
+}
+
+/// Stateless redb opener; each returned handle owns its database until dropped.
+#[derive(Debug)]
+pub struct RedbHotkeyStoreOpener;
+
+impl HotkeyStoreOpener for RedbHotkeyStoreOpener {
+    fn open(&self, path: &Path) -> StdResult<Box<dyn HotkeyStore>, BoxedCause> {
+        let storage = Storage::try_new(path).map_err(BoxedCause::from)?;
+        Ok(Box::new(storage))
+    }
+}
+
+impl HotkeyStore for Storage {
+    fn read(&self) -> StdResult<Option<Vec<String>>, BoxedCause> {
+        self.get_item::<Vec<String>>(HOTKEYS_KEY)
+            .map(|item| item.value)
+            .map_err(BoxedCause::from)
+    }
+
+    fn write(&self, hotkeys: &[String]) -> StdResult<(), BoxedCause> {
+        self.set_item(HOTKEYS_KEY, &hotkeys)
+            .map(|_| ())
+            .map_err(BoxedCause::from)
+    }
+
+    fn remove(&self) -> StdResult<(), BoxedCause> {
+        self.remove_item(HOTKEYS_KEY)
+            .map(|_| ())
+            .map_err(BoxedCause::from)
     }
 }
 
@@ -228,7 +272,7 @@ fn preserve_database(
     path: &std::path::Path,
     error: &(dyn std::error::Error + 'static),
 ) -> Result<()> {
-    let evidence = crate::corrupt::preserve(path, error).context(PreserveDatabaseSnafu)?;
+    let evidence = nyanpasu_persistence::preserve(path, error).context(PreserveDatabaseSnafu)?;
     tracing::warn!(original_path = %path.display(), evidence_path = %evidence.display(),
         error = %snafu::Report::from_error(error), action = "reset_key_value_storage",
         "resetting key-value storage discards frontend persisted state, task history, and legacy hotkey configuration");
@@ -237,7 +281,7 @@ fn preserve_database(
 
 impl StorageInner {
     fn create_and_init_database(path: &std::path::Path) -> Result<redb::Database> {
-        let db = crate::corrupt::retry(
+        let db = nyanpasu_persistence::retry(
             || redb::Database::create(path),
             |error| transient_database_error(error),
         )
@@ -262,8 +306,7 @@ impl StorageInner {
         open: impl FnMut() -> Result<redb::Database>,
         wait: impl Fn(std::time::Duration) + 'static,
     ) -> Result<Self> {
-        use crate::corrupt;
-        let metadata = match corrupt::retry_io(|| fs::symlink_metadata(path)) {
+        let metadata = match nyanpasu_persistence::retry_io(|| fs::symlink_metadata(path)) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => {
@@ -273,9 +316,12 @@ impl StorageInner {
             }
         };
         let instance = if let Some(metadata) = metadata {
-            if metadata.is_file() && !corrupt::is_link(&metadata) {
-                match corrupt::retry_with_delay(open, |error| transient_database_error(error), wait)
-                {
+            if metadata.is_file() && !nyanpasu_persistence::is_link(&metadata) {
+                match nyanpasu_persistence::retry_with_delay(
+                    open,
+                    |error| transient_database_error(error),
+                    wait,
+                ) {
                     Ok(db) => db,
                     Err(error) if confirmed_database_problem(&error) => {
                         preserve_database(path, &error)?;
@@ -427,6 +473,208 @@ pub async fn forward_storage_changes(
 mod tests {
     use super::*;
     use std::{collections::BTreeMap, sync::Barrier, thread};
+
+    fn assert_error_contract(
+        error: &(dyn std::error::Error + 'static),
+        display: &str,
+        sources: &[&str],
+    ) {
+        assert_eq!(error.to_string(), display);
+        let mut source = error.source();
+        for expected in sources {
+            let error = source.expect("the next source must be preserved");
+            assert_eq!(error.to_string(), *expected);
+            source = error.source();
+        }
+        assert!(source.is_none(), "unexpected extra source: {source:?}");
+    }
+
+    fn storage_without_table(dir: &tempfile::TempDir) -> Storage {
+        let storage = Storage::try_new(&dir.path().join("storage.db")).unwrap();
+        let transaction = storage.inner.instance.begin_write().unwrap();
+        transaction.delete_table(NYANPASU_TABLE).unwrap();
+        transaction.commit().unwrap();
+        storage
+    }
+
+    fn storage_with_incompatible_table(dir: &tempfile::TempDir) -> Storage {
+        let storage = storage_without_table(dir);
+        // A write transaction recreates a missing table, but rejects a type mismatch.
+        let transaction = storage.inner.instance.begin_write().unwrap();
+        transaction
+            .open_table(TableDefinition::<u64, u64>::new("clash-nyanpasu"))
+            .unwrap();
+        transaction.commit().unwrap();
+        storage
+    }
+
+    #[test]
+    fn backup_storage_error_contract() {
+        use nyanpasu_migration::backup::{self, BackupKind, BackupRequest, StorageSource};
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = camino::Utf8PathBuf::from_path_buf(temp.path().to_owned()).unwrap();
+        let paths =
+            nyanpasu_paths::PathResolver::with_base_dirs(root.join("config"), root.join("data"));
+        paths.create_base_dirs().unwrap();
+        let storage = Storage::try_new(paths.storage_path().as_std_path()).unwrap();
+        // Removing the table makes the real snapshot read fail inside redb.
+        let transaction = storage.inner.instance.begin_write().unwrap();
+        transaction.delete_table(NYANPASU_TABLE).unwrap();
+        transaction.commit().unwrap();
+
+        let error = backup::create_backup(&BackupRequest {
+            paths: &paths,
+            bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
+            storage: StorageSource::Live(&storage),
+            kind: BackupKind::Manual,
+            now: time::OffsetDateTime::UNIX_EPOCH,
+        })
+        .unwrap_err();
+
+        assert!(matches!(error, backup::BackupError::Storage(_)));
+        assert_error_contract(
+            &error,
+            "failed to snapshot the storage database",
+            &[
+                "failed to open the storage table",
+                "Table 'clash-nyanpasu' does not exist",
+            ],
+        );
+    }
+
+    #[test]
+    fn migration_storage_check_error_contract() {
+        use nyanpasu_migration::MigrationCheckError;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("storage.db");
+        let storage = storage_without_table(&dir);
+        // Keep the first handle alive so redb cannot lock the database again.
+        let open_error = RedbHotkeyStoreOpener.open(&path).err().unwrap();
+        let read_error = HotkeyStore::read(&storage).unwrap_err();
+        let open_display = format!("failed to open the database at {}", path.display());
+        for (source, storage_display, cause) in [
+            (
+                open_error,
+                open_display.as_str(),
+                "Database already open. Cannot acquire lock.",
+            ),
+            (
+                read_error,
+                "failed to open the storage table",
+                "Table 'clash-nyanpasu' does not exist",
+            ),
+        ] {
+            let error = MigrationCheckError::Storage {
+                path: "storage.db".into(),
+                source,
+            };
+            assert_error_contract(
+                &error,
+                "failed to read the key-value storage at storage.db",
+                &[storage_display, cause],
+            );
+        }
+    }
+
+    #[test]
+    fn migration_open_storage_error_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("storage.db");
+        let _storage = Storage::try_new(&path).unwrap();
+        let error = nyanpasu_migration::modules::storage::Error::OpenStorage {
+            source: RedbHotkeyStoreOpener.open(&path).err().unwrap(),
+        };
+        assert_error_contract(
+            &error,
+            "failed to open storage",
+            &[
+                &format!("failed to open the database at {}", path.display()),
+                "Database already open. Cannot acquire lock.",
+            ],
+        );
+    }
+
+    #[test]
+    fn migration_save_hotkeys_error_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = storage_with_incompatible_table(&dir);
+        let error = nyanpasu_migration::modules::storage::Error::SaveHotkeys {
+            source: HotkeyStore::write(&storage, &["ctrl+k".to_owned()]).unwrap_err(),
+        };
+        assert_error_contract(
+            &error,
+            "failed to save hotkeys",
+            &[
+                "failed to open the storage table",
+                "clash-nyanpasu is of type Table<u64, u64>",
+            ],
+        );
+    }
+
+    #[test]
+    fn migration_remove_hotkeys_error_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = storage_with_incompatible_table(&dir);
+        let error = nyanpasu_migration::modules::storage::Error::RemoveHotkeys {
+            source: HotkeyStore::remove(&storage).unwrap_err(),
+        };
+        assert_error_contract(
+            &error,
+            "failed to remove hotkeys",
+            &[
+                "failed to open the storage table",
+                "clash-nyanpasu is of type Table<u64, u64>",
+            ],
+        );
+    }
+
+    #[test]
+    fn migration_storage_failure_report_error_contract() {
+        use nyanpasu_migration::{
+            MigrationCheckError,
+            child_result::{Failure, FailureStage},
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let storage = storage_without_table(&dir);
+        let error = MigrationCheckError::Storage {
+            path: "storage.db".into(),
+            source: HotkeyStore::read(&storage).unwrap_err(),
+        };
+        let paths = nyanpasu_paths::PathResolver::with_base_dirs("config".into(), "data".into());
+        let report = Failure::from_error(
+            &error,
+            FailureStage::Migration,
+            &paths,
+            true,
+            crate::corrupt::error_io(&error),
+        );
+
+        assert_error_contract(
+            &report,
+            "migration child failed during Migration: failed to read the key-value storage at storage.db: failed to open the storage table: Table 'clash-nyanpasu' does not exist",
+            &[],
+        );
+        assert_eq!(
+            serde_json::to_value(&report).unwrap(),
+            serde_json::json!({
+                "stage": "migration",
+                "config_dir": "config",
+                "backups_dir": paths.backups_dir(),
+                "paths": ["storage.db"],
+                "revision": null,
+                "chain": [
+                    "failed to read the key-value storage at storage.db",
+                    "failed to open the storage table",
+                    "Table 'clash-nyanpasu' does not exist",
+                ],
+                "backup_available": true,
+                "io_failure": null,
+            }),
+        );
+    }
 
     fn open(dir: &tempfile::TempDir) -> StorageInner {
         StorageInner::try_new(&dir.path().join("storage.redb")).expect("storage should open")

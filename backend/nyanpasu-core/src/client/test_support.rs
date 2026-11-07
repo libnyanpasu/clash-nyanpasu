@@ -11,6 +11,10 @@ pub mod workflow;
 use super::{Result, runtime};
 #[cfg(test)]
 use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{ChangelogHttp, MockDirectEgressProbe, MockIconFetcher, MockNetworkDiagnostics},
+};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use camino::Utf8PathBuf;
@@ -28,29 +32,29 @@ use struct_patch::Patch as _;
 use tempfile::TempDir;
 
 use super::{
-    ClientSetupArgs, NoopSystemDnsCache, NyanpasuClient, RuntimePaths,
-    application::ApplicationClient, application_workflow, clash_config::ClashConfigClient,
-    core_lifecycle, effects, host_adapters::ClientHostAdapters, hotkey, jobs, logs,
-    session_state::SessionStateClient,
+    ClientSetupArgs, NyanpasuClient, RuntimePaths, application::ApplicationClient,
+    application_workflow, clash_config::ClashConfigClient, effects,
+    host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
 };
 use crate::{
     actor_v2::{
         endpoint::ExecutionHost,
         test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     },
-    client::{
-        bundle_metadata::BundleMetadata, core_version, direct_egress,
-        system_proxy::ports::MockOsProxyPort,
-    },
-    state::profiles::{
-        NewProfileRequest,
-        ports::{
-            CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
-        },
-    },
+    client::test_support::workflow::{Installer, NoopSystemDnsCache},
+    state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
+};
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
+use nyanpasu_contracts::{
+    core_version,
+    profiles::ports::{
+        CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
+        PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+    },
+    system_proxy::MockOsProxyPort,
 };
 
 pub struct TestControlEndpoint {
@@ -681,10 +685,10 @@ pub(super) fn seed_test_clash_config(path: impl AsRef<std::path::Path>) {
 
 /// The stamped file the clash config client loads.
 pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfig) {
-    use crate::format::Format as _;
+    use nyanpasu_persistence::format::Format as _;
 
     let mut content = Vec::new();
-    crate::migration::modules::clash_config::ClashConfigFormat::default()
+    nyanpasu_migration::modules::clash_config::ClashConfigFormat::default()
         .serialize(&mut content, config, None)
         .unwrap();
     std::fs::write(path, content).unwrap();
@@ -768,29 +772,32 @@ pub async fn test_client_args_with_endpoint(
             is_fixed_webview: false,
             release_channel: ReleaseChannel::Stable,
             sourceforge_project: None,
-            ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+            ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
         },
         host_adapters,
         logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
         paths,
-        storage,
+        storage: Arc::new(storage),
         runtime_paths,
         ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+        updater_backend_factory: Arc::new(|_| {
+            Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))
+        }),
         app_update_backend_factory: None,
         app_update_event_sink: None,
         core_v2,
         service,
         system_dns: Arc::new(NoopSystemDnsCache),
-        direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
-        geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
+        direct_egress: Arc::new(MockDirectEgressProbe::new()),
+        geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
         os_proxy: Arc::new(MockOsProxyPort::new()),
-        binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+        binary_installer: Arc::new(Installer::succeeding()),
         core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
         effects: Arc::new(effects::ports::NoopApplicationEffects),
         // A mock rather than a no-op: a test that dispatches a window
         // action without saying so should fail, not pass silently.
-        window: Arc::new(hotkey::ports::MockWindowControl::new()),
-        accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
+        window: Some(Arc::new(hotkey::ports::MockWindowControl::new())),
+        accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         traffic_store: None,
         shutdown,
         tasks,
@@ -863,7 +870,7 @@ pub fn runtime_core_spec(
 
 /// Accepts anything the shape rules already let through, so the registration
 /// tests read as the spelling under test rather than as a platform verdict.
-pub(crate) struct AnyAccelerator;
+pub struct AnyAccelerator;
 
 impl hotkey::ports::AcceleratorValidator for AnyAccelerator {
     fn validate(
@@ -905,7 +912,7 @@ impl super::debug_http::DebugHttpControl for DisabledDebugHttp {
 struct UnconfiguredChangelogHttp;
 
 #[async_trait::async_trait]
-impl super::app_update::changelog::ChangelogHttp for UnconfiguredChangelogHttp {
+impl ChangelogHttp for UnconfiguredChangelogHttp {
     async fn get_text(&self, _url: &url::Url) -> anyhow::Result<String> {
         anyhow::bail!("changelog HTTP is not configured in this fixture")
     }
@@ -916,11 +923,13 @@ pub fn test_adapters(
     runtime_build: Arc<dyn super::application_workflow::ports::RuntimeBuildPort>,
 ) -> ClientHostAdapters {
     ClientHostAdapters {
-        debug_http: Arc::new(|| {
+        icon_fetcher: Arc::new(MockIconFetcher::new()),
+        network_diagnostics: Arc::new(MockNetworkDiagnostics::new()),
+        debug_http: Some(Arc::new(|| {
             Box::pin(async {
                 Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)
             })
-        }),
+        })),
         changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
         runtime_build,
         profile_files,
@@ -949,9 +958,8 @@ pub(crate) fn unused_test_adapters(paths: &PathResolver) -> ClientHostAdapters {
 #[cfg(test)]
 pub(crate) fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
     let paths = test_paths(dir.path(), dir.path().join("data"));
-    let ports = profile_files::scripted_profile_file_ports(Arc::new(
-        crate::state::profiles::ports::MockSubscriptionFetcher::new(),
-    ));
+    let ports =
+        profile_files::scripted_profile_file_ports(Arc::new(MockSubscriptionFetcher::new()));
     let runtime_build = runtime_build::TestRuntimeBuildPort::from_profile_port(
         ports.fs.clone(),
         RuntimePaths::from_resolver(&paths),

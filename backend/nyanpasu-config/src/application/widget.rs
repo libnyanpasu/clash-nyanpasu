@@ -1,4 +1,5 @@
-use nyanpasu_widget_protocol::StatisticWidgetVariant;
+// Part of this module's public API, so consumers need not depend on the widget protocol.
+pub use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 

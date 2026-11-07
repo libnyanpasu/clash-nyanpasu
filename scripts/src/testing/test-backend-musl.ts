@@ -65,7 +65,8 @@ export async function main(args: string[]): Promise<void> {
         'toolchain_cargo=$(rustup which --toolchain nightly cargo)\n' +
         'export RUSTC=$(rustup which --toolchain nightly rustc)\n' +
         '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
-        '-p nyanpasu-core -p nyanpasu-platform --lib --tests ' +
+        '-p nyanpasu-contracts -p nyanpasu-core -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts ' +
+        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater -p nyanpasu-os --lib --tests ' +
         '--no-run --message-format=json --jobs 4',
     ],
     stdout: 'piped',
@@ -74,10 +75,20 @@ export async function main(args: string[]): Promise<void> {
   if (!build.success) throw new Error(`musl build failed (${build.code})`)
   const executables: string[] = []
   const expectedTargets = new Set([
+    'lib:nyanpasu_contracts',
     'lib:nyanpasu_core',
-    'lib:nyanpasu_platform',
-    'test:runtime_builder',
+    'lib:nyanpasu_migration',
+    'lib:nyanpasu_profile_transform',
+    'lib:nyanpasu_scripts',
+    'lib:nyanpasu_persistence',
+    'lib:nyanpasu_profile_io',
+    'lib:nyanpasu_net',
+    'lib:nyanpasu_owner_support',
+    'lib:nyanpasu_observers',
+    'lib:nyanpasu_updater',
+    'lib:nyanpasu_os',
   ])
+  const expectedCount = expectedTargets.size
   for (const line of build.stdout.toString('utf8').split('\n')) {
     if (!line.startsWith('{')) continue
     const artifact: {
@@ -101,7 +112,7 @@ export async function main(args: string[]): Promise<void> {
   }
   if (expectedTargets.size > 0) {
     throw new Error(
-      `expected three neutral crate test binaries, got ${executables.length}`,
+      `expected ${expectedCount} neutral crate test binaries, got ${executables.length}`,
     )
   }
   for (const executable of executables) {
@@ -123,9 +134,7 @@ export async function main(args: string[]): Promise<void> {
       throw new Error(`router tests failed (${result.code}): ${executable}`)
     }
   }
-  console.log(
-    `Neutral application/platform tests passed in ${router} (${platform}).`,
-  )
+  console.log(`Neutral backend tests passed in ${router} (${platform}).`)
 }
 
 if (import.meta.main) {

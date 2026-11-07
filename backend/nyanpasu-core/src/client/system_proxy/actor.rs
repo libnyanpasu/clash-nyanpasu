@@ -19,11 +19,13 @@ use super::{
         ApplyAutoLaunchSnafu, ApplyPacKeepingStaleSnafu, ApplyPacSnafu, ApplyProxySnafu,
         PacFallback, RestorePacSnafu, RestoreProxySnafu, ShutDownSnafu, SystemProxyError,
     },
-    ports::{AutoLaunchPort, OsProxyConfig, OsProxyPort, PacError, PacPort},
 };
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
+};
+use nyanpasu_contracts::system_proxy::{
+    AutoLaunchPort, OsProxyConfig, OsProxyPort, PacError, PacPort,
 };
 
 /// The core only ever listens on loopback, so the proxy this app installs
@@ -805,5 +807,5 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    crate::utils::blocking::join(tokio::task::spawn_blocking(work).await)
+    nyanpasu_owner_support::blocking::join(tokio::task::spawn_blocking(work).await)
 }

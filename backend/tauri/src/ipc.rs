@@ -10,23 +10,28 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_contracts::{
+    net::{DirectEgress, StunServerTest},
+    system_dns::SystemDnsError,
+    system_proxy::OsProxyError,
+};
 use nyanpasu_core::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError,
-        agent_skills::CoreAgentSkill,
-        direct_egress::{DirectEgress, StunServerTest},
-        effects::error::EffectsError,
-        system_proxy::ports::OsProxyError,
+        ClientError, NyanpasuClient, RuntimeError, agent_skills::CoreAgentSkill,
+        debug_http::DebugHttpControlError, effects::error::EffectsError,
     },
-    enhance::PostProcessingOutput,
     state::{
         config_error::ConfigError,
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
-    updater::ManifestVersionLatest,
+};
+use nyanpasu_observers::logs::{
+    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
 };
 use nyanpasu_paths::PathResolver;
+use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_updater::ManifestVersionLatest;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use tauri::{AppHandle, State, Webview};
@@ -70,6 +75,13 @@ pub enum IpcErrorKind {
     SystemDns(Box<SystemDnsError>),
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
+    DebugHttp(Box<DebugHttpControlError>),
+}
+
+impl From<DebugHttpControlError> for IpcErrorKind {
+    fn from(error: DebugHttpControlError) -> Self {
+        Self::DebugHttp(Box::new(error))
+    }
 }
 
 impl From<EffectsError> for IpcErrorKind {
@@ -157,7 +169,7 @@ unknown_domain!(
     serde_json::Error,
     tauri::Error,
     anyhow::Error,
-    nyanpasu_core::backup::BackupError,
+    nyanpasu_migration::backup::BackupError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
@@ -388,12 +400,6 @@ pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainPro
 pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
     Ok(client.is_portable())
 }
-
-// #[tauri::command]
-// #[specta::specta]
-// pub fn get_device_info() -> Result<nyanpasu_core::utils::hwid::DeviceInfo> {
-//     Ok(nyanpasu_core::utils::hwid::get_device_info())
-// }
 
 /// Rebuild-only command: there is no prior state commit, so a failure is a
 /// plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -923,6 +929,7 @@ pub async fn patch_runtime_overrides(
 ) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
     // Explicit-field whitelist so future patch fields never auto-leak into
     // logs; the secret is reported by presence only.
+    #[cfg(feature = "default-meta")]
     tracing::debug!(
         log_level = ?patch.log_level,
         allow_lan = ?patch.allow_lan,
@@ -930,6 +937,16 @@ pub async fn patch_runtime_overrides(
         secret = patch.secret.is_some(),
         unified_delay = ?patch.unified_delay,
         tcp_concurrent = ?patch.tcp_concurrent,
+        ipv6 = ?patch.ipv6,
+        "patch_runtime_overrides"
+    );
+    // `unified_delay` and `tcp_concurrent` exist only with `default-meta`.
+    #[cfg(not(feature = "default-meta"))]
+    tracing::debug!(
+        log_level = ?patch.log_level,
+        allow_lan = ?patch.allow_lan,
+        mode = ?patch.mode,
+        secret = patch.secret.is_some(),
         ipv6 = ?patch.ipv6,
         "patch_runtime_overrides"
     );
@@ -1133,7 +1150,7 @@ pub async fn collect_logs(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
@@ -1146,7 +1163,7 @@ pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore
 pub async fn inspect_updater(
     client: State<'_, NyanpasuClient>,
     updater_id: usize,
-) -> Result<nyanpasu_core::updater::UpdaterSummary> {
+) -> Result<nyanpasu_updater::UpdaterSummary> {
     Ok(client.inspect_updater(updater_id).await?)
 }
 
@@ -1402,12 +1419,8 @@ pub struct IconData {
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_cached_icon(
-    client: State<'_, NyanpasuClient>,
-    paths: State<'_, PathResolver>,
-    url: String,
-) -> Result<IconData> {
-    let (mime, bytes) = client.get_cached_icon(&url, paths).await?;
+pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> Result<IconData> {
+    let (mime, bytes) = client.get_cached_icon(&url).await?;
     Ok(IconData {
         data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
     })
@@ -1652,7 +1665,8 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
-    use nyanpasu_core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
+    use nyanpasu_contracts::service::ResolveServiceDirsSnafu;
+    use nyanpasu_os::service::get_service_install_args;
     use snafu::ResultExt;
 
     let args = async {
@@ -1803,8 +1817,8 @@ pub async fn get_clash_ws_snapshot(
 #[specta::specta]
 pub async fn query_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_core::logs::CoreLogQuery,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
+    query: CoreLogQuery,
+) -> CoreLogResult<CoreLogPage> {
     client.query_core_logs(query).await
 }
 
@@ -1813,8 +1827,8 @@ pub async fn query_core_logs(
 #[specta::specta]
 pub async fn get_core_log(
     client: tauri::State<'_, NyanpasuClient>,
-    cursor: nyanpasu_core::logs::CoreLogCursor,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
+    cursor: CoreLogCursor,
+) -> CoreLogResult<CoreLogRecord> {
     client.get_core_log(cursor).await
 }
 
@@ -1823,16 +1837,14 @@ pub async fn get_core_log(
 #[specta::specta]
 pub async fn get_core_log_status(
     client: tauri::State<'_, NyanpasuClient>,
-) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
+) -> CoreLogResult<CoreLogStatus> {
     client.get_core_log_status().await
 }
 
 #[nyanpasu_macro::rpc(http, result)]
 #[tauri::command]
 #[specta::specta]
-pub async fn clear_core_logs(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> nyanpasu_core::logs::CoreLogResult<()> {
+pub async fn clear_core_logs(client: tauri::State<'_, NyanpasuClient>) -> CoreLogResult<()> {
     client.clear_core_logs().await
 }
 
@@ -2248,21 +2260,20 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
+    use nyanpasu_contracts::system_dns::SystemDnsError;
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
 
+    use nyanpasu_contracts::{
+        profiles::error::{ProfileFileError, SubscriptionFetchError},
+        system_proxy::OsProxyError,
+    };
     use nyanpasu_core::{
-        client::{
-            effects::error::EffectsError, runtime_error::RuntimeError,
-            system_proxy::ports::OsProxyError,
-        },
-        state::{
-            mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
-            profiles::{ProfileFileError, SubscriptionFetchError},
-        },
+        client::{effects::error::EffectsError, runtime_error::RuntimeError},
+        state::mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
     };
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {
@@ -2372,6 +2383,25 @@ mod tests {
     #[test]
     fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
         assert_eq!(
+            wire(super::ConfigError::ValidateHotkeyCapability)["kind"],
+            json!({ "domain": "config", "error": { "kind": "validate_hotkey_capability" } })
+        );
+        for (error, kind) in [
+            (
+                super::DebugHttpControlError::ReadStatusUnsupported,
+                "read_status_unsupported",
+            ),
+            (
+                super::DebugHttpControlError::ChangeEnabledUnsupported,
+                "change_enabled_unsupported",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(IpcError::from(error)).unwrap()["kind"],
+                json!({ "domain": "debug_http", "error": { "kind": kind } })
+            );
+        }
+        assert_eq!(
             wire(ProfilesError::ShuttingDown)["kind"],
             json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
         );
@@ -2383,6 +2413,27 @@ mod tests {
 
     #[test]
     fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
+        for (error, kind) in [
+            (
+                super::DebugHttpControlError::ReadStatus {
+                    source: anyhow::anyhow!("read cause"),
+                },
+                "read_status",
+            ),
+            (
+                super::DebugHttpControlError::ChangeEnabled {
+                    source: anyhow::anyhow!("change cause"),
+                },
+                "change_enabled",
+            ),
+        ] {
+            let wire = serde_json::to_value(IpcError::from(error)).unwrap();
+            assert_eq!(
+                wire["kind"],
+                json!({ "domain": "debug_http", "error": { "kind": kind } })
+            );
+            assert!(wire["detail"].as_str().unwrap().contains("cause"));
+        }
         let fetch = wire(ProfilesError::FetchSubscription {
             url: "https://sub.example/x".parse().unwrap(),
             source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },

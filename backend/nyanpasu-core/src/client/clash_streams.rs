@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use nyanpasu_observers::logs::{
+    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
+};
 use tokio::sync::{broadcast, watch};
 
 use super::{NyanpasuClient, Result};
@@ -9,27 +12,19 @@ use crate::clash::ws::{
 };
 
 impl NyanpasuClient {
-    pub async fn query_core_logs(
-        &self,
-        query: crate::logs::CoreLogQuery,
-    ) -> crate::logs::CoreLogResult<crate::logs::CoreLogPage> {
+    pub async fn query_core_logs(&self, query: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
         self.inner.core_logs.query(query).await
     }
-    pub async fn get_core_log(
-        &self,
-        cursor: crate::logs::CoreLogCursor,
-    ) -> crate::logs::CoreLogResult<crate::logs::CoreLogRecord> {
+    pub async fn get_core_log(&self, cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord> {
         self.inner.core_logs.detail(cursor).await
     }
-    pub async fn get_core_log_status(
-        &self,
-    ) -> crate::logs::CoreLogResult<crate::logs::CoreLogStatus> {
+    pub async fn get_core_log_status(&self) -> CoreLogResult<CoreLogStatus> {
         self.inner.core_logs.status().await
     }
-    pub async fn clear_core_logs(&self) -> crate::logs::CoreLogResult<()> {
+    pub async fn clear_core_logs(&self) -> CoreLogResult<()> {
         self.inner.core_logs.clear().await
     }
-    pub fn subscribe_core_logs(&self) -> watch::Receiver<crate::logs::CoreLogStatus> {
+    pub fn subscribe_core_logs(&self) -> watch::Receiver<CoreLogStatus> {
         self.inner.core_logs.subscribe()
     }
     pub async fn start_clash_streams(&self) -> Result<()> {

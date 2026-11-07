@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use crate::state::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::OperationId;
+use nyanpasu_updater::PreparedCoreBinary;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::OptionExt;
 use tokio::sync::{broadcast, watch};
@@ -30,7 +31,6 @@ use super::{
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
         ServiceRecovery,
-        ports::{BinaryInstaller, PreparedCoreBinary},
     },
     runtime,
     runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
@@ -41,6 +41,7 @@ use crate::actor_v2::{
     service_actor::{ServiceClient, ServiceHostStatus},
 };
 use mutation::{MutationJournal, MutationRequest};
+use nyanpasu_contracts::core_install::BinaryInstaller;
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
@@ -678,7 +679,7 @@ impl ApplicationWorkflowClient {
                 }
             }
         });
-        crate::client::owner_shutdown::drain_on_shutdown(
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(
             &args.tasks,
             args.shutdown,
             actor.get_cell(),

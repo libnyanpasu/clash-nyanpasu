@@ -371,7 +371,7 @@ impl NyanpasuClient {
             .find(|snapshot| snapshot.inspection_id == snapshot_id)
             .context(RuntimeSnapshotChangedSnafu)?;
         let snapshot_id = snapshot_id.to_owned();
-        crate::utils::blocking::join(
+        nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || snapshot.inspection_content(&snapshot_id, node_id))
                 .await,
         )
@@ -398,14 +398,12 @@ impl NyanpasuClient {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{
-        client::runtime::{RuntimeRevisionAllocator, RuntimeSnapshotData},
-        enhance::PostProcessingOutput,
-    };
+    use crate::client::runtime::{RuntimeRevisionAllocator, RuntimeSnapshotData};
     use nyanpasu_config::{
         application::ClashCore,
         runtime::{executor::StepLogLevel, snapshot::ConfigSnapshotsBuilder, value::ConfigValue},
     };
+    use nyanpasu_profile_transform::PostProcessingOutput;
     use std::sync::Arc;
 
     pub(crate) fn inspection_data() -> RuntimeInspectionData {

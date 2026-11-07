@@ -2,15 +2,13 @@
 
 use crate::client::host_adapters::ProfileFileFactory;
 #[cfg(test)]
-use crate::{
-    client::host_adapters::ProfileFilePorts,
-    state::profiles::{
-        error::ProfileFileError,
-        ports::{
-            CleanupOutcome, MaterializationResource, MockProfileFsPort,
-            MockProfileMaterializationPort, PreparedCleanup, PreparedMaterialization,
-            SubscriptionFetcher,
-        },
+use crate::client::host_adapters::ProfileFilePorts;
+#[cfg(test)]
+use nyanpasu_contracts::profiles::{
+    error::ProfileFileError,
+    ports::{
+        CleanupOutcome, MaterializationResource, MockProfileFsPort, MockProfileMaterializationPort,
+        PreparedCleanup, PreparedMaterialization, SubscriptionFetcher,
     },
 };
 use std::sync::Arc;

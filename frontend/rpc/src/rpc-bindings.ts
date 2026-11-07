@@ -1333,6 +1333,7 @@ export type ConfigError =
   | { kind: 'invalid_public_ip_probe_sources'; reason: string }
   | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
+  | { kind: 'validate_hotkey_capability' }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
   /**  The owner's mailbox is closed, or it dropped the reply. */
@@ -1934,6 +1935,13 @@ export type CoreVersionError =
   | { kind: 'core_version_exit'; core: string }
   | { kind: 'core_version_not_reported'; core: string }
 
+/**  Why a debug HTTP query or setting change could not be performed. */
+export type DebugHttpControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_enabled_unsupported' }
+  | { kind: 'read_status' }
+  | { kind: 'change_enabled' }
+
 export type DebugHttpStatus = {
   enabled: boolean
   url: string | null
@@ -2096,11 +2104,13 @@ export type EffectConvergence = {
 /**
  *  Why an effect is not in its desired state, in the terms the UI localizes.
  *
- *  One value per kind of failure, named after the effect that failed. The
+ *  One value per kind of failure, named after the effect that failed, or
+ *  after the capability a shell lacks when several effects share it. The
  *  owner that classifies a failure is the one that picks the code; the
  *  message beside it is only the diagnostic text.
  */
 export type EffectFailureCode =
+  | 'presentation_unsupported'
   | 'hotkey_invalid_bindings'
   | 'hotkey_partial_registration'
   | 'hotkey_shut_down'
@@ -2159,6 +2169,18 @@ export type EgressAddress<A> = {
 export type EgressSource =
   | { kind: 'stun'; host: string; port: number; transport: StunTransport }
   | { kind: 'lookup'; provider: IpLookupProvider }
+
+/**  The shell cannot request OS authorization for this action. */
+export type ElevationConsentError = {
+  kind: 'authorize_elevation'
+  operation: ElevationOperation
+}
+
+/**  The action requesting authorization, never an executable or command string. */
+export type ElevationOperation =
+  | { kind: 'service'; command: ServiceCommand }
+  | { kind: 'dns_flush' }
+  | { kind: 'core_binary_copy' }
 
 export type EndpointConnectivity =
   | { kind: 'connected' }
@@ -2464,6 +2486,12 @@ export type ImportSignal =
 
 /**  A failure of installing a downloaded core binary over the installed one. */
 export type InstallCoreBinaryError =
+  | {
+      kind: 'authorize_core_copy'
+      core: string
+      destination: ErrorPath
+      source: ElevationConsentError
+    }
   | { kind: 'start_elevated_copy'; core: string; destination: ErrorPath }
   | {
       kind: 'elevated_copy_failed'
@@ -2513,6 +2541,7 @@ export type IpcErrorKind =
   | { domain: 'system_dns'; error: SystemDnsError }
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
+  | { domain: 'debug_http'; error: DebugHttpControlError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -5137,6 +5166,11 @@ export type ServiceCommand =
  *  the service actor puts on every call.
  */
 export type ServiceCommandError =
+  | {
+      kind: 'authorize_service_command'
+      command: ServiceCommand
+      source: ElevationConsentError
+    }
   | { kind: 'session_ending' }
   | { kind: 'resolve_service_user' }
   | { kind: 'resolve_service_dirs' }
@@ -5550,6 +5584,7 @@ export type SubscriptionInfo_Serialize = {
  *  per platform, so the generated bindings do not depend on the build host.
  */
 export type SystemDnsError =
+  | { kind: 'authorize_dns_flush'; source: ElevationConsentError }
   /**
    *  The elevated flush could not be started: the user declined the prompt,
    *  or the platform has no way to ask for elevation.

@@ -1,0 +1,29 @@
+[package]
+name = 'nyanpasu-profile-transform'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+test-support = []
+
+[dependencies]
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
+indexmap = { version = '2.2.3', features = ['serde'] }
+serde = { version = '1.0', features = ['derive', 'rc'] }
+serde_yaml_ng = { workspace = true }
+snafu = { workspace = true }
+specta = { version = '^2.0.0-rc.25', features = ['indexmap'] }
+
+[dev-dependencies]
+# Preserve the golden suite's default core from its original platform test target.
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'default-meta'
+] }
+nyanpasu-scripts = { path = '../nyanpasu-scripts' }
+tempfile = '3'
+serde_json = { version = '1', features = ['preserve_order'] }

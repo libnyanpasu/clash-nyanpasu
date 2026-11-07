@@ -4,15 +4,17 @@ use crate::{
     actor_v2::endpoint::ExecutionHost,
     client::{
         NyanpasuClient,
-        core_lifecycle::ports::{
-            BinaryInstallProgress, BinaryInstaller, InstallCoreBinaryError, PreparedCoreBinary,
-        },
         runtime_error::RuntimeError,
         test_support::{TestControlEndpoint, test_client_args_with_endpoint},
     },
 };
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_contracts::{
+    core_install::{BinaryInstaller, InstallCoreBinaryError},
+    system_dns::{SystemDnsCache, SystemDnsError},
+};
 use nyanpasu_core_manager::{CoreError, OperationId};
+use nyanpasu_updater::{BinaryInstallProgress, PreparedCoreBinary};
 use std::{
     sync::{
         Arc,
@@ -239,6 +241,16 @@ impl BinaryInstallProgress for Progress {
     }
 }
 
+/// A DNS cache fake for core fixtures that do not exercise flushing.
+#[derive(Debug, Default)]
+pub struct NoopSystemDnsCache;
+
+impl SystemDnsCache for NoopSystemDnsCache {
+    fn flush(&self) -> Result<(), SystemDnsError> {
+        Ok(())
+    }
+}
+
 pub struct Installer {
     pub(crate) endpoint: Arc<TestControlEndpoint>,
     pub(crate) entered: Notify,
@@ -249,9 +261,31 @@ pub struct Installer {
     pub(crate) submissions_at_copy: AtomicUsize,
 }
 
+impl Installer {
+    /// A copying installer fake with no parked work or injected failure.
+    pub fn succeeding() -> Self {
+        Self::new(TestControlEndpoint::succeeding(), false, false)
+    }
+
+    fn new(endpoint: Arc<TestControlEndpoint>, park: bool, fail: bool) -> Self {
+        Self {
+            endpoint,
+            entered: Notify::new(),
+            release: Notify::new(),
+            park,
+            fail,
+            calls: AtomicUsize::new(0),
+            submissions_at_copy: AtomicUsize::new(0),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl BinaryInstaller for Installer {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
+    async fn install(
+        &self,
+        request: &nyanpasu_contracts::core_install::CoreBinaryInstallRequest,
+    ) -> Result<(), InstallCoreBinaryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.submissions_at_copy
             .store(self.endpoint.submissions(), Ordering::SeqCst);
@@ -261,12 +295,12 @@ impl BinaryInstaller for Installer {
         }
         if self.fail {
             return Err(InstallCoreBinaryError::ElevatedCopyFailed {
-                core: artifact.target,
-                destination: (&artifact.destination).into(),
+                core: request.target,
+                destination: (&request.destination).into(),
                 exit_code: Some(1),
             });
         }
-        tokio::fs::copy(&artifact.source, &artifact.destination)
+        tokio::fs::copy(&request.source, &request.destination)
             .await
             .unwrap();
         Ok(())
@@ -298,15 +332,7 @@ impl Fixture {
     ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let installer = Arc::new(Installer {
-            endpoint: endpoint.clone(),
-            entered: Notify::new(),
-            release: Notify::new(),
-            park,
-            fail,
-            calls: AtomicUsize::new(0),
-            submissions_at_copy: AtomicUsize::new(0),
-        });
+        let installer = Arc::new(Installer::new(endpoint.clone(), park, fail));
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone(), adapters(&dir)).await;
         args.binary_installer = installer.clone();
         let client = NyanpasuClient::try_new(args).await.unwrap();

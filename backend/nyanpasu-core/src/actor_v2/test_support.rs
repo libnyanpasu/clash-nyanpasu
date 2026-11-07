@@ -73,23 +73,21 @@ pub struct HostTransitionServiceAdapter {
 }
 
 #[async_trait::async_trait]
-impl crate::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
+impl nyanpasu_contracts::service::ServiceProcessControl for HostTransitionServiceAdapter {
     async fn probe(
         &self,
-    ) -> std::result::Result<
-        nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::service::control::ServiceCommandError,
-    > {
+    ) -> std::result::Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
-            return Ok(nyanpasu_ipc::types::StatusInfo {
+            return Ok(serde_json::to_string(&nyanpasu_ipc::types::StatusInfo {
                 name: "test-service".into(),
                 version: "2.0.2".into(),
                 status: nyanpasu_ipc::types::ServiceStatus::Stopped,
                 server: None,
-            });
+            })
+            .expect("test service status serializes"));
         }
         self.calls.lock().unwrap().push("ensure_ready");
-        Ok(nyanpasu_ipc::types::StatusInfo {
+        Ok(serde_json::to_string(&nyanpasu_ipc::types::StatusInfo {
             name: std::borrow::Cow::Borrowed("test-service"),
             version: std::borrow::Cow::Borrowed("2.0.2"),
             status: nyanpasu_ipc::types::ServiceStatus::Running,
@@ -118,25 +116,26 @@ impl crate::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServic
                 logs: None,
             }),
         })
+        .expect("test service status serializes"))
     }
 
     async fn install(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.calls.lock().unwrap().push("install");
         Ok(())
     }
 
     async fn uninstall(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.calls.lock().unwrap().push("uninstall");
         Ok(())
     }
 
     async fn start_daemon(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.stopped
             .store(false, std::sync::atomic::Ordering::SeqCst);
         self.calls.lock().unwrap().push("start_daemon");
@@ -145,7 +144,7 @@ impl crate::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServic
 
     async fn stop_daemon(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.stopped
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.calls.lock().unwrap().push("stop_daemon");
@@ -154,10 +153,12 @@ impl crate::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServic
 
     async fn update(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Ok(())
     }
+}
 
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for HostTransitionServiceAdapter {
     fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         self.endpoint.clone()
     }
@@ -191,51 +192,51 @@ pub fn successful_reconcile(
 pub struct IdleServiceAdapter;
 
 #[async_trait::async_trait]
-impl crate::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
+impl nyanpasu_contracts::service::ServiceProcessControl for IdleServiceAdapter {
     async fn probe(
         &self,
-    ) -> std::result::Result<
-        nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::service::control::ServiceCommandError,
-    > {
-        Ok(nyanpasu_ipc::types::StatusInfo {
+    ) -> std::result::Result<String, nyanpasu_contracts::service::ServiceCommandError> {
+        Ok(serde_json::to_string(&nyanpasu_ipc::types::StatusInfo {
             name: std::borrow::Cow::Borrowed("test-service"),
             version: std::borrow::Cow::Borrowed("test"),
             status: nyanpasu_ipc::types::ServiceStatus::NotInstalled,
             server: None,
         })
+        .expect("test service status serializes"))
     }
 
     async fn install(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Ok(())
     }
 
     async fn uninstall(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Ok(())
     }
 
     async fn start_daemon(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Ok(())
     }
 
     async fn stop_daemon(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Ok(())
     }
 
     async fn update(
         &self,
-    ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+    ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Ok(())
     }
+}
 
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for IdleServiceAdapter {
     fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         Arc::new(IdleEndpoint)
     }
@@ -255,9 +256,12 @@ pub async fn test_v2_clients_with_endpoint(
     endpoint: crate::actor_v2::endpoint::EndpointHandle,
 ) -> (CoreClientV2, ServiceClient) {
     let core = CoreClientV2::spawn(endpoint).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = {
+        let process_control = Arc::new(IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
+    .await
+    .unwrap();
     (core, service)
 }
 

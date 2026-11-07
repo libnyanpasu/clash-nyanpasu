@@ -35,43 +35,55 @@ Use these terms consistently:
 ## Core and frontend separation
 
 The Tauri extraction baseline is complete: core no longer depends on Tauri. The
-ownership split is not finished. The current layout is:
+Phase A package split is delivered; the remaining core family and shell work is
+planned below. The current layout is:
 
 ```text
 backend/tauri/src/
   setup.rs                 desktop composition root
   adapters/                GUI adapters and frontend event delivery
+  desktop/                 hotkey owner, main-thread handoff and presentation effects
   ipc.rs, unified_rpc.rs   RPC transport adapters
   server/                  HTTP transport
           |
           | constructs and injects dependencies
           v
 backend/nyanpasu-core/src/
-  client/                  NyanpasuClient, typed clients and workflows
-  state/, enhance/         configuration transactions and runtime building
+  client/                  NyanpasuClient, typed clients, workflows, runtime builds and artifact conversion
+  state/                   configuration transactions
   actor_v2/, clash/        core control and API streams
-  logs/, geo/, traffic/    log sessions, geodata and traffic accounting
+  logs/                    redb log storage and codec adapters
+  geo/, traffic/           geodata and traffic accounting
   service/, utils/         consumed ports, services and shared utilities
+          |
+          v
+nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           |
           v
 nyanpasu-config             domain models and pure runtime executor
 
-backend/nyanpasu-platform/src/  implements core/config ports (transitional)
-  profiles/                    profile filesystem and HTTP service
-  enhance/                     content, script and runtime-build adapters
-  changelog_http.rs            changelog HTTP adapter
+backend/nyanpasu-observers/src/    log capture owner and storage ports
+backend/nyanpasu-updater/src/      core update owner, HTTP backend, downloads and unpacking
+backend/nyanpasu-migration/src/    configuration upgrades, backups and session document reads
+backend/nyanpasu-persistence/src/  generic filesystem retry and evidence recovery
+backend/nyanpasu-profile-io/src/   profile files, materialization and content adapter
+backend/nyanpasu-net/src/          subscription, changelog, egress, icon, diagnostics and HTTP policy
+backend/nyanpasu-os/src/           proxy, PAC, autostart, device identity, version probes, service control, DNS flush and binary installation
+backend/nyanpasu-scripts/src/      JavaScript and Lua script runners over config ports
 ```
 
 `NyanpasuClient` and its actor/workflow graph live in
 `backend/nyanpasu-core/src/client/` and the domain modules beside it. Concrete
-profile file, runtime-build and changelog HTTP implementations live in
-`nyanpasu-platform`. The desktop composition root in
+profile file implementations live in `nyanpasu-profile-io`; HTTP implementations
+and shared client policy live in `nyanpasu-net` over foundation contracts.
+Application integration tests live in core with profile-io and net as
+dev-dependencies; Tauri owns its host test assembly.
+The desktop composition root in
 `backend/tauri/src/setup.rs` constructs these implementations and the GUI
 adapters, injects them into the core and calls `NyanpasuClient::try_new`. GUI
 adapters remain in `backend/tauri/src/adapters/`; windows, tray, widgets,
-desktop plugins and transport delivery stay in the host. Platform depends on
-core to implement its consumed ports; core does not depend on platform in
-production.
+desktop plugins and transport delivery stay in the host. Core's exported test
+support accepts injected host adapters without linking implementation crates.
 
 The [target ownership](../design/application-platform-extraction.md#target-ownership)
 is the plan for the next stage:
@@ -84,20 +96,20 @@ is the plan for the next stage:
   (an explicit, restricted allowlist) and the CLI over a local socket (a
   separate explicit allowlist). A command that needs a shell capability is
   registered only by a shell that provides it.
-- **The core package family** splits `nyanpasu-core` into contracts,
-  persistence, owners, core control, application and facade crates, so that
-  implementation crates and shells depend on contracts and compile in parallel
-  with core.
+- **The core package family** splits `nyanpasu-core` into owners, core control,
+  application and facade crates over a foundation layer (config, contracts,
+  persistence, profile transform), so that implementation crates depend on the
+  foundation layer and compile in parallel with core.
 - **Script runtimes** belong to profile enhancement: a script crate provides the
   runners and extension definitions over the `nyanpasu-config` ports, and a
   profile transform crate below core holds the runtime builder.
-- **Target crates** hold target-specific code above core: an interaction crate
-  for desktop shells (deep links, single instance, native dialogs, hotkeys) and
-  an OS integration crate per target family (system proxy, autostart, service
-  control, DNS, device identity, elevation). Tauri-bound mechanisms stay in the
-  Tauri shell.
-- **Implementation crates** (profile IO, HTTP, storage backends) replace
-  `nyanpasu-platform` by owner. The `platform` name is retired.
+- **Target crates** hold OS integration (system proxy, autostart, service
+  control, DNS, device identity, elevation) over the foundation layer, and
+  shells inject them. Desktop interaction mechanisms (hotkeys, main-thread
+  handoff, tray, widget and locale effects) stay in the Tauri shell; there is
+  no desktop interaction crate.
+- **Implementation crates** (scripts, profile IO, HTTP, storage backends)
+  depend on the foundation layer only, never on core or each other.
 
 The extraction record lists the known gaps and the order of the next stage. The
 [OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the
@@ -122,10 +134,15 @@ Rules for maintaining the separation:
   Tauri crate.
 - Tests of moved code construct the client or service graph with fake adapters and
   must not need the Tauri runtime.
-- The architecture-ledger static gate covers `backend/tauri/src/` and
-  `backend/nyanpasu-core/src/` (`STATIC_GATE_PREFIXES` in
-  `scripts/src/architecture-ledger/policy.ts`), matching the core extraction PR.
-  Both use the same explicit path-and-name allowlist; other backend library
+- The architecture-ledger static gate covers `backend/tauri/src/`,
+  `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
+  `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
+  `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
+  `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/`,
+  `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
+  `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
+  (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
+  All thirteen use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 
@@ -170,14 +187,11 @@ If a mature ractor actor client already exists for a capability, use it instead 
 
 Shared backend code follows [Backend packages](backend-packages.md):
 `nyanpasu-core` owns use cases, typed actor clients and consumed ports;
-implementation crates implement those ports. Today they may depend on core;
-the target moves the ports they implement into a contracts crate so they stop
-depending on core. Core must not depend on an implementation crate in
-production. Do not add script runtime, OS integration or interaction code to
-`nyanpasu-platform`; see the [target
+implementation crates implement foundation contracts and depend on the foundation
+layer only, never on core or each other. Core must not depend on an implementation
+crate in production. See the [target
 ownership](../design/application-platform-extraction.md#target-ownership).
-Neither neutral crate nor
-`nyanpasu-config` may depend on Tauri, egui/eframe or Slint. Tauri is a host composition
+Neutral crates must not depend on Tauri, egui/eframe or Slint. Tauri is a host composition
 root and GUI/transport adapter; Tauri-specific implementations stay at that
 boundary. Move complete existing call paths and update callers without retaining
 old-path wrappers solely to avoid import changes. Run

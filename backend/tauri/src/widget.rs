@@ -1,14 +1,13 @@
-use crate::adapters::ui_effects::ports::WIDGET_STOP_BOUND;
-use nyanpasu_core::{
-    clash::ws::ClashConnectionsConnectorEvent,
-    client::effects::{
-        ports::{
-            ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
-            ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu,
-            WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
-        },
-        status::failure_text,
+use crate::{
+    adapters::ui_effects::ports::WIDGET_STOP_BOUND,
+    desktop::effects::ports::{
+        ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
+        ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu,
+        WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
     },
+};
+use nyanpasu_core::{
+    clash::ws::ClashConnectionsConnectorEvent, client::effects::status::failure_text,
 };
 
 use futures::future::BoxFuture;

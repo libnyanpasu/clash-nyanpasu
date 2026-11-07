@@ -1,0 +1,583 @@
+//! RuntimeBuilder: pure assembly from domain snapshots to the runtime pipeline
+//! executor (PR-3 T06, design §8 + §19). No globals, no IO — port resolution
+//! happens at the caller and file reads/script runs arrive via executor ports.
+//! Must be called from a blocking context (the script adapter blocks on its
+//! own runtime); the facade wraps the whole build in spawn_blocking (T07).
+
+use std::sync::Arc;
+
+use nyanpasu_config::{
+    application::{ClashCore, NyanpasuAppConfig},
+    clash::{
+        config::{ClashConfig, tun_stack::SelectedTunStack},
+        features::{FieldSupport, TunFeatures, UnsupportedConfigValue},
+    },
+    profile::{ProfileValidationError, Profiles, ScriptRuntime},
+    runtime::executor::{
+        BuiltinTransform, ExecutionTarget, GuardInputs, PortError, ProfileContentSource,
+        ResolvedPortBindings, RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs,
+        ScriptRunner, StepLogEntry, TransformFailure, TunFlavor, TunParams, TunStackWrite, execute,
+    },
+};
+use serde::Serialize;
+use snafu::{ResultExt, Snafu, ensure};
+
+#[derive(Debug, Serialize, specta::Type)]
+pub struct RuntimeBuildLog {
+    pub tag: nyanpasu_config::runtime::snapshot::OperatorTag,
+    pub entries: Vec<StepLogEntry>,
+}
+
+/// A failure of building a runtime candidate from source config.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub))]
+pub enum RuntimeBuildError {
+    #[snafu(display("could not start the script runner"))]
+    StartScriptRunner {
+        #[serde(skip)]
+        source: PortError,
+    },
+    #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
+    ValidateProfiles { errors: Vec<ProfileValidationError> },
+    #[snafu(display("could not run the runtime pipeline: {source}"))]
+    RunPipeline { source: RuntimePipelineError },
+    #[snafu(display("runtime candidate contains failed transforms: {failures:?}"))]
+    TransformsFailed {
+        failures: Vec<TransformFailure>,
+        logs: Vec<RuntimeBuildLog>,
+    },
+    #[snafu(display("could not serialize the final config"))]
+    SerializeFinalConfig {
+        #[serde(skip)]
+        source: serde_yaml_ng::Error,
+    },
+    #[snafu(display("the final config is not a mapping"))]
+    ConfigNotMapping,
+    /// The profiles or transforms wrote values the selected core rejects.
+    #[snafu(display("the selected core does not support {values:?}"))]
+    UnsupportedConfigValues { values: Vec<UnsupportedConfigValue> },
+}
+
+pub struct RuntimeBuildInput {
+    pub profiles: Arc<Profiles>,
+    pub clash: ClashConfig,
+    pub app: NyanpasuAppConfig,
+    pub resolved_ports: ResolvedPortBindings,
+}
+
+const MIHOMO_FAMILY: &[ClashCore] = &[
+    ClashCore::Mihomo,
+    ClashCore::MihomoAlpha,
+    ClashCore::Meow,
+    ClashCore::MeowAlpha,
+];
+// Legacy quirk preserved (chain.rs:174): clash_rs_comp never gated in ClashRsAlpha.
+const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];
+
+/// Legacy builtin table from enhance/chain.rs:145-176, without
+/// `config_fixer`: the managed settings already write `log-level` as a
+/// string. Order is execution order.
+pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
+    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 3] = [
+        (
+            MIHOMO_FAMILY,
+            "verge_hy_alpn",
+            ScriptRuntime::JavaScript,
+            include_str!("./builtin/meta_hy_alpn.js"),
+        ),
+        (
+            MIHOMO_FAMILY,
+            "verge_meta_guard",
+            ScriptRuntime::JavaScript,
+            include_str!("./builtin/meta_guard.js"),
+        ),
+        (
+            CLASH_RS_ONLY,
+            "clash_rs_comp",
+            ScriptRuntime::Lua,
+            include_str!("./builtin/clash_rs_comp.lua"),
+        ),
+    ];
+    table
+        .into_iter()
+        .filter(|(gate, ..)| gate.contains(&core))
+        .map(|(_, name, runtime, source)| BuiltinTransform {
+            name: name.to_string(),
+            runtime,
+            source: source.to_string(),
+        })
+        .collect()
+}
+
+/// Only `ClashRs` (not Alpha) takes the ClashRs branch, a legacy quirk
+/// (enhance/tun.rs:47). The stack and its options follow the core's config
+/// features.
+pub fn derive_tun_flavor(core: ClashCore, selected: SelectedTunStack<'_>) -> TunFlavor {
+    if core == ClashCore::ClashRs {
+        return TunFlavor::ClashRs;
+    }
+    let features = core.config_features().tun;
+    let stack = match features.stack {
+        FieldSupport::Ignored => TunStackWrite::Omitted,
+        support if support.supports(&selected.stack()) => TunStackWrite::Selected(selected.stack()),
+        FieldSupport::Values(_) => TunStackWrite::Downgraded {
+            selected: selected.stack(),
+            written: TunFeatures::FALLBACK_STACK,
+        },
+    };
+    // A downgraded stack drops the options of the stack that was selected.
+    let congestion_controller = match (stack, selected) {
+        (TunStackWrite::Selected(_), SelectedTunStack::Mips(mips)) => mips
+            .congestion_controller
+            .filter(|controller| features.congestion_controller.supports(controller)),
+        _ => None,
+    };
+    TunFlavor::Standard {
+        stack,
+        congestion_controller,
+    }
+}
+
+pub struct RuntimeBuilder;
+
+impl RuntimeBuilder {
+    /// Retain diagnostics from the rejected candidate, which is never published.
+    pub fn validate_transforms(artifact: &RuntimeArtifact) -> Result<(), RuntimeBuildError> {
+        if artifact.transform_failures.is_empty() {
+            return Ok(());
+        }
+        let logs = artifact
+            .step_logs
+            .iter()
+            .map(|log| RuntimeBuildLog {
+                tag: artifact
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|node| node.tag.node_key() == log.key)
+                    .expect("executor logs must belong to a snapshot node")
+                    .tag
+                    .clone(),
+                entries: log.entries.clone(),
+            })
+            .collect();
+        Err(RuntimeBuildError::TransformsFailed {
+            failures: artifact.transform_failures.clone(),
+            logs,
+        })
+    }
+
+    pub fn build(
+        input: &RuntimeBuildInput,
+        content: &dyn ProfileContentSource,
+        scripts: &dyn ScriptRunner,
+    ) -> Result<RuntimeArtifact, RuntimeBuildError> {
+        if let Err(errors) = input.profiles.validate() {
+            return ValidateProfilesSnafu { errors }.fail();
+        }
+
+        let target = match &input.profiles.current {
+            Some(uid) => ExecutionTarget::Selected(uid.clone()),
+            None => ExecutionTarget::Bare,
+        };
+        let builtin_transforms = if input.app.enable_builtin_enhanced {
+            builtin_transforms_for(input.app.core)
+        } else {
+            Vec::new()
+        };
+        let inputs = RuntimePipelineInputs {
+            profiles: &input.profiles,
+            target,
+            guard: GuardInputs {
+                overrides: &input.clash.overrides,
+                ports: input.resolved_ports.clone(),
+            },
+            whitelist_enabled: input.clash.enable_clash_fields,
+            tun: TunParams {
+                enable: input.clash.enable_tun_mode,
+                overrides: input.clash.tun,
+                flavor: derive_tun_flavor(input.app.core, input.clash.selected_tun_stack()),
+                windows_fake_ip_filter: cfg!(windows),
+            },
+            expand_include_all: input.clash.expand_include_all,
+            builtin_transforms: &builtin_transforms,
+        };
+        let artifact = execute(&inputs, content, scripts).context(RunPipelineSnafu)?;
+
+        // The core parses these keys whether TUN is on or not, and rejects the
+        // whole config on a value it does not know.
+        let values = input
+            .app
+            .core
+            .config_features()
+            .unsupported_values(&artifact.final_config);
+        ensure!(values.is_empty(), UnsupportedConfigValuesSnafu { values });
+        Ok(artifact)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nyanpasu_config::{
+        clash::config::{
+            overrides::ManageableField,
+            tun_stack::{MipsConfig, TunCongestionController, TunStack},
+        },
+        profile::{
+            ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+            ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource,
+            ScriptRuntime,
+        },
+        runtime::{
+            executor::{PortError, StepLogEntry, StepLogLevel},
+            value::ConfigValue,
+        },
+    };
+
+    /// 极小 fakes(executor 的 support.rs 是 crate 内部,tauri 不可 import)
+    struct EmptyContent;
+    impl ProfileContentSource for EmptyContent {
+        fn read(&self, path: &ManagedProfilePath) -> Result<String, PortError> {
+            Err(format!("no content for {path}").into())
+        }
+    }
+    struct EchoRunner;
+    impl ScriptRunner for EchoRunner {
+        fn run(
+            &self,
+            _: ScriptRuntime,
+            _: &str,
+            config: &ConfigValue,
+            _: &mut Vec<StepLogEntry>,
+        ) -> Result<ConfigValue, PortError> {
+            Ok(config.clone())
+        }
+        fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
+            Ok(true)
+        }
+        fn eval_item_expr(&self, _: &str, item: &ConfigValue) -> Result<ConfigValue, PortError> {
+            Ok(item.clone())
+        }
+    }
+
+    fn base_input() -> RuntimeBuildInput {
+        RuntimeBuildInput {
+            profiles: Arc::new(Profiles::default()),
+            clash: ClashConfig::default(),
+            app: NyanpasuAppConfig::default(),
+            resolved_ports: ResolvedPortBindings {
+                mixed_port: 7890,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn builtin_gating_matches_legacy_table() {
+        let names = |core: ClashCore| -> Vec<String> {
+            builtin_transforms_for(core)
+                .into_iter()
+                .map(|b| b.name)
+                .collect()
+        };
+        assert_eq!(
+            names(ClashCore::Mihomo),
+            vec!["verge_hy_alpn", "verge_meta_guard"]
+        );
+        assert_eq!(names(ClashCore::ClashRs), vec!["clash_rs_comp"]);
+        // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
+        assert!(names(ClashCore::ClashRsAlpha).is_empty());
+        assert!(names(ClashCore::ClashPremium).is_empty());
+        // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
+        assert_eq!(
+            names(ClashCore::Meow),
+            vec!["verge_hy_alpn", "verge_meta_guard"]
+        );
+    }
+
+    /// Serves one profile file whatever path is asked for.
+    struct OneFile(&'static str);
+    impl ProfileContentSource for OneFile {
+        fn read(&self, _: &ManagedProfilePath) -> Result<String, PortError> {
+            Ok(self.0.to_owned())
+        }
+    }
+
+    /// `base_input` with one selected config profile and no builtin
+    /// transforms.
+    fn profile_input(core: ClashCore) -> RuntimeBuildInput {
+        let uid = ProfileId("p".into());
+        let item = ProfileItem {
+            uid: uid.clone(),
+            metadata: ProfileMetadata {
+                name: "p".into(),
+                desc: None,
+                custom_name: true,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Local {
+                        binding: LocalBinding::Managed {
+                            materialized: MaterializedFile {
+                                file: ManagedProfilePath::new("p.yaml").unwrap(),
+                                updated_at: None,
+                            },
+                        },
+                    },
+                    transforms: Vec::new(),
+                }),
+            },
+        };
+        let mut profiles = Profiles::default();
+        profiles.items.insert(uid.clone(), item);
+        profiles.current = Some(uid);
+
+        let mut input = base_input();
+        input.profiles = Arc::new(profiles);
+        input.app.core = core;
+        input.app.enable_builtin_enhanced = false;
+        input
+    }
+
+    #[test]
+    fn tun_flavor_follows_the_core_features() {
+        let standard = |stack, congestion_controller| TunFlavor::Standard {
+            stack,
+            congestion_controller,
+        };
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashRs, SelectedTunStack::Mixed),
+            TunFlavor::ClashRs
+        );
+        // Alpha keeps the Standard branch (tun.rs:47 legacy quirk), without a
+        // stack it does not read.
+        for core in [
+            ClashCore::ClashRsAlpha,
+            ClashCore::Meow,
+            ClashCore::MeowAlpha,
+        ] {
+            assert_eq!(
+                derive_tun_flavor(core, SelectedTunStack::Mixed),
+                standard(TunStackWrite::Omitted, None),
+                "{core}"
+            );
+        }
+        assert_eq!(
+            derive_tun_flavor(ClashCore::Mihomo, SelectedTunStack::System),
+            standard(TunStackWrite::Selected(TunStack::System), None)
+        );
+
+        let mips = MipsConfig {
+            congestion_controller: Some(TunCongestionController::Bbr),
+        };
+        assert_eq!(
+            derive_tun_flavor(ClashCore::MihomoAlpha, SelectedTunStack::Mips(&mips)),
+            standard(
+                TunStackWrite::Selected(TunStack::Mips),
+                Some(TunCongestionController::Bbr)
+            )
+        );
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mips(&mips)),
+            standard(
+                TunStackWrite::Downgraded {
+                    selected: TunStack::Mips,
+                    written: TunStack::Gvisor,
+                },
+                None
+            )
+        );
+        assert_eq!(
+            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mixed),
+            standard(
+                TunStackWrite::Downgraded {
+                    selected: TunStack::Mixed,
+                    written: TunStack::Gvisor,
+                },
+                None
+            )
+        );
+    }
+
+    #[test]
+    fn mips_options_reach_the_runtime_only_while_mips_is_selected() {
+        let mut input = profile_input(ClashCore::Mihomo);
+        input.clash.enable_tun_mode = true;
+        input.clash.tun_mips.congestion_controller = Some(TunCongestionController::Bbr3);
+        for (stack, expected) in [(TunStack::Mips, Some("bbr3")), (TunStack::Gvisor, None)] {
+            input.clash.tun_stack = stack;
+            let config = RuntimeBuilder::build(&input, &OneFile("proxies: []\n"), &EchoRunner)
+                .unwrap()
+                .final_config
+                .to_json();
+            assert_eq!(
+                config["tun"].get("congestion-controller"),
+                expected.map(serde_json::Value::from).as_ref(),
+                "{stack:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_profile_stack_the_core_rejects_fails_the_build_while_tun_is_off() {
+        let input = profile_input(ClashCore::ClashPremium);
+        let error = RuntimeBuilder::build(
+            &input,
+            &OneFile(
+                "tun: { enable: false, stack: Mixed }
+",
+            ),
+            &EchoRunner,
+        )
+        .unwrap_err();
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "unsupported_config_values",
+                "values": [{ "path": "tun.stack", "value": "Mixed", "supported": ["system", "gvisor"] }],
+            })
+        );
+    }
+
+    #[test]
+    fn the_selected_stack_overrides_the_profile_stack_while_tun_is_on() {
+        let mut input = profile_input(ClashCore::ClashPremium);
+        input.clash.enable_tun_mode = true;
+        input.clash.tun_stack = TunStack::Mixed;
+        let artifact = RuntimeBuilder::build(
+            &input,
+            &OneFile(
+                "tun: { stack: mixed }
+",
+            ),
+            &EchoRunner,
+        )
+        .unwrap();
+        assert_eq!(
+            artifact.final_config.to_json()["tun"]["stack"],
+            serde_json::json!("gvisor")
+        );
+        let warnings: Vec<_> = artifact
+            .step_logs
+            .iter()
+            .flat_map(|log| &log.entries)
+            .filter(|entry| entry.level == StepLogLevel::Warn)
+            .collect();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+    }
+
+    #[test]
+    fn bare_build_produces_artifact_with_guarded_ports() {
+        let mut input = base_input(); // current = None → Bare
+        input.app.enable_builtin_enhanced = false; // EchoRunner 下 builtin 无意义
+        let artifact =
+            RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).expect("bare build");
+        let yaml = serde_yaml_ng::to_value(&*artifact.final_config).expect("artifact to yaml");
+        assert_eq!(yaml["mixed-port"], serde_yaml_ng::Value::from(7890));
+    }
+
+    #[test]
+    fn tun_auto_route_policy_reaches_the_runtime_without_releasing_tun_enable() {
+        for auto_route in [
+            ManageableField::Managed(true),
+            ManageableField::Managed(false),
+            ManageableField::Unmanaged,
+        ] {
+            for enabled in [false, true] {
+                let mut input = base_input();
+                input.app.enable_builtin_enhanced = false;
+                input.app.core = ClashCore::Meow;
+                input.clash.enable_tun_mode = enabled;
+                input.clash.tun.auto_route = auto_route;
+                let config = RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner)
+                    .unwrap()
+                    .final_config
+                    .to_json();
+                if enabled {
+                    assert_eq!(config["tun"]["enable"], serde_json::json!(true));
+                    match auto_route {
+                        ManageableField::Managed(value) => {
+                            assert_eq!(config["tun"]["auto-route"], serde_json::json!(value))
+                        }
+                        ManageableField::Unmanaged => {
+                            assert!(config["tun"].get("auto-route").is_none())
+                        }
+                    }
+                } else {
+                    assert!(config.get("tun").is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_profiles_rejected_before_executor() {
+        let mut input = base_input();
+        let mut profiles = Profiles::default();
+        profiles.set_current(Some(ProfileId("ghost".into())));
+        input.profiles = Arc::new(profiles);
+        assert!(matches!(
+            RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
+            Err(RuntimeBuildError::ValidateProfiles { .. })
+        ));
+    }
+
+    #[test]
+    fn build_failures_reach_the_wire_with_their_context() {
+        let error = RuntimeBuildError::RunPipeline {
+            source: RuntimePipelineError::SelectedProfileNotFound {
+                profile: ProfileId("ghost".into()),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "run_pipeline",
+                "source": { "kind": "selected_profile_not_found", "profile": "ghost" },
+            })
+        );
+        let error = RuntimeBuildError::TransformsFailed {
+            failures: vec![
+                TransformFailure::Profile { id: "t1".into() },
+                TransformFailure::Builtin { name: "b".into() },
+            ],
+            logs: vec![RuntimeBuildLog {
+                tag: nyanpasu_config::runtime::snapshot::OperatorTag::BareRoot,
+                entries: vec![StepLogEntry::error("transform reported an error")],
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "transforms_failed",
+                "failures": [
+                    { "kind": "profile", "id": "t1" },
+                    { "kind": "builtin", "name": "b" },
+                ],
+                "logs": [{
+                    "tag": { "kind": "bare_root" },
+                    "entries": [{ "level": "error", "message": "transform reported an error" }],
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn builtin_disabled_flag_empties_the_list() {
+        let mut input = base_input();
+        input.app.enable_builtin_enhanced = false;
+        input.app.core = ClashCore::Mihomo;
+        let artifact = RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).unwrap();
+        let debug = format!("{:?}", artifact.graph);
+        assert!(!debug.contains("verge_hy_alpn"));
+    }
+}
+
+#[cfg(test)]
+mod fixture_content;
+#[cfg(test)]
+mod golden;
+#[cfg(test)]
+mod script_tests;

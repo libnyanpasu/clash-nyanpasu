@@ -1,6 +1,7 @@
 use fs_extra::dir::CopyOptions;
-use nyanpasu_core::{format::Format, migration::modules::profiles::ProfilesFormat};
+use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_persistence::format::Format;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use snafu::ResultExt as _;
@@ -46,8 +47,8 @@ pub(crate) enum Error {
     WaitMigration { source: io::Error, stderr: String },
     #[snafu(display("migration child reported a failure"))]
     ReadChildFailure {
-        #[snafu(source(from(nyanpasu_core::migration::child_result::Failure, Box::new)))]
-        source: Box<nyanpasu_core::migration::child_result::Failure>,
+        #[snafu(source(from(nyanpasu_migration::child_result::Failure, Box::new)))]
+        source: Box<nyanpasu_migration::child_result::Failure>,
     },
     #[snafu(display("migration child exited without a readable failure report"))]
     ChildExited { source: MigrationChildFailed },
@@ -160,7 +161,7 @@ fn run_migration_command(
     if status.success() {
         return Ok(());
     }
-    match nyanpasu_core::migration::child_result::Failure::read(result_path) {
+    match nyanpasu_migration::child_result::Failure::read(result_path) {
         Ok(source) => Err(Error::ReadChildFailure {
             source: Box::new(source),
         }),

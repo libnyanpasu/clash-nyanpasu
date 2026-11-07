@@ -11,15 +11,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::adapters::events::AppUpdateStateChanged;
 use nyanpasu_config::application::UpdateSource;
-use nyanpasu_core::{
-    client::{
-        app_update::{
-            AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
-            AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
-        },
-        bundle_metadata::BundleMetadata,
-    },
-    service::profile_file::ports::SelfProxyPortSource,
+use nyanpasu_contracts::{
+    bundle_metadata::BundleMetadata,
+    net::{SelfProxyPortSource, SystemProxySource},
+};
+use nyanpasu_core::client::app_update::{
+    AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateEventSink, AppUpdateRelease,
+    AppUpdateSettings, AppUpdateSnapshot, PreparedAppUpdate, VerifiedAppUpdate,
 };
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);
@@ -28,6 +26,7 @@ pub(crate) struct TauriAppUpdateBackend {
     app: tauri::AppHandle,
     proxy_port: Arc<dyn SelfProxyPortSource>,
     bundle_metadata: BundleMetadata,
+    system_proxy: Arc<dyn SystemProxySource>,
 }
 
 impl TauriAppUpdateBackend {
@@ -35,11 +34,13 @@ impl TauriAppUpdateBackend {
         app: tauri::AppHandle,
         proxy_port: Arc<dyn SelfProxyPortSource>,
         bundle_metadata: BundleMetadata,
+        system_proxy: Arc<dyn SystemProxySource>,
     ) -> Self {
         Self {
             app,
             proxy_port,
             bundle_metadata,
+            system_proxy,
         }
     }
 }
@@ -84,10 +85,9 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
                     }
                 });
             if let Some(port) = self.proxy_port.mixed_port() {
-                builder =
-                    builder.proxy(nyanpasu_core::utils::config::get_self_proxy(port).parse()?);
+                builder = builder.proxy(nyanpasu_net::policy::get_self_proxy(port).parse()?);
             }
-            if let Ok(Some(proxy)) = nyanpasu_core::utils::config::get_system_proxy() {
+            if let Ok(Some(proxy)) = self.system_proxy.system_proxy() {
                 builder = builder.proxy(proxy.parse().context("invalid system proxy")?);
             }
             let Some(mut update) = builder.build()?.check().await? else {

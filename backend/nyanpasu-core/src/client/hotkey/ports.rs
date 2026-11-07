@@ -1,15 +1,9 @@
-//! The pure hotkey domain plus the infrastructure boundaries the actor needs.
-//!
-//! Nothing here names Tauri or the global-shortcut plugin: parsing, validation
-//! and diffing are plain value work, and the platform registration lives behind
-//! [`ShortcutRegistrar`] in [`crate::adapters::hotkey`].
+//! Pure hotkey parsing, validation, diffing and the window-control consumer port.
 
-use std::{collections::BTreeMap, str::FromStr, sync::Arc};
+use std::{collections::BTreeMap, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu, ensure};
-
-use crate::client::main_thread::MainThreadError;
 
 /// Modifiers that make an accelerator safe to grab globally. Matched as a
 /// lowercase substring, which is what the shipped validation did; a stricter
@@ -132,33 +126,12 @@ pub enum HotkeyParseError {
     },
 }
 
-/// Why the OS would not grant or give back a global shortcut. The plugin's own
-/// error is boxed because this module does not name the plugin.
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub))]
-pub enum ShortcutError {
-    #[snafu(display("could not release the shortcut {accelerator}"))]
-    ReleaseShortcut {
-        accelerator: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-    #[snafu(display("could not register the shortcut {accelerator}"))]
-    RegisterShortcut {
-        accelerator: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-    #[snafu(display("could not release the registered shortcuts"))]
-    ReleaseAllShortcuts {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-    #[snafu(display("the shortcut work could not run on the main thread"))]
-    RunShortcutWork { source: MainThreadError },
-}
-
 /// Why the dashboard window could not be toggled.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum WindowError {
+    #[snafu(display("toggling the dashboard window is not supported"))]
+    ToggleDashboardUnsupported,
     #[snafu(display("could not toggle the dashboard window"))]
     ToggleDashboard {
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -308,7 +281,7 @@ pub fn has_super_key(accelerator: &str) -> bool {
 
 /// Whether the platform's shortcut parser accepts an accelerator.
 ///
-/// Its own port rather than a method on [`ShortcutRegistrar`]: the check needs
+/// Separate from desktop registration: the check needs
 /// no app handle and no registration, so the facade can run it in front of a
 /// commit without holding anything that touches the OS.
 #[cfg_attr(test, mockall::automock)]
@@ -318,30 +291,6 @@ pub trait AcceleratorValidator: Send + Sync + 'static {
     /// The one spelling the OS sees. `Ctrl+Q` and `Control+Q` are the same
     /// grab, so bindings keyed by the raw text would hide a collision.
     fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError>;
-}
-
-/// Platform global-shortcut registration.
-#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
-#[async_trait::async_trait]
-pub trait ShortcutRegistrar: Send + Sync + 'static {
-    /// The authoritative accelerator check, run before the OS is asked for the
-    /// grab. Separate from `register` so a failure is reported per accelerator.
-    fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError>;
-    async fn register(
-        &self,
-        accelerator: &str,
-        action: HotkeyAction,
-        sink: Arc<dyn HotkeyActionSink>,
-    ) -> Result<(), ShortcutError>;
-    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError>;
-    async fn unregister_all(&self) -> Result<(), ShortcutError>;
-}
-
-/// Where a pressed shortcut goes. Fire-and-forget on purpose: the OS callback
-/// has nothing to do with the result, and blocking it would stall the key.
-#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
-pub trait HotkeyActionSink: Send + Sync + 'static {
-    fn dispatch(&self, action: HotkeyAction);
 }
 
 /// The one window operation a hotkey can perform. Narrow by design: the facade

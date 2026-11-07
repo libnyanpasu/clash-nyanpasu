@@ -1,14 +1,24 @@
-pub mod bundle_metadata;
 pub mod clash_info;
 pub mod convergence;
-pub mod core_version;
-pub mod direct_egress;
-pub mod owner_shutdown;
 
-use crate::client::{
+use crate::client::clash_info::ClashInfo;
+use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
-    clash_info::ClashInfo,
-    direct_egress::{DirectEgress, DirectEgressProbe, ProbeSources, StunServerTest},
+    net::{
+        ChangelogHttp, DirectEgress, DirectEgressProbe, NetworkDiagnostics, ProbeSources,
+        StunServerTest,
+    },
+};
+use nyanpasu_migration::{
+    backup,
+    backup::{
+        BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
+        StorageSnapshot, StorageSource,
+    },
+};
+use nyanpasu_observers::{
+    logs::CoreLogsClient,
+    traffic::{TrafficClient, TrafficFeed, TrafficOwnerFactory, TrafficStartArgs},
 };
 use nyanpasu_paths::PathResolver;
 pub mod agent_skills;
@@ -16,6 +26,7 @@ mod app_lifecycle;
 pub mod app_update;
 pub mod application;
 pub mod application_workflow;
+pub mod artifact_snapshot;
 mod clash_api;
 mod clash_config;
 mod clash_streams;
@@ -26,30 +37,35 @@ pub mod effects;
 mod error;
 mod event_sink;
 pub mod frontend_events;
+mod geo_mode;
+#[cfg(test)]
+mod headless_tests;
 pub mod host_adapters;
 pub mod hotkey;
 pub mod jobs;
 pub mod logs;
-pub mod main_thread;
+#[cfg(test)]
+mod network_tests;
 mod ports;
 pub mod profiles;
 pub mod runtime;
+pub mod runtime_build;
 pub mod runtime_error;
 pub mod runtime_inspection;
 pub mod runtime_recovery;
 mod session_state;
 #[cfg(test)]
 mod startup_recovery_tests;
-mod system_dns;
 pub mod system_proxy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod traffic;
+pub(crate) mod traffic_frames;
 
 use self::{
     application::ApplicationClient,
     clash_config::ClashConfigClient,
-    debug_http::{DebugHttpControl, DebugHttpStatus},
+    debug_http::{DebugHttpControl, DebugHttpControlError, DebugHttpStatus},
     host_adapters::ClientHostAdapters,
     session_state::SessionStateClient,
 };
@@ -59,18 +75,11 @@ use crate::{
         facade::{ReconcileReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
     },
-    backup,
-    backup::{
-        BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
-        StorageSource,
-    },
-    service::profile_file::ports::SelfProxyPortSource,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        ReorderOp, ports::ProfileFsPort,
+        ReorderOp,
     },
-    storage::Storage,
 };
 use nyanpasu_config::{
     application::{
@@ -88,19 +97,18 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
-use snafu::{OptionExt as _, ResultExt as _};
+use nyanpasu_contracts::{net::SelfProxyPortSource, profiles::ports::ProfileFsPort};
+use nyanpasu_updater::{BackendFactory, BackendFactoryError, PreparedCoreBinary};
+use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
 pub use error::{ClientError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
-pub use main_thread::{MainThreadExecutor, MainThreadHandoff, MainThreadWork};
+use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 pub use runtime_error::RuntimeError;
-#[cfg(any(test, feature = "test-support"))]
-pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
-pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub host_adapters: ClientHostAdapters,
     pub jobs: nyanpasu_jobs::JobsClient,
@@ -109,9 +117,11 @@ pub struct ClientSetupArgs {
     pub paths: PathResolver,
     /// Opened by the composition root, which also manages the same instance
     /// for the storage commands.
-    pub storage: Storage,
+    pub storage: Arc<dyn StorageSnapshot>,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
+    /// Built after the session proxy source and application workflow exist.
+    pub updater_backend_factory: Arc<BackendFactory>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
     pub app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -119,16 +129,16 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub direct_egress: Arc<dyn DirectEgressProbe>,
-    pub geo_index: Arc<dyn crate::geo::CountryIndexSource>,
-    pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-    pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
-    pub core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+    pub geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
+    pub os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
+    pub binary_installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
+    pub core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
-    pub window: Arc<dyn hotkey::ports::WindowControl>,
-    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    pub window: Option<Arc<dyn hotkey::ports::WindowControl>>,
+    /// The shell supplies this if and only if its presentation executor registers hotkeys.
+    pub accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// `None` disables traffic recording: the store could not be opened.
-    pub traffic_store:
-        Option<Arc<dyn crate::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>>,
+    pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -151,7 +161,9 @@ pub enum SetupError {
     #[snafu(display("failed to start http server"))]
     StartHttpServer { source: debug_http::Error },
     #[snafu(display("failed to start core logs"))]
-    StartCoreLogs { source: crate::logs::SpawnError },
+    StartCoreLogs {
+        source: nyanpasu_observers::logs::SpawnError,
+    },
     #[snafu(display("failed to start streams"))]
     StartStreams { source: crate::clash::ws::Error },
     #[snafu(display("failed to start app logs"))]
@@ -161,13 +173,15 @@ pub enum SetupError {
     #[snafu(display("failed to start workflow"))]
     StartWorkflow { source: application_workflow::Error },
     #[snafu(display("failed to start updater"))]
-    StartUpdater { source: crate::updater::Error },
+    StartUpdater { source: nyanpasu_updater::Error },
     #[snafu(display("failed to start app updater"))]
     StartAppUpdater { source: app_update::Error },
     #[snafu(display("failed to start proxies"))]
     StartProxies { source: crate::proxies::Error },
     #[snafu(display("failed to start geo index"))]
-    StartGeoIndex { source: crate::geo::SpawnError },
+    StartGeoIndex {
+        source: nyanpasu_observers::geo::SpawnError,
+    },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -231,9 +245,9 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
-    debug_http: Arc<dyn DebugHttpControl>,
+    debug_http: Option<Arc<dyn DebugHttpControl>>,
     bundle_metadata: BundleMetadata,
-    core_logs: crate::logs::CoreLogsClient,
+    core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -246,28 +260,30 @@ struct NyanpasuClientInner {
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
     paths: PathResolver,
-    storage: Storage,
+    storage: Arc<dyn StorageSnapshot>,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
-    traffic: Option<crate::traffic::TrafficClient>,
-    updater: crate::updater::UpdaterClient,
-    core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+    traffic: Option<TrafficClient>,
+    updater: nyanpasu_updater::UpdaterClient,
+    core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
-    changelog_http: Arc<dyn app_update::changelog::ChangelogHttp>,
+    changelog_http: Arc<dyn ChangelogHttp>,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
+    icons: crate::service::icon::IconService,
+    network_diagnostics: Arc<dyn NetworkDiagnostics>,
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
-    geo_index: crate::geo::GeoIndexClient,
-    os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
+    geo_index: nyanpasu_observers::geo::GeoIndexClient,
+    os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
     effects: effects::actor::EffectsClient,
-    window: Arc<dyn hotkey::ports::WindowControl>,
+    window: Option<Arc<dyn hotkey::ports::WindowControl>>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
-    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// The root shutdown token; `request_shutdown` cancels it.
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
@@ -285,6 +301,7 @@ impl NyanpasuClient {
             storage,
             runtime_paths,
             ui_sink,
+            updater_backend_factory,
             app_update_backend_factory,
             app_update_event_sink,
             core_v2,
@@ -353,6 +370,7 @@ impl NyanpasuClient {
             runtime_paths,
             host_adapters,
             ui_sink,
+            updater_backend_factory,
             app_update_backend_factory,
             app_update_event_sink,
             core_v2,
@@ -388,42 +406,46 @@ impl NyanpasuClient {
         profiles_dir: PathBuf,
         instance_config_dir: PathBuf,
         paths: PathResolver,
-        storage: Storage,
+        storage: Arc<dyn StorageSnapshot>,
         runtime_paths: RuntimePaths,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
+        updater_backend_factory: Arc<BackendFactory>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
-        geo_index: Arc<dyn crate::geo::CountryIndexSource>,
-        os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-        binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
-        core_versions: Arc<dyn crate::client::core_version::CoreVersionReader>,
+        geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
+        os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
+        binary_installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
+        core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
-        window: Arc<dyn hotkey::ports::WindowControl>,
-        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-        traffic_store: Option<
-            Arc<dyn crate::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>,
-        >,
+        window: Option<Arc<dyn hotkey::ports::WindowControl>>,
+        accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
+        traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
-        let debug_http = (host_adapters.debug_http)()
-            .await
-            .context(StartHttpServerSnafu)?;
-        tasks.spawn({
-            let (http, token) = (debug_http.clone(), shutdown.child_token());
-            async move {
-                token.cancelled().await;
-                if let Err(error) = http.shutdown().await {
-                    tracing::warn!(%error, "debug HTTP server shutdown failed");
+        let icons =
+            crate::service::icon::IconService::new(paths.clone(), host_adapters.icon_fetcher);
+        let debug_http = if let Some(factory) = host_adapters.debug_http {
+            let http = factory().await.context(StartHttpServerSnafu)?;
+            tasks.spawn({
+                let (http, token) = (http.clone(), shutdown.child_token());
+                async move {
+                    token.cancelled().await;
+                    if let Err(error) = http.shutdown().await {
+                        tracing::warn!(%error, "debug HTTP server shutdown failed");
+                    }
                 }
-            }
-        });
-        let core_logs = crate::logs::CoreLogsClient::spawn(
+            });
+            Some(http)
+        } else {
+            None
+        };
+        let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
             shutdown.child_token(),
@@ -502,17 +524,13 @@ impl NyanpasuClient {
         if let Some(mutations) = mutations {
             mutations.connect(application_workflow.clone(), notifications);
         }
-        let updater = crate::updater::UpdaterClient::spawn(
-            Arc::new(crate::updater::HttpUpdaterBackend::new(
-                std::env::current_exe()
-                    .context(LocateExecutableSnafu)?
-                    .parent()
-                    .context(LocateExecutableParentSnafu)?
-                    .to_path_buf(),
-                paths.clone(),
-                ports.clone(),
-                bundle_metadata,
-            )),
+        let updater = nyanpasu_updater::UpdaterClient::spawn(
+            updater_backend_factory(ports.clone()).map_err(|error| match error {
+                BackendFactoryError::LocateExecutable { source } => {
+                    SetupError::LocateExecutable { source }
+                }
+                BackendFactoryError::LocateExecutableParent => SetupError::LocateExecutableParent,
+            })?,
             Arc::new(application_workflow.clone()),
             shutdown.child_token(),
             &tasks,
@@ -584,10 +602,10 @@ impl NyanpasuClient {
             crate::proxies::ProxiesClient::spawn(core_v2.clone(), shutdown.child_token(), &tasks)
                 .await
                 .context(StartProxiesSnafu)?;
-        let geo_index = crate::geo::GeoIndexClient::spawn(
-            crate::geo::GeoIndexArgs {
+        let geo_index = nyanpasu_observers::geo::GeoIndexClient::spawn(
+            nyanpasu_observers::geo::GeoIndexArgs {
                 source: geo_index,
-                core: core_v2.clone(),
+                mode_source: Arc::new(geo_mode::CoreModeSource::new(core_v2.clone())),
             },
             shutdown.child_token(),
             &tasks,
@@ -600,25 +618,28 @@ impl NyanpasuClient {
         ));
         let traffic = match traffic_store {
             Some(store) => {
-                match crate::traffic::TrafficClient::spawn(
-                    crate::traffic::TrafficArgs {
-                        storage: store,
-                        profile: nyanpasu_tsdb::Profile::desktop(),
-                        profiles: Arc::new(traffic::SelectedProfile::new(
-                            profiles.snapshot_handle(),
-                        )),
-                        retention: Arc::new(traffic::SettingsRetention::new(
-                            application.snapshot_handle(),
-                        )),
-                        clock: Arc::new(traffic::SystemClock),
-                        frames: streams.subscribe_connection_frames(),
-                        geo: geo_index.subscribe(),
-                        local_source: local_source.clone(),
-                    },
-                    shutdown.child_token(),
-                    &tasks,
-                )
-                .await
+                match store
+                    .spawn(
+                        TrafficStartArgs {
+                            profile: nyanpasu_tsdb::Profile::desktop(),
+                            profiles: Arc::new(traffic::SelectedProfile::new(
+                                profiles.snapshot_handle(),
+                            )),
+                            retention: Arc::new(traffic::SettingsRetention::new(
+                                application.snapshot_handle(),
+                            )),
+                            clock: Arc::new(traffic::SystemClock),
+                            frames: TrafficFeed::new(
+                                streams.subscribe_connection_frames(),
+                                Arc::new(traffic_frames::ClashFrameNormalizer),
+                            ),
+                            geo: geo_index.subscribe(),
+                            local_source: local_source.clone(),
+                        },
+                        shutdown.child_token(),
+                        &tasks,
+                    )
+                    .await
                 {
                     Ok(client) => Some(client),
                     // Recording is a side feature: an unreadable store disables it, not the app.
@@ -659,6 +680,8 @@ impl NyanpasuClient {
                 changelog_http,
                 system_dns,
                 direct_egress,
+                icons,
+                network_diagnostics: host_adapters.network_diagnostics,
                 local_source,
                 geo_index,
                 os_proxy,
@@ -671,14 +694,35 @@ impl NyanpasuClient {
         })
     }
 
-    pub async fn debug_http_status(&self) -> anyhow::Result<DebugHttpStatus> {
-        self.inner.debug_http.status().await
+    pub async fn debug_http_status(
+        &self,
+    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
+        let http = self
+            .inner
+            .debug_http
+            .as_ref()
+            .ok_or(DebugHttpControlError::ReadStatusUnsupported)?;
+        http.status()
+            .await
+            .map_err(|source| DebugHttpControlError::ReadStatus { source })
     }
-    pub async fn set_debug_http_enabled(&self, enabled: bool) -> anyhow::Result<DebugHttpStatus> {
-        self.inner.debug_http.set_enabled(enabled).await
+    pub async fn set_debug_http_enabled(
+        &self,
+        enabled: bool,
+    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
+        let http = self
+            .inner
+            .debug_http
+            .as_ref()
+            .ok_or(DebugHttpControlError::ChangeEnabledUnsupported)?;
+        http.set_enabled(enabled)
+            .await
+            .map_err(|source| DebugHttpControlError::ChangeEnabled { source })
     }
     pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
-        self.inner.debug_http.set_enabled(false).await?;
+        if let Some(http) = &self.inner.debug_http {
+            http.set_enabled(false).await?;
+        }
         Ok(())
     }
 
@@ -754,12 +798,12 @@ impl NyanpasuClient {
     pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
         let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
         let bundle_metadata = self.inner.bundle_metadata;
-        crate::utils::blocking::join(
+        nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let info = backup::create_backup(&BackupRequest {
                     bundle_metadata,
                     paths: &paths,
-                    storage: StorageSource::Live(&storage),
+                    storage: StorageSource::Live(storage.as_ref()),
                     kind: BackupKind::Manual,
                     now: time::OffsetDateTime::now_utc(),
                 })?;
@@ -793,31 +837,24 @@ impl NyanpasuClient {
     }
 
     pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
-        crate::utils::net::url_delay_test(
-            url,
-            expected_status,
-            self.clash_info().port,
-            &self.inner.bundle_metadata,
-        )
-        .await
+        self.inner
+            .network_diagnostics
+            .url_delay_test(url, expected_status, self.clash_info().port)
+            .await
     }
 
     pub async fn get_ipsb_asn(&self) -> anyhow::Result<serde_json::Value> {
-        crate::utils::net::get_ipsb_asn(self.clash_info().port, &self.inner.bundle_metadata).await
+        self.inner
+            .network_diagnostics
+            .get_ipsb_asn(self.clash_info().port)
+            .await
     }
 
-    pub async fn get_cached_icon(
-        &self,
-        url: &str,
-        paths: &PathResolver,
-    ) -> anyhow::Result<(String, bytes::Bytes)> {
-        crate::service::icon::get_cached_icon(
-            url,
-            self.clash_info().port,
-            paths,
-            &self.inner.bundle_metadata,
-        )
-        .await
+    pub async fn get_cached_icon(&self, url: &str) -> anyhow::Result<(String, bytes::Bytes)> {
+        self.inner
+            .icons
+            .get_cached_icon(url, self.clash_info().port)
+            .await
     }
 
     pub fn is_portable(&self) -> bool {
@@ -898,7 +935,7 @@ impl NyanpasuClient {
 
     pub async fn fetch_latest_core_versions(
         &self,
-    ) -> Result<crate::updater::ManifestVersionLatest> {
+    ) -> Result<nyanpasu_updater::ManifestVersionLatest> {
         Ok(self.inner.updater.fetch_latest().await?)
     }
 
@@ -909,7 +946,7 @@ impl NyanpasuClient {
         Ok(self.inner.updater.update(core).await?)
     }
 
-    pub async fn inspect_updater(&self, id: usize) -> Result<crate::updater::UpdaterSummary> {
+    pub async fn inspect_updater(&self, id: usize) -> Result<nyanpasu_updater::UpdaterSummary> {
         Ok(self.inner.updater.inspect(id).await?)
     }
 
@@ -920,15 +957,21 @@ impl NyanpasuClient {
     /// would stall a status poll behind it.
     pub async fn get_os_proxy(
         &self,
-    ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
-    {
+    ) -> std::result::Result<
+        nyanpasu_contracts::system_proxy::OsProxyConfig,
+        nyanpasu_contracts::system_proxy::OsProxyError,
+    > {
         let os_proxy = self.inner.os_proxy.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || os_proxy.get()).await,
+        )
     }
 
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || system_dns.flush()).await,
+        )
     }
 
     /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.
@@ -945,11 +988,11 @@ impl NyanpasuClient {
         let index = self.inner.geo_index.subscribe().borrow().clone();
         let countries = index
             .as_deref()
-            .map(|index| index as &dyn crate::traffic::CountryLookup);
+            .map(|index| index as &dyn traffic_frames::geo::CountryLookup);
         // Permission or TUN may change while the requests are in flight.
         let result = cache.blocked().unwrap_or_else(|| DirectEgress::Probed {
-            ipv4: ipv4.map(|answer| answer.locate(countries)),
-            ipv6: ipv6.map(|answer| answer.locate(countries)),
+            ipv4: ipv4.map(|answer| locate_egress(answer, countries)),
+            ipv6: ipv6.map(|answer| locate_egress(answer, countries)),
         });
         cache.set(&result);
         Ok(result)
@@ -973,7 +1016,7 @@ impl NyanpasuClient {
         patch: NyanpasuAppConfigPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
-            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
+            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_deref())?;
         }
         let client = self.inner.application.clone();
         Ok(client.patch(patch).await?.outcome())
@@ -1508,13 +1551,8 @@ impl NyanpasuClient {
 }
 
 #[async_trait::async_trait]
-impl crate::updater::ports::CoreUpdateInstaller
-    for application_workflow::ApplicationWorkflowClient
-{
-    async fn install(
-        &self,
-        artifact: core_lifecycle::ports::PreparedCoreBinary,
-    ) -> anyhow::Result<()> {
+impl nyanpasu_updater::CoreUpdateInstaller for application_workflow::ApplicationWorkflowClient {
+    async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }
 }
@@ -1534,15 +1572,14 @@ pub(crate) mod tests {
             endpoint::ExecutionHost,
             test_support::{HostTransitionServiceAdapter, test_idle_endpoint, test_v2_clients},
         },
-        client::{
-            system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError},
-            test_support::facade::{
+        client::test_support::{
+            facade::{
                 local_config_request, test_client, test_client_from_typed_clients,
                 test_client_with_direct_egress, test_client_with_fetcher, test_client_with_ports,
                 test_client_with_system_dns,
             },
+            workflow::{Installer, NoopSystemDnsCache},
         },
-        state::profiles::{error::SubscriptionFetchError, ports::MockSubscriptionFetcher},
         utils::test_support::test_paths,
     };
     use nyanpasu_config::{
@@ -1553,16 +1590,82 @@ pub(crate) mod tests {
         },
         state::window::WindowState,
     };
+    use nyanpasu_contracts::{
+        core_version::CoreVersionError,
+        net::MockDirectEgressProbe,
+        profiles::{
+            error::SubscriptionFetchError,
+            ports::{FetchedSubscription, MockSubscriptionFetcher},
+        },
+        system_dns::MockSystemDnsCache,
+        system_proxy::{MockOsProxyPort, OsProxyConfig, OsProxyError},
+    };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
+    async fn setup_with_updater_factory(factory: Arc<BackendFactory>) -> SetupError {
+        let dir = tempdir().unwrap();
+        let mut args = test_client_args_with_endpoint(
+            &dir,
+            test_idle_endpoint(),
+            crate::client::test_support::profile_test_adapters(&dir),
+        )
+        .await;
+        args.updater_backend_factory = factory;
+        let shutdown = args.shutdown.clone();
+        let tasks = args.tasks.clone();
+        let error = NyanpasuClient::try_new(args)
+            .await
+            .err()
+            .expect("the injected backend factory fails setup");
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+        error
+    }
+
+    #[tokio::test]
+    async fn updater_factory_preserves_executable_lookup_error() {
+        use std::error::Error as _;
+
+        let error = setup_with_updater_factory(Arc::new(|_| {
+            Err(BackendFactoryError::LocateExecutable {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "executable lookup denied",
+                ),
+            })
+        }))
+        .await;
+        assert!(matches!(error, SetupError::LocateExecutable { .. }));
+        assert_eq!(error.to_string(), "failed to locate executable");
+        let source = error.source().expect("the original IO error is the source");
+        let io = source.downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(io.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(source.to_string(), "executable lookup denied");
+        assert!(source.source().is_none());
+    }
+
+    #[tokio::test]
+    async fn updater_factory_preserves_missing_executable_parent_error() {
+        use std::error::Error as _;
+
+        let error = setup_with_updater_factory(Arc::new(|_| {
+            Err(BackendFactoryError::LocateExecutableParent)
+        }))
+        .await;
+        assert!(matches!(error, SetupError::LocateExecutableParent));
+        assert_eq!(error.to_string(), "executable has no parent directory");
+        assert!(error.source().is_none());
+    }
+
     /// The stamped file the application loads.
     fn write_application_config(path: &camino::Utf8Path, config: &NyanpasuAppConfig) {
-        use crate::format::Format as _;
+        use nyanpasu_persistence::format::Format as _;
 
         let mut content = Vec::new();
-        crate::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_migration::modules::application::ApplicationFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -1668,7 +1771,7 @@ pub(crate) mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let mut manager = crate::state::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
-            crate::migration::modules::application::ApplicationFormat,
+            nyanpasu_migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()
@@ -1710,8 +1813,8 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
-            Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
-            Arc::new(crate::geo::NoopCountryIndexSource),
+            Arc::new(MockDirectEgressProbe::new()),
+            Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await;
@@ -1819,7 +1922,7 @@ pub(crate) mod tests {
     async fn probe_direct_egress_reports_each_family_from_the_injected_probe() {
         let dir = tempdir().expect("tempdir should be created");
         let address = std::net::Ipv4Addr::new(203, 0, 113, 7);
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe
             .expect_ipv4()
             .withf(|sources| {
@@ -1844,7 +1947,7 @@ pub(crate) mod tests {
         assert_eq!(
             client.probe_direct_egress().await.unwrap(),
             DirectEgress::Probed {
-                ipv4: Some(crate::client::direct_egress::EgressAddress {
+                ipv4: Some(nyanpasu_contracts::net::EgressAddress {
                     address,
                     source: lookup_answer(address).source,
                     country: None,
@@ -1854,10 +1957,33 @@ pub(crate) mod tests {
         );
     }
 
-    fn lookup_answer<A>(address: A) -> crate::client::direct_egress::EgressAnswer<A> {
-        crate::client::direct_egress::EgressAnswer {
+    #[test]
+    fn egress_answer_uses_the_available_country_index() {
+        struct OneCountry;
+        impl traffic_frames::geo::CountryLookup for OneCountry {
+            fn country(&self, ip: std::net::IpAddr) -> Option<String> {
+                (ip == std::net::Ipv4Addr::new(203, 0, 113, 7)).then(|| "JP".to_owned())
+            }
+        }
+        let known = std::net::Ipv4Addr::new(203, 0, 113, 7);
+        let unknown = std::net::Ipv4Addr::new(198, 51, 100, 1);
+        assert_eq!(
+            locate_egress(lookup_answer(known), Some(&OneCountry))
+                .country
+                .as_deref(),
+            Some("JP")
+        );
+        assert_eq!(
+            locate_egress(lookup_answer(unknown), Some(&OneCountry)).country,
+            None
+        );
+        assert_eq!(locate_egress(lookup_answer(known), None).country, None);
+    }
+
+    fn lookup_answer<A>(address: A) -> nyanpasu_contracts::net::EgressAnswer<A> {
+        nyanpasu_contracts::net::EgressAnswer {
             address,
-            source: crate::client::direct_egress::EgressSource::Lookup {
+            source: nyanpasu_contracts::net::EgressSource::Lookup {
                 provider: nyanpasu_config::application::IpLookupProvider::Ipify,
             },
         }
@@ -1865,11 +1991,11 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn a_running_probe_sees_detection_servers_and_consent_change() {
-        use crate::client::direct_egress::ProbePermission;
+        use nyanpasu_contracts::net::ProbePermission;
         let dir = tempdir().expect("tempdir should be created");
         let permission = Arc::new(std::sync::Mutex::new(None::<Arc<dyn ProbePermission>>));
         let slot = permission.clone();
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe.expect_ipv4().times(1).returning(move |sources| {
             *slot.lock().unwrap() = Some(sources.permission.clone());
             None
@@ -1917,7 +2043,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn probe_direct_egress_does_not_probe_while_tun_mode_is_enabled() {
         let dir = tempdir().expect("tempdir should be created");
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe.expect_ipv4().never();
         probe.expect_ipv6().never();
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
@@ -1944,9 +2070,9 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
-        use crate::traffic::LocalSourceLocation;
+        use nyanpasu_observers::traffic::LocalSourceLocation;
         let dir = tempdir().unwrap();
-        let mut probe = crate::client::direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         let mut sequence = mockall::Sequence::new();
         probe
             .expect_ipv4()
@@ -2003,7 +2129,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn direct_egress_discards_an_answer_when_tun_is_enabled_during_the_request() {
-        use crate::traffic::LocalSourceLocation;
+        use nyanpasu_observers::traffic::LocalSourceLocation;
         struct WaitingProbe {
             started: tokio::sync::Notify,
             release: tokio::sync::Notify,
@@ -2013,8 +2139,7 @@ pub(crate) mod tests {
             async fn ipv4(
                 &self,
                 _: &ProbeSources,
-            ) -> Option<crate::client::direct_egress::EgressAnswer<std::net::Ipv4Addr>>
-            {
+            ) -> Option<nyanpasu_contracts::net::EgressAnswer<std::net::Ipv4Addr>> {
                 self.started.notify_one();
                 self.release.notified().await;
                 Some(lookup_answer("203.0.113.7".parse().unwrap()))
@@ -2022,8 +2147,7 @@ pub(crate) mod tests {
             async fn ipv6(
                 &self,
                 _: &ProbeSources,
-            ) -> Option<crate::client::direct_egress::EgressAnswer<std::net::Ipv6Addr>>
-            {
+            ) -> Option<nyanpasu_contracts::net::EgressAnswer<std::net::Ipv6Addr>> {
                 None
             }
             async fn test_stun_server(&self, _: &str, _: u16) -> StunServerTest {
@@ -2059,7 +2183,7 @@ pub(crate) mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
         let dir = tempdir().unwrap();
-        let mut reader = crate::client::core_version::MockCoreVersionReader::new();
+        let mut reader = nyanpasu_contracts::core_version::MockCoreVersionReader::new();
         reader
             .expect_read()
             .withf(|core| *core == nyanpasu_config::application::ClashCore::Meow)
@@ -2069,9 +2193,7 @@ pub(crate) mod tests {
             .expect_read()
             .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
             .times(1)
-            .returning(|core| {
-                Err(crate::client::core_version::CoreVersionError::CoreVersionNotReported { core })
-            });
+            .returning(|core| Err(CoreVersionError::CoreVersionNotReported { core }));
         let mut args = test_client_args_with_endpoint(
             &dir,
             test_idle_endpoint(),
@@ -2093,7 +2215,7 @@ pub(crate) mod tests {
                     .get_core_version(nyanpasu_config::application::ClashCore::ClashRs)
                     .await,
                 Err(RuntimeError::ReadCoreVersion {
-                    source: crate::client::core_version::CoreVersionError::CoreVersionNotReported { .. }
+                    source: CoreVersionError::CoreVersionNotReported { .. }
                 })
             ));
         })
@@ -2116,13 +2238,10 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
+    impl nyanpasu_contracts::service::ServiceProcessControl for PersistedSwitchProbe {
         async fn probe(
             &self,
-        ) -> std::result::Result<
-            nyanpasu_ipc::types::StatusInfo<'static>,
-            crate::service::control::ServiceCommandError,
-        > {
+        ) -> std::result::Result<String, nyanpasu_contracts::service::ServiceCommandError> {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
                 .and_then(|bytes| serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes).ok())
@@ -2136,34 +2255,36 @@ pub(crate) mod tests {
 
         async fn install(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.install().await
         }
 
         async fn uninstall(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.uninstall().await
         }
 
         async fn start_daemon(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.start_daemon().await
         }
 
         async fn stop_daemon(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.stop_daemon().await
         }
 
         async fn update(
             &self,
-        ) -> std::result::Result<(), crate::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.delegate.update().await
         }
+    }
 
+    impl crate::actor_v2::service_actor::ServiceEndpointFactory for PersistedSwitchProbe {
         fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
             self.delegate.endpoint()
         }
@@ -2193,7 +2314,9 @@ pub(crate) mod tests {
             application_config: args.paths.application_config_path().into_std_path_buf(),
         });
         let core_v2 = CoreClientV2::spawn(local).await.unwrap();
-        let service = ServiceClient::spawn(adapter, 0).await.unwrap();
+        let service = ServiceClient::spawn(adapter.clone(), adapter, 0)
+            .await
+            .unwrap();
         args.core_v2 = core_v2;
         args.service = service;
         if service_seed {
@@ -2434,31 +2557,34 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: ReleaseChannel::Stable,
                 sourceforge_project: None,
-                ..crate::client::bundle_metadata::TEST_BUNDLE_METADATA
+                ..nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA
             },
             host_adapters: crate::client::test_support::profile_test_adapters(&dir),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             paths,
-            storage,
+            storage: Arc::new(storage),
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+            updater_backend_factory: Arc::new(|_| {
+                Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))
+            }),
             app_update_backend_factory: None,
             app_update_event_sink: None,
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
-            direct_egress: Arc::new(crate::client::direct_egress::MockDirectEgressProbe::new()),
-            geo_index: Arc::new(crate::geo::NoopCountryIndexSource),
+            direct_egress: Arc::new(MockDirectEgressProbe::new()),
+            geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
-            binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-            core_versions: Arc::new(crate::client::core_version::MockCoreVersionReader::new()),
+            binary_installer: Arc::new(Installer::succeeding()),
+            core_versions: Arc::new(nyanpasu_contracts::core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
-            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            window: Some(Arc::new(hotkey::ports::MockWindowControl::new())),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
-            accelerators: Arc::new(crate::client::test_support::AnyAccelerator),
+            accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
             traffic_store: None,
             shutdown,
             tasks,
@@ -3014,7 +3140,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 // No server name: exercises the url last-segment fallback below.
@@ -3067,7 +3193,7 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
-                Ok(crate::state::profiles::ports::FetchedSubscription {
+                Ok(FetchedSubscription {
                     content: "proxies: []\n".into(),
                     subscription: SubscriptionInfo::default(),
                     filename: None,
@@ -3137,7 +3263,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3175,7 +3301,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3327,7 +3453,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3484,7 +3610,7 @@ pub(crate) mod tests {
     fn ok_fetch_without_name() -> MockSubscriptionFetcher {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -3680,5 +3806,16 @@ mod setup_error_tests {
         shutdown.cancel();
         tasks.close();
         tasks.wait().await;
+    }
+}
+
+fn locate_egress<A: Copy + Into<std::net::IpAddr>>(
+    answer: nyanpasu_contracts::net::EgressAnswer<A>,
+    countries: Option<&dyn traffic_frames::geo::CountryLookup>,
+) -> nyanpasu_contracts::net::EgressAddress<A> {
+    nyanpasu_contracts::net::EgressAddress {
+        country: countries.and_then(|countries| countries.country(answer.address.into())),
+        address: answer.address,
+        source: answer.source,
     }
 }

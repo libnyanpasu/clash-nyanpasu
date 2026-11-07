@@ -3,10 +3,10 @@
 //! token is cancelled.
 use std::future::Future;
 
+use nyanpasu_owner_support::shutdown;
 use tokio_util::sync::CancellationToken;
 
 use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
-use crate::client::owner_shutdown;
 
 impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,
@@ -73,7 +73,7 @@ impl NyanpasuClient {
         token: &CancellationToken,
         producer: impl Future<Output = ()> + Send + 'static,
     ) -> impl Future<Output = ()> + Send + 'static {
-        owner_shutdown::track_until_shutdown(&self.inner.tasks, token, producer)
+        shutdown::track_until_shutdown(&self.inner.tasks, token, producer)
     }
 }
 
@@ -82,7 +82,7 @@ mod tests {
     use std::{
         sync::{
             Arc, Mutex as StdMutex,
-            atomic::{AtomicBool, AtomicUsize, Ordering},
+            atomic::{AtomicBool, Ordering},
         },
         time::Duration,
     };
@@ -109,13 +109,6 @@ mod tests {
                 ports::ApplicationEffectsPort,
                 status::{EffectHealth, EffectRevision, EffectStatus},
             },
-            hotkey::{
-                HotkeyArgs, HotkeyClient,
-                ports::{
-                    HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-                    ShortcutError, ShortcutRegistrar,
-                },
-            },
             test_support::{TestControlEndpoint, test_client_args_with_endpoint},
         },
     };
@@ -135,15 +128,11 @@ mod tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let dropped = Arc::new(AtomicBool::new(false));
         let guard = Dropped(Arc::clone(&dropped));
-        let task = tokio::spawn(owner_shutdown::track_until_shutdown(
-            &tasks,
-            &token,
-            async move {
-                let _guard = guard;
-                let _ = started_tx.send(());
-                std::future::pending::<()>().await;
-            },
-        ));
+        let task = tokio::spawn(shutdown::track_until_shutdown(&tasks, &token, async move {
+            let _guard = guard;
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        }));
         started_rx.await.unwrap();
 
         token.cancel();
@@ -161,13 +150,9 @@ mod tests {
 
         let ran = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&ran);
-        tokio::spawn(owner_shutdown::track_until_shutdown(
-            &tasks,
-            &token,
-            async move {
-                flag.store(true, Ordering::SeqCst);
-            },
-        ))
+        tokio::spawn(shutdown::track_until_shutdown(&tasks, &token, async move {
+            flag.store(true, Ordering::SeqCst);
+        }))
         .await
         .unwrap();
         assert!(!ran.load(Ordering::SeqCst));
@@ -275,45 +260,11 @@ mod tests {
         }
     }
 
-    /// Counts the releases the hotkey owner makes on its way out.
-    #[derive(Default)]
-    struct CountingRegistrar {
-        releases: AtomicUsize,
-    }
-
-    #[async_trait::async_trait]
-    impl ShortcutRegistrar for CountingRegistrar {
-        fn validate(&self, _: &str) -> std::result::Result<(), HotkeyParseError> {
-            Ok(())
-        }
-
-        async fn register(
-            &self,
-            _: &str,
-            _: HotkeyAction,
-            _: Arc<dyn HotkeyActionSink>,
-        ) -> std::result::Result<(), ShortcutError> {
-            Ok(())
-        }
-
-        async fn unregister(&self, _: &str) -> std::result::Result<(), ShortcutError> {
-            Ok(())
-        }
-
-        async fn unregister_all(&self) -> std::result::Result<(), ShortcutError> {
-            self.releases.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }
-    }
-
-    /// A booted client, with a hotkey owner beside it on the same root
-    /// token, the way the composition root wires one.
+    /// A booted client with injected core and effects ports.
     struct Graph {
         client: NyanpasuClient,
         core: Arc<RecordingCore>,
         effects: Arc<HeldEffects>,
-        registrar: Arc<CountingRegistrar>,
-        _hotkeys: HotkeyClient,
         log: Log,
         _dir: TempDir,
     }
@@ -349,24 +300,11 @@ mod tests {
             )
             .await;
             args.effects = effects.clone();
-            let registrar = Arc::new(CountingRegistrar::default());
-            let hotkeys = HotkeyClient::spawn(
-                HotkeyArgs {
-                    registrar: registrar.clone(),
-                    sink: Arc::new(MockHotkeyActionSink::new()),
-                    shutdown: args.shutdown.child_token(),
-                },
-                &args.tasks,
-            )
-            .await
-            .unwrap();
             let client = NyanpasuClient::try_new(args).await.unwrap();
             Self {
                 client,
                 core,
                 effects,
-                registrar,
-                _hotkeys: hotkeys,
                 log,
                 _dir: dir,
             }
@@ -410,7 +348,6 @@ mod tests {
         g.client.wait_shutdown().await;
 
         assert_eq!(g.events(), ["core stopped"]);
-        assert_eq!(g.registrar.releases.load(Ordering::SeqCst), 1);
     }
 
     /// V16 (X2): a Try in flight when the shutdown begins runs to its end;
@@ -481,12 +418,12 @@ mod tests {
         g.client.request_shutdown();
 
         tokio::time::timeout(SETTLE, async {
-            while g.events().is_empty() || g.registrar.releases.load(Ordering::SeqCst) == 0 {
+            while g.events().is_empty() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })
         .await
-        .expect("the core stopped and the shortcuts were released");
+        .expect("the core stopped");
         assert!(
             !g.stopped_within(HELD).await,
             "the effects group still runs"

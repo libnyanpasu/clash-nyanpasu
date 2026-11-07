@@ -1,0 +1,530 @@
+use super::super::{Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck};
+use nyanpasu_persistence::write;
+use once_cell::sync::Lazy;
+use semver::Version;
+use serde_yaml_ng::{Mapping, Value};
+use snafu::{OptionExt as _, ResultExt as _};
+
+#[derive(Debug, snafu::Snafu)]
+pub enum Error {
+    #[snafu(display("failed to read {path:?}"))]
+    ReadFile {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("failed to parse YAML"))]
+    ParseYaml { source: serde_yaml_ng::Error },
+    #[snafu(context(false), display("failed to serialize YAML"))]
+    SerializeYaml { source: serde_yaml_ng::Error },
+    #[snafu(context(false), display("failed to write migration output"))]
+    WriteOutput { source: write::Error },
+    #[snafu(display("network_statistic_widget is not in the nested form"))]
+    FlattenWidget,
+    #[snafu(display("language is already canonical"))]
+    CanonicalizeLanguage,
+}
+
+pub static MIGRATOR: AppConfigMigrator = AppConfigMigrator;
+
+static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
+static LANGUAGE_OPTION: MigrateLanguageOption = MigrateLanguageOption;
+static THEME_SETTING: MigrateThemeSetting = MigrateThemeSetting;
+static NET_STAT_WIDGET_FLATTEN: MigrateNetworkStatisticWidgetFlatten =
+    MigrateNetworkStatisticWidgetFlatten;
+static LANGUAGE_CASE: MigrateLanguageCase = MigrateLanguageCase;
+// `LANGUAGE_CASE` must stay after `LANGUAGE_OPTION`: the latter rewrites `zh`
+// into the mixed-case `zh-CN` that the former then canonicalizes.
+static STEPS: [&dyn MigrationStep; 4] = [
+    &LANGUAGE_OPTION,
+    &THEME_SETTING,
+    &NET_STAT_WIDGET_FLATTEN,
+    &LANGUAGE_CASE,
+];
+
+const NETWORK_STATISTIC_WIDGET_KEY: &str = "network_statistic_widget";
+
+pub struct AppConfigMigrator;
+
+impl ModuleMigrator for AppConfigMigrator {
+    fn module(&self) -> &'static str {
+        "app_config"
+    }
+
+    fn detect_baseline(&self, ctx: &Ctx) -> Result<u64, super::super::OperationError> {
+        (|| -> Result<u64, Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            if !config_path.exists() {
+                return Ok(current_revision());
+            }
+
+            let raw = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+            if needs_language_option_migration(&config)
+                || needs_theme_setting_migration(&config)
+                || needs_network_statistic_widget_migration(&config)
+                || needs_language_case_migration(&config)
+            {
+                Ok(0)
+            } else {
+                Ok(current_revision())
+            }
+        })()
+        .map_err(Into::into)
+    }
+
+    fn steps(&self) -> &'static [&'static dyn MigrationStep] {
+        &STEPS
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateLanguageOption;
+
+impl MigrationStep for MigrateLanguageOption {
+    fn id(&self) -> &'static str {
+        "app_config/language_option"
+    }
+
+    fn module(&self) -> &'static str {
+        "app_config"
+    }
+
+    fn revision(&self) -> u64 {
+        1
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateLanguageOption"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_language_option_migration)
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            let config = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&config).context(ParseYamlSnafu)?;
+            config.insert("language".into(), Value::from("zh-CN"));
+            let config = serde_yaml_ng::to_string(&config)?;
+            write::atomic_write(&config_path, config.as_bytes())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateThemeSetting;
+
+impl MigrationStep for MigrateThemeSetting {
+    fn id(&self) -> &'static str {
+        "app_config/theme_setting"
+    }
+
+    fn module(&self) -> &'static str {
+        "app_config"
+    }
+
+    fn revision(&self) -> u64 {
+        2
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateThemeSetting"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_theme_setting_migration)
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            let raw_config = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping =
+                serde_yaml_ng::from_str(&raw_config).context(ParseYamlSnafu)?;
+            if let Some(theme) = config.get("theme_setting")
+                && !theme.is_null()
+                && let Some(theme_obj) = theme.as_mapping()
+                && let Some(color) = theme_obj.get("primary_color")
+            {
+                println!("color: {color:?}");
+                config.insert("theme_color".into(), color.clone());
+            }
+            config.remove("theme_setting");
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            if !config_path.exists() {
+                return Ok(());
+            }
+            let raw_config = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping =
+                serde_yaml_ng::from_str(&raw_config).context(ParseYamlSnafu)?;
+            if let Some(color) = config.get("theme_color") {
+                let mut theme_obj = Mapping::new();
+                theme_obj.insert("primary_color".into(), color.clone());
+                config.insert("theme_setting".into(), Value::Mapping(theme_obj));
+                config.remove("theme_color");
+            }
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateNetworkStatisticWidgetFlatten;
+
+impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
+    fn id(&self) -> &'static str {
+        "app_config/net_stat_widget_flatten"
+    }
+
+    fn module(&self) -> &'static str {
+        "app_config"
+    }
+
+    fn revision(&self) -> u64 {
+        3
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateNetworkStatisticWidgetFlatten"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_network_statistic_widget_migration)
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            let raw = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+            let flattened = config
+                .get(NETWORK_STATISTIC_WIDGET_KEY)
+                .and_then(flatten_value)
+                .context(FlattenWidgetSnafu)?;
+            config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), flattened);
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+
+    fn rollback(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            if !config_path.exists() {
+                return Ok(());
+            }
+            let raw = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+            let Some(value) = config.get(NETWORK_STATISTIC_WIDGET_KEY).cloned() else {
+                return Ok(());
+            };
+            let Some(expanded) = expand_value(&value) else {
+                return Ok(());
+            };
+            config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), expanded);
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateLanguageCase;
+
+impl MigrationStep for MigrateLanguageCase {
+    fn id(&self) -> &'static str {
+        "app_config/language_case"
+    }
+
+    fn module(&self) -> &'static str {
+        "app_config"
+    }
+
+    fn revision(&self) -> u64 {
+        4
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateLanguageCase"
+    }
+
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_language_case_migration)
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let config_path = ctx.nyanpasu_config_path();
+            let raw = std::fs::read_to_string(&config_path)
+                .context(ReadFileSnafu { path: &config_path })?;
+            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+            let canonical = config
+                .get("language")
+                .and_then(canonical_language)
+                .context(CanonicalizeLanguageSnafu)?;
+            config.insert("language".into(), Value::String(canonical.to_string()));
+            let new_config = serde_yaml_ng::to_string(&config)?;
+            write::atomic_write(&config_path, new_config.as_bytes())?;
+            Ok(())
+        })()
+        .map_err(Into::into)
+    }
+}
+
+/// A missing config file has nothing to migrate.
+fn check_config(
+    ctx: &Ctx,
+    needs: fn(&Mapping) -> bool,
+) -> Result<Option<StepCheck>, MigrationCheckError> {
+    let config: Option<Mapping> = crate::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+    Ok(Some(StepCheck::from_needed(
+        config.as_ref().is_some_and(needs),
+    )))
+}
+
+fn current_revision() -> u64 {
+    STEPS.last().map(|step| step.revision()).unwrap_or_default()
+}
+
+fn needs_language_option_migration(config: &Mapping) -> bool {
+    config.get("language").is_some_and(|lang| lang == "zh")
+}
+
+fn needs_language_case_migration(config: &Mapping) -> bool {
+    config
+        .get("language")
+        .and_then(canonical_language)
+        .is_some()
+}
+
+/// Canonical spelling for a persisted `language` value, or `None` when the
+/// value is already canonical (or is not a language this build knows).
+///
+/// Older builds wrote mixed-case tags such as `zh-CN`, which no longer match the
+/// lowercase keys used by `rust_i18n`, the paraglide runtime, and date-fns locale mapping.
+fn canonical_language(value: &Value) -> Option<&'static str> {
+    let raw = value.as_str()?;
+    let canonical = match raw.to_ascii_lowercase().as_str() {
+        "en" | "en-us" => "en",
+        "ja" => "ja",
+        "ko" => "ko",
+        "ru" => "ru",
+        "zh-cn" => "zh-cn",
+        "zh-tw" => "zh-tw",
+        _ => return None,
+    };
+    (canonical != raw).then_some(canonical)
+}
+
+fn needs_theme_setting_migration(config: &Mapping) -> bool {
+    config.contains_key("theme_setting")
+}
+
+fn needs_network_statistic_widget_migration(config: &Mapping) -> bool {
+    config
+        .get(NETWORK_STATISTIC_WIDGET_KEY)
+        .is_some_and(|value| flatten_value(value).is_some())
+}
+
+fn flatten_value(value: &Value) -> Option<Value> {
+    let mapping = value.as_mapping()?;
+    let kind = mapping.get("kind")?.as_str()?;
+    match kind {
+        "disabled" => Some(Value::String("disabled".to_string())),
+        "enabled" => {
+            let variant = mapping.get("value")?.as_str()?;
+            if matches!(variant, "large" | "small") {
+                Some(Value::String(variant.to_string()))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn expand_value(value: &Value) -> Option<Value> {
+    let flat = value.as_str()?;
+    match flat {
+        "disabled" => {
+            let mut map = Mapping::new();
+            map.insert("kind".into(), Value::String("disabled".to_string()));
+            Some(Value::Mapping(map))
+        }
+        "large" | "small" => {
+            let mut map = Mapping::new();
+            map.insert("kind".into(), Value::String("enabled".to_string()));
+            map.insert("value".into(), Value::String(flat.to_string()));
+            Some(Value::Mapping(map))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    fn yaml(src: &str) -> Value {
+        serde_yaml_ng::from_str(src).unwrap()
+    }
+
+    #[test]
+    fn flatten_disabled() {
+        let before = yaml("kind: disabled");
+        let after = flatten_value(&before).unwrap();
+        assert_eq!(after, Value::String("disabled".to_string()));
+    }
+
+    #[test]
+    fn flatten_enabled_large() {
+        let before = yaml("{ kind: enabled, value: large }");
+        let after = flatten_value(&before).unwrap();
+        assert_eq!(after, Value::String("large".to_string()));
+    }
+
+    #[test]
+    fn flatten_enabled_small() {
+        let before = yaml("{ kind: enabled, value: small }");
+        let after = flatten_value(&before).unwrap();
+        assert_eq!(after, Value::String("small".to_string()));
+    }
+
+    #[test]
+    fn flatten_already_string_is_noop() {
+        let before = Value::String("large".to_string());
+        assert!(flatten_value(&before).is_none());
+    }
+
+    #[test]
+    fn flatten_unknown_variant_is_noop() {
+        let before = yaml("{ kind: enabled, value: mega }");
+        assert!(flatten_value(&before).is_none());
+    }
+
+    #[test]
+    fn expand_disabled() {
+        let before = Value::String("disabled".to_string());
+        let after = expand_value(&before).unwrap();
+        assert_eq!(after, yaml("kind: disabled"));
+    }
+
+    #[test]
+    fn expand_large() {
+        let before = Value::String("large".to_string());
+        let after = expand_value(&before).unwrap();
+        assert_eq!(after, yaml("{ kind: enabled, value: large }"));
+    }
+
+    #[test]
+    fn expand_small() {
+        let before = Value::String("small".to_string());
+        let after = expand_value(&before).unwrap();
+        assert_eq!(after, yaml("{ kind: enabled, value: small }"));
+    }
+
+    #[test]
+    fn expand_mapping_is_noop() {
+        let before = yaml("{ kind: enabled, value: large }");
+        assert!(expand_value(&before).is_none());
+    }
+
+    #[test]
+    fn canonicalizes_mixed_case_language() {
+        let canonical = |raw: &str| canonical_language(&Value::String(raw.to_string()));
+        assert_eq!(canonical("zh-CN"), Some("zh-cn"));
+        assert_eq!(canonical("zh-TW"), Some("zh-tw"));
+        assert_eq!(canonical("en-US"), Some("en"));
+        assert_eq!(canonical("EN"), Some("en"));
+        assert_eq!(canonical("JA"), Some("ja"));
+    }
+
+    #[test]
+    fn already_canonical_language_is_noop() {
+        for raw in ["en", "ja", "ko", "ru", "zh-cn", "zh-tw"] {
+            assert_eq!(canonical_language(&Value::String(raw.to_string())), None);
+        }
+    }
+
+    #[test]
+    fn unknown_language_is_noop() {
+        assert_eq!(canonical_language(&Value::String("fr".to_string())), None);
+        assert_eq!(canonical_language(&Value::Bool(true)), None);
+    }
+
+    #[test]
+    fn language_case_migration_is_detected() {
+        assert!(needs_language_case_migration(
+            yaml("language: zh-CN").as_mapping().unwrap()
+        ));
+        assert!(!needs_language_case_migration(
+            yaml("language: zh-cn").as_mapping().unwrap()
+        ));
+        assert!(!needs_language_case_migration(
+            yaml("theme_mode: dark").as_mapping().unwrap()
+        ));
+    }
+
+    #[test]
+    fn language_option_output_is_canonicalized_by_the_case_step() {
+        // `MigrateLanguageOption` rewrites `zh` into `zh-CN`; the case step has
+        // to run after it, or the chain leaves a non-canonical value behind.
+        let produced_by_language_option = Value::String("zh-CN".to_string());
+        assert_eq!(
+            canonical_language(&produced_by_language_option),
+            Some("zh-cn")
+        );
+        let case_step_position = STEPS
+            .iter()
+            .position(|step| step.id() == "app_config/language_case")
+            .unwrap();
+        let option_step_position = STEPS
+            .iter()
+            .position(|step| step.id() == "app_config/language_option")
+            .unwrap();
+        assert!(option_step_position < case_step_position);
+    }
+}

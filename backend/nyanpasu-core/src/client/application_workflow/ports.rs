@@ -1,10 +1,12 @@
 use super::super::runtime;
-use crate::{
-    actor_v2::local_host::CoreSpecError, client::runtime::PublishRuntimeError,
-    enhance::RuntimeBuildError,
-};
+use crate::{actor_v2::local_host::CoreSpecError, client::runtime::PublishRuntimeError};
 use async_trait::async_trait;
+use nyanpasu_config::runtime::executor::{PortError, ScriptRunner};
+use nyanpasu_profile_transform::RuntimeBuildError;
 use std::sync::Arc;
+
+/// Builds a script runner on the blocking thread that will use and drop it.
+pub type ScriptRunnerFactory = dyn Fn() -> Result<Box<dyn ScriptRunner>, PortError> + Send + Sync;
 
 #[async_trait]
 pub trait RuntimeBuildPort: Send + Sync + 'static {

@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::state::AckError;
+use nyanpasu_contracts::core_version::CoreVersionError;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use serde::Serialize;
 use snafu::Snafu;
@@ -15,14 +16,12 @@ use crate::{
     actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
-        core_lifecycle::ports::InstallCoreBinaryError,
-        core_version::CoreVersionError,
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
-    enhance::RuntimeBuildError,
-    service::control::ServiceCommandError,
 };
+use nyanpasu_contracts::{core_install::InstallCoreBinaryError, service::ServiceCommandError};
+use nyanpasu_profile_transform::RuntimeBuildError;
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.

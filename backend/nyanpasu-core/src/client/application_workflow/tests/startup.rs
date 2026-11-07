@@ -8,6 +8,7 @@
 //! way the convergence timer would, and its schedule is read back bracketed by
 //! the instants taken around the call that set it; nothing sleeps.
 
+use nyanpasu_contracts::service::ServiceProcessControl;
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -18,7 +19,10 @@ use std::{
     time::Duration,
 };
 
-use crate::state::{PersistentStateManager, ReplaceIfVersionResult};
+use crate::{
+    client::test_support::workflow::Installer,
+    state::{PersistentStateManager, ReplaceIfVersionResult},
+};
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::ClashConfig,
@@ -32,6 +36,8 @@ use nyanpasu_ipc::{
     },
     types::{ServiceStatus, StatusInfo},
 };
+use nyanpasu_migration::modules::application::ApplicationFormat;
+use nyanpasu_updater::PreparedCoreBinary;
 use tokio::{sync::Notify, time::Instant};
 
 use super::{
@@ -58,16 +64,15 @@ use crate::{
             ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
             CoreSubmission, EndpointHandle, ExecutionHost,
         },
-        service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
+        service_actor::{ServiceClient, ServicePhase},
     },
     client::{
         SessionPortResolver,
         convergence::ConvergenceHealth,
-        core_lifecycle::{Ownership, ports::PreparedCoreBinary},
+        core_lifecycle::Ownership,
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    migration::modules::application::ApplicationFormat,
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -197,10 +202,8 @@ impl FakeDaemon {
 }
 
 #[async_trait::async_trait]
-impl ServiceHostAdapter for FakeDaemon {
-    async fn probe(
-        &self,
-    ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
+impl ServiceProcessControl for FakeDaemon {
+    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         let probe = self.probes.fetch_add(1, Ordering::SeqCst);
         if self.unreadable.load(Ordering::SeqCst)
             || probe >= self.unreadable_from.load(Ordering::SeqCst)
@@ -241,7 +244,7 @@ impl ServiceHostAdapter for FakeDaemon {
             }
             DaemonState::NotInstalled | DaemonState::Stopped => None,
         };
-        Ok(StatusInfo {
+        Ok(serde_json::to_string(&StatusInfo {
             name: Cow::Borrowed("nyanpasu-service"),
             version: Cow::Borrowed("test"),
             status: match state {
@@ -251,8 +254,9 @@ impl ServiceHostAdapter for FakeDaemon {
             },
             server,
         })
+        .expect("test service status serializes"))
     }
-    async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         if self.hold_install.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -260,19 +264,19 @@ impl ServiceHostAdapter for FakeDaemon {
         self.installs.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::NotInstalled;
         Ok(())
     }
-    async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::Stopped;
         Ok(())
     }
-    async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         if self.hold_update.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -281,6 +285,9 @@ impl ServiceHostAdapter for FakeDaemon {
         *self.version.lock().unwrap() = "2.0.2";
         Ok(())
     }
+}
+
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for FakeDaemon {
     fn endpoint(&self) -> EndpointHandle {
         self.host.clone()
     }
@@ -378,9 +385,10 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         core.change_host(service_host.clone()).await.unwrap();
         log.lock().unwrap().clear();
     }
-    let service = ServiceClient::spawn_bounded(daemon.clone(), 0, setup.command_timeout)
-        .await
-        .unwrap();
+    let service =
+        ServiceClient::spawn_bounded(daemon.clone(), daemon.clone(), 0, setup.command_timeout)
+            .await
+            .unwrap();
     let application = application_manager(
         temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig {
@@ -418,7 +426,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             builder,
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
-            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            installer: Arc::new(Installer::succeeding()),
             ownership: Ownership::Unproven,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),

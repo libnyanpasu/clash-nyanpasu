@@ -1,0 +1,38 @@
+[package]
+name = 'nyanpasu-observers'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+test-support = []
+
+[dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', default-features = false }
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb', default-features = false }
+nyanpasu-geodata = { path = '../nyanpasu-geodata', default-features = false }
+async-trait = '0.1'
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
+anyhow = '1'
+ractor = '0.16'
+serde = { version = '1.0', features = ['derive'] }
+serde_json = '1.0'
+specta = '^2.0.0-rc.25'
+snafu.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { version = '0.7', features = ['rt'] }
+tracing.workspace = true
+
+[dev-dependencies]
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb', default-features = false, features = [
+  'redb'
+] }
+mockall = '0.15'
+tempfile = '3'

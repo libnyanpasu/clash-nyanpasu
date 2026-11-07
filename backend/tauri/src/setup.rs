@@ -1,10 +1,20 @@
 //! Setup logic for the app
-use nyanpasu_core::client::{
-    bundle_metadata::BundleMetadata, direct_egress::NetworkDirectEgressProbe,
-    owner_shutdown::track_until_shutdown,
-};
+use nyanpasu_observers::{logs::UnavailableCoreLogStore, traffic::TrafficOwnerFactory};
+use nyanpasu_owner_support::shutdown::track_until_shutdown;
 
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
+use nyanpasu_net::{
+    device_headers::{self, DeviceHeaders},
+    direct_egress::NetworkDirectEgressProbe,
+    subscription_http::SubscriptionHttpFetcher,
+};
+use nyanpasu_os::{
+    autostart::{AutoLaunchBackend, AutoLaunchConfig},
+    pac::HttpPacBackend,
+    system_proxy::SysproxyOsProxy,
+};
 use nyanpasu_paths::PathResolver;
+use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use std::sync::Arc;
 
 use crate::{
@@ -16,27 +26,31 @@ use crate::{
             TauriWindowControl,
         },
         main_thread::TauriMainThread,
-        system_proxy::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
         ui_effects::adapters::{
             RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
     },
+    desktop::{
+        effects::{ports::LocaleSink, presentation::PresentationEffectExecutor},
+        hotkey::{HotkeyArgs, HotkeyClient},
+        main_thread::MainThreadExecutor,
+    },
     utils::init::logging::ReloadSignal,
 };
+use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
-        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-        StateChanged, UiEventSink,
+        ClientSetupArgs, NyanpasuClient, RuntimePaths, StateChanged, UiEventSink,
         debug_http::DebugHttpControl,
-        effects::{executor::ApplicationEffectExecutor, ports::LocaleSink},
+        effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
-        hotkey::{HotkeyArgs, HotkeyClient, ports::HotkeyAction},
-        system_proxy::{SystemProxyArgs, SystemProxyClient, ports::OsProxyPort},
+        hotkey::ports::HotkeyAction,
+        system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
-    storage::StorageNotification,
-    traffic::{TrafficFileStorage, TrafficStorage},
+    storage::{RedbHotkeyStoreOpener, StorageNotification},
+    traffic::TrafficFileStorage,
 };
-use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
+use nyanpasu_tsdb::Profile;
 use snafu::ResultExt as _;
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -123,11 +137,11 @@ impl StartupFailureHost for TauriStartupFailureHost {
 pub(crate) enum Error {
     #[snafu(display("failed to prepare migrations"))]
     PrepareMigrations {
-        source: nyanpasu_core::migration::runner::Error,
+        source: nyanpasu_migration::runner::Error,
     },
     #[snafu(display("failed to run migrations"))]
     RunMigrations {
-        source: nyanpasu_core::migration::runner::Error,
+        source: nyanpasu_migration::runner::Error,
     },
     #[snafu(display("failed to build service ipc"))]
     BuildServiceIpc {
@@ -151,11 +165,11 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to build auto launch"))]
     BuildAutoLaunch {
-        source: nyanpasu_core::client::system_proxy::ports::AutoLaunchError,
+        source: nyanpasu_contracts::system_proxy::AutoLaunchError,
     },
     #[snafu(display("failed to build pac"))]
     BuildPac {
-        source: nyanpasu_core::client::system_proxy::ports::PacError,
+        source: nyanpasu_contracts::system_proxy::PacError,
     },
     #[snafu(display("failed to spawn system proxy"))]
     SpawnSystemProxy {
@@ -163,7 +177,7 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to spawn hotkeys"))]
     SpawnHotkeys {
-        source: nyanpasu_core::client::hotkey::Error,
+        source: crate::desktop::hotkey::Error,
     },
     #[snafu(display("failed to open storage"))]
     OpenStorage {
@@ -197,7 +211,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(rpc_events);
     // Shared with the panic hook, which takes the main thread's work over
     // once the event loop is gone.
-    let main_thread_handoff = Arc::new(nyanpasu_core::client::MainThreadHandoff::default());
+    let main_thread_handoff = Arc::new(crate::desktop::main_thread::MainThreadHandoff::default());
     app.manage(main_thread_handoff.clone());
     let main_thread: Arc<dyn MainThreadExecutor> = Arc::new(TauriMainThread::new(
         app_handle.clone(),
@@ -236,9 +250,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
-    let mut migrations =
-        nyanpasu_core::migration::Runner::with_paths(paths.clone(), bundle_metadata, false)
-            .context(PrepareMigrationsSnafu)?;
+    let mut migrations = nyanpasu_migration::Runner::with_paths(
+        paths.clone(),
+        bundle_metadata,
+        false,
+        Arc::new(RedbHotkeyStoreOpener),
+    )
+    .context(PrepareMigrationsSnafu)?;
     migrations.run_pending().context(RunMigrationsSnafu)?;
     crate::log_err!(crate::utils::init::init_resources(
         paths.app_data_dir().as_std_path(),
@@ -251,7 +269,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context(BuildServiceIpcSnafu)?;
-    let service_binary = nyanpasu_core::service::control::service_binary(
+    let elevation_consent: Arc<dyn nyanpasu_contracts::elevation::ElevationConsent> =
+        Arc::new(crate::adapters::elevation::InteractiveElevationConsent);
+    let service_binary = nyanpasu_os::service::service_binary(
         paths
             .app_install_dir()
             .context(LocateInstallDirectorySnafu)?
@@ -266,14 +286,24 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         let local: nyanpasu_core::actor_v2::endpoint::EndpointHandle = Arc::new(
             nyanpasu_core::actor_v2::endpoint::LocalEndpoint::new(control),
         );
-        let adapter = Arc::new(
-            nyanpasu_core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
-                service_ipc.clone(),
-                service_binary,
-                paths.clone(),
+        let adapter = Arc::new(nyanpasu_os::service::OsServiceProcessControl::new(
+            service_binary,
+            paths.clone(),
+            elevation_consent.clone(),
+        ));
+        start_runtime_owners(
+            owners,
+            local,
+            adapter,
+            Arc::new(
+                nyanpasu_core::actor_v2::service_endpoint_factory::IpcServiceEndpointFactory::new(
+                    service_ipc.clone(),
+                ),
             ),
-        );
-        start_runtime_owners(owners, local, adapter, &paths, jobs_capture).await
+            &paths,
+            jobs_capture,
+        )
+        .await
     })?;
     drop(span);
     // The sink end of the hotkey channel goes into the actor; the receiving end
@@ -328,13 +358,36 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.app_data_dir().as_std_path().to_owned(),
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
+    let network = Arc::new(nyanpasu_net::net_adapters::ReqwestNetworkAdapter::new(
+        bundle_metadata,
+        Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
+    ));
     let span = tracing::info_span!("build_client").entered();
     let ui_sink: Arc<dyn UiEventSink> =
         Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()));
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(ClientSetupArgs {
         bundle_metadata,
+        updater_backend_factory: {
+            let paths = paths.clone();
+            Arc::new(move |ports| {
+                let executable = std::env::current_exe().map_err(|source| {
+                    nyanpasu_updater::BackendFactoryError::LocateExecutable { source }
+                })?;
+                let destination = executable
+                    .parent()
+                    .ok_or(nyanpasu_updater::BackendFactoryError::LocateExecutableParent)?;
+                Ok(Arc::new(nyanpasu_updater::HttpUpdaterBackend::new(
+                    destination.to_path_buf(),
+                    paths.clone(),
+                    ports,
+                    bundle_metadata,
+                )))
+            })
+        },
         host_adapters: ClientHostAdapters {
-            debug_http: {
+            icon_fetcher: network.clone(),
+            network_diagnostics: network,
+            debug_http: Some({
                 let frontend = Some(debug_http_frontend(&app_handle));
                 Arc::new(move || {
                     let (frontend, routes) = (frontend.clone(), http_routes.clone());
@@ -345,44 +398,58 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                         Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
                     })
                 })
-            },
+            }),
             changelog_http: Arc::new(move |ports| {
-                Arc::new(
-                    nyanpasu_platform::changelog_http::ReqwestChangelogHttp::new(
-                        ports,
-                        bundle_metadata,
-                    ),
-                )
+                Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(
+                    ports,
+                    bundle_metadata,
+                    Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
+                ))
             }),
             runtime_build: Arc::new(
-                nyanpasu_platform::enhance::runtime_build::FsRuntimeBuildAdapter {
-                    profiles_dir: paths.app_profiles_dir().into_std_path_buf(),
-                    core_specs: {
+                nyanpasu_core::client::runtime_build::RuntimeBuildService::new(
+                    Arc::new(FsProfileContentSource::new(
+                        paths.app_profiles_dir().into_std_path_buf(),
+                    )),
+                    {
                         let paths = paths.clone();
                         Arc::new(move |core| {
                             nyanpasu_core::actor_v2::local_host::core_spec(core, &paths)
                         })
                     },
-                    paths: runtime_paths.clone(),
-                    scripts: nyanpasu_platform::enhance::ScriptDirs::new(
-                        paths.scripts_dir().into_std_path_buf(),
-                        paths.cache_dir().into_std_path_buf(),
-                    ),
-                },
+                    runtime_paths.clone(),
+                    {
+                        let dirs = nyanpasu_scripts::ScriptDirs::new(
+                            paths.scripts_dir().into_std_path_buf(),
+                            paths.cache_dir().into_std_path_buf(),
+                        );
+                        Arc::new(move || {
+                            Ok(Box::new(nyanpasu_scripts::EnhanceScriptRunner::new(
+                                dirs.clone(),
+                            )?))
+                        })
+                    },
+                ),
             ),
             profile_files: Arc::new({
                 let paths = paths.clone();
+                let device_info = nyanpasu_os::device_identity::get_device_info();
+                let device_headers = DeviceHeaders {
+                    hwid: device_info.hwid,
+                    device_os: device_headers::sanitize_for_header(&device_info.device_os),
+                    os_version: device_headers::sanitize_for_header(&device_info.os_version),
+                    device_model: device_headers::sanitize_for_header(&device_info.device_model),
+                };
                 move |ports| {
-                    let service = Arc::new(
-                        nyanpasu_platform::profiles::fs_service::ProfileFileService::new(
-                            paths.clone(),
-                            ports,
-                            bundle_metadata,
-                        ),
-                    );
+                    let service = Arc::new(ProfileFileService::new(paths.clone()));
                     ProfileFilePorts {
                         fs: service.clone(),
-                        fetcher: service.clone(),
+                        fetcher: Arc::new(SubscriptionHttpFetcher::new(
+                            ports,
+                            bundle_metadata,
+                            Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
+                            device_headers.clone(),
+                        )),
                         materialization: service,
                     }
                 }
@@ -396,9 +463,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 Ok(store) => Box::new(store),
                 Err(error) => {
                     tracing::warn!(%error, "Core log storage unavailable");
-                    Box::new(nyanpasu_core::logs::UnavailableCoreLogStore(format!(
-                        "{error:#}"
-                    )))
+                    Box::new(UnavailableCoreLogStore(format!("{error:#}")))
                 }
             },
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
@@ -412,7 +477,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             frontend: Arc::new(nyanpasu_core::client::frontend_events::TracingFrontendLogSink),
         },
         paths: paths.clone(),
-        storage,
+        storage: Arc::new(storage.clone()),
         runtime_paths: runtime_paths.clone(),
         ui_sink: ui_sink.clone(),
         app_update_backend_factory: Some(Arc::new({
@@ -422,6 +487,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     app_handle.clone(),
                     proxy_port,
                     bundle_metadata,
+                    Arc::new(nyanpasu_os::system_proxy_source::OsSystemProxySource),
                 ))
             }
         })),
@@ -430,17 +496,21 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         )),
         core_v2,
         service,
-        system_dns: Arc::new(OsSystemDnsCache),
+        system_dns: Arc::new(nyanpasu_os::system_dns::OsSystemDnsCache::new(
+            elevation_consent.clone(),
+        )),
         direct_egress: Arc::new(NetworkDirectEgressProbe::default()),
         geo_index,
         os_proxy: os_proxy.clone(),
-        binary_installer: Arc::new(
-            nyanpasu_core::client::core_lifecycle::adapters::FsBinaryInstaller,
-        ),
-        core_versions: Arc::new(crate::utils::core_version::SidecarCoreVersionReader),
+        binary_installer: Arc::new(nyanpasu_os::core_install::FsBinaryInstaller::new(
+            elevation_consent,
+        )),
+        core_versions: Arc::new(nyanpasu_os::core_version::SidecarCoreVersionReader::new(
+            Arc::new(crate::adapters::core_version::TauriCoreVersionExecutableSource),
+        )),
         effects,
-        window: Arc::new(TauriWindowControl::new(app_handle.clone())),
-        accelerators: Arc::new(PlatformAcceleratorValidator),
+        window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
+        accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
@@ -491,7 +561,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 async fn start_runtime_owners(
     owners: &mut StartupOwners,
     local: nyanpasu_core::actor_v2::endpoint::EndpointHandle,
-    adapter: Arc<dyn nyanpasu_core::actor_v2::service_actor::ServiceHostAdapter>,
+    process_control: Arc<dyn nyanpasu_contracts::service::ServiceProcessControl>,
+    endpoint_factory: Arc<dyn nyanpasu_core::actor_v2::service_actor::ServiceEndpointFactory>,
     paths: &PathResolver,
     jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<
@@ -506,10 +577,13 @@ async fn start_runtime_owners(
         .await
         .context(SpawnCoreActorSnafu)?;
     owners.core = Some(core.clone());
-    let service =
-        nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
-            .await
-            .context(SpawnServiceActorSnafu)?;
+    let service = nyanpasu_core::actor_v2::service_actor::ServiceClient::spawn(
+        process_control,
+        endpoint_factory,
+        RESTART_BUDGET,
+    )
+    .await
+    .context(SpawnServiceActorSnafu)?;
     service.drain_on_shutdown(&owners.tasks, owners.shutdown.child_token());
     let jobs = nyanpasu_core::client::jobs::start(
         paths.jobs_path().into_std_path_buf(),
@@ -540,6 +614,9 @@ pub(crate) enum UnifiedRpcError {
 /// storage and the other Tauri state dependencies.
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
     let dependencies = crate::unified_rpc::RpcDependencies {
+        audit: crate::unified_rpc::RpcAudit::new(Arc::new(
+            crate::adapters::rpc_audit::TracingRpcAuditSink,
+        )),
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
@@ -577,7 +654,7 @@ enum TrafficStoreError {
 /// Recording is optional, so a store that cannot be opened disables it rather
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
-fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStorage<RedbStorage>>> {
+fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficOwnerFactory>> {
     let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
     let open = || -> Result<TrafficFileStorage, TrafficStoreError> {
         std::fs::create_dir_all(&dir).context(CreateTrafficDirectorySnafu { path: &dir })?;
@@ -652,7 +729,9 @@ fn build_application_effects(
         None
     };
 
-    let auto_launch = AutoLaunchConfig::resolve(appimage)
+    let auto_launch = tauri::utils::platform::current_exe()
+        .context(nyanpasu_contracts::system_proxy::LocateExecutableSnafu)
+        .and_then(|executable| AutoLaunchConfig::resolve(&executable, appimage))
         .and_then(AutoLaunchBackend::new)
         .context(BuildAutoLaunchSnafu)?;
     let pac = HttpPacBackend::new(paths.cache_dir().join("pac.js")).context(BuildPacSnafu)?;
@@ -679,14 +758,17 @@ fn build_application_effects(
     .context(SpawnHotkeysSnafu)?;
 
     let widget = Arc::new(TauriWidgetController::new(paths.clone()));
-    let executor = Arc::new(ApplicationEffectExecutor::new(
-        system_proxy,
+    let presentation = Arc::new(PresentationEffectExecutor::new(
         hotkeys,
         Arc::new(PlatformAcceleratorValidator),
         Arc::new(RustI18nLocaleSink),
-        Arc::new(TracingLoggerRefresher::new(logger_reload)),
         widget.clone(),
         Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+    ));
+    let executor = Arc::new(ApplicationEffectExecutor::new(
+        system_proxy,
+        Arc::new(TracingLoggerRefresher::new(logger_reload)),
+        Some(presentation),
     ));
     Ok((executor, widget))
 }

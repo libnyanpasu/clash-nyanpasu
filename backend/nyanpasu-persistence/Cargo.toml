@@ -1,0 +1,25 @@
+[package]
+name = 'nyanpasu-persistence'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-utils = { path = '../nyanpasu-runtime/crates/nyanpasu-utils', default-features = false }
+anyhow = '1'
+atomicwrites = '0.4.4'
+backon = { version = '1.0.1', features = ['tokio-sleep'] }
+serde = { version = '1.0', features = ['derive'] }
+serde_yaml_ng = { workspace = true }
+snafu = { workspace = true }
+thiserror.workspace = true
+time = '0.3'
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nix = '0.31.0'
+
+[dev-dependencies]
+tempfile = '3'

@@ -19,20 +19,20 @@ use nyanpasu_config::profile::{
     ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
     RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
 };
+use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    migration::modules::profiles::ProfilesFormat,
-    state::profiles::{
-        CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
-        ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
-        ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
-        sources::SourcesSnapshot,
-    },
+use crate::state::profiles::{
+    CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
+    ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
+    ReorderOp, sources::SourcesSnapshot,
+};
+use nyanpasu_contracts::profiles::{
+    error::ProfileFileError,
+    ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
 };
 
 #[derive(Debug, snafu::Snafu)]
@@ -65,9 +65,7 @@ pub enum Error {
         errors: Vec<nyanpasu_config::profile::ProfileValidationError>,
     },
     #[snafu(display("failed to prepare profile materialization"))]
-    PrepareMaterialization {
-        source: crate::state::profiles::ProfileFileError,
-    },
+    PrepareMaterialization { source: ProfileFileError },
 }
 
 #[derive(Clone)]
@@ -119,11 +117,12 @@ impl ProfilesClient {
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
         let jobs = crate::state::profiles::jobs::ProfileJobs::new(jobs);
-        let should_load = crate::corrupt::retry_async(|| tokio::fs::try_exists(&profiles_path))
-            .await
-            .context(InspectStateSnafu {
-                path: &profiles_path,
-            })?;
+        let should_load =
+            nyanpasu_persistence::retry_async(|| tokio::fs::try_exists(&profiles_path))
+                .await
+                .context(InspectStateSnafu {
+                    path: &profiles_path,
+                })?;
         let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path.clone())
             .assemble();
@@ -177,7 +176,7 @@ impl ProfilesClient {
 
         let loaded = snapshot.load().state.clone();
         let preparation = materialization.clone();
-        let report = crate::utils::blocking::join(
+        let report = nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || preparation.reconcile(&loaded)).await,
         )
         .context(PrepareMaterializationSnafu)?;
@@ -201,7 +200,7 @@ impl ProfilesClient {
         .await
         .context(SpawnActorSnafu)?
         .0;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ProfilesClientInner {
@@ -614,16 +613,7 @@ mod tests {
         state::{
             ReplaceIfVersionError,
             mutation::CommitAborted,
-            profiles::{
-                RefreshOrigin,
-                error::{MaterializationOperation, ProfileFileError, SubscriptionFetchError},
-                ports::{
-                    CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-                    MockProfileFsPort, MockProfileMaterializationPort, MockSubscriptionFetcher,
-                    PreparedCleanup, PreparedMaterialization, ProfileDegradationCode,
-                    ProfileDegradationPhase, ProfileMaterializationPort,
-                },
-            },
+            profiles::{RefreshOrigin, error::MaterializationOperation},
         },
     };
     use nyanpasu_config::profile::{
@@ -632,6 +622,15 @@ mod tests {
         ProfileMetadata, ProfileSource, ProfileValidationError, Profiles, ProxyGroupFolder,
         ProxyGroupLayout, RemoteProfileOptions, RemoteSyncInterval, ScriptRuntime, ScriptTransform,
         SubscriptionInfo, TransformDefinition,
+    };
+    use nyanpasu_contracts::profiles::{
+        error::{ProfileFileError, SubscriptionFetchError},
+        ports::{
+            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport, MockProfileFsPort,
+            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+            PreparedMaterialization, ProfileDegradationCode, ProfileDegradationPhase,
+            ProfileMaterializationPort,
+        },
     };
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
@@ -755,7 +754,7 @@ mod tests {
             .expect("set_valid_fields should commit");
 
         let raw = std::fs::read_to_string(temp_profiles_path(&dir)).unwrap();
-        let inspected = crate::format::inspect(&raw).unwrap();
+        let inspected = nyanpasu_persistence::format::inspect(&raw).unwrap();
         assert_eq!(
             inspected.stamp().map(|stamp| stamp.schema_revision),
             Some(4),

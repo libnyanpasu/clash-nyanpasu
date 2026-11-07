@@ -383,11 +383,13 @@ export type EffectConvergence = {
 /**
  *  Why an effect is not in its desired state, in the terms the UI localizes.
  *
- *  One value per kind of failure, named after the effect that failed. The
+ *  One value per kind of failure, named after the effect that failed, or
+ *  after the capability a shell lacks when several effects share it. The
  *  owner that classifies a failure is the one that picks the code; the
  *  message beside it is only the diagnostic text.
  */
 export type EffectFailureCode =
+  | 'presentation_unsupported'
   | 'hotkey_invalid_bindings'
   | 'hotkey_partial_registration'
   | 'hotkey_shut_down'

@@ -6,14 +6,15 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
+use nyanpasu_config::application::CoreLogSettings;
+use nyanpasu_observers::logs::{
+    self, CoreLogCursor, CoreLogDirection, CoreLogError, CoreLogExport, CoreLogPage, CoreLogQuery,
+    CoreLogRecord, CoreLogResult, CoreLogRow, CoreLogStatus, CoreLogStore, MAX_PAGE_ROWS,
+    MAX_SCAN_BYTES, MAX_SCAN_ROWS, PAGE_BYTES, PreparedCoreLog,
+};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
-use super::{
-    codec::{LogDecoder, LogEncoder, original_size},
-    model::*,
-    ports::CoreLogStore,
-};
-use nyanpasu_config::application::CoreLogSettings;
+use super::codec::{LogDecoder, LogEncoder, original_size};
 
 const LOGS: TableDefinition<u64, &[u8]> = TableDefinition::new("logs");
 const LEVELS: TableDefinition<(u8, u64), u8> = TableDefinition::new("levels");
@@ -209,9 +210,9 @@ impl RedbCoreLogStore {
             let mut levels = transaction.open_table(LEVELS)?;
             for record in records {
                 last += 1;
-                let encoded = self.encoder.encode(&record.bytes)?;
+                let encoded = self.encoder.encode(record.bytes())?;
                 logs.insert(last, encoded.as_slice())?;
-                levels.insert((record.level, last), 0)?;
+                levels.insert((record.level(), last), 0)?;
             }
         }
         transaction.commit()?;
@@ -315,7 +316,7 @@ impl RedbCoreLogStore {
             status,
         };
         let backwards = query.direction != CoreLogDirection::After;
-        let level = query.level.as_deref().map(normalize_level);
+        let level = query.level.as_deref().map(logs::normalize_level);
         let keyword = query.keyword.to_lowercase();
         let mut scanned = 0;
         let mut scan_bytes = 0;
@@ -358,10 +359,10 @@ impl RedbCoreLogStore {
                 let mut record: CoreLogRecord = serde_json::from_slice(&decoder.decode(bytes)?)?;
                 let matches = level
                     .as_ref()
-                    .is_none_or(|level| normalize_level(&record.log_type) == *level)
+                    .is_none_or(|level| logs::normalize_level(&record.log_type) == *level)
                     && (keyword.is_empty() || record.payload.to_lowercase().contains(&keyword));
                 if matches {
-                    let truncated = truncate_preview(&mut record.payload);
+                    let truncated = logs::truncate_preview(&mut record.payload);
                     let row = CoreLogRow {
                         id: cursor.clone(),
                         record,
@@ -391,7 +392,7 @@ impl RedbCoreLogStore {
                 Bound::Unbounded
             };
             if let Some(level) = &level {
-                let code = level_code(level);
+                let code = logs::level_code(level);
                 let start = match lower {
                     Bound::Excluded(n) => Bound::Excluded((code, n)),
                     _ => Bound::Included((code, 0)),

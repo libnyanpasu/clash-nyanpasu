@@ -11,6 +11,7 @@ use nyanpasu_ipc::api::{
     core::v2::{CoreApiConnection, OperationInfo},
     status::{CoreControllerInfo, CoreStateDetail},
 };
+use nyanpasu_updater::PreparedCoreBinary;
 use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
@@ -20,7 +21,7 @@ use crate::{
         NyanpasuClient,
         test_support::{
             TestControlEndpoint, runtime_build::TestRuntimeBuildPort,
-            test_client_args_with_endpoint,
+            test_client_args_with_endpoint, workflow::Installer,
         },
     },
 };
@@ -104,16 +105,12 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new(fail_reconcile: bool) -> Self {
-        Self::with_installer(
-            fail_reconcile,
-            Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-        )
-        .await
+        Self::with_installer(fail_reconcile, Arc::new(Installer::succeeding())).await
     }
 
     async fn with_installer(
         fail_reconcile: bool,
-        installer: Arc<dyn crate::client::core_lifecycle::ports::BinaryInstaller>,
+        installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
     ) -> Self {
         let calls = Arc::new(Calls::default());
         let (url, server) = (async {
@@ -808,11 +805,11 @@ async fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
 struct CountingInstaller(AtomicUsize);
 
 #[async_trait::async_trait]
-impl crate::client::core_lifecycle::ports::BinaryInstaller for CountingInstaller {
+impl nyanpasu_contracts::core_install::BinaryInstaller for CountingInstaller {
     async fn install(
         &self,
-        _: &crate::client::core_lifecycle::ports::PreparedCoreBinary,
-    ) -> Result<(), crate::client::core_lifecycle::ports::InstallCoreBinaryError> {
+        _: &nyanpasu_contracts::core_install::CoreBinaryInstallRequest,
+    ) -> Result<(), nyanpasu_contracts::core_install::InstallCoreBinaryError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -865,7 +862,7 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());
-        let artifact = crate::client::core_lifecycle::ports::PreparedCoreBinary {
+        let artifact = PreparedCoreBinary {
             target: f.client.get_app_config().await.unwrap().core,
             source: staging.path().join("prepared-core"),
             destination: f._dir.path().join("installed-core"),
@@ -930,14 +927,16 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<crate::client::runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError>
-    {
+    ) -> Result<
+        Arc<crate::client::runtime::RuntimeSnapshot>,
+        nyanpasu_profile_transform::RuntimeBuildError,
+    > {
         self.inputs
             .lock()
             .unwrap()
             .push((inputs.profiles.clone(), inputs.clash.clone()));
         if self.fail_build {
-            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_profile_transform::RuntimeBuildError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)

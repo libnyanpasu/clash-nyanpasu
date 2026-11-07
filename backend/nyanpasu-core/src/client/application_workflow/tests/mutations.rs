@@ -9,6 +9,7 @@
 //! builder parks its first build, and the transaction's `local_write` step
 //! parks between prepare and the compare-and-swap.
 
+use nyanpasu_contracts::service::ServiceProcessControl;
 use std::{
     sync::{
         Arc, Mutex as StdMutex,
@@ -17,10 +18,13 @@ use std::{
     time::Duration,
 };
 
-use crate::state::{
-    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
-    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
-    StateParticipant, SubscriberName, error::StateChangedError,
+use crate::{
+    client::test_support::workflow::Installer,
+    state::{
+        Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
+        ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber,
+        StateChange, StateParticipant, SubscriberName, error::StateChangedError,
+    },
 };
 use camino::Utf8PathBuf;
 use nyanpasu_config::{
@@ -33,6 +37,7 @@ use nyanpasu_config::{
 };
 use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
+use nyanpasu_migration::modules::application::ApplicationFormat;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::Notify;
 
@@ -53,11 +58,7 @@ use super::{
     RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
-    actor_v2::{
-        CoreClient,
-        endpoint::ExecutionHost,
-        service_actor::{ServiceClient, ServiceHostAdapter},
-    },
+    actor_v2::{CoreClient, endpoint::ExecutionHost, service_actor::ServiceClient},
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
@@ -65,7 +66,6 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    migration::modules::application::ApplicationFormat,
     state::mutation::{CommitAborted, RuntimeAftermath},
 };
 
@@ -106,7 +106,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -256,8 +256,13 @@ async fn fixture_with_hosts(
     confirmed_apply: bool,
     service_host: Option<Arc<TestControlEndpoint>>,
 ) -> Fixture {
-    let daemon = service_host
-        .map(|endpoint| Arc::new(host_transition_daemon(endpoint)) as Arc<dyn ServiceHostAdapter>);
+    let daemon = service_host.map(|endpoint| {
+        let daemon = Arc::new(host_transition_daemon(endpoint));
+        (
+            daemon.clone() as Arc<dyn ServiceProcessControl>,
+            daemon as Arc<dyn crate::actor_v2::service_actor::ServiceEndpointFactory>,
+        )
+    });
     fixture_with_daemon(confirmed_apply, daemon).await
 }
 
@@ -278,7 +283,10 @@ fn host_transition_daemon(
 /// of the handoff's legs still.
 pub(super) async fn fixture_with_daemon(
     confirmed_apply: bool,
-    daemon: Option<Arc<dyn ServiceHostAdapter>>,
+    daemon: Option<(
+        Arc<dyn ServiceProcessControl>,
+        Arc<dyn crate::actor_v2::service_actor::ServiceEndpointFactory>,
+    )>,
 ) -> Fixture {
     fixture_with_parts(confirmed_apply, daemon, false).await
 }
@@ -291,15 +299,22 @@ pub(super) async fn scripted_fixture() -> Fixture {
 
 async fn fixture_with_parts(
     confirmed_apply: bool,
-    daemon: Option<Arc<dyn ServiceHostAdapter>>,
+    daemon: Option<(
+        Arc<dyn ServiceProcessControl>,
+        Arc<dyn crate::actor_v2::service_actor::ServiceEndpointFactory>,
+    )>,
     scripted: bool,
 ) -> Fixture {
     let service = match daemon {
-        Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
-        None => ServiceClient::spawn(
-            Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-            0,
-        )
+        Some((process_control, endpoint_factory)) => {
+            ServiceClient::spawn(process_control, endpoint_factory, 0)
+                .await
+                .unwrap()
+        }
+        None => {
+            let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+            ServiceClient::spawn(process_control.clone(), process_control, 0)
+        }
         .await
         .unwrap(),
     };
@@ -383,7 +398,7 @@ pub(super) async fn fixture_from(
             builder: builder.clone(),
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
-            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            installer: Arc::new(Installer::succeeding()),
             ownership,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
@@ -438,7 +453,7 @@ pub(super) async fn mutate<T, F>(
     + 'static,
 ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -480,7 +495,7 @@ pub(super) async fn mutate_settling<T, F>(
     crate::state::mutation::Settlement,
 )
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -541,7 +556,7 @@ pub(super) async fn mutate_with_hints<T, F>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -599,7 +614,7 @@ pub(super) async fn simple_mutate<T, F>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    F: crate::format::Format + Clone,
+    F: nyanpasu_persistence::format::Format + Clone,
     T: super::super::mutation::MutationDomain
         + Clone
         + Send
@@ -1255,7 +1270,7 @@ async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt(
 /// new is committed.
 #[tokio::test]
 async fn a_failed_save_restores_the_verified_runtime_baseline() {
-    use crate::service::profile_file::ports::SelfProxyPortSource as _;
+    use nyanpasu_contracts::net::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2606,7 +2621,7 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
 /// withdrawn candidate's ports on offer through the isolated state (v2 §6.2).
 #[tokio::test]
 async fn an_unverified_restore_takes_the_confirmed_ports_away() {
-    use crate::service::profile_file::ports::SelfProxyPortSource as _;
+    use nyanpasu_contracts::net::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2702,7 +2717,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
 /// gone; nothing short of an apply the core confirmed says otherwise (D1).
 #[tokio::test]
 async fn an_unverified_restore_takes_unchanged_ports_away_too() {
-    use crate::service::profile_file::ports::SelfProxyPortSource as _;
+    use nyanpasu_contracts::net::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2797,7 +2812,7 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
 /// one without starting the new. So the binding ends there too (D1).
 #[tokio::test]
 async fn an_unobserved_apply_takes_unchanged_ports_away() {
-    use crate::service::profile_file::ports::SelfProxyPortSource as _;
+    use nyanpasu_contracts::net::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -3029,7 +3044,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
     // The document that selects the profile, committed unapplied. Its budget is
     // what everything below is measured against.
     let mut selected = Profiles::default();
-    selected.append_item(crate::enhance::test_support::file_config(
+    selected.append_item(nyanpasu_profile_transform::test_support::file_config(
         "sel",
         "sel.yaml",
         &[],
@@ -3673,34 +3688,32 @@ async fn successful_confirm_keeps_the_promoted_inspection() {
 struct RefusedInstall;
 
 #[async_trait::async_trait]
-impl ServiceHostAdapter for RefusedInstall {
-    async fn probe(
-        &self,
-    ) -> Result<
-        nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::service::control::ServiceCommandError,
-    > {
+impl ServiceProcessControl for RefusedInstall {
+    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         crate::actor_v2::test_support::IdleServiceAdapter
             .probe()
             .await
     }
-    async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         Err(crate::service::test_support::service_command_error(
             "the user cancelled the elevation prompt",
         ))
     }
-    async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         unreachable!()
     }
+}
+
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for RefusedInstall {
     fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         unreachable!()
     }
@@ -3708,7 +3721,11 @@ impl ServiceHostAdapter for RefusedInstall {
 
 #[tokio::test]
 async fn refused_service_install_does_not_isolate_the_local_runtime() {
-    let mut f = fixture_with_daemon(true, Some(Arc::new(RefusedInstall))).await;
+    let mut f = fixture_with_daemon(
+        true,
+        Some((Arc::new(RefusedInstall), Arc::new(RefusedInstall))),
+    )
+    .await;
     let mut next = f.application.snapshot().as_ref().clone();
     next.enable_service_mode = true;
     let (id, result) = simple_mutate(
@@ -3750,7 +3767,7 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
     let mut f = fixture().await;
     std::fs::create_dir_all(&f.profiles_dir).unwrap();
     std::fs::write(f.profiles_dir.join("invalid.yaml"), "rules: [").unwrap();
-    let item = crate::enhance::test_support::overlay("invalid", "invalid.yaml");
+    let item = nyanpasu_profile_transform::test_support::overlay("invalid", "invalid.yaml");
     let mut next = f.profiles.snapshot().as_ref().clone();
     next.global_transforms.push(item.uid.clone());
     next.items.insert(item.uid.clone(), item);

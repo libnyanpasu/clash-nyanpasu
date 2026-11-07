@@ -1,8 +1,8 @@
 use crate::client::{
     UiEventSink,
     test_support::workflow::{
-        Fixture, Progress, ScriptedWaitEndpoint, WaitScript, aftermath, disable_mode_interruption,
-        override_patch, start_replacement,
+        Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
+        disable_mode_interruption, override_patch, start_replacement,
     },
 };
 mod closing;
@@ -14,16 +14,14 @@ mod startup;
 mod validation;
 
 use super::{super::NyanpasuClient, *};
-use crate::client::{
-    core_lifecycle::ports::BinaryInstallProgress,
-    test_support::{
-        TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
-        test_client_args_with_endpoint,
-    },
+use crate::client::test_support::{
+    TestControlEndpoint, runtime_build::TestRuntimeBuildPort, set_service_mode,
+    test_client_args_with_endpoint,
 };
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_updater::BinaryInstallProgress;
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
@@ -89,13 +87,13 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_profile_transform::RuntimeBuildError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -188,10 +186,10 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-    let service = ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
     .await
     .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
@@ -245,10 +243,10 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
     let core = CoreClient::spawn(TestControlEndpoint::succeeding())
         .await
         .unwrap();
-    let service = ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
     .await
     .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
@@ -295,10 +293,10 @@ async fn workflow_graph_with_store(
     let core = CoreClient::spawn(TestControlEndpoint::succeeding())
         .await
         .unwrap();
-    let service = ServiceClient::spawn(
-        Arc::new(crate::actor_v2::test_support::IdleServiceAdapter),
-        0,
-    )
+    let service = {
+        let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
     .await
     .unwrap();
     workflow_graph_with_clients(
@@ -328,10 +326,8 @@ async fn workflow_graph_with_clients(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    use crate::{
-        client::test_support::{test_materialization_port, test_typed_config_clients},
-        state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
-    };
+    use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
+    use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
@@ -376,7 +372,7 @@ async fn workflow_graph_with_clients(
                 validator_paths,
             )),
             ports,
-            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+            installer: Arc::new(Installer::succeeding()),
             ownership,
             instance_config_dir: Default::default(),
             shutdown,
@@ -517,15 +513,15 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         ))
         .await
         .unwrap();
-        let service = ServiceClient::spawn(
-            Arc::new(HostTransitionServiceAdapter {
+        let service = {
+            let process_control = Arc::new(HostTransitionServiceAdapter {
                 endpoint: endpoint.clone(),
                 calls: calls.clone(),
                 stopped: AtomicBool::new(false),
                 installed_for: dir.path().into(),
-            }),
-            0,
-        )
+            });
+            ServiceClient::spawn(process_control.clone(), process_control, 0)
+        }
         .await
         .unwrap();
         (core, service)
@@ -924,9 +920,9 @@ async fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
 
         // Through the updater, the same refusal ends its task as a failure
         // that reserves nothing.
-        use crate::updater::{UpdaterClient, UpdaterState};
+        use nyanpasu_updater::{UpdaterClient, UpdaterState};
         let updater = UpdaterClient::spawn(
-            Arc::new(crate::updater::tests::ReadyBackend),
+            Arc::new(nyanpasu_updater::test_support::ReadyBackend),
             Arc::new(f.client.inner.application_workflow.clone()),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),

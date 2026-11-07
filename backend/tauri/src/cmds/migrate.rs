@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use clap::Args;
 
 use colored::Colorize;
-use nyanpasu_core::migration::{
+use nyanpasu_core::storage::RedbHotkeyStoreOpener;
+use nyanpasu_migration::{
     MigrationAdvice, Runner,
     child_result::{Failure, FailureStage},
     current_version, registry,
@@ -50,7 +53,7 @@ pub(crate) enum Error {
     ParseVersion { source: semver::Error },
     #[snafu(display("failed to resolve current migration version"))]
     ResolveVersion {
-        source: nyanpasu_core::migration::VersionError,
+        source: nyanpasu_migration::VersionError,
     },
     #[snafu(display("failed to create migration directories"))]
     CreateDirectories {
@@ -58,13 +61,13 @@ pub(crate) enum Error {
     },
     #[snafu(display("failed to initialize migration runner"))]
     ConstructRunner {
-        source: nyanpasu_core::migration::runner::Error,
+        source: nyanpasu_migration::runner::Error,
     },
     #[snafu(display("migration not found: {id}"))]
     FindMigration { id: String },
     #[snafu(display("migration failed"))]
     RunMigration {
-        source: nyanpasu_core::migration::runner::Error,
+        source: nyanpasu_migration::runner::Error,
     },
 }
 
@@ -98,8 +101,14 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             None => current_version(&bundle_metadata).context(ResolveVersionSnafu)?,
         };
         paths.create_base_dirs().context(CreateDirectoriesSnafu)?;
-        let runner = Runner::with_target(target, paths.clone(), bundle_metadata, args.force)
-            .context(ConstructRunnerSnafu)?;
+        let runner = Runner::with_target(
+            target,
+            paths.clone(),
+            bundle_metadata,
+            args.force,
+            Arc::new(RedbHotkeyStoreOpener),
+        )
+        .context(ConstructRunnerSnafu)?;
         Ok((fresh_install, runner))
     })();
     let (fresh_install, mut runner) = construction.map_err(|error| {
@@ -108,6 +117,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             FailureStage::RunnerConstruction,
             paths,
             false,
+            nyanpasu_core::corrupt::error_io(&error),
         ))
     })?;
 
@@ -153,7 +163,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
         let stage = if matches!(
             &error,
             Error::RunMigration {
-                source: nyanpasu_core::migration::runner::Error::CreateBackup { .. }
+                source: nyanpasu_migration::runner::Error::CreateBackup { .. }
             }
         ) {
             FailureStage::Backup
@@ -165,6 +175,7 @@ fn execute(args: &MigrateOpts, paths: &PathResolver) -> Result<(), Box<Failure>>
             stage,
             paths,
             runner.backup_available(),
+            nyanpasu_core::corrupt::error_io(&error),
         ))
     })
 }

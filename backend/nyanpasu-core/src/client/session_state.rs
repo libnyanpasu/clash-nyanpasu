@@ -8,25 +8,24 @@ use nyanpasu_config::state::{
     PersistentState, PersistentStatePatch,
     window::{WindowLabel, WindowState},
 };
+use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    client::bundle_metadata::BundleMetadata,
-    state::{
-        config_error::{ConfigError, SessionStateStoppedSnafu},
-        session_state::{
-            SessionStateActor, SessionStateActorArgs, SessionStateActorMessage,
-            SessionStateSnapshot,
-        },
+use crate::state::{
+    config_error::{ConfigError, SessionStateStoppedSnafu},
+    session_state::{
+        SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
     },
 };
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
     #[snafu(display("failed to load session state"))]
-    LoadState { source: crate::session_state::Error },
+    LoadState {
+        source: nyanpasu_migration::session_state::Error,
+    },
     #[snafu(display("failed to initialize persistent state at {path}"))]
     InitializeState {
         path: Utf8PathBuf,
@@ -59,9 +58,11 @@ impl SessionStateClient {
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
         let path = config_path.clone();
-        let state = crate::utils::blocking::join(
-            tokio::task::spawn_blocking(move || crate::session_state::read(path.as_std_path()))
-                .await,
+        let state = nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                nyanpasu_migration::session_state::read(path.as_std_path())
+            })
+            .await,
         )
         .context(LoadStateSnafu)?
         .unwrap_or_default();
@@ -78,7 +79,7 @@ impl SessionStateClient {
             .await
             .context(SpawnActorSnafu)?
             .0;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(SessionStateClientInner {
@@ -177,7 +178,7 @@ impl Drop for SessionStateClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::bundle_metadata::TEST_BUNDLE_METADATA;
+    use nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA;
     use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};

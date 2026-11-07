@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use crate::state::StateSnapshot;
 use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_contracts::core_install::{
+    BinaryInstaller, CoreBinaryCompanionPaths, CoreBinaryInstallRequest,
+};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_updater::PreparedCoreBinary;
 use snafu::{ResultExt, ensure};
 
 use super::{
@@ -17,7 +21,7 @@ use super::{
         },
     },
     Command, Output,
-    ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
+    ports::{PreparedRuntime, RuntimePreparationPort},
 };
 use crate::actor_v2::{
     EndpointConnectivity, HandoffReport,
@@ -710,8 +714,21 @@ impl CoreLifecycleWorkflow {
         }
         // Stopped/NotStarted alone cannot prove quarantined processes are dead.
         self.core.recover().await.context(RecoverRuntimeSnafu)?;
+        let request = CoreBinaryInstallRequest {
+            target: artifact.target,
+            source: artifact.source.clone(),
+            destination: artifact.destination.clone(),
+            staging: artifact.staging.clone(),
+            companion: artifact
+                .companion
+                .as_ref()
+                .map(|companion| CoreBinaryCompanionPaths {
+                    staged: companion.staged(),
+                    destination: companion.destination.clone(),
+                }),
+        };
         self.installer
-            .install(&artifact)
+            .install(&request)
             .await
             .context(InstallCoreBinarySnafu)?;
         if restart {

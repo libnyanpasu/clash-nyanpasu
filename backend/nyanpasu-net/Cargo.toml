@@ -1,0 +1,36 @@
+[package]
+name = 'nyanpasu-net'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+anyhow = '1'
+async-trait = '0.1'
+backon = { version = '1.0.1', features = ['tokio-sleep'] }
+base64 = '0.23'
+bytes = '1'
+getrandom = { version = '0.4', features = ['std'] }
+percent-encoding = '2.3.1'
+reqwest = { workspace = true }
+serde_json = { version = '1', features = ['preserve_order'] }
+snafu = { workspace = true }
+time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
+tokio = { workspace = true, features = ['full'] }
+tracing = { workspace = true }
+tracing-attributes = '0.1'
+url = '2'
+
+[dev-dependencies]
+axum = { version = '0.8', features = ['ws'] }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
+serde = '1.0'
+tokio = { workspace = true, features = ['test-util'] }

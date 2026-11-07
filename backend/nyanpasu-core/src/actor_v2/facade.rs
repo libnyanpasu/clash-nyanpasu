@@ -903,6 +903,7 @@ mod tests {
 
     use camino::Utf8PathBuf;
     use nyanpasu_config::application::ClashCore;
+    use nyanpasu_contracts::service::ServiceProcessControl;
     use nyanpasu_core_manager::{CoreKind, CoreSpec};
     use nyanpasu_ipc::{
         api::{
@@ -919,10 +920,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::actor_v2::{
-        endpoint::{ControlEndpoint, CoreStatusSnapshot},
-        service_actor::ServiceHostAdapter,
-    };
+    use crate::actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot};
 
     struct RecordingEndpoint {
         host: ExecutionHost,
@@ -1057,12 +1055,10 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl ServiceHostAdapter for ReadyService {
-        async fn probe(
-            &self,
-        ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
+    impl ServiceProcessControl for ReadyService {
+        async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
             self.calls.lock().unwrap().push("ensure_ready");
-            Ok(StatusInfo {
+            Ok(serde_json::to_string(&StatusInfo {
                 name: Cow::Borrowed("nyanpasu-service"),
                 version: Cow::Borrowed("test"),
                 status: ServiceStatus::Running,
@@ -1089,23 +1085,31 @@ mod tests {
                     logs: None,
                 }),
             })
+            .expect("test service status serializes"))
         }
 
-        async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             Ok(())
         }
-        async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             Ok(())
         }
-        async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn start_daemon(
+            &self,
+        ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             Ok(())
         }
-        async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn stop_daemon(
+            &self,
+        ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             Ok(())
         }
-        async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             Ok(())
         }
+    }
+
+    impl crate::actor_v2::service_actor::ServiceEndpointFactory for ReadyService {
         fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
             self.endpoint.clone()
         }
@@ -1115,13 +1119,13 @@ mod tests {
         let core = CoreClient::spawn(local).await.unwrap();
         let service_endpoint = RecordingEndpoint::new(ExecutionHost::Service, None);
         let calls = service_endpoint.calls.clone();
-        let service = ServiceClient::spawn(
-            Arc::new(ReadyService {
+        let service = {
+            let process_control = Arc::new(ReadyService {
                 calls: calls.clone(),
                 endpoint: service_endpoint,
-            }),
-            1,
-        )
+            });
+            ServiceClient::spawn(process_control.clone(), process_control, 1)
+        }
         .await
         .unwrap();
         calls.lock().unwrap().clear();

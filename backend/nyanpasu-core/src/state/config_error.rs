@@ -35,6 +35,8 @@ pub enum ConfigError {
     InvalidLatencyTimeout { reason: String },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
+    #[snafu(display("editing hotkeys is not supported"))]
+    ValidateHotkeyCapability,
     #[snafu(context(false), display("the application workflow is not ready"))]
     WorkflowNotReady {
         #[serde(skip)]

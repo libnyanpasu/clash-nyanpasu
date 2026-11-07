@@ -26,7 +26,7 @@ built by this crate. To regenerate, without flushing or pruning the fixture:
 1. Export the fixture from this crate (from `backend/`):
 
    ```sh
-   NYANPASU_LEGACY_FIXTURE=/path/to/fresh/v3.redb cargo test -p nyanpasu-traffic --test legacy_v3 export_v3_fixture -- --ignored
+   NYANPASU_LEGACY_FIXTURE=/path/to/fresh/v3.redb cargo test -p nyanpasu-traffic --features legacy-redb --test legacy_v3 export_v3_fixture -- --ignored
    ```
 
 2. Check out the baseline commit elsewhere (for example `git worktree add`). Next to its

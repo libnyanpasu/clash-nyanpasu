@@ -1,219 +1,36 @@
-//! Adapter-level tests against mocked capabilities: no Tauri runtime, no tray,
-//! no widget process, no sleep. Ordering is asserted from a shared call log
-//! rather than from timing.
+//! Concrete adapter and host shutdown tests over injected capabilities.
 
+use super::{adapters::TauriWidgetController, ports::MockWidgetRuntime};
+use crate::desktop::{
+    effects::{
+        ports::{
+            MockLocaleSink, MockTrayRefresher, MockWidgetController, WidgetController, WidgetError,
+        },
+        test_support::{
+            CallLog, Shutdown, calls, executor, executor_with_os, executor_with_owners,
+            executor_with_ports, inputs, proxied_inputs, record, spawn_refused,
+        },
+    },
+    hotkey::ports::{HotkeyActionSink, ShortcutError, ShortcutRegistrar},
+};
+use nyanpasu_config::application::{LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig};
+use nyanpasu_contracts::system_proxy::{
+    MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
+};
+use nyanpasu_core::client::{
+    effects::{
+        plan::{ApplicationEffectPlan, EffectKind},
+        ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, MockLoggerRefresher},
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    },
+    hotkey::ports::{HotkeyAction, HotkeyParseError},
+};
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-
-use nyanpasu_config::{
-    application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig},
-    runtime::executor::ResolvedPortBindings,
-};
-use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-
-use super::{adapters::TauriWidgetController, ports::MockWidgetRuntime};
-use crate::adapters::hotkey::PlatformAcceleratorValidator;
-use nyanpasu_core::client::{
-    effects::{
-        executor::ApplicationEffectExecutor,
-        plan::{
-            ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-            TrayRefresh,
-        },
-        ports::{
-            ApplicationEffectsPort, LocaleSink, LogRotation, LoggerError, LoggerRefresher,
-            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
-            TrayError, TrayRefresher, WidgetController, WidgetError,
-        },
-        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
-    },
-    hotkey::{
-        HotkeyArgs, HotkeyClient,
-        ports::{
-            HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-            MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
-        },
-    },
-    system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        ports::{
-            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
-            OsProxyPort, PacError, PacPort,
-        },
-    },
-};
-
-/// The root shutdown, shared by every owner a test builds.
-struct Shutdown {
-    token: CancellationToken,
-    tasks: TaskTracker,
-}
-
-impl Shutdown {
-    fn new() -> Self {
-        Self {
-            token: CancellationToken::new(),
-            tasks: TaskTracker::new(),
-        }
-    }
-
-    fn request(&self) {
-        self.token.cancel();
-        self.tasks.close();
-    }
-
-    /// Whether every owner has finished within `wait`.
-    async fn finished_within(&self, wait: std::time::Duration) -> bool {
-        tokio::time::timeout(wait, self.tasks.wait()).await.is_ok()
-    }
-}
-
-type CallLog = Arc<Mutex<Vec<&'static str>>>;
-
-fn record(log: &CallLog, call: &'static str) {
-    log.lock().expect("call log should not poison").push(call);
-}
-
-fn calls(log: &CallLog) -> Vec<&'static str> {
-    log.lock().expect("call log should not poison").clone()
-}
-
-/// Two inputs that differ only in the fields a test changes, so the plan under
-/// assertion carries exactly the effect that field implies.
-fn inputs(app: NyanpasuAppConfig) -> ApplicationEffectInputs {
-    ApplicationEffectInputs::project(
-        &app,
-        &nyanpasu_config::clash::config::ClashConfig::default(),
-        None,
-    )
-}
-
-/// The same projection with a port the session has already resolved, which is
-/// what the system proxy actor needs before it writes anything to the OS.
-fn proxied_inputs(app: NyanpasuAppConfig) -> ApplicationEffectInputs {
-    ApplicationEffectInputs::project(
-        &app,
-        &nyanpasu_config::clash::config::ClashConfig::default(),
-        Some(ResolvedPortBindings {
-            mixed_port: 7890,
-            port: None,
-            socks_port: None,
-            external_controller: None,
-        }),
-    )
-}
-
-/// The executor under its real dispatch logic, with only the UI capabilities
-/// mocked. The system proxy and hotkey actors are spawned against fake ports
-/// and never reached by a UI-only plan.
-async fn executor(
-    locale: Arc<dyn LocaleSink>,
-    logger: Arc<dyn LoggerRefresher>,
-    widget: Arc<dyn WidgetController>,
-    tray: Arc<dyn TrayRefresher>,
-) -> ApplicationEffectExecutor {
-    executor_with_os(
-        MockOsProxyPort::new(),
-        locale,
-        logger,
-        widget,
-        tray,
-        &Shutdown::new(),
-    )
-    .await
-}
-
-/// The same executor with a system proxy that a test can make slow, so an
-/// earlier plan can be observed waiting while a later one runs to completion.
-async fn executor_with_os(
-    os: MockOsProxyPort,
-    locale: Arc<dyn LocaleSink>,
-    logger: Arc<dyn LoggerRefresher>,
-    widget: Arc<dyn WidgetController>,
-    tray: Arc<dyn TrayRefresher>,
-    shutdown: &Shutdown,
-) -> ApplicationEffectExecutor {
-    let mut pac = MockPacPort::new();
-    pac.expect_is_supported().returning(|| false);
-    executor_with_ports(os, Arc::new(pac), locale, logger, widget, tray, shutdown).await
-}
-
-/// The same executor with the PAC port injected too, so a test can park a plan
-/// exactly where the shutdown token reaches it.
-async fn executor_with_ports(
-    os: MockOsProxyPort,
-    pac: Arc<dyn PacPort>,
-    locale: Arc<dyn LocaleSink>,
-    logger: Arc<dyn LoggerRefresher>,
-    widget: Arc<dyn WidgetController>,
-    tray: Arc<dyn TrayRefresher>,
-    shutdown: &Shutdown,
-) -> ApplicationEffectExecutor {
-    // The only registrar call a UI-shaped plan can reach is the shutdown's
-    // release; a plan that registers a shortcut spawns its own registrar.
-    let mut registrar = MockShortcutRegistrar::new();
-    registrar.expect_unregister_all().returning(|| Ok(()));
-    executor_with_owners(
-        Arc::new(os),
-        pac,
-        Arc::new(registrar),
-        locale,
-        logger,
-        widget,
-        tray,
-        shutdown,
-    )
-    .await
-}
-
-/// The same executor over the caller's own OS proxy and shortcut registrar,
-/// for a test that holds one of their cleanups.
-#[allow(clippy::too_many_arguments)]
-async fn executor_with_owners(
-    os: Arc<dyn OsProxyPort>,
-    pac: Arc<dyn PacPort>,
-    registrar: Arc<dyn ShortcutRegistrar>,
-    locale: Arc<dyn LocaleSink>,
-    logger: Arc<dyn LoggerRefresher>,
-    widget: Arc<dyn WidgetController>,
-    tray: Arc<dyn TrayRefresher>,
-    shutdown: &Shutdown,
-) -> ApplicationEffectExecutor {
-    let system_proxy = SystemProxyClient::spawn(
-        SystemProxyArgs {
-            os,
-            auto_launch: Arc::new(MockAutoLaunchPort::new()),
-            pac,
-            schedule_guard_ticks: false,
-            shutdown: shutdown.token.child_token(),
-        },
-        &shutdown.tasks,
-    )
-    .await
-    .expect("the system proxy actor should spawn");
-    let hotkeys = HotkeyClient::spawn(
-        HotkeyArgs {
-            registrar,
-            sink: Arc::new(MockHotkeyActionSink::new()),
-            shutdown: shutdown.token.child_token(),
-        },
-        &shutdown.tasks,
-    )
-    .await
-    .expect("the hotkey actor should spawn");
-    ApplicationEffectExecutor::new(
-        system_proxy,
-        hotkeys,
-        Arc::new(PlatformAcceleratorValidator),
-        locale,
-        logger,
-        widget,
-        tray,
-    )
-}
 
 /// A controller whose icon paths lead nowhere: the widget logo is the bundled
 /// cat.
@@ -230,167 +47,6 @@ fn controller_with(runtime: MockWidgetRuntime) -> TauriWidgetController {
         .install(Arc::new(runtime))
         .expect("the runtime installs once");
     controller
-}
-
-#[tokio::test]
-async fn locale_is_applied_before_tray_refresh() {
-    let log: CallLog = Arc::default();
-
-    let mut locale = MockLocaleSink::new();
-    let locale_log = log.clone();
-    locale.expect_set_locale().times(1).returning(move |_| {
-        record(&locale_log, "set_locale");
-    });
-
-    let mut tray = MockTrayRefresher::new();
-    let tray_log = log.clone();
-    tray.expect_refresh_full().times(1).returning(move |_| {
-        let log = tray_log.clone();
-        Box::pin(async move {
-            record(&log, "refresh_full");
-            Ok(())
-        })
-    });
-
-    let executor = executor(
-        Arc::new(locale),
-        Arc::new(MockLoggerRefresher::new()),
-        Arc::new(MockWidgetController::new()),
-        Arc::new(tray),
-    )
-    .await;
-
-    let app = NyanpasuAppConfig {
-        language: I18nLanguage::Russian,
-        ..NyanpasuAppConfig::default()
-    };
-    let plan = ApplicationEffectPlan::diff(&inputs(NyanpasuAppConfig::default()), &inputs(app));
-    let statuses = executor.apply(EffectRevision::new(1), plan).await;
-
-    assert_eq!(
-        calls(&log),
-        vec!["set_locale", "refresh_full"],
-        "the tray menu is rendered from the locale, so the locale goes first"
-    );
-    assert!(
-        statuses
-            .iter()
-            .all(|status| status.health == EffectHealth::Healthy),
-        "{statuses:?}"
-    );
-}
-
-#[tokio::test]
-async fn each_ui_failure_gets_its_own_code() {
-    let mut locale = MockLocaleSink::new();
-    locale.expect_set_locale().returning(|_| ());
-    let mut logger = MockLoggerRefresher::new();
-    logger
-        .expect_refresh()
-        .returning(|_, _| Err(LoggerError::ReloadThreadStopped));
-    let mut widget = MockWidgetController::new();
-    widget
-        .expect_apply()
-        .returning(|_| Box::pin(async { Err(spawn_refused("widget refused")) }));
-    let mut tray = MockTrayRefresher::new();
-    tray.expect_refresh_full().returning(|_| {
-        Box::pin(async {
-            Err(TrayError::ScheduleTrayWork {
-                source: "tray refused".into(),
-            })
-        })
-    });
-
-    let executor = executor(
-        Arc::new(locale),
-        Arc::new(logger),
-        Arc::new(widget),
-        Arc::new(tray),
-    )
-    .await;
-
-    // One patch that touches all four: the language rebuilds the tray as well.
-    // Setting the locale cannot fail, so the other three degrade beside it.
-    let app = NyanpasuAppConfig {
-        language: I18nLanguage::Russian,
-        app_log_level: LoggingLevel::Error,
-        network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
-            StatisticWidgetVariant::Small,
-        ),
-        ..NyanpasuAppConfig::default()
-    };
-    let plan = ApplicationEffectPlan::diff(&inputs(NyanpasuAppConfig::default()), &inputs(app));
-    assert_eq!(plan.effects().len(), 4, "{:?}", plan.effects());
-    let statuses = executor.apply(EffectRevision::new(4), plan).await;
-
-    let codes: Vec<(EffectKind, EffectFailureCode)> = statuses
-        .iter()
-        .filter(|status| status.kind != EffectKind::Locale)
-        .map(|status| match &status.health {
-            EffectHealth::Degraded { code, .. } => (status.kind, *code),
-            other => panic!("{:?} should have degraded, got {other:?}", status.kind),
-        })
-        .collect();
-    assert_eq!(
-        codes,
-        vec![
-            (EffectKind::Logger, EffectFailureCode::LoggerRefreshFailed),
-            (EffectKind::Widget, EffectFailureCode::WidgetApplyFailed),
-            (EffectKind::Tray, EffectFailureCode::TrayRefreshFailed),
-        ],
-        "one failure must not mask another"
-    );
-}
-
-#[test]
-fn language_change_requests_full_refresh() {
-    let before = inputs(NyanpasuAppConfig::default());
-    let after = inputs(NyanpasuAppConfig {
-        language: I18nLanguage::Russian,
-        ..NyanpasuAppConfig::default()
-    });
-
-    let plan = ApplicationEffectPlan::diff(&before, &after);
-
-    assert!(
-        plan.effects().contains(&ApplicationEffect::Tray(
-            TrayRefresh::Full,
-            after.tray_view()
-        )),
-        "a language change rebuilds the menu: {:?}",
-        plan.effects()
-    );
-    let locale = plan
-        .effects()
-        .iter()
-        .position(|effect| matches!(effect, ApplicationEffect::Locale(_)))
-        .expect("a language change carries the locale");
-    let tray = plan
-        .effects()
-        .iter()
-        .position(|effect| matches!(effect, ApplicationEffect::Tray(..)))
-        .expect("a language change refreshes the tray");
-    assert!(locale < tray, "the plan orders the locale before the tray");
-}
-
-#[test]
-fn system_proxy_change_only_requests_part_refresh() {
-    let before = inputs(NyanpasuAppConfig::default());
-    let after = inputs(NyanpasuAppConfig {
-        enable_system_proxy: !NyanpasuAppConfig::default().enable_system_proxy,
-        ..NyanpasuAppConfig::default()
-    });
-
-    let plan = ApplicationEffectPlan::diff(&before, &after);
-
-    assert!(
-        plan.effects().contains(&ApplicationEffect::Tray(
-            TrayRefresh::Part,
-            after.tray_view()
-        )),
-        "nothing the menu is built from changed: {:?}",
-        plan.effects()
-    );
 }
 
 #[test]
@@ -578,13 +234,6 @@ async fn widget_start_failure_surfaces_as_a_widget_failure() {
     );
 }
 
-fn spawn_refused(reason: &str) -> WidgetError {
-    WidgetError::SpawnWidget {
-        variant: "small".into(),
-        source: std::io::Error::other(reason.to_owned()),
-    }
-}
-
 fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
     let [status] = <[EffectStatus; 1]>::try_from(statuses).expect("a widget-only plan");
     assert_eq!(status.kind, EffectKind::Widget);
@@ -656,83 +305,6 @@ async fn a_widget_that_never_started_leaves_nothing_for_the_disable() {
         host.events(),
         ["spawn", "handshake dropped"],
         "nothing was left to stop"
-    );
-}
-
-#[tokio::test]
-async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
-    // A part refresh repaints a menu that is already built, so dropping a late
-    // rebuild loses it for good: the menu would stay in the old language until
-    // something else happened to rebuild it.
-    let log: CallLog = Arc::default();
-    let mut locale = MockLocaleSink::new();
-    let locale_log = log.clone();
-    locale.expect_set_locale().times(1).returning(move |_| {
-        record(&locale_log, "set_locale");
-    });
-    let mut tray = MockTrayRefresher::new();
-    let part_log = log.clone();
-    tray.expect_refresh_part().times(1).returning(move |_| {
-        let log = part_log.clone();
-        Box::pin(async move {
-            record(&log, "refresh_part");
-            Ok(())
-        })
-    });
-    let full_log = log.clone();
-    tray.expect_refresh_full().times(1).returning(move |_| {
-        let log = full_log.clone();
-        Box::pin(async move {
-            record(&log, "refresh_full");
-            Ok(())
-        })
-    });
-
-    let executor = executor(
-        Arc::new(locale),
-        Arc::new(MockLoggerRefresher::new()),
-        Arc::new(MockWidgetController::new()),
-        Arc::new(tray),
-    )
-    .await;
-
-    // Revision 2 only repaints the tray items and finishes first.
-    let default = NyanpasuAppConfig::default();
-    let part = ApplicationEffectPlan::diff(
-        &inputs(default.clone()),
-        &inputs(NyanpasuAppConfig {
-            enable_tray_text: !default.enable_tray_text,
-            ..default.clone()
-        }),
-    );
-    let newer = executor.apply(EffectRevision::new(2), part).await;
-    assert!(
-        newer
-            .iter()
-            .all(|status| status.health == EffectHealth::Healthy),
-        "{newer:?}"
-    );
-
-    // Revision 1 is the language change that was delayed behind it.
-    let full = ApplicationEffectPlan::diff(
-        &inputs(default.clone()),
-        &inputs(NyanpasuAppConfig {
-            language: I18nLanguage::Russian,
-            ..default
-        }),
-    );
-    let older = executor.apply(EffectRevision::new(1), full).await;
-
-    assert!(
-        older
-            .iter()
-            .all(|status| status.health == EffectHealth::Healthy),
-        "the rebuild is not superseded, because nothing newer performed one: {older:?}"
-    );
-    assert_eq!(
-        calls(&log),
-        vec!["refresh_part", "set_locale", "refresh_full"],
-        "the delayed rebuild still runs, and still runs after its own locale"
     );
 }
 

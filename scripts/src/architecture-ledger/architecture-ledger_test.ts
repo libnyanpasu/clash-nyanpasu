@@ -441,7 +441,7 @@ fn guard(_: &IClashTemp) {}
 `
   const schema = createBuckets()
   scanFile(
-    'backend/nyanpasu-core/src/migration/legacy_schema/verge.rs',
+    'backend/nyanpasu-migration/src/legacy_schema/verge.rs',
     source,
     schema,
   )
@@ -449,7 +449,7 @@ fn guard(_: &IClashTemp) {}
 
   // Only that directory: look-alike paths still count.
   for (const relPath of [
-    'backend/nyanpasu-core/src/migration/legacy_schema.rs',
+    'backend/nyanpasu-migration/src/legacy_schema.rs',
     'backend/tauri/src/client/legacy_schema/verge.rs',
   ]) {
     assertFalse(isLegacyDtoAllowlisted(relPath), relPath)
@@ -466,7 +466,7 @@ fn read(_: &IVerge) {}
 `
   const reader = createBuckets()
   scanFile(
-    'backend/nyanpasu-core/src/migration/modules/typed_config.rs',
+    'backend/nyanpasu-migration/src/modules/typed_config.rs',
     source,
     reader,
   )
@@ -475,9 +475,9 @@ fn read(_: &IVerge) {}
   // A file entry covers exactly that file: sibling modules and paths that
   // merely start with its name still count.
   for (const relPath of [
-    'backend/nyanpasu-core/src/migration/modules/app_config.rs',
-    'backend/nyanpasu-core/src/migration/modules/typed_config.rs.orig',
-    'backend/nyanpasu-core/src/migration/modules/typed_config/mod.rs',
+    'backend/nyanpasu-migration/src/modules/app_config.rs',
+    'backend/nyanpasu-migration/src/modules/typed_config.rs.orig',
+    'backend/nyanpasu-migration/src/modules/typed_config/mod.rs',
   ]) {
     assertFalse(isLegacyDtoAllowlisted(relPath), relPath)
     const buckets = createBuckets()
@@ -956,7 +956,7 @@ test('scanFile: the static allowlist matches path and name exactly, and other li
 })
 
 test('scanFile: an entry covers no static once its name is declared twice in the file', () => {
-  const path = 'backend/nyanpasu-core/src/migration/modules/app_config.rs'
+  const path = 'backend/nyanpasu-migration/src/modules/app_config.rs'
   const key = staticAllowlistKey(path, 'VERSION_2_0_0')
   const buckets = createBuckets()
   scanFile(
@@ -993,7 +993,22 @@ test('STATIC_ALLOWLIST: each entry is unique, in a gated crate, categorized and 
   assert.deepStrictEqual(new Set(keys).size, keys.length)
 })
 
-for (const root of ['backend/tauri/src/', 'backend/nyanpasu-core/src/']) {
+for (const root of [
+  'backend/tauri/src/',
+  'backend/tauri/src/desktop/',
+  'backend/nyanpasu-core/src/',
+  'backend/nyanpasu-migration/src/',
+  'backend/nyanpasu-owner-support/src/',
+  'backend/nyanpasu-observers/src/',
+  'backend/nyanpasu-updater/src/',
+  'backend/nyanpasu-os/src/',
+  'backend/nyanpasu-contracts/src/',
+  'backend/nyanpasu-scripts/src/',
+  'backend/nyanpasu-profile-transform/src/',
+  'backend/nyanpasu-persistence/src/',
+  'backend/nyanpasu-profile-io/src/',
+  'backend/nyanpasu-net/src/',
+]) {
   test(`scanFile / evaluateGate: service statics fail in ${root}`, () => {
     const relPath = `${root}services/nested.rs`
     const fixtures = [

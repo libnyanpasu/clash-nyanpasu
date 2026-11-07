@@ -6,10 +6,17 @@ use std::{
     },
 };
 
+use nyanpasu_observers::logs::{
+    self, CoreLogCursor, CoreLogDirection, CoreLogError, CoreLogPage, CoreLogQuery, CoreLogRecord,
+    CoreLogResult, CoreLogSource, CoreLogStatus, CoreLogStore, CoreLogsClient, PreparedCoreLog,
+};
 use tempfile::TempDir;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{test_support::TestStore, *};
+use super::{
+    RedbCoreLogStore,
+    test_support::{self, TestStore},
+};
 
 fn record(number: usize, size: usize) -> CoreLogRecord {
     CoreLogRecord {
@@ -72,7 +79,7 @@ async fn actor_memory_under_sustained_capture() {
             .query(query(CoreLogDirection::Latest, None))
             .await
             .unwrap();
-        assert!(page.rows.len() <= MAX_PAGE_ROWS);
+        assert!(page.rows.len() <= logs::MAX_PAGE_ROWS);
         assert_eq!(page.status.first.as_ref().unwrap().sequence, 1);
         drop(page);
         let status = client.status().await.unwrap();
@@ -197,12 +204,12 @@ fn response_budget_does_not_skip_rows_and_details_keep_the_complete_utf8_record(
         store.append(&batch).unwrap();
     }
     let first = store.query(query(CoreLogDirection::Latest, None)).unwrap();
-    assert!(serde_json::to_vec(&first).unwrap().len() <= model::PAGE_BYTES);
+    assert!(serde_json::to_vec(&first).unwrap().len() <= logs::PAGE_BYTES);
     assert!(first.more);
     assert!(first.rows.len() < 200);
     assert!(first.rows.iter().all(|row| row.truncated
-        && row.record.payload.len() <= model::PREVIEW_BYTES
-        && row.record.payload.capacity() <= model::PREVIEW_BYTES));
+        && row.record.payload.len() <= logs::PREVIEW_BYTES
+        && row.record.payload.capacity() <= logs::PREVIEW_BYTES));
     let full = store.detail(first.rows.last().unwrap().id.clone()).unwrap();
     assert_eq!(full.payload, "猫".repeat(3000));
     let mut ids: Vec<_> = first.rows.iter().map(|r| r.record.received_at).collect();
@@ -270,7 +277,7 @@ fn directory_owner_and_invalid_requests_are_rejected() {
         CoreLogError::InvalidRequest
     );
     assert_eq!(
-        PreparedCoreLog::new(&record(0, model::MAX_RECORD_BYTES + 1)).unwrap_err(),
+        PreparedCoreLog::new(&record(0, logs::MAX_RECORD_BYTES + 1)).unwrap_err(),
         CoreLogError::TooLarge
     );
 }
@@ -604,8 +611,8 @@ fn reconfiguring_mid_session_keeps_records_decodable_and_applies_the_new_budget(
 
 #[tokio::test]
 async fn empty_flush_does_not_publish_another_version() {
-    let logs = CoreLogsClient::test_client().await;
-    logs.append(record(0, BATCH_BYTES)).await.unwrap();
+    let logs = test_support::test_client().await;
+    logs.append(record(0, logs::BATCH_BYTES)).await.unwrap();
     let status = logs.status().await.unwrap();
     logs.flush().await.unwrap();
     assert_eq!(logs.status().await.unwrap(), status);
@@ -745,7 +752,7 @@ async fn a_locked_rotation_file_stops_writes_until_clear() {
     assert_eq!(logs.status().await.unwrap().head, head);
     drop(held);
     logs.clear().await.unwrap();
-    logs.append(record(100, BATCH_BYTES)).await.unwrap();
+    logs.append(record(100, logs::BATCH_BYTES)).await.unwrap();
     assert!(logs.status().await.unwrap().error.is_none());
 }
 

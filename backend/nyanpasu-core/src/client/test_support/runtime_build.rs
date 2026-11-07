@@ -2,7 +2,6 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use crate::enhance::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 use async_trait::async_trait;
 use nyanpasu_config::{
     application::ClashCore,
@@ -12,7 +11,10 @@ use nyanpasu_config::{
         value::ConfigValue,
     },
 };
+#[cfg(test)]
+use nyanpasu_contracts::profiles::ports::ProfileFsPort;
 use nyanpasu_core_manager::CoreSpec;
+use nyanpasu_profile_transform::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 
 use crate::{
     actor_v2::local_host::CoreSpecError,
@@ -86,7 +88,7 @@ impl RuntimeBuildPort for TestRuntimeBuildPort {
             if strict_transforms {
                 RuntimeBuilder::validate_transforms(&artifact)?;
             }
-            let data = crate::enhance::runtime_snapshot_data_from_artifact(
+            let data = crate::client::artifact_snapshot::runtime_snapshot_data_from_artifact(
                 artifact,
                 &inputs.profiles,
                 core,
@@ -95,7 +97,7 @@ impl RuntimeBuildPort for TestRuntimeBuildPort {
             Ok(Arc::new(RuntimeSnapshot::from_data(revision, core, data)))
         })
         .await;
-        crate::utils::blocking::join(built)
+        nyanpasu_owner_support::blocking::join(built)
     }
 
     async fn publish(&self, snapshot: &RuntimeSnapshot) -> Result<(), PublishRuntimeError> {
@@ -128,10 +130,7 @@ impl TestRuntimeBuildPort {
         }
     }
     #[cfg(test)]
-    pub(crate) fn from_profile_port(
-        fs: Arc<dyn crate::state::profiles::ports::ProfileFsPort>,
-        paths: RuntimePaths,
-    ) -> Self {
+    pub(crate) fn from_profile_port(fs: Arc<dyn ProfileFsPort>, paths: RuntimePaths) -> Self {
         Self {
             paths,
             capture: Arc::new(move |profiles| {

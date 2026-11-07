@@ -33,9 +33,12 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
     );
     endpoint.set_source_hash("source-a");
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
+    let service = {
+        let process_control = Arc::new(IdleServiceAdapter);
+        ServiceClient::spawn(process_control.clone(), process_control, 0)
+    }
+    .await
+    .unwrap();
     let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core.clone(),
@@ -612,34 +615,32 @@ struct ParkedStop {
 }
 
 #[async_trait::async_trait]
-impl crate::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
-    async fn probe(
-        &self,
-    ) -> Result<
-        nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::service::control::ServiceCommandError,
-    > {
+impl nyanpasu_contracts::service::ServiceProcessControl for ParkedStop {
+    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         if self.park.swap(false, Ordering::SeqCst) {
             self.parked.notify_one();
             self.release.notified().await;
         }
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.update().await
     }
+}
+
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for ParkedStop {
     fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
@@ -663,10 +664,14 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
         parked: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
     });
-    let service =
-        ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
-            .await
-            .unwrap();
+    let service = ServiceClient::spawn_bounded(
+        daemon.clone(),
+        daemon.clone(),
+        0,
+        std::time::Duration::from_millis(50),
+    )
+    .await
+    .unwrap();
     let mut f = super::mutations::fixture_from(
         true,
         service,
@@ -759,32 +764,30 @@ struct ParkedInstall {
 }
 
 #[async_trait::async_trait]
-impl crate::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall {
-    async fn probe(
-        &self,
-    ) -> Result<
-        nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::service::control::ServiceCommandError,
-    > {
+impl nyanpasu_contracts::service::ServiceProcessControl for ParkedInstall {
+    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.parked.notify_one();
         self.release.notified().await;
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
         self.delegate.update().await
     }
+}
+
+impl crate::actor_v2::service_actor::ServiceEndpointFactory for ParkedInstall {
     fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
@@ -815,10 +818,14 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         None,
     );
     let core = CoreClient::spawn(local.clone()).await.unwrap();
-    let service =
-        ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
-            .await
-            .unwrap();
+    let service = ServiceClient::spawn_bounded(
+        daemon.clone(),
+        daemon.clone(),
+        0,
+        std::time::Duration::from_millis(50),
+    )
+    .await
+    .unwrap();
     let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core,

@@ -3,9 +3,7 @@
 use crate::{
     client::profiles::ProfilesClient,
     state::profiles::{
-        NewProfileRequest, ProfilesActorMessage, ProfilesError,
-        ports::{FetchedSubscription, MockSubscriptionFetcher},
-        sources::SourceStatus,
+        NewProfileRequest, ProfilesActorMessage, ProfilesError, sources::SourceStatus,
     },
 };
 use nyanpasu_config::profile::{
@@ -14,6 +12,7 @@ use nyanpasu_config::profile::{
     ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, SubscriptionInfo,
     TransformDefinition,
 };
+use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
 pub fn add_placeholder_request() -> NewProfileRequest {
     NewProfileRequest {
         metadata: file_config_item("placeholder").metadata,

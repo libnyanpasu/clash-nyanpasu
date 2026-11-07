@@ -1,105 +1,45 @@
 //! The implementation of [`ApplicationEffectsPort`]: it fans one plan out to
-//! the owner of each effect. Inside the client, [`CoreLogCaptureEffects`] adds
-//! the Core log owners the client spawns itself.
+//! the owner of each effect, handing presentation items to the
+//! [`PresentationEffectsPort`] at their place in the plan. Inside the client,
+//! [`CoreLogCaptureEffects`] adds the Core log owners the client spawns itself.
 //!
 //! The fan-out is by capability, not by lookup — there is no `get::<T>()` here,
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
 //! service locator.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
+
+use nyanpasu_observers::logs::CoreLogsClient;
 
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
-        SystemProxyDesired, TrayRefresh, TrayView, WidgetLogoDesired,
+        SystemProxyDesired,
     },
-    ports::{
-        ApplicationEffectsPort, LocaleSink, LogRotation, LoggerRefresher, TrayRefresher,
-        WidgetController,
-    },
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
+    ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, PresentationEffectsPort},
+    status::{self, EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
-use crate::{
-    clash::ws::StreamsClient,
-    client::{
-        hotkey::{
-            HotkeyClient,
-            error::InvalidBindingsSnafu,
-            ports::{AcceleratorValidator, HotkeyBindings},
-        },
-        system_proxy::SystemProxyClient,
-    },
-    logs::CoreLogsClient,
-};
-use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
+use crate::{clash::ws::StreamsClient, client::system_proxy::SystemProxyClient};
 
+/// Applies shared effects and delegates presentation items in the supplied plan order.
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,
-    hotkeys: HotkeyClient,
-    accelerators: Arc<dyn AcceleratorValidator>,
-    locale: Arc<dyn LocaleSink>,
     logger: Arc<dyn LoggerRefresher>,
-    widget: Arc<dyn WidgetController>,
-    tray: Arc<dyn TrayRefresher>,
-    /// A full tray rebuild failed and nothing has rebuilt the menu since.
-    ///
-    /// The tray is the one effect with no desired value to re-send, so a
-    /// failed rebuild has nowhere else to be remembered. Without this, a
-    /// partial refresh arriving afterwards would report the menu healthy while
-    /// it is still built from the values the failed rebuild was replacing.
-    tray_full_pending: AtomicBool,
+    presentation: Option<Arc<dyn PresentationEffectsPort>>,
 }
 
 impl ApplicationEffectExecutor {
+    /// Wires the shared owners and an optional presentation executor.
     pub fn new(
         system_proxy: SystemProxyClient,
-        hotkeys: HotkeyClient,
-        accelerators: Arc<dyn AcceleratorValidator>,
-        locale: Arc<dyn LocaleSink>,
         logger: Arc<dyn LoggerRefresher>,
-        widget: Arc<dyn WidgetController>,
-        tray: Arc<dyn TrayRefresher>,
+        presentation: Option<Arc<dyn PresentationEffectsPort>>,
     ) -> Self {
         Self {
             system_proxy,
-            hotkeys,
-            accelerators,
-            locale,
             logger,
-            widget,
-            tray,
-            tray_full_pending: AtomicBool::new(false),
+            presentation,
         }
-    }
-
-    /// The facade rejects an unparsable list before it is committed, so getting
-    /// one here means it arrived from somewhere else — a migration, or a file
-    /// edited by hand. The config stays as written and the effect degrades.
-    async fn apply_hotkeys(&self, revision: EffectRevision, raw: &[String]) -> EffectStatus {
-        match HotkeyBindings::parse(raw, self.accelerators.as_ref()) {
-            Ok(desired) => self.hotkeys.reconcile(revision, desired).await,
-            Err(error) => {
-                let error = InvalidBindingsSnafu {
-                    rejected: vec![error],
-                }
-                .build();
-                degraded(
-                    EffectKind::Hotkeys,
-                    revision,
-                    error.code(),
-                    failure_text(&error),
-                    error.retryable(),
-                )
-            }
-        }
-    }
-
-    fn apply_locale(&self, revision: EffectRevision, language: I18nLanguage) -> EffectStatus {
-        self.locale.set_locale(language);
-        healthy(EffectKind::Locale, revision)
     }
 
     fn apply_logger(&self, revision: EffectRevision, desired: &LoggerDesired) -> EffectStatus {
@@ -111,88 +51,14 @@ impl ApplicationEffectExecutor {
             }),
         );
         match refreshed {
-            Ok(()) => healthy(EffectKind::Logger, revision),
+            Ok(()) => status::healthy(EffectKind::Logger, revision),
             // Retryable: the configuration is committed, so the next reconcile
             // hands the same desired value to the same adapter again.
-            Err(error) => degraded(
+            Err(error) => status::degraded(
                 EffectKind::Logger,
                 revision,
                 error.code(),
-                failure_text(&error),
-                true,
-            ),
-        }
-    }
-
-    async fn apply_widget(
-        &self,
-        revision: EffectRevision,
-        config: NetworkStatisticWidgetConfig,
-    ) -> EffectStatus {
-        match self.widget.apply(config).await {
-            Ok(()) => healthy(EffectKind::Widget, revision),
-            // Not yet installed is a startup-ordering fact rather than a widget
-            // failure, and its code lets a caller tell them apart. A disable
-            // whose stop ran out of time leaves the old widget owned, and the
-            // next reconcile stops it again: every failure is worth a retry.
-            Err(error) => degraded(
-                EffectKind::Widget,
-                revision,
-                error.code(),
-                failure_text(&error),
-                true,
-            ),
-        }
-    }
-
-    async fn apply_widget_logo(
-        &self,
-        revision: EffectRevision,
-        logo: WidgetLogoDesired,
-    ) -> EffectStatus {
-        match self.widget.show_logo(logo.source, logo.state).await {
-            Ok(()) => healthy(EffectKind::WidgetLogo, revision),
-            // Only a widget runtime that is not installed yet fails; the logo
-            // is remembered once it is.
-            Err(error) => degraded(
-                EffectKind::WidgetLogo,
-                revision,
-                error.code(),
-                failure_text(&error),
-                true,
-            ),
-        }
-    }
-
-    async fn apply_tray(
-        &self,
-        revision: EffectRevision,
-        refresh: TrayRefresh,
-        view: TrayView,
-    ) -> EffectStatus {
-        // Full dominates part. A partial refresh re-reads the values of a menu
-        // that is already built; it cannot finish a rebuild an earlier full
-        // refresh started and failed, so while one is outstanding every
-        // request is widened to a full one.
-        let refresh = match self.tray_full_pending.load(Ordering::SeqCst) {
-            true => TrayRefresh::Full,
-            false => refresh,
-        };
-        let result = match refresh {
-            TrayRefresh::Full => self.tray.refresh_full(view).await,
-            TrayRefresh::Part => self.tray.refresh_part(view).await,
-        };
-        if refresh == TrayRefresh::Full {
-            self.tray_full_pending
-                .store(result.is_err(), Ordering::SeqCst);
-        }
-        match result {
-            Ok(()) => healthy(EffectKind::Tray, revision),
-            Err(error) => degraded(
-                EffectKind::Tray,
-                revision,
-                error.code(),
-                failure_text(&error),
+                status::failure_text(&error),
                 true,
             ),
         }
@@ -218,7 +84,31 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
         let mut statuses = Vec::with_capacity(plan.effects().len());
         for effect in plan.effects() {
             let status = match effect {
-                ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
+                ApplicationEffect::Locale(_)
+                | ApplicationEffect::Hotkeys(_)
+                | ApplicationEffect::Widget(_)
+                | ApplicationEffect::WidgetLogo(_)
+                | ApplicationEffect::Tray(_, _) => {
+                    if let Some(presentation) = &self.presentation {
+                        statuses.extend(
+                            presentation
+                                .apply(
+                                    revision,
+                                    ApplicationEffectPlan::from_effects(vec![effect.clone()]),
+                                )
+                                .await,
+                        );
+                        continue;
+                    }
+                    EffectStatus {
+                        kind: effect.kind(),
+                        desired_revision: revision,
+                        applied_revision: EffectRevision::default(),
+                        health: EffectHealth::Unsupported {
+                            code: EffectFailureCode::PresentationUnsupported,
+                        },
+                    }
+                }
                 ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
                 ApplicationEffect::CoreLogLevel(_) | ApplicationEffect::CoreLogStorage(_) => {
                     unreachable!("CoreLogCaptureEffects applies the Core log effects")
@@ -240,7 +130,7 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                         .find(|status| status.kind == kind)
                         .cloned()
                         .unwrap_or_else(|| {
-                            degraded(
+                            status::degraded(
                                 kind,
                                 revision,
                                 EffectFailureCode::EffectOwnerSilent,
@@ -248,14 +138,6 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                                 true,
                             )
                         })
-                }
-                ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
-                ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
-                ApplicationEffect::WidgetLogo(logo) => {
-                    self.apply_widget_logo(revision, *logo).await
-                }
-                ApplicationEffect::Tray(refresh, view) => {
-                    self.apply_tray(revision, *refresh, *view).await
                 }
             };
             statuses.push(status);
@@ -314,8 +196,8 @@ impl ApplicationEffectsPort for CoreLogCaptureEffects {
         };
         if let Some(level) = level {
             statuses.push(match self.streams.set_log_level(level).await {
-                Ok(()) => healthy(EffectKind::CoreLogLevel, revision),
-                Err(error) => degraded(
+                Ok(()) => status::healthy(EffectKind::CoreLogLevel, revision),
+                Err(error) => status::degraded(
                     EffectKind::CoreLogLevel,
                     revision,
                     EffectFailureCode::EffectOwnerSilent,
@@ -326,11 +208,11 @@ impl ApplicationEffectsPort for CoreLogCaptureEffects {
         }
         if let Some(settings) = storage {
             statuses.push(match self.storage.configure(settings).await {
-                Ok(()) => healthy(EffectKind::CoreLogStorage, revision),
+                Ok(()) => status::healthy(EffectKind::CoreLogStorage, revision),
                 // Not retryable: a failure stops storage until it is cleared or
                 // a new Core session starts, and the store already holds the
                 // committed settings those resets run under.
-                Err(error) => degraded(
+                Err(error) => status::degraded(
                     EffectKind::CoreLogStorage,
                     revision,
                     EffectFailureCode::CoreLogStorageFailed,
@@ -363,32 +245,4 @@ fn system_proxy_desires(
         }
     }
     (proxy, guard, auto_launch)
-}
-
-fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
-    EffectStatus {
-        kind,
-        desired_revision: revision,
-        applied_revision: revision,
-        health: EffectHealth::Healthy,
-    }
-}
-
-fn degraded(
-    kind: EffectKind,
-    revision: EffectRevision,
-    code: EffectFailureCode,
-    message: String,
-    retryable: bool,
-) -> EffectStatus {
-    EffectStatus {
-        kind,
-        desired_revision: revision,
-        applied_revision: EffectRevision::default(),
-        health: EffectHealth::Degraded {
-            code,
-            message,
-            retryable,
-        },
-    }
 }

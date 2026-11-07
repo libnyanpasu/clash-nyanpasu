@@ -1,19 +1,8 @@
-//! Global shortcuts, owned by one actor behind a typed client.
-//!
-//! Callers never see a `ractor::ActorRef`: they hand a revision and the desired
-//! bindings in and get one [`EffectStatus`] back. The actor never calls the
-//! facade either — a pressed shortcut travels out through a channel and back in
-//! through [`NyanpasuClient::dispatch_hotkey_action`], so the two never form a
-//! cycle.
+//! Pure hotkey validation and application action dispatch.
 
-mod actor;
-pub(crate) mod error;
 pub mod ports;
-
 #[cfg(test)]
 mod tests;
-
-use std::collections::BTreeMap;
 
 use nyanpasu_config::{
     application::NyanpasuAppConfigPatch,
@@ -22,115 +11,11 @@ use nyanpasu_config::{
         overrides::{ClashGuardOverridesPatch, Mode},
     },
 };
-use ractor::{Actor, ActorRef, rpc::CallResult};
 use snafu::ResultExt as _;
-use tokio_util::task::TaskTracker;
 
-use self::{
-    actor::{HotkeyActor, Message},
-    error::HotkeyEffectError,
-    ports::{HotkeyAction, HotkeyBindings},
-};
+use self::ports::{HotkeyAction, HotkeyBindings, WindowError};
+use super::{NyanpasuClient, Result, runtime::MutationOutcome};
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
-
-use super::{
-    NyanpasuClient, Result,
-    effects::{
-        plan::EffectKind,
-        status::{EffectHealth, EffectRevision, EffectStatus},
-    },
-    runtime::MutationOutcome,
-};
-
-pub use self::actor::Args as HotkeyArgs;
-
-#[derive(Debug, snafu::Snafu)]
-pub enum Error {
-    #[snafu(display("failed to spawn actor"))]
-    SpawnActor { source: ractor::SpawnErr },
-}
-
-/// The actor's private state, observable for tests and diagnostics. The effect
-/// protocol itself travels as [`EffectStatus`].
-#[cfg_attr(not(test), allow(dead_code))]
-#[derive(Debug, Clone)]
-pub struct HotkeyStatus {
-    pub applied_revision: EffectRevision,
-    pub health: EffectHealth,
-    /// Accelerators the OS confirmed, and what each one runs.
-    pub registered: BTreeMap<String, HotkeyAction>,
-}
-
-#[derive(Clone)]
-pub struct HotkeyClient {
-    actor: ActorRef<Message>,
-}
-
-impl HotkeyClient {
-    /// The actor hands every accelerator back to the OS once `args.shutdown`
-    /// is cancelled, and `tasks` waits for that.
-    pub async fn spawn(args: HotkeyArgs, tasks: &TaskTracker) -> std::result::Result<Self, Error> {
-        let shutdown = args.shutdown.clone();
-        let (actor, _handle) = Actor::spawn(None, HotkeyActor, args)
-            .await
-            .map_err(|source| Error::SpawnActor { source })?;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
-        Ok(Self { actor })
-    }
-
-    pub async fn reconcile(
-        &self,
-        revision: EffectRevision,
-        desired: HotkeyBindings,
-    ) -> EffectStatus {
-        match self
-            .actor
-            .call(
-                |reply| Message::Reconcile {
-                    revision,
-                    desired,
-                    reply,
-                },
-                None,
-            )
-            .await
-        {
-            Ok(CallResult::Success(status)) => status,
-            other => {
-                tracing::warn!(
-                    revision = revision.get(),
-                    "the hotkey actor stopped before answering: {other:?}"
-                );
-                EffectStatus {
-                    kind: EffectKind::Hotkeys,
-                    desired_revision: revision,
-                    applied_revision: EffectRevision::default(),
-                    health: stopped_health(),
-                }
-            }
-        }
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub async fn status(&self) -> HotkeyStatus {
-        match self.actor.call(Message::Status, None).await {
-            Ok(CallResult::Success(status)) => status,
-            other => {
-                tracing::warn!("the hotkey actor did not report its status: {other:?}");
-                HotkeyStatus {
-                    applied_revision: EffectRevision::default(),
-                    health: stopped_health(),
-                    registered: BTreeMap::new(),
-                }
-            }
-        }
-    }
-}
-
-/// Not retryable: an actor that is gone never answers a retry either.
-fn stopped_health() -> EffectHealth {
-    HotkeyEffectError::Stopped.health()
-}
 
 /// Rejects a hotkey list before anything is written.
 ///
@@ -139,8 +24,9 @@ fn stopped_health() -> EffectHealth {
 /// effect, leaving the stored config holding bindings that can never register.
 pub(crate) fn validate_bindings(
     raw: &[String],
-    accelerators: &dyn ports::AcceleratorValidator,
+    accelerators: Option<&dyn ports::AcceleratorValidator>,
 ) -> std::result::Result<(), ConfigError> {
+    let accelerators = accelerators.ok_or(ConfigError::ValidateHotkeyCapability)?;
     HotkeyBindings::parse(raw, accelerators).context(ValidateHotkeysSnafu)?;
     Ok(())
 }
@@ -154,7 +40,12 @@ impl NyanpasuClient {
     pub async fn dispatch_hotkey_action(&self, action: HotkeyAction) -> Result<()> {
         match action {
             HotkeyAction::OpenOrCloseDashboard => {
-                self.inner.window.toggle_dashboard().await?;
+                let window = self
+                    .inner
+                    .window
+                    .as_ref()
+                    .ok_or(WindowError::ToggleDashboardUnsupported)?;
+                window.toggle_dashboard().await?;
                 Ok(())
             }
             HotkeyAction::ClashModeRule => self.set_clash_mode(Mode::Rule).await,

@@ -1,0 +1,35 @@
+[package]
+name = 'nyanpasu-contracts'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+test-support = ['dep:mockall']
+
+[dependencies]
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+
+anyhow = '1'
+bytes = '1'
+serde_json = '1'
+async-trait = '0.1'
+mockall = { version = '0.15', optional = true }
+serde = { version = '1.0', features = ['derive'] }
+semver = '1.0'
+snafu = { workspace = true }
+specta = { version = '^2.0.0-rc.25' }
+url = '2'
+tempfile = '3'
+tokio-util = '0.7'
+
+[target.'cfg(not(windows))'.dependencies]
+whoami = '2.0.0'
+
+[dev-dependencies]
+mockall = '0.15'

@@ -28,12 +28,14 @@ impl EffectRevision {
 
 /// Why an effect is not in its desired state, in the terms the UI localizes.
 ///
-/// One value per kind of failure, named after the effect that failed. The
+/// One value per kind of failure, named after the effect that failed, or
+/// after the capability a shell lacks when several effects share it. The
 /// owner that classifies a failure is the one that picks the code; the
 /// message beside it is only the diagnostic text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectFailureCode {
+    PresentationUnsupported,
     HotkeyInvalidBindings,
     HotkeyPartialRegistration,
     HotkeyShutDown,
@@ -109,6 +111,36 @@ pub struct EffectStatus {
     /// Last successfully installed desired revision. Failed attempts never advance it.
     pub applied_revision: EffectRevision,
     pub health: EffectHealth,
+}
+
+/// Reports that the requested effect revision was applied successfully.
+pub fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
+    EffectStatus {
+        kind,
+        desired_revision: revision,
+        applied_revision: revision,
+        health: EffectHealth::Healthy,
+    }
+}
+
+/// Reports an effect failure without advancing the applied revision.
+pub fn degraded(
+    kind: EffectKind,
+    revision: EffectRevision,
+    code: EffectFailureCode,
+    message: String,
+    retryable: bool,
+) -> EffectStatus {
+    EffectStatus {
+        kind,
+        desired_revision: revision,
+        applied_revision: EffectRevision::default(),
+        health: EffectHealth::Degraded {
+            code,
+            message,
+            retryable,
+        },
+    }
 }
 
 #[cfg(test)]

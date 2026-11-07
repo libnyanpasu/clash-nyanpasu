@@ -6,13 +6,31 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default-meta = ['nyanpasu-config/default-meta']
+default-meta = [
+  'nyanpasu-config/default-meta',
+  'nyanpasu-migration/default-meta'
+]
 default = ['default-meta', 'nesting']
 nesting = ['nyanpasu-config/nesting', 'struct-patch/nesting']
 verge-dev = []
-test-support = ['dep:mockall', 'dep:axum']
+test-support = [
+  'dep:mockall',
+  'dep:axum',
+  'nyanpasu-contracts/test-support',
+  'nyanpasu-migration/test-support',
+  'nyanpasu-observers/test-support',
+  'nyanpasu-updater/test-support',
+  'nyanpasu-profile-transform/test-support'
+]
 
 [dependencies]
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
+nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
   'specta'
 ] }
@@ -22,13 +40,13 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 struct-patch = '0.14'
 postcard = { version = '1.1', features = ['alloc'] }
 bytes = { version = '1', features = ['serde'] }
-flate2 = '1.0'
-tar = '0.4'
-zip = '9.0.0'
 nanoid = '0.5.0'
 seahash = { version = '4.1', features = ['use_std'] }
 nyanpasu-tsdb = { path = '../nyanpasu-tsdb', features = ['redb'] }
-nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = [
+  'specta',
+  'legacy-redb'
+] }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 nyanpasu-geodata = { path = '../nyanpasu-geodata' }
 memmap2 = '0.9'
@@ -36,7 +54,6 @@ notify-debouncer-full = '0.7.0'
 zstd = '0.14.0'
 tempfile = '3.9.0'
 nyanpasu-core-manager = { workspace = true }
-backon = { version = '1.0.1', features = ['tokio-sleep'] }
 clash-api = { workspace = true }
 futures-util = '0.3'
 axum = { version = '0.8', features = ['ws'], optional = true }
@@ -44,38 +61,24 @@ redb = '4.0.0'
 chrono = { version = '0.4', features = ['serde'] }
 time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
 uuid = '1.7.0'
-getrandom = { version = '0.4', features = ['std'] }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
-nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
-  'ipc'
-] }
 nyanpasu-ipc = { workspace = true }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
-runas = { workspace = true }
 semver = '1.0'
 parking_lot = { version = '0.13.0' }
-bolt-load = { version = '0.1', default-features = false, features = [
-  'tokio',
-  'serde',
-  'tracing'
-] }
-smol-cancellation-token = '0.1'
 mockall = { version = '0.15', optional = true }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 tokio-util = { version = '0.7', features = ['full'] }
 ractor = '0.16'
 futures = '0.3'
-reqwest = { workspace = true }
-sysproxy = { workspace = true }
 url = '2'
-once_cell = '1.19.0'
 sha2 = '0.11'
 hex = '0.4'
-sysinfo = '0.39'
-whoami = '2.0.0'
 serde_json = { version = '1.0', features = ['preserve_order'] }
 tracing-attributes = '0.1'
-nyanpasu-config = { path = '../nyanpasu-config' }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
 specta = { version = '^2.0.0-rc.25', features = [
   'serde_json',
   'serde_yaml',
@@ -100,13 +103,6 @@ camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }
 serde_yaml_ng = { workspace = true }
 
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = '0.61', features = ['Win32_UI_WindowsAndMessaging'] }
-winreg = { version = '0.56', features = ['transactions'] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-nix = '0.31.0'
-
 [target.'cfg(not(target_env = "musl"))'.dev-dependencies]
 # The desktop AES smoke test does not apply to generic router/musl targets.
 # Currently exercised only by the gxhash smoke test below. Every distributed
@@ -116,6 +112,23 @@ nix = '0.31.0'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
+nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
 tracing-subscriber = { version = '0.3', features = [
   'env-filter',
   'json',

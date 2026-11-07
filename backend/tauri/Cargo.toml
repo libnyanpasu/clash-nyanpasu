@@ -24,6 +24,16 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
+nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
+nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
+nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 # Local Dependencies
 nyanpasu-ipc = { workspace = true }
@@ -36,10 +46,12 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 nyanpasu-core-manager = { workspace = true }
 clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
-nyanpasu-core = { path = '../nyanpasu-core' }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
-nyanpasu-config = { path = '../nyanpasu-config' }
-nyanpasu-platform = { path = '../nyanpasu-platform' }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'nesting'
+] }
+nyanpasu-scripts = { path = '../nyanpasu-scripts' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }
@@ -113,7 +125,6 @@ bolt-load = { version = '0.1', default-features = false, features = [
 # the CancellationToken type required by bolt-load's TaskBuilder
 smol-cancellation-token = '0.1'
 urlencoding = '2.1'
-sysproxy = { workspace = true }
 
 # Serialization
 serde = { version = '1.0', features = ['derive', 'rc'] }
@@ -137,7 +148,6 @@ md-5 = '0.11.0'
 nanoid = '0.5.0'
 
 # System Utilities
-auto-launch = { workspace = true }
 dunce = '1.0.4'  # for cross platform path normalization
 runas = { workspace = true }
 single-instance = '0.3.3'
@@ -258,6 +268,9 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
 windows-sys = { version = '0.61', features = [
   'Win32_System_Console',
   'Win32_UI_WindowsAndMessaging',
@@ -265,10 +278,11 @@ windows-sys = { version = '0.61', features = [
 atomicwrites = '0.4.4'
 redb = '4.0.0'
 tauri = { version = '2.4', features = ['test'] }
-nyanpasu-platform = { path = '../nyanpasu-platform', features = ['test-support'] }
 struct-patch = '0.14'
 zip = '9.0.0'
-nyanpasu-core = { path = '../nyanpasu-core', features = ['test-support'] }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'test-support'
+] }
 http-body-util = '0.1'
 tower = { version = '0.5', features = ['util'] }
 axum = { version = '0.8', features = ['ws'] }
@@ -285,8 +299,8 @@ fake-core = { path = '../fake-core' }
 default = ['custom-protocol', 'default-meta', 'nesting']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
-verge-dev = ['nyanpasu-core/verge-dev']
-default-meta = ['nyanpasu-core/default-meta']
+verge-dev = ['nyanpasu-core/verge-dev', 'nyanpasu-os/verge-dev']
+default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see

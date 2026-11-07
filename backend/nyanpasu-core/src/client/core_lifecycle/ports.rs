@@ -1,83 +1,12 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use nyanpasu_config::application::ClashCore;
-use serde::Serialize;
-use snafu::Snafu;
-use tempfile::TempDir;
 
 use super::super::runtime;
 use crate::{
     actor_v2::local_host::CoreSpecError,
     client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
-    state::profiles::ErrorPath,
 };
-
-/// Owns the staging directory until installation and its restart have finished.
-pub struct PreparedCoreBinary {
-    pub target: nyanpasu_config::application::ClashCore,
-    pub source: PathBuf,
-    pub destination: PathBuf,
-    pub staging: Arc<TempDir>,
-    pub progress: Arc<dyn BinaryInstallProgress>,
-    /// What the archive ships beside the core, published once the binary is installed.
-    pub companion: Option<PreparedCoreCompanion>,
-}
-
-/// Files a core's release archive ships beside the core, such as an agent skill and
-/// the executable it drives. They replace `destination` as a whole after the core
-/// binary is installed, so they never run ahead of the installed core.
-pub struct PreparedCoreCompanion {
-    /// Staged beside `destination`, so that publishing it is a rename on one file system.
-    pub staging: TempDir,
-    pub destination: PathBuf,
-}
-
-impl PreparedCoreCompanion {
-    /// The staged files, in the layout `destination` takes.
-    pub fn staged(&self) -> PathBuf {
-        self.staging.path().join("new")
-    }
-}
-
-pub trait BinaryInstallProgress: Send + Sync + 'static {
-    fn restarting(&self);
-    /// The actor delivers the terminal result even when the requester stopped waiting.
-    fn finished(&self, error: Option<&str>);
-}
-
-/// A failure of installing a downloaded core binary over the installed one.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
-pub enum InstallCoreBinaryError {
-    #[snafu(display("could not start the elevated copy of the {core} core to {destination}"))]
-    StartElevatedCopy {
-        #[specta(type = String)]
-        core: ClashCore,
-        destination: ErrorPath,
-        #[serde(skip)]
-        source: std::io::Error,
-    },
-    #[snafu(display(
-        "the elevated copy of the {core} core to {destination} failed (exit code {exit_code:?})"
-    ))]
-    ElevatedCopyFailed {
-        #[specta(type = String)]
-        core: ClashCore,
-        destination: ErrorPath,
-        exit_code: Option<i32>,
-    },
-    // Constructed by the windows-only elevated copy, which needs UTF-8 paths.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    #[snafu(display("the path {path} is not valid UTF-8"))]
-    PathNotUtf8 { path: ErrorPath },
-}
-
-#[async_trait]
-pub trait BinaryInstaller: Send + Sync + 'static {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError>;
-}
 
 /// Application-owned runtime preparation; implementations never call the workflow actor.
 #[async_trait]

@@ -1,5 +1,3 @@
-pub mod enhance;
-pub mod format;
 pub mod profile_import;
 pub mod state;
 
@@ -31,14 +29,15 @@ mod gxhash_smoke {
     }
 }
 pub mod actor_v2;
-pub mod backup;
 pub mod clash;
 pub mod client;
 pub mod connections;
-pub mod download;
 pub mod geo;
 pub mod logs;
-pub mod migration;
+#[cfg(test)]
+mod migration_integration_tests;
+#[cfg(test)]
+mod profile_integration_tests;
 pub mod service;
 pub mod storage;
 pub mod traffic;
@@ -46,5 +45,3 @@ pub mod utils;
 
 pub mod corrupt;
 pub mod proxies;
-pub mod session_state;
-pub mod updater;

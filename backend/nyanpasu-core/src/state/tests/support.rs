@@ -3,15 +3,13 @@
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
+use nyanpasu_persistence::format::Format;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
-use crate::{
-    format::Format,
-    state::{
-        Ack, PersistentStateManager, PersistentStateManagerSetup, StateAckSubscriber, StateChange,
-        SubscriberName, Version, VersionedState, coordinator::StateStore,
-    },
+use crate::state::{
+    Ack, PersistentStateManager, PersistentStateManagerSetup, StateAckSubscriber, StateChange,
+    SubscriberName, Version, VersionedState, coordinator::StateStore,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

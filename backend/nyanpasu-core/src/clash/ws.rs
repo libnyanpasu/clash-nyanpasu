@@ -3,6 +3,7 @@ use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use nyanpasu_config::clash::config::overrides::LogLevel;
+use nyanpasu_observers::logs::{CoreLogRecord, CoreLogSource, CoreLogsClient};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -265,7 +266,7 @@ enum Message {
 }
 struct Args {
     core: CoreClient,
-    logs: crate::logs::CoreLogsClient,
+    logs: CoreLogsClient,
     /// The capture level, replaced by `SetLogLevel`.
     log_level: LogLevel,
     shutdown: CancellationToken,
@@ -450,7 +451,7 @@ impl State {
                     && let Some(api) = &self.api
                 {
                     let projection = self.args.core.status();
-                    let source = crate::logs::CoreLogSource {
+                    let source = CoreLogSource {
                         capture: format!(
                             "{}:{:?}:{}",
                             self.capture_prefix,
@@ -467,7 +468,7 @@ impl State {
                     let _ = self
                         .args
                         .logs
-                        .append(crate::logs::CoreLogRecord {
+                        .append(CoreLogRecord {
                             source,
                             received_at: now.timestamp_millis(),
                             log_type: sample.level.as_str().to_owned(),
@@ -864,7 +865,7 @@ pub struct StreamsClient(Arc<Inner>);
 struct Inner {
     actor: ActorRef<Message>,
     #[cfg(test)]
-    logs: crate::logs::CoreLogsClient,
+    logs: CoreLogsClient,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsPacket>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
@@ -877,7 +878,7 @@ impl Drop for Inner {
 impl StreamsClient {
     pub async fn spawn(
         core: CoreClient,
-        logs: crate::logs::CoreLogsClient,
+        logs: CoreLogsClient,
         log_level: LogLevel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -902,7 +903,7 @@ impl StreamsClient {
         )
         .await
         .map_err(|source| Error::SpawnActor { source })?;
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner {
             actor,
             #[cfg(test)]
@@ -978,6 +979,7 @@ mod tests {
     use super::*;
     use crate::actor_v2::test_support::{endpoint, server};
     use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
+    use nyanpasu_observers::logs::{CoreLogDirection, CoreLogQuery};
 
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {
         ws.on_upgrade(|mut socket| async move { while socket.recv().await.is_some() {} })
@@ -1012,7 +1014,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1046,7 +1048,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1146,7 +1148,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core,
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Info,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1218,7 +1220,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core,
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1253,8 +1255,8 @@ mod tests {
         let page = client
             .0
             .logs
-            .query(crate::logs::CoreLogQuery {
-                direction: crate::logs::CoreLogDirection::Latest,
+            .query(CoreLogQuery {
+                direction: CoreLogDirection::Latest,
                 cursor: None,
                 level: None,
                 keyword: String::new(),
@@ -1293,7 +1295,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1319,7 +1321,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1358,7 +1360,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1404,7 +1406,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1438,7 +1440,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::logs::CoreLogsClient::test_client().await,
+            crate::logs::test_support::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1610,7 +1612,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let token = CancellationToken::new();
         let tasks = TaskTracker::new();
-        let logs = crate::logs::CoreLogsClient::spawn(
+        let logs = CoreLogsClient::spawn(
             Box::new(crate::logs::RedbCoreLogStore::open(directory.path().into()).unwrap()),
             Default::default(),
             token.clone(),

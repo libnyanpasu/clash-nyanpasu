@@ -1,16 +1,15 @@
 //! Desktop adapters and composition for the shared diagnosis.
 use nyanpasu_config::application::NyanpasuAppConfig;
-use nyanpasu_core::{
-    client::{NyanpasuClient, core_version::CoreVersionReader},
-    format::Format,
-    logs::{CoreLogExport, CoreLogStore, RedbCoreLogStore},
-};
+use nyanpasu_contracts::core_version::CoreVersionReader;
+use nyanpasu_core::{client::NyanpasuClient, logs::RedbCoreLogStore};
 use nyanpasu_diagnose::{
     Action, Event, Step,
     archive::{Archive, LOG_CAP},
     report::{CoreInfo, PageCapabilities, Report},
 };
+use nyanpasu_observers::logs::{CoreLogExport, CoreLogStore};
 use nyanpasu_paths::PathResolver;
+use nyanpasu_persistence::format::Format;
 use std::{io::Write, process::Stdio, time::Duration};
 
 fn home() -> Option<String> {
@@ -42,10 +41,15 @@ fn core_from_config(
     // The same typed formatter as ApplicationClient's persistence; no ad hoc YAML parser.
     let file = std::fs::File::open(paths.application_config_path()).map_err(|e| e.to_string())?;
     let config: NyanpasuAppConfig =
-        nyanpasu_core::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_migration::modules::application::ApplicationFormat::default()
             .deserialize(file)
             .map_err(|e| e.to_string())?;
-    let version = runtime.block_on(super::core_version::SidecarCoreVersionReader.read(config.core));
+    let version = runtime.block_on(
+        nyanpasu_os::core_version::SidecarCoreVersionReader::new(std::sync::Arc::new(
+            crate::adapters::core_version::TauriCoreVersionExecutableSource,
+        ))
+        .read(config.core),
+    );
     add_core(report, config.core, version.map_err(|e| e.to_string()))
 }
 fn add_core(
@@ -208,7 +212,7 @@ pub async fn logs_archive(
     paths: PathResolver,
     client: NyanpasuClient,
 ) -> anyhow::Result<std::path::PathBuf> {
-    nyanpasu_core::utils::blocking::join(
+    nyanpasu_owner_support::blocking::join(
         tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Handle::current();
             let steps: Vec<(Step, Action<'_>)> = vec![

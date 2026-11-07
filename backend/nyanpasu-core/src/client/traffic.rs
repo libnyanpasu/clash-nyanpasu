@@ -8,15 +8,15 @@ use nyanpasu_config::{
     application::{IpLookupProvider, NyanpasuAppConfig, StunServer},
     profile::Profiles,
 };
+use nyanpasu_observers::traffic::{
+    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
+};
 use nyanpasu_traffic::{
     ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
     TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::traffic::{
-    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
-};
 
 /// Reads the selected profile from the committed profiles state.
 pub(super) struct SelectedProfile(StateSnapshot<Profiles>);
@@ -98,7 +98,7 @@ impl LocalSourceCache {
 
 /// A running probe stops asking once detection is off or TUN is on, and skips
 /// a server or provider that has since left the user's list.
-impl super::direct_egress::ProbePermission for LocalSourceCache {
+impl nyanpasu_contracts::net::ProbePermission for LocalSourceCache {
     fn allows_stun(&self, server: &StunServer) -> bool {
         self.blocked().is_none()
             && self
@@ -207,7 +207,10 @@ impl NyanpasuClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::traffic::{TrafficFileStorage, TrafficStorage};
+    use nyanpasu_observers::traffic::{
+        SpawnError, TrafficArgs, TrafficClient, TrafficOwnerFactory, TrafficStartArgs,
+        TrafficStorage,
+    };
     use nyanpasu_traffic::{
         Dimension, Metric, ReportRequest, TrafficQuery, TrafficRange, TrafficScope,
     };
@@ -217,11 +220,12 @@ mod tests {
     };
     use std::sync::Arc;
     use tempfile::tempdir;
+    use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
     use super::super::NyanpasuClient;
     use crate::{
         actor_v2::test_support::test_idle_endpoint,
-        client::test_support::test_client_args_with_endpoint,
+        client::test_support::test_client_args_with_endpoint, traffic::TrafficFileStorage,
     };
 
     fn everything() -> TrafficQuery {
@@ -233,6 +237,32 @@ mod tests {
     }
 
     struct UnreadableStore;
+    #[async_trait::async_trait]
+    impl TrafficOwnerFactory for UnreadableStore {
+        async fn spawn(
+            self: Arc<Self>,
+            args: TrafficStartArgs,
+            shutdown: CancellationToken,
+            tasks: &TaskTracker,
+        ) -> Result<TrafficClient, SpawnError> {
+            TrafficClient::spawn(
+                TrafficArgs::<RedbStorage> {
+                    storage: self,
+                    profile: args.profile,
+                    profiles: args.profiles,
+                    retention: args.retention,
+                    clock: args.clock,
+                    frames: args.frames,
+                    geo: args.geo,
+                    local_source: args.local_source,
+                },
+                shutdown,
+                tasks,
+            )
+            .await
+        }
+    }
+
     impl TrafficStorage<RedbStorage> for UnreadableStore {
         fn open(&self) -> Result<RedbStorage, StorageError> {
             Err(StorageError::Failed {

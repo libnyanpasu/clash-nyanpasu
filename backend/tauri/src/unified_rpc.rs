@@ -1,16 +1,28 @@
 //! Experimental HTTP transport for commands shared with the existing Tauri IPC surface.
 
-use std::{collections::HashMap, convert::Infallible, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap,
+    convert::Infallible,
+    future::Future,
+    hash::{BuildHasher as _, RandomState},
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Query, State, rejection::JsonRejection},
+    extract::{
+        Query, State,
+        rejection::{JsonRejection, QueryRejection},
+    },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
 use futures::{StreamExt, stream};
+use nyanpasu_observers::logs::CoreLogError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::Manager;
@@ -23,6 +35,139 @@ pub struct RpcDependencies {
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
     pub events: EventBus,
+    pub audit: RpcAudit,
+}
+
+/// The injected audit sink and the per-process key for HTTP caller identities.
+pub struct RpcAudit {
+    sink: Arc<dyn RpcAuditSink>,
+    owner_key: RandomState,
+}
+
+impl RpcAudit {
+    pub fn new(sink: Arc<dyn RpcAuditSink>) -> Self {
+        Self {
+            sink,
+            owner_key: RandomState::new(),
+        }
+    }
+
+    /// IPC callers are window labels. An HTTP owner carries the session cookie, which
+    /// authorizes log sessions, so records get a keyed hash that still correlates
+    /// one session's calls but never reveals the cookie.
+    fn owner(&self, transport: RpcTransport, owner: &RpcOwner) -> RpcAuditOwner {
+        match transport {
+            RpcTransport::TauriIpc => RpcAuditOwner(owner.label().to_owned()),
+            RpcTransport::Http => RpcAuditOwner(format!(
+                "http:{:016x}",
+                self.owner_key.hash_one(owner.label())
+            )),
+        }
+    }
+}
+
+/// A caller identity that is safe to log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpcAuditOwner(String);
+
+impl RpcAuditOwner {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Synchronous observation only: implementations must not panic or queue work.
+pub trait RpcAuditSink: Send + Sync + 'static {
+    fn record(&self, record: &RpcAuditRecord);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RpcTransport {
+    TauriIpc,
+    Http,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RpcAuditOutcome {
+    Success,
+    Failure {
+        kind: &'static str,
+        code: Option<String>,
+    },
+    Cancelled,
+    Panicked,
+}
+
+/// Local metadata only; this record is never serialized onto a transport.
+#[derive(Debug, Clone)]
+pub struct RpcAuditRecord {
+    pub transport: RpcTransport,
+    pub command: &'static str,
+    pub owner: RpcAuditOwner,
+    pub duration: Duration,
+    pub outcome: RpcAuditOutcome,
+}
+
+struct RpcAuditGuard<'a> {
+    sink: &'a dyn RpcAuditSink,
+    record: RpcAuditRecord,
+    started: Instant,
+    completed: bool,
+}
+
+impl RpcAuditGuard<'_> {
+    fn record(&mut self, outcome: RpcAuditOutcome) {
+        self.record.duration = self.started.elapsed();
+        self.record.outcome = outcome;
+        self.completed = true;
+        self.sink.record(&self.record);
+    }
+}
+
+impl Drop for RpcAuditGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.record(if std::thread::panicking() {
+                RpcAuditOutcome::Panicked
+            } else {
+                RpcAuditOutcome::Cancelled
+            });
+        }
+    }
+}
+
+/// Observe dispatch without changing its result, polling, cancellation or unwind.
+/// The name resolver runs under the guard and returns only registry or fixed names.
+/// Aborting the process cannot produce a Drop record.
+pub async fn dispatch_audited<T>(
+    audit: &RpcAudit,
+    transport: RpcTransport,
+    owner: RpcOwner,
+    command: impl FnOnce() -> &'static str,
+    call: impl Future<Output = Result<T, RpcError>>,
+) -> Result<T, RpcError> {
+    let mut guard = RpcAuditGuard {
+        sink: audit.sink.as_ref(),
+        record: RpcAuditRecord {
+            transport,
+            command: "unknown_method",
+            owner: audit.owner(transport, &owner),
+            duration: Duration::ZERO,
+            outcome: RpcAuditOutcome::Cancelled,
+        },
+        started: Instant::now(),
+        completed: false,
+    };
+    guard.record.command = command();
+    let result = call.await;
+    guard.record(match &result {
+        Ok(_) => RpcAuditOutcome::Success,
+        Err(error) => RpcAuditOutcome::Failure {
+            kind: error.kind,
+            code: error.code.clone(),
+        },
+    });
+    result
 }
 
 const EVENT_NAMES: &[&str] = &[
@@ -70,7 +215,7 @@ pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
 }
 
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RpcOwner(String);
 
 impl RpcOwner {
@@ -92,6 +237,11 @@ impl RpcOwner {
     }
     pub fn label(&self) -> &str {
         &self.0
+    }
+
+    fn http_or_anonymous(headers: &HeaderMap) -> Self {
+        // A session identifies an owner; authentication belongs to the listener.
+        Self::http(headers).unwrap_or_else(|_| Self(format!("http:{}", uuid::Uuid::new_v4())))
     }
 }
 
@@ -150,7 +300,7 @@ impl RpcError {
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
             }
-            if let Some(log) = error.downcast_ref::<nyanpasu_core::logs::CoreLogError>() {
+            if let Some(log) = error.downcast_ref::<CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -275,11 +425,26 @@ impl UnifiedRpc {
     }
 
     async fn call(&self, method: &str, owner: RpcOwner, params: Value) -> Result<Value, RpcError> {
-        let handler = self
-            .commands
-            .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
-        (handler.0)(self.dependencies.clone(), owner, params).await
+        dispatch_audited(
+            &self.dependencies.audit,
+            RpcTransport::Http,
+            owner.clone(),
+            || self.audit_command_name(method),
+            async {
+                let handler = self
+                    .commands
+                    .get(method)
+                    .ok_or_else(|| RpcError::unknown_method(method))?;
+                (handler.0)(self.dependencies.clone(), owner, params).await
+            },
+        )
+        .await
+    }
+
+    fn audit_command_name(&self, method: &str) -> &'static str {
+        self.commands
+            .get_key_value(method)
+            .map_or("unknown_method", |(name, _)| *name)
     }
 
     async fn call_tauri(
@@ -290,47 +455,65 @@ impl UnifiedRpc {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcError> {
-        let handler = self
-            .commands
-            .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
-        (handler.1)(app, window, webview, params).await
+        dispatch_audited(
+            &self.dependencies.audit,
+            RpcTransport::TauriIpc,
+            RpcOwner::desktop(window.label()),
+            || self.audit_command_name(method),
+            async {
+                let handler = self
+                    .commands
+                    .get(method)
+                    .ok_or_else(|| RpcError::unknown_method(method))?;
+                (handler.1)(app, window, webview, params).await
+            },
+        )
+        .await
     }
 }
 
 async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<RpcError>)> {
-    let paths = rpc.dependencies.paths.clone();
-    let archive = crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
-        .await
-        .map_err(|error| RpcError::new("application_error", error.to_string()))
-        .map_err(http_rpc_error)?;
-    let file = tokio::fs::File::open(&archive)
-        .await
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)?;
-    let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
-        use tokio::io::AsyncReadExt;
+    dispatch_audited(
+        &rpc.dependencies.audit,
+        RpcTransport::Http,
+        RpcOwner::http_or_anonymous(&headers),
+        || "logs_archive",
+        async {
+            let paths = rpc.dependencies.paths.clone();
+            let archive =
+                crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
+                    .await
+                    .map_err(|error| RpcError::new("application_error", error.to_string()))?;
+            let file = tokio::fs::File::open(&archive)
+                .await
+                .map_err(RpcError::application)?;
+            let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
+                use tokio::io::AsyncReadExt;
 
-        let mut bytes = vec![0; 64 * 1024];
-        let count = file.read(&mut bytes).await?;
-        if count == 0 {
-            return Ok::<_, std::io::Error>(None);
-        }
-        bytes.truncate(count);
-        Ok(Some((bytes, (file, _archive))))
-    });
-    let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
-    Response::builder()
-        .header("content-type", "application/zip")
-        .header(
-            "content-disposition",
-            format!("attachment; filename=\"{file_name}\""),
-        )
-        .body(Body::from_stream(body))
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)
+                let mut bytes = vec![0; 64 * 1024];
+                let count = file.read(&mut bytes).await?;
+                if count == 0 {
+                    return Ok::<_, std::io::Error>(None);
+                }
+                bytes.truncate(count);
+                Ok(Some((bytes, (file, _archive))))
+            });
+            let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+            Response::builder()
+                .header("content-type", "application/zip")
+                .header(
+                    "content-disposition",
+                    format!("attachment; filename=\"{file_name}\""),
+                )
+                .body(Body::from_stream(body))
+                .map_err(RpcError::application)
+        },
+    )
+    .await
+    .map_err(http_rpc_error)
 }
 
 fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
@@ -341,16 +524,26 @@ fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
 // SSE body releases the watch receiver, just like a native channel teardown.
 async fn http_connection_details(
     State(rpc): State<UnifiedRpc>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<RpcError>)> {
-    let receiver = rpc
-        .dependencies
-        .client
-        .subscribe_clash_connection_details()
-        .await
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)?;
-    Ok(Sse::new(connection_detail_events(receiver))
-        .keep_alive(axum::response::sse::KeepAlive::default()))
+    dispatch_audited(
+        &rpc.dependencies.audit,
+        RpcTransport::Http,
+        RpcOwner::http_or_anonymous(&headers),
+        || "connection_details_subscribe",
+        async {
+            let receiver = rpc
+                .dependencies
+                .client
+                .subscribe_clash_connection_details()
+                .await
+                .map_err(RpcError::application)?;
+            Ok(Sse::new(connection_detail_events(receiver))
+                .keep_alive(axum::response::sse::KeepAlive::default()))
+        },
+    )
+    .await
+    .map_err(http_rpc_error)
 }
 
 fn connection_detail_events(
@@ -399,53 +592,76 @@ struct EventRequest {
 
 async fn http_events(
     State(rpc): State<UnifiedRpc>,
-    Query(request): Query<EventRequest>,
+    headers: HeaderMap,
+    request: Result<Query<EventRequest>, QueryRejection>,
 ) -> Response {
-    if request
-        .name
-        .as_ref()
-        .is_some_and(|name| !EVENT_NAMES.contains(&name.as_str()))
-    {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(RpcError::unknown_method(request.name.as_deref().unwrap())),
-        )
-            .into_response();
-    }
-    let receiver = rpc.dependencies.events.subscribe();
-    let name = request.name;
-    let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
-        loop {
-            match receiver.recv().await {
-                Ok((event_name, payload))
-                    if name.as_ref().is_none_or(|name| event_name == name) =>
-                {
-                    let payload = if name.is_some() {
-                        payload
-                    } else {
-                        serde_json::json!({"name": event_name, "payload": payload})
-                    };
-                    let data = serde_json::to_string(&payload).ok()?;
-                    return Some((
-                        Ok::<Event, Infallible>(Event::default().data(data)),
-                        (receiver, name),
-                    ));
-                }
-                Ok(_) => continue,
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    return Some((
-                        Ok(Event::default().event("resync").data("{}")),
-                        (receiver, name),
-                    ));
-                }
-                Err(broadcast::error::RecvError::Closed) => return None,
-            }
+    let owner = RpcOwner::http_or_anonymous(&headers);
+    let request = match request {
+        Ok(Query(request)) => request,
+        Err(error) => {
+            let _ = dispatch_audited(
+                &rpc.dependencies.audit,
+                RpcTransport::Http,
+                owner,
+                || "events_subscribe",
+                async { Err::<(), _>(RpcError::invalid_params(error.to_string())) },
+            )
+            .await;
+            return error.into_response();
         }
-    });
-    let ready = stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
-    Sse::new(ready.chain(events))
-        .keep_alive(axum::response::sse::KeepAlive::default())
-        .into_response()
+    };
+    dispatch_audited(
+        &rpc.dependencies.audit,
+        RpcTransport::Http,
+        owner,
+        || "events_subscribe",
+        async {
+            if request
+                .name
+                .as_ref()
+                .is_some_and(|name| !EVENT_NAMES.contains(&name.as_str()))
+            {
+                return Err(RpcError::unknown_method(request.name.as_deref().unwrap()));
+            }
+            let receiver = rpc.dependencies.events.subscribe();
+            let name = request.name;
+            let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
+                loop {
+                    match receiver.recv().await {
+                        Ok((event_name, payload))
+                            if name.as_ref().is_none_or(|name| event_name == name) =>
+                        {
+                            let payload = if name.is_some() {
+                                payload
+                            } else {
+                                serde_json::json!({"name": event_name, "payload": payload})
+                            };
+                            let data = serde_json::to_string(&payload).ok()?;
+                            return Some((
+                                Ok::<Event, Infallible>(Event::default().data(data)),
+                                (receiver, name),
+                            ));
+                        }
+                        Ok(_) => continue,
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            return Some((
+                                Ok(Event::default().event("resync").data("{}")),
+                                (receiver, name),
+                            ));
+                        }
+                        Err(broadcast::error::RecvError::Closed) => return None,
+                    }
+                }
+            });
+            let ready =
+                stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
+            Ok(Sse::new(ready.chain(events))
+                .keep_alive(axum::response::sse::KeepAlive::default())
+                .into_response())
+        },
+    )
+    .await
+    .unwrap_or_else(|error| http_rpc_error(error).into_response())
 }
 
 async fn http_call(
@@ -453,16 +669,21 @@ async fn http_call(
     headers: HeaderMap,
     request: Result<Json<Request>, JsonRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<RpcError>)> {
-    let Json(request) = request.map_err(|error| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(RpcError::invalid_params(error.to_string())),
-        )
-    })?;
-    // Sessions are required only for owner-scoped commands; ordinary calls may
-    // use an anonymous owner. The listener authenticates every request before dispatch.
-    let owner = RpcOwner::http(&headers)
-        .unwrap_or_else(|_| RpcOwner(format!("http:{}", uuid::Uuid::new_v4())));
+    let owner = RpcOwner::http_or_anonymous(&headers);
+    let request = match request {
+        Ok(Json(request)) => request,
+        Err(error) => {
+            return dispatch_audited(
+                &rpc.dependencies.audit,
+                RpcTransport::Http,
+                owner,
+                || "invalid_envelope",
+                async { Err(RpcError::invalid_params(error.to_string())) },
+            )
+            .await
+            .map_err(http_rpc_error);
+        }
+    };
     rpc.call(&request.method, owner, request.params)
         .await
         .map(Json)
@@ -470,24 +691,132 @@ async fn http_call(
 }
 
 #[cfg(test)]
+mod audit_tests;
+
+#[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{audit_tests::AuditSink, *};
     use axum::{
         body::{Body, to_bytes},
         http::Request,
     };
     use futures::StreamExt;
+    use nyanpasu_observers::logs::{CoreLogRecord, CoreLogSource, PreparedCoreLog};
     use tower::ServiceExt;
+
+    #[test]
+    fn http_update_core_is_unsupported_before_job_admission() {
+        use std::{
+            sync::atomic::{AtomicUsize, Ordering},
+            time::Instant,
+        };
+
+        use nyanpasu_config::application::ClashCore;
+        use nyanpasu_contracts::core_install::{
+            BinaryInstaller, CoreBinaryInstallRequest, InstallCoreBinaryError,
+        };
+        use nyanpasu_updater::{
+            CoreTypeMeta, ManifestVersion, PreparedCoreBinary, UpdaterBackend, UpdaterProgress,
+            test_support::ReadyBackend,
+        };
+        use tokio_util::sync::CancellationToken;
+
+        #[derive(Default)]
+        struct UpdateEffects {
+            prepares: AtomicUsize,
+            installs: AtomicUsize,
+        }
+
+        #[async_trait::async_trait]
+        impl UpdaterBackend for UpdateEffects {
+            async fn fetch_manifest(
+                &self,
+                mirror: Option<(String, Instant)>,
+            ) -> anyhow::Result<(ManifestVersion, (String, Instant))> {
+                ReadyBackend.fetch_manifest(mirror).await
+            }
+
+            async fn prepare(
+                &self,
+                core_type: ClashCore,
+                mirror: String,
+                artifact: String,
+                tag: CoreTypeMeta,
+                progress: UpdaterProgress,
+                shutdown: &CancellationToken,
+            ) -> anyhow::Result<PreparedCoreBinary> {
+                self.prepares.fetch_add(1, Ordering::SeqCst);
+                ReadyBackend
+                    .prepare(core_type, mirror, artifact, tag, progress, shutdown)
+                    .await
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl BinaryInstaller for UpdateEffects {
+            async fn install(
+                &self,
+                _request: &CoreBinaryInstallRequest,
+            ) -> Result<(), InstallCoreBinaryError> {
+                self.installs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        tauri::async_runtime::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            let mut args = crate::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            )
+            .await;
+            let effects = Arc::new(UpdateEffects::default());
+            args.updater_backend_factory = {
+                let effects = effects.clone();
+                Arc::new(move |_| Ok(effects.clone()))
+            };
+            args.binary_installer = effects.clone();
+            let paths = args.paths.clone();
+            let client = NyanpasuClient::try_new(args).await.unwrap();
+            // Prime a valid update so an opted-in handler would admit a job.
+            client.fetch_latest_core_versions().await.unwrap();
+            assert!(client.inspect_updater(1).await.is_err());
+            let app = UnifiedRpc::new(RpcDependencies {
+                audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                client: client.clone(),
+                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                paths,
+                events: EventBus::new(),
+            })
+            .unwrap()
+            .router();
+
+            let (status, result) = rpc_for_test_call(
+                &app,
+                "update_core",
+                serde_json::json!({"coreType": ClashCore::Mihomo}),
+                None,
+            )
+            .await;
+            let admitted = client.inspect_updater(1).await.is_ok();
+            assert!(!admitted, "HTTP update_core must not admit an updater job");
+            assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+            assert_eq!(result["kind"], "unsupported");
+            assert_eq!(effects.prepares.load(Ordering::SeqCst), 0);
+            assert_eq!(effects.installs.load(Ordering::SeqCst), 0);
+            client.request_shutdown();
+            client.wait_shutdown().await;
+        });
+    }
 
     #[test]
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
-        let args = tauri::async_runtime::block_on(
-            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+        let args =
+            tauri::async_runtime::block_on(crate::test_support::test_client_args_with_endpoint(
                 &directory,
                 nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
-            ),
-        );
+            ));
         std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
         std::fs::write(
             args.paths
@@ -501,6 +830,7 @@ mod tests {
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -826,7 +1156,7 @@ mod tests {
             );
         });
     }
-    async fn rpc_for_test_call(
+    pub(super) async fn rpc_for_test_call(
         app: &Router,
         method: &str,
         params: Value,
@@ -860,46 +1190,44 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         struct Probe(AtomicUsize);
         #[async_trait::async_trait]
-        impl nyanpasu_core::client::direct_egress::DirectEgressProbe for Probe {
+        impl nyanpasu_contracts::net::DirectEgressProbe for Probe {
             async fn ipv4(
                 &self,
-                _: &nyanpasu_core::client::direct_egress::ProbeSources,
-            ) -> Option<nyanpasu_core::client::direct_egress::EgressAnswer<std::net::Ipv4Addr>>
-            {
+                _: &nyanpasu_contracts::net::ProbeSources,
+            ) -> Option<nyanpasu_contracts::net::EgressAnswer<std::net::Ipv4Addr>> {
                 self.0.fetch_add(1, Ordering::SeqCst);
-                Some(nyanpasu_core::client::direct_egress::EgressAnswer {
+                Some(nyanpasu_contracts::net::EgressAnswer {
                     address: "203.0.113.7".parse().unwrap(),
-                    source: nyanpasu_core::client::direct_egress::EgressSource::Lookup {
+                    source: nyanpasu_contracts::net::EgressSource::Lookup {
                         provider: nyanpasu_config::application::IpLookupProvider::Ipify,
                     },
                 })
             }
             async fn ipv6(
                 &self,
-                _: &nyanpasu_core::client::direct_egress::ProbeSources,
-            ) -> Option<nyanpasu_core::client::direct_egress::EgressAnswer<std::net::Ipv6Addr>>
-            {
+                _: &nyanpasu_contracts::net::ProbeSources,
+            ) -> Option<nyanpasu_contracts::net::EgressAnswer<std::net::Ipv6Addr>> {
                 None
             }
             async fn test_stun_server(
                 &self,
                 _: &str,
                 _: u16,
-            ) -> nyanpasu_core::client::direct_egress::StunServerTest {
+            ) -> nyanpasu_contracts::net::StunServerTest {
                 unreachable!("the RPC test does not test servers")
             }
         }
         let directory = tempfile::tempdir().unwrap();
         let probe = Arc::new(Probe(AtomicUsize::new(0)));
-        let mut args = tauri::async_runtime::block_on(
-            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+        let mut args =
+            tauri::async_runtime::block_on(crate::test_support::test_client_args_with_endpoint(
                 &directory,
                 nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
-            ),
-        );
+            ));
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -982,14 +1310,12 @@ mod tests {
         ));
         let directory = tempfile::tempdir().unwrap();
         let args = tauri::async_runtime::block_on(
-            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
-                &directory,
-                endpoint(url),
-            ),
+            crate::test_support::test_client_args_with_endpoint(&directory, endpoint(url)),
         );
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1104,19 +1430,21 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = tauri::async_runtime::block_on(
-            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+        let mut args =
+            tauri::async_runtime::block_on(crate::test_support::test_client_args_with_endpoint(
                 &directory,
                 nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
-            ),
-        );
+            ));
         let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.host_adapters.debug_http =
-            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
+        args.host_adapters.debug_http = Some(crate::server::debug_http::tests::control_factory(
+            frontend,
+            routes.clone(),
+        ));
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1168,20 +1496,19 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = tauri::async_runtime::block_on(
-            nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(
+        let mut args =
+            tauri::async_runtime::block_on(crate::test_support::test_client_args_with_endpoint(
                 &directory,
                 nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
-            ),
-        );
+            ));
         // The browser fixture uses English accessible names on every host locale.
         let config = nyanpasu_config::application::NyanpasuAppConfig {
             language: nyanpasu_config::application::I18nLanguage::English,
             ..Default::default()
         };
         let mut application = Vec::new();
-        nyanpasu_core::format::Format::serialize(
-            &nyanpasu_core::migration::modules::application::ApplicationFormat::default(),
+        nyanpasu_persistence::format::Format::serialize(
+            &nyanpasu_migration::modules::application::ApplicationFormat::default(),
             &mut application,
             &config,
             None,
@@ -1191,8 +1518,8 @@ mod tests {
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
-                    nyanpasu_core::logs::PreparedCoreLog::new(&nyanpasu_core::logs::CoreLogRecord {
-                        source: nyanpasu_core::logs::CoreLogSource {
+                    PreparedCoreLog::new(&CoreLogRecord {
+                        source: CoreLogSource {
                             capture: "http-fixture".into(),
                             instance_id: "instance".into(),
                             core_kind: Some("Mihomo".into()),
@@ -1232,12 +1559,15 @@ mod tests {
         let frontend_events = Arc::new(RecordingSink::default());
         args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
-        args.host_adapters.debug_http =
-            crate::server::debug_http::tests::control_factory(frontend, routes.clone());
+        args.host_adapters.debug_http = Some(crate::server::debug_http::tests::control_factory(
+            frontend,
+            routes.clone(),
+        ));
         let paths = args.paths.clone();
         let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,

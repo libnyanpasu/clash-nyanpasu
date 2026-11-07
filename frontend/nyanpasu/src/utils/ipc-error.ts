@@ -4,9 +4,11 @@ import type {
   ConfigError,
   CoreErrorKind,
   CoreFailure,
+  DebugHttpControlError,
   DegradationReason,
   EffectFailureCode,
   EffectsError,
+  ElevationConsentError,
   EvidenceGap,
   ExecutionHost,
   HotkeyAction,
@@ -44,6 +46,8 @@ export function ipcErrorMessage(
       return configErrorMessage(error.kind.error, profileLabel)
     case 'storage':
       return storageErrorMessage(error.kind.error)
+    case 'debug_http':
+      return debugHttpErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -215,6 +219,8 @@ export function configErrorMessage(
       })
     case 'invalid_latency_timeout':
       return m.error_config_invalid_latency_timeout({ reason: error.reason })
+    case 'validate_hotkey_capability':
+      return m.error_config_hotkey_capability_unsupported()
     case 'validate_hotkeys':
       return hotkeyParseMessage(error.source)
     case 'workflow_not_ready':
@@ -328,8 +334,30 @@ function osProxyErrorMessage(error: OsProxyError): string {
   }
 }
 
+function debugHttpErrorMessage(error: DebugHttpControlError): string {
+  switch (error.kind) {
+    case 'read_status_unsupported':
+      return m.error_debug_http_read_status_unsupported()
+    case 'change_enabled_unsupported':
+      return m.error_debug_http_change_enabled_unsupported()
+    case 'read_status':
+      return m.error_debug_http_read_status()
+    case 'change_enabled':
+      return m.error_debug_http_change_enabled()
+  }
+}
+
+function elevationConsentErrorMessage(error: ElevationConsentError): string {
+  switch (error.kind) {
+    case 'authorize_elevation':
+      return m.error_elevation_authorize()
+  }
+}
+
 function systemDnsErrorMessage(error: SystemDnsError): string {
   switch (error.kind) {
+    case 'authorize_dns_flush':
+      return elevationConsentErrorMessage(error.source)
     case 'run_flush_command':
       return m.error_system_dns_run_flush_command({ command: error.command })
     case 'flush_rejected':
@@ -661,6 +689,8 @@ function portFieldName(field: PortField): string {
 
 function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
   switch (error.kind) {
+    case 'authorize_core_copy':
+      return elevationConsentErrorMessage(error.source)
     case 'start_elevated_copy':
       return m.error_runtime_install_core_binary_elevation({
         core: error.core,
@@ -675,6 +705,8 @@ function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
 /** Why a committed setting has not taken effect yet, localized by its code. */
 export function effectFailureMessage(code: EffectFailureCode): string {
   switch (code) {
+    case 'presentation_unsupported':
+      return m.effect_failure_presentation_unsupported()
     case 'hotkey_invalid_bindings':
       return m.effect_failure_hotkey_invalid_bindings()
     case 'hotkey_partial_registration':

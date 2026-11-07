@@ -23,10 +23,8 @@ async fn test_client_args_with_endpoint(
     dir: &TempDir,
     endpoint: EndpointHandle,
 ) -> ClientSetupArgs {
-    let mut args =
-        nyanpasu_platform::profiles::test_support::test_client_args_with_endpoint(dir, endpoint)
-            .await;
-    args.accelerators = Arc::new(PlatformAcceleratorValidator);
+    let mut args = crate::test_support::test_client_args_with_endpoint(dir, endpoint).await;
+    args.accelerators = Some(Arc::new(PlatformAcceleratorValidator));
     args
 }
 
@@ -123,4 +121,56 @@ async fn platform_invalid_accelerator_is_rejected_before_commit() {
         );
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn duplicate_accelerators_are_rejected_before_commit() {
+    use nyanpasu_persistence::format::Format as _;
+
+    let dir = tempdir().expect("tempdir should be created");
+    let mut effects = MockApplicationEffectsPort::new();
+    effects.expect_apply().never();
+    let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint()).await;
+    let config_path = args.paths.application_config_path();
+    let seed = NyanpasuAppConfig {
+        hotkeys: entries(&["toggle_tun_mode,Control+T"]),
+        ..Default::default()
+    };
+    let mut content = Vec::new();
+    nyanpasu_migration::modules::application::ApplicationFormat::default()
+        .serialize(&mut content, &seed, None)
+        .unwrap();
+    std::fs::write(&config_path, content).unwrap();
+    args.effects = Arc::new(effects);
+    let client = NyanpasuClient::try_new(args)
+        .await
+        .expect("client should construct");
+    let before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+    let bytes_before = std::fs::read(&config_path).expect("the initial config is persisted");
+
+    let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();
+    patch.hotkeys = Some(entries(&[
+        "enable_tun_mode,Ctrl+Q",
+        "disable_tun_mode,Control+Q",
+    ]));
+
+    let error = client
+        .patch_app_config(patch)
+        .await
+        .expect_err("equivalent accelerators for different actions must not be persisted");
+    assert!(
+        matches!(
+            &error,
+            ClientError::Config(ConfigError::ValidateHotkeys {
+                source: HotkeyParseError::DuplicateAccelerator { accelerator, .. },
+            }) if accelerator == "Control+Q"
+        ),
+        "unexpected error: {error:?}"
+    );
+    assert_eq!(std::fs::read(&config_path).unwrap(), bytes_before);
+    assert_eq!(
+        serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+        before,
+        "validation must leave the whole committed config unchanged"
+    );
 }

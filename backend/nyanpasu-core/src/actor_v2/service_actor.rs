@@ -19,7 +19,9 @@
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
+use nyanpasu_contracts::service::{ParseServiceStatusSnafu, ServiceProcessControl};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use snafu::ResultExt as _;
 use tokio::sync::watch;
 
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
@@ -29,26 +31,13 @@ use nyanpasu_ipc::{
 };
 
 use super::endpoint::EndpointHandle;
-use crate::service::{
-    compat::ServiceCompat,
-    control::{ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu},
+use crate::service::compat::ServiceCompat;
+use nyanpasu_contracts::service::{
+    ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu,
 };
 
-/// Elevated daemon mechanics behind one narrow boundary. `probe` reports
-/// what it actually knows: `Ok` is a real answer, `Err` is "unreachable or
-/// unparseable", never a synthesized `Stopped`. The actor is what bounds
-/// every call here (including `probe`) with its own timeout and turns an
-/// elapsed bound into the same `Err` shape, so a hung daemon surfaces as
-/// `ServicePhase::Unknown`, not as evidence of anything.
-#[async_trait::async_trait]
-pub trait ServiceHostAdapter: Send + Sync {
-    async fn probe(&self) -> Result<StatusInfo<'static>, ServiceCommandError>;
-    async fn install(&self) -> Result<(), ServiceCommandError>;
-    async fn uninstall(&self) -> Result<(), ServiceCommandError>;
-    async fn start_daemon(&self) -> Result<(), ServiceCommandError>;
-    async fn stop_daemon(&self) -> Result<(), ServiceCommandError>;
-    async fn update(&self) -> Result<(), ServiceCommandError>;
-    /// The v2 control endpoint for a daemon that passed the version gate.
+/// Constructs a control endpoint after the daemon passes the application's version gate.
+pub trait ServiceEndpointFactory: Send + Sync + 'static {
     fn endpoint(&self) -> EndpointHandle;
 }
 
@@ -209,7 +198,8 @@ const DEFAULT_SERVICE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration
 const HEALTH_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub struct ServiceActorArgs {
-    pub adapter: Arc<dyn ServiceHostAdapter>,
+    pub process_control: Arc<dyn ServiceProcessControl>,
+    pub endpoint_factory: Arc<dyn ServiceEndpointFactory>,
     pub status_tx: watch::Sender<ServiceHostStatus>,
     /// Auto-restart attempts before the exhaustion latch (design OQ-6; the
     /// number is host policy, injected).
@@ -221,7 +211,8 @@ pub struct ServiceActorArgs {
 }
 
 pub struct ServiceActorState {
-    adapter: Arc<dyn ServiceHostAdapter>,
+    process_control: Arc<dyn ServiceProcessControl>,
+    endpoint_factory: Arc<dyn ServiceEndpointFactory>,
     status_tx: watch::Sender<ServiceHostStatus>,
     restart_budget: u8,
     restart_attempts: u8,
@@ -302,7 +293,7 @@ impl ServiceActorState {
         CoreError::new(
             CoreErrorKind::BackendUnavailable,
             format!("service {what} failed: {error}"),
-            true,
+            !matches!(error, ServiceCommandError::AuthorizeServiceCommand { .. }),
         )
     }
 
@@ -330,14 +321,14 @@ impl ServiceActorState {
         &mut self,
         command: ServiceCommandKind,
         call: impl FnOnce(
-            Arc<dyn ServiceHostAdapter>,
+            Arc<dyn ServiceProcessControl>,
         ) -> BoxFuture<'static, Result<(), ServiceCommandError>>,
     ) -> Result<(), ServiceCommandError> {
         debug_assert!(
             self.outstanding.is_none(),
             "a mutating call only starts once no helper is outstanding"
         );
-        let mut helper = tokio::spawn(call(self.adapter.clone()));
+        let mut helper = tokio::spawn(call(self.process_control.clone()));
         match tokio::time::timeout(self.command_timeout, &mut helper).await {
             Ok(Ok(result)) => result,
             Ok(Err(error)) => match error.try_into_panic() {
@@ -441,6 +432,15 @@ impl ServiceActorState {
         }
     }
 
+    /// Parses inside the bound: unparseable output is as unknown as no answer.
+    async fn probe(&self) -> Result<StatusInfo<'static>, ServiceCommandError> {
+        self.bounded(Box::pin(async {
+            let status = self.process_control.probe().await?;
+            serde_json::from_str(&status).context(ParseServiceStatusSnafu)
+        }))
+        .await
+    }
+
     /// One probe, classified. The classification is what the daemon actually
     /// is; the latch decides what gets published.
     async fn probe_and_publish(
@@ -450,7 +450,7 @@ impl ServiceActorState {
         ServiceCompat,
         ServicePhase,
     ) {
-        let result = self.bounded(self.adapter.probe()).await;
+        let result = self.probe().await;
         let (compat, phase) = Self::classify_probe(&result);
         // A latched host stays latched no matter what a probe finds. `compat`
         // still refreshes: the version fact is true either way.
@@ -470,7 +470,7 @@ impl ServiceActorState {
         if !self.reap_outstanding().await {
             return;
         }
-        let result = self.bounded(self.adapter.probe()).await;
+        let result = self.probe().await;
         let (compat, phase) = Self::classify_probe(&result);
         let published = if self.exhausted {
             ServicePhase::Exhausted
@@ -545,7 +545,7 @@ impl ServiceActorState {
             started.map_err(|error| Self::command_error("recovery start", error))?;
         }
         if phase == ServicePhase::Ready {
-            Ok(self.adapter.endpoint())
+            Ok(self.endpoint_factory.endpoint())
         } else {
             Err(CoreError::new(
                 CoreErrorKind::BackendUnavailable,
@@ -594,7 +594,7 @@ impl ServiceActorState {
         }
         let (_, compat, phase) = self.probe_and_publish().await;
         match phase {
-            ServicePhase::Ready => Ok(self.adapter.endpoint()),
+            ServicePhase::Ready => Ok(self.endpoint_factory.endpoint()),
             ServicePhase::Incompatible => Err(CoreError::new(
                 CoreErrorKind::BackendUnavailable,
                 format!("daemon version gate failed closed: {compat:?}; upgrade required"),
@@ -622,7 +622,8 @@ impl Actor for ServiceActor {
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         let mut state = ServiceActorState {
-            adapter: args.adapter,
+            process_control: args.process_control,
+            endpoint_factory: args.endpoint_factory,
             status_tx: args.status_tx,
             restart_budget: args.restart_budget,
             restart_attempts: 0,
@@ -691,7 +692,7 @@ impl Actor for ServiceActor {
                 }
                 let (_, compat, phase) = state.probe_and_publish().await;
                 let result = if phase == ServicePhase::Ready {
-                    Ok(state.adapter.endpoint())
+                    Ok(state.endpoint_factory.endpoint())
                 } else {
                     Err(CoreError::new(
                         CoreErrorKind::BackendUnavailable,
@@ -748,7 +749,7 @@ impl Actor for ServiceActor {
                     // collapses Starting and Restarting into a Stopped shape,
                     // and Switching and Stopping into a Running one. Neither
                     // shape proves a terminal state.
-                    let probe_result = state.bounded(state.adapter.probe()).await;
+                    let probe_result = state.probe().await;
                     // F5: the probe call itself can fail outright -- not
                     // merely quiet, unreachable. That is strictly less known
                     // than the in-band "running but blind" case below, so it
@@ -813,7 +814,7 @@ impl Actor for ServiceActor {
                             })
                             .await
                             .map_err(|error| ServiceActorState::command_error("stop", error))?;
-                        let stopped = state.bounded(state.adapter.probe()).await;
+                        let stopped = state.probe().await;
                         if !matches!(
                             stopped,
                             Ok(StatusInfo {
@@ -998,14 +999,21 @@ impl ServiceClient {
         tasks: &tokio_util::task::TaskTracker,
         shutdown: tokio_util::sync::CancellationToken,
     ) {
-        crate::client::owner_shutdown::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
+        nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, self.actor.get_cell());
     }
 
     pub async fn spawn(
-        adapter: Arc<dyn ServiceHostAdapter>,
+        process_control: Arc<dyn ServiceProcessControl>,
+        endpoint_factory: Arc<dyn ServiceEndpointFactory>,
         restart_budget: u8,
     ) -> Result<Self, ractor::SpawnErr> {
-        Self::spawn_with_bounds(adapter, restart_budget, DEFAULT_SERVICE_COMMAND_TIMEOUT).await
+        Self::spawn_with_bounds(
+            process_control,
+            endpoint_factory,
+            restart_budget,
+            DEFAULT_SERVICE_COMMAND_TIMEOUT,
+        )
+        .await
     }
 
     /// Turns the periodic health check on or off. Best effort: an actor that
@@ -1044,7 +1052,8 @@ impl ServiceClient {
     /// production wall clock. Not `pub` -- production code always goes
     /// through `spawn`, which pins the policy constant.
     async fn spawn_with_bounds(
-        adapter: Arc<dyn ServiceHostAdapter>,
+        process_control: Arc<dyn ServiceProcessControl>,
+        endpoint_factory: Arc<dyn ServiceEndpointFactory>,
         restart_budget: u8,
         command_timeout: std::time::Duration,
     ) -> Result<Self, ractor::SpawnErr> {
@@ -1063,7 +1072,8 @@ impl ServiceClient {
             None,
             ServiceActor,
             ServiceActorArgs {
-                adapter,
+                process_control,
+                endpoint_factory,
                 status_tx,
                 restart_budget,
                 command_timeout,
@@ -1085,11 +1095,18 @@ impl ServiceClient {
     /// outlive a short bound.
     #[cfg(any(test, feature = "test-support"))]
     pub async fn spawn_bounded(
-        adapter: Arc<dyn ServiceHostAdapter>,
+        process_control: Arc<dyn ServiceProcessControl>,
+        endpoint_factory: Arc<dyn ServiceEndpointFactory>,
         restart_budget: u8,
         command_timeout: std::time::Duration,
     ) -> Result<Self, ractor::SpawnErr> {
-        Self::spawn_with_bounds(adapter, restart_budget, command_timeout).await
+        Self::spawn_with_bounds(
+            process_control,
+            endpoint_factory,
+            restart_budget,
+            command_timeout,
+        )
+        .await
     }
 
     pub fn status(&self) -> ServiceHostStatus {
@@ -1245,6 +1262,7 @@ mod tests {
         core_detail: Mutex<Option<CoreStateDetail>>,
         /// A running daemon whose `/status` does not come back at all.
         probe_blind: AtomicBool,
+        command_failure: Mutex<Option<ServiceCommandError>>,
         fail_install: AtomicBool,
         fail_start: AtomicBool,
         /// F5: the probe call itself fails -- not "answered Stopped", not
@@ -1276,6 +1294,7 @@ mod tests {
                 uninstalls: AtomicUsize::new(0),
                 core_detail: Mutex::new(Some(CoreStateDetail::Stopped { reason: None })),
                 probe_blind: AtomicBool::new(false),
+                command_failure: Mutex::new(None),
                 fail_install: AtomicBool::new(false),
                 fail_start: AtomicBool::new(false),
                 probe_fail: AtomicBool::new(false),
@@ -1321,10 +1340,8 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl ServiceHostAdapter for FakeDaemon {
-        async fn probe(
-            &self,
-        ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError> {
+    impl ServiceProcessControl for FakeDaemon {
+        async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
             self.calls.lock().unwrap().push("probe");
             if self.session_ending.load(Ordering::SeqCst) {
                 return Err(ServiceCommandError::SessionEnding);
@@ -1372,19 +1389,20 @@ mod tests {
                 },
                 logs: None,
             });
-            Ok(StatusInfo {
+            Ok(serde_json::to_string(&StatusInfo {
                 name: Cow::Borrowed("nyanpasu-service"),
                 version: Cow::Borrowed("test"),
                 status,
                 server,
             })
+            .expect("test service status serializes"))
         }
-        async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             if self.hang_install.load(Ordering::SeqCst) {
                 // Never resolves: only the actor's own `command_timeout`
                 // bound (F6) can end this call.
                 return std::future::pending::<
-                    Result<(), crate::service::control::ServiceCommandError>,
+                    Result<(), nyanpasu_contracts::service::ServiceCommandError>,
                 >()
                 .await;
             }
@@ -1394,6 +1412,9 @@ mod tests {
             }
 
             self.installs.fetch_add(1, Ordering::SeqCst);
+            if let Some(error) = self.command_failure.lock().unwrap().take() {
+                return Err(error);
+            }
             if self.fail_install.load(Ordering::SeqCst) {
                 return Err(crate::service::test_support::service_command_error(
                     "install refused",
@@ -1404,14 +1425,19 @@ mod tests {
             state.1 = true; // install auto-starts, like most platforms
             Ok(())
         }
-        async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             self.uninstalls.fetch_add(1, Ordering::SeqCst);
             *self.state.lock().unwrap() = (false, false, String::new());
             Ok(())
         }
-        async fn start_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn start_daemon(
+            &self,
+        ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.starts.fetch_add(1, Ordering::SeqCst);
+            if let Some(error) = self.command_failure.lock().unwrap().take() {
+                return Err(error);
+            }
             if self.hang_start.load(Ordering::SeqCst) {
                 return std::future::pending().await;
             }
@@ -1423,8 +1449,13 @@ mod tests {
             self.state.lock().unwrap().1 = true;
             Ok(())
         }
-        async fn stop_daemon(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn stop_daemon(
+            &self,
+        ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             self.calls.lock().unwrap().push("stop_daemon");
+            if let Some(error) = self.command_failure.lock().unwrap().take() {
+                return Err(error);
+            }
             // Like `nyanpasu-service stop`, which exits with an error for a
             // service that is already stopped.
             if !self.state.lock().unwrap().1 {
@@ -1437,7 +1468,7 @@ mod tests {
             }
             Ok(())
         }
-        async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+        async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
             if self.park_update.load(Ordering::SeqCst) {
                 self.parked.notify_one();
                 self.release.notified().await;
@@ -1446,6 +1477,9 @@ mod tests {
             self.state.lock().unwrap().2 = "2.0.2".to_owned();
             Ok(())
         }
+    }
+
+    impl crate::actor_v2::service_actor::ServiceEndpointFactory for FakeDaemon {
         fn endpoint(&self) -> EndpointHandle {
             Arc::new(NullEndpoint)
         }
@@ -1496,6 +1530,7 @@ mod tests {
     async fn a_helper_that_outlives_its_bound_blocks_endpoint_handing_until_it_ends() {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
         let client = ServiceClient::spawn_with_bounds(
+            daemon.clone(),
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
@@ -1552,6 +1587,7 @@ mod tests {
         daemon.park_update.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn_with_bounds(
             daemon.clone(),
+            daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
         )
@@ -1582,6 +1618,7 @@ mod tests {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.fail_start.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn_with_bounds(
+            daemon.clone(),
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
@@ -1617,7 +1654,9 @@ mod tests {
     #[tokio::test]
     async fn ensure_ready_converges_from_not_installed_through_the_gate() {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let endpoint = client.ensure_ready().await.unwrap();
         assert_eq!(endpoint.host(), ExecutionHost::Service);
@@ -1633,7 +1672,9 @@ mod tests {
     async fn an_outdated_daemon_is_upgraded_once_at_startup() {
         for version in ["1.4.5", "2.0.0", "2.0.1"] {
             let daemon = FakeDaemon::new(true, true, version);
-            let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+            let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+                .await
+                .unwrap();
             // pre_start already reconciled: one update, then the gate passes.
             assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
             assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
@@ -1643,7 +1684,9 @@ mod tests {
     #[tokio::test]
     async fn rc7_is_upgraded_before_serving_core_requests() {
         let daemon = FakeDaemon::new(true, true, "2.0.0-rc.7");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
         assert_eq!(
             client.ensure_ready().await.unwrap().host(),
@@ -1659,41 +1702,50 @@ mod tests {
         // A failed startup update leaves the incompatible daemon in place.
         struct StubbornDaemon(Arc<FakeDaemon>);
         #[async_trait::async_trait]
-        impl ServiceHostAdapter for StubbornDaemon {
+        impl ServiceProcessControl for StubbornDaemon {
             async fn probe(
                 &self,
-            ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError>
-            {
+            ) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.probe().await
             }
-            async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+            async fn install(
+                &self,
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.install().await
             }
-            async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+            async fn uninstall(
+                &self,
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.uninstall().await
             }
             async fn start_daemon(
                 &self,
-            ) -> Result<(), crate::service::control::ServiceCommandError> {
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.start_daemon().await
             }
             async fn stop_daemon(
                 &self,
-            ) -> Result<(), crate::service::control::ServiceCommandError> {
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.stop_daemon().await
             }
-            async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+            async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 Err(crate::service::test_support::service_command_error(
                     "service upgrade failed",
                 ))
             }
+        }
+
+        impl crate::actor_v2::service_actor::ServiceEndpointFactory for StubbornDaemon {
             fn endpoint(&self) -> EndpointHandle {
                 self.0.endpoint()
             }
         }
-        let client = ServiceClient::spawn(Arc::new(StubbornDaemon(daemon)), 2)
-            .await
-            .unwrap();
+        let client = {
+            let process_control = Arc::new(StubbornDaemon(daemon));
+            ServiceClient::spawn(process_control.clone(), process_control, 2)
+        }
+        .await
+        .unwrap();
         let error = client
             .ensure_ready()
             .await
@@ -1707,7 +1759,9 @@ mod tests {
     async fn uninstall_refuses_while_the_daemon_owns_a_running_core() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
@@ -1724,7 +1778,9 @@ mod tests {
     async fn uninstall_stops_the_daemon_before_removing_it() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         daemon.calls.lock().unwrap().clear();
 
         client.uninstall().await.unwrap();
@@ -1738,7 +1794,9 @@ mod tests {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
         daemon.stop_succeeds.store(false, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         daemon.calls.lock().unwrap().clear();
 
         let error = client.uninstall().await.unwrap_err();
@@ -1750,7 +1808,9 @@ mod tests {
     #[tokio::test]
     async fn explicit_start_rearms_an_exhausted_daemon() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
-        let client = ServiceClient::spawn(daemon, 0).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon, 0)
+            .await
+            .unwrap();
         assert!(client.recover_endpoint().await.is_err());
         assert_eq!(client.status().phase, ServicePhase::Exhausted);
         client.start_daemon().await.unwrap();
@@ -1765,6 +1825,7 @@ mod tests {
             daemon.fail_start.store(!hangs, Ordering::SeqCst);
             daemon.hang_start.store(hangs, Ordering::SeqCst);
             let client = ServiceClient::spawn_with_bounds(
+                daemon.clone(),
                 daemon.clone(),
                 3,
                 std::time::Duration::from_millis(50),
@@ -1792,7 +1853,9 @@ mod tests {
     #[tokio::test]
     async fn recovery_retries_a_live_daemon_without_a_status_response() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 3)
+            .await
+            .unwrap();
         daemon.probe_blind.store(true, Ordering::SeqCst);
         let error = client.recover_endpoint().await.err().unwrap();
         assert!(error.retryable);
@@ -1804,7 +1867,9 @@ mod tests {
     #[tokio::test]
     async fn endpoint_down_restarts_within_budget_then_latches_exhausted() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 1).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 1)
+            .await
+            .unwrap();
 
         // Daemon dies; the first report restarts it within budget.
         daemon.state.lock().unwrap().1 = false;
@@ -1842,7 +1907,9 @@ mod tests {
     async fn uninstall_refuses_on_transitional_detail() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Starting { epoch: 3 }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
@@ -1855,7 +1922,9 @@ mod tests {
     async fn uninstall_refuses_when_the_running_daemon_cannot_be_probed() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_blind.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(
@@ -1877,7 +1946,9 @@ mod tests {
     async fn uninstall_refuses_when_detail_is_missing() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.set_detail(None);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(
@@ -1898,7 +1969,9 @@ mod tests {
     async fn uninstall_proceeds_when_the_daemon_is_stopped() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         daemon.calls.lock().unwrap().clear();
 
@@ -1916,7 +1989,9 @@ mod tests {
     #[tokio::test]
     async fn exhausted_survives_probes_until_an_explicit_ensure_ready() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 0)
+            .await
+            .unwrap();
 
         daemon.state.lock().unwrap().1 = false;
         let _ = client.recover_endpoint().await;
@@ -1949,13 +2024,102 @@ mod tests {
         assert_eq!(status.restart_attempts, 0);
     }
 
+    fn consent_refusal(
+        command: nyanpasu_contracts::service::ServiceCommand,
+    ) -> ServiceCommandError {
+        ServiceCommandError::AuthorizeServiceCommand {
+            command,
+            source: nyanpasu_contracts::elevation::ElevationConsentError::AuthorizeElevation {
+                operation: nyanpasu_contracts::elevation::ElevationOperation::Service { command },
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn refused_service_command_keeps_the_probed_phase() {
+        use nyanpasu_contracts::service::ServiceCommand;
+
+        for (installed, command, phase) in [
+            (false, ServiceCommand::Install, ServicePhase::NotInstalled),
+            (true, ServiceCommand::Start, ServicePhase::DaemonStopped),
+        ] {
+            let daemon = FakeDaemon::new(installed, false, "2.0.2");
+            *daemon.command_failure.lock().unwrap() = Some(consent_refusal(command));
+            let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+                .await
+                .unwrap();
+            let error = client
+                .ensure_ready()
+                .await
+                .err()
+                .expect("consent must be refused");
+            assert!(!error.retryable);
+            assert_eq!(client.status().phase, phase);
+            assert_eq!(client.probe().await.unwrap().phase, phase);
+        }
+
+        let daemon = FakeDaemon::new(true, true, "2.0.2");
+        *daemon.command_failure.lock().unwrap() = Some(consent_refusal(ServiceCommand::Stop));
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
+        let error = client.stop_daemon().await.unwrap_err();
+        assert!(!error.retryable);
+        assert_eq!(client.status().phase, ServicePhase::Ready);
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
+        assert!(
+            daemon.state.lock().unwrap().1,
+            "refusal does not stop the daemon"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_consent_refusal_is_not_retryable() {
+        use nyanpasu_contracts::service::ServiceCommand;
+
+        for (failure, retryable) in [
+            (consent_refusal(ServiceCommand::Start), false),
+            (
+                ServiceCommandError::RunElevated {
+                    command: ServiceCommand::Start,
+                    source: std::io::Error::other("OS dialog cancelled"),
+                },
+                true,
+            ),
+            (
+                ServiceCommandError::ServiceCommandExit {
+                    command: ServiceCommand::Start,
+                    exit_code: Some(1),
+                    signal: None,
+                },
+                true,
+            ),
+        ] {
+            let daemon = FakeDaemon::new(true, false, "2.0.2");
+            *daemon.command_failure.lock().unwrap() = Some(failure);
+            let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 3)
+                .await
+                .unwrap();
+            let error = client
+                .recover_endpoint()
+                .await
+                .err()
+                .expect("scripted command fails");
+            assert_eq!(error.retryable, retryable);
+            assert_eq!(client.status().phase, ServicePhase::DaemonStopped);
+            assert_eq!(daemon.starts.load(Ordering::SeqCst), 1);
+        }
+    }
+
     /// Minor-A3: a convergence that fails must not leave a transitional phase
     /// published. `Installing` forever reads as "still working".
     #[tokio::test]
     async fn a_failed_install_leaves_the_probed_phase_not_the_transitional_one() {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.fail_install.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client
             .ensure_ready()
@@ -1974,7 +2138,9 @@ mod tests {
     async fn a_failed_start_leaves_the_probed_phase_not_the_transitional_one() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
         daemon.fail_start.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client
             .ensure_ready()
@@ -2000,7 +2166,9 @@ mod tests {
     async fn uninstall_refuses_when_the_probe_fails_outright() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let error = client.uninstall().await.unwrap_err();
         assert_eq!(
@@ -2025,7 +2193,9 @@ mod tests {
     async fn ensure_ready_reports_a_retryable_error_when_the_probe_fails() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         // `EndpointHandle` is a trait object and has no `Debug`, so the error
         // has to be taken by match rather than `unwrap_err`.
@@ -2047,7 +2217,9 @@ mod tests {
     async fn endpoint_down_does_not_start_when_the_probe_fails() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
         daemon.probe_fail.store(true, Ordering::SeqCst);
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
 
         let starts = daemon.starts.load(Ordering::SeqCst);
         let _ = client.recover_endpoint().await;
@@ -2059,7 +2231,9 @@ mod tests {
     #[tokio::test]
     async fn session_end_probe_publishes_unknown_without_starting_the_daemon() {
         let daemon = FakeDaemon::new(true, false, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         assert_eq!(client.status().phase, ServicePhase::DaemonStopped);
         daemon.session_ending.store(true, Ordering::SeqCst);
 
@@ -2080,6 +2254,7 @@ mod tests {
         let daemon = FakeDaemon::new(false, false, "2.0.2");
         daemon.hang_install.store(true, Ordering::SeqCst);
         let client = ServiceClient::spawn_with_bounds(
+            daemon.clone(),
             daemon.clone(),
             2,
             std::time::Duration::from_millis(50),
@@ -2117,39 +2292,48 @@ mod tests {
         // instead of being upgraded by `pre_start`.
         struct StubbornDaemon(Arc<FakeDaemon>);
         #[async_trait::async_trait]
-        impl ServiceHostAdapter for StubbornDaemon {
+        impl ServiceProcessControl for StubbornDaemon {
             async fn probe(
                 &self,
-            ) -> Result<StatusInfo<'static>, crate::service::control::ServiceCommandError>
-            {
+            ) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.probe().await
             }
-            async fn install(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+            async fn install(
+                &self,
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.install().await
             }
-            async fn uninstall(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+            async fn uninstall(
+                &self,
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.uninstall().await
             }
             async fn start_daemon(
                 &self,
-            ) -> Result<(), crate::service::control::ServiceCommandError> {
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.start_daemon().await
             }
             async fn stop_daemon(
                 &self,
-            ) -> Result<(), crate::service::control::ServiceCommandError> {
+            ) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 self.0.stop_daemon().await
             }
-            async fn update(&self) -> Result<(), crate::service::control::ServiceCommandError> {
+            async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
                 Ok(()) // succeeds without changing anything
             }
+        }
+
+        impl crate::actor_v2::service_actor::ServiceEndpointFactory for StubbornDaemon {
             fn endpoint(&self) -> EndpointHandle {
                 self.0.endpoint()
             }
         }
-        let client = ServiceClient::spawn(Arc::new(StubbornDaemon(daemon.clone())), 2)
-            .await
-            .unwrap();
+        let client = {
+            let process_control = Arc::new(StubbornDaemon(daemon.clone()));
+            ServiceClient::spawn(process_control.clone(), process_control, 2)
+        }
+        .await
+        .unwrap();
         assert_eq!(client.status().phase, ServicePhase::Incompatible);
 
         let starts = daemon.starts.load(Ordering::SeqCst);
@@ -2222,7 +2406,9 @@ mod tests {
     #[tokio::test]
     async fn the_health_check_probes_while_on_and_publishes_only_changes() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         let mut status = client.subscribe();
         status.mark_unchanged();
         // Rounds start at 1, so round 1 is the one turning the check on arms.
@@ -2279,7 +2465,9 @@ mod tests {
     #[tokio::test]
     async fn only_a_settled_restart_makes_a_new_ready_generation() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         let first = client.status();
         assert_eq!(first.phase, ServicePhase::Ready);
 
@@ -2303,7 +2491,9 @@ mod tests {
     #[tokio::test]
     async fn daemon_not_running_answers_from_the_os_state() {
         let daemon = FakeDaemon::new(true, true, "2.0.2");
-        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let client = ServiceClient::spawn(daemon.clone(), daemon.clone(), 2)
+            .await
+            .unwrap();
         assert!(!client.daemon_not_running().await.unwrap());
 
         daemon.state.lock().unwrap().1 = false;

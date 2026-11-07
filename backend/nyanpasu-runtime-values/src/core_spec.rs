@@ -7,7 +7,7 @@ use snafu::Snafu;
 /// A failure of locating the binary a core is started from.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum CoreSpecError {
     #[snafu(display("could not find the {core} core binary"))]
     FindCoreBinary {

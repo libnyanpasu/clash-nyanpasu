@@ -22,8 +22,8 @@ use crate::{
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    runtime_values::{check::RuntimeCheckUnavailable, execution_host::ExecutionHost},
 };
+use nyanpasu_runtime_values::{check::RuntimeCheckUnavailable, execution_host::ExecutionHost};
 
 struct Graph {
     endpoint: Arc<TestControlEndpoint>,

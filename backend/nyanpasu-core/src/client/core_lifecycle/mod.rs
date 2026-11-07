@@ -7,7 +7,7 @@ mod workflow;
 use crate::actor_v2::HandoffReport;
 use crate::actor_v2::facade::{ReconcileReport, StopReport};
 #[cfg(test)]
-use crate::runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use nyanpasu_updater::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;

@@ -9,8 +9,8 @@ use super::intent::CoreRunIntent;
 use crate::{
     actor_v2::facade::AppliedConfigBinding,
     client::{ports::CandidatePortBindings, runtime::RuntimeRevision},
-    runtime_values::execution_host::ExecutionHost,
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 /// What the core actually accepted, recorded the moment it confirms an apply
 /// and never derived from a file or an inspection (v2 §5.3/§5.4, C3).

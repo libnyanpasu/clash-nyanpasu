@@ -20,7 +20,7 @@ pub enum ConfigDomain {
 /// The application workflow is not connected yet, so no mutation can run.
 #[derive(Debug, Snafu)]
 #[snafu(display("the application workflow is not ready"))]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub struct NotReady;
 
 /// Why a source transaction did not commit, classified once from the

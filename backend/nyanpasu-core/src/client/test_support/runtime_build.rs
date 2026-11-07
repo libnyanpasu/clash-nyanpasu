@@ -25,9 +25,9 @@ use crate::{
         runtime,
         runtime::{RuntimePaths, RuntimeRevision, RuntimeSnapshot},
     },
-    runtime_values::{core_spec::CoreSpecError, publish::PublishRuntimeError},
     state::profiles::ProfilesActor,
 };
+use nyanpasu_runtime_values::{core_spec::CoreSpecError, publish::PublishRuntimeError};
 
 type CaptureContent = dyn Fn(&Profiles) -> FrozenProfileContent + Send + Sync;
 

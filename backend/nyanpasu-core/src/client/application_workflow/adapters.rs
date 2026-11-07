@@ -77,9 +77,9 @@ impl super::ports::RuntimeValidatorPort for CoreCheckValidator {
         request: super::ports::RuntimeCheckRequest<'_>,
     ) -> super::ports::RuntimeCheckOutcome {
         use super::ports::RuntimeCheckOutcome;
-        use crate::{
-            actor_v2::endpoint::{CheckSubmission, CheckSupport},
-            runtime_values::{check::RuntimeCheckUnavailable, execution_host::ExecutionHost},
+        use crate::actor_v2::endpoint::{CheckSubmission, CheckSupport};
+        use nyanpasu_runtime_values::{
+            check::RuntimeCheckUnavailable, execution_host::ExecutionHost,
         };
 
         let endpoint = match self.core.connected_endpoint().await {

@@ -19,7 +19,7 @@ use super::{
     endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
     service_actor::ServiceClient,
 };
-use crate::runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 struct IdleEndpoint;
 

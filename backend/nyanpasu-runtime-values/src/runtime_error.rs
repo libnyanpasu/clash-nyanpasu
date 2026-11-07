@@ -1,4 +1,8 @@
-//! Public runtime operation failures and their wire metadata.
+//! Failures of the operations that run on the core and the runtime workflow.
+//!
+//! One variant per thing that was being done, with what the user needs to
+//! recognise it. Failures of the core itself keep their machine-readable kind
+//! in [`CoreFailure`]; the frontend localizes both.
 
 use nyanpasu_contracts::{
     core_install::InstallCoreBinaryError, core_version::CoreVersionError,
@@ -209,7 +213,7 @@ pub enum RuntimeError {
 /// Why the runtime baseline could not be put back.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum RestoreFailure {
     #[snafu(display("could not move the runtime back to the {host:?} execution host: {failure}"))]
     MoveHostBack {
@@ -235,7 +239,7 @@ pub enum RestoreFailure {
 
 impl RuntimeError {
     /// The core's own failure this error carries, if the core produced it.
-    pub(crate) fn core_failure(&self) -> Option<&CoreFailure> {
+    fn core_failure(&self) -> Option<&CoreFailure> {
         match self {
             Self::ApplyRuntime { failure }
             | Self::StopCore { failure }
@@ -283,7 +287,7 @@ impl RuntimeError {
     /// The classification the workflow decides by. A core binary that cannot
     /// be found is the core's `BinaryNotFound` as far as a refused candidate
     /// is concerned; a failure the core manager left unclassified has none.
-    pub(crate) fn core_kind(&self) -> Option<CoreErrorKind> {
+    pub fn core_kind(&self) -> Option<CoreErrorKind> {
         match self {
             Self::ResolveCoreBinary { .. } => Some(CoreErrorKind::BinaryNotFound),
             _ => self.core_failure().and_then(|failure| failure.kind),
@@ -291,7 +295,7 @@ impl RuntimeError {
     }
 
     /// Whether repeating the same operation can plausibly succeed.
-    pub(crate) fn retryable(&self) -> bool {
+    pub fn retryable(&self) -> bool {
         match self {
             Self::CoreNotStarted { retryable, .. } => *retryable,
             _ => self.core_failure().is_some_and(|failure| failure.retryable),
@@ -304,7 +308,7 @@ mod tests {
     use serde_json::json;
 
     use super::{CoreFailure, RestoreFailure, RuntimeError};
-    use crate::runtime_values::{check::RuntimeCheckUnavailable, execution_host::ExecutionHost};
+    use crate::{check::RuntimeCheckUnavailable, execution_host::ExecutionHost};
     use nyanpasu_core_metadata::CoreErrorKind;
 
     #[test]

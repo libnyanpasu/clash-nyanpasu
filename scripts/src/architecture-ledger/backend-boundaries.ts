@@ -30,6 +30,7 @@ const FOUNDATION = [
   'nyanpasu-contracts',
   'nyanpasu-persistence',
   'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
 ]
 const CORE_FAMILY = [
   'nyanpasu-core',
@@ -57,6 +58,16 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: name,
     forbids: [...CORE_FAMILY, ...IMPLEMENTATION],
   })),
+  ...FOUNDATION.filter((name) => name !== 'nyanpasu-runtime-values').map(
+    (name) => ({
+      package: name,
+      forbids: ['nyanpasu-runtime-values'],
+    }),
+  ),
+  {
+    package: 'nyanpasu-runtime-values',
+    forbids: ['nyanpasu-core-manager'],
+  },
   {
     package: 'nyanpasu-config',
     forbids: FOUNDATION.filter((name) => name !== 'nyanpasu-config'),

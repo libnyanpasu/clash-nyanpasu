@@ -17,7 +17,7 @@ use super::{
     intent::RuntimeIntent,
     service_actor::{ServiceClient, ServiceCommandKind, ServiceHostStatus},
 };
-use crate::runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 const OPERATION_WAIT: Duration = Duration::from_secs(60);
 

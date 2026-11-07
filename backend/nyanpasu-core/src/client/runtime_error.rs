@@ -5,7 +5,7 @@ use std::sync::Arc;
 use nyanpasu_core_manager::CoreError;
 use nyanpasu_state_engine::AckError;
 
-use crate::runtime_values::runtime_error::{CoreFailure, RuntimeError};
+use nyanpasu_runtime_values::runtime_error::{CoreFailure, RuntimeError};
 
 /// Preserve the core manager's classification and operation identity.
 pub(crate) fn core_failure(error: CoreError) -> CoreFailure {

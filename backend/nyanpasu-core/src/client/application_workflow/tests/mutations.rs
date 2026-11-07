@@ -56,12 +56,6 @@ use crate::{
         runtime_error::refusal_of,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    runtime_values::{
-        check::EvidenceGap,
-        execution_host::ExecutionHost,
-        mutation::{CommitAborted, RuntimeAftermath},
-        runtime_error::RuntimeError,
-    },
     state::mutation::{
         impact::{
             ActivationIntent, ContentDigest, MutationDomain, MutationHints, RequestedRuntimeFields,
@@ -71,6 +65,12 @@ use crate::{
         runtime_apply::RuntimeApplyReceipt,
         value::{CheckRecord, MutationConclusion, MutationOutcomeKind, MutationReceipt},
     },
+};
+use nyanpasu_runtime_values::{
+    check::EvidenceGap,
+    execution_host::ExecutionHost,
+    mutation::{CommitAborted, RuntimeAftermath},
+    runtime_error::RuntimeError,
 };
 
 // -- fixture ---------------------------------------------------------------
@@ -101,7 +101,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::runtime_values::core_spec::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_runtime_values::core_spec::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }
@@ -124,7 +124,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn publish(
         &self,
         snapshot: &runtime::RuntimeSnapshot,
-    ) -> Result<(), crate::runtime_values::publish::PublishRuntimeError> {
+    ) -> Result<(), nyanpasu_runtime_values::publish::PublishRuntimeError> {
         if self.fail_publish.load(Ordering::SeqCst) {
             return Err(super::scripted_publish_failure());
         }
@@ -211,7 +211,7 @@ pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
             version: None,
             features: Vec::new(),
         },
-        host: crate::runtime_values::execution_host::ExecutionHost::Local,
+        host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
         run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings {
             policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
@@ -224,7 +224,7 @@ pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
                 source_hash: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
                 effective_hash: "effective".into(),
             },
-            host: crate::runtime_values::execution_host::ExecutionHost::Local,
+            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             generation: 0,
         },
         ports: SessionPortResolver::default()
@@ -3688,7 +3688,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     assert_eq!(receipt.operation_id, None);
     assert_eq!(
         receipt.runtime,
-        crate::runtime_values::runtime::RuntimeCommitStatus::Unchanged
+        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged
     );
     assert!(saved.degradations.is_empty());
     assert_eq!(f.endpoint.status_reads(), status_reads);
@@ -3706,8 +3706,8 @@ async fn a_gui_save_never_reaches_the_runtime() {
 /// a core the user stopped is never started by either kind of save.
 #[tokio::test]
 async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
-    use crate::runtime_values::runtime::RuntimeCommitStatus;
     use nyanpasu_config::application::ThemeMode;
+    use nyanpasu_runtime_values::runtime::RuntimeCommitStatus;
     use struct_patch::Patch;
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
@@ -4684,11 +4684,11 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
     );
     assert_eq!(
         commit.runtime,
-        crate::runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired
+        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired
     );
     assert_eq!(degradations.len(), 1);
     assert!(matches!(
         degradations[0].reason,
-        crate::runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
+        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
     ));
 }

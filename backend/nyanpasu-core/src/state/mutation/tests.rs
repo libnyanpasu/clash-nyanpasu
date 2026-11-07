@@ -9,15 +9,15 @@ use nyanpasu_state_engine::{
 
 use crate::{
     client::runtime_error,
-    runtime_values::{
-        mutation::{CommitAborted, ConfigDomain},
-        profiles::ProfilesError,
-        runtime_error::RuntimeError,
-    },
     state::mutation::{
         self,
         value::{CheckRecord, MutationConclusion, MutationOutcomeKind, MutationReceipt},
     },
+};
+use nyanpasu_runtime_values::{
+    mutation::{CommitAborted, ConfigDomain},
+    profiles::ProfilesError,
+    runtime_error::RuntimeError,
 };
 
 #[test]

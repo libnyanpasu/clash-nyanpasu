@@ -24,11 +24,6 @@ use crate::{
         application_workflow::ApplicationWorkflowClient, clash_config::ClashConfigClient,
         effects::ports::NoopCommitNotifications, profiles::ProfilesClient, test_support,
     },
-    runtime_values::{
-        mutation::{CommitAborted, ConfigDomain},
-        runtime::{CommitReceipt, RuntimeCommitStatus},
-        runtime_error::RuntimeError,
-    },
     state::{
         config_error::ConfigError,
         mutation::{
@@ -39,6 +34,11 @@ use crate::{
             value::{MutationConclusion, MutationReceipt},
         },
     },
+};
+use nyanpasu_runtime_values::{
+    mutation::{CommitAborted, ConfigDomain},
+    runtime::{CommitReceipt, RuntimeCommitStatus},
+    runtime_error::RuntimeError,
 };
 
 struct FactoryObservation {

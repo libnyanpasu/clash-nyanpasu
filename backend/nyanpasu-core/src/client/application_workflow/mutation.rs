@@ -11,7 +11,7 @@
 //! the source state, and the runtime revision orders published views. None of
 //! them substitutes for another.
 
-use crate::runtime_values::check::EvidenceGap;
+use nyanpasu_runtime_values::check::EvidenceGap;
 use std::sync::Arc;
 
 use nyanpasu_config::{
@@ -24,7 +24,6 @@ use tokio::sync::oneshot;
 use super::policy::TryCauseKind;
 use crate::{
     client::{runtime::RuntimeSnapshot, runtime_error::ack_of},
-    runtime_values::{mutation::ConfigDomain, runtime_error::RuntimeError},
     state::mutation::{
         impact::{MutationHints, RuntimeImpact},
         intent::CommandClass,
@@ -32,6 +31,7 @@ use crate::{
         value::{MutationOutcomeKind, MutationReceipt},
     },
 };
+use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime_error::RuntimeError};
 
 /// The candidate of one mutation, and the committed value it replaces where
 /// the Runtime reads that.

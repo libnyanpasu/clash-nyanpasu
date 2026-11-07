@@ -25,18 +25,16 @@ use snafu::ResultExt as _;
 use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    runtime_values::profiles::{
-        FetchSubscriptionSnafu, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
-    },
-    state::profiles::{
-        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-        ReorderOp, sources::SourcesSnapshot,
-    },
+use crate::state::profiles::{
+    CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
+    ReorderOp, sources::SourcesSnapshot,
 };
 use nyanpasu_contracts::profiles::{
     error::ProfileFileError,
     ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+};
+use nyanpasu_runtime_values::profiles::{
+    FetchSubscriptionSnafu, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
 };
 
 #[derive(Debug, snafu::Snafu)]
@@ -614,7 +612,6 @@ mod tests {
             ok_fetch, overlay_item, remote_config_item, round_trip, seeded_profiles,
             suggested_fetch, wait_for_source, yaml,
         },
-        runtime_values::{mutation::CommitAborted, profiles::MaterializationOperation},
         state::profiles::RefreshOrigin,
     };
     use nyanpasu_config::profile::{
@@ -633,6 +630,7 @@ mod tests {
             ProfileMaterializationPort,
         },
     };
+    use nyanpasu_runtime_values::{mutation::CommitAborted, profiles::MaterializationOperation};
     use nyanpasu_state_engine::ReplaceIfVersionError;
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};

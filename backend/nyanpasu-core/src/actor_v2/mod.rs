@@ -49,8 +49,8 @@ use nyanpasu_core_manager::{
 };
 use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo, OperationPhase};
 
-use crate::runtime_values::execution_host::ExecutionHost;
 use endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle};
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 /// Monotonic owner fence. Incremented exactly once per completed handoff;
 /// stale pump frames and stale down reports are dropped by comparing it.

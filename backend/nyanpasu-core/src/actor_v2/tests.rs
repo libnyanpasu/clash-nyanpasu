@@ -25,7 +25,7 @@ use super::{
     ShutdownReport, SubmitFailure,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle},
 };
-use crate::runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 /// The three answers a host gives are scripted independently, because the
 /// defect class this suite guards against is a router filling one in from

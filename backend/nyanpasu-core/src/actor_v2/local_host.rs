@@ -11,7 +11,7 @@ use snafu::{ResultExt, Snafu};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_utils::process::AtomicStopStrategy;
 
-use crate::runtime_values::core_spec::{CoreSpecError, FindCoreBinarySnafu};
+use nyanpasu_runtime_values::core_spec::{CoreSpecError, FindCoreBinarySnafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {

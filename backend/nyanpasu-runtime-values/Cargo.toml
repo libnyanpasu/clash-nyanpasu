@@ -1,0 +1,21 @@
+[package]
+name = 'nyanpasu-runtime-values'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
+nyanpasu-core-metadata = { path = '../nyanpasu-runtime/crates/nyanpasu-core-metadata' }
+serde = { version = '1.0', features = ['derive', 'rc'] }
+specta = { version = '^2.0.0-rc.25', features = ['url'] }
+snafu = { workspace = true }
+url = '2'
+serde_json = { version = '1.0', features = ['preserve_order'] }
+serde_yaml_ng = { workspace = true }
+atomicwrites = '0.4.4'
+tokio = { workspace = true }

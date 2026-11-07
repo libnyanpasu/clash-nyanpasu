@@ -16,10 +16,10 @@ use nyanpasu_config::{
 };
 use snafu::ResultExt;
 
-use crate::runtime_values::ports::{PortField, PortResolveError, ResolvePortSnafu};
 #[cfg(test)]
 use crate::state::mutation::runtime_apply::RuntimeApplyReceipt;
 use nyanpasu_contracts::net::SelfProxyPortSource;
+use nyanpasu_runtime_values::ports::{PortField, PortResolveError, ResolvePortSnafu};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsFingerprint {
@@ -344,7 +344,7 @@ mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::runtime_values::execution_host::ExecutionHost::Local,
+            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
@@ -357,7 +357,7 @@ mod tests {
                     source_hash: "source".into(),
                     effective_hash: "effective".into(),
                 },
-                host: crate::runtime_values::execution_host::ExecutionHost::Local,
+                host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
                 generation: 0,
             },
             ports: candidate,

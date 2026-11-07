@@ -13,10 +13,10 @@ use nyanpasu_ipc::{
 use super::{StartupFailureHost, StartupOwners};
 use crate::startup_failure::{FailureKind, StartupFailure};
 use nyanpasu_contracts::service::{ServiceCommandError, ServiceProcessControl};
-use nyanpasu_core::{
-    actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
-    runtime_values::execution_host::ExecutionHost,
+use nyanpasu_core::actor_v2::endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle,
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 struct Endpoint(Arc<Mutex<Vec<&'static str>>>);
 

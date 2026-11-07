@@ -3,7 +3,7 @@
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
-use super::error::Result;
+use crate::error::Result;
 
 /// Resolve the shell's executable directory with its platform-specific rules.
 #[cfg_attr(test, mockall::automock)]

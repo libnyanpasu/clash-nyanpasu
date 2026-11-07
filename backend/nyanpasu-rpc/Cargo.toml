@@ -1,0 +1,116 @@
+[package]
+name = 'nyanpasu-rpc'
+version = '0.1.0'
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = ['default-meta', 'nesting']
+default-meta = ['nyanpasu-core/default-meta', 'nyanpasu-config/default-meta']
+nesting = ['nyanpasu-core/nesting', 'nyanpasu-config/nesting']
+http = [
+  'dep:axum',
+  'dep:chrono',
+  'dep:futures',
+  'dep:ractor',
+  'dep:reqwest',
+  'dep:tokio-tungstenite',
+  'dep:tokio-util',
+  'dep:percent-encoding',
+  'dep:uuid'
+]
+test-support = [
+  'http',
+  'nyanpasu-core/test-support',
+  'dep:parking_lot',
+  'dep:tracing-subscriber',
+  'dep:tower',
+  'dep:tempfile'
+]
+
+[dependencies]
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
+specta-typescript = { version = '0.0.12', features = ['serde'] }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
+nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-core-manager = { workspace = true }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
+  'specta'
+] }
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
+  'specta',
+] }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+nyanpasu-macro = { path = '../nyanpasu-macro' }
+clash-api = { workspace = true }
+anyhow = '1.0'
+async-trait = '0.1.77'
+base64 = '0.23'
+chrono = { version = '0.4', optional = true }
+dirs = '7'
+futures = { version = '0.3', optional = true }
+indexmap = { version = '2.2.3', features = ['serde'] }
+inventory = '0.3'
+serde = { version = '1', features = ['derive', 'rc'] }
+serde_json = { version = '1.0', features = ['preserve_order'] }
+serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [
+  'specta',
+] }
+snafu = { workspace = true }
+specta = { version = '^2.0.0-rc.25', features = [
+  'serde_json',
+  'serde_yaml',
+  'uuid',
+  'url',
+  'indexmap',
+  'function',
+] }
+tempfile = { version = '3.9.0', optional = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-attributes = '0.1'
+axum = { optional = true, version = '0.8', features = ['ws'] }
+ractor = { version = '0.16', optional = true }
+reqwest = { optional = true, workspace = true }
+tokio-tungstenite = { version = '0.30', optional = true }
+tokio-util = { optional = true, version = '0.7', features = ['full'] }
+url = '2'
+percent-encoding = { version = '2.3.1', optional = true }
+uuid = { version = '1.7.0', optional = true, features = ['v4'] }
+parking_lot = { optional = true, version = '0.13.0' }
+tracing-subscriber = { optional = true, version = '0.3', features = [
+  'env-filter',
+  'json',
+  'parking_lot',
+] }
+tower = { version = '0.5', features = ['util'], optional = true }
+
+[dev-dependencies]
+tempfile = '3.9.0'
+tokio = { workspace = true, features = ['test-util'] }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false, features = [
+  'test-support'
+] }
+parking_lot = '0.13.0'
+tracing-subscriber = { version = '0.3', features = [
+  'env-filter',
+  'json',
+  'parking_lot'
+] }
+tower = { version = '0.5', features = ['util'] }
+mockall = '0.15'
+zip = '9.0.0'

@@ -44,7 +44,6 @@ backend/tauri/src/
   adapters/                GUI adapters and frontend event delivery
   desktop/                 hotkey owner, main-thread handoff and presentation effects
   ipc.rs, unified_rpc.rs   RPC transport adapters
-  server/                  HTTP transport
           |
           | constructs and injects dependencies
           v
@@ -62,6 +61,7 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           v
 nyanpasu-config             domain models and pure runtime executor
 
+backend/nyanpasu-rpc/src/          shared commands, registry, audit, event bus and optional HTTP adapter
 backend/nyanpasu-rpc-protocol/src/ RPC owner values, request/error envelopes, JSON values and shared event names
 backend/nyanpasu-state-engine/src/ generic state coordination, persistence and transaction settlement
 backend/nyanpasu-observers/src/    log capture owner and storage ports
@@ -101,18 +101,18 @@ is the plan for the next stage:
   names return `unknown_method`. Capability metadata is not per-call authority.
 - **RPC packages** include the E1a-b protocol base: owner values, request/error
   envelopes, transparent JSON and shared event identities, with only Serde/JSON/Specta
-  dependencies. Cookie parsing, HTTP status and application error conversion remain
-  in the desktop consumer. The remaining planned work separates `nyanpasu-rpc-protocol` (neutral wire values
-  and receiving DTOs over approved foundation values, including D2e runtime-values)
+  dependencies. Cookie parsing, HTTP status and application error conversion live
+  in `nyanpasu-rpc`. E2b separates `nyanpasu-rpc-protocol` (neutral wire values
+  with the remaining receiving DTOs planned over approved foundation values, including D2e runtime-values)
   from `nyanpasu-rpc` (thin application adapter over core). Protocol forbids GUI,
   CORE_FAMILY and IMPLEMENTATION; foundation/core/implementation crates cannot
   depend on the RPC adapter. The CLI links protocol/local-client, never the
   registry/server/core-family/implementation/GUI production closure; foundation
-  values through protocol remain allowed. E2 moves the registry, event bus and
+  values through protocol remain allowed. E2b moved the registry, event bus and
   C2f audit kernel and neutral production `TracingRpcAuditSink` together.
-  Observations publish to the bus; an injected synchronous native sink preserves
+  E2c will make observations publish to the bus; an injected synchronous native sink preserves
   window targeting/errors, while SSE/local use bounded asynchronous receivers
-  with lag/resync. There is no migrated `listen_any` feedback bridge.
+  with lag/resync. The current shell `listen_any` input bridge remains until E2c.
   Forwarders acquire subscriptions before reconciliation/stream/listener activation.
   E2a first closes shared command signatures; protocol owns the shared icon-mode
   value, while asset access remains shell functions. Local subscription control
@@ -214,6 +214,7 @@ Rules for maintaining the separation:
 - The architecture-ledger static gate covers `backend/tauri/src/`,
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-state-engine/src/`,
   `backend/nyanpasu-runtime-values/src/`, `backend/nyanpasu-rpc-protocol/src/`,
+  `backend/nyanpasu-rpc/src/`,
   `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/boa_utils/src/`,
   `backend/nyanpasu-profile-transform/src/`,
@@ -222,7 +223,7 @@ Rules for maintaining the separation:
   `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
   `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All seventeen use the same explicit path-and-name allowlist; other backend library
+  All eighteen use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 
@@ -487,3 +488,9 @@ Use names that reveal the role:
 - `RuntimeBuilder`, `ProfileMerger`, `ConfigMigrator`, `PatchValidator` for pure services.
 - `TauriUiEventSink`, `FsConfigStore`, `OsProxyBackend`, `ProcessRunner` for adapters.
 - `AppSupervisor` or `NyanpasuBootstrap` for the composition root.
+
+E2b keeps native entry/Channel binding, Tauri event derives and asset resolution
+in the shell. The neutral HTTP actor still requires frontend assets before it can
+enable. `http` is an explicit default-off feature of RPC, and its weak routes
+retain the existing client shutdown behavior. Lower layers cannot depend on RPC;
+RPC cannot depend on GUI or implementation crates.

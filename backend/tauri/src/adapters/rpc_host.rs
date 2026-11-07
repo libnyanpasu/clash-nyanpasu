@@ -3,13 +3,14 @@
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
-use crate::{
-    core::{tray::icon, widget_logo},
-    rpc_commands::{
-        error::{IpcError, Result},
-        ports::{AccentColorQuery, CoreDirectoryResolver, HostIconFiles, ServiceInstallPrompt},
+use nyanpasu_rpc::{
+    commands::ports::{
+        AccentColorQuery, CoreDirectoryResolver, HostIconFiles, ServiceInstallPrompt,
     },
+    error::{IpcError, Result},
 };
+
+use crate::core::{tray::icon, widget_logo};
 
 pub struct DesktopCoreDirectory;
 impl CoreDirectoryResolver for DesktopCoreDirectory {

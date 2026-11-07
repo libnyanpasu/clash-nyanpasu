@@ -1,5 +1,7 @@
 //! Shared runtime command adapters.
 
+use crate::error::Result;
+
 use nyanpasu_config::{
     application::{ClashCore, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::{
@@ -10,8 +12,8 @@ use nyanpasu_config::{
 use nyanpasu_core::client::{NyanpasuClient, direct_egress::DirectEgress};
 use nyanpasu_profile_transform::PostProcessingOutput;
 
-use super::{error::Result, types::GetSysProxyResponse};
-use crate::unified_rpc::RpcState;
+use super::types::GetSysProxyResponse;
+use crate::registry::RpcState;
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

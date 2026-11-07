@@ -1,5 +1,4 @@
 use crate::{
-    rpc_commands::error::{IpcError, Result},
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
     window::{
         WindowManager, kinds,
@@ -11,6 +10,7 @@ use log::debug;
 use nyanpasu_contracts::net::StunServerTest;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_rpc::error::{IpcError, Result};
 use nyanpasu_rpc_protocol::values::TrayIcon;
 use nyanpasu_runtime_values::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu};
 use serde::{Deserialize, Serialize};
@@ -421,7 +421,7 @@ pub async fn collect_logs(
     client: State<'_, NyanpasuClient>,
 ) -> Result {
     let archive =
-        crate::rpc_commands::archive::logs_archive((*paths).clone(), (*client).clone()).await?;
+        nyanpasu_rpc::commands::archive::logs_archive((*paths).clone(), (*client).clone()).await?;
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());

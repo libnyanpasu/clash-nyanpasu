@@ -43,13 +43,12 @@ use crate::{
     storage::Storage,
     utils::test_support::test_paths,
 };
-#[cfg(test)]
-use nyanpasu_contracts::profiles::ports::MockSubscriptionFetcher;
 use nyanpasu_contracts::{
     core_version,
     profiles::ports::{
         CleanupOutcome, MaterializationReconcileReport, MockProfileMaterializationPort,
-        PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+        MockSubscriptionFetcher, PreparedCleanup, PreparedMaterialization,
+        ProfileMaterializationPort,
     },
     system_proxy::MockOsProxyPort,
 };
@@ -955,8 +954,8 @@ pub(crate) fn unused_test_adapters(paths: &PathResolver) -> ClientHostAdapters {
     )
 }
 
-#[cfg(test)]
-pub(crate) fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
+/// In-memory profile ports and runtime builder for downstream application tests.
+pub fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
     let paths = test_paths(dir.path(), dir.path().join("data"));
     let ports =
         profile_files::scripted_profile_file_ports(Arc::new(MockSubscriptionFetcher::new()));

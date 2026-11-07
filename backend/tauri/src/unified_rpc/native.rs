@@ -6,7 +6,7 @@ use nyanpasu_rpc_protocol::{EventName, RpcError, RpcOwner, RpcValue};
 use serde_json::Value;
 use tauri::Manager as _;
 
-use super::{EventBus, RpcFuture, RpcTransport, SetupError, UnifiedRpc};
+use nyanpasu_rpc::registry::{EventBus, RpcFuture, RpcTransport, SetupError, UnifiedRpc};
 
 pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
     use tauri::Listener;

@@ -3,8 +3,7 @@
 use indexmap::IndexMap;
 use nyanpasu_core::client::NyanpasuClient;
 
-use super::error::Result;
-use crate::unified_rpc::RpcState;
+use crate::{error::Result, registry::RpcState};
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
 #[specta::specta]

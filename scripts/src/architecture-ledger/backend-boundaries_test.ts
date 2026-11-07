@@ -929,3 +929,68 @@ for (const dependency of ['nyanpasu-core', 'tauri', 'nyanpasu-net']) {
     }
   })
 }
+
+for (const owner of ['nyanpasu-rpc', 'clash-nyanpasu']) {
+  test(`${owner} accepts RPC above core and foundation values`, () => {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        owner,
+        `${owner} v0.1.0\nnyanpasu-rpc v0.1.0\nnyanpasu-core v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-config v0.1.0\n`,
+      ),
+      [],
+    )
+  })
+}
+for (const dependency of [
+  'tauri',
+  'tauri-runtime',
+  'clash-nyanpasu',
+  'slint',
+  'egui',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+]) {
+  test(`RPC rejects direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-rpc',
+          `nyanpasu-rpc v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-rpc must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+for (const owner of [
+  'nyanpasu-config',
+  'nyanpasu-contracts',
+  'nyanpasu-persistence',
+  'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'nyanpasu-rpc-protocol',
+]) {
+  test(`${owner} rejects direct and transitive RPC adapters`, () => {
+    for (const intermediate of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          owner,
+          `${owner} v0.1.0\n${intermediate}nyanpasu-rpc v0.1.0\n`,
+        ),
+        [`${owner} must not depend on nyanpasu-rpc`],
+      )
+    }
+  })
+}

@@ -1,12 +1,14 @@
 //! Shared storage command adapters.
 
+use crate::error::Result;
+
 use nyanpasu_core::{
     client::NyanpasuClient,
     storage::{Storage, StorageItem, StorageRevision, WebStorage as _},
 };
 
-use super::{error::Result, types::StorageEntry};
-use crate::unified_rpc::RpcState;
+use super::types::StorageEntry;
+use crate::registry::RpcState;
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

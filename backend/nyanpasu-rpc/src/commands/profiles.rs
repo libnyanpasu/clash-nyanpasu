@@ -7,8 +7,7 @@ use nyanpasu_config::profile::{
 use nyanpasu_core::{client::NyanpasuClient, state::profiles::actor::NewProfileRequest};
 use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
 
-use super::error::Result;
-use crate::unified_rpc::RpcState;
+use crate::{error::Result, registry::RpcState};
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

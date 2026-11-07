@@ -212,7 +212,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     owners: &mut StartupOwners,
 ) -> Result<(), Error> {
     let app_handle = app.app_handle().clone();
-    let rpc_events = crate::unified_rpc::EventBus::new();
+    let rpc_events = nyanpasu_rpc::registry::EventBus::new();
     crate::unified_rpc::native::bridge_tauri_events(&app_handle, rpc_events.clone());
     app.manage(rpc_events);
     // Shared with the panic hook, which takes the main thread's work over
@@ -331,7 +331,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     )?;
     drop(span);
     let traffic_store = open_traffic_store(&paths);
-    let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
+    let http_routes = Arc::new(nyanpasu_rpc::http::routes::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
     let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
@@ -399,8 +399,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                     let (frontend, routes) = (frontend.clone(), http_routes.clone());
                     Box::pin(async move {
                         let server =
-                            crate::server::debug_http::HttpServerClient::spawn(frontend, routes)
-                                .await?;
+                            nyanpasu_rpc::http::HttpServerClient::spawn(frontend, routes).await?;
                         Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
                     })
                 })
@@ -623,11 +622,11 @@ async fn start_runtime_owners(
 pub(crate) enum UnifiedRpcError {
     #[snafu(display("failed to build unified RPC"))]
     BuildRpc {
-        source: crate::unified_rpc::SetupError,
+        source: nyanpasu_rpc::registry::SetupError,
     },
     #[snafu(display("failed to install HTTP routes"))]
     InstallHttpRoutes {
-        source: crate::unified_rpc::SetupError,
+        source: nyanpasu_rpc::registry::SetupError,
     },
     #[snafu(display("unified RPC state was already registered"))]
     RegisterState,
@@ -636,25 +635,25 @@ pub(crate) enum UnifiedRpcError {
 /// Registers the unified RPC command table after `resolve_setup` has managed
 /// storage and the other Tauri state dependencies.
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), UnifiedRpcError> {
-    let dependencies = crate::unified_rpc::RpcDependencies {
+    let dependencies = nyanpasu_rpc::registry::RpcDependencies {
         icon_files: Some(Arc::new(crate::adapters::rpc_host::DesktopIconFiles)),
         core_directory: Some(Arc::new(crate::adapters::rpc_host::DesktopCoreDirectory)),
         service_prompt: Some(Arc::new(crate::adapters::rpc_host::OsServiceInstallPrompt)),
         accent_color: Some(Arc::new(crate::adapters::rpc_host::DesktopAccentColor)),
-        host_environment: crate::rpc_commands::ports::HostEnvironment {
+        host_environment: nyanpasu_rpc::commands::ports::HostEnvironment {
             is_appimage: *crate::consts::IS_APPIMAGE,
         },
-        audit: crate::unified_rpc::RpcAudit::new(Arc::new(
-            crate::adapters::rpc_audit::TracingRpcAuditSink,
+        audit: nyanpasu_rpc::registry::RpcAudit::new(Arc::new(
+            nyanpasu_rpc::audit::TracingRpcAuditSink,
         )),
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
-        events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
+        events: (*app.state::<nyanpasu_rpc::registry::EventBus>()).clone(),
     };
-    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies, DESKTOP_RPC_CAPABILITIES)
+    let rpc = nyanpasu_rpc::registry::UnifiedRpc::new(dependencies, DESKTOP_RPC_CAPABILITIES)
         .context(BuildRpcSnafu)?;
-    app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
+    app.state::<Arc<nyanpasu_rpc::http::routes::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
     let desktop = crate::unified_rpc::native::DesktopRpc::new(rpc).context(BuildRpcSnafu)?;
@@ -880,8 +879,8 @@ fn forward_actor_events(
     }));
 }
 
-fn debug_http_frontend(app: &tauri::AppHandle) -> crate::server::debug_http::Frontend {
-    use crate::server::debug_http::{Frontend, FrontendAssets};
+fn debug_http_frontend(app: &tauri::AppHandle) -> nyanpasu_rpc::http::Frontend {
+    use nyanpasu_rpc::http::{Frontend, FrontendAssets};
     if !cfg!(feature = "custom-protocol") {
         if let Some(url) = &app.config().build.dev_url {
             return Frontend::Dev(url.clone());

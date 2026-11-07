@@ -165,7 +165,7 @@ pub fn diagnose(
                     .map_err(|e| e.to_string())?;
                     store.export(home()).map_err(|e| e.to_string())?
                 };
-                crate::rpc_commands::archive::write_core(archive, report, export, fraction)
+                nyanpasu_rpc::commands::archive::write_core(archive, report, export, fraction)
             }),
         ));
     }

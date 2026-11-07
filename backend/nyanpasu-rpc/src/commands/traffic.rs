@@ -5,8 +5,7 @@ use nyanpasu_observers::logs::{
     CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
 };
 
-use super::error::Result;
-use crate::unified_rpc::RpcState;
+use crate::{error::Result, registry::RpcState};
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

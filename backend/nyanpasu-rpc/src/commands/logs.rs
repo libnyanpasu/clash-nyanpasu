@@ -7,7 +7,7 @@ use crate::{
     registry::{RpcCaller, RpcState},
 };
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(local, http, result)]
 #[specta::specta]
 pub async fn list_log_files(
     client: RpcState<'_, NyanpasuClient>,
@@ -16,7 +16,7 @@ pub async fn list_log_files(
     client.list_log_files(source).await
 }
 
-#[nyanpasu_macro::rpc(http, result, owner)]
+#[nyanpasu_macro::rpc(local, http, result, owner)]
 #[specta::specta]
 pub async fn open_log_session(
     window: RpcCaller,
@@ -29,7 +29,7 @@ pub async fn open_log_session(
         .await
 }
 
-#[nyanpasu_macro::rpc(http, result, owner)]
+#[nyanpasu_macro::rpc(local, http, result, owner)]
 #[specta::specta]
 pub async fn query_logs(
     window: RpcCaller,
@@ -42,7 +42,7 @@ pub async fn query_logs(
         .await
 }
 
-#[nyanpasu_macro::rpc(http, result, owner)]
+#[nyanpasu_macro::rpc(local, http, result, owner)]
 #[specta::specta]
 pub async fn close_log_session(
     window: RpcCaller,

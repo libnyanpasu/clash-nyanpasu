@@ -38,6 +38,9 @@ use crate::{
 #[path = "log_tests.rs"]
 mod logs;
 
+#[path = "client_tests.rs"]
+mod client;
+
 struct Peer {
     stream: Option<Stream>,
     stop: tokio_util::sync::CancellationToken,
@@ -663,7 +666,7 @@ async fn local_dispatch_records_one_info_audit_event() {
         }
         peer.request(SECRET, json!({"value": SECRET})).await;
         assert!(matches!(peer.read().await, Frame::Response { .. }));
-        peer.request("get_profiles", Value::Null).await;
+        peer.request("get_all_storage_items", Value::Null).await;
         assert!(matches!(peer.read().await, Frame::Response { reply: Reply::Error(error), .. } if error["kind"] == "unsupported"));
         peer.request("audit_echo", json!({"value": SECRET})).await;
         assert!(matches!(peer.read().await, Frame::Response { reply: Reply::Error(error), .. } if error["kind"] == "invalid_params"));

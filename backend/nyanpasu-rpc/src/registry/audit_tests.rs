@@ -69,6 +69,30 @@ async fn local_optional_elevation_expands_and_registers() {
     .await
     .unwrap();
     assert_eq!(output, "injected-caller:7");
+    // Production profile mutations retain their reachable optional effects and
+    // remain admissible without presentation/elevation capabilities.
+    for name in ["create_profile", "delete_profile"] {
+        let production = fixture.rpc.commands.get(name).unwrap();
+        assert!(production.metadata.capabilities.is_empty());
+        assert!(
+            production
+                .metadata
+                .optional_capabilities
+                .contains(&ShellCapability::Elevation)
+        );
+        let handler = production.neutral_handler(RpcTarget::Local).unwrap();
+        let error = handler(
+            fixture.rpc.dependencies.clone(),
+            RpcOwner::local_connection("test", 1),
+            json!({}),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.kind, "invalid_params",
+            "{name} passes capability admission"
+        );
+    }
     assert_eq!(
         command.neutral_handler(RpcTarget::Http).unwrap_err().kind,
         "unsupported"
@@ -201,11 +225,6 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
     assert_eq!(
         command.neutral_handler(RpcTarget::Local).unwrap_err().kind,
         "unsupported"
-    );
-    assert!(
-        COMMAND_CATALOG
-            .iter()
-            .all(|metadata| !metadata.targets.contains(&RpcTarget::Local))
     );
     fixture.shutdown().await;
 }

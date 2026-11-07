@@ -613,8 +613,20 @@ Subscription resets read the facade with bounded race retries; notifications
 refresh the current full value instead of replaying older queued values. Source
 order and bounded lag/resync do not promise cross-source causal order. Unsubscribe
 releases demand before acknowledgement. Task panics retain their original payload
-through root supervision. Client recovery, production command opt-ins, desktop
-listener composition and the headless shell remain planned in E3e–E4.
+through root supervision. E3e delivers the protocol-only local client, whole-value
+reset application and opt-in desktop listener. Its dedicated transport task keeps
+partial exchanges synchronized when a call future is dropped; timeout or any
+possibly submitted transport failure closes the connection with outcome unknown,
+without mutation retry. The desktop enables the listener only when
+`NYANPASU_LOCAL_RPC=1`; `NYANPASU_LOCAL_RPC_ENDPOINT` optionally overrides discovery.
+It joins root shutdown and retains existing desktop elevation policy. The exact
+local allowlist is `get_profiles`, `create_profile`, `delete_profile`,
+`read_profile_file`, `get_configuration_status`, `get_core_status`,
+`get_storage_item`, `set_storage_item`, `remove_storage_item`, `list_log_files`,
+`open_log_session`, `query_logs`, `close_log_session`; HTTP exposure is unchanged.
+Subscriptions use local control frames. Musl explicitly enables protocol/local-client
+and RPC/local-server on their existing library targets; no package/prefix is added.
+The complete typed receiving closure and headless shell remain E1b/E4 work.
 
 | E3c platform             | Implementation | Validation                                                                                                       |
 | ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------- |

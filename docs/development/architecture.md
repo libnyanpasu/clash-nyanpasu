@@ -62,6 +62,7 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           v
 nyanpasu-config             domain models and pure runtime executor
 
+backend/nyanpasu-rpc-protocol/src/ RPC owner values, request/error envelopes, JSON values and shared event names
 backend/nyanpasu-state-engine/src/ generic state coordination, persistence and transaction settlement
 backend/nyanpasu-observers/src/    log capture owner and storage ports
 backend/nyanpasu-updater/src/      core update owner, HTTP backend, downloads and unpacking
@@ -98,7 +99,10 @@ is the plan for the next stage:
   separate explicit allowlist). Planned E1a keeps known commands registered:
   missing required capabilities return structured `unsupported`; only unknown
   names return `unknown_method`. Capability metadata is not per-call authority.
-- **Planned RPC packages** separate `nyanpasu-rpc-protocol` (neutral wire values
+- **RPC packages** include the E1a-b protocol base: owner values, request/error
+  envelopes, transparent JSON and shared event identities, with only Serde/JSON/Specta
+  dependencies. Cookie parsing, HTTP status and application error conversion remain
+  in the desktop consumer. The remaining planned work separates `nyanpasu-rpc-protocol` (neutral wire values
   and receiving DTOs over approved foundation values, including D2e runtime-values)
   from `nyanpasu-rpc` (thin application adapter over core). Protocol forbids GUI,
   CORE_FAMILY and IMPLEMENTATION; foundation/core/implementation crates cannot
@@ -209,7 +213,7 @@ Rules for maintaining the separation:
   must not need the Tauri runtime.
 - The architecture-ledger static gate covers `backend/tauri/src/`,
   `backend/nyanpasu-core/src/`, `backend/nyanpasu-state-engine/src/`,
-  `backend/nyanpasu-runtime-values/src/`,
+  `backend/nyanpasu-runtime-values/src/`, `backend/nyanpasu-rpc-protocol/src/`,
   `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/boa_utils/src/`,
   `backend/nyanpasu-profile-transform/src/`,
@@ -218,7 +222,7 @@ Rules for maintaining the separation:
   `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
   `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All sixteen use the same explicit path-and-name allowlist; other backend library
+  All seventeen use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

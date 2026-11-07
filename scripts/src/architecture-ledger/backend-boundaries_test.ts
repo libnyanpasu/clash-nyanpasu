@@ -2,6 +2,57 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { dependencyViolations } from './backend-boundaries.ts'
 
+test('protocol accepts direct and transitive foundation values and libraries', () => {
+  for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-rpc-protocol',
+        `nyanpasu-rpc-protocol v0.1.0\n${intermediate}nyanpasu-config v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\n`,
+      ),
+      [],
+    )
+  }
+})
+
+for (const dependency of [
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'clash-nyanpasu',
+  'nyanpasu-egui',
+  'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'slint',
+  'slint-build',
+  'i-slint-core',
+  'winit',
+  'eframe',
+  'egui',
+  'gtk',
+  'webkit2gtk',
+  'tauri',
+  'tauri-runtime',
+]) {
+  test(`protocol rejects direct and transitive ${dependency}`, () => {
+    for (const intermediate of ['', 'neutral-values v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-rpc-protocol',
+          `nyanpasu-rpc-protocol v0.1.0\n${intermediate}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-rpc-protocol must not depend on ${dependency}`],
+      )
+    }
+  })
+}
+
 test('runtime values are available to core and the desktop shell', () => {
   for (const owner of ['nyanpasu-core', 'clash-nyanpasu']) {
     assert.deepStrictEqual(

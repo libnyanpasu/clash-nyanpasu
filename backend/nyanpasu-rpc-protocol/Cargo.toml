@@ -1,0 +1,13 @@
+[package]
+name = 'nyanpasu-rpc-protocol'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { version = '1.0', features = ['derive'] }
+serde_json = { version = '1.0', features = ['preserve_order'] }
+specta = { version = '^2.0.0-rc.25', features = ['derive'] }
+specta-typescript = { version = '0.0.12', features = ['serde'] }

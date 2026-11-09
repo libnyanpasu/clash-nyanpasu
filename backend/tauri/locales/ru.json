@@ -32,7 +32,8 @@
     "rule_mode": "Режим правил",
     "script_mode": "Режим скриптов",
     "system_proxy": "Системный прокси",
-    "tun_mode": "Режим TUN"
+    "tun_mode": "Режим TUN",
+    "transparent_proxy": "Прозрачный прокси"
   },
   "dialog": {
     "crash_reporter": {

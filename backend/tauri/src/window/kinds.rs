@@ -275,6 +275,13 @@ pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
     Ok(())
 }
 
+const TRAY_MENU_WIDTH: f64 = 240.0;
+const TRAY_MENU_HEIGHT: f64 = if cfg!(target_os = "linux") {
+    504.0
+} else {
+    448.0
+};
+
 /// Webview tray menu window
 #[derive(Clone)]
 struct TrayMenuWindow {
@@ -298,8 +305,8 @@ impl AppWindow for TrayMenuWindow {
     fn config(&self) -> WindowConfig {
         WindowConfig::new()
             .singleton(true)
-            .default_size(240.0, 448.0)
-            .min_size(240.0, 448.0)
+            .default_size(TRAY_MENU_WIDTH, TRAY_MENU_HEIGHT)
+            .min_size(TRAY_MENU_WIDTH, TRAY_MENU_HEIGHT)
             .center(false)
             .resizable(false)
             .always_on_top(true)
@@ -414,18 +421,18 @@ fn place_tray_menu_window(win: &WebviewWindow, cursor: PhysicalPosition<f64>) {
         .outer_size()
         .map(|size| {
             let width = if size.width == 0 {
-                240.0
+                TRAY_MENU_WIDTH
             } else {
                 size.width as f64
             };
             let height = if size.height == 0 {
-                448.0
+                TRAY_MENU_HEIGHT
             } else {
                 size.height as f64
             };
             (width, height)
         })
-        .unwrap_or((240.0, 448.0));
+        .unwrap_or((TRAY_MENU_WIDTH, TRAY_MENU_HEIGHT));
     let margin = 8.0_f64;
 
     let (screen_x, screen_y, screen_w, screen_h) = win

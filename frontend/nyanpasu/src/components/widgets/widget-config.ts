@@ -97,7 +97,7 @@ export type WidgetConfigs = {
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts
     layout: 'equal' | 'flex'
-    buttons: 'both' | 'system' | 'tun'
+    buttons: 'both' | 'system' | 'tun' | 'transparent'
     order: 'system-first' | 'tun-first'
   }
   [WidgetId.CoreShortcuts]: {
@@ -297,7 +297,8 @@ export function normalizeWidgetConfigStorage(
         (key === 'buttons' &&
           (candidate === 'both' ||
             candidate === 'system' ||
-            candidate === 'tun')) ||
+            candidate === 'tun' ||
+            candidate === 'transparent')) ||
         (key === 'order' &&
           (candidate === 'system-first' || candidate === 'tun-first')) ||
         (key === 'layout' &&

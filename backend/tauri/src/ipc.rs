@@ -959,6 +959,13 @@ pub async fn patch_runtime_overrides(
 pub fn get_hotkey_functions() -> Vec<&'static str> {
     nyanpasu_core::client::hotkey::ports::HotkeyAction::all()
         .iter()
+        .filter(|action| {
+            cfg!(target_os = "linux")
+                || !matches!(action,
+                nyanpasu_core::client::hotkey::ports::HotkeyAction::ToggleTransparentProxy
+                | nyanpasu_core::client::hotkey::ports::HotkeyAction::EnableTransparentProxy
+                | nyanpasu_core::client::hotkey::ports::HotkeyAction::DisableTransparentProxy)
+        })
         .map(|action| action.as_str())
         .collect()
 }

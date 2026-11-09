@@ -21,6 +21,8 @@ pub enum DirectEgress {
     /// Nothing was probed: TUN mode captures the app's own requests and routes
     /// them by rule, so an echo could come back from a proxy exit.
     TunEnabled,
+    /// Local transparent capture can route the probe through a proxy.
+    TransparentProxyEnabled,
     /// `None` for a family no source gave an address over, such as a network
     /// without IPv6.
     Probed {

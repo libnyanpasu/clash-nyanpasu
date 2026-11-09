@@ -100,3 +100,25 @@ test('enabling permission triggers a probe and failures do not retry automatical
   await hook.rerender({ enabled: true })
   expect(probes()).toBe(1)
 })
+
+test('stops and resumes probing when local transparent capture changes', async ({
+  onTestFinished,
+}) => {
+  const { hook, client, probes } = await setup(onTestFinished, true, false)
+  await expect.poll(probes).toBe(1)
+  await hook.act(() =>
+    client.setQueryData(['getClashConfig'], {
+      enable_tun_mode: false,
+      transparent_proxy: { mode: 'tproxy', local: true },
+    }),
+  )
+  await hook.rerender({ enabled: true })
+  expect(probes()).toBe(1)
+  await hook.act(() =>
+    client.setQueryData(['getClashConfig'], {
+      enable_tun_mode: false,
+      transparent_proxy: { mode: 'tproxy', local: false },
+    }),
+  )
+  await expect.poll(probes).toBe(2)
+})

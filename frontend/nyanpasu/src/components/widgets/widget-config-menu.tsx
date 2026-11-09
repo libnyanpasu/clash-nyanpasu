@@ -17,6 +17,7 @@ import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Switch } from '@nyanpasu/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
+import { isLinux, isTauri } from '@nyanpasu/platform'
 import { useDashboardContext } from './provider'
 import {
   DEFAULT_WIDGET_CONFIGS,
@@ -465,6 +466,14 @@ function ConfigFieldRows({
                 label: m.dashboard_widget_proxy_shortcuts_config_system(),
               },
               { value: 'tun', label: 'TUN' },
+              ...(isLinux && isTauri()
+                ? [
+                    {
+                      value: 'transparent' as const,
+                      label: m.settings_clash_transparent_proxy_label(),
+                    },
+                  ]
+                : []),
             ]}
             onChange={(buttons) => onChange({ ...config, buttons })}
           />

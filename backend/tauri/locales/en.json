@@ -32,7 +32,8 @@
     "rule_mode": "Rule Mode",
     "script_mode": "Script Mode",
     "system_proxy": "System Proxy",
-    "tun_mode": "TUN Mode"
+    "tun_mode": "TUN Mode",
+    "transparent_proxy": "Transparent Proxy"
   },
   "dialog": {
     "crash_reporter": {

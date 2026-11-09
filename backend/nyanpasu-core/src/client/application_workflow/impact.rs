@@ -664,7 +664,7 @@ mod tests {
                 field: "enable_service_mode",
                 mutate: |app| app.enable_service_mode = true,
                 impact: RuntimeImpact::HostSwitch,
-                owners: &[],
+                owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "core",

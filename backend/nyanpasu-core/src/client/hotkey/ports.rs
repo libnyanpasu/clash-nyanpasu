@@ -38,6 +38,9 @@ pub enum HotkeyAction {
     ToggleTunMode,
     EnableTunMode,
     DisableTunMode,
+    ToggleTransparentProxy,
+    EnableTransparentProxy,
+    DisableTransparentProxy,
 }
 
 impl HotkeyAction {
@@ -54,6 +57,9 @@ impl HotkeyAction {
             HotkeyAction::ToggleTunMode,
             HotkeyAction::EnableTunMode,
             HotkeyAction::DisableTunMode,
+            HotkeyAction::ToggleTransparentProxy,
+            HotkeyAction::EnableTransparentProxy,
+            HotkeyAction::DisableTransparentProxy,
         ]
     }
 
@@ -70,6 +76,9 @@ impl HotkeyAction {
             HotkeyAction::ToggleTunMode => "toggle_tun_mode",
             HotkeyAction::EnableTunMode => "enable_tun_mode",
             HotkeyAction::DisableTunMode => "disable_tun_mode",
+            HotkeyAction::ToggleTransparentProxy => "toggle_transparent_proxy",
+            HotkeyAction::EnableTransparentProxy => "enable_transparent_proxy",
+            HotkeyAction::DisableTransparentProxy => "disable_transparent_proxy",
         }
     }
 }

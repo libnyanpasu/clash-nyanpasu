@@ -5,7 +5,7 @@ use std::{io, process::ExitStatus};
 pub(crate) trait CommandRunner: Send + Sync + 'static {
     fn runas(&self, command: &mut runas::Command) -> io::Result<ExitStatus>;
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn command(&self, command: &mut std::process::Command) -> io::Result<ExitStatus>;
 }
 
@@ -16,7 +16,7 @@ impl CommandRunner for OsCommandRunner {
         command.status()
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn command(&self, command: &mut std::process::Command) -> io::Result<ExitStatus> {
         command.status()
     }
@@ -33,7 +33,7 @@ impl CommandRunner for CountingRunner {
         Err(io::Error::other("test launch intercepted"))
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn command(&self, _: &mut std::process::Command) -> io::Result<ExitStatus> {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Err(io::Error::other("test launch intercepted"))

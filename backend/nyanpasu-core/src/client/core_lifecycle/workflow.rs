@@ -5,7 +5,7 @@ use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::core_install::{
     BinaryInstaller, CoreBinaryCompanionPaths, CoreBinaryInstallRequest,
 };
-use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_core_manager::{CoreError, CoreErrorKind, CoreKind};
 use nyanpasu_updater::PreparedCoreBinary;
 use snafu::{ResultExt, ensure};
 
@@ -23,14 +23,17 @@ use super::{
     Command, Output,
     ports::{PreparedRuntime, RuntimePreparationPort},
 };
-use crate::actor_v2::{
-    EndpointConnectivity, HandoffReport,
-    endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::{
-        CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
-        StopReport, UncertainReconcile,
+use crate::{
+    actor_v2::{
+        EndpointConnectivity, HandoffReport,
+        endpoint::{ExecutionHost, wire_core_type_to_kind},
+        facade::{
+            CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
+            StopReport, UncertainReconcile,
+        },
+        service_actor::ServicePhase,
     },
-    service_actor::ServicePhase,
+    client::runtime_recovery::{ObservedRuntime, verify_recovery_target},
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -679,6 +682,28 @@ impl CoreLifecycleWorkflow {
         Ok(())
     }
 
+    /// Recovers the applied core kind from a confirmed apply when the host does
+    /// not publish it. A verified status means that apply's instance is still
+    /// running, so its receipt names the binary that is in use.
+    fn confirmed_applied_kind(
+        &self,
+        status: &crate::actor_v2::CoreStatusProjection,
+    ) -> Option<CoreKind> {
+        let confirmed = self.runtime.confirmed()?;
+        let observed = ObservedRuntime::from_status(status);
+        if !verify_recovery_target(
+            &confirmed.receipt,
+            &observed,
+            Some(&confirmed.receipt.binding),
+        )
+        .is_verified()
+        {
+            return None;
+        }
+        let core_type: nyanpasu_utils::core::CoreType = (&confirmed.receipt.target_core).into();
+        wire_core_type_to_kind(&core_type)
+    }
+
     /// Installs `artifact` and restarts the core when the replacement owes it
     /// one. Returns whether that restart was withheld: it is a start, and
     /// needs a proven owner of the desired host (T10 §1.7 #7).
@@ -693,9 +718,15 @@ impl CoreLifecycleWorkflow {
             .refresh_status()
             .await
             .context(RefreshStatusSnafu)?;
-        let (state, applied_kind) = status
-            .snapshot
-            .map_or((None, None), |s| (s.state, s.applied_kind));
+        let (state, applied_kind) = {
+            let snapshot = status.snapshot.as_ref();
+            (
+                snapshot.and_then(|snapshot| snapshot.state.clone()),
+                snapshot
+                    .and_then(|snapshot| snapshot.applied_kind)
+                    .or_else(|| self.confirmed_applied_kind(&status)),
+            )
+        };
         let not_proven_stopped = !matches!(
             state,
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })

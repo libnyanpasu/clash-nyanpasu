@@ -44,6 +44,20 @@ pub(super) fn guard_ownership(guard: &GuardInputs<'_>) -> OwnershipEntries {
             port.map_or(Ownership::Removed, |port| Ownership::Forced(number(port))),
         ));
     }
+    for (key, port) in [
+        ("redir-port", guard.ports.redir_port),
+        ("tproxy-port", guard.ports.tproxy_port),
+    ] {
+        if let Some(port) = port {
+            entries.push((key, Ownership::Forced(number(port))));
+        }
+    }
+    if let Some(mark) = guard.routing_mark {
+        entries.push((
+            "routing-mark",
+            Ownership::Forced(ConfigValue::Number(mark.into())),
+        ));
+    }
     if let Some(controller) = &guard.ports.external_controller {
         entries.push(("external-controller", Ownership::Forced(string(controller))));
     }

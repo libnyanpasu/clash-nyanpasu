@@ -81,6 +81,8 @@ pub(crate) fn proxied_inputs(app: NyanpasuAppConfig) -> ApplicationEffectInputs 
             mixed_port: 7890,
             port: None,
             socks_port: None,
+            redir_port: None,
+            tproxy_port: None,
             external_controller: None,
         }),
     )

@@ -6,7 +6,9 @@ use crate::state::{
     ReplaceIfVersionError,
     error::{StateChangedError, UpsertError},
 };
-use nyanpasu_config::application::ReleaseChannel;
+use nyanpasu_config::{
+    application::ReleaseChannel, clash::config::TransparentProxyValidationError,
+};
 use serde::Serialize;
 use snafu::{IntoError, Snafu};
 
@@ -31,6 +33,12 @@ pub enum ConfigError {
     InvalidCoreLogs { reason: String },
     #[snafu(display("invalid public IP probe sources: {reason}"))]
     InvalidPublicIpProbeSources { reason: String },
+    #[snafu(display("transparent proxy settings are invalid: {source}"))]
+    InvalidTransparentProxy {
+        source: TransparentProxyValidationError,
+    },
+    #[snafu(display("transparent capture requires service mode"))]
+    TransparentProxyRequiresServiceMode,
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
     #[snafu(display("the hotkey list is invalid"))]

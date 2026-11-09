@@ -12,6 +12,15 @@ export type UsageLabel = {
 
 let regionNames: { locale: string; names: Intl.DisplayNames } | undefined
 
+// Keep product copy for these codes out of ICU so every locale, runtime, and
+// browser uses the same reviewed wording.
+const regionNameOverrides = {
+  CN: m.region_name_cn,
+  HK: m.region_name_hk,
+  TW: m.region_name_tw,
+  MO: m.region_name_mo,
+} satisfies Record<string, () => string>
+
 /** The localized name of a region code, `unknown` or whatever else a key is. */
 export function regionName(code: string) {
   if (code === 'unknown') {
@@ -21,6 +30,12 @@ export function regionName(code: string) {
   // `DisplayNames.of` throws for anything but a well-formed region code.
   if (!/^(?:[a-z]{2}|\d{3})$/i.test(code)) {
     return code
+  }
+
+  const override =
+    regionNameOverrides[code.toUpperCase() as keyof typeof regionNameOverrides]
+  if (override) {
+    return override()
   }
 
   const locale = getLocale()

@@ -272,9 +272,9 @@ jobs:
             }
           }
 
-          $version = '127.0.2651.105'
-          $uri = "https://github.com/westinyang/WebView2RuntimeArchive/releases/download/$version/Microsoft.WebView2.FixedVersionRuntime.$version.$arch.cab"
-          $outfile = "Microsoft.WebView2.FixedVersionRuntime.$version.$arch.cab"
+          $version = '157.0.4341.42'
+          $uri = "https://github.com/libnyanpasu/webview2-runtime-archive/releases/download/$version/Microsoft.WebView2.FixedVersionRuntime.$arch.cab"
+          $outfile = "Microsoft.WebView2.FixedVersionRuntime.$arch.cab"
           echo "Downloading $uri to $outfile"
           invoke-webrequest -uri $uri -outfile $outfile
           echo "Download finished, attempting to extract"

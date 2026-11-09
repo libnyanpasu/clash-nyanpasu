@@ -184,6 +184,9 @@ importers:
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
         version: 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@7.2.0))(prettier@3.9.10)(supports-color@7.2.0)
+      '@inlang/paraglide-js':
+        specifier: 2.29.3
+        version: 2.29.3(typescript@7.0.2)(vite@8.3.7(@types/node@26.6.5)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
       '@tanstack/react-query':
         specifier: 5.107.1
         version: 5.107.1(@types/react@19.3.0)(react@19.3.1)

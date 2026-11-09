@@ -2,6 +2,8 @@
 import '@nyanpasu/theme/styles/theme.css'
 import '@/assets/styles/tailwind.css'
 import ArticleRounded from '~icons/material-symbols/article-rounded'
+import { MotionGlobalConfig, processFrame } from 'motion/react'
+import { flushSync } from 'react-dom'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
@@ -160,13 +162,29 @@ for (const dark of [false, true]) {
 
     const labelNode = label.firstChild
     const closedLeft = label.getBoundingClientRect().left
-    toggle.click()
-    await waitForFrames(4)
-    const intermediateLeft = label.getBoundingClientRect().left
-    expect(intermediateLeft).toBeGreaterThan(closedLeft + 1)
-    expect(intermediateLeft).toBeLessThan(closedLeft + 51)
-    expect(sidebar.getBoundingClientRect().width).toBeGreaterThan(88)
-    expect(sidebar.getBoundingClientRect().width).toBeLessThan(200)
+    const hadManualTiming = MotionGlobalConfig.useManualTiming
+    MotionGlobalConfig.useManualTiming = true
+    try {
+      processFrame(0)
+      flushSync(() => toggle.click())
+      await Promise.resolve()
+      processFrame(0)
+      expect(label.getBoundingClientRect().left).toBeCloseTo(closedLeft, 0)
+      expect(sidebar.getBoundingClientRect().width).toBe(88)
+
+      processFrame(50)
+      const intermediateLeft = label.getBoundingClientRect().left
+      expect(intermediateLeft).toBeGreaterThan(closedLeft + 1)
+      expect(intermediateLeft).toBeLessThan(closedLeft + 51)
+      expect(sidebar.getBoundingClientRect().width).toBeGreaterThan(88)
+      expect(sidebar.getBoundingClientRect().width).toBeLessThan(200)
+
+      processFrame(1000)
+      expect(sidebar.getBoundingClientRect().width).toBe(200)
+      expect(labelOffset()).toBeCloseTo(52, 0)
+    } finally {
+      MotionGlobalConfig.useManualTiming = hadManualTiming
+    }
 
     await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(200)
     await expect.poll(labelOffset).toBeCloseTo(52, 0)

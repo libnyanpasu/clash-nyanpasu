@@ -359,7 +359,7 @@ test.for(['scoped', 'global'] as const)(
   '%s retains keyboard sorting and cancellation',
   async (layout, { onTestFinished }) => {
     await page.viewport(1100, 1000)
-    const { writes, ids, apply, focusItem } = await setup(
+    const { view, writes, ids, item, apply, focusItem } = await setup(
       layout,
       ['dns', 'self', 'warp'],
       onTestFinished,
@@ -367,13 +367,26 @@ test.for(['scoped', 'global'] as const)(
     await expect.poll(ids).toEqual(['dns', 'self', 'warp'])
     await focusItem('self')
     await userEvent.keyboard('{Space}')
+    await expect
+      .poll(() => item('self').hasAttribute('data-dragging'))
+      .toBe(true)
     for (let i = 0; i < 12; i++) await userEvent.keyboard('{ArrowUp}')
     await expect.poll(() => ids()[0]).toBe('self')
     await userEvent.keyboard('{Escape}')
     await expect.poll(ids).toEqual(['dns', 'self', 'warp'])
+    await expect
+      .poll(() =>
+        view.container.querySelector(
+          '[data-slot="profile-chain-editor-item"][data-dragging]',
+        ),
+      )
+      .toBeNull()
     expect(writes).toHaveLength(0)
     await focusItem('self')
     await userEvent.keyboard('{Space}')
+    await expect
+      .poll(() => item('self').hasAttribute('data-dragging'))
+      .toBe(true)
     for (let i = 0; i < 12; i++) await userEvent.keyboard('{ArrowUp}')
     await userEvent.keyboard('{Space}')
     await expect.poll(ids).toEqual(['self', 'dns', 'warp'])

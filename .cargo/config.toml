@@ -46,3 +46,13 @@ rustflags = ['-C', 'target-feature=+aes,+sse2']
 
 [target.aarch64-apple-darwin]
 rustflags = ['-C', 'target-feature=+aes,+neon']
+
+# Content fingerprints keep a seeded worktree from rebuilding local crates only
+# because its checkout assigned newer source mtimes. This is a nightly Cargo
+# option; rust-toolchain.toml pins the nightly toolchain used by the repository.
+# Build-script rerun-if-changed inputs still use mtimes.
+[build]
+fingerprint = 'content'
+
+[unstable]
+checksum-freshness = true

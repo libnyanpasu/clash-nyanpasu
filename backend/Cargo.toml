@@ -116,6 +116,15 @@ codegen-units = 1
 lto = true
 opt-level = 's'
 
+# Keep source-level backtraces without emitting full variable and type DWARF.
+# Full debug info makes the app test binaries exceed 1 GiB and dominates app
+# relinks with linker and filesystem work.
+[profile.dev]
+debug = 'line-tables-only'
+
+[profile.test]
+debug = 'line-tables-only'
+
 # Release code with line tables, so heap profilers can resolve allocation
 # stacks to source lines. Codegen units only change inlining and layout, not
 # what the program allocates, so the profile keeps Cargo's parallel default.

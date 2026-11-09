@@ -69,6 +69,16 @@ on:
         description: 'build arch target'
         required: true
         default: 'x86_64'
+    secrets:
+      TAURI_PRIVATE_KEY:
+        description: 'Signing key of the updater bundles'
+        required: false
+      TAURI_KEY_PASSWORD:
+        description: 'Password of the signing key'
+        required: false
+      FILE_SERVER_TOKEN:
+        description: 'Token of the archive file server (uploads are currently paused)'
+        required: false
 
 jobs:
   build:

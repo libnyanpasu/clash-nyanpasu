@@ -67,7 +67,10 @@ jobs:
       bundle-type: 'both'
       arch: 'x86_64'
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   windows_aarch64_build:
     name: Windows aarch64 Build
@@ -80,7 +83,10 @@ jobs:
       bundle-type: 'both'
       arch: 'aarch64'
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   linux_amd64_build:
     name: Linux amd64 Build
@@ -91,7 +97,10 @@ jobs:
       nightly: true
       tag: 'pre-release'
       arch: 'x86_64'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   linux_aarch64_build:
     name: Linux aarch64 Build
@@ -102,7 +111,10 @@ jobs:
       nightly: true
       tag: 'pre-release'
       arch: 'aarch64'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   macos_amd64_build:
     name: macOS amd64 Build
@@ -113,7 +125,10 @@ jobs:
       nightly: true
       aarch64: false
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   macos_aarch64_build:
     name: macOS aarch64 Build
@@ -124,7 +139,10 @@ jobs:
       nightly: true
       aarch64: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   publish_storage:
     name: Prepare Complete Storage Inventory
@@ -142,7 +160,16 @@ jobs:
       backend: prepare
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   publish_sourceforge:
     name: Publish SourceForge Mirror
@@ -154,7 +181,16 @@ jobs:
       published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   update_tag:
     name: Update tag
@@ -191,7 +227,11 @@ jobs:
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: true
-    secrets: inherit
+    secrets:
+      SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   updater_sourceforge:
     name: Publish Verified SourceForge Updater
@@ -201,7 +241,11 @@ jobs:
     with:
       nightly: true
       sourceforge_mirrors_json: ${{ needs.verify_sourceforge.outputs.sourceforge_mirrors_json }}
-    secrets: inherit
+    secrets:
+      SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   notify_telegram:
     name: Send Release Message to Telegram
@@ -211,7 +255,8 @@ jobs:
     with:
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
 
   telegram:
     name: Publish Files to Telegram
@@ -223,7 +268,16 @@ jobs:
       published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   verify_sourceforge:
     name: Verify SourceForge Mirror

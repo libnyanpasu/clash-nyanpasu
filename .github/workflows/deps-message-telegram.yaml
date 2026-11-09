@@ -28,6 +28,10 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      TELEGRAM_TOKEN:
+        description: 'Bot token of the release channel'
+        required: false
 
 jobs:
   telegram:

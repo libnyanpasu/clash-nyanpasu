@@ -1,5 +1,4 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import { filesize } from 'filesize'
 import { ComponentProps, PropsWithChildren } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
@@ -10,6 +9,7 @@ import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
 import { formatRelativeTime } from '@/utils/date'
+import { formatBytes } from '@/utils/format-bytes'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
@@ -123,8 +123,7 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
                   <div>{progress.toFixed(2)}%</div>
 
                   <div>
-                    {filesize(used, { standard: 'iec' })} /
-                    {filesize(total, { standard: 'iec' })}
+                    {formatBytes(used)} / {formatBytes(total)}
                   </div>
                 </div>
               </TextMarquee>

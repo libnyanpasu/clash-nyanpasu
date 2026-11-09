@@ -1,9 +1,9 @@
 import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-rounded'
 import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
-import { filesize } from 'filesize'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { ActionSwap } from '@nyanpasu/ui/action-swap-text'
 import { m } from '@/paraglide/messages'
+import { formatBytes } from '@/utils/format-bytes'
 import { useGroupTrafficSpeed } from '../../_modules/hooks'
 
 const DEFAULT_ROTATE_MS = 3000
@@ -66,7 +66,7 @@ export function GroupTrafficSpeed({
           <Icon className="text-on-surface-variant size-3.5 shrink-0" />
 
           <span className="text-on-surface tabular-nums">
-            {filesize(value, { standard: 'iec' })}/s
+            {formatBytes(value)}/s
           </span>
         </span>
       ))}

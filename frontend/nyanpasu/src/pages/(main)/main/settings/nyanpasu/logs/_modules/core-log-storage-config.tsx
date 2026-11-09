@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
+import { byteUnitLabel } from '@/utils/information-unit'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useSetting } from '@nyanpasu/query'
 import {
@@ -80,7 +81,7 @@ export default function CoreLogStorageConfig() {
             min={MIN_SHARD_SIZE}
             max={MAX_SHARD_SIZE}
             step={SHARD_SIZE_STEP}
-            unit=" MiB"
+            unit={` ${byteUnitLabel('MiB')}`}
             onCommit={handleShardSizeCommit}
           />
 
@@ -90,7 +91,7 @@ export default function CoreLogStorageConfig() {
             min={settings.shard_size_mib * 2}
             max={MAX_BUDGET}
             step={BUDGET_STEP}
-            unit=" MiB"
+            unit={` ${byteUnitLabel('MiB')}`}
             onCommit={handleBudgetCommit}
           />
         </SettingsCardContent>

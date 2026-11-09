@@ -2,7 +2,6 @@ import ArrowRightAltRounded from '~icons/material-symbols/arrow-right-alt-rounde
 import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-code-update-outline-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import { isObject } from 'es-toolkit/compat'
-import { filesize } from 'filesize'
 import { motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
@@ -17,6 +16,7 @@ import DeprecatedCoreBadge from '@/components/settings/deprecated-core-badge'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { formatBytes } from '@/utils/format-bytes'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
@@ -123,7 +123,7 @@ function useCoreUpdateTask(
 
     if (state === 'downloading') {
       const { downloaded, total, speed } = updater.downloader
-      return `${filesize(downloaded, { standard: 'iec' })} / ${filesize(total, { standard: 'iec' })} · ${filesize(speed ?? 0, { standard: 'iec' })}/s`
+      return `${formatBytes(downloaded)} / ${formatBytes(total)} · ${formatBytes(speed ?? 0)}/s`
     }
 
     if (state === 'decompressing') {

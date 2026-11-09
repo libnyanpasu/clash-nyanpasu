@@ -1,6 +1,5 @@
 import AutoAwesomeRounded from '~icons/material-symbols/auto-awesome-rounded'
 import InfoOutlineRounded from '~icons/material-symbols/info-outline-rounded'
-import { filesize } from 'filesize'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
@@ -22,6 +21,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { formatDate } from '@/utils/date'
+import { formatBytes } from '@/utils/format-bytes'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useProfileMutations, useProfileUrlProbe } from '@nyanpasu/query'
@@ -398,10 +398,10 @@ function ImportUrlSubscription({ probe }: { probe: ProfileUrlProbe }) {
             </span>
 
             <span className="font-medium tabular-nums">
-              {filesize(quota.remaining, { standard: 'iec' })}{' '}
+              {formatBytes(quota.remaining)}{' '}
               <span className="text-on-surface-variant font-normal">
                 {m.profile_card_total({
-                  total: filesize(quota.total, { standard: 'iec' }),
+                  total: formatBytes(quota.total),
                 })}
               </span>
             </span>

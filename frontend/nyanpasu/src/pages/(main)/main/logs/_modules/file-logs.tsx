@@ -29,6 +29,7 @@ import {
 } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
+import { byteUnitLabel } from '@/utils/information-unit'
 import { useFileLogs } from '@nyanpasu/query'
 import {
   type Filter,
@@ -282,7 +283,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
               <span>
                 {m.logs_loading()}
                 {logs.page &&
-                  ` ${(Number(logs.page.indexed_bytes) / 1048576).toFixed(1)} / ${(Number(logs.page.file_bytes) / 1048576).toFixed(1)} MiB`}
+                  ` ${(Number(logs.page.indexed_bytes) / 1048576).toFixed(1)} / ${(Number(logs.page.file_bytes) / 1048576).toFixed(1)} ${byteUnitLabel('MiB')}`}
               </span>
             )}
             {logs.error && (

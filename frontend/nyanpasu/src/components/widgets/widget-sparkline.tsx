@@ -2,12 +2,12 @@ import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded
 import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
-import { filesize } from 'filesize'
 import { ComponentProps, ReactNode } from 'react'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { Sparkline } from '@nyanpasu/ui/sparkline'
 import { m } from '@/paraglide/messages'
+import { formatBytes } from '@/utils/format-bytes'
 import {
   MAX_TRAFFIC_HISTORY,
   useClashConnections,
@@ -106,7 +106,7 @@ function TrafficPreview({
           : m.dashboard_widget_traffic_upload()}
       </WidgetTitle>
       <WidgetMetric>
-        {filesize(latest, {
+        {formatBytes(latest, {
           standard: unit === 'bits' ? 'si' : 'iec',
           bits: unit === 'bits',
         })}
@@ -115,7 +115,7 @@ function TrafficPreview({
       {showTotal && (
         <WidgetMeta>
           {m.dashboard_widget_traffic_total({
-            value: filesize(total, { standard: 'iec' }),
+            value: formatBytes(total),
           })}
         </WidgetMeta>
       )}
@@ -148,7 +148,7 @@ function TrafficRate({
 
   return (
     <>
-      {filesize(clashTraffic?.at(-1)?.[direction] ?? 0, {
+      {formatBytes(clashTraffic?.at(-1)?.[direction] ?? 0, {
         standard: unit === 'bits' ? 'si' : 'iec',
         bits: unit === 'bits',
       })}
@@ -165,7 +165,7 @@ function TrafficTotal({ field }: { field: 'downloadTotal' | 'uploadTotal' }) {
   return (
     total !== undefined &&
     m.dashboard_widget_traffic_total({
-      value: filesize(total, { standard: 'iec' }),
+      value: formatBytes(total),
     })
   )
 }
@@ -350,7 +350,7 @@ function MemoryChart({ samples }: { samples: number }) {
 function MemoryInUse() {
   const { data: clashMemory } = useClashMemory()
 
-  return <>{filesize(clashMemory?.at(-1)?.inuse ?? 0, { standard: 'iec' })}</>
+  return <>{formatBytes(clashMemory?.at(-1)?.inuse ?? 0)}</>
 }
 
 export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
@@ -372,9 +372,7 @@ export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
         <WidgetTitle icon={MemoryOutlineRounded}>
           {m.dashboard_widget_memory()}
         </WidgetTitle>
-        <WidgetMetric>
-          {filesize(previewMemory.at(-1)!, { standard: 'iec' })}
-        </WidgetMetric>
+        <WidgetMetric>{formatBytes(previewMemory.at(-1)!)}</WidgetMetric>
         <WidgetMeta />
       </SparklineCard>
     )

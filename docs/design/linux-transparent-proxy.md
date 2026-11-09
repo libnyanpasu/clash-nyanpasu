@@ -138,13 +138,9 @@ changes are committed in that repository before the parent records its gitlink.
 Keep protocol/build version alignment explicit; an old downloaded service must
 report unsupported capability rather than silently succeeding.
 
-The MVP uses an explicitly approved local development pin for the runtime
-submodule. `prepare:check` still downloads the preceding service release; that
-binary does not implement capture. Build the service from the pinned sources on
-Linux (`cargo build --manifest-path backend/nyanpasu-runtime/Cargo.toml -p
-nyanpasu-service --release`) and install that binary through the existing service
-installation procedure. Publish the runtime and restore a released-tag pin before
-shipping the feature. No release or push is part of this implementation.
+Transparent capture requires `nyanpasu-service` v2.0.3 or newer. The application
+pins the released runtime tag in its submodule, and `prepare:check` downloads the
+matching service sidecar and records its version for installation and updates.
 
 Unit tests cover validation, rule scope, conflict handling and failed-install
 cleanup with injected adapters. Repository boundary gates, Rust checks and frontend

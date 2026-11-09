@@ -80,7 +80,7 @@ impl nyanpasu_contracts::service::ServiceProcessControl for HostTransitionServic
         if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(serde_json::to_string(&nyanpasu_ipc::types::StatusInfo {
                 name: "test-service".into(),
-                version: "2.0.2".into(),
+                version: "2.0.3".into(),
                 status: nyanpasu_ipc::types::ServiceStatus::Stopped,
                 server: None,
             })
@@ -89,11 +89,11 @@ impl nyanpasu_contracts::service::ServiceProcessControl for HostTransitionServic
         self.calls.lock().unwrap().push("ensure_ready");
         Ok(serde_json::to_string(&nyanpasu_ipc::types::StatusInfo {
             name: std::borrow::Cow::Borrowed("test-service"),
-            version: std::borrow::Cow::Borrowed("2.0.2"),
+            version: std::borrow::Cow::Borrowed("2.0.3"),
             status: nyanpasu_ipc::types::ServiceStatus::Running,
             server: Some(nyanpasu_ipc::api::status::StatusResBody {
                 log_query_version: None,
-                version: std::borrow::Cow::Borrowed("2.0.2"),
+                version: std::borrow::Cow::Borrowed("2.0.3"),
                 core_infos: nyanpasu_ipc::api::status::CoreInfos {
                     instance_id: None,
                     r#type: None,

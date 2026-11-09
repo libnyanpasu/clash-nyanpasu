@@ -13,10 +13,9 @@ use nyanpasu_ipc::types::{ServiceStatus, StatusInfo};
 /// PR-5-pre 起，只有主版本等于此值的 daemon 允许承载核心生命周期。
 pub const REQUIRED_SERVICE_MAJOR: u64 = 2;
 
-/// 残留 pid 记录遇 PID 复用时的清扫修复随 `2.0.2` 发布。
-/// 更早版本在记录的 PID 被其他进程复用后无法构造内核管理器，服务每次启动都失败，
-/// 必须先升级服务。
-pub const REQUIRED_SERVICE_MIN: &str = "2.0.2";
+/// Linux transparent proxy and desktop-owned IPC authorization ship in `2.0.3`.
+/// Earlier services cannot provide those routes or authorize the current desktop session.
+pub const REQUIRED_SERVICE_MIN: &str = "2.0.3";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -247,6 +246,26 @@ mod tests {
             compat,
             ServiceCompat::Incompatible {
                 server_version: "2.0.1".to_owned(),
+                required_major: REQUIRED_SERVICE_MAJOR,
+                required_min: REQUIRED_SERVICE_MIN.to_owned(),
+            }
+        );
+        assert!(!compat.allows_service_backend());
+    }
+
+    #[test]
+    fn previous_release_without_transparent_proxy_is_incompatible() {
+        let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
+        info.server
+            .as_mut()
+            .expect("running fixture must include server info")
+            .version = Cow::Borrowed("2.0.2");
+        let compat = ServiceCompat::classify(&info);
+
+        assert_eq!(
+            compat,
+            ServiceCompat::Incompatible {
+                server_version: "2.0.2".to_owned(),
                 required_major: REQUIRED_SERVICE_MAJOR,
                 required_min: REQUIRED_SERVICE_MIN.to_owned(),
             }

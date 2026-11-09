@@ -201,8 +201,6 @@ export default defineConfig({
   mode: dev ? 'development' : 'production',
   plugins: [tailwindPlugin(), react(), Icons({ compiler: 'jsx' })],
   define: {
-    OS_PLATFORM: `"${process.platform}"`,
-    WIN_PORTABLE: false,
     IS_NIGHTLY: false,
   },
   resolve: {

@@ -3,7 +3,7 @@ import { SwitchItem } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { isBrowser } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import {
   SettingsCard,
@@ -13,7 +13,8 @@ import AboutCardHeader from './about-card-header'
 import ReleaseChannelPreference from './release-channel-preference'
 
 export default function UpdatePreferencesCard() {
-  if (isBrowser()) {
+  const isDesktop = useMatchesPlatform('desktop')
+  if (!isDesktop) {
     return (
       <SettingsCard data-slot="about-update-preferences-card">
         <AboutCardHeader icon={TuneRounded}>

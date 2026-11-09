@@ -19,7 +19,7 @@ import {
 import useCoreIcon from '@/hooks/use-core-icon'
 import { useTransparentProxy } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
-import { isLinux, isTauri } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import {
   ClashCores,
   useClashConfig,
@@ -140,9 +140,12 @@ export function ProxyShortcutsWidget({
   id,
   onCloseClick,
 }: WidgetComponentProps) {
+  const showTransparent = useMatchesPlatform({
+    surface: 'desktop',
+    clientOs: 'linux',
+  })
   const config = useWidgetConfig(id, WidgetId.ProxyShortcuts)
   const { sourceOnly, isOverlay } = useDndGridContext()
-  const showTransparent = isLinux && isTauri()
   const buttons = [
     ...(config.order === 'system-first'
       ? ['system', 'tun']

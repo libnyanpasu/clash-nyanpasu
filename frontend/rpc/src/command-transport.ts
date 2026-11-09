@@ -1,5 +1,5 @@
 /* oxlint-disable no-throw-literal -- tauri-specta wraps string rejections in its Result return */
-import { isTauri } from '@tauri-apps/api/core'
+import { detectRuntime, type Bridge, type Surface } from '@nyanpasu/platform'
 import { commands as tauriCommands } from './tauri-bindings'
 
 export interface RpcCommandTransport {
@@ -56,12 +56,17 @@ async function invokeHttpCommand<T>(
 }
 
 /** Builds a command adapter with no process-wide state. */
-export function createCommandTransport(): RpcCommandTransport {
+export function createCommandTransport(
+  bridge: Bridge = detectRuntime().bridge,
+  surface: Surface = detectRuntime().platform.surface,
+): RpcCommandTransport {
   return {
     async invoke<T>(method: string, params: Record<string, unknown> = {}) {
-      if (!isTauri()) {
+      if (bridge === 'none' && surface === 'browser') {
         return invokeHttpCommand<T>(method, params)
       }
+      if (bridge !== 'tauri')
+        throw new Error('No RPC transport is available for this runtime')
       const result = await tauriCommands.callRpc(method, params)
       if (result.status === 'error')
         throw result.error.domain_error ?? result.error

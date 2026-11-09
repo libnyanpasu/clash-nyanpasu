@@ -7,21 +7,22 @@ import nyanpasuMergeSchema from 'meta-json-schema/schemas/clash-nyanpasu-merge-j
 import clashMetaSchema from 'meta-json-schema/schemas/meta-json-schema.json'
 import * as monaco from 'monaco-editor'
 import { configureMonacoYaml } from 'monaco-yaml'
-import { isWindows } from '@nyanpasu/platform'
+import type { ClientOs } from '@nyanpasu/platform'
 
-export const MONACO_FONT_FAMILY = [
-  '"Cascadia Code NF"',
-  '"Cascadia Code"',
-  '"Fira Code"',
-  '"JetBrains Mono"',
-  '"Roboto Mono"',
-  '"Source Code Pro"',
-  'Consolas',
-  'Menlo',
-  'Monaco',
-  'monospace',
-  ...(isWindows ? ['"twemoji mozilla"'] : []),
-].join(', ')
+export const getMonacoFontFamily = (clientOs: ClientOs) =>
+  [
+    '"Cascadia Code NF"',
+    '"Cascadia Code"',
+    '"Fira Code"',
+    '"JetBrains Mono"',
+    '"Roboto Mono"',
+    '"Source Code Pro"',
+    'Consolas',
+    'Menlo',
+    'Monaco',
+    'monospace',
+    ...(clientOs === 'windows' ? ['"twemoji mozilla"'] : []),
+  ].join(', ')
 
 let initd = false
 

@@ -1,13 +1,13 @@
 import { commands } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { isTauri } from '@nyanpasu/platform'
+import { createBrowserAdapter, detectRuntime } from '@nyanpasu/platform'
 
 /** Opens a link in the system browser rather than in the webview. */
 export async function openExternal(url: string) {
   try {
-    if (isTauri()) await commands.openThat(url)
-    else window.open(url, '_blank', 'noopener,noreferrer')
+    if (detectRuntime().bridge === 'tauri') await commands.openThat(url)
+    else createBrowserAdapter()?.openExternal(url)
   } catch (error) {
     message(formatError(error), { kind: 'error', error })
   }

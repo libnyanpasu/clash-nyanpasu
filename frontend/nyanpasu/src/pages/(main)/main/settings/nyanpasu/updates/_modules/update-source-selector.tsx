@@ -11,7 +11,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isBrowser } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { type UpdateSource } from '@nyanpasu/rpc/types'
 import {
@@ -115,7 +115,8 @@ function FixedSource({
 }
 
 export default function UpdateSourceSelector() {
-  if (isBrowser()) {
+  const isDesktop = useMatchesPlatform('desktop')
+  if (!isDesktop) {
     return (
       <SettingsCard data-slot="about-package-source-card">
         <AboutCardHeader icon={DnsRounded}>

@@ -17,8 +17,8 @@ const state = vi.hoisted(() => ({
   },
 }))
 // The tray offers no presets here; the widget's own set still does.
-vi.mock('@nyanpasu/platform', () => ({
-  isWindows: false,
+vi.mock('@nyanpasu/platform/react', () => ({
+  useMatchesPlatform: (condition: unknown) => condition !== 'browser',
 }))
 vi.mock('@/components/ui/image', () => ({
   TrayImage: () => <span />,

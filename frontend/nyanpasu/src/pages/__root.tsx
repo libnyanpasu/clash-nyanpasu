@@ -1,4 +1,11 @@
-import { lazy, useCallback, useEffect, useRef, type RefObject } from 'react'
+import {
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -14,7 +21,7 @@ import { formatError } from '@/utils'
 import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
-import { isBrowser, isTauri } from '@nyanpasu/platform'
+import { createWindowAdapter, detectRuntime } from '@nyanpasu/platform'
 import { NyanpasuQueryProvider, useSettings } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
 import { type Degradation, type DegradationPhase } from '@nyanpasu/rpc/types'
@@ -25,13 +32,10 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-
-const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 // The backend shows a window once its frontend has rendered.
 const reportWindowReady = () => {
-  if (isTauri()) {
+  if (detectRuntime().bridge === 'tauri') {
     rpc
       .reportWindowReady()
       .then(unwrapResult)
@@ -42,6 +46,7 @@ const reportWindowReady = () => {
 }
 
 export const Catch = ({ error }: ErrorComponentProps) => {
+  const [appWindow] = useState(createWindowAdapter)
   // A window that failed to render is still shown, with the error.
   useEffect(reportWindowReady, [])
 
@@ -101,7 +106,10 @@ const TanStackRouterDevtools = import.meta.env.PROD
 
 export const Route = createRootRoute({
   beforeLoad: ({ location }) => {
-    if (isBrowser() && location.pathname === '/') {
+    if (
+      detectRuntime().platform.surface === 'browser' &&
+      location.pathname === '/'
+    ) {
       throw redirect({ to: '/main/dashboard' })
     }
   },
@@ -223,6 +231,7 @@ function DeepLinkImport() {
 }
 
 export default function App() {
+  const [appWindow] = useState(createWindowAdapter)
   const degradationHandler = useRef<DegradationHandler | null>(null)
   const onDegraded = useCallback(
     (items: Degradation[]) => degradationHandler.current?.(items),
@@ -244,7 +253,7 @@ export default function App() {
                   <ImportUrlProvider>
                     <WindowReadyReporter />
                     <MutationDegradationNotifier handler={degradationHandler} />
-                    {appWindow?.label === 'main' && <DeepLinkImport />}
+                    {appWindow?.label() === 'main' && <DeepLinkImport />}
                     <Outlet />
                   </ImportUrlProvider>
                 </SnackbarProvider>

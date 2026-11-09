@@ -6,14 +6,12 @@ import { registerCssDataSlotCompletion } from '@/utils/monaco-css'
 import { message } from '@/utils/notification'
 import MonacoEditor from '@monaco-editor/react'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
+import { createWindowAdapter } from '@nyanpasu/platform'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import ActionButton from '../_modules/action-button'
 import Header from '../_modules/header'
-import { MONACO_FONT_FAMILY } from '../_modules/utils'
-
-const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
+import { getMonacoFontFamily } from '../_modules/utils'
 
 const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS/LESS Editor! */
 /* You can write standard CSS or LESS syntax to customize the appearance of the app. */
@@ -36,6 +34,8 @@ export const Route = createFileRoute('/(editor)/editor/css/')({
 })
 
 function RouteComponent() {
+  const { clientOs } = usePlatform()
+  const [currentWindow] = useState(createWindowAdapter)
   const { themeMode } = useExperimentalThemeContext()
 
   const customCss = useCustomCss()
@@ -88,7 +88,7 @@ function RouteComponent() {
             minimap: { enabled: false },
             wordWrap: 'on',
             automaticLayout: true,
-            fontFamily: MONACO_FONT_FAMILY,
+            fontFamily: getMonacoFontFamily(clientOs),
             quickSuggestions: { strings: true, comments: false, other: true },
           }}
         />

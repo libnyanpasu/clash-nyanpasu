@@ -2,17 +2,17 @@
 
 The frontend workspace has nine private source packages:
 
-| Package               | Owns                                                         | Dependency boundary                                       |
-| --------------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
-| `@nyanpasu/constants` | Immutable values shared across packages                      | No app imports or runtime services                        |
-| `@nyanpasu/utils`     | Pure reusable helpers such as `cn` and `chains`              | No React, Tauri, or app imports                           |
-| `@nyanpasu/hooks`     | Browser and React hooks, including shared breakpoints        | Depends on constants; no app imports                      |
-| `@nyanpasu/platform`  | Platform capabilities and browser/native adapters            | Native access is provided lazily at the boundary          |
-| `@nyanpasu/rpc`       | Generated operation bindings and transport adapters          | No React Query or React dependency                        |
-| `@nyanpasu/query`     | Query/mutation hooks, providers, and application data access | Depends on RPC; receive the RPC client/context explicitly |
-| `@nyanpasu/theme`     | Theme computation and shared theme assets                    | No app or route dependencies                              |
-| `@nyanpasu/ui`        | Reusable presentational controls and primitives              | No app, platform, RPC, or query imports                   |
-| `@nyanpasu/nyanpasu`  | Desktop/browser application composition                      | Owns routes, providers, Vite plugins, and Paraglide       |
+| Package               | Owns                                                              | Dependency boundary                                                        |
+| --------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `@nyanpasu/constants` | Immutable values shared across packages                           | No app imports or runtime services                                         |
+| `@nyanpasu/utils`     | Pure reusable helpers such as `cn` and `chains`                   | No React, Tauri, or app imports                                            |
+| `@nyanpasu/hooks`     | Browser and React hooks, including shared breakpoints             | Depends on constants; no app imports                                       |
+| `@nyanpasu/platform`  | Runtime snapshots, platform matching, and browser/native adapters | Native access is provided lazily; React bindings use the `./react` subpath |
+| `@nyanpasu/rpc`       | Generated operation bindings and transport adapters               | Select transports from `@nyanpasu/platform`; no React dependency           |
+| `@nyanpasu/query`     | Query/mutation hooks, providers, and application data access      | Depends on RPC and platform; receive the RPC client/context explicitly     |
+| `@nyanpasu/theme`     | Theme computation and shared theme assets                         | No app or route dependencies                                               |
+| `@nyanpasu/ui`        | Reusable presentational controls and primitives                   | No app, platform, RPC, or query imports                                    |
+| `@nyanpasu/nyanpasu`  | Desktop/browser application composition                           | Owns routes, providers, Vite plugins, and Paraglide                        |
 
 Dependencies flow from the app into these capabilities, not back into the app.
 `rpc` is a transport layer; `query` adds React Query behavior above it. UI
@@ -30,6 +30,8 @@ package or require generated `dist` files before app builds. Consumers import th
 package API (`import { Button, Card } from '@nyanpasu/ui'`, for example), not a sibling package's `src`
 path. The app may use its own `@` alias; shared-package imports resolve through
 workspace package exports.
+
+For surface, OS and runtime decisions, use the snapshot and adapters documented in [Frontend platform facts and adapters](frontend-platform.md).
 
 The root `tsconfig.json` has `files: []` and references each package as an index.
 It is not a `tsc -b` publisher or build pipeline. The base, browser, and Node

@@ -1,6 +1,6 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
-import { isMacOS } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import TrayIconConfig from '../_modules/tray-icon-config'
@@ -14,6 +14,10 @@ export const Route = createFileRoute('/(main)/main/settings/nyanpasu/tray/')({
 })
 
 function RouteComponent() {
+  const showTrayIconConfig = useMatchesPlatform([
+    { surface: 'desktop', clientOs: 'windows' },
+    { surface: 'desktop', clientOs: 'linux' },
+  ])
   const { value: trayMenuMode } = useSetting('tray_menu_mode')
 
   return (
@@ -30,7 +34,7 @@ function RouteComponent() {
             {trayMenuMode === 'native' && <TrayProxiesSelector />}
           </SettingsGroup>
 
-          {!isMacOS && <TrayIconConfig />}
+          {showTrayIconConfig && <TrayIconConfig />}
         </div>
 
         <div data-slot="window-settings-container">

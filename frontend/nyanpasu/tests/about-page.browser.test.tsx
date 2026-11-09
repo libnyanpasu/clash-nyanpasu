@@ -5,16 +5,16 @@ import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
 import { Route } from '../src/pages/(main)/main/settings/about/index'
 
+vi.hoisted(() => {
+  Object.assign(globalThis, { isTauri: true })
+})
+
 const rpc = vi.hoisted(() => ({
   openThat: vi.fn(),
   reportIssue: vi.fn(),
 }))
 
 vi.mock('@/services/rpc', () => ({ rpc }))
-vi.mock('@nyanpasu/platform', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/platform')>()),
-  isTauri: () => true,
-}))
 vi.mock('@/components/page-title', () => ({
   PageTitle: ({ children }: { children: string }) => <h1>{children}</h1>,
 }))

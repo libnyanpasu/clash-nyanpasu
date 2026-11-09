@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { createWindowAdapter, isMacOS } from '@nyanpasu/platform'
+import { createWindowAdapter } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { useSuspenseQuery } from '@tanstack/react-query'
 
 const IS_MAXIMIZED_QUERY_KEY = 'isMaximized'
 
 export default function useWindowMaximized() {
+  const isMacOS = useMatchesPlatform({ surface: 'desktop', clientOs: 'macos' })
   const [appWindow] = useState(createWindowAdapter)
 
   // Only `data` is read, so the tracked query re-renders callers when the

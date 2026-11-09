@@ -1,12 +1,12 @@
 import { rpc } from '@/services/rpc'
 import { probeWebviewCapabilities } from '@/utils/webview-capabilities'
-import { isTauri } from '@nyanpasu/platform'
+import { createBrowserAdapter, detectRuntime } from '@nyanpasu/platform'
 
 const REPOSITORY_URL = 'https://github.com/libnyanpasu/clash-nyanpasu'
 
 async function openHelpLink(url: string) {
-  if (isTauri()) return rpc.openThat(url)
-  window.location.assign(url)
+  if (detectRuntime().bridge === 'tauri') return rpc.openThat(url)
+  createBrowserAdapter()?.navigate(url)
 }
 
 export function openWiki() {

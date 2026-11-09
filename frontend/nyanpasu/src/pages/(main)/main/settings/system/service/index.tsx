@@ -1,6 +1,6 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
-import { isMacOS, isWindows } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,
@@ -62,6 +62,10 @@ const SystemLaunch = () => {
 }
 
 const SystemTools = () => {
+  const isWindowsDesktop = useMatchesPlatform({
+    surface: 'desktop',
+    clientOs: 'windows',
+  })
   return (
     <div data-slot="system-tools-container">
       <SettingsLabel>
@@ -71,13 +75,17 @@ const SystemTools = () => {
       <SettingsGroup>
         <DnsCacheButton />
 
-        {isWindows && <UwpToolsButton />}
+        {isWindowsDesktop && <UwpToolsButton />}
       </SettingsGroup>
     </div>
   )
 }
 
 function RouteComponent() {
+  const hasSystemTools = useMatchesPlatform([
+    { surface: 'desktop', clientOs: 'windows' },
+    { surface: 'desktop', clientOs: 'macos' },
+  ])
   return (
     <>
       <PageTitle backTo="/main/settings">
@@ -89,7 +97,7 @@ function RouteComponent() {
 
         <SystemLaunch />
 
-        {(isWindows || isMacOS) && <SystemTools />}
+        {hasSystemTools && <SystemTools />}
       </div>
     </>
   )

@@ -8,7 +8,7 @@ import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { isLinux, isTauri } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import {
   unwrapQueryOptions,
   useClashSetting,
@@ -57,7 +57,10 @@ export default function TransparentProxyConfigSettings() {
   const queryClient = useQueryClient()
   const statusOptions = api.queries.getTransparentProxyStatus()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'
-  const supportedHost = isLinux && isTauri()
+  const supportedHost = useMatchesPlatform({
+    surface: 'desktop',
+    clientOs: 'linux',
+  })
   const statusQuery = useQuery({
     ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
     enabled: supportedHost && supportedCore,

@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { isWindows } from '@nyanpasu/platform'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { cn } from '@nyanpasu/utils'
 
 const FileDropZoneContext = createContext<{
@@ -112,6 +112,8 @@ export function FileDropZone({
   children,
   ...props
 }: FileDropZoneProps) {
+  const { clientOs } = usePlatform()
+  const isWindows = clientOs === 'windows'
   const [isDragging, setIsDragging] = useState(false)
 
   const [isLoading, setIsLoading] = useState(false)

@@ -7,9 +7,13 @@
     "typecheck": "tsc --noEmit"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./react": "./src/react.tsx"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4"
+  },
+  "peerDependencies": {
+    "react": "19.3.1"
   }
 }

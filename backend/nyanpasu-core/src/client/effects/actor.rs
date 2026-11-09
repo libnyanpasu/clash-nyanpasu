@@ -145,8 +145,8 @@ fn group(kind: EffectKind) -> usize {
         | EffectKind::Widget
         | EffectKind::WidgetLogo
         | EffectKind::Tray => 2,
-        // One owner: the client's wrapper applies both to the Core log owners.
-        EffectKind::CoreLogLevel | EffectKind::CoreLogStorage => 3,
+        // The client applies core log and transparent capture effects.
+        EffectKind::CoreLogLevel | EffectKind::CoreLogStorage | EffectKind::TransparentProxy => 3,
     }
 }
 
@@ -272,6 +272,29 @@ impl State {
         self.pending.insert(kind, effect);
     }
 
+    /// A new runtime apply can invalidate an effect even when its projected
+    /// port did not change. Re-submit the current desired value against the
+    /// newly accepted core generation, superseding an in-flight attempt too.
+    fn reapply(&mut self, kind: EffectKind) {
+        let Some(effect) = ApplicationEffectPlan::full(&self.desired)
+            .effects()
+            .iter()
+            .find(|effect| effect.kind() == kind)
+            .cloned()
+        else {
+            return;
+        };
+        let entry = self.entries.entry(kind).or_insert_with(|| Entry::new(kind));
+        entry.automatic = false;
+        entry.next = None;
+        entry.health = ConvergenceHealth::Pending;
+        self.revision += 1;
+        let revision = EffectRevision::new(self.revision);
+        entry.status.desired_revision = revision;
+        entry.status.health = EffectHealth::Pending;
+        self.pending.insert(kind, effect);
+    }
+
     fn drive(&mut self, myself: &ActorRef<Message>) {
         // A group that completes during the shutdown starts nothing new: what
         // is still pending belongs to an app that is leaving.
@@ -361,6 +384,7 @@ impl Actor for EffectsActor {
                 requested,
             } if !state.shutdown.is_cancelled() => {
                 let mut inputs = state.desired.clone();
+                let runtime_notification = matches!(&slice, Slice::Ports(_));
                 match slice {
                     Slice::Application(app) => inputs.app = *app,
                     Slice::Clash(clash) => inputs.clash = clash,
@@ -374,6 +398,9 @@ impl Actor for EffectsActor {
                     .map(ApplicationEffect::kind)
                     .collect();
                 state.enqueue(inputs, refresh, full);
+                if runtime_notification && !changed.contains(&EffectKind::TransparentProxy) {
+                    state.reapply(EffectKind::TransparentProxy);
+                }
                 for kind in requested {
                     if !changed.contains(&kind) {
                         state.retry(kind, false);

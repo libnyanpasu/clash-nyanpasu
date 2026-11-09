@@ -183,6 +183,7 @@ impl PresentationEffectsPort for PresentationEffectExecutor {
                 ApplicationEffect::Logger(_)
                 | ApplicationEffect::CoreLogLevel(_)
                 | ApplicationEffect::CoreLogStorage(_)
+                | ApplicationEffect::TransparentProxy(_)
                 | ApplicationEffect::AutoLaunch(_)
                 | ApplicationEffect::SystemProxy(_)
                 | ApplicationEffect::ProxyGuard(_) => {

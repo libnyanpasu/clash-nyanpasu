@@ -88,7 +88,7 @@ async fn reconcile(client: &NyanpasuClient) -> EffectsSnapshot {
     client.inner.effects.publish_full(None);
     wait_for(client, |snapshot| {
         // One entry per `EffectKind`.
-        snapshot.effects.len() == 11
+        snapshot.effects.len() == 12
             && snapshot
                 .effects
                 .iter()

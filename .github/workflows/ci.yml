@@ -15,6 +15,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # Entering the same concurrency group cancels the PR's running or pending CI.
   # This base-branch event also handles conflicted PRs; never run PR code here.

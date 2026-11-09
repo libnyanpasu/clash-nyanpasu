@@ -8,6 +8,9 @@ concurrency:
   group: release-publication
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
@@ -130,6 +133,9 @@ jobs:
 
   publish_storage:
     name: Prepare Complete Storage Inventory
+    permissions:
+      actions: read # the publisher downloads this run's reports
+      contents: read
     needs:
       [
         windows_build,
@@ -157,6 +163,9 @@ jobs:
 
   publish_sourceforge:
     name: Publish SourceForge Mirror
+    permissions:
+      actions: read # the publisher downloads this run's reports
+      contents: read
     needs: [publish_storage]
     if: ${{ needs.publish_storage.outputs.publication_prepared == 'true' && vars.SOURCEFORGE_PROJECT != '' }}
     uses: ./.github/workflows/deps-publish-storage.yaml
@@ -178,6 +187,8 @@ jobs:
 
   upload_release_assets:
     name: Upload Release Assets
+    permissions:
+      contents: write
     needs:
       [
         windows_build,
@@ -221,6 +232,8 @@ jobs:
 
   updater:
     name: Create Updater
+    permissions:
+      contents: write
     needs: [upload_release_assets]
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
@@ -233,6 +246,8 @@ jobs:
 
   updater_sourceforge:
     name: Publish Verified SourceForge Updater
+    permissions:
+      contents: write
     needs: [updater, verify_sourceforge]
     if: ${{ !cancelled() && needs.updater.result == 'success' && needs.verify_sourceforge.result == 'success' && needs.verify_sourceforge.outputs.sourceforge_mirrors_json != '' }}
     uses: ./.github/workflows/deps-create-updater.yaml
@@ -258,6 +273,9 @@ jobs:
 
   telegram:
     name: Publish Files to Telegram
+    permissions:
+      actions: read # the publisher downloads this run's reports
+      contents: read
     if: ${{ startsWith(github.repository, 'libnyanpasu') && needs.publish_storage.outputs.publication_prepared == 'true' }}
     needs: [publish_storage]
     uses: ./.github/workflows/deps-publish-storage.yaml

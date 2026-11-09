@@ -10,6 +10,8 @@ jobs:
     name: Generate Manifest
     runs-on: ubuntu-latest
     if: startsWith(github.repository, 'libnyanpasu')
+    permissions:
+      contents: read # the manifest push uses the release app token below
     steps:
       # The RequireCI ruleset allows the release app to bypass required checks.
       - name: Create release app token
@@ -67,6 +69,8 @@ jobs:
     name: Generate Manifest V1
     runs-on: ubuntu-latest
     if: startsWith(github.repository, 'libnyanpasu')
+    permissions:
+      contents: write # pushes the regenerated manifest to dev with the job token
     steps:
       - name: Checkout
         uses: actions/checkout@v7

@@ -83,6 +83,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
     env:
       # Archive uploads are temporarily paused; packages are published on GitHub.
       ARCHIVE_UPLOAD_ENABLED: 'false'

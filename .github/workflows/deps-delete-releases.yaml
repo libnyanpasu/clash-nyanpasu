@@ -18,7 +18,8 @@ on:
 jobs:
   delete:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write # deletes the assets of the nightly release
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

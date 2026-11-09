@@ -2,6 +2,8 @@
 import '@nyanpasu/theme/styles/theme.css'
 import '@/assets/styles/tailwind.css'
 import ArticleRounded from '~icons/material-symbols/article-rounded'
+import { MotionGlobalConfig, processFrame } from 'motion/react'
+import { flushSync } from 'react-dom'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
@@ -160,60 +162,77 @@ for (const dark of [false, true]) {
 
     const labelNode = label.firstChild
     const closedLeft = label.getBoundingClientRect().left
-    toggle.click()
-    await waitForFrames(4)
-    const intermediateLeft = label.getBoundingClientRect().left
-    expect(intermediateLeft).toBeGreaterThan(closedLeft + 1)
-    expect(intermediateLeft).toBeLessThan(closedLeft + 51)
-    expect(sidebar.getBoundingClientRect().width).toBeGreaterThan(88)
-    expect(sidebar.getBoundingClientRect().width).toBeLessThan(200)
+    const hadManualTiming = MotionGlobalConfig.useManualTiming
+    MotionGlobalConfig.useManualTiming = true
+    try {
+      processFrame(0)
+      flushSync(() => toggle.click())
+      await Promise.resolve()
+      processFrame(0)
+      expect(label.getBoundingClientRect().left).toBeCloseTo(closedLeft, 0)
+      expect(sidebar.getBoundingClientRect().width).toBe(88)
 
-    await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(200)
-    await expect.poll(labelOffset).toBeCloseTo(52, 0)
-    await waitForFrames(4)
-    expect(labelOffset()).toBeCloseTo(52, 0)
-    expectFloatingToggle()
-    expect(getComputedStyle(toggle).backgroundColor).toBe(
-      getComputedStyle(item).backgroundColor,
-    )
-    const toggleLabel = toggle.querySelector(
-      '[data-slot="navigation-sidebar-label"]',
-    )!
-    await expect
-      .poll(
-        () =>
-          toggleLabel.getBoundingClientRect().left -
-          toggle.getBoundingClientRect().left,
-      )
-      .toBeCloseTo(52, 0)
-    expect(label.firstChild).toBe(labelNode)
-    await expect
-      .poll(() => label.getBoundingClientRect().width)
-      .toBeCloseTo(item.getBoundingClientRect().width - 68, 0)
-    await expect
-      .poll(
-        () =>
-          label.getBoundingClientRect().left -
-          item.getBoundingClientRect().left,
-      )
-      .toBeCloseTo(52, 0)
-    expect(getComputedStyle(item).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
-    expect(getComputedStyle(icon).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+      processFrame(50)
+      const intermediateLeft = label.getBoundingClientRect().left
+      expect(intermediateLeft).toBeGreaterThan(closedLeft + 1)
+      expect(intermediateLeft).toBeLessThan(closedLeft + 51)
+      expect(sidebar.getBoundingClientRect().width).toBeGreaterThan(88)
+      expect(sidebar.getBoundingClientRect().width).toBeLessThan(200)
 
-    toggle.click()
-    await expect
-      .poll(() => {
-        const left = label.getBoundingClientRect().left
-        return left > closedLeft + 1 && left < closedLeft + 51
-      })
-      .toBe(true)
-    await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(88)
-    await expect
-      .poll(() => label.getBoundingClientRect().left)
-      .toBeCloseTo(closedLeft, 0)
-    expect(label.firstChild).toBe(labelNode)
-    expect(icon.getBoundingClientRect().bottom).toBeLessThan(
-      label.getBoundingClientRect().top,
-    )
+      processFrame(1000)
+      expect(sidebar.getBoundingClientRect().width).toBe(200)
+      expect(labelOffset()).toBeCloseTo(52, 0)
+
+      await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(200)
+      await expect.poll(labelOffset).toBeCloseTo(52, 0)
+      await waitForFrames(4)
+      expect(labelOffset()).toBeCloseTo(52, 0)
+      expectFloatingToggle()
+      expect(getComputedStyle(toggle).backgroundColor).toBe(
+        getComputedStyle(item).backgroundColor,
+      )
+      const toggleLabel = toggle.querySelector(
+        '[data-slot="navigation-sidebar-label"]',
+      )!
+      await expect
+        .poll(
+          () =>
+            toggleLabel.getBoundingClientRect().left -
+            toggle.getBoundingClientRect().left,
+        )
+        .toBeCloseTo(52, 0)
+      expect(label.firstChild).toBe(labelNode)
+      await expect
+        .poll(() => label.getBoundingClientRect().width)
+        .toBeCloseTo(item.getBoundingClientRect().width - 68, 0)
+      await expect
+        .poll(
+          () =>
+            label.getBoundingClientRect().left -
+            item.getBoundingClientRect().left,
+        )
+        .toBeCloseTo(52, 0)
+      expect(getComputedStyle(item).backgroundColor).not.toBe(
+        'rgba(0, 0, 0, 0)',
+      )
+      expect(getComputedStyle(icon).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+
+      flushSync(() => toggle.click())
+      await Promise.resolve()
+      processFrame(1000)
+      expect(sidebar.getBoundingClientRect().width).toBe(200)
+      expect(labelOffset()).toBeCloseTo(52, 0)
+
+      processFrame(2000)
+      expect(sidebar.getBoundingClientRect().width).toBe(88)
+      expect(label.getBoundingClientRect().left).toBeCloseTo(closedLeft, 0)
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      expect(label.firstChild).toBe(labelNode)
+      expect(icon.getBoundingClientRect().bottom).toBeLessThan(
+        label.getBoundingClientRect().top,
+      )
+    } finally {
+      MotionGlobalConfig.useManualTiming = hadManualTiming
+    }
   })
 }

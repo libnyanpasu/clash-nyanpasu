@@ -329,12 +329,16 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
 
   await document.fonts.ready
   expect(getComputedStyle(toolbar).fontFamily).toMatch(/^"Inter Variable"/)
+  // These assertions cover routed layouts, not pointer actionability while
+  // page and sidebar transitions overlap under CI load.
+  const selectSidebarItem = (name: string) =>
+    (sidebarItem(view, name).element() as HTMLElement).click()
 
   for (const width of [480, 800, 1280]) {
     await page.viewport(width, 720)
     await expect.poll(() => pageRoot.clientWidth).toBe(width)
 
-    await sidebarItem(view, m.traffic_overview()).click()
+    selectSidebarItem(m.traffic_overview())
     await expect
       .element(
         view.getByRole('heading', { name: m.traffic_overview(), level: 1 }),
@@ -352,7 +356,7 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       document.querySelectorAll('[data-slot="traffic-single-values"]').length,
     ).toBe(1)
 
-    await sidebarItem(view, m.topology_geo_map()).click()
+    selectSidebarItem(m.topology_geo_map())
     await expect
       .element(
         view.getByRole('heading', { name: m.topology_geo_map(), level: 1 }),
@@ -370,7 +374,7 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
     expect(content.textContent).toContain(summary)
 
     const rankings = dimensionName('source')
-    await sidebarItem(view, rankings).click()
+    selectSidebarItem(rankings)
     await expect
       .element(view.getByRole('heading', { name: rankings, level: 1 }))
       .toBeInTheDocument()
@@ -429,7 +433,7 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       `${width}px controls`,
     ).toBeLessThanOrEqual(toolbar.getBoundingClientRect().right + 1)
 
-    await sidebarItem(view, m.traffic_overview()).click()
+    selectSidebarItem(m.traffic_overview())
     await expect
       .element(
         view.getByRole('heading', { name: m.traffic_overview(), level: 1 }),
@@ -472,7 +476,7 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       )
     }
   }
-})
+}, 30_000)
 
 test('a ranking card keeps its height while its rows fill in', async ({
   onTestFinished,

@@ -19,9 +19,7 @@ pub struct SysproxyOsProxy;
 
 impl OsProxyPort for SysproxyOsProxy {
     fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
-        let current = Sysproxy::get_system_proxy()
-            .boxed()
-            .context(ReadOsProxySnafu)?;
+        let current = read_system_proxy().boxed().context(ReadOsProxySnafu)?;
         Ok(OsProxyConfig {
             enable: current.enable,
             host: current.host,
@@ -48,5 +46,43 @@ impl OsProxyPort for SysproxyOsProxy {
 
     fn default_bypass(&self) -> &'static str {
         DEFAULT_BYPASS
+    }
+}
+
+fn read_system_proxy() -> sysproxy::Result<Sysproxy> {
+    read_system_proxy_result(Sysproxy::get_system_proxy())
+}
+
+fn read_system_proxy_result(current: sysproxy::Result<Sysproxy>) -> sysproxy::Result<Sysproxy> {
+    match current {
+        Ok(current) => Ok(current),
+        // An absent KDE proxy group makes `sysproxy` fail while parsing the
+        // empty `kioslaverc` entry. That is the platform's unconfigured state,
+        // not a read failure.
+        #[cfg(target_os = "linux")]
+        Err(sysproxy::Error::ParseStr(field)) if field == "schema" => Ok(Sysproxy::default()),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_absent_kde_proxy_reads_as_disabled() {
+        let current = read_system_proxy_result(Err(sysproxy::Error::ParseStr("schema".to_owned())));
+        assert_eq!(
+            current.expect("an absent KDE proxy is a valid disabled configuration"),
+            Sysproxy::default()
+        );
+    }
+
+    #[test]
+    fn other_sysproxy_parse_failures_remain_errors() {
+        let error = read_system_proxy_result(Err(sysproxy::Error::ParseStr("host".to_owned())))
+            .expect_err("a malformed proxy value is a read failure");
+
+        assert!(matches!(error, sysproxy::Error::ParseStr(field) if field == "host"));
     }
 }

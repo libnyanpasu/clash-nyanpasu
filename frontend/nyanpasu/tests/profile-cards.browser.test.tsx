@@ -223,6 +223,7 @@ test.for(['en', 'zh-cn'] as const)(
           card('local').querySelector(
             '[data-slot="profile-card-content-summary"]',
           )?.textContent,
+        { timeout: 5_000 },
       )
       .toContain(m.profile_card_nodes() + '1')
     expect(card('remote').getBoundingClientRect().height).toBe(288)

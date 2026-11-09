@@ -47,10 +47,11 @@ data-slot generator scans `frontend/*/src/**/*.tsx` and writes the generated slo
 inventory into the app. Preserve slots as a styling contract when moving
 components.
 
-The standalone test Vite config avoids app build plugins. It uses the app `@`
-alias, repository-root `@root` alias, and a `~icons` test stub. Other package
-imports use package exports; do not add aliases into sibling package source or
-`node_modules` internals.
+The standalone test Vite config avoids app build orchestration while retaining
+the SVGR and Paraglide transforms needed to import app source directly. It uses
+the app `@` alias, repository-root `@root` alias, and a `~icons` test stub. Other
+package imports use package exports; do not add aliases into sibling package
+source or `node_modules` internals.
 
 `pnpm run lint:frontend-boundaries` checks source exports, declared workspace
 imports, dependency cycles, reverse app dependencies, and package responsibilities.

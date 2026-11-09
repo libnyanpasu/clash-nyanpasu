@@ -1,6 +1,8 @@
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
+import { MotionGlobalConfig, processFrame } from 'motion/react'
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
@@ -105,29 +107,52 @@ for (const layout of ['focus', 'flex'] as const) {
     expect(control.bottom).toBeLessThanOrEqual(card.bottom)
     const first = container.querySelector('[data-value="Rule"]')
     const before = first?.getBoundingClientRect().width
-    const frames = new Set<string>()
-    const recordAnimation =
-      layout === 'focus'
-        ? (async () => {
-            for (let index = 0; index < 40; index++) {
-              await new Promise<void>((resolve) =>
-                requestAnimationFrame(() => resolve()),
-              )
-              const copy = container.querySelector(
-                '[data-slot="expressive-choice-current-copy"]',
-              )!
-              frames.add(getComputedStyle(copy).transform)
-            }
-          })()
-        : Promise.resolve()
-    await userEvent.click(page.getByRole('button', { name: 'Direct' }))
+    const direct = page.getByRole('button', { name: 'Direct' })
+    if (layout === 'focus') {
+      const hadManualTiming = MotionGlobalConfig.useManualTiming
+      MotionGlobalConfig.useManualTiming = true
+      let translation = () => Number.POSITIVE_INFINITY
+      try {
+        processFrame(0)
+        flushSync(() =>
+          direct
+            .element()
+            .dispatchEvent(new MouseEvent('click', { bubbles: true })),
+        )
+        await Promise.resolve()
+        processFrame(0)
+        const selectedCopy = () =>
+          [
+            ...container.querySelectorAll<HTMLElement>(
+              '[data-slot="expressive-choice-current-copy"]',
+            ),
+          ].find((element) => element.textContent?.trim().startsWith('Direct'))
+        await expect.poll(selectedCopy).toBeDefined()
+        const copy = selectedCopy()!
+        translation = () => {
+          const transform = getComputedStyle(copy).transform
+          return transform === 'none'
+            ? 0
+            : Math.abs(new DOMMatrix(transform).m41)
+        }
+        const start = translation()
+        expect(start).toBeGreaterThan(1)
+
+        processFrame(50)
+        expect(translation()).toBeGreaterThan(1)
+        expect(translation()).toBeLessThan(start)
+        processFrame(1000)
+        expect(translation()).toBeLessThan(1)
+      } finally {
+        MotionGlobalConfig.useManualTiming = hadManualTiming
+      }
+      await expect.poll(translation).toBeLessThan(1)
+    } else {
+      await userEvent.click(direct)
+    }
     await expect
       .element(page.getByRole('button', { name: 'Direct' }))
       .toHaveAttribute('aria-pressed', 'true')
-    if (layout === 'focus') {
-      await recordAnimation
-      expect(frames.size).toBeGreaterThan(1)
-    }
     if (layout === 'flex')
       await expect
         .poll(() => first!.getBoundingClientRect().width)

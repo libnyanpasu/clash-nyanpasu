@@ -7,7 +7,7 @@ import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 
-const ProxyButton = ({
+export const ProxyButton = ({
   className,
   isActive,
   loading,

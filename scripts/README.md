@@ -68,6 +68,7 @@ pnpm run test:scripts
 | `prepare:nightly`                  | Prepare the Tauri configuration for a nightly build                                                                   |
 | `prepare:release`                  | Prepare the Tauri configuration for a release build                                                                   |
 | `prepare:preview`                  | Prepare the Tauri configuration for a preview build                                                                   |
+| `prepare:worktree`                 | Initialize submodules from a local checkout and install dependencies from the pnpm store                              |
 | `prepare:check`                    | Check and download required sidecar binaries and resources                                                            |
 | `portable`                         | Create a Windows portable ZIP and upload it to the release                                                            |
 | `sign-nightly-updater`             | Sign updater artifacts for a nightly build                                                                            |

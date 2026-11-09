@@ -99,7 +99,8 @@
     "recover:central-publication": "node scripts/src/artifacts/recover-central-publication.ts",
     "storage:recover": "node scripts/src/artifacts/recover-storage.ts",
     "archive:register": "node scripts/src/artifacts/internet-archive-upload.ts --register-only",
-    "lint:ts:scripts": "tsc --noEmit --project ./scripts/tsconfig.json"
+    "lint:ts:scripts": "tsc --noEmit --project ./scripts/tsconfig.json",
+    "prepare:worktree": "node scripts/src/worktree/main.ts"
   },
   "dependencies": {
     "husky": "9.1.7"

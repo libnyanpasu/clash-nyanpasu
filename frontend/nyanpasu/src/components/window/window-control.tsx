@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom'
 import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'
 import { createWindowAdapter } from '@nyanpasu/platform'
-import { useMatchesPlatform } from '@nyanpasu/platform/react'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
@@ -127,9 +127,25 @@ export default function WindowControl({
   hiddenAlwaysOnTop?: boolean
   beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
 }) {
-  const isDesktop = useMatchesPlatform('desktop')
-  if (!isDesktop) return null
+  return (
+    <PlatformDesktop>
+      <DesktopWindowControl
+        className={className}
+        hiddenAlwaysOnTop={hiddenAlwaysOnTop}
+        beforeClose={beforeClose}
+      />
+    </PlatformDesktop>
+  )
+}
 
+function DesktopWindowControl({
+  className,
+  hiddenAlwaysOnTop,
+  beforeClose,
+}: ComponentProps<'div'> & {
+  hiddenAlwaysOnTop?: boolean
+  beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
+}) {
   return (
     <>
       <div

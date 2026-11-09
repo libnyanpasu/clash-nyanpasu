@@ -3,7 +3,7 @@ import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded
 import NetworkPingRounded from '~icons/material-symbols/network-ping-rounded'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import ShieldRounded from '~icons/material-symbols/shield-rounded'
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
@@ -19,7 +19,7 @@ import {
 import useCoreIcon from '@/hooks/use-core-icon'
 import { useTransparentProxy } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
-import { useMatchesPlatform } from '@nyanpasu/platform/react'
+import { PlatformLinux } from '@nyanpasu/platform/react'
 import {
   ClashCores,
   useClashConfig,
@@ -140,17 +140,13 @@ export function ProxyShortcutsWidget({
   id,
   onCloseClick,
 }: WidgetComponentProps) {
-  const showTransparent = useMatchesPlatform({
-    surface: 'desktop',
-    clientOs: 'linux',
-  })
   const config = useWidgetConfig(id, WidgetId.ProxyShortcuts)
   const { sourceOnly, isOverlay } = useDndGridContext()
   const buttons = [
     ...(config.order === 'system-first'
       ? ['system', 'tun']
       : ['tun', 'system']),
-    ...(showTransparent ? ['transparent'] : []),
+    'transparent',
   ]
   const preview = sourceOnly || isOverlay
 
@@ -195,10 +191,9 @@ export function ProxyShortcutsWidget({
                 button as 'system' | 'tun' | 'transparent',
               ),
             )
-            .map((button) =>
-              preview ? (
+            .map((button) => {
+              const content = preview ? (
                 <ShapeToggle
-                  key={button}
                   disabled
                   active={button === 'system'}
                   elastic={config.layout === 'flex'}
@@ -221,25 +216,27 @@ export function ProxyShortcutsWidget({
                 />
               ) : button === 'system' ? (
                 <SystemProxyButton
-                  key={button}
                   presentation="cookie"
                   elastic={config.layout === 'flex'}
                 />
               ) : button === 'tun' ? (
                 <TunModeButton
-                  key={button}
                   presentation="cookie"
                   elastic={config.layout === 'flex'}
                   disabled={sourceOnly}
                 />
               ) : (
                 <TransparentProxyButton
-                  key={button}
                   elastic={config.layout === 'flex'}
                   disabled={sourceOnly}
                 />
-              ),
-            )}
+              )
+              return button === 'transparent' ? (
+                <PlatformLinux key={button}>{content}</PlatformLinux>
+              ) : (
+                <Fragment key={button}>{content}</Fragment>
+              )
+            })}
         </CardContent>
       </Card>
     </WidgetItem>

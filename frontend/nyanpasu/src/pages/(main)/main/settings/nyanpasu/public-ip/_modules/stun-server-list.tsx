@@ -21,7 +21,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useMatchesPlatform } from '@nyanpasu/platform/react'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import type { StunServer } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
@@ -173,7 +173,6 @@ function StunServerItem({
  * row menu changes that order. Built-in servers can only be turned off.
  */
 export default function StunServerList() {
-  const isDesktop = useMatchesPlatform('desktop')
   const { value: servers, upsert, isPending } = useSetting('stun_servers')
 
   // Resolves whether the list was saved; a failure is already reported.
@@ -212,12 +211,14 @@ export default function StunServerList() {
         </p>
 
         {/* The test opens sockets to an arbitrary host, which only the desktop app may do. */}
-        {isDesktop && servers && (
-          <AddStunServerDialog
-            servers={servers}
-            onAdd={(server) => save([...servers, server])}
-          />
-        )}
+        <PlatformDesktop>
+          {servers && (
+            <AddStunServerDialog
+              servers={servers}
+              onAdd={(server) => save([...servers, server])}
+            />
+          )}
+        </PlatformDesktop>
       </div>
 
       <DragDropProvider
@@ -257,7 +258,9 @@ export default function StunServerList() {
 
       <p className="text-on-surface-variant px-3 text-xs">
         {m.settings_public_ip_stun_description()}
-        {!isDesktop && ` ${m.settings_public_ip_stun_desktop_only()}`}
+        <PlatformDesktop
+          fallback={` ${m.settings_public_ip_stun_desktop_only()}`}
+        />
       </p>
     </section>
   )

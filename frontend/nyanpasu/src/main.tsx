@@ -13,7 +13,6 @@ import '@nyanpasu/theme/styles/theme.css'
 import './assets/styles/index.css'
 import './assets/styles/tailwind.css'
 import { detectRuntime } from '@nyanpasu/platform'
-import { PlatformProvider } from '@nyanpasu/platform/react'
 import { routeTree } from './route-tree.gen'
 // installs error reporting before the app runs
 import { reactRootErrorOptions } from './services/error-reporting'
@@ -44,9 +43,9 @@ document.documentElement.classList.toggle(
 // Set up a Router instance
 const router = createRouter({
   routeTree,
+  context: { runtime: detectRuntime() },
   defaultPreload: 'intent',
 })
-const runtime = detectRuntime()
 
 // Register things for typesafety
 declare module '@tanstack/react-router' {
@@ -59,8 +58,6 @@ const container = document.getElementById('root')!
 
 createRoot(container, reactRootErrorOptions).render(
   <React.StrictMode>
-    <PlatformProvider platform={runtime.platform} bridge={runtime.bridge}>
-      <RouterProvider router={router} />
-    </PlatformProvider>
+    <RouterProvider router={router} />
   </React.StrictMode>,
 )

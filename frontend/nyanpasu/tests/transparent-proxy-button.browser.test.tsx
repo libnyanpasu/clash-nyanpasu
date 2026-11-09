@@ -68,8 +68,17 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: backend.invalidate }),
 }))
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: React.ReactNode }) => (
-    <a href="/network">{children}</a>
+  Link: ({
+    children,
+    to,
+    ...props
+  }: {
+    children: React.ReactNode
+    to: string
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
   ),
 }))
 vi.mock('@/components/providers/block-task-provider', () => ({
@@ -132,18 +141,22 @@ test('enables TPROXY and disables capture while preserving its scope', async ({
   })
 })
 
-test('requires service mode before enabling', async ({ onTestFinished }) => {
-  const view = await setup(onTestFinished)
-  backend.values.enable_service_mode = false
-  await view.rerender(<TransparentProxyButton />)
+test('opens a dialog with a link to service settings when service mode is off', async ({
+  onTestFinished,
+}) => {
+  const view = await setup(onTestFinished, { enable_service_mode: false })
+  const button = view.getByRole('button', {
+    name: m.settings_clash_transparent_proxy_label(),
+    exact: false,
+  })
   await expect
     .element(
-      view.getByRole('button', {
-        name: m.settings_clash_transparent_proxy_label(),
-        exact: false,
-      }),
+      view.getByText(
+        m.settings_clash_transparent_proxy_service_mode_required(),
+      ),
     )
-    .toBeDisabled()
+    .not.toBeInTheDocument()
+  await button.click()
   await expect
     .element(
       view.getByText(
@@ -151,43 +164,58 @@ test('requires service mode before enabling', async ({ onTestFinished }) => {
       ),
     )
     .toBeInTheDocument()
+  await expect
+    .element(view.getByRole('link', { name: m.settings_label_service() }))
+    .toHaveAttribute('href', '/main/settings/system/service')
+  const link = view
+    .getByRole('link', { name: m.settings_label_service() })
+    .element()
+  const text = link.querySelector('[data-slot="button-content"]')!
+  const range = document.createRange()
+  range.selectNodeContents(text)
+  const label = range.getBoundingClientRect()
+  const bounds = link.getBoundingClientRect()
+  expect(
+    Math.abs((label.top + label.bottom - bounds.top - bounds.bottom) / 2),
+  ).toBeLessThan(1)
   expect(backend.upsert).not.toHaveBeenCalled()
 })
 
-test('does not enable when the service lacks capture support', async ({
+test('shows the unsupported-service reason on click', async ({
   onTestFinished,
 }) => {
   const view = await setup(onTestFinished)
   backend.supported = false
   await view.rerender(<TransparentProxyButton />)
-  await expect
-    .element(
-      view.getByRole('button', {
-        name: m.settings_clash_transparent_proxy_label(),
-        exact: false,
-      }),
-    )
-    .toBeDisabled()
+  await view
+    .getByRole('button', {
+      name: m.settings_clash_transparent_proxy_label(),
+      exact: false,
+    })
+    .click()
   await expect
     .element(
       view.getByText(m.settings_clash_transparent_proxy_status_unsupported()),
     )
     .toBeInTheDocument()
+  await expect
+    .element(view.getByRole('link', { name: m.settings_label_network() }))
+    .toHaveAttribute('href', '/main/settings/clash/network')
+  expect(backend.upsert).not.toHaveBeenCalled()
 })
 
-test('blocks enabling while TUN is active', async ({ onTestFinished }) => {
+test('shows the TUN conflict on click', async ({ onTestFinished }) => {
   const view = await setup(onTestFinished, { enable_tun_mode: true })
-  await expect
-    .element(
-      view.getByRole('button', {
-        name: m.settings_clash_transparent_proxy_label(),
-        exact: false,
-      }),
-    )
-    .toBeDisabled()
+  await view
+    .getByRole('button', {
+      name: m.settings_clash_transparent_proxy_label(),
+      exact: false,
+    })
+    .click()
   await expect
     .element(view.getByText(m.error_transparent_proxy_tun_conflict()))
     .toBeInTheDocument()
+  expect(backend.upsert).not.toHaveBeenCalled()
 })
 
 test('allows disabling existing REDIRECT capture when service mode is off', async ({
@@ -244,32 +272,6 @@ test('does not enable capture when port configuration fails', async ({
     transparent_proxy: { mode: 'tproxy' },
     tproxy_port: { kind: 'fixed', start_port: 7894 },
   })
-})
-
-test('reports pending until the service applies the selected mode', async ({
-  onTestFinished,
-}) => {
-  const view = await setup(onTestFinished, {
-    transparent_proxy: {
-      mode: 'tproxy',
-      local: true,
-      interfaces: [],
-      ipv6: false,
-    },
-  })
-  await expect
-    .element(
-      view.getByText(m.settings_clash_transparent_proxy_status_pending()),
-    )
-    .toBeInTheDocument()
-  backend.actualActive = true
-  backend.actualMode = 'tproxy'
-  await view.rerender(<TransparentProxyButton />)
-  await expect
-    .element(
-      view.getByText(m.settings_clash_transparent_proxy_status_applied()),
-    )
-    .toBeInTheDocument()
 })
 
 test('keeps the same button shape and surface when activation is unavailable', async ({

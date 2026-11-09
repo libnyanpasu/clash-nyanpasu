@@ -69,7 +69,7 @@ function ExampleWidget({ id }: { id: string }) {
   return (
     <WidgetItem id={id} widgetType={WidgetId.ProxyShortcuts}>
       <div data-testid={`value-${id}`}>
-        {config.buttons}/{config.order}
+        {config.buttons.join(',')}/{config.order}
       </div>
     </WidgetItem>
   )
@@ -178,14 +178,55 @@ function mount(
 const saved = () => JSON.parse(backend.value!) as WidgetConfigStorage
 
 const buttonsSelect = (dialog: ReturnType<typeof page.getByRole>) =>
-  dialog.getByRole('combobox', {
+  dialog.getByRole('button', {
     name: m.dashboard_widget_proxy_shortcuts_config_buttons(),
   })
 
 async function chooseTunButtons(dialog: ReturnType<typeof page.getByRole>) {
   await buttonsSelect(dialog).click()
-  await page.getByRole('option', { name: 'TUN', exact: true }).click()
+  await page
+    .getByRole('menuitemcheckbox', {
+      name: m.dashboard_widget_proxy_shortcuts_config_system(),
+      exact: true,
+    })
+    .click()
+  await userEvent.keyboard('{Escape}')
 }
+
+test('proxy buttons can be selected independently and persist', async ({
+  onTestFinished,
+}) => {
+  const controls = mount(onTestFinished)
+  await expect.poll(() => controls.loading).toBe(false)
+  controls.editing(true)
+  await page
+    .getByRole('button', { name: m.dashboard_widget_config_title() })
+    .nth(0)
+    .click()
+  const dialog = page.getByRole('dialog')
+  await buttonsSelect(dialog).click()
+  const system = page.getByRole('menuitemcheckbox', {
+    name: m.dashboard_widget_proxy_shortcuts_config_system(),
+    exact: true,
+  })
+  const tun = page.getByRole('menuitemcheckbox', {
+    name: m.settings_system_proxy_tun_mode_label(),
+    exact: true,
+  })
+  await expect.element(system).toHaveAttribute('data-state', 'checked')
+  await expect.element(tun).toHaveAttribute('data-state', 'checked')
+  await system.click()
+  await expect
+    .poll(() => saved().byInstance.first)
+    .toMatchObject({ buttons: ['tun', 'transparent'] })
+  await expect.element(system).toHaveAttribute('data-state', 'unchecked')
+  await expect.element(tun).toHaveAttribute('data-state', 'checked')
+  await expect.element(tun).toHaveAttribute('data-disabled', '')
+  await system.click()
+  await expect
+    .poll(() => saved().byInstance.first)
+    .toMatchObject({ buttons: ['tun', 'transparent', 'system'] })
+})
 
 test('number field saves multi-digit values on commit and restores them when reopened', async ({
   onTestFinished,
@@ -260,10 +301,10 @@ test('bottom popover preserves focus, stays open and saves independent instance 
     .toMatchObject({ order: 'tun-first' })
   await expect
     .element(page.getByTestId('value-first'))
-    .toHaveTextContent('both/tun-first')
+    .toHaveTextContent('system,tun,transparent/tun-first')
   await expect
     .element(page.getByTestId('value-second'))
-    .toHaveTextContent('both/system-first')
+    .toHaveTextContent('system,tun,transparent/system-first')
   await expect.element(dialog).toBeVisible()
   await userEvent.keyboard('{Escape}')
   await expect.element(dialog).not.toBeInTheDocument()
@@ -275,7 +316,7 @@ test('bottom popover preserves focus, stays open and saves independent instance 
   await chooseTunButtons(page.getByRole('dialog'))
   await expect
     .poll(() => saved().byInstance.second)
-    .toMatchObject({ buttons: 'tun' })
+    .toMatchObject({ buttons: ['tun', 'transparent'] })
   await userEvent.keyboard('{Escape}')
   expect(backend.writes).toHaveLength(2)
   // A new provider loads its authoritative backend config independently.
@@ -283,10 +324,10 @@ test('bottom popover preserves focus, stays open and saves independent instance 
   await expect.poll(() => reloaded.loading).toBe(false)
   await expect
     .element(page.getByTestId('value-first').nth(1))
-    .toHaveTextContent('both/tun-first')
+    .toHaveTextContent('system,tun,transparent/tun-first')
   await expect
     .element(page.getByTestId('value-second').nth(1))
-    .toHaveTextContent('tun/system-first')
+    .toHaveTextContent('tun,transparent/system-first')
 })
 
 test('one click on outside blank space closes the menu after editing an option', async ({
@@ -338,7 +379,7 @@ test('failed autosave retains preview and retries the current options', async ({
     .toBeVisible()
   await expect
     .element(page.getByTestId('value-first'))
-    .toHaveTextContent('both/tun-first')
+    .toHaveTextContent('system,tun,transparent/tun-first')
   backend.fail = false
   await dialog
     .getByRole('button', { name: m.dashboard_widget_config_retry() })
@@ -407,7 +448,7 @@ test('a pending write prevents overlapping edits until its result arrives', asyn
   await chooseTunButtons(dialog)
   await expect
     .poll(() => saved().byInstance.first)
-    .toMatchObject({ order: 'tun-first', buttons: 'tun' })
+    .toMatchObject({ order: 'tun-first', buttons: ['tun', 'transparent'] })
 })
 
 test('popover flips above the trigger near the viewport bottom', async ({
@@ -529,7 +570,7 @@ test('drag overlays keep instance options while new-widget previews use defaults
   await expect.poll(() => sheet.loading).toBe(false)
   await expect
     .element(page.getByTestId('value-first').nth(1))
-    .toHaveTextContent('both/system-first')
+    .toHaveTextContent('system,tun,transparent/system-first')
   expect(
     document.querySelectorAll('[data-slot=widget-config-trigger]'),
   ).toHaveLength(0)

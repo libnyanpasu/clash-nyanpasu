@@ -62,6 +62,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           submodules: recursive
 
       - uses: maxim-lobanov/setup-xcode@v1

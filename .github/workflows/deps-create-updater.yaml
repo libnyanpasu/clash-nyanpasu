@@ -57,6 +57,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ github.ref }}
           # blocked by https://github.com/actions/checkout/issues/1467
 

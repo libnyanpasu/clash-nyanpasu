@@ -48,6 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 

@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install Node
         uses: actions/setup-node@v7
@@ -306,6 +308,8 @@ jobs:
       - name: Checkout repository
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install Node
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/setup-node@v7

@@ -44,6 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           # The pull request merge commit and its first parent, the base tip.
           fetch-depth: 2
 
@@ -96,6 +97,7 @@ jobs:
       - uses: actions/checkout@v7
         if: env.RUN == 'true'
         with:
+          persist-credentials: false
           # `backend/nyanpasu-runtime` is a submodule that itself nests
           # `crates/nyanpasu-utils`; `true` would leave that inner path empty.
           submodules: recursive
@@ -242,6 +244,7 @@ jobs:
       - uses: actions/checkout@v7
         if: env.RUN == 'true'
         with:
+          persist-credentials: false
           submodules: recursive
 
       - name: Tauri dependencies
@@ -333,6 +336,7 @@ jobs:
       - uses: actions/checkout@v7
         if: env.RUN == 'true'
         with:
+          persist-credentials: false
           submodules: recursive
 
       # install system dependencies that Tauri needs to compile on Linux.

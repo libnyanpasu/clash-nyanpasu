@@ -170,9 +170,10 @@ export function ProxyShortcutsWidget({
               disabled
               className="bg-primary-container text-on-primary-container flex h-6 min-w-0 items-center px-2 text-xs"
             >
-              {config.buttons === 'tun'
+              {config.buttons.length === 1 && config.buttons[0] === 'tun'
                 ? m.dashboard_widget_proxy_status_success_tun()
-                : config.buttons === 'transparent'
+                : config.buttons.length === 1 &&
+                    config.buttons[0] === 'transparent'
                   ? m.settings_clash_transparent_proxy_label()
                   : m.dashboard_widget_proxy_status_success_system()}
             </Button>
@@ -186,9 +187,10 @@ export function ProxyShortcutsWidget({
           data-slot="proxy-shortcut-buttons"
         >
           {buttons
-            .filter(
-              (button) =>
-                config.buttons === 'both' || config.buttons === button,
+            .filter((button) =>
+              config.buttons.includes(
+                button as 'system' | 'tun' | 'transparent',
+              ),
             )
             .map((button) =>
               preview ? (

@@ -69,10 +69,10 @@ test('duplicate instances are independent and a mismatched type uses defaults', 
   })
   expect(
     getWidgetConfig(storage, 'first', WidgetId.ProxyShortcuts).buttons,
-  ).toBe('tun')
+  ).toEqual(['tun'])
   expect(
     getWidgetConfig(storage, 'second', WidgetId.ProxyShortcuts).buttons,
-  ).toBe('both')
+  ).toEqual(['system', 'tun', 'transparent'])
   expect(
     getWidgetConfig(storage, 'second', WidgetId.ProxyShortcuts),
   ).not.toHaveProperty('orientation')
@@ -279,5 +279,21 @@ test('transparent proxy shortcut selection survives storage normalization', () =
   })
   expect(
     getWidgetConfig(storage, 'proxy', WidgetId.ProxyShortcuts).buttons,
-  ).toBe('transparent')
+  ).toEqual(['transparent'])
+})
+
+test('proxy shortcut combinations survive normalization and invalid arrays use defaults', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: {
+      selected: { type: 'proxy-shortcuts', buttons: ['system', 'transparent'] },
+      invalid: { type: 'proxy-shortcuts', buttons: [] },
+    },
+  })
+  expect(
+    getWidgetConfig(storage, 'selected', WidgetId.ProxyShortcuts).buttons,
+  ).toEqual(['system', 'transparent'])
+  expect(
+    getWidgetConfig(storage, 'invalid', WidgetId.ProxyShortcuts).buttons,
+  ).toEqual(['system', 'tun', 'transparent'])
 })

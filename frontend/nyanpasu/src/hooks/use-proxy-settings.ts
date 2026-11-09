@@ -101,6 +101,7 @@ export const useTransparentProxy = () => {
   }
   return {
     visible,
+    serviceModeEnabled: Boolean(serviceMode.value),
     isActive,
     isPending: task.isPending,
     disabled,

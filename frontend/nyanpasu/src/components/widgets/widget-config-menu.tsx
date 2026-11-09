@@ -1,9 +1,16 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useId, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import {
   LauncherMenu,
   LauncherMenuChipButton,
@@ -452,50 +459,111 @@ function ConfigFieldRows({
             ]}
             onChange={(layout) => onChange({ ...config, layout })}
           />
-          <Choice
+          <ConfigRow
             label={m.dashboard_widget_proxy_shortcuts_config_buttons()}
-            value={config.buttons}
-            disabled={disabled}
-            options={[
-              {
-                value: 'both',
-                label: m.dashboard_widget_proxy_shortcuts_config_both(),
-              },
-              {
-                value: 'system',
-                label: m.dashboard_widget_proxy_shortcuts_config_system(),
-              },
-              { value: 'tun', label: 'TUN' },
-              ...(isLinux && isTauri()
-                ? [
+          >
+            <DropdownMenu align="end">
+              <DropdownMenuTrigger asChild>
+                <LauncherMenuChipButton
+                  disabled={disabled}
+                  aria-label={m.dashboard_widget_proxy_shortcuts_config_buttons()}
+                >
+                  <span className="truncate">
+                    {config.buttons.filter(
+                      (button) =>
+                        button !== 'transparent' || (isLinux && isTauri()),
+                    ).length === (isLinux && isTauri() ? 3 : 2)
+                      ? m.dashboard_widget_proxy_shortcuts_config_both()
+                      : config.buttons
+                          .filter(
+                            (button) =>
+                              button !== 'transparent' ||
+                              (isLinux && isTauri()),
+                          )
+                          .map((button) =>
+                            button === 'system'
+                              ? m.dashboard_widget_proxy_shortcuts_config_system()
+                              : button === 'tun'
+                                ? m.settings_system_proxy_tun_mode_label()
+                                : m.settings_clash_transparent_proxy_label(),
+                          )
+                          .join(', ')}
+                  </span>
+                  <ArrowDropDownRounded
+                    className="size-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                </LauncherMenuChipButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {(
+                  [
                     {
-                      value: 'transparent' as const,
-                      label: m.settings_clash_transparent_proxy_label(),
+                      value: 'system',
+                      label: m.dashboard_widget_proxy_shortcuts_config_system(),
                     },
-                  ]
-                : []),
-            ]}
-            onChange={(buttons) => onChange({ ...config, buttons })}
-          />
-          {config.buttons === 'both' && (
-            <Choice
-              label={m.dashboard_widget_proxy_shortcuts_config_order()}
-              value={config.order}
-              disabled={disabled}
-              options={[
-                {
-                  value: 'system-first',
-                  label:
-                    m.dashboard_widget_proxy_shortcuts_config_system_first(),
-                },
-                {
-                  value: 'tun-first',
-                  label: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
-                },
-              ]}
-              onChange={(order) => onChange({ ...config, order })}
-            />
-          )}
+                    {
+                      value: 'tun',
+                      label: m.settings_system_proxy_tun_mode_label(),
+                    },
+                    ...(isLinux && isTauri()
+                      ? [
+                          {
+                            value: 'transparent' as const,
+                            label: m.settings_clash_transparent_proxy_label(),
+                          },
+                        ]
+                      : []),
+                  ] as const
+                ).map(({ value, label }) => (
+                  <DropdownMenuCheckboxItem
+                    key={value}
+                    checked={config.buttons.includes(value)}
+                    disabled={
+                      disabled ||
+                      (config.buttons.includes(value) &&
+                        config.buttons.filter(
+                          (button) =>
+                            button !== 'transparent' || (isLinux && isTauri()),
+                        ).length === 1)
+                    }
+                    onSelect={(event) => event.preventDefault()}
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...config,
+                        buttons: checked
+                          ? [...config.buttons, value]
+                          : config.buttons.filter((button) => button !== value),
+                      })
+                    }
+                  >
+                    {label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ConfigRow>
+          {config.buttons.includes('system') &&
+            config.buttons.includes('tun') && (
+              <Choice
+                label={m.dashboard_widget_proxy_shortcuts_config_order()}
+                value={config.order}
+                disabled={disabled}
+                options={[
+                  {
+                    value: 'system-first',
+                    label:
+                      m.dashboard_widget_proxy_shortcuts_config_system_first(),
+                  },
+                  {
+                    value: 'tun-first',
+                    label:
+                      m.dashboard_widget_proxy_shortcuts_config_tun_first(),
+                  },
+                ]}
+                onChange={(order) => onChange({ ...config, order })}
+              />
+            )}
         </ConfigGroup>
       )
     case WidgetId.TrafficDown:

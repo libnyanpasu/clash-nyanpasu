@@ -8,6 +8,43 @@ fn entries(raw: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn transparent_proxy_action_patches_mode_and_listener_without_changing_scope() {
+    use nyanpasu_config::clash::config::{
+        ClashConfig, TransparentProxyMode, clash_strategy::PortStrategyKind,
+    };
+    use struct_patch::Patch as _;
+    let mut config = ClashConfig::default();
+    config.transparent_proxy.local = false;
+    config.transparent_proxy.interfaces = vec!["eth0".into()];
+    config.apply(super::transparent_proxy_patch(&config, true));
+    assert_eq!(config.transparent_proxy.mode, TransparentProxyMode::Tproxy);
+    assert_eq!(
+        config.tproxy_port.as_ref().unwrap().kind,
+        PortStrategyKind::Fixed
+    );
+    assert_eq!(config.tproxy_port.as_ref().unwrap().start_port, 7894);
+    assert!(!config.transparent_proxy.local);
+    assert_eq!(config.transparent_proxy.interfaces, ["eth0"]);
+    config.apply(super::transparent_proxy_patch(&config, false));
+    assert_eq!(
+        config.transparent_proxy.mode,
+        TransparentProxyMode::Disabled
+    );
+    assert!(config.tproxy_port.is_some());
+}
+
+#[test]
+fn transparent_proxy_hotkey_names_round_trip() {
+    for action in [
+        HotkeyAction::ToggleTransparentProxy,
+        HotkeyAction::EnableTransparentProxy,
+        HotkeyAction::DisableTransparentProxy,
+    ] {
+        assert_eq!(action.as_str().parse::<HotkeyAction>().unwrap(), action);
+    }
+}
+
+#[test]
 fn parse_accepts_the_legacy_func_comma_key_format() {
     let bindings = HotkeyBindings::parse(
         &entries(&[
@@ -191,6 +228,29 @@ mod facade {
             assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
         })
         .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn transparent_proxy_action_does_not_commit_without_a_capable_service() {
+        use nyanpasu_config::clash::config::TransparentProxyMode;
+        let dir = tempdir().unwrap();
+        let client = client(&dir).await;
+        assert!(
+            client
+                .dispatch_hotkey_action(HotkeyAction::EnableTransparentProxy)
+                .await
+                .is_err()
+        );
+        let config = client.get_clash_config().await.unwrap();
+        assert_eq!(
+            config.transparent_proxy.mode,
+            TransparentProxyMode::Disabled
+        );
+        assert!(config.tproxy_port.is_none());
+        client
+            .dispatch_hotkey_action(HotkeyAction::DisableTransparentProxy)
+            .await
+            .unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

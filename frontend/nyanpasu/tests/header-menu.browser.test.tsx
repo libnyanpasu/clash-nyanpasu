@@ -9,6 +9,7 @@ import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
 const fakes = vi.hoisted(() => ({
   setThemeMode: vi.fn(),
   executeSystemProxy: vi.fn(),
+  executeTransparentProxy: vi.fn(),
   openWiki: vi.fn(),
   openIssueReport: vi.fn(),
   collectLogs: vi.fn(),
@@ -33,6 +34,13 @@ vi.mock('@/hooks/use-proxy-settings', () => ({
     execute: fakes.executeSystemProxy,
   }),
   useTunMode: () => ({ isActive: false, isPending: false, execute: vi.fn() }),
+  useTransparentProxy: () => ({
+    visible: true,
+    disabled: false,
+    isActive: false,
+    isPending: false,
+    execute: fakes.executeTransparentProxy,
+  }),
 }))
 vi.mock('@nyanpasu/query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@nyanpasu/query')>()),
@@ -119,6 +127,22 @@ test('settings menu options call the theme and system proxy handlers', async () 
     })
     .click()
   expect(fakes.executeSystemProxy).toHaveBeenCalledOnce()
+})
+
+test('the settings menu exposes transparent capture', async () => {
+  await render(<HeaderMenu />)
+  await page
+    .getByRole('menuitem', { name: m.header_settings_action_title() })
+    .click()
+  await page
+    .getByRole('menuitem', { name: m.header_settings_action_proxy_settings() })
+    .click()
+  await page
+    .getByRole('menuitemcheckbox', {
+      name: m.settings_clash_transparent_proxy_label(),
+    })
+    .click()
+  expect(fakes.executeTransparentProxy).toHaveBeenCalledOnce()
 })
 
 test('the update link stays outside the menubar and Help invokes its action', async () => {

@@ -1,6 +1,14 @@
+import '@/assets/styles/index.css'
+import '@/assets/styles/tailwind.css'
+import '@nyanpasu/theme/styles/theme.css'
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import {
+  SystemProxyButton,
+  TunModeButton,
+  TransparentProxyButton as WidgetTransparentProxyButton,
+} from '@/components/settings/system-proxy'
 import { m } from '@/paraglide/messages'
 import TransparentProxyButton from '../src/pages/(main)/main/settings/system/proxy/_modules/transparent-proxy-button'
 
@@ -13,16 +21,26 @@ const backend = vi.hoisted(() => ({
   invalidate: vi.fn(),
 }))
 
-vi.mock('@nyanpasu/platform', () => ({ isLinux: true }))
+vi.mock('@nyanpasu/platform', () => ({ isLinux: true, isTauri: () => true }))
 vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: string) => ({ value: backend.values[key] }),
-  useClashSetting: (key: string) => {
-    const [value, setValue] = useState(backend.values[key])
+  useClashSetting: (key: string) => ({ value: backend.values[key] }),
+  useClashSettings: () => {
+    const [value, setValue] = useState(backend.values)
     return {
-      value,
-      upsert: async (next: unknown) => {
-        await backend.upsert(key, next)
-        setValue(next)
+      query: { data: value },
+      upsert: {
+        mutateAsync: async (patch: Record<string, unknown>) => {
+          await backend.upsert(patch)
+          setValue((previous) => ({
+            ...previous,
+            ...patch,
+            transparent_proxy: {
+              ...(previous.transparent_proxy as object),
+              ...(patch.transparent_proxy as object),
+            },
+          }))
+        },
       },
     }
   },
@@ -59,17 +77,6 @@ vi.mock('@/components/providers/block-task-provider', () => ({
     execute,
     isPending: false,
   }),
-}))
-vi.mock('@/components/settings/system-proxy', () => ({
-  ProxyButton: ({
-    children,
-    isActive,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { isActive: boolean }) => (
-    <button {...props} data-active={String(isActive)}>
-      {children}
-    </button>
-  ),
 }))
 vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
 
@@ -112,21 +119,17 @@ test('enables TPROXY and disables capture while preserving its scope', async ({
     exact: false,
   })
   await button.click()
-  await expect.poll(() => backend.upsert.mock.calls.length).toBe(2)
-  expect(backend.upsert.mock.calls).toEqual([
-    ['tproxy_port', { kind: 'fixed', start_port: 7894 }],
-    [
-      'transparent_proxy',
-      { mode: 'tproxy', local: false, interfaces: ['eth0'], ipv6: true },
-    ],
-  ])
+  await expect.poll(() => backend.upsert.mock.calls.length).toBe(1)
+  expect(backend.upsert.mock.calls[0][0]).toEqual({
+    tproxy_port: { kind: 'fixed', start_port: 7894 },
+    transparent_proxy: { mode: 'tproxy' },
+  })
   await expect.element(button).toHaveAttribute('data-active', 'true')
   await button.click()
-  await expect.poll(() => backend.upsert.mock.calls.length).toBe(3)
-  expect(backend.upsert.mock.calls[2]).toEqual([
-    'transparent_proxy',
-    { mode: 'disabled', local: false, interfaces: ['eth0'], ipv6: true },
-  ])
+  await expect.poll(() => backend.upsert.mock.calls.length).toBe(2)
+  expect(backend.upsert.mock.calls[1][0]).toEqual({
+    transparent_proxy: { mode: 'disabled' },
+  })
 })
 
 test('requires service mode before enabling', async ({ onTestFinished }) => {
@@ -207,12 +210,7 @@ test('allows disabling existing REDIRECT capture when service mode is off', asyn
   await button.click()
   await expect
     .poll(() => backend.upsert.mock.calls)
-    .toEqual([
-      [
-        'transparent_proxy',
-        { mode: 'disabled', local: true, interfaces: [], ipv6: false },
-      ],
-    ])
+    .toEqual([[{ transparent_proxy: { mode: 'disabled' } }]])
 })
 
 test('reuses a configured TPROXY port', async ({ onTestFinished }) => {
@@ -225,7 +223,9 @@ test('reuses a configured TPROXY port', async ({ onTestFinished }) => {
     })
     .click()
   await expect.poll(() => backend.upsert.mock.calls.length).toBe(1)
-  expect(backend.upsert.mock.calls[0][0]).toBe('transparent_proxy')
+  expect(backend.upsert.mock.calls[0][0]).toEqual({
+    transparent_proxy: { mode: 'tproxy' },
+  })
 })
 
 test('does not enable capture when port configuration fails', async ({
@@ -240,7 +240,10 @@ test('does not enable capture when port configuration fails', async ({
     })
     .click()
   await expect.poll(() => backend.upsert.mock.calls.length).toBe(1)
-  expect(backend.upsert.mock.calls[0][0]).toBe('tproxy_port')
+  expect(backend.upsert.mock.calls[0][0]).toEqual({
+    transparent_proxy: { mode: 'tproxy' },
+    tproxy_port: { kind: 'fixed', start_port: 7894 },
+  })
 })
 
 test('reports pending until the service applies the selected mode', async ({
@@ -267,4 +270,100 @@ test('reports pending until the service applies the selected mode', async ({
       view.getByText(m.settings_clash_transparent_proxy_status_applied()),
     )
     .toBeInTheDocument()
+})
+
+test('keeps the same button shape and surface when activation is unavailable', async ({
+  onTestFinished,
+}) => {
+  backend.values = {
+    core: 'mihomo',
+    enable_service_mode: false,
+    enable_system_proxy: false,
+    enable_tun_mode: false,
+    tproxy_port: null,
+    transparent_proxy: { mode: 'disabled' },
+  }
+  const view = await render(
+    <>
+      <SystemProxyButton />
+      <TransparentProxyButton />
+    </>,
+  )
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+  const system = view
+    .getByRole('button', { name: m.settings_system_proxy_system_proxy_label() })
+    .element()
+  const transparent = view
+    .getByRole('button', {
+      name: m.settings_clash_transparent_proxy_label(),
+      exact: false,
+    })
+    .element()
+  const first = getComputedStyle(system)
+  const second = getComputedStyle(transparent)
+  expect(second.borderRadius).toBe(first.borderRadius)
+  expect(second.backgroundColor).toBe(first.backgroundColor)
+  expect(second.height).toBe(first.height)
+  expect(second.boxShadow).toBe(first.boxShadow)
+})
+
+test('TUN cannot be enabled while transparent capture is configured', async ({
+  onTestFinished,
+}) => {
+  backend.values = {
+    enable_tun_mode: false,
+    transparent_proxy: { mode: 'tproxy' },
+  }
+  const view = await render(<TunModeButton />)
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: m.settings_system_proxy_tun_mode_label(),
+      }),
+    )
+    .toBeDisabled()
+})
+
+test('the dashboard shortcut uses the same capture action', async ({
+  onTestFinished,
+}) => {
+  backend.values = {
+    core: 'mihomo',
+    enable_service_mode: true,
+    enable_tun_mode: false,
+    tproxy_port: null,
+    transparent_proxy: {
+      mode: 'disabled',
+      local: true,
+      interfaces: [],
+      ipv6: false,
+    },
+  }
+  backend.supported = true
+  backend.upsert.mockResolvedValue(undefined)
+  backend.invalidate.mockResolvedValue(undefined)
+  const view = await render(<WidgetTransparentProxyButton />)
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+  const button = view.getByRole('switch', {
+    name: m.settings_clash_transparent_proxy_label(),
+  })
+  await expect.element(button).toHaveAttribute('aria-checked', 'false')
+  await button.click()
+  await expect
+    .poll(() => backend.upsert.mock.calls[0]?.[0])
+    .toEqual({
+      transparent_proxy: { mode: 'tproxy' },
+      tproxy_port: { kind: 'fixed', start_port: 7894 },
+    })
+  await expect.element(button).toHaveAttribute('aria-checked', 'true')
 })

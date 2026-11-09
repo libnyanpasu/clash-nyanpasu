@@ -2076,6 +2076,8 @@ export type DirectEgress =
    *  them by rule, so an echo could come back from a proxy exit.
    */
   | { kind: 'tun_enabled' }
+  /**  Local transparent capture can route the probe through a proxy. */
+  | { kind: 'transparent_proxy_enabled' }
   /**
    *  `None` for a family no source gave an address over, such as a network
    *  without IPv6.
@@ -2410,6 +2412,9 @@ export type HotkeyAction =
   | 'toggle_tun_mode'
   | 'enable_tun_mode'
   | 'disable_tun_mode'
+  | 'toggle_transparent_proxy'
+  | 'enable_transparent_proxy'
+  | 'disable_transparent_proxy'
 
 /**
  *  Why a hotkey list could not be accepted. Rejected before anything is

@@ -10,6 +10,12 @@ export function useLocalIpProbe(enabled = true) {
 
   const { value: allowed } = useSetting('enable_local_ip_probe')
   const { value: tunEnabled } = useClashSetting('enable_tun_mode')
+  const { value: transparentProxy } = useClashSetting('transparent_proxy')
+  const localCapture = Boolean(
+    transparentProxy?.local &&
+    transparentProxy.mode != null &&
+    transparentProxy.mode !== 'disabled',
+  )
 
   const mutation = useMutation({
     mutationKey: api.mutations.probeDirectEgress.mutationKey,
@@ -20,7 +26,7 @@ export function useLocalIpProbe(enabled = true) {
   const probed = useRef(false)
 
   useEffect(() => {
-    if (!enabled || allowed !== true || tunEnabled !== false) {
+    if (!enabled || allowed !== true || tunEnabled !== false || localCapture) {
       probed.current = false
       return
     }
@@ -29,7 +35,7 @@ export function useLocalIpProbe(enabled = true) {
       probed.current = true
       mutate()
     }
-  }, [enabled, allowed, tunEnabled, mutate])
+  }, [enabled, allowed, tunEnabled, localCapture, mutate])
 
   return mutation
 }

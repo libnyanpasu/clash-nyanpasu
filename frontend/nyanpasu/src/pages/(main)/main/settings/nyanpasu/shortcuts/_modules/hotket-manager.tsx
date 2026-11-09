@@ -208,6 +208,12 @@ export default function HotkeyManager() {
     toggle_tun_mode: m.settings_nyanpasu_hotkey_toggle_tun_mode(),
     enable_tun_mode: m.settings_nyanpasu_hotkey_enable_tun_mode(),
     disable_tun_mode: m.settings_nyanpasu_hotkey_disable_tun_mode(),
+    toggle_transparent_proxy:
+      m.settings_nyanpasu_hotkey_toggle_transparent_proxy(),
+    enable_transparent_proxy:
+      m.settings_nyanpasu_hotkey_enable_transparent_proxy(),
+    disable_transparent_proxy:
+      m.settings_nyanpasu_hotkey_disable_transparent_proxy(),
   } satisfies Record<string, string>
 
   return (

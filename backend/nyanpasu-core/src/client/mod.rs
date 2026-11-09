@@ -994,7 +994,7 @@ impl NyanpasuClient {
         let countries = index
             .as_deref()
             .map(|index| index as &dyn traffic_frames::geo::CountryLookup);
-        // Permission or TUN may change while the requests are in flight.
+        // Permission or local capture may change while the requests are in flight.
         let result = cache.blocked().unwrap_or_else(|| DirectEgress::Probed {
             ipv4: ipv4.map(|answer| locate_egress(answer, countries)),
             ipv6: ipv6.map(|answer| locate_egress(answer, countries)),

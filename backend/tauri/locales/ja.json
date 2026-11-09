@@ -32,7 +32,8 @@
     "rule_mode": "ルールモード",
     "script_mode": "スクリプトモード",
     "system_proxy": "システムプロキシ",
-    "tun_mode": "TUN モード"
+    "tun_mode": "TUN モード",
+    "transparent_proxy": "透過プロキシ"
   },
   "dialog": {
     "crash_reporter": {

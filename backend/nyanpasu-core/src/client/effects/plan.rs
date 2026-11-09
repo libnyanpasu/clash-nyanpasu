@@ -36,6 +36,7 @@ pub struct ApplicationEffectInputs {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationEffectFields {
     pub enable_system_proxy: bool,
+    pub enable_service_mode: bool,
     pub system_proxy_bypass: String,
     pub enable_proxy_guard: bool,
     pub proxy_guard_interval: u64,
@@ -70,6 +71,7 @@ impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
     fn from(app: &NyanpasuAppConfig) -> Self {
         Self {
             enable_system_proxy: app.enable_system_proxy,
+            enable_service_mode: app.enable_service_mode,
             system_proxy_bypass: app.system_proxy_bypass.clone(),
             enable_proxy_guard: app.enable_proxy_guard,
             proxy_guard_interval: app.proxy_guard_interval,
@@ -184,6 +186,9 @@ impl ApplicationEffectInputs {
                 mode: self.clash.mode,
                 system_proxy: app.enable_system_proxy,
                 tun: self.clash.enable_tun_mode,
+                transparent_proxy: self.clash.transparent_proxy.mode
+                    != nyanpasu_config::clash::config::TransparentProxyMode::Disabled,
+                service_mode: app.enable_service_mode,
                 text: app.enable_tray_text,
                 traffic: app.enable_tray_traffic,
             },
@@ -297,6 +302,8 @@ pub struct TrayPartDesired {
     pub mode: Mode,
     pub system_proxy: bool,
     pub tun: bool,
+    pub transparent_proxy: bool,
+    pub service_mode: bool,
     pub text: bool,
     pub traffic: bool,
 }
@@ -497,6 +504,7 @@ mod tests {
         ApplicationEffectInputs {
             app: ApplicationEffectFields {
                 enable_system_proxy: false,
+                enable_service_mode: false,
                 system_proxy_bypass: "localhost".to_owned(),
                 enable_proxy_guard: false,
                 proxy_guard_interval: 30,
@@ -688,6 +696,19 @@ mod tests {
             vec![EffectKind::SystemProxy, EffectKind::Tray]
         );
         assert_eq!(plan.effects()[1], tray(TrayRefresh::Part, &after));
+    }
+
+    #[test]
+    fn transparent_capture_and_service_changes_refresh_tray_state() {
+        let before = inputs();
+        let mut after = inputs();
+        after.clash.transparent_proxy.mode =
+            nyanpasu_config::clash::config::TransparentProxyMode::Tproxy;
+        after.app.enable_service_mode = true;
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+        assert!(plan.effects().contains(&tray(TrayRefresh::Part, &after)));
+        assert!(after.tray_view().part.transparent_proxy);
+        assert!(after.tray_view().part.service_mode);
     }
 
     #[test]
@@ -1038,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn service_mode_is_not_an_effect_input_and_core_only_shapes_the_tray() {
+    fn service_mode_refreshes_the_tray_and_core_rebuilds_it() {
         let app = NyanpasuAppConfig::default();
         let clash = ClashConfig::default();
         let before = ApplicationEffectInputs::project(&app, &clash, None);
@@ -1049,8 +1070,8 @@ mod tests {
         };
         let after = ApplicationEffectInputs::project(&host_switched, &clash, None);
         assert_eq!(
-            before, after,
-            "service mode may not enter the effect inputs"
+            ApplicationEffectPlan::diff(&before, &after).effects(),
+            [tray(TrayRefresh::Part, &after)]
         );
 
         // The core reaches the effects only through the tray menu it shapes.
@@ -1102,6 +1123,8 @@ mod tests {
                     mode: Mode::Script,
                     system_proxy: true,
                     tun: true,
+                    transparent_proxy: false,
+                    service_mode: app.enable_service_mode,
                     text: true,
                     traffic: false,
                 },
@@ -1154,6 +1177,7 @@ pub(crate) fn requested_owners(
         || patch.enable_tray_text.is_some()
         || patch.enable_tray_traffic.is_some()
         || patch.enable_system_proxy.is_some()
+        || patch.enable_service_mode.is_some()
     {
         kinds.push(EffectKind::Tray);
     }

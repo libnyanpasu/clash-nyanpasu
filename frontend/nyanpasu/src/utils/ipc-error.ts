@@ -299,6 +299,12 @@ function hotkeyActionName(action: HotkeyAction): string {
       return m.settings_nyanpasu_hotkey_enable_tun_mode()
     case 'disable_tun_mode':
       return m.settings_nyanpasu_hotkey_disable_tun_mode()
+    case 'toggle_transparent_proxy':
+      return m.settings_nyanpasu_hotkey_toggle_transparent_proxy()
+    case 'enable_transparent_proxy':
+      return m.settings_nyanpasu_hotkey_enable_transparent_proxy()
+    case 'disable_transparent_proxy':
+      return m.settings_nyanpasu_hotkey_disable_transparent_proxy()
   }
 }
 

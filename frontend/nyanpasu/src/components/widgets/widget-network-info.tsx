@@ -178,11 +178,20 @@ function NetworkInfoLive({
   const config = useWidgetConfig(props.id, WidgetId.NetworkInfo)
   const { value: allowed } = useSetting('enable_local_ip_probe')
   const { value: tunEnabled } = useClashSetting('enable_tun_mode')
+  const { value: transparentProxy } = useClashSetting('transparent_proxy')
   const probe = useLocalIpProbe()
 
   const egress = probe.data
   const off = allowed === false || egress?.kind === 'disabled'
   const tun = !off && (tunEnabled === true || egress?.kind === 'tun_enabled')
+  const transparent =
+    !off &&
+    (Boolean(
+      transparentProxy?.local &&
+      transparentProxy.mode != null &&
+      transparentProxy.mode !== 'disabled',
+    ) ||
+      egress?.kind === 'transparent_proxy_enabled')
   const probed = egress?.kind === 'probed' ? egress : null
 
   const notice = off ? (
@@ -198,6 +207,10 @@ function NetworkInfoLive({
   ) : tun ? (
     <p className="text-on-surface-variant text-sm" role="status">
       {m.dashboard_widget_network_info_tun()}
+    </p>
+  ) : transparent ? (
+    <p className="text-on-surface-variant text-sm" role="status">
+      {m.dashboard_widget_network_info_transparent_proxy()}
     </p>
   ) : probe.isError ? (
     <p className="text-error text-sm" role="alert">
@@ -222,7 +235,7 @@ function NetworkInfoLive({
               icon
               className="size-7 shrink-0"
               aria-label={refreshLabel}
-              disabled={!canAct || off || tun || probe.isPending}
+              disabled={!canAct || off || tun || transparent || probe.isPending}
               loading={probe.isPending}
               onClick={() => probe.mutate()}
               data-slot="network-info-refresh"

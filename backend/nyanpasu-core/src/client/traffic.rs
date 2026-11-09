@@ -88,15 +88,45 @@ impl LocalSourceCache {
     pub(super) fn blocked(&self) -> Option<super::DirectEgress> {
         if !self.application.load().state.enable_local_ip_probe {
             Some(super::DirectEgress::Disabled)
-        } else if self.clash.load().state.enable_tun_mode {
-            Some(super::DirectEgress::TunEnabled)
         } else {
-            None
+            let clash = self.clash.load();
+            if clash.state.enable_tun_mode {
+                Some(super::DirectEgress::TunEnabled)
+            } else if captures_local_traffic(&clash.state) {
+                Some(super::DirectEgress::TransparentProxyEnabled)
+            } else {
+                None
+            }
         }
     }
 }
 
-/// A running probe stops asking once detection is off or TUN is on, and skips
+fn captures_local_traffic(config: &nyanpasu_config::clash::config::ClashConfig) -> bool {
+    config.transparent_proxy.local
+        && config.transparent_proxy.mode
+            != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
+}
+
+#[cfg(test)]
+mod transparent_capture_tests {
+    use super::captures_local_traffic;
+    use nyanpasu_config::clash::config::{ClashConfig, TransparentProxyMode};
+
+    #[test]
+    fn blocks_only_enabled_local_capture() {
+        let mut config = ClashConfig::default();
+        assert!(!captures_local_traffic(&config));
+        config.transparent_proxy.mode = TransparentProxyMode::Tproxy;
+        assert!(captures_local_traffic(&config));
+        config.transparent_proxy.local = false;
+        assert!(!captures_local_traffic(&config));
+        config.transparent_proxy.mode = TransparentProxyMode::Redir;
+        config.transparent_proxy.local = true;
+        assert!(captures_local_traffic(&config));
+    }
+}
+
+/// A running probe stops asking once detection is off or local capture is on, and skips
 /// a server or provider that has since left the user's list.
 impl nyanpasu_contracts::net::ProbePermission for LocalSourceCache {
     fn allows_stun(&self, server: &StunServer) -> bool {

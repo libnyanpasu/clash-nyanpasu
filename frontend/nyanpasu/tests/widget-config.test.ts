@@ -271,3 +271,13 @@ test('both proxy widgets default to flex while status preserves an explicit equa
     'flex',
   )
 })
+
+test('transparent proxy shortcut selection survives storage normalization', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: { proxy: { type: 'proxy-shortcuts', buttons: 'transparent' } },
+  })
+  expect(
+    getWidgetConfig(storage, 'proxy', WidgetId.ProxyShortcuts).buttons,
+  ).toBe('transparent')
+})

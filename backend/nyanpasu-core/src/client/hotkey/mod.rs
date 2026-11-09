@@ -7,7 +7,8 @@ mod tests;
 use nyanpasu_config::{
     application::NyanpasuAppConfigPatch,
     clash::config::{
-        ClashConfigPatch,
+        ClashConfig, ClashConfigPatch, TransparentProxyConfigPatch, TransparentProxyMode,
+        clash_strategy::{PortStrategy, PortStrategyKind},
         overrides::{ClashGuardOverridesPatch, Mode},
     },
 };
@@ -64,6 +65,13 @@ impl NyanpasuClient {
             }
             HotkeyAction::EnableTunMode => self.set_tun_mode(true).await,
             HotkeyAction::DisableTunMode => self.set_tun_mode(false).await,
+            HotkeyAction::ToggleTransparentProxy => {
+                let enabled = self.get_clash_config().await?.transparent_proxy.mode
+                    != TransparentProxyMode::Disabled;
+                self.set_transparent_proxy(!enabled).await
+            }
+            HotkeyAction::EnableTransparentProxy => self.set_transparent_proxy(true).await,
+            HotkeyAction::DisableTransparentProxy => self.set_transparent_proxy(false).await,
         }
     }
 
@@ -89,6 +97,21 @@ impl NyanpasuClient {
         Ok(())
     }
 
+    async fn set_transparent_proxy(&self, enabled: bool) -> Result<()> {
+        let config = self.get_clash_config().await?;
+        if enabled && config.transparent_proxy.mode == TransparentProxyMode::Disabled {
+            let status = self.get_transparent_proxy_status().await?;
+            if !status.supported {
+                return Err("the service does not support transparent capture".into());
+            }
+        }
+        let outcome = self
+            .patch_clash_config(transparent_proxy_patch(&config, enabled))
+            .await?;
+        log_degradations(&outcome);
+        Ok(())
+    }
+
     async fn set_tun_mode(&self, enabled: bool) -> Result<()> {
         let outcome = self
             .patch_clash_config(ClashConfigPatch {
@@ -98,6 +121,29 @@ impl NyanpasuClient {
             .await?;
         log_degradations(&outcome);
         Ok(())
+    }
+}
+
+fn transparent_proxy_patch(config: &ClashConfig, enabled: bool) -> ClashConfigPatch {
+    let mode = if enabled {
+        match config.transparent_proxy.mode {
+            TransparentProxyMode::Disabled => TransparentProxyMode::Tproxy,
+            mode => mode,
+        }
+    } else {
+        TransparentProxyMode::Disabled
+    };
+    ClashConfigPatch {
+        transparent_proxy: TransparentProxyConfigPatch {
+            mode: Some(mode),
+            ..Default::default()
+        },
+        tproxy_port: (mode == TransparentProxyMode::Tproxy && config.tproxy_port.is_none())
+            .then_some(Some(PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: 7894,
+            })),
+        ..Default::default()
     }
 }
 

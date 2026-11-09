@@ -56,9 +56,15 @@ type Backend = {
   allowed: boolean
   tun: boolean
   hideAddresses?: boolean
+  localCapture?: boolean
 }
 
-function createRpcHarness({ allowed, tun, hideAddresses }: Backend) {
+function createRpcHarness({
+  allowed,
+  tun,
+  hideAddresses,
+  localCapture,
+}: Backend) {
   const calls: string[] = []
   const invoke = async <T,>(
     method: string,
@@ -84,7 +90,13 @@ function createRpcHarness({ allowed, tun, hideAddresses }: Backend) {
       case 'get_app_config':
         return { enable_local_ip_probe: allowed } as T
       case 'get_clash_config':
-        return { enable_tun_mode: tun } as T
+        return {
+          enable_tun_mode: tun,
+          transparent_proxy: {
+            mode: localCapture ? 'tproxy' : 'disabled',
+            local: true,
+          },
+        } as T
       case 'probe_direct_egress':
         return PROBED as T
       default:
@@ -258,6 +270,29 @@ test('nothing is probed while TUN mode is on', async ({ onTestFinished }) => {
   await expect
     .element(page.getByText(m.dashboard_widget_network_info_tun()))
     .toBeInTheDocument()
+  expect(probes()).toBe(0)
+})
+
+test('local transparent capture suppresses the direct address probe', async ({
+  onTestFinished,
+}) => {
+  const { probes } = await mount(onTestFinished, {
+    allowed: true,
+    tun: false,
+    localCapture: true,
+  })
+  await expect
+    .element(
+      page.getByText(m.dashboard_widget_network_info_transparent_proxy()),
+    )
+    .toBeInTheDocument()
+  await expect
+    .element(
+      page.getByRole('button', {
+        name: m.dashboard_widget_network_info_refresh(),
+      }),
+    )
+    .toBeDisabled()
   expect(probes()).toBe(0)
 })
 

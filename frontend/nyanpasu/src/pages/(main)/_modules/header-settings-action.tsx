@@ -13,7 +13,11 @@ import {
 import { CircularProgress } from '@nyanpasu/ui/progress'
 import { useLanguage } from '@/components/providers/language-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
-import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
+import {
+  useSystemProxy,
+  useTransparentProxy,
+  useTunMode,
+} from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
 import { ProxyMode, useProxyMode } from '@nyanpasu/query'
@@ -88,6 +92,8 @@ const ProxySettings = () => {
 
   const tunMode = useTunMode()
 
+  const transparentProxy = useTransparentProxy()
+
   const proxyMode = useProxyMode()
 
   const proxyModeMessages = {
@@ -127,6 +133,12 @@ const ProxySettings = () => {
           key="tun-mode"
           className="group relative"
           checked={tunMode.isActive}
+          disabled={tunMode.disabled || tunMode.isPending}
+          title={
+            tunMode.disabled
+              ? m.error_transparent_proxy_tun_conflict()
+              : undefined
+          }
           onCheckedChange={() => {
             tunMode.execute()
           }}
@@ -141,6 +153,27 @@ const ProxySettings = () => {
             indeterminate
           />
         </MenubarCheckboxItem>
+
+        {transparentProxy.visible && (
+          <MenubarCheckboxItem
+            className="group relative"
+            checked={transparentProxy.isActive}
+            disabled={transparentProxy.disabled || transparentProxy.isPending}
+            title={transparentProxy.reason}
+            onCheckedChange={() => {
+              transparentProxy.execute()
+            }}
+            data-loading={String(transparentProxy.isPending)}
+          >
+            <span className="text-nowrap">
+              {m.settings_clash_transparent_proxy_label()}
+            </span>
+            <CircularProgress
+              className="invisible size-4 group-data-[loading=true]:visible"
+              indeterminate
+            />
+          </MenubarCheckboxItem>
+        )}
 
         <MenubarSeparator />
 

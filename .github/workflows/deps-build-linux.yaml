@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
@@ -71,13 +71,13 @@ jobs:
 
       # `pnpm tauri build` generates the open source credits before the frontend.
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-about@0.9.2
 
       - name: Setup Cargo binstall
         if: ${{ inputs.arch != 'x86_64' }}
-        uses: cargo-bins/cargo-binstall@main
+        uses: cargo-bins/cargo-binstall@v1.26.2
 
       - name: Setup Cross Toolchain
         if: ${{ inputs.arch != 'x86_64' }}
@@ -95,16 +95,16 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libappindicator3-dev librsvg2-dev patchelf openssl
 
       - name: Install Node latest
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
         with:
           workspaces: 'backend'
@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload AppImage to Github Artifact
         if: ${{ inputs.arch == 'x86_64' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-appimage
           path: |
@@ -228,7 +228,7 @@ jobs:
             ./backend/target/**/*.AppImage.tar.gz.sig
 
       - name: Upload deb to Github Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-deb
           path: |
@@ -236,7 +236,7 @@ jobs:
             ./backend/target/**/*.deb.sha256
 
       - name: Upload rpm to Github Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-rpm
           path: |
@@ -279,7 +279,7 @@ jobs:
 
       - name: Upload file server diagnostics
         if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: upload-diagnostics-linux-${{ inputs.arch }}
           path: ./upload-report.json

@@ -54,10 +54,6 @@ vi.mock('../src/pages/(main)/_modules/help-links', () => ({
   openWiki: fakes.openWiki,
   openIssueReport: fakes.openIssueReport,
 }))
-vi.mock('@nyanpasu/platform', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/platform')>()),
-  isBrowser: () => false,
-}))
 vi.mock('../src/pages/(main)/main/profiles/$type/index', () => ({
   Action: { ImportLocalProfile: 'import-local-profile' },
 }))

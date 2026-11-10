@@ -5,6 +5,7 @@ import {
   TunModeButton,
 } from '@/components/settings/system-proxy'
 import { m } from '@/paraglide/messages'
+import { PlatformLinux } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -38,7 +39,9 @@ const ProxyMode = () => {
 
           <TunModeButton />
 
-          <TransparentProxyButton />
+          <PlatformLinux>
+            <TransparentProxyButton />
+          </PlatformLinux>
         </div>
       </SettingsGroup>
 

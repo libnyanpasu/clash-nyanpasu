@@ -1,5 +1,6 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
+import { PlatformLinux } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,
@@ -83,7 +84,9 @@ function RouteComponent() {
       <div className="space-y-4 px-4 pb-4">
         <PortSettings />
 
-        <TransparentProxyConfigSettings />
+        <PlatformLinux>
+          <TransparentProxyConfigSettings />
+        </PlatformLinux>
 
         <LanSettings />
 

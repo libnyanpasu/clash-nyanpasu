@@ -23,6 +23,7 @@ import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
+import { PlatformLinux } from '@nyanpasu/platform/react'
 import { ProxyMode as ProxyModeType, useProxyMode } from '@nyanpasu/query'
 import { CopyEnvOption } from '@nyanpasu/rpc/types'
 import { createFileRoute, Link } from '@tanstack/react-router'
@@ -308,7 +309,9 @@ function RouteComponent() {
 
       <TunModeButton />
 
-      <TransparentProxyButton />
+      <PlatformLinux>
+        <TransparentProxyButton />
+      </PlatformLinux>
 
       <ProxyMode />
 

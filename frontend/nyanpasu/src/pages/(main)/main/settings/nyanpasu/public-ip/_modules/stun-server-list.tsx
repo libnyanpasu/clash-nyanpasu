@@ -21,7 +21,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isBrowser } from '@nyanpasu/platform'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import type { StunServer } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
@@ -211,12 +211,14 @@ export default function StunServerList() {
         </p>
 
         {/* The test opens sockets to an arbitrary host, which only the desktop app may do. */}
-        {!isBrowser() && servers && (
-          <AddStunServerDialog
-            servers={servers}
-            onAdd={(server) => save([...servers, server])}
-          />
-        )}
+        <PlatformDesktop>
+          {servers && (
+            <AddStunServerDialog
+              servers={servers}
+              onAdd={(server) => save([...servers, server])}
+            />
+          )}
+        </PlatformDesktop>
       </div>
 
       <DragDropProvider
@@ -256,7 +258,9 @@ export default function StunServerList() {
 
       <p className="text-on-surface-variant px-3 text-xs">
         {m.settings_public_ip_stun_description()}
-        {isBrowser() && ` ${m.settings_public_ip_stun_desktop_only()}`}
+        <PlatformDesktop
+          fallback={` ${m.settings_public_ip_stun_desktop_only()}`}
+        />
       </p>
     </section>
   )

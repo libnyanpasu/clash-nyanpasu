@@ -1,13 +1,21 @@
 import { commands } from '@/services/rpc'
-import { isTauri } from '@nyanpasu/platform'
+import { detectRuntime } from '@nyanpasu/platform'
 import { unwrapResult } from '@nyanpasu/rpc'
 
 export const readClipboardText = async () => {
-  if (!isTauri()) return navigator.clipboard.readText()
+  const runtime = detectRuntime()
+  if (runtime.bridge === 'none' && runtime.platform.surface === 'browser')
+    return navigator.clipboard.readText()
+  if (runtime.bridge !== 'tauri')
+    throw new Error('Clipboard is unavailable in this runtime')
   return unwrapResult(await commands.readClipboardText())
 }
 
 export const writeClipboardText = async (text: string) => {
-  if (!isTauri()) return navigator.clipboard.writeText(text)
+  const runtime = detectRuntime()
+  if (runtime.bridge === 'none' && runtime.platform.surface === 'browser')
+    return navigator.clipboard.writeText(text)
+  if (runtime.bridge !== 'tauri')
+    throw new Error('Clipboard is unavailable in this runtime')
   return unwrapResult(await commands.writeClipboardText(text))
 }

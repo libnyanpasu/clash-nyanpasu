@@ -13,7 +13,11 @@ const native = vi.hoisted(() => ({
   upsert: vi.fn(),
 }))
 
-vi.mock('@nyanpasu/platform', () => ({ isTauri: () => true }))
+vi.mock('@nyanpasu/platform', () => ({ createWindowAdapter: () => native }))
+vi.mock('@nyanpasu/platform/react', () => ({
+  useMatchesPlatform: (condition: unknown) => condition !== 'browser',
+  PlatformDesktop: ({ children }: { children: React.ReactNode }) => children,
+}))
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => native,
 }))

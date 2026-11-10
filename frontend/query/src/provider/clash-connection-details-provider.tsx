@@ -7,13 +7,14 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { useRuntime } from '@nyanpasu/platform/react'
+import { createConnectionDetailsTransport } from '@nyanpasu/rpc'
 import type {
   ClashConnectionDetails_Deserialize,
   ClashConnectionDetails_Serialize,
   ClashConnectionsConnectorState,
   SubscriptionId,
 } from '@nyanpasu/rpc/types'
-import { Channel, isTauri } from '@tauri-apps/api/core'
 import { useRpc } from './rpc-provider'
 
 // Registers one consumer and returns its unregister; only the 0→1 and 1→0
@@ -105,6 +106,7 @@ export const ClashConnectionDetailsProvider = ({
   connectorState: ClashConnectionsConnectorState
 }>) => {
   const rpc = useRpc()
+  const runtime = useRuntime()
   const [subscriberCount, setSubscriberCount] = useState(0)
   const [frame, setFrame] = useState<ClashConnectionDetails_Serialize | null>(
     null,
@@ -148,110 +150,41 @@ export const ClashConnectionDetailsProvider = ({
     setError(null)
     setFrame(null)
 
-    if (!isTauri()) {
-      let disposed = false
-      const source = new EventSource('/bridge/connection-details')
-      source.onopen = () => {
-        if (disposed) return
+    const transport =
+      createConnectionDetailsTransport<ClashConnectionDetails_Serialize>(
+        runtime,
+        {
+          subscribe: (channel) =>
+            rpc.subscribeClashConnectionDetails(
+              channel as unknown as import('@tauri-apps/api/core').Channel<ClashConnectionDetails_Deserialize>,
+            ),
+          unsubscribe: (id) =>
+            rpc.unsubscribeClashConnectionDetails(id as SubscriptionId),
+        },
+      )
+    const stop = transport.listen({
+      onOpen: () => {
         setStatus('connecting')
         setError(null)
-      }
-      source.onmessage = (event) => {
-        if (disposed) return
-        try {
-          setFrame(JSON.parse(event.data) as ClashConnectionDetails_Serialize)
-          setStatus('connected')
-          setError(null)
-        } catch (error) {
-          console.error('failed to decode connection details:', error)
-          setError(error)
-          setStatus('error')
-        }
-      }
-      source.onerror = (event) => {
-        if (disposed) return
-        setFrame(null)
-        setError(event)
-        setStatus('error')
-      }
-      return () => {
-        disposed = true
-        source.close()
-        setFrame(null)
-        setStatus('idle')
+      },
+      onMessage: (data) => {
+        setFrame(data)
+        setStatus('connected')
         setError(null)
-      }
-    }
-
-    let disposed = false
-    let subscriptionId: SubscriptionId | undefined
-
-    const channel = new Channel<ClashConnectionDetails_Serialize>()
-    channel.onmessage = (data) => {
-      if (disposed) return
-      setFrame(data)
-      setStatus('connected')
-      setError(null)
-    }
-    const unsubscribe = (id: SubscriptionId) => {
-      rpc
-        .unsubscribeClashConnectionDetails(id)
-        .then((result) => {
-          if (result.status === 'error') {
-            console.error(
-              'failed to unsubscribe from connection details:',
-              result.error,
-            )
-          }
-        })
-        .catch((error: unknown) => {
-          console.error('failed to unsubscribe from connection details:', error)
-        })
-    }
-
-    // tauri-specta types every command argument's phase as "Deserialize",
-    // including a Channel's payload type, which is actually the direction
-    // Rust *serializes* into (ClashConnection's `_extra` is a named field
-    // only on that side). The cast documents the mismatch; `channel` is the
-    // only thing actually sent across the boundary.
-    rpc
-      .subscribeClashConnectionDetails(
-        channel as unknown as Channel<ClashConnectionDetails_Deserialize>,
-      )
-      .then((result) => {
-        if (disposed) {
-          if (result.status === 'ok') unsubscribe(result.data)
-          return
-        }
-        if (result.status === 'error') {
-          console.error(
-            'failed to subscribe to connection details:',
-            result.error,
-          )
-          setError(result.error)
-          setStatus('error')
-          return
-        }
-        subscriptionId = result.data
-      })
-      .catch((error: unknown) => {
-        console.error('failed to subscribe to connection details:', error)
-        if (!disposed) {
-          setError(error)
-          setStatus('error')
-        }
-      })
-
+      },
+      onError: (error) => {
+        setFrame(null)
+        setError(error)
+        setStatus('error')
+      },
+    })
     return () => {
-      disposed = true
+      stop()
       setFrame(null)
       setStatus('idle')
       setError(null)
-      if (subscriptionId !== undefined) {
-        unsubscribe(subscriptionId)
-      }
     }
-  }, [connectorState, hasSubscribers, retrySequence, rpc])
+  }, [connectorState, hasSubscribers, retrySequence, rpc, runtime])
 
   const value = useMemo(
     () => ({ frame, status, connectorState, error, retry }),

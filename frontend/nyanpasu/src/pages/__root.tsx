@@ -1,4 +1,12 @@
-import { lazy, useCallback, useEffect, useRef, type RefObject } from 'react'
+import {
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
@@ -14,24 +22,26 @@ import { formatError } from '@/utils'
 import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
-import { isBrowser, isTauri } from '@nyanpasu/platform'
+import {
+  createWindowAdapter,
+  detectRuntime,
+  type RuntimeInfo,
+} from '@nyanpasu/platform'
+import { PlatformProvider } from '@nyanpasu/platform/react'
 import { NyanpasuQueryProvider, useSettings } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
 import { type Degradation, type DegradationPhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   ErrorComponentProps,
   Outlet,
   redirect,
 } from '@tanstack/react-router'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-
-const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 // The backend shows a window once its frontend has rendered.
 const reportWindowReady = () => {
-  if (isTauri()) {
+  if (detectRuntime().bridge === 'tauri') {
     rpc
       .reportWindowReady()
       .then(unwrapResult)
@@ -41,52 +51,75 @@ const reportWindowReady = () => {
   }
 }
 
+type RootContext = { runtime?: RuntimeInfo }
+
+function RootPlatformBoundary({ children }: { children: ReactNode }) {
+  const contextRuntime = Route.useRouteContext({
+    select: (context) => context.runtime,
+  })
+  const [runtime] = useState(() => contextRuntime ?? detectRuntime())
+  return (
+    <PlatformProvider platform={runtime.platform} bridge={runtime.bridge}>
+      {children}
+    </PlatformProvider>
+  )
+}
+
 export const Catch = ({ error }: ErrorComponentProps) => {
+  const [appWindow] = useState(createWindowAdapter)
   // A window that failed to render is still shown, with the error.
   useEffect(reportWindowReady, [])
 
   return (
-    <div className={cn('h-dvh bg-black text-white', 'flex flex-col gap-4 p-4')}>
+    <RootPlatformBoundary>
       <div
-        className="fixed top-0 left-0 z-10 h-6 w-full"
-        data-tauri-drag-region
-      />
+        className={cn('h-dvh bg-black text-white', 'flex flex-col gap-4 p-4')}
+      >
+        <div
+          className="fixed top-0 left-0 z-10 h-6 w-full"
+          data-tauri-drag-region
+        />
 
-      <h1 data-tauri-drag-region>Oops!</h1>
+        <h1 data-tauri-drag-region>Oops!</h1>
 
-      <p>Something went wrong... Caught in error boundary.</p>
+        <p>Something went wrong... Caught in error boundary.</p>
 
-      <pre className="overflow-x-auto font-mono whitespace-pre-wrap select-text">
-        {error instanceof Error ? (
-          <>
-            {error.message}
-            {error.stack}
-          </>
-        ) : (
-          formatError(error)
-        )}
-      </pre>
+        <pre className="overflow-x-auto font-mono whitespace-pre-wrap select-text">
+          {error instanceof Error ? (
+            <>
+              {error.message}
+              {error.stack}
+            </>
+          ) : (
+            formatError(error)
+          )}
+        </pre>
 
-      <div className="flex items-center gap-2">
-        <button
-          className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
-          onClick={() => window.location.reload()}
-        >
-          Reload Resource
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+            onClick={() => window.location.reload()}
+          >
+            Reload Resource
+          </button>
 
-        <button
-          className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
-          onClick={() => appWindow?.close()}
-        >
-          Close Window
-        </button>
+          <button
+            className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+            onClick={() => appWindow?.close()}
+          >
+            Close Window
+          </button>
+        </div>
       </div>
-    </div>
+    </RootPlatformBoundary>
   )
 }
 
-export const Pending = () => <div>Loading from _root...</div>
+export const Pending = () => (
+  <RootPlatformBoundary>
+    <div>Loading from _root...</div>
+  </RootPlatformBoundary>
+)
 
 const TanStackRouterDevtools = import.meta.env.PROD
   ? () => null // Render nothing in production
@@ -99,9 +132,12 @@ const TanStackRouterDevtools = import.meta.env.PROD
       })),
     )
 
-export const Route = createRootRoute({
-  beforeLoad: ({ location }) => {
-    if (isBrowser() && location.pathname === '/') {
+export const Route = createRootRouteWithContext<RootContext>()({
+  beforeLoad: ({ context, location }) => {
+    if (
+      (context.runtime ?? detectRuntime()).platform.surface === 'browser' &&
+      location.pathname === '/'
+    ) {
       throw redirect({ to: '/main/dashboard' })
     }
   },
@@ -223,6 +259,7 @@ function DeepLinkImport() {
 }
 
 export default function App() {
+  const [appWindow] = useState(createWindowAdapter)
   const degradationHandler = useRef<DegradationHandler | null>(null)
   const onDegraded = useCallback(
     (items: Degradation[]) => degradationHandler.current?.(items),
@@ -230,31 +267,35 @@ export default function App() {
   )
 
   return (
-    <NyanpasuQueryProvider
-      rpc={rpc}
-      queryClient={queryClient}
-      onDegraded={onDegraded}
-    >
-      <BlockTaskProvider>
-        <LanguageProvider>
-          <ExperimentalThemeProvider>
-            <CustomCssProvider>
-              <TooltipProvider>
-                <SnackbarProvider>
-                  <ImportUrlProvider>
-                    <WindowReadyReporter />
-                    <MutationDegradationNotifier handler={degradationHandler} />
-                    {appWindow?.label === 'main' && <DeepLinkImport />}
-                    <Outlet />
-                  </ImportUrlProvider>
-                </SnackbarProvider>
-              </TooltipProvider>
-            </CustomCssProvider>
-          </ExperimentalThemeProvider>
+    <RootPlatformBoundary>
+      <NyanpasuQueryProvider
+        rpc={rpc}
+        queryClient={queryClient}
+        onDegraded={onDegraded}
+      >
+        <BlockTaskProvider>
+          <LanguageProvider>
+            <ExperimentalThemeProvider>
+              <CustomCssProvider>
+                <TooltipProvider>
+                  <SnackbarProvider>
+                    <ImportUrlProvider>
+                      <WindowReadyReporter />
+                      <MutationDegradationNotifier
+                        handler={degradationHandler}
+                      />
+                      {appWindow?.label() === 'main' && <DeepLinkImport />}
+                      <Outlet />
+                    </ImportUrlProvider>
+                  </SnackbarProvider>
+                </TooltipProvider>
+              </CustomCssProvider>
+            </ExperimentalThemeProvider>
 
-          <TanStackRouterDevtools />
-        </LanguageProvider>
-      </BlockTaskProvider>
-    </NyanpasuQueryProvider>
+            <TanStackRouterDevtools />
+          </LanguageProvider>
+        </BlockTaskProvider>
+      </NyanpasuQueryProvider>
+    </RootPlatformBoundary>
   )
 }

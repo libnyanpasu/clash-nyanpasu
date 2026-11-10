@@ -1,7 +1,11 @@
 import { m } from '@/paraglide/messages'
 import { commands } from '@/services/rpc'
 import { writeClipboardText } from '@/utils/clipboard'
-import { isBrowser, showWebNotification } from '@nyanpasu/platform'
+import {
+  createBrowserAdapter,
+  detectRuntime,
+  showWebNotification,
+} from '@nyanpasu/platform'
 import { isIpcError, unwrapResult } from '@nyanpasu/rpc'
 import type {
   IpcError,
@@ -27,17 +31,24 @@ export const notification = async ({ title, body }: NotificationOptions) => {
   if (!title) {
     throw new Error('missing message argument!')
   }
-  if (isBrowser()) {
+  const runtime = detectRuntime()
+  if (runtime.platform.surface === 'browser') {
     await showWebNotification({ title, body })
     return
   }
-  if (WIN_PORTABLE) {
+  if (
+    runtime.platform.surface === 'desktop' &&
+    runtime.platform.clientOs === 'windows' &&
+    unwrapResult(await commands.isPortable())
+  ) {
     await message(body ? `${title}: ${body}` : title, {
       title: 'Clash Nyanpasu',
     })
     return
   }
 
+  if (runtime.bridge !== 'tauri')
+    throw new Error('Notifications are unavailable in this runtime')
   unwrapResult(await commands.showNativeNotification(title, body ?? null))
 }
 
@@ -103,7 +114,12 @@ export const ask = async (
   value: string,
   options?: string | Pick<MessageOptions, 'title' | 'kind'>,
 ) => {
-  if (isBrowser()) return window.confirm(value)
+  const runtime = detectRuntime()
+  if (runtime.platform.surface === 'browser') {
+    return createBrowserAdapter()?.confirm(value) ?? false
+  }
+  if (runtime.bridge !== 'tauri')
+    throw new Error('Dialogs are unavailable in this runtime')
 
   const title = typeof options === 'string' ? options : (options?.title ?? null)
   const kind = typeof options === 'string' ? 'info' : (options?.kind ?? 'info')
@@ -133,16 +149,20 @@ export const message = async (
     }
   }
 
-  if (isBrowser()) {
-    window.alert(value)
+  const runtime = detectRuntime()
+  if (runtime.platform.surface === 'browser') {
+    const browser = createBrowserAdapter()
+    browser?.alert(value)
     if (
       isIpcError(error) &&
-      window.confirm(`${m.common_copy_error_details()}?`)
+      browser?.confirm(`${m.common_copy_error_details()}?`)
     ) {
       await writeClipboardText(error.detail)
     }
     return
   }
+  if (runtime.bridge !== 'tauri')
+    throw new Error('Dialogs are unavailable in this runtime')
 
   const copyLabel = m.common_copy_error_details()
   const buttons = nativeButtons(

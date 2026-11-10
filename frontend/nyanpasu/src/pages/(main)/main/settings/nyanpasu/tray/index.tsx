@@ -1,6 +1,6 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
-import { isMacOS } from '@nyanpasu/platform'
+import { Platform } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import TrayIconConfig from '../_modules/tray-icon-config'
@@ -30,7 +30,9 @@ function RouteComponent() {
             {trayMenuMode === 'native' && <TrayProxiesSelector />}
           </SettingsGroup>
 
-          {!isMacOS && <TrayIconConfig />}
+          <Platform when={['windows', 'linux']}>
+            <TrayIconConfig />
+          </Platform>
         </div>
 
         <div data-slot="window-settings-container">

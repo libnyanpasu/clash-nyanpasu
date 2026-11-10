@@ -2,7 +2,7 @@ import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { isLinux, isTauri } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import {
   unwrapQueryOptions,
   useClashSetting,
@@ -45,13 +45,17 @@ export const useTunMode = () => {
 }
 
 export const useTransparentProxy = () => {
+  const supportedHost = useMatchesPlatform({
+    surface: 'desktop',
+    clientOs: 'linux',
+  })
   const core = useSetting('core')
   const serviceMode = useSetting('enable_service_mode')
   const clash = useClashSettings()
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'
-  const visible = isLinux && isTauri() && supportedCore
+  const visible = supportedHost && supportedCore
   const config = clash.query.data
   const mode = config?.transparent_proxy?.mode ?? 'disabled'
   const isActive = mode !== 'disabled'

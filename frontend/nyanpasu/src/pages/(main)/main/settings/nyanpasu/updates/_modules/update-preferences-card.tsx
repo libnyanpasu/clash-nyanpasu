@@ -3,7 +3,7 @@ import { SwitchItem } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { isBrowser } from '@nyanpasu/platform'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import {
   SettingsCard,
@@ -13,21 +13,24 @@ import AboutCardHeader from './about-card-header'
 import ReleaseChannelPreference from './release-channel-preference'
 
 export default function UpdatePreferencesCard() {
-  if (isBrowser()) {
-    return (
-      <SettingsCard data-slot="about-update-preferences-card">
-        <AboutCardHeader icon={TuneRounded}>
-          {m.settings_about_preferences_title()}
-        </AboutCardHeader>
-        <SettingsCardContent className="pt-2">
-          <p className="text-on-surface-variant text-sm">
-            {m.settings_about_update_desktop_only()}
-          </p>
-        </SettingsCardContent>
-      </SettingsCard>
-    )
-  }
-  return <UpdatePreferencesControls />
+  return (
+    <PlatformDesktop
+      fallback={
+        <SettingsCard data-slot="about-update-preferences-card">
+          <AboutCardHeader icon={TuneRounded}>
+            {m.settings_about_preferences_title()}
+          </AboutCardHeader>
+          <SettingsCardContent className="pt-2">
+            <p className="text-on-surface-variant text-sm">
+              {m.settings_about_update_desktop_only()}
+            </p>
+          </SettingsCardContent>
+        </SettingsCard>
+      }
+    >
+      <UpdatePreferencesControls />
+    </PlatformDesktop>
+  )
 }
 
 function UpdatePreferencesControls() {

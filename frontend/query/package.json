@@ -21,7 +21,8 @@
     "@tauri-apps/api": "2.12.4",
     "es-toolkit": "1.53.2",
     "react-use": "17.6.1",
-    "semver": "7.8.6"
+    "semver": "7.8.6",
+    "@nyanpasu/platform": "workspace:^"
   },
   "peerDependencies": {
     "@tanstack/react-query": "5.107.1",

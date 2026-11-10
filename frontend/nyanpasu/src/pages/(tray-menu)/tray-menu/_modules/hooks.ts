@@ -1,8 +1,6 @@
+import { useState } from 'react'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-
-const appWindow = isTauri() ? getCurrentWebviewWindow() : null
+import { createWindowAdapter } from '@nyanpasu/platform'
 
 export type AsyncHandler<
   P extends unknown[] = [React.MouseEvent<HTMLButtonElement>],
@@ -15,6 +13,7 @@ export type AsyncButtonOnClick<
 export function useTrayClickHandler<
   P extends unknown[] = [React.MouseEvent<HTMLButtonElement>],
 >(onClick?: AsyncHandler<P>, disableClose?: boolean) {
+  const [appWindow] = useState(createWindowAdapter)
   return useLockFn(async (...args: P) => {
     if (disableClose) {
       await onClick?.(...args)

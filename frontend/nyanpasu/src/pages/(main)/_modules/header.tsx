@@ -5,7 +5,7 @@ import {
   MacOSHeaderLeft,
 } from '@/components/window/system-titlebar'
 import WindowTitle from '@/components/window/window-title'
-import { isMacOS } from '@nyanpasu/platform'
+import { PlatformMacos } from '@nyanpasu/platform/react'
 import HeaderMenu from './header-menu'
 
 const APP_NAME = 'Clash Nyanpasu'
@@ -25,18 +25,22 @@ const Title = () => {
 }
 
 export default function Header({ className, ...props }: ComponentProps<'div'>) {
-  return isMacOS ? (
-    <MacOSHeader className={className} {...props}>
-      <MacOSHeaderLeft>
-        <HeaderMenu />
-      </MacOSHeaderLeft>
+  return (
+    <PlatformMacos
+      fallback={
+        <DefaultHeader className={className} {...props}>
+          <Title />
+          <HeaderMenu className="hidden md:flex" />
+        </DefaultHeader>
+      }
+    >
+      <MacOSHeader className={className} {...props}>
+        <MacOSHeaderLeft>
+          <HeaderMenu />
+        </MacOSHeaderLeft>
 
-      <Title />
-    </MacOSHeader>
-  ) : (
-    <DefaultHeader className={className} {...props}>
-      <Title />
-      <HeaderMenu className="hidden md:flex" />
-    </DefaultHeader>
+        <Title />
+      </MacOSHeader>
+    </PlatformMacos>
   )
 }

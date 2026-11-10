@@ -15,8 +15,8 @@ const state = vi.hoisted(() => ({
   upload: vi.fn(),
   icons: undefined as Record<string, string> | undefined,
 }))
-vi.mock('@nyanpasu/platform', () => ({
-  isWindows: true,
+vi.mock('@nyanpasu/platform/react', () => ({
+  useMatchesPlatform: (condition: unknown) => condition !== 'browser',
 }))
 vi.mock('@/components/ui/image', () => ({ TrayImage: () => <span /> }))
 vi.mock('@/utils/file-picker', () => ({ pickFile: vi.fn() }))

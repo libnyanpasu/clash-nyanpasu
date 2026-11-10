@@ -1,6 +1,6 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
-import { isMacOS, isWindows } from '@nyanpasu/platform'
+import { Platform, PlatformWindows } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,
@@ -71,7 +71,9 @@ const SystemTools = () => {
       <SettingsGroup>
         <DnsCacheButton />
 
-        {isWindows && <UwpToolsButton />}
+        <PlatformWindows>
+          <UwpToolsButton />
+        </PlatformWindows>
       </SettingsGroup>
     </div>
   )
@@ -89,7 +91,9 @@ function RouteComponent() {
 
         <SystemLaunch />
 
-        {(isWindows || isMacOS) && <SystemTools />}
+        <Platform when={['windows', 'macos']}>
+          <SystemTools />
+        </Platform>
       </div>
     </>
   )

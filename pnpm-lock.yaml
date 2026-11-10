@@ -527,9 +527,15 @@ importers:
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
+      react:
+        specifier: 19.3.1
+        version: 19.3.1
 
   frontend/query:
     dependencies:
+      '@nyanpasu/platform':
+        specifier: workspace:^
+        version: link:../platform
       '@nyanpasu/rpc':
         specifier: workspace:^
         version: link:../rpc
@@ -561,6 +567,9 @@ importers:
 
   frontend/rpc:
     dependencies:
+      '@nyanpasu/platform':
+        specifier: workspace:^
+        version: link:../platform
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4

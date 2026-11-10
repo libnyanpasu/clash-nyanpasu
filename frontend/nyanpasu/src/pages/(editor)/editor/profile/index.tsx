@@ -1,6 +1,6 @@
 import { isEqual } from 'es-toolkit'
 import { editor } from 'monaco-editor'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import z from 'zod'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
@@ -9,19 +9,17 @@ import { rpc } from '@/services/rpc'
 import { ask, message } from '@/utils/notification'
 import MonacoEditor from '@monaco-editor/react'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
+import { createWindowAdapter } from '@nyanpasu/platform'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { useProfileContent } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import ActionButton from '../_modules/action-button'
 import Chip from '../_modules/chip'
 import Header from '../_modules/header'
 import { useCurrentProfile, useDraft } from '../_modules/hooks'
 import LoadingSkeleton from '../_modules/loading-skeleton'
-import { beforeEditorMount, MONACO_FONT_FAMILY } from '../_modules/utils'
-
-const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
+import { beforeEditorMount, getMonacoFontFamily } from '../_modules/utils'
 
 export const Route = createFileRoute('/(editor)/editor/profile/')({
   component: RouteComponent,
@@ -31,6 +29,8 @@ export const Route = createFileRoute('/(editor)/editor/profile/')({
 })
 
 function RouteComponent() {
+  const { clientOs } = usePlatform()
+  const [currentWindow] = useState(createWindowAdapter)
   const { uid } = Route.useSearch()
 
   const { themeMode } = useExperimentalThemeContext()
@@ -196,7 +196,7 @@ function RouteComponent() {
                 automaticLayout: true,
                 fontLigatures: true,
                 smoothScrolling: true,
-                fontFamily: MONACO_FONT_FAMILY,
+                fontFamily: getMonacoFontFamily(clientOs),
                 quickSuggestions: {
                   strings: true,
                   comments: true,

@@ -11,7 +11,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isBrowser } from '@nyanpasu/platform'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { type UpdateSource } from '@nyanpasu/rpc/types'
 import {
@@ -115,22 +115,24 @@ function FixedSource({
 }
 
 export default function UpdateSourceSelector() {
-  if (isBrowser()) {
-    return (
-      <SettingsCard data-slot="about-package-source-card">
-        <AboutCardHeader icon={DnsRounded}>
-          {m.update_sources_title()}
-        </AboutCardHeader>
-        <SettingsCardContent className="pt-2">
-          <p className="text-on-surface-variant text-sm">
-            {m.settings_about_update_desktop_only()}
-          </p>
-        </SettingsCardContent>
-      </SettingsCard>
-    )
-  }
-
-  return <UpdateSourceSelectorControls />
+  return (
+    <PlatformDesktop
+      fallback={
+        <SettingsCard data-slot="about-package-source-card">
+          <AboutCardHeader icon={DnsRounded}>
+            {m.update_sources_title()}
+          </AboutCardHeader>
+          <SettingsCardContent className="pt-2">
+            <p className="text-on-surface-variant text-sm">
+              {m.settings_about_update_desktop_only()}
+            </p>
+          </SettingsCardContent>
+        </SettingsCard>
+      }
+    >
+      <UpdateSourceSelectorControls />
+    </PlatformDesktop>
+  )
 }
 
 function UpdateSourceSelectorControls() {

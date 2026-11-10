@@ -2,7 +2,7 @@ import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-ro
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import DeviceResetRounded from '~icons/material-symbols/device-reset-rounded'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { MaterialShape } from '@nyanpasu/ui/material-shape'
 import { CircularProgress } from '@nyanpasu/ui/progress'
@@ -11,6 +11,7 @@ import { m } from '@/paraglide/messages'
 import { pickFile, type SelectedFile } from '@/utils/file-picker'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import catNormal from '@root/backend/tauri/icons/tray/cat/normal.png'
@@ -25,7 +26,12 @@ import {
   SettingsCardContent,
   SettingsLabel,
 } from '../../../_modules/settings-card'
-import { useIconSetStore, type IconSetStore } from './icon-set-store'
+import {
+  IconSetStoreProvider,
+  TRAY_ICON_STORE,
+  useIconSetStore,
+  type IconSetStore,
+} from './icon-set-store'
 import {
   TrayIconEditor,
   type TrayIconLibraryItem,
@@ -359,7 +365,7 @@ const TrayIconItem = ({
   )
 }
 
-export default function TrayIconConfig() {
+function TrayIconConfigContent() {
   const queryClient = useQueryClient()
 
   const store = useIconSetStore()
@@ -576,5 +582,25 @@ export default function TrayIconConfig() {
         />
       )}
     </>
+  )
+}
+
+export default function TrayIconConfig() {
+  const inheritedStore = useIconSetStore()
+  const windows = useMatchesPlatform({
+    surface: 'desktop',
+    clientOs: 'windows',
+  })
+  const store = useMemo(
+    () =>
+      inheritedStore === TRAY_ICON_STORE
+        ? { ...TRAY_ICON_STORE, presets: windows }
+        : inheritedStore,
+    [inheritedStore, windows],
+  )
+  return (
+    <IconSetStoreProvider value={store}>
+      <TrayIconConfigContent />
+    </IconSetStoreProvider>
   )
 }

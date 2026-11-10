@@ -1,8 +1,8 @@
+import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { rpc } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { createWindowAdapter } from '@nyanpasu/platform'
 import {
   SettingsCard,
   SettingsCardAnimatedItem,
@@ -10,9 +10,8 @@ import {
   SettingsCardHeader,
 } from '../../../_modules/settings-card'
 
-const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
-
 export default function WindowDebug() {
+  const [currentWindow] = useState(createWindowAdapter)
   const handleCreateEditorWindow = useLockFn(async () => {
     await rpc.createEditorWindow('profile', 'test')
   })
@@ -30,7 +29,7 @@ export default function WindowDebug() {
           <div className="flex items-center gap-1 select-text">
             <span>Current Window Label:</span>
             <span className="font-mono font-bold">
-              {currentWindow?.label ?? 'browser'}
+              {currentWindow?.label() ?? 'browser'}
             </span>
           </div>
 

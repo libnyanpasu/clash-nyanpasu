@@ -24,7 +24,7 @@ import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Switch } from '@nyanpasu/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import { isLinux, isTauri } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { useDashboardContext } from './provider'
 import {
   DEFAULT_WIDGET_CONFIGS,
@@ -156,6 +156,10 @@ function ConfigFieldRows({
   disabled: boolean
   onChange: (config: WidgetConfig) => void
 }) {
+  const showTransparent = useMatchesPlatform({
+    surface: 'desktop',
+    clientOs: 'linux',
+  })
   switch (config.type) {
     case WidgetId.SubscriptionSchedule:
       return (
@@ -470,15 +474,13 @@ function ConfigFieldRows({
                 >
                   <span className="truncate">
                     {config.buttons.filter(
-                      (button) =>
-                        button !== 'transparent' || (isLinux && isTauri()),
-                    ).length === (isLinux && isTauri() ? 3 : 2)
+                      (button) => button !== 'transparent' || showTransparent,
+                    ).length === (showTransparent ? 3 : 2)
                       ? m.dashboard_widget_proxy_shortcuts_config_both()
                       : config.buttons
                           .filter(
                             (button) =>
-                              button !== 'transparent' ||
-                              (isLinux && isTauri()),
+                              button !== 'transparent' || showTransparent,
                           )
                           .map((button) =>
                             button === 'system'
@@ -506,7 +508,7 @@ function ConfigFieldRows({
                       value: 'tun',
                       label: m.settings_system_proxy_tun_mode_label(),
                     },
-                    ...(isLinux && isTauri()
+                    ...(showTransparent
                       ? [
                           {
                             value: 'transparent' as const,
@@ -524,7 +526,7 @@ function ConfigFieldRows({
                       (config.buttons.includes(value) &&
                         config.buttons.filter(
                           (button) =>
-                            button !== 'transparent' || (isLinux && isTauri()),
+                            button !== 'transparent' || showTransparent,
                         ).length === 1)
                     }
                     onSelect={(event) => event.preventDefault()}

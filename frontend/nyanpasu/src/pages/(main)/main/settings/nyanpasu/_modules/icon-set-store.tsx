@@ -3,7 +3,6 @@ import type { LazyImageProps } from '@nyanpasu/ui/lazy-image'
 import { TrayImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
 import { mutations, queries } from '@/services/rpc'
-import { isWindows } from '@nyanpasu/platform'
 import { useTrayIcon } from '@nyanpasu/query'
 import type { TrayIcon } from '@nyanpasu/rpc/types'
 
@@ -41,8 +40,7 @@ export const TRAY_ICON_STORE: IconSetStore = {
   setIconFromBytes: mutations.setTrayIconFromBytes,
   iconKey: 'getTrayIcon',
   isSetKey: 'isTrayIconSet',
-  // Presets are Windows-only; other platforms keep the per-state editor.
-  presets: isWindows,
+  presets: false,
   messages: {
     label: m.settings_nyanpasu_tray_icon,
     presetTitle: m.settings_nyanpasu_tray_icon_preset_title,

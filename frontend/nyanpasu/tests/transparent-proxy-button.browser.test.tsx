@@ -21,7 +21,9 @@ const backend = vi.hoisted(() => ({
   invalidate: vi.fn(),
 }))
 
-vi.mock('@nyanpasu/platform', () => ({ isLinux: true, isTauri: () => true }))
+vi.mock('@nyanpasu/platform/react', () => ({
+  useMatchesPlatform: (condition: unknown) => condition !== 'browser',
+}))
 vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: string) => ({ value: backend.values[key] }),
   useClashSetting: (key: string) => ({ value: backend.values[key] }),

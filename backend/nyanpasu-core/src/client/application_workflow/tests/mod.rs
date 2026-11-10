@@ -634,7 +634,8 @@ async fn replacement_decisions_use_applied_identity_and_always_recover() {
             1,
             false,
         ),
-        (ClashCore::Mihomo, None, false, ClashCore::ClashRs, 2, true),
+        // The host omitted the kind, but the confirmed receipt names Mihomo.
+        (ClashCore::Mihomo, None, false, ClashCore::ClashRs, 1, false),
         (ClashCore::ClashRs, None, true, ClashCore::ClashRs, 1, true),
         (ClashCore::Mihomo, None, true, ClashCore::ClashRs, 1, false),
     ];
@@ -677,6 +678,65 @@ async fn replacement_decisions_use_applied_identity_and_always_recover() {
         })
         .await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_confirmed_core_identity_keeps_an_inactive_update_from_restarting_it() {
+    use nyanpasu_ipc::api::status::CoreStateDetail;
+
+    let f = Fixture::new(false, false).await;
+    (async {
+        f.endpoint.prime(&f.client).await;
+        // The service host does not publish the applied kind. The receipt from
+        // the confirmed apply is still proof of which core is running.
+        f.endpoint
+            .set_status(Some(CoreStateDetail::Running { epoch: 1, pid: 7 }), None);
+
+        let (artifact, progress) = f.artifact(ClashCore::ClashRs);
+        f.client
+            .inner
+            .application_workflow
+            .replace_binary(artifact)
+            .await
+            .unwrap();
+
+        assert_eq!(f.installer.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            f.endpoint.submissions(),
+            1,
+            "updating an inactive core must neither stop nor reconcile the running one"
+        );
+        assert!(!progress.0.load(Ordering::SeqCst));
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unverified_core_identity_keeps_the_conservative_stop() {
+    use nyanpasu_ipc::api::status::CoreStateDetail;
+
+    let f = Fixture::new(false, false).await;
+    (async {
+        f.endpoint.prime(&f.client).await;
+        // The running document is not the one the receipt confirmed, so the
+        // receipt cannot name the binary that is in use.
+        f.endpoint.set_source_hash("another-document");
+        f.endpoint
+            .set_status(Some(CoreStateDetail::Running { epoch: 1, pid: 7 }), None);
+
+        let (artifact, progress) = f.artifact(ClashCore::ClashRs);
+        f.client
+            .inner
+            .application_workflow
+            .replace_binary(artifact)
+            .await
+            .unwrap();
+
+        assert_eq!(f.installer.submissions_at_copy.load(Ordering::SeqCst), 2);
+        assert_eq!(f.endpoint.submissions(), 3);
+        assert!(progress.0.load(Ordering::SeqCst));
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

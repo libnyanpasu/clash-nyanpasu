@@ -29,12 +29,8 @@ import {
   StepRowText,
   stepRowVariants,
 } from './step-list'
-import { TransformLibrary } from './transform-library'
 import { TransformTypeBadge } from './transform-type-icon'
-import {
-  useTransformChainDraft,
-  type TransformChainDraft,
-} from './use-transform-chain-draft'
+import { type TransformChainDraft } from './use-transform-chain-draft'
 import { profileTypeOf, type TransformProfile } from './utils'
 
 type ItemProps = {
@@ -172,7 +168,11 @@ const Item = memo(function Item(props: ItemProps) {
 })
 
 /** Count of enabled transforms. */
-function TransformChainHeader({ chain }: { chain: TransformChainDraft }) {
+export function TransformChainHeader({
+  chain,
+}: {
+  chain: TransformChainDraft
+}) {
   return (
     <p
       data-slot="profile-chain-editor-header"
@@ -199,7 +199,7 @@ function summaryOf({
 }
 
 /** Appears once the draft differs from the persisted chain. */
-function TransformChainBar({ chain }: { chain: TransformChainDraft }) {
+export function TransformChainBar({ chain }: { chain: TransformChainDraft }) {
   const summary = summaryOf(chain.changes)
 
   return (
@@ -364,40 +364,5 @@ export function TransformChain({
 
       {footer}
     </section>
-  )
-}
-
-/** Ordered, sortable chain of enabled transforms with an explicit Apply. */
-export function TransformChainList({
-  transforms,
-  taskKey,
-  traceStepOf,
-  onApply,
-  className,
-}: {
-  /** The persisted chain, in order. */
-  transforms: string[]
-  taskKey: string
-  /** Builds the Inspect step key of a chain entry from its uid and position. */
-  traceStepOf: (uid: string, index: number) => string
-  onApply: (transforms: string[]) => Promise<unknown>
-  className?: string
-}) {
-  const chain = useTransformChainDraft({ transforms, taskKey, onApply })
-
-  return (
-    <TransformChain
-      chain={chain}
-      traceStepOf={traceStepOf}
-      header={<TransformChainHeader chain={chain} />}
-      footer={
-        <>
-          <TransformLibrary chain={chain} />
-
-          <TransformChainBar chain={chain} />
-        </>
-      }
-      className={className}
-    />
   )
 }

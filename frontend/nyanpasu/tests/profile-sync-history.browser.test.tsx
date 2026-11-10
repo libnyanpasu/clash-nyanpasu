@@ -4,7 +4,7 @@ import { m } from '@/paraglide/messages'
 import type { RunDto } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
-import SyncHistorySection from '../src/pages/(main)/main/profiles/$type/detail/_modules/sync-history-section'
+import SyncHistory from '../src/pages/(main)/main/profiles/$type/detail/_modules/sync-history'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const triggerSelector = '[data-slot="accordion-trigger"]'
@@ -34,7 +34,7 @@ function mount(
   })
   root.render(
     <QueryClientProvider client={queries}>
-      <SyncHistorySection uid="p1" />
+      <SyncHistory uid="p1" />
     </QueryClientProvider>,
   )
   return container

@@ -476,23 +476,17 @@ test('leaving with unapplied changes asks first; Stay keeps the page, Leave navi
     )!
   await userEvent.click(source())
 
-  await expect
-    .element(page.getByText(m.profile_global_leave_title()))
-    .toBeVisible()
-  await page
-    .getByRole('button', { name: m.profile_global_leave_stay() })
-    .click()
+  await expect.element(page.getByText(m.profile_leave_title())).toBeVisible()
+  await page.getByRole('button', { name: m.profile_leave_stay() }).click()
 
   await expect
-    .element(page.getByText(m.profile_global_leave_title()))
+    .element(page.getByText(m.profile_leave_title()))
     .not.toBeInTheDocument()
   expect(ui.router.state.location.pathname).toBe('/main/profiles/global')
   expect(ui.chainIds()).toEqual(['self', 'warp'])
 
   await userEvent.click(source())
-  await page
-    .getByRole('button', { name: m.profile_global_leave_confirm() })
-    .click()
+  await page.getByRole('button', { name: m.profile_leave_confirm() }).click()
 
   await expect
     .poll(() => ui.router.state.location.pathname)
@@ -510,9 +504,7 @@ test('a clean page navigates without asking', async ({ onTestFinished }) => {
   await expect
     .poll(() => ui.router.state.location.pathname)
     .toBe('/main/profiles/profile/detail/cfg')
-  expect(
-    page.getByText(m.profile_global_leave_title()).elements(),
-  ).toHaveLength(0)
+  expect(page.getByText(m.profile_leave_title()).elements()).toHaveLength(0)
 })
 
 test('the library searches, filters by type and explains each empty list', async ({

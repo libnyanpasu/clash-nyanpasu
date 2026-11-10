@@ -6,8 +6,15 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
-import { TransformChainList } from '@/pages/(main)/main/profiles/_modules/transform-chain-list'
-import TransformChainSection from '@/pages/(main)/main/profiles/$type/detail/_modules/transform-chain-section'
+import {
+  TransformChain,
+  TransformChainBar,
+  TransformChainHeader,
+} from '@/pages/(main)/main/profiles/_modules/transform-chain-list'
+import { TransformLibrary } from '@/pages/(main)/main/profiles/_modules/transform-library'
+import { useTransformChainDraft } from '@/pages/(main)/main/profiles/_modules/use-transform-chain-draft'
+import { type DetailPanelLayout } from '@/pages/(main)/main/profiles/$type/detail/_modules/detail-panel'
+import TransformsPanel from '@/pages/(main)/main/profiles/$type/detail/_modules/transforms-panel'
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import type {
@@ -59,10 +66,38 @@ const transforms: ProfileItem_Serialize[] = [
   })),
 ]
 
+// The global page's chain, composed the way its page does with the library
+// below the chain.
+function GlobalEditor() {
+  const { query, setGlobalTransforms } = useProfile()
+
+  const chain = useTransformChainDraft({
+    transforms: query.data?.global_transforms ?? [],
+    taskKey: 'test-global',
+    onApply: (ids) => setGlobalTransforms.mutateAsync(ids),
+  })
+
+  return (
+    <TransformChain
+      chain={chain}
+      traceStepOf={(uid, index) => `global:${uid}:${index}`}
+      header={<TransformChainHeader chain={chain} />}
+      footer={
+        <>
+          <TransformLibrary chain={chain} />
+
+          <TransformChainBar chain={chain} />
+        </>
+      }
+    />
+  )
+}
+
 async function setup(
   layout: Layout,
   active: string[],
   onTestFinished: TestContext['onTestFinished'],
+  panelLayout: DetailPanelLayout = 'wide',
 ) {
   vi.stubGlobal('isTauri', true)
   let config = {
@@ -122,18 +157,18 @@ async function setup(
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   function Editor() {
-    const { query, setGlobalTransforms } = useProfile()
+    const { query } = useProfile()
     const current = query.data?.items.find((item) => item.uid === 'profile')
     if (!current || current.type !== 'config') return null
     return layout === 'scoped' ? (
-      <TransformChainSection profile={current} />
-    ) : (
-      <TransformChainList
-        taskKey="test-global"
-        traceStepOf={(uid, index) => `global:${uid}:${index}`}
-        transforms={query.data?.global_transforms ?? []}
-        onApply={(ids) => setGlobalTransforms.mutateAsync(ids)}
+      <TransformsPanel
+        key={current.uid}
+        profile={current}
+        layout={panelLayout}
+        onClose={() => {}}
       />
+    ) : (
+      <GlobalEditor />
     )
   }
   const container = document.createElement('div')
@@ -516,4 +551,84 @@ test('duplicates stay read-only and narrow layouts fit', async ({
     )
     .toBeDisabled()
   await expect.element(toggle('warp')).toBeDisabled()
+})
+
+test('a narrow panel adds several transforms from a drawer that stays open', async ({
+  onTestFinished,
+}) => {
+  await page.viewport(390, 900)
+  const { view, ids, apply } = await setup(
+    'scoped',
+    ['dns'],
+    onTestFinished,
+    'narrow',
+  )
+  await expect.poll(ids).toEqual(['dns'])
+  // The library is not inline; the button opens it.
+  expect(
+    view.container.querySelector('[data-slot="profile-transform-library"]'),
+  ).toBeNull()
+
+  await view
+    .getByRole('button', { name: m.profile_chain_editor_add(), exact: true })
+    .click()
+  const drawer = page.getByRole('dialog', {
+    name: m.profile_chain_editor_add(),
+  })
+  await expect.element(drawer).toBeVisible()
+  const toggleIn = (name: string) =>
+    drawer.getByRole('button', {
+      name: m.profile_transform_library_toggle({ name }),
+      exact: true,
+    })
+
+  await toggleIn('lua').click()
+  await toggleIn('warp').click()
+  await expect.poll(ids).toEqual(['dns', 'lua', 'warp'])
+  await expect.element(drawer).toBeVisible()
+  await expect.element(toggleIn('lua')).toHaveAttribute('aria-pressed', 'true')
+
+  await toggleIn('lua').click()
+  await expect.poll(ids).toEqual(['dns', 'warp'])
+  await expect.element(drawer).toBeVisible()
+
+  // Escape closes the drawer and keeps the draft, which the bar offers to apply.
+  await userEvent.keyboard('{Escape}')
+  await expect.element(drawer).not.toBeInTheDocument()
+  await expect.poll(ids).toEqual(['dns', 'warp'])
+  await expect.element(apply()).toBeVisible()
+  await expect
+    .element(
+      view.getByText(m.profile_chain_editor_summary_added({ count: 1 }), {
+        exact: true,
+      }),
+    )
+    .toBeVisible()
+
+  for (const width of [390, 320]) {
+    await page.viewport(width, 900)
+    const editor = view.container.querySelector<HTMLElement>(
+      '[data-slot="profile-chain-editor"]',
+    )!
+    expect(editor.scrollWidth).toBeLessThanOrEqual(editor.clientWidth)
+    const bar = view.container.querySelector<HTMLElement>(
+      '[data-slot="profile-chain-editor-bar"]',
+    )!
+    expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth)
+  }
+})
+
+test('the narrow drawer closes with its button', async ({ onTestFinished }) => {
+  await page.viewport(390, 900)
+  const { view } = await setup('scoped', [], onTestFinished, 'narrow')
+
+  await view
+    .getByRole('button', { name: m.profile_chain_editor_add(), exact: true })
+    .click()
+  const drawer = page.getByRole('dialog', {
+    name: m.profile_chain_editor_add(),
+  })
+  await expect.element(drawer).toBeVisible()
+  await drawer.getByRole('button', { name: m.common_close() }).click()
+  await expect.element(drawer).not.toBeInTheDocument()
 })

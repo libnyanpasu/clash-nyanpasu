@@ -12,7 +12,7 @@ import PageToolbar from '../_modules/page-toolbar'
 import { useTransformChainDraft } from '../_modules/use-transform-chain-draft'
 import { isChainProfile } from '../_modules/utils'
 import LeaveDialog from './_modules/leave-dialog'
-import Library from './_modules/library'
+import LibraryColumn from './_modules/library-column'
 import Pipeline from './_modules/pipeline'
 
 export const Route = createFileRoute('/(main)/main/profiles/global')({
@@ -140,7 +140,7 @@ function RouteComponent() {
             traceStepOf={traceStepOf}
           />
 
-          <Library chain={chain} usedByOf={usedByOf} />
+          <LibraryColumn chain={chain} usedByOf={usedByOf} />
         </div>
       </ScrollArea>
 

@@ -106,13 +106,29 @@ export function useTransformChainDraft({
       .filter((item): item is TransformProfile => Boolean(item))
   }, [draft, renderedProfiles])
 
-  const available = useMemo(() => {
-    const selected = new Set(draft)
-
-    return candidates.filter((item) => !selected.has(item.uid))
-  }, [candidates, draft])
-
   const isChanged = !sameOrder(draft, serverEnabled)
+
+  const appliedUids = useMemo(() => new Set(serverEnabled), [serverEnabled])
+
+  const changes = useMemo(() => {
+    const draftUids = new Set(draft)
+
+    return {
+      added: [...draftUids].filter((uid) => !appliedUids.has(uid)).length,
+      removed: [...appliedUids].filter((uid) => !draftUids.has(uid)).length,
+      // Only the items that stay count: an add or a remove is not a reorder.
+      reordered: !sameOrder(
+        draft.filter((uid) => appliedUids.has(uid)),
+        serverEnabled.filter((uid) => draftUids.has(uid)),
+      ),
+    }
+  }, [draft, serverEnabled, appliedUids])
+
+  /** Whether the uid is in the draft but not in the persisted chain. */
+  const isUnapplied = useCallback(
+    (uid: string) => !appliedUids.has(uid),
+    [appliedUids],
+  )
 
   const blockTask = useBlockTask(taskKey, async (transforms: string[]) => {
     try {
@@ -153,23 +169,6 @@ export function useTransformChainDraft({
       if (!canEdit()) return
 
       publishDraft(draftRef.current.filter((item) => item !== uid))
-    },
-    [canEdit, publishDraft],
-  )
-
-  const handleMove = useCallback(
-    (uid: string, offset: number) => {
-      if (!canEdit()) return
-
-      const current = draftRef.current
-      const from = current.indexOf(uid)
-      const to = from + offset
-
-      if (from < 0 || to < 0 || to >= current.length) return
-
-      const next = [...current]
-      next.splice(to, 0, ...next.splice(from, 1))
-      publishDraft(next)
     },
     [canEdit, publishDraft],
   )
@@ -231,8 +230,10 @@ export function useTransformChainDraft({
   return {
     dataReady,
     enabled,
-    available,
+    candidates,
     isChanged,
+    changes,
+    isUnapplied,
     hasDuplicates,
     editable,
     saving,
@@ -240,7 +241,6 @@ export function useTransformChainDraft({
     actionsDisabled,
     handleAdd,
     handleRemove,
-    handleMove,
     handleApply,
     handleReset,
     canDrag,

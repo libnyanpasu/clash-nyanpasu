@@ -6,6 +6,7 @@ import { page } from 'vitest/browser'
 import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import { Route } from '@/pages/(main)/main/profiles/$type/detail/$uid'
@@ -146,9 +147,11 @@ const mountDetail = async ({
           <TooltipProvider>
             <SharedTooltip>
               <SnackbarProvider>
-                <ProfilesLayoutProvider>
-                  <RouterOutlet />
-                </ProfilesLayoutProvider>
+                <ImportUrlProvider>
+                  <ProfilesLayoutProvider>
+                    <RouterOutlet />
+                  </ProfilesLayoutProvider>
+                </ImportUrlProvider>
               </SnackbarProvider>
             </SharedTooltip>
           </TooltipProvider>
@@ -423,4 +426,52 @@ test('a transform that no profile uses says so', async ({ onTestFinished }) => {
           ?.textContent,
     )
     .toBe(m.profile_detail_used_by_empty())
+})
+
+test('a config lists its chain and the library below it, with chain members pressed', async ({
+  onTestFinished,
+}) => {
+  const other: ProfileItem_Serialize = {
+    ...transform,
+    uid: 'other',
+    name: 'Other rules',
+  }
+  const { container } = await mountDetail({
+    items: [host, transform, other],
+    initialEntries: ['/main/profiles/profile/detail/host'],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(() =>
+      Array.from(
+        container.querySelectorAll('[data-slot="profile-chain-editor-item"]'),
+      ).map((item) => item.getAttribute('data-uid')),
+    )
+    .toEqual(['fix'])
+
+  const library = container.querySelector(
+    '[data-slot="profile-transform-library"]',
+  )!
+  expect(
+    container
+      .querySelector('[data-slot="profile-chain-editor-items"]')!
+      .compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  await expect
+    .element(
+      page.getByRole('button', {
+        name: m.profile_transform_library_toggle({ name: transform.name }),
+        exact: true,
+      }),
+    )
+    .toHaveAttribute('aria-pressed', 'true')
+  await expect
+    .element(
+      page.getByRole('button', {
+        name: m.profile_transform_library_toggle({ name: other.name }),
+        exact: true,
+      }),
+    )
+    .toHaveAttribute('aria-pressed', 'false')
 })

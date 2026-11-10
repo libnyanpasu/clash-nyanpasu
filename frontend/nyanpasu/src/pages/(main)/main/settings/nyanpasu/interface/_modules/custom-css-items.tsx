@@ -30,6 +30,7 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../../../../_modules/settings-card'
+import { sortableItemVariants } from '../../../../_modules/sortable-item'
 import CustomCssNameDialog from './custom-css-name-dialog'
 
 const LARGE_CSS_CHARS = 100_000
@@ -62,7 +63,7 @@ function CustomCssListItem({
   onMove: (offset: number) => void
   onRemove: () => void
 }) {
-  const { ref, isDragging, isDropTarget } = useSortable({
+  const { ref, isDragging } = useSortable({
     id: item.id,
     index,
   })
@@ -78,13 +79,11 @@ function CustomCssListItem({
       })}
       className={cn(
         cardVariants(),
-        'flex min-w-0 items-center gap-4 px-5 py-4 select-none',
-        // Only colours transition: dnd-kit animates the item's position itself.
-        'transition-colors motion-reduce:transition-none',
-        'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
-        'hover:bg-surface-variant/60 cursor-grab touch-none active:cursor-grabbing',
-        isDragging && 'bg-secondary-container shadow-lg',
-        isDropTarget && 'ring-primary ring-2',
+        sortableItemVariants({
+          draggable: true,
+          dragging: isDragging,
+        }),
+        'flex min-w-0 items-center gap-4 px-5 py-4',
       )}
       data-slot="custom-css-item"
       data-item-id={item.id}

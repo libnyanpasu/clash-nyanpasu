@@ -3,6 +3,7 @@ import '@/assets/styles/tailwind.css'
 import type { ComponentProps } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { createTheme } from '@nyanpasu/theme'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import YamlViewer from '../src/pages/(main)/main/profiles/inspect/_modules/yaml-viewer'
 
@@ -93,19 +94,28 @@ test('a small document is highlighted', async ({ onTestFinished }) => {
   })
 })
 
-test('a document is highlighted again in the colors of a new color scheme', async ({
+test('a highlighted document follows the color scheme without highlighting again', async ({
   onTestFinished,
 }) => {
+  const style = document.createElement('style')
+  style.textContent = createTheme('#3e64a7').cssVars
+  document.head.append(style)
   const { region } = await renderViewer({ code: document_(50) }, onTestFinished)
-  onTestFinished(() => document.documentElement.classList.remove('dark'))
-  const keyColor = () =>
-    region.querySelector<HTMLElement>('[data-highlighted] .line span')?.style
-      .color
-  const light = await vi.waitUntil(keyColor, { timeout: 5000 })
+  onTestFinished(() => {
+    document.documentElement.classList.remove('dark')
+    style.remove()
+  })
+  const key = () =>
+    region.querySelector<HTMLElement>('[data-highlighted] .line span')
+  const token = await vi.waitUntil(key, { timeout: 5000 })
+  const light = getComputedStyle(token).color
 
   document.documentElement.classList.add('dark')
 
-  await vi.waitUntil(() => keyColor() && keyColor() !== light)
+  // The same element: its color is a theme variable, which the scheme sets.
+  expect(key()).toBe(token)
+  expect(token.style.color).toContain('var(--syntax-token-')
+  expect(getComputedStyle(token).color).not.toBe(light)
 })
 
 test('find marks the matching lines at the lines they are on', async ({

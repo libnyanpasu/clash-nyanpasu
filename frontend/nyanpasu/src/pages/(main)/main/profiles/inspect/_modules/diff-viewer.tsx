@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useColorScheme, type ColorScheme } from '@/hooks/use-color-scheme'
 import { m } from '@/paraglide/messages'
 import {
   lineTokens,
@@ -74,11 +73,8 @@ function hunkPlaces(
  * highlighted in the YAML context it has on its side of the change. The lines
  * of every hunk are placed in one list, in display order.
  */
-async function tokenizeHunks(
-  hunks: SnapshotDiffHunk[],
-  scheme: ColorScheme,
-): Promise<LinePlace[]> {
-  const documents = await tokenizeYaml(hunks.flatMap(hunkSides), scheme)
+async function tokenizeHunks(hunks: SnapshotDiffHunk[]): Promise<LinePlace[]> {
+  const documents = await tokenizeYaml(hunks.flatMap(hunkSides))
   return hunks.flatMap((hunk, index) =>
     hunkPlaces(hunk, documents[index * 2], documents[index * 2 + 1]),
   )
@@ -205,30 +201,25 @@ export default function DiffViewer({
     [hunks, jump],
   )
 
-  // The tokens of every line, kept while `hunks` and the color scheme stay.
-  const scheme = useColorScheme()
+  // The tokens of every line, kept while `hunks` stay.
   const [highlighted, setHighlighted] = useState<{
     hunks: SnapshotDiffHunk[]
-    scheme: ColorScheme
     places: LinePlace[]
   }>()
-  const places =
-    highlighted?.hunks === hunks && highlighted.scheme === scheme
-      ? highlighted.places
-      : undefined
+  const places = highlighted?.hunks === hunks ? highlighted.places : undefined
 
   useEffect(() => {
     if (texts.length > MAX_HIGHLIGHT_LINES) return
     let cancelled = false
-    tokenizeHunks(hunks, scheme)
+    tokenizeHunks(hunks)
       .then((result) => {
-        if (!cancelled) setHighlighted({ hunks, scheme, places: result })
+        if (!cancelled) setHighlighted({ hunks, places: result })
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [hunks, scheme, texts])
+  }, [hunks, texts])
 
   const virtualizer = useVirtualizer({
     count: rows.length,

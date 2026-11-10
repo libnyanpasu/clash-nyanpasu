@@ -2,9 +2,8 @@ import type { ThemedToken } from 'shiki'
 import { createHighlighterCore } from 'shiki/core'
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma'
 import yaml from 'shiki/langs/yaml.mjs'
-import minLight from 'shiki/themes/min-light.mjs'
-import nord from 'shiki/themes/nord.mjs'
 import getWasm from 'shiki/wasm'
+import { SYNTAX_THEME_NAME, syntaxTheme } from './shiki-theme'
 import type {
   DocumentTokens,
   TokenizeRequest,
@@ -15,11 +14,9 @@ import type {
 // takes tens of milliseconds, and twenty thousand some two hundred.
 const highlighter = createHighlighterCore({
   engine: createOnigurumaEngine(getWasm),
-  themes: [minLight, nord],
+  themes: [syntaxTheme],
   langs: [yaml],
 })
-
-const SCHEME_THEMES = { light: 'min-light', dark: 'nord' } as const
 
 function pack(lines: ThemedToken[][]): DocumentTokens {
   const palette: string[] = []
@@ -55,7 +52,7 @@ self.onmessage = async ({ data }: MessageEvent<TokenizeRequest>) => {
       pack(
         instance.codeToTokens(code, {
           lang: 'yaml',
-          theme: SCHEME_THEMES[data.scheme],
+          theme: SYNTAX_THEME_NAME,
         }).tokens,
       ),
     )

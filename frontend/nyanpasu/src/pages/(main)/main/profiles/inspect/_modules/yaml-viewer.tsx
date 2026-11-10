@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
-import { useColorScheme } from '@/hooks/use-color-scheme'
 import {
   lineTokens,
   MAX_HIGHLIGHT_LINES,
@@ -63,10 +62,9 @@ export default function YamlViewer({
     [lines],
   )
 
-  const scheme = useColorScheme()
   const { data: tokens } = useQuery({
-    queryKey: ['inspect-yaml-tokens', scheme, ...cacheKey],
-    queryFn: async () => (await tokenizeYaml([code], scheme))[0],
+    queryKey: ['inspect-yaml-tokens', ...cacheKey],
+    queryFn: async () => (await tokenizeYaml([code]))[0],
     enabled: highlight,
     staleTime: Infinity,
     gcTime: 60_000,

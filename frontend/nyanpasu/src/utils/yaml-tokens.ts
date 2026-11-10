@@ -1,4 +1,3 @@
-import type { ColorScheme } from '@/hooks/use-color-scheme'
 import TokensWorker from './yaml-tokens.worker?worker'
 
 // The worker highlights this many lines in about a second, and holds up the
@@ -18,7 +17,10 @@ export type DocumentTokens = {
    * index in `palette` shifted left four bits over its TextMate font style.
    */
   tokens: Uint32Array
-  /** The colors the tokens use; an empty one leaves the text's own color. */
+  /**
+   * The colors the tokens use, as references to the theme's syntax CSS
+   * variables; an empty one leaves the text's own color.
+   */
   palette: string[]
 }
 
@@ -54,7 +56,6 @@ export function lineTokens(
 export type TokenizeRequest = {
   id: number
   codes: readonly string[]
-  scheme: ColorScheme
 }
 
 export type TokenizeResponse = { id: number } & (
@@ -90,15 +91,14 @@ function tokensWorker() {
 }
 
 /**
- * Tokenizes YAML documents line by line in one color scheme, in a worker, for
- * renderers that lay out lines themselves. Both schemes at once would tokenize
- * the text once each. The documents go in one message: a message each costs a
- * round trip, which adds up for the hundreds of pieces of a diff.
+ * Tokenizes YAML documents line by line, in a worker, for renderers that lay
+ * out lines themselves. The documents go in one message: a message each costs
+ * a round trip, which adds up for the hundreds of pieces of a diff.
  */
-export function tokenizeYaml(codes: readonly string[], scheme: ColorScheme) {
+export function tokenizeYaml(codes: readonly string[]) {
   const id = (nextId += 1)
   return new Promise<DocumentTokens[]>((resolve, reject) => {
     waiting.set(id, { resolve, reject })
-    tokensWorker().postMessage({ id, codes, scheme } satisfies TokenizeRequest)
+    tokensWorker().postMessage({ id, codes } satisfies TokenizeRequest)
   })
 }

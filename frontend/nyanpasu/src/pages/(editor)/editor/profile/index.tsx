@@ -1,9 +1,7 @@
-import { isEqual } from 'es-toolkit'
 import { editor } from 'monaco-editor'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import z from 'zod'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { ask, message } from '@/utils/notification'
@@ -12,14 +10,27 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { createWindowAdapter } from '@nyanpasu/platform'
 import { usePlatform } from '@nyanpasu/platform/react'
 import { useProfileContent } from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import ActionButton from '../_modules/action-button'
 import Chip from '../_modules/chip'
 import Header from '../_modules/header'
 import { useCurrentProfile, useDraft } from '../_modules/hooks'
 import LoadingSkeleton from '../_modules/loading-skeleton'
+import { EDITOR_SHORTCUTS, useShortcuts } from '../_modules/shortcuts'
+import { EditorStatus, hasErrors } from '../_modules/status'
+import {
+  EditorToolbar,
+  EditorTools,
+  ShortcutTooltip,
+} from '../_modules/toolbar'
+import { useMonacoTheme } from '../_modules/use-monaco-theme'
 import { beforeEditorMount, getMonacoFontFamily } from '../_modules/utils'
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  yaml: 'YAML',
+  javascript: 'JavaScript',
+  lua: 'Lua',
+}
 
 export const Route = createFileRoute('/(editor)/editor/profile/')({
   component: RouteComponent,
@@ -33,45 +44,50 @@ function RouteComponent() {
   const [currentWindow] = useState(createWindowAdapter)
   const { uid } = Route.useSearch()
 
-  const { themeMode } = useExperimentalThemeContext()
+  const monacoTheme = useMonacoTheme()
 
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
-
-  const editorMarks = useRef<editor.IMarker[]>([])
+  const [editorInstance, setEditorInstance] =
+    useState<editor.IStandaloneCodeEditor | null>(null)
+  const [markers, setMarkers] = useState<editor.IMarker[]>([])
+  const [wordWrap, setWordWrap] = useState(false)
 
   const currentProfile = useCurrentProfile(uid)
+  const readOnly = currentProfile.data?.readOnly ?? false
 
   const content = useProfileContent(uid)
 
   const [editorValue, setEditorValue] = useDraft(content.query.data)
+  const isDirty =
+    editorValue !== undefined &&
+    content.query.data !== undefined &&
+    editorValue !== content.query.data
 
-  const blockTask = useBlockTask(`save-profile-content-${uid}`, async () => {
-    if (!editorValue) {
-      return
-    }
+  const saveTask = useBlockTask(
+    `save-profile-content-${uid}`,
+    async (close: boolean) => {
+      if (!editorValue || readOnly) {
+        return
+      }
 
-    const editorHasError =
-      editorMarks.current.length > 0 &&
-      editorMarks.current.some((marker) => marker.severity === 8)
+      if (hasErrors(markers)) {
+        message(m.editor_validate_error_message(), {
+          kind: 'error',
+        })
 
-    if (editorHasError) {
-      message(m.editor_validate_error_message(), {
-        kind: 'error',
-      })
+        return
+      }
 
-      return false
-    }
+      await content.upsert.mutateAsync(editorValue)
 
-    await content.upsert.mutateAsync(editorValue)
+      if (close) {
+        await currentWindow?.close()
+      }
+    },
+  )
 
-    await currentWindow?.close()
-  })
-
-  const handleSave = useLockFn(blockTask.execute)
+  const handleSave = useLockFn(saveTask.execute)
 
   const handleBeforeClose = useLockFn(async () => {
-    const isDirty = !isEqual(editorValue, content.query.data)
-
     if (isDirty) {
       const result = await ask(m.editor_before_close_message(), {
         kind: 'warning',
@@ -99,9 +115,16 @@ function RouteComponent() {
     setEditorValue(content.query.data)
   })
 
+  useShortcuts([
+    [EDITOR_SHORTCUTS.apply, () => handleSave(false)],
+    [EDITOR_SHORTCUTS.save, () => handleSave(true)],
+    [EDITOR_SHORTCUTS.close, handleCancel],
+    [EDITOR_SHORTCUTS.wordWrap, () => setWordWrap((wordWrap) => !wordWrap)],
+  ])
+
   const handleEditorDidMount = useCallback(
     (editor: editor.IStandaloneCodeEditor) => {
-      editorRef.current = editor
+      setEditorInstance(editor)
 
       // Enable URL detection and handling
       editor.onMouseDown((e) => {
@@ -148,30 +171,43 @@ function RouteComponent() {
 
   return (
     <>
-      <Header beforeClose={handleBeforeClose} />
+      <Header
+        title={
+          currentProfile.data &&
+          `${currentProfile.data.name}.${currentProfile.data.extension}`
+        }
+        dirty={isDirty}
+        beforeClose={handleBeforeClose}
+      />
 
       {content.query.isLoading || currentProfile.isLoading ? (
         <LoadingSkeleton />
       ) : (
         <>
-          <div
-            className={cn(
-              'dark:bg-on-primary bg-primary-container flex shrink-0 items-center gap-2 px-3',
-              'h-12',
-            )}
-            data-slot="editor-header-actions"
-          >
+          <EditorToolbar>
             <div
               className="text-sm font-medium"
-              data-slot="editor-header-title"
+              data-slot="editor-header-language"
             >
-              {currentProfile.data?.name}.{currentProfile.data?.extension}
+              {LANGUAGE_LABELS[currentProfile.data?.language ?? '']}
             </div>
 
-            {currentProfile.data?.readOnly && (
-              <Chip>{m.editor_read_only_chip()}</Chip>
+            {readOnly && (
+              <Chip className="bg-surface/60 dark:bg-primary-container">
+                {m.editor_read_only_chip()}
+              </Chip>
             )}
-          </div>
+
+            <div className="flex-1" />
+
+            <EditorTools
+              editor={editorInstance}
+              readOnly={readOnly}
+              canFormat={currentProfile.data?.language !== 'lua'}
+              wordWrap={wordWrap}
+              onWordWrapChange={setWordWrap}
+            />
+          </EditorToolbar>
 
           <div className="min-h-0 flex-1" data-slot="editor-content">
             <MonacoEditor
@@ -179,16 +215,15 @@ function RouteComponent() {
               value={editorValue}
               language={currentProfile.data?.language}
               path={currentProfile.data?.virtualPath}
-              theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
+              theme={monacoTheme}
               beforeMount={beforeEditorMount}
               onMount={handleEditorDidMount}
               onChange={setEditorValue}
-              onValidate={(marks) => {
-                editorMarks.current = marks
-              }}
+              onValidate={setMarkers}
               loading={<LoadingSkeleton />}
               options={{
-                readOnly: currentProfile.data?.readOnly,
+                readOnly,
+                wordWrap: wordWrap ? 'on' : 'off',
                 mouseWheelZoom: true,
                 renderValidationDecorations: 'on',
                 tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,
@@ -210,24 +245,43 @@ function RouteComponent() {
             className="bg-background flex h-12 shrink-0 items-center gap-2 px-3"
             data-slot="editor-footer-actions"
           >
-            <ActionButton onClick={handleReset}>
-              {m.common_reset()}
-            </ActionButton>
+            <EditorStatus editor={editorInstance} markers={markers} />
 
             <div className="flex-1" />
 
-            <ActionButton onClick={handleCancel}>
-              {m.common_cancel()}
+            <ActionButton disabled={!isDirty} onClick={handleReset}>
+              {m.common_reset()}
             </ActionButton>
 
-            <ActionButton
-              className="px-5"
-              variant="flat"
-              loading={blockTask.isPending}
-              onClick={handleSave}
-            >
-              {m.common_save()}
-            </ActionButton>
+            <ShortcutTooltip shortcut={EDITOR_SHORTCUTS.close}>
+              <ActionButton onClick={handleCancel}>
+                {m.common_cancel()}
+              </ActionButton>
+            </ShortcutTooltip>
+
+            <ShortcutTooltip shortcut={EDITOR_SHORTCUTS.apply}>
+              <ActionButton
+                className="px-5"
+                variant="flat"
+                disabled={readOnly}
+                loading={saveTask.isPending}
+                onClick={() => handleSave(false)}
+              >
+                {m.common_apply()}
+              </ActionButton>
+            </ShortcutTooltip>
+
+            <ShortcutTooltip shortcut={EDITOR_SHORTCUTS.save}>
+              <ActionButton
+                className="px-5"
+                variant="flat"
+                disabled={readOnly}
+                loading={saveTask.isPending}
+                onClick={() => handleSave(true)}
+              >
+                {m.common_save()}
+              </ActionButton>
+            </ShortcutTooltip>
           </div>
         </>
       )}

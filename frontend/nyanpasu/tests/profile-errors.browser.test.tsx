@@ -10,6 +10,10 @@ import { profileDialogLabel } from '@/utils/profile-label'
 import type { IpcError, ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 
+vi.hoisted(() => {
+  Object.assign(globalThis, { isTauri: true })
+})
+
 const items: ProfileItem_Serialize[] = [
   {
     uid: 't1',

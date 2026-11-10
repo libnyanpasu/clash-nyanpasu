@@ -17,7 +17,7 @@ import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isWindows } from '@nyanpasu/platform'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { useCoreDir, useServicePrompt, useSystemService } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
 import type {
@@ -437,6 +437,9 @@ const ServicePromptCode = ({ code }: { code: string }) => {
 //   operation: 'uninstall' | 'install' | 'start' | 'stop' | null
 // }
 const ServicePromptButton = () => {
+  const platform = usePlatform()
+  const isWindows =
+    platform.surface === 'desktop' && platform.clientOs === 'windows'
   const {
     query: { data: systemService },
   } = useSystemService()
@@ -446,6 +449,8 @@ const ServicePromptButton = () => {
   const { data: coreDir } = useCoreDir()
 
   const userOperationCommands = useMemo(() => {
+    if (platform.surface !== 'desktop' || platform.clientOs === 'unknown')
+      return ''
     if (systemService?.status === 'not_installed' && serviceInstallPrompt) {
       return `cd "${coreDir}"\n${serviceInstallPrompt}`
     } else if (systemService?.status) {
@@ -454,7 +459,7 @@ const ServicePromptButton = () => {
       return `cd "${coreDir}"\n${!isWindows ? 'sudo ' : ''}./nyanpasu-service ${operation}`
     }
     return ''
-  }, [systemService?.status, serviceInstallPrompt, coreDir])
+  }, [systemService?.status, serviceInstallPrompt, coreDir, platform])
 
   const handleCopyToClipboard = useLockFn(async () => {
     if (!userOperationCommands) {

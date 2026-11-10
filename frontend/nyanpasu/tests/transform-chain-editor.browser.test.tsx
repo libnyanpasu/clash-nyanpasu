@@ -22,6 +22,10 @@ import {
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider } from './query-provider'
 
+vi.hoisted(() => {
+  Object.assign(globalThis, { isTauri: true })
+})
+
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))

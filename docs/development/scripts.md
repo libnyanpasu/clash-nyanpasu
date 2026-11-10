@@ -16,6 +16,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | ---------------------- | ----------------------------------------------------------------------------------- |
 | `architecture-ledger/` | Architecture policy, Rust scanning, snapshots and gate/report CLI                   |
 | `prepare/`             | Sidecar and resource preparation, downloading and progress display                  |
+| `worktree/`            | Worktree submodule and dependency preparation                                       |
 | `release/`             | Version publication, build configuration, package finalization and signing          |
 | `updater/`             | Updater manifests, release channels, platform selection and release notes           |
 | `manifest/`            | Core version resolution and version manifest generation                             |

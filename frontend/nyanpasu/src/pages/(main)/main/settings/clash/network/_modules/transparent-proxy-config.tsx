@@ -8,7 +8,6 @@ import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { isLinux, isTauri } from '@nyanpasu/platform'
 import {
   unwrapQueryOptions,
   useClashSetting,
@@ -57,19 +56,18 @@ export default function TransparentProxyConfigSettings() {
   const queryClient = useQueryClient()
   const statusOptions = api.queries.getTransparentProxyStatus()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'
-  const supportedHost = isLinux && isTauri()
   const statusQuery = useQuery({
     ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
-    enabled: supportedHost && supportedCore,
+    enabled: supportedCore,
     refetchInterval: serviceMode.value ? 2000 : false,
   })
 
   useEffect(() => {
-    if (!supportedHost || !supportedCore) return
+    if (!supportedCore) return
     queryClient
       .invalidateQueries({ queryKey: STATUS_QUERY_KEY })
       .catch(() => undefined)
-  }, [core.value, serviceMode.value, queryClient, supportedCore, supportedHost])
+  }, [core.value, serviceMode.value, queryClient, supportedCore])
 
   const config: EffectiveTransparentProxyConfig = {
     ...DEFAULT_CONFIG,
@@ -84,7 +82,7 @@ export default function TransparentProxyConfigSettings() {
     setInterfacesText(config.interfaces.join(', '))
   }, [config.interfaces])
 
-  if (!supportedHost || !supportedCore) {
+  if (!supportedCore) {
     return null
   }
 

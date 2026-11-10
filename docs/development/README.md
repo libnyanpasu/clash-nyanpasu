@@ -7,17 +7,18 @@ to these guides, and restates only the most frequently violated rules.
 
 ## Choose a guide
 
-| When you are working on                                              | Read                                             |
-| -------------------------------------------------------------------- | ------------------------------------------------ |
-| Services, state ownership, dependency injection, or core/GUI split   | [Architecture and ownership](architecture.md)    |
-| Backend crate extraction and core/platform dependency direction      | [Backend packages](backend-packages.md)          |
-| Commands, frontend backend calls, HTTP capabilities, or events       | [Unified RPC](rpc.md)                            |
-| Tests, mocks, verification, or final review                          | [Testing and review](testing.md)                 |
-| Worktree selection, build prerequisites, or commits                  | [Development workflow](workflow.md)              |
-| Repository scripts, tasks, tool dependencies and script layout       | [Repository scripts](scripts.md)                 |
-| Rust style, API design, errors, panics, concurrency, migration debt  | [Rust code style](rust.md)                       |
-| TypeScript, React, routed pages, module ownership, or UI composition | [TypeScript and React code style](typescript.md) |
-| Translating UI text, changing locale behavior, or adding a language  | [Internationalization and translation](i18n.md)  |
+| When you are working on                                              | Read                                                         |
+| -------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Services, state ownership, dependency injection, or core/GUI split   | [Architecture and ownership](architecture.md)                |
+| Backend crate extraction and core/platform dependency direction      | [Backend packages](backend-packages.md)                      |
+| Commands, frontend backend calls, HTTP capabilities, or events       | [Unified RPC](rpc.md)                                        |
+| Tests, mocks, verification, or final review                          | [Testing and review](testing.md)                             |
+| Worktree selection, build prerequisites, or commits                  | [Development workflow](workflow.md)                          |
+| Repository scripts, tasks, tool dependencies and script layout       | [Repository scripts](scripts.md)                             |
+| Rust style, API design, errors, panics, concurrency, migration debt  | [Rust code style](rust.md)                                   |
+| TypeScript, React, routed pages, module ownership, or UI composition | [TypeScript and React code style](typescript.md)             |
+| Frontend OS, runtime, surface, or local capability decisions         | [Frontend platform facts and adapters](frontend-platform.md) |
+| Translating UI text, changing locale behavior, or adding a language  | [Internationalization and translation](i18n.md)              |
 
 Start with the [root README](../../README.md#development) for running the app and
 [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution setup. For frontend test

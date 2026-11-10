@@ -7,7 +7,8 @@ import {
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isBrowser } from '@nyanpasu/platform'
+import { createBrowserAdapter } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { Link } from '@tanstack/react-router'
 import { openIssueReport, openWiki } from './help-links'
 
@@ -32,11 +33,10 @@ const IssuesItem = () => {
 }
 
 const CollectLogItem = () => {
+  const isDesktop = useMatchesPlatform('desktop')
   const handleClick = useLockFn(async () => {
-    if (isBrowser()) {
-      const anchor = document.createElement('a')
-      anchor.href = '/bridge/logs/archive'
-      anchor.click()
+    if (!isDesktop) {
+      createBrowserAdapter()?.download('/bridge/logs/archive')
       return
     }
 

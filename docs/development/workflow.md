@@ -147,7 +147,8 @@ Native operations include [ReFS block cloning](https://learn.microsoft.com/en-us
 | -------------------------- | ----------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend/tauri/sidecar/`   | ~213M                   | **Symlink → main**                                                      | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm run prepare:check` is slow |
 | `backend/tauri/resources/` | ~21M                    | **Symlink → main**                                                      | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                         |
-| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                           |
+| Submodule checkouts        | varies                  | **Independent checkout from local Git objects when available**          | Each worktree checks out its own pinned revisions, including nested submodules                                                                |
+| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already deduplicates package contents; sharing risks concurrent lock conflicts                                              |
 | `backend/target/`          | tens to hundreds of GiB | **Independent CoW clone when supported; otherwise build independently** | Clones share unchanged data blocks while keeping files and Cargo locks independent; never share a writable target directory                   |
 | `backend/tauri/tmp/dist/`  | build output            | **Independent — never symlink**                                         | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                    |
 
@@ -190,13 +191,26 @@ New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/t
 # Seed backend/target through verified CoW cloning when supported.
 # Otherwise let Cargo create it; never link it back to the main target.
 
-pnpm install
+# Initialize the pinned submodules using local objects where available, including
+# nested submodules, and install dependencies from the shared pnpm store.
+pnpm run prepare:worktree "$main"
 
 # Satisfy tauri-build's frontendDist check — pick one:
 New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
 Set-Content backend/tauri/tmp/dist/index.html '<!doctype html><title>dev</title>'
 # pnpm web:build                                      # B) real UI (builds app and replaces tmp/dist)
 ```
+
+`prepare:worktree` keeps submodule working directories and Git metadata independent.
+It tries the corresponding initialized submodule in the source checkout as a local
+Git source, while retaining the original remote URL; missing local repositories or
+commits fall back to the configured remote. The source checkout is not modified.
+The pnpm installation uses `--frozen-lockfile --prefer-offline`: packages already
+in the store are reused, and missing packages may still be downloaded. This does
+not share `node_modules`, clone Cargo targets, or prepare sidecars and resources.
+For a wholly offline setup the required submodule commits and pnpm packages must
+already be cached; use `pnpm install --offline --frozen-lockfile` to enforce offline
+package installation.
 
 ### Remove a worktree
 

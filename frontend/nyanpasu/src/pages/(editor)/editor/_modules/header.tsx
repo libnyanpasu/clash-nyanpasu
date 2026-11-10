@@ -2,7 +2,7 @@ import { ComponentProps } from 'react'
 import { DefaultHeader, MacOSHeader } from '@/components/window/system-titlebar'
 import WindowControl from '@/components/window/window-control'
 import WindowTitle from '@/components/window/window-title'
-import { isMacOS } from '@nyanpasu/platform'
+import { PlatformMacos } from '@nyanpasu/platform/react'
 
 const DEFAULT_APP_NAME = 'Clash Nyanpasu - Editor'
 
@@ -28,13 +28,17 @@ export default function Header({
   beforeClose?: ComponentProps<typeof WindowControl>['beforeClose']
   title?: string
 }) {
-  return isMacOS ? (
-    <MacOSHeader className={className} {...props}>
-      <Title title={title} />
-    </MacOSHeader>
-  ) : (
-    <DefaultHeader className={className} {...props}>
-      <Title title={title} />
-    </DefaultHeader>
+  return (
+    <PlatformMacos
+      fallback={
+        <DefaultHeader className={className} {...props}>
+          <Title title={title} />
+        </DefaultHeader>
+      }
+    >
+      <MacOSHeader className={className} {...props}>
+        <Title title={title} />
+      </MacOSHeader>
+    </PlatformMacos>
   )
 }

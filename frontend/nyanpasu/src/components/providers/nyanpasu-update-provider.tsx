@@ -1,5 +1,5 @@
 import { createContext, PropsWithChildren, use } from 'react'
-import { isTauri } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { useAppUpdate } from '@nyanpasu/query'
 import packageJson from '@root/package.json'
 
@@ -31,7 +31,7 @@ export const useNyanpasuUpdate = () => {
 export default function NyanpasuUpdateProvider({
   children,
 }: PropsWithChildren) {
-  const isDesktop = isTauri()
+  const isDesktop = useMatchesPlatform('desktop')
   const update = useAppUpdate({ enabled: isDesktop })
   const phase = update.snapshot?.phase
   const isBusy =

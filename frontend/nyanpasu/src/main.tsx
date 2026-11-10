@@ -12,6 +12,7 @@ import '@nyanpasu/theme/styles/fonts.css'
 import '@nyanpasu/theme/styles/theme.css'
 import './assets/styles/index.css'
 import './assets/styles/tailwind.css'
+import { detectRuntime } from '@nyanpasu/platform'
 import { routeTree } from './route-tree.gen'
 // installs error reporting before the app runs
 import { reactRootErrorOptions } from './services/error-reporting'
@@ -42,6 +43,7 @@ document.documentElement.classList.toggle(
 // Set up a Router instance
 const router = createRouter({
   routeTree,
+  context: { runtime: detectRuntime() },
   defaultPreload: 'intent',
 })
 

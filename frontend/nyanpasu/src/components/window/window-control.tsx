@@ -9,12 +9,12 @@ import { ComponentProps, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'
-import { isTauri } from '@nyanpasu/platform'
+import { createWindowAdapter } from '@nyanpasu/platform'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
-const appWindow = isTauri() ? getCurrentWebviewWindow() : null
+const getAppWindow = () => createWindowAdapter()
 
 const CtrlButton = ({ className, ...props }: ButtonProps) => {
   return (
@@ -35,7 +35,7 @@ const AlwaysOnTopButton = () => {
 
   const handleToggleAlwaysOnTop = useCallback(async () => {
     await upsertAlwaysOnTop(!alwaysOnTop)
-    await appWindow?.setAlwaysOnTop(!alwaysOnTop)
+    await getAppWindow()?.setAlwaysOnTop(!alwaysOnTop)
   }, [alwaysOnTop, upsertAlwaysOnTop])
 
   return (
@@ -65,7 +65,7 @@ const AlwaysOnTopButton = () => {
 
 const MinimizeButton = () => {
   const handleMinimize = useCallback(async () => {
-    await appWindow?.minimize()
+    await getAppWindow()?.minimize()
   }, [])
 
   return (
@@ -109,7 +109,7 @@ const CloseButton = ({
       }
     }
 
-    await appWindow?.close()
+    await getAppWindow()?.close()
   }, [beforeClose])
 
   return (
@@ -127,8 +127,25 @@ export default function WindowControl({
   hiddenAlwaysOnTop?: boolean
   beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
 }) {
-  if (!appWindow) return null
+  return (
+    <PlatformDesktop>
+      <DesktopWindowControl
+        className={className}
+        hiddenAlwaysOnTop={hiddenAlwaysOnTop}
+        beforeClose={beforeClose}
+      />
+    </PlatformDesktop>
+  )
+}
 
+function DesktopWindowControl({
+  className,
+  hiddenAlwaysOnTop,
+  beforeClose,
+}: ComponentProps<'div'> & {
+  hiddenAlwaysOnTop?: boolean
+  beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
+}) {
   return (
     <>
       <div

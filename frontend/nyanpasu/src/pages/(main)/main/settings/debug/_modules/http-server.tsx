@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Switch } from '@nyanpasu/ui/switch'
 import { rpc } from '@/services/rpc'
-import { isTauri } from '@nyanpasu/platform'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -19,7 +19,7 @@ const queryKey = ['debug-http-status']
 export default function HttpServer() {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const desktop = isTauri()
+  const desktop = useMatchesPlatform('desktop')
   const status = useQuery({
     queryKey,
     queryFn: async () => unwrapResult(await rpc.getDebugHttpStatus()),

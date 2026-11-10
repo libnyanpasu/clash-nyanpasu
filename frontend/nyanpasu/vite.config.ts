@@ -141,8 +141,6 @@ export default defineConfig(({ command, mode }) => {
       sourcemap: isDev || IS_NIGHTLY ? 'inline' : false,
     },
     define: {
-      OS_PLATFORM: `"${process.platform}"`,
-      WIN_PORTABLE: !!process.env.VITE_WIN_PORTABLE,
       IS_NIGHTLY: IS_NIGHTLY,
     },
     html: {},

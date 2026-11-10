@@ -37,7 +37,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
     <div
       data-slot="changelog-markdown-code-block"
-      className="bg-surface-variant/30 my-3 overflow-x-auto rounded-xl p-3 text-xs [&_.shiki]:!bg-transparent dark:[&_.shiki]:!text-[var(--shiki-dark)] [&_.shiki_span]:!bg-transparent dark:[&_.shiki_span]:!text-[var(--shiki-dark)] [&_pre]:m-0 [&_pre]:font-mono [&_pre]:leading-relaxed"
+      className="bg-surface-variant/30 my-3 overflow-x-auto rounded-xl p-3 text-xs [&_.shiki]:!bg-transparent [&_.shiki_span]:!bg-transparent [&_pre]:m-0 [&_pre]:font-mono [&_pre]:leading-relaxed"
     >
       {highlighted?.code === code ? (
         <div dangerouslySetInnerHTML={{ __html: highlighted.html }} />

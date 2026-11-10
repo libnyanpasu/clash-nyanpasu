@@ -140,7 +140,6 @@ const ServiceDetailRawJson = ({ code }: { code: string }) => {
       className={cn(
         'bg-surface-variant/30 rounded-xl p-3 text-xs select-text',
         '[&_.shiki]:bg-transparent! [&_.shiki_span]:bg-transparent!',
-        'dark:[&_.shiki]:text-(--shiki-dark)! dark:[&_.shiki_span]:text-(--shiki-dark)!',
         '[&_pre]:font-mono [&_pre]:leading-relaxed [&_pre]:wrap-anywhere [&_pre]:whitespace-pre-wrap',
       )}
       data-slot="service-detail-raw-json"
@@ -388,19 +387,9 @@ const ServicePromptCode = ({ code }: { code: string }) => {
   useEffect(() => {
     let cancelled = false
     import('@/utils/shiki')
-      .then(({ getShikiSingleton }) => getShikiSingleton())
-      .then((shiki) => {
-        if (cancelled) return
-        setHighlighted({
-          code,
-          html: shiki.codeToHtml(code, {
-            lang: 'shell',
-            themes: {
-              dark: 'nord',
-              light: 'min-light',
-            },
-          }),
-        })
+      .then(({ highlightShell }) => highlightShell(code))
+      .then((html) => {
+        if (!cancelled) setHighlighted({ code, html })
       })
     return () => {
       cancelled = true

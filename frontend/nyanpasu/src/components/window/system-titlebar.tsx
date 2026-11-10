@@ -7,8 +7,11 @@ import WindowHeader from './window-header'
 export function DefaultHeader({
   className,
   children,
+  beforeClose,
   ...props
-}: ComponentProps<'div'>) {
+}: ComponentProps<'div'> & {
+  beforeClose?: ComponentProps<typeof WindowControl>['beforeClose']
+}) {
   return (
     <WindowHeader
       className={cn('items-center justify-between px-3', className)}
@@ -19,7 +22,7 @@ export function DefaultHeader({
         {children}
       </div>
 
-      <WindowControl />
+      <WindowControl beforeClose={beforeClose} />
     </WindowHeader>
   )
 }

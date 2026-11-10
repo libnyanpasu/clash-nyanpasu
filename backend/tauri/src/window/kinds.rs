@@ -164,7 +164,10 @@ impl EditorWindow {
                 let uid = uid.ok_or_else(|| anyhow::anyhow!("uid required for Profile editor"))?;
                 Self::profile(uid)
             }
-            EditorWindowType::CssEditor => Self::css_editor(),
+            EditorWindowType::CssEditor => {
+                let uid = uid.ok_or_else(|| anyhow::anyhow!("uid required for CSS editor"))?;
+                Self::css_editor(uid)
+            }
         };
         let mut builder = WindowParamsBuilder::new().param("type", window_type.type_str());
         if let Some(u) = uid {
@@ -186,13 +189,14 @@ impl EditorWindow {
         }
     }
 
-    /// CSS editor — singleton, no uid.
-    fn css_editor() -> Self {
+    /// CSS editor — singleton per custom CSS item uid.
+    fn css_editor(uid: &str) -> Self {
         Self {
             label: format!(
-                "{}-{}",
+                "{}-{}-{}",
                 crate::consts::EDITOR_WINDOW_LABEL,
-                EditorWindowType::CssEditor.label_suffix()
+                EditorWindowType::CssEditor.label_suffix(),
+                uid
             ),
             window_type: EditorWindowType::CssEditor,
         }
@@ -505,6 +509,19 @@ fn place_tray_menu_window(win: &WebviewWindow, cursor: PhysicalPosition<f64>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_css_editor_needs_an_item_and_is_opened_once_per_item() {
+        assert!(EditorWindow::for_type(EditorWindowType::CssEditor, None).is_err());
+
+        let (first, _) = EditorWindow::for_type(EditorWindowType::CssEditor, Some("a")).unwrap();
+        let (again, _) = EditorWindow::for_type(EditorWindowType::CssEditor, Some("a")).unwrap();
+        let (second, _) = EditorWindow::for_type(EditorWindowType::CssEditor, Some("b")).unwrap();
+
+        assert_eq!(first.label(), again.label());
+        assert_ne!(first.label(), second.label());
+        assert!(first.config().singleton);
+    }
 
     #[test]
     fn the_tray_menu_takes_no_focus_while_it_is_built_hidden() {

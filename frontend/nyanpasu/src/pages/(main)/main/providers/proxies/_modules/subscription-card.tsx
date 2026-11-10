@@ -1,7 +1,7 @@
-import { filesize } from 'filesize'
 import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { m } from '@/paraglide/messages'
+import { formatBytes } from '@/utils/format-bytes'
 import { ClashProxiesProviderQueryItem } from '@nyanpasu/query'
 import { useProxiesSubscription } from '../../_modules/use-proxies-subscription'
 
@@ -28,8 +28,7 @@ export const SubscriptionCard = ({
           <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
 
           <div className="text-sm font-bold">
-            {filesize(used, { standard: 'iec' })} /
-            {filesize(total, { standard: 'iec' })}
+            {formatBytes(used)} / {formatBytes(total)}
           </div>
         </div>
       </CardContent>

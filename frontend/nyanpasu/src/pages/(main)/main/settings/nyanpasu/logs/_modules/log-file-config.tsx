@@ -1,4 +1,5 @@
 import { m } from '@/paraglide/messages'
+import { byteUnitLabel } from '@/utils/information-unit'
 import { useSetting } from '@nyanpasu/query'
 import { SettingsSliderRow } from '../../../_modules/settings-slider-row'
 import {
@@ -33,7 +34,7 @@ export default function LogFileConfig() {
           label={m.settings_nyanpasu_max_log_file_size_label()}
           committedValue={maxLogFileSize.value ?? 10}
           max={MAX_LOG_FILE_SIZE}
-          unit=" MiB"
+          unit={` ${byteUnitLabel('MiB')}`}
           onCommit={(value) => maxLogFileSize.upsert(value)}
         />
       </SettingsCardContent>

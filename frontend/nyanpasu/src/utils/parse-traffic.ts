@@ -1,4 +1,4 @@
-const UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+import { byteUnitLabel, byteUnits } from '@/utils/information-unit'
 
 const parseTraffic = (num?: string | number) => {
   if (typeof num !== 'number') {
@@ -8,12 +8,12 @@ const parseTraffic = (num?: string | number) => {
   }
 
   // 处理负数或零的情况
-  if (num <= 0) return ['0', 'B']
+  if (num <= 0) return ['0', byteUnitLabel('B')]
 
   // 使用 Math.log 而不是 Math.log2 来提高精度
   const exp = Math.min(
     Math.floor(Math.log(num) / Math.log(1024)),
-    UNITS.length - 1,
+    byteUnits.length - 1,
   )
   const dat = num / Math.pow(1024, exp)
 
@@ -28,7 +28,7 @@ const parseTraffic = (num?: string | number) => {
     ret = dat >= 999.5 ? dat.toFixed(0) : dat.toPrecision(3)
   }
 
-  const unit = UNITS[exp]
+  const unit = byteUnitLabel(byteUnits[exp])
 
   return [ret, unit]
 }

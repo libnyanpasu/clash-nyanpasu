@@ -2,7 +2,6 @@ import ChatInfoRounded from '~icons/material-symbols/chat-info-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import { sentenceCase } from 'change-case'
 import { isValid, parseISO } from 'date-fns'
-import { filesize } from 'filesize'
 import { ComponentProps, memo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
@@ -15,6 +14,7 @@ import {
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
+import { formatBytes } from '@/utils/format-bytes'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
   type ClosedConnection,
@@ -103,11 +103,11 @@ function formatValue(key: string, value: any): React.ReactNode {
   const k = key.toLowerCase()
 
   if (k.includes('speed')) {
-    return <span>{filesize(value, { standard: 'iec' })}/s</span>
+    return <span>{formatBytes(value)}/s</span>
   }
 
   if (k.includes('download') || k.includes('upload')) {
-    return <span>{filesize(value, { standard: 'iec' })}</span>
+    return <span>{formatBytes(value)}</span>
   }
 
   if (k.includes('port') || k === 'id' || k.includes('ip')) {

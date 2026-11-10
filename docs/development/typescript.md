@@ -284,6 +284,8 @@ page-specific data selection in its route.
   same logical groups and order across locales. Do not append unrelated new keys
   at the end of the file. Update locale sources and regenerate Paraglide output
   through its existing workflow; do not hand-edit generated message modules.
+- For locale-specific terminology, counters, units, and the current coverage
+  audit, see [Internationalization and translation](i18n.md).
 
 ## What is enforced
 

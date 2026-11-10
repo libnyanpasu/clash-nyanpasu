@@ -8,7 +8,7 @@ import {
   type ReturnTicket,
 } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
-import { getLocale } from '@/paraglide/runtime'
+import { getLocale, locales, overwriteGetLocale } from '@/paraglide/runtime'
 import {
   dimensionName,
   largest,
@@ -1727,8 +1727,35 @@ test('a view switch keeps the figures but never draws the other columns', async 
   await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
 })
 
-test('region names are localized, anything else is shown as it is', () => {
-  const names = new Intl.DisplayNames([getLocale()], { type: 'region' })
+test('region names use reviewed overrides and fall back to Intl', ({
+  onTestFinished,
+}) => {
+  const previousGetLocale = getLocale
+  onTestFinished(() => overwriteGetLocale(previousGetLocale))
+
+  const reviewedRegionNames: Record<
+    (typeof locales)[number],
+    readonly [string, string, string, string]
+  > = {
+    en: ['Mainland China', 'Hong Kong SAR', 'Taiwan', 'Macao SAR'],
+    ja: ['中国大陸', '香港特別行政区', '台湾', 'マカオ特別行政区'],
+    ko: ['중국 본토', '홍콩 특별행정구', '대만', '마카오 특별행정구'],
+    ru: ['Материковый Китай', 'Гонконг (САР)', 'Тайвань', 'Макао (САР)'],
+    'zh-cn': ['中国大陆', '香港特别行政区', '台湾', '澳门特别行政区'],
+    'zh-tw': ['中國大陸', '香港特別行政區', '臺灣', '澳門特別行政區'],
+  }
+
+  for (const locale of locales) {
+    overwriteGetLocale(() => locale)
+    const [cn, hk, tw, mo] = reviewedRegionNames[locale]
+    expect(regionName('CN')).toBe(cn)
+    expect(regionName('hk')).toBe(hk)
+    expect(regionName('TW')).toBe(tw)
+    expect(regionName('MO')).toBe(mo)
+  }
+
+  overwriteGetLocale(previousGetLocale)
+  const names = new Intl.DisplayNames([previousGetLocale()], { type: 'region' })
 
   expect(regionName('US')).toBe(names.of('US'))
   expect(regionName('419')).toBe(names.of('419'))

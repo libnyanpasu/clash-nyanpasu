@@ -1,7 +1,6 @@
 import NetworkCheckRounded from '~icons/material-symbols/network-check-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
-import { filesize } from 'filesize'
 import { motion, useReducedMotion } from 'motion/react'
 import { memo, useDeferredValue, useMemo } from 'react'
 import { ActionSwapText } from '@nyanpasu/ui/action-swap-text'
@@ -12,6 +11,7 @@ import { EmptyState } from '@nyanpasu/ui/empty-state'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
+import { formatBytes } from '@/utils/format-bytes'
 import { useClashConnectionDetails, useClashWSStatus } from '@nyanpasu/query'
 import type { ClashConnection_Serialize } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
@@ -90,10 +90,10 @@ function ActiveConnectionsPreview({ id, onCloseClick }: WidgetComponentProps) {
                   </div>
                   <div className="text-on-surface-variant flex gap-4 tabular-nums">
                     <span className="whitespace-nowrap">
-                      ↓ {filesize(connection.download, { standard: 'iec' })}/s
+                      ↓ {formatBytes(connection.download)}/s
                     </span>
                     <span className="whitespace-nowrap">
-                      ↑ {filesize(connection.upload, { standard: 'iec' })}/s
+                      ↑ {formatBytes(connection.upload)}/s
                     </span>
                   </div>
                 </div>
@@ -281,11 +281,11 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
                         <div className="text-on-surface-variant flex gap-4 tabular-nums">
                           <ActionSwapText
                             className="whitespace-nowrap"
-                            value={`↓ ${filesize(connection.downloadSpeed, { standard: 'iec' })}/s`}
+                            value={`↓ ${formatBytes(connection.downloadSpeed)}/s`}
                           />
                           <ActionSwapText
                             className="whitespace-nowrap"
-                            value={`↑ ${filesize(connection.uploadSpeed, { standard: 'iec' })}/s`}
+                            value={`↑ ${formatBytes(connection.uploadSpeed)}/s`}
                           />
                         </div>
                       </div>

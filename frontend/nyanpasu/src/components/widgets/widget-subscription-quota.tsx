@@ -1,6 +1,5 @@
 import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import { filesize } from 'filesize'
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionSwap } from '@nyanpasu/ui/action-swap-text'
@@ -12,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatDate, formatRelativeTime } from '@/utils/date'
+import { formatBytes } from '@/utils/format-bytes'
 import {
   MutationUnconfirmedError,
   useProfile,
@@ -60,9 +60,9 @@ function SubscriptionQuotaPreview({ id }: { id: string }) {
               </WidgetMetric>
             </div>
             <WidgetMeta data-slot="subscription-quota-summary">
-              6.8 GiB{' '}
+              {formatBytes(6.8 * 1024 ** 3)}{' '}
               {m.dashboard_widget_subscription_quota_remaining_of({
-                total: '10 GiB',
+                total: formatBytes(10 * 1024 ** 3),
               })}
             </WidgetMeta>
           </div>
@@ -292,7 +292,7 @@ function SubscriptionQuotaLive({
       return m.dashboard_widget_subscription_quota_stale_error()
     if (quota && quota.overage > 0)
       return m.dashboard_widget_subscription_quota_overage({
-        value: filesize(quota.overage, { standard: 'iec' }),
+        value: formatBytes(quota.overage),
       })
     if (isWarning) return m.dashboard_widget_subscription_quota_warning()
     if (profile && !quota)
@@ -413,10 +413,8 @@ function SubscriptionQuotaLive({
             <QuotaSummary
               notice={summaryNotice()}
               isError={noticeIsError}
-              remaining={
-                quota ? filesize(quota.remaining, { standard: 'iec' }) : null
-              }
-              total={quota ? filesize(quota.total, { standard: 'iec' }) : null}
+              remaining={quota ? formatBytes(quota.remaining) : null}
+              total={quota ? formatBytes(quota.total) : null}
               expiryText={
                 profile && config.showExpiry
                   ? expiry

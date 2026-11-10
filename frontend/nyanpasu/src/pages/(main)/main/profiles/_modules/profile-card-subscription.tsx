@@ -1,5 +1,4 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import { filesize } from 'filesize'
 import type { ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { LinearProgress } from '@nyanpasu/ui/progress'
@@ -13,6 +12,7 @@ import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
 import { formatDate, formatRelativeTime } from '@/utils/date'
+import { formatBytes } from '@/utils/format-bytes'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
@@ -89,13 +89,11 @@ export default function ProfileCardSubscription({
         <ProfileCardMetric
           featured={featured}
           label={remainingLabel}
-          value={
-            quota ? filesize(quota.remaining, { standard: 'iec' }) : undefined
-          }
+          value={quota ? formatBytes(quota.remaining) : undefined}
           hint={
             quota
               ? m.profile_card_total({
-                  total: filesize(quota.total, { standard: 'iec' }),
+                  total: formatBytes(quota.total),
                 })
               : m.profile_card_quota_unknown()
           }
@@ -106,7 +104,7 @@ export default function ProfileCardSubscription({
           {quota && quota.overage > 0 && (
             <p className="text-error mt-1 text-sm">
               {m.profile_card_overage({
-                value: filesize(quota.overage, { standard: 'iec' }),
+                value: formatBytes(quota.overage),
               })}
             </p>
           )}
@@ -231,7 +229,7 @@ export function ProfileCardTraffic({
         label={m.profile_card_recorded_traffic()}
         value={
           total !== undefined && !report.isPlaceholderData
-            ? filesize(total, { standard: 'iec' })
+            ? formatBytes(total)
             : undefined
         }
         hint={
@@ -250,12 +248,12 @@ export function ProfileCardTraffic({
           <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs">
             <span>
               {m.dashboard_widget_traffic_report_download({
-                value: filesize(usage.bytes.download, { standard: 'iec' }),
+                value: formatBytes(usage.bytes.download),
               })}
             </span>
             <span>
               {m.dashboard_widget_traffic_report_upload({
-                value: filesize(usage.bytes.upload, { standard: 'iec' }),
+                value: formatBytes(usage.bytes.upload),
               })}
             </span>
           </div>

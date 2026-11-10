@@ -7,7 +7,6 @@ import MoreHorizRounded from '~icons/material-symbols/more-horiz-rounded'
 import SyncRounded from '~icons/material-symbols/sync-rounded'
 import UpdateRounded from '~icons/material-symbols/update-rounded'
 import { cva } from 'class-variance-authority'
-import { filesize } from 'filesize'
 import {
   AnimatePresence,
   motion,
@@ -36,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { formatBytes } from '@/utils/format-bytes'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import type { AppUpdatePhase } from '@nyanpasu/rpc/types'
@@ -482,17 +482,13 @@ export default function UpdateControls() {
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2 text-sm tabular-nums">
                           <span>
-                            {filesize(snapshot?.downloaded ?? 0, {
-                              standard: 'iec',
-                            })}
+                            {formatBytes(snapshot?.downloaded ?? 0)}
                             {snapshot?.total != null
-                              ? ` / ${filesize(snapshot.total, { standard: 'iec' })}`
+                              ? ` / ${formatBytes(snapshot.total)}`
                               : ` · ${m.settings_about_update_total_unknown()}`}
                           </span>
                           <span>
-                            {filesize(snapshot?.speed ?? 0, {
-                              standard: 'iec',
-                            })}
+                            {formatBytes(snapshot?.speed ?? 0)}
                             /s
                           </span>
                         </div>

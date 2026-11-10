@@ -1,5 +1,4 @@
 import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
-import { filesize } from 'filesize'
 import { AnimatePresence } from 'motion/react'
 import { ReactNode } from 'react'
 import { Controller, useFormContext, useWatch } from 'react-hook-form'
@@ -19,6 +18,7 @@ import {
 } from '@/components/ui/file-drop-zone'
 import { m } from '@/paraglide/messages'
 import { pickFile } from '@/utils/file-picker'
+import { formatBytes } from '@/utils/format-bytes'
 import { isConfigItem, useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import AnimatedErrorItem from '../../_modules/error-item'
@@ -204,9 +204,8 @@ export const LocalFileField = ({ disabled }: { disabled: boolean }) => {
 
               <div className="text-on-surface max-w-full truncate text-sm font-medium">
                 {m.profile_import_local_file_size_label({
-                  size: filesize(
+                  size: formatBytes(
                     fileContent ? new Blob([fileContent]).size : 0,
-                    { standard: 'iec' },
                   ),
                 })}
               </div>

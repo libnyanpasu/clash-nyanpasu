@@ -8,7 +8,7 @@
     },
     "no_proxies": "無 Proxy",
     "select_proxy": "選取 Proxy",
-    "restore_auto_selection": "復原自動選擇",
+    "restore_auto_selection": "還原自動選擇",
     "dashboard": "顯示 Clash Nyanpasu",
     "direct_mode": "直連模式",
     "global_mode": "全域模式",
@@ -22,7 +22,7 @@
       "app_config_dir": "設定檔目錄",
       "app_data_dir": "資料目錄",
       "core_dir": "核心目錄",
-      "log_dir": "日誌目錄"
+      "log_dir": "記錄目錄"
     },
     "proxy_action": {
       "enabled": "已啟用",
@@ -30,7 +30,7 @@
     },
     "quit": "結束",
     "rule_mode": "規則模式",
-    "script_mode": "腳本模式",
+    "script_mode": "指令碼模式",
     "system_proxy": "系統 Proxy",
     "tun_mode": "TUN 模式",
     "transparent_proxy": "透明代理"
@@ -52,16 +52,16 @@
       "copy_failed": "無法複製報告，請手動選取並複製",
       "close": "關閉",
       "report_issue": "回報問題",
-      "issue_opened": "問題頁面已開啟。將診斷壓縮檔拖入問題以附加日誌。",
-      "open_failed": "無法開啟 issue 頁面",
+      "issue_opened": "問題頁面已開啟。將診斷壓縮檔拖入問題以附加記錄。",
+      "open_failed": "無法開啟問題頁面",
       "manual_heading": "回報問題",
       "manual_description": "在 GitHub 描述問題，幫助我們修復。",
       "collecting": "正在收集診斷資訊",
       "step_host": "主機",
       "step_webview": "WebView",
       "step_core": "核心",
-      "step_app_logs": "應用程式日誌",
-      "step_core_logs": "核心日誌",
+      "step_app_logs": "應用程式記錄",
+      "step_core_logs": "核心記錄",
       "ready": "診斷資訊已就緒",
       "failed": "部分診斷資訊無法收集",
       "interrupted": "診斷已中斷",
@@ -83,7 +83,7 @@
       "details": "詳細資訊",
       "open_containing": "開啟所在目錄",
       "open_backups": "開啟備份目錄",
-      "open_logs": "開啟日誌目錄",
+      "open_logs": "開啟記錄目錄",
       "copy": "複製詳細資訊",
       "copied": "已複製",
       "copy_failed": "無法複製詳細資訊",
@@ -120,8 +120,8 @@
         "installed_recovery": "請重新安裝 Clash Nyanpasu。"
       },
       "logging": {
-        "description": "應用程式日誌無法使用。",
-        "recovery": "請檢查日誌位置的權限和剩餘磁碟空間。"
+        "description": "應用程式記錄無法使用。",
+        "recovery": "請檢查記錄位置的權限和剩餘磁碟空間。"
       },
       "permission": {
         "description": "存取所需檔案或目錄遭拒。",
@@ -133,7 +133,7 @@
       },
       "internal": {
         "description": "內部錯誤導致應用程式無法啟動。",
-        "recovery": "請複製詳細資訊，並附上版本與日誌回報問題。"
+        "recovery": "請複製詳細資訊，並附上版本與記錄回報問題。"
       }
     }
   },

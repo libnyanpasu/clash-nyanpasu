@@ -69,10 +69,22 @@ on:
         description: 'build arch target'
         required: true
         default: 'x86_64'
+    secrets:
+      TAURI_PRIVATE_KEY:
+        description: 'Signing key of the updater bundles'
+        required: false
+      TAURI_KEY_PASSWORD:
+        description: 'Password of the signing key'
+        required: false
+      FILE_SERVER_TOKEN:
+        description: 'Token of the archive file server (uploads are currently paused)'
+        required: false
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
     env:
       # Archive uploads are temporarily paused; packages are published on GitHub.
       ARCHIVE_UPLOAD_ENABLED: 'false'
@@ -88,8 +100,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
 
       - name: Install Rust nightly
@@ -99,7 +112,7 @@ jobs:
 
       # `pnpm tauri build` generates the open source credits before the frontend.
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-about@0.9.2
 
@@ -109,16 +122,16 @@ jobs:
           rustup target add ${{ inputs.arch }}-pc-windows-msvc
 
       - name: Install Node latest
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
         with:
           workspaces: 'backend'
@@ -185,7 +198,7 @@ jobs:
           echo "SYMBOLS_ARCHIVE=$archive" >> "$GITHUB_ENV"
 
       - name: Upload debug symbols
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}-symbols
           path: ${{ env.SYMBOLS_ARCHIVE }}
@@ -215,7 +228,7 @@ jobs:
 
       - name: Upload NSIS Installer
         if: ${{ inputs.bundle-type != 'fixed-webview' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}-nsis-installer
           path: |
@@ -225,7 +238,7 @@ jobs:
 
       - name: Upload portable
         if: ${{ inputs.portable == true && inputs.bundle-type != 'fixed-webview' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}-portable
           path: |
@@ -245,7 +258,7 @@ jobs:
 
       - name: Upload file server diagnostics
         if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' && inputs.bundle-type != 'fixed-webview' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: upload-diagnostics-windows-${{ inputs.arch }}-standard
           path: ./upload-report.json
@@ -329,7 +342,7 @@ jobs:
 
       - name: Upload NSIS Installer with fixed WebView
         if: ${{ inputs.bundle-type != 'standard' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}-fixed-webview-nsis-installer
           path: |
@@ -339,7 +352,7 @@ jobs:
 
       - name: Upload portable with fixed WebView
         if: ${{ inputs.portable == true && inputs.bundle-type != 'standard' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}-fixed-webview-portable
           path: |
@@ -359,7 +372,7 @@ jobs:
 
       - name: Upload file server diagnostics with fixed WebView
         if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' && inputs.bundle-type != 'standard' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: upload-diagnostics-windows-${{ inputs.arch }}-fixed-webview
           path: ./upload-report.json

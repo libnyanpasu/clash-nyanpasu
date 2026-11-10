@@ -28,21 +28,29 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      TELEGRAM_TOKEN:
+        description: 'Bot token of the release channel'
+        required: false
 
 jobs:
   telegram:
     name: Notify Telegram
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false

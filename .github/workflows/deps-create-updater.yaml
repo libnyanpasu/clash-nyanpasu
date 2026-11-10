@@ -55,8 +55,9 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.ref }}
           # blocked by https://github.com/actions/checkout/issues/1467
 
@@ -64,11 +65,11 @@ jobs:
         run: git fetch --tags
 
       - name: Install Node latest
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
@@ -120,7 +121,7 @@ jobs:
 
       - name: Preserve SourceForge manifest publication report
         if: ${{ always() && vars.SOURCEFORGE_PROJECT != '' && inputs.sourceforge_mirrors_json != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: sourceforge-web-publication-report
           path: sourceforge-web-report.json

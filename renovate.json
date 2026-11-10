@@ -61,6 +61,10 @@
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["ubuntu"],
       "enabled": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "automerge": false
     }
   ],
   "prConcurrentLimit": 30,

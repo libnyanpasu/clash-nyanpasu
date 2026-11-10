@@ -15,6 +15,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # Entering the same concurrency group cancels the PR's running or pending CI.
   # This base-branch event also handles conflicted PRs; never run PR code here.
@@ -39,18 +42,19 @@ jobs:
       backend: ${{ steps.classify.outputs.backend }}
       scripts: ${{ steps.classify.outputs.scripts }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The pull request merge commit and its first parent, the base tip.
           fetch-depth: 2
 
       - name: Install Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v6.1.1
         with:
           run_install: false
 
@@ -90,9 +94,10 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.eol lf
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN == 'true'
         with:
+          persist-credentials: false
           # `backend/nyanpasu-runtime` is a submodule that itself nests
           # `crates/nyanpasu-utils`; `true` would leave that inner path empty.
           submodules: recursive
@@ -120,12 +125,12 @@ jobs:
           webkit2gtk-driver
           xvfb
 
-      - uses: maxim-lobanov/setup-xcode@v1
+      - uses: maxim-lobanov/setup-xcode@v1.7.0
         if: startsWith(matrix.targets.os, 'macos-') && env.BACKEND == 'true'
         with:
           xcode-version: 'latest-stable'
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
         if: env.BACKEND == 'true'
         with:
@@ -148,11 +153,11 @@ jobs:
 
       - name: Install Node.js
         if: env.RUN == 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         if: env.RUN == 'true'
         with:
@@ -196,7 +201,7 @@ jobs:
 
       - name: Install cargo-about
         if: startsWith(matrix.targets.os, 'ubuntu-') && (env.FRONTEND == 'true' || env.BACKEND == 'true' || env.SCRIPTS == 'true')
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-about@0.9.2
 
@@ -236,9 +241,10 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.eol lf
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN == 'true'
         with:
+          persist-credentials: false
           submodules: recursive
 
       - name: Tauri dependencies
@@ -254,25 +260,25 @@ jobs:
           webkit2gtk-driver
           xvfb
 
-      - uses: maxim-lobanov/setup-xcode@v1
+      - uses: maxim-lobanov/setup-xcode@v1.7.0
         if: startsWith(matrix.targets.os, 'macos-') && env.BACKEND == 'true'
         with:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
         if: env.RUN == 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
         if: env.BACKEND == 'true'
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         if: env.RUN == 'true'
         with:
@@ -327,9 +333,10 @@ jobs:
           git config --global core.eol lf
 
       # checkout the code on the workflow runner
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN == 'true'
         with:
+          persist-credentials: false
           submodules: recursive
 
       # install system dependencies that Tauri needs to compile on Linux.
@@ -347,25 +354,25 @@ jobs:
           webkit2gtk-driver
           xvfb
 
-      - uses: maxim-lobanov/setup-xcode@v1
+      - uses: maxim-lobanov/setup-xcode@v1.7.0
         if: startsWith(matrix.os, 'macos-') && env.BACKEND == 'true'
         with:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
         if: env.RUN == 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
         if: env.BACKEND == 'true'
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         if: env.RUN == 'true'
         with:

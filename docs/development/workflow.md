@@ -38,6 +38,7 @@ configuration and named task entrypoints. CI invokes repository tooling through
 - Preserve workflow file paths and CI job names during display-name cleanup; review callers, badges, documentation, and required checks before renaming those identifiers.
 - Remove workflows only after checking reusable callers and automatic/manual entry points; lack of recent runs alone does not prove a workflow is unused.
 - Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
+- `.github/workflows/actions.lock` records the commit every action resolves to, and a workflow run is rejected when one of its `uses:` references is missing from it. After adding an action or changing its version, run `gh actions-lock` and commit the regenerated lockfile in the same change; never edit it by hand. Renovate does not regenerate the lockfile, so its action updates are not automerged: regenerate the lockfile on the update branch before merging.
 
 The repository currently keeps all 17 workflows. Reusable workflows have callers or a manual
 entry point. The central-storage publisher is called by nightly and release workflows;

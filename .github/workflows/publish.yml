@@ -39,24 +39,25 @@ jobs:
       # app is its bypass actor.
       - name: Create release app token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
       - name: Prepare Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
@@ -68,7 +69,9 @@ jobs:
         run: pnpm run test:release
 
       - name: Install git-cliff
-        uses: taiki-e/install-action@git-cliff
+        uses: taiki-e/install-action@v2.90.3
+        with:
+          tool: git-cliff
 
       - id: update-version
         shell: bash
@@ -161,7 +164,7 @@ jobs:
           echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
 
       - name: Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           draft: true
           prerelease: ${{ steps.update-version.outputs.prerelease }}

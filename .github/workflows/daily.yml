@@ -10,28 +10,30 @@ jobs:
     name: Generate Manifest
     runs-on: ubuntu-latest
     if: startsWith(github.repository, 'libnyanpasu')
+    permissions:
+      contents: read # the manifest push uses the release app token below
     steps:
       # The RequireCI ruleset allows the release app to bypass required checks.
       - name: Create release app token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           # Persist the allowed app credentials for the later git push.
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Install Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
@@ -49,7 +51,7 @@ jobs:
         id: git-check
         run: echo ::set-output name=has-changes::$(if git diff --quiet; then echo "false"; else echo "true"; fi)
 
-      - uses: oleksiyrudenko/gha-git-credentials@v2.1
+      - uses: oleksiyrudenko/gha-git-credentials@v2.1.2
         if: steps.git-check.outputs.has-changes == 'true'
         with:
           # GITHUB_TOKEN is blocked by RequireCI; push as the allowed release app.
@@ -67,18 +69,20 @@ jobs:
     name: Generate Manifest V1
     runs-on: ubuntu-latest
     if: startsWith(github.repository, 'libnyanpasu')
+    permissions:
+      contents: write # pushes the regenerated manifest to dev with the job token
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           ref: dev
 
       - name: Install Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
@@ -96,7 +100,7 @@ jobs:
         id: git-check
         run: echo ::set-output name=has-changes::$(if git diff --quiet; then echo "false"; else echo "true"; fi)
 
-      - uses: oleksiyrudenko/gha-git-credentials@v2.1
+      - uses: oleksiyrudenko/gha-git-credentials@v2.1.2
         if: steps.git-check.outputs.has-changes == 'true'
         with:
           token: '${{ secrets.GITHUB_TOKEN }}'

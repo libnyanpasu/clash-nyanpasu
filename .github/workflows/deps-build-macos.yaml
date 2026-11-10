@@ -38,21 +38,34 @@ on:
         description: 'Release Tag'
         required: true
         type: string
+    secrets:
+      TAURI_PRIVATE_KEY:
+        description: 'Signing key of the updater bundles'
+        required: false
+      TAURI_KEY_PASSWORD:
+        description: 'Password of the signing key'
+        required: false
+      FILE_SERVER_TOKEN:
+        description: 'Token of the archive file server (uploads are currently paused)'
+        required: false
 
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: read
     env:
       # Archive uploads are temporarily paused; packages are published on GitHub.
       ARCHIVE_UPLOAD_ENABLED: 'false'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
 
-      - uses: maxim-lobanov/setup-xcode@v1
+      - uses: maxim-lobanov/setup-xcode@v1.7.0
         with:
           xcode-version: latest-stable
 
@@ -63,7 +76,7 @@ jobs:
 
       # `pnpm tauri build` generates the open source credits before the frontend.
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-about@0.9.2
 
@@ -78,16 +91,16 @@ jobs:
           rustup target add aarch64-apple-darwin
 
       - name: Install Node latest
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
         with:
           workspaces: 'backend'
@@ -142,7 +155,7 @@ jobs:
           TARGET_ARCH: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
 
       - name: Upload to Github Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Clash.Nyanpasu-macOS-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: |
@@ -177,7 +190,7 @@ jobs:
 
       - name: Upload file server diagnostics
         if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: upload-diagnostics-macos-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: ./upload-report.json

@@ -9,6 +9,9 @@ concurrency:
   group: dev-build
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
@@ -25,16 +28,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Install Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
@@ -67,7 +71,10 @@ jobs:
       bundle-type: 'both'
       arch: 'x86_64'
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   windows_aarch64_build:
     name: Windows aarch64 Build
@@ -80,7 +87,10 @@ jobs:
       bundle-type: 'both'
       arch: 'aarch64'
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   linux_amd64_build:
     name: Linux amd64 Build
@@ -91,7 +101,10 @@ jobs:
       nightly: true
       tag: 'pre-release'
       arch: 'x86_64'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   linux_aarch64_build:
     name: Linux aarch64 Build
@@ -102,7 +115,10 @@ jobs:
       nightly: true
       tag: 'pre-release'
       arch: 'aarch64'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   macos_amd64_build:
     name: macOS amd64 Build
@@ -113,7 +129,10 @@ jobs:
       nightly: true
       aarch64: false
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   macos_aarch64_build:
     name: macOS aarch64 Build
@@ -124,10 +143,16 @@ jobs:
       nightly: true
       aarch64: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
 
   publish_storage:
     name: Prepare Complete Storage Inventory
+    permissions:
+      actions: read # the publisher downloads this run's reports
+      contents: read
     needs:
       [
         windows_amd64_build,
@@ -142,10 +167,22 @@ jobs:
       backend: prepare
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   publish_sourceforge:
     name: Publish SourceForge Mirror
+    permissions:
+      actions: read # the publisher downloads this run's reports
+      contents: read
     needs: [publish_storage]
     if: ${{ needs.publish_storage.outputs.publication_prepared == 'true' && vars.SOURCEFORGE_PROJECT != '' }}
     uses: ./.github/workflows/deps-publish-storage.yaml
@@ -154,10 +191,21 @@ jobs:
       published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   update_tag:
     name: Update tag
+    permissions:
+      contents: write
     needs:
       [
         windows_amd64_build,
@@ -173,6 +221,8 @@ jobs:
 
   delete_current_releases:
     name: Delete Current Releases
+    permissions:
+      contents: write
     needs: [update_tag]
     uses: ./.github/workflows/deps-delete-releases.yaml
     with:
@@ -180,6 +230,8 @@ jobs:
 
   upload_release_assets:
     name: Upload Release Assets
+    permissions:
+      contents: write
     needs: [delete_current_releases]
     uses: ./.github/workflows/deps-upload-release-assets.yaml
     with:
@@ -187,21 +239,33 @@ jobs:
 
   updater:
     name: Create Updater
+    permissions:
+      contents: write
     needs: [upload_release_assets]
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: true
-    secrets: inherit
+    secrets:
+      SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   updater_sourceforge:
     name: Publish Verified SourceForge Updater
+    permissions:
+      contents: write
     needs: [updater, verify_sourceforge]
     if: ${{ !cancelled() && needs.updater.result == 'success' && needs.verify_sourceforge.result == 'success' && needs.verify_sourceforge.outputs.sourceforge_mirrors_json != '' }}
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: true
       sourceforge_mirrors_json: ${{ needs.verify_sourceforge.outputs.sourceforge_mirrors_json }}
-    secrets: inherit
+    secrets:
+      SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   notify_telegram:
     name: Send Release Message to Telegram
@@ -211,10 +275,14 @@ jobs:
     with:
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
 
   telegram:
     name: Publish Files to Telegram
+    permissions:
+      actions: read # the publisher downloads this run's reports
+      contents: read
     if: ${{ startsWith(github.repository, 'libnyanpasu') && needs.publish_storage.outputs.publication_prepared == 'true' }}
     needs: [publish_storage]
     uses: ./.github/workflows/deps-publish-storage.yaml
@@ -223,7 +291,16 @@ jobs:
       published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: true
       tag: 'pre-release'
-    secrets: inherit
+    secrets:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
   verify_sourceforge:
     name: Verify SourceForge Mirror
@@ -237,14 +314,16 @@ jobs:
     steps:
       - name: Checkout repository
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Install Node
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         with:
@@ -255,7 +334,7 @@ jobs:
         run: pnpm install --frozen-lockfile --filter @nyanpasu/scripts
       - name: Download target publication reports
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: publication-reports-sourceforge
           path: ./publication-reports
@@ -268,7 +347,7 @@ jobs:
           windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64
       - name: Preserve verified mirror manifest
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: sourceforge-verified-mirrors
           path: ./sourceforge-mirrors.json
@@ -281,13 +360,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Install Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: latest
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.1
         name: Install pnpm
         with:
           run_install: false
@@ -308,7 +389,7 @@ jobs:
 
       - name: Preserve cleanup report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: sourceforge-nightly-cleanup-report
           path: ./sourceforge-cleanup-report.json

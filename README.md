@@ -52,6 +52,9 @@
       <img src="https://nyanpasu.org/readme/badges/issues-light.svg" alt="Open issues" height="32" />
     </picture>
   </a>
+  <a href="https://score.getplumber.io/github.com/libnyanpasu/clash-nyanpasu">
+    <img src="https://score.getplumber.io/github.com/libnyanpasu/clash-nyanpasu.svg?style=for-the-badge" alt="Plumber Score" height="32" />
+  </a>
 </p>
 
 <p align="center">

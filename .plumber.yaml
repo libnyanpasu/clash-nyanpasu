@@ -1,0 +1,30 @@
+# Plumber overlay: inherits every control from the CLI's built-in
+# baseline, only the differences for this repository are written here.
+# Run 'plumber config resolve' to see the full effective config.
+extends: plumber:default
+version: '2.0'
+
+github:
+  controls:
+    githubActionMustComeFromAuthorizedSources:
+      # Keep the curated default list and trust the build, release and
+      # maintenance actions this repository uses on top of it, every one
+      # of them recorded in actions.lock.
+      includePlumberDefaults: true
+      trustedGithubActions:
+        - Swatinem/rust-cache
+        - taiki-e/install-action
+        - maxim-lobanov/setup-xcode
+        - cargo-bins/cargo-binstall
+        - oleksiyrudenko/gha-git-credentials
+        - robinraju/release-downloader
+        - mknejp/delete-release-assets
+        - softprops/action-gh-release
+
+    # main is protected. dev is the v1 maintenance branch the daily
+    # manifest job commits to, so the requirement stays on the branch
+    # releases are cut from.
+    branchMustBeProtected:
+      defaultMustBeProtected: true
+      namePatterns:
+        - main

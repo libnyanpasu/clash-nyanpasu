@@ -22,7 +22,7 @@ use nyanpasu_contracts::{
     },
 };
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use runas::Command as RunasCommand;
 use snafu::{ResultExt, ensure};
 
@@ -102,7 +102,26 @@ async fn run_elevated(
         tokio::task::spawn_blocking(move || {
             #[cfg(windows)]
             ensure_session_active()?;
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "linux")]
+            {
+                let mut pkexec = std::process::Command::new("pkexec");
+                pkexec
+                    .arg("--disable-internal-agent")
+                    .arg(&service_binary)
+                    .args(&args)
+                    .stdin(std::process::Stdio::null());
+                let status = runner.command(&mut pkexec).context(RunElevatedSnafu { command })?;
+                if status.code() == Some(127) {
+                    return Err(ServiceCommandError::RunElevated {
+                        command,
+                        source: std::io::Error::other(
+                            "polkit authorization or the service command failed (exit 127); check that a graphical authentication agent is available for the current desktop session",
+                        ),
+                    });
+                }
+                Ok(status)
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             {
                 runner
                     .runas(
@@ -404,6 +423,83 @@ mod tests {
             } if actual == command && requested == command)
             );
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn service_polkit_uses_the_desktop_agent_and_reports_unavailable_authentication() {
+        use nyanpasu_contracts::elevation::{ElevationConsentError, ElevationOperation};
+        use std::sync::{
+            Mutex,
+            atomic::{AtomicI32, Ordering},
+        };
+
+        struct Allow;
+        impl ElevationConsent for Allow {
+            fn authorize(&self, _: ElevationOperation) -> Result<(), ElevationConsentError> {
+                Ok(())
+            }
+        }
+        struct RecordingRunner(Mutex<Vec<OsString>>, AtomicI32);
+        impl CommandRunner for RecordingRunner {
+            fn runas(&self, _: &mut runas::Command) -> std::io::Result<ExitStatus> {
+                panic!("Linux service must use pkexec directly")
+            }
+            fn command(&self, command: &mut std::process::Command) -> std::io::Result<ExitStatus> {
+                assert_eq!(command.get_program(), "pkexec");
+                *self.0.lock().unwrap() = command.get_args().map(OsString::from).collect();
+                Ok(ExitStatus::from_raw(self.1.load(Ordering::SeqCst) << 8))
+            }
+        }
+
+        let runner = Arc::new(RecordingRunner(Mutex::new(Vec::new()), AtomicI32::new(127)));
+        let error = run_elevated(
+            ServiceCommand::Start,
+            Path::new("/path with spaces/nyanpasu-service"),
+            async { Ok(vec!["start".into()]) },
+            &Allow,
+            runner.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            *runner.0.lock().unwrap(),
+            [
+                "--disable-internal-agent",
+                "/path with spaces/nyanpasu-service",
+                "start"
+            ]
+            .map(OsString::from),
+        );
+        assert!(error.to_string().contains("graphical authentication agent"));
+
+        runner.1.store(0, Ordering::SeqCst);
+        run_elevated(
+            ServiceCommand::Start,
+            Path::new("/service"),
+            async { Ok(vec!["start".into()]) },
+            &Allow,
+            runner.clone(),
+        )
+        .await
+        .unwrap();
+        runner.1.store(126, Ordering::SeqCst);
+        let cancelled = run_elevated(
+            ServiceCommand::Start,
+            Path::new("/service"),
+            async { Ok(vec!["start".into()]) },
+            &Allow,
+            runner,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            cancelled,
+            ServiceCommandError::ServiceCommandExit {
+                exit_code: Some(126),
+                ..
+            }
+        ));
     }
 
     #[test]

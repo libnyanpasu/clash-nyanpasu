@@ -46,6 +46,11 @@ struct FakeEndpoint {
     stops: AtomicUsize,
     waits: AtomicUsize,
     /// Parks the stop leg so a handoff can be observed mid-flight.
+    gate_capture: AtomicBool,
+    capture_started: Notify,
+    release_capture: Notify,
+    capture_finished: AtomicBool,
+    stop_before_capture: AtomicBool,
     gate_stop: AtomicBool,
     stop_started: Notify,
     release_stop: Notify,
@@ -88,6 +93,11 @@ impl FakeEndpoint {
             submits: AtomicUsize::new(0),
             stops: AtomicUsize::new(0),
             waits: AtomicUsize::new(0),
+            gate_capture: AtomicBool::new(false),
+            capture_started: Notify::new(),
+            release_capture: Notify::new(),
+            capture_finished: AtomicBool::new(false),
+            stop_before_capture: AtomicBool::new(false),
             gate_stop: AtomicBool::new(false),
             stop_started: Notify::new(),
             release_stop: Notify::new(),
@@ -176,6 +186,29 @@ impl ControlEndpoint for FakeEndpoint {
         self.host
     }
 
+    async fn reconcile_transparent_proxy(
+        &self,
+        request: &nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyRequest,
+    ) -> Result<
+        nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+        CoreError,
+    > {
+        if self.gate_capture.load(Ordering::SeqCst) {
+            self.capture_started.notify_one();
+            self.release_capture.notified().await;
+            self.capture_finished.store(true, Ordering::SeqCst);
+        }
+        Ok(
+            nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus {
+                supported: true,
+                active: true,
+                mode: Some(request.mode),
+                revision: Some(request.expected_revision.clone()),
+                error: None,
+            },
+        )
+    }
+
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
         if self.hang_submit.load(Ordering::SeqCst) {
             self.never.notified().await;
@@ -186,6 +219,11 @@ impl ControlEndpoint for FakeEndpoint {
         let envelope = submission.envelope;
         let id = envelope.operation_id.to_string();
         if matches!(envelope.command, CoreCommand::Stop) {
+            if self.gate_capture.load(Ordering::SeqCst)
+                && !self.capture_finished.load(Ordering::SeqCst)
+            {
+                self.stop_before_capture.store(true, Ordering::SeqCst);
+            }
             self.stops.fetch_add(1, Ordering::SeqCst);
         }
         Ok(OperationInfo {
@@ -1461,5 +1499,55 @@ async fn a_stale_owner_precondition_is_refused_before_endpoint_submission() {
     let error = client.submit(submission).await.unwrap_err();
     assert!(matches!(error, SubmitFailure::NotSubmitted(_)));
     assert_eq!(local.submits.load(Ordering::SeqCst), 0);
+    client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn transparent_capture_finishes_before_handoff_even_if_caller_leaves() {
+    use nyanpasu_ipc::api::{
+        network::transparent_proxy::{NetworkTransparentProxyMode, NetworkTransparentProxyRequest},
+        status::RevisionIdInfo,
+    };
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let revision = RevisionIdInfo {
+        epoch: 1,
+        generation: 2,
+        effective_hash: "hash".into(),
+    };
+    service.status.lock().unwrap().as_mut().unwrap().revision = Some(revision.clone());
+    service.gate_capture.store(true, Ordering::SeqCst);
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(service.clone()).await.unwrap();
+    let task = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .reconcile_transparent_proxy(NetworkTransparentProxyRequest {
+                    mode: NetworkTransparentProxyMode::Tproxy,
+                    port: 7894,
+                    local: true,
+                    interfaces: vec![],
+                    ipv6: false,
+                    expected_revision: revision,
+                })
+                .await
+        })
+    };
+    service.capture_started.notified().await;
+    task.abort();
+    let handoff = {
+        let client = client.clone();
+        tokio::spawn(async move { client.change_host(local).await })
+    };
+    service.release_capture.notify_one();
+    assert!(handoff.await.unwrap().unwrap().completed());
+    assert!(service.capture_finished.load(Ordering::SeqCst));
+    assert!(!service.stop_before_capture.load(Ordering::SeqCst));
     client.shutdown().await.unwrap();
 }

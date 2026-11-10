@@ -2,6 +2,7 @@ import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
 import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
 import NetworkPingRounded from '~icons/material-symbols/network-ping-rounded'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
+import ShieldRounded from '~icons/material-symbols/shield-rounded'
 import { useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
@@ -12,10 +13,13 @@ import DeprecatedCoreBadge from '@/components/settings/deprecated-core-badge'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import {
   SystemProxyButton,
+  TransparentProxyButton,
   TunModeButton,
 } from '@/components/settings/system-proxy'
 import useCoreIcon from '@/hooks/use-core-icon'
+import { useTransparentProxy } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
+import { isLinux, isTauri } from '@nyanpasu/platform'
 import {
   ClashCores,
   useClashConfig,
@@ -37,6 +41,7 @@ import { WidgetHeader, WidgetTitle } from './widget-ui'
 enum ProxyStatus {
   SYSTEM = 'system',
   TUN = 'tun',
+  TRANSPARENT = 'transparent',
   OCCUPIED = 'occupied',
   DISABLED = 'disabled',
 }
@@ -45,6 +50,8 @@ const ProxyTitleRow = () => {
   const { value: enableSystemProxy } = useSetting('enable_system_proxy')
 
   const { value: enableTunMode } = useClashSetting('enable_tun_mode')
+
+  const transparentProxy = useTransparentProxy()
 
   const { data: systemProxyStatus } = useSystemProxy()
 
@@ -55,6 +62,14 @@ const ProxyTitleRow = () => {
   const status = useMemo<ProxyStatus>(() => {
     if (enableTunMode) {
       return ProxyStatus.TUN
+    }
+
+    if (
+      transparentProxy.visible &&
+      transparentProxy.isActive &&
+      transparentProxy.status?.active
+    ) {
+      return ProxyStatus.TRANSPARENT
     }
 
     if (enableSystemProxy) {
@@ -70,11 +85,20 @@ const ProxyTitleRow = () => {
     }
 
     return ProxyStatus.DISABLED
-  }, [enableSystemProxy, enableTunMode, systemProxyStatus, clashConfigs])
+  }, [
+    enableSystemProxy,
+    enableTunMode,
+    systemProxyStatus,
+    clashConfigs,
+    transparentProxy.visible,
+    transparentProxy.isActive,
+    transparentProxy.status?.active,
+  ])
 
   const messages = {
     [ProxyStatus.SYSTEM]: m.dashboard_widget_proxy_status_success_system(),
     [ProxyStatus.TUN]: m.dashboard_widget_proxy_status_success_tun(),
+    [ProxyStatus.TRANSPARENT]: m.settings_clash_transparent_proxy_label(),
     [ProxyStatus.OCCUPIED]: m.dashboard_widget_proxy_status_occupied(),
     [ProxyStatus.DISABLED]: m.dashboard_widget_proxy_status_disabled(),
   }
@@ -95,6 +119,8 @@ const ProxyTitleRow = () => {
             'bg-error-container hover:bg-on-error',
           status === ProxyStatus.SYSTEM &&
             'bg-primary-container hover:bg-on-primary',
+          status === ProxyStatus.TRANSPARENT &&
+            'bg-tertiary-container hover:bg-on-tertiary',
           status === ProxyStatus.TUN &&
             'bg-tertiary-container hover:bg-on-tertiary',
         )}
@@ -116,8 +142,13 @@ export function ProxyShortcutsWidget({
 }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.ProxyShortcuts)
   const { sourceOnly, isOverlay } = useDndGridContext()
-  const buttons =
-    config.order === 'system-first' ? ['system', 'tun'] : ['tun', 'system']
+  const showTransparent = isLinux && isTauri()
+  const buttons = [
+    ...(config.order === 'system-first'
+      ? ['system', 'tun']
+      : ['tun', 'system']),
+    ...(showTransparent ? ['transparent'] : []),
+  ]
   const preview = sourceOnly || isOverlay
 
   return (
@@ -139,9 +170,12 @@ export function ProxyShortcutsWidget({
               disabled
               className="bg-primary-container text-on-primary-container flex h-6 min-w-0 items-center px-2 text-xs"
             >
-              {config.buttons === 'tun'
+              {config.buttons.length === 1 && config.buttons[0] === 'tun'
                 ? m.dashboard_widget_proxy_status_success_tun()
-                : m.dashboard_widget_proxy_status_success_system()}
+                : config.buttons.length === 1 &&
+                    config.buttons[0] === 'transparent'
+                  ? m.settings_clash_transparent_proxy_label()
+                  : m.dashboard_widget_proxy_status_success_system()}
             </Button>
           </WidgetHeader>
         ) : (
@@ -153,9 +187,10 @@ export function ProxyShortcutsWidget({
           data-slot="proxy-shortcut-buttons"
         >
           {buttons
-            .filter(
-              (button) =>
-                config.buttons === 'both' || config.buttons === button,
+            .filter((button) =>
+              config.buttons.includes(
+                button as 'system' | 'tun' | 'transparent',
+              ),
             )
             .map((button) =>
               preview ? (
@@ -167,14 +202,18 @@ export function ProxyShortcutsWidget({
                   icon={
                     button === 'system' ? (
                       <NetworkPingRounded />
-                    ) : (
+                    ) : button === 'tun' ? (
                       <SettingsEthernetRounded />
+                    ) : (
+                      <ShieldRounded />
                     )
                   }
                   label={
                     button === 'system'
                       ? m.settings_system_proxy_system_proxy_label()
-                      : m.settings_system_proxy_tun_mode_label()
+                      : button === 'tun'
+                        ? m.settings_system_proxy_tun_mode_label()
+                        : m.settings_clash_transparent_proxy_label()
                   }
                 />
               ) : button === 'system' ? (
@@ -183,10 +222,16 @@ export function ProxyShortcutsWidget({
                   presentation="cookie"
                   elastic={config.layout === 'flex'}
                 />
-              ) : (
+              ) : button === 'tun' ? (
                 <TunModeButton
                   key={button}
                   presentation="cookie"
+                  elastic={config.layout === 'flex'}
+                  disabled={sourceOnly}
+                />
+              ) : (
+                <TransparentProxyButton
+                  key={button}
                   elastic={config.layout === 'flex'}
                   disabled={sourceOnly}
                 />

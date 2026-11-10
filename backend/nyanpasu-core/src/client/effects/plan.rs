@@ -36,6 +36,7 @@ pub struct ApplicationEffectInputs {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationEffectFields {
     pub enable_system_proxy: bool,
+    pub enable_service_mode: bool,
     pub system_proxy_bypass: String,
     pub enable_proxy_guard: bool,
     pub proxy_guard_interval: u64,
@@ -58,6 +59,7 @@ pub struct ApplicationEffectFields {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClashEffectFields {
+    pub transparent_proxy: nyanpasu_config::clash::config::TransparentProxyConfig,
     pub mode: Mode,
     pub enable_tun_mode: bool,
     pub log_level: LogLevel,
@@ -69,6 +71,7 @@ impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
     fn from(app: &NyanpasuAppConfig) -> Self {
         Self {
             enable_system_proxy: app.enable_system_proxy,
+            enable_service_mode: app.enable_service_mode,
             system_proxy_bypass: app.system_proxy_bypass.clone(),
             enable_proxy_guard: app.enable_proxy_guard,
             proxy_guard_interval: app.proxy_guard_interval,
@@ -95,6 +98,7 @@ impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
 impl From<&ClashConfig> for ClashEffectFields {
     fn from(clash: &ClashConfig) -> Self {
         Self {
+            transparent_proxy: clash.transparent_proxy.clone(),
             mode: clash.overrides.mode(),
             enable_tun_mode: clash.enable_tun_mode,
             log_level: clash.overrides.log_level(),
@@ -133,6 +137,20 @@ impl ApplicationEffectInputs {
             },
             core_log_level: self.clash.log_level,
             core_log_storage: app.core_logs,
+            transparent_proxy: TransparentProxyDesired {
+                config: self.clash.transparent_proxy.clone(),
+                port: self.ports.as_ref().and_then(|ports| {
+                    match self.clash.transparent_proxy.mode {
+                        nyanpasu_config::clash::config::TransparentProxyMode::Disabled => None,
+                        nyanpasu_config::clash::config::TransparentProxyMode::Redir => {
+                            ports.redir_port
+                        }
+                        nyanpasu_config::clash::config::TransparentProxyMode::Tproxy => {
+                            ports.tproxy_port
+                        }
+                    }
+                }),
+            },
             auto_launch: app.enable_auto_launch,
             system_proxy: SystemProxyDesired {
                 enabled: app.enable_system_proxy,
@@ -168,6 +186,9 @@ impl ApplicationEffectInputs {
                 mode: self.clash.mode,
                 system_proxy: app.enable_system_proxy,
                 tun: self.clash.enable_tun_mode,
+                transparent_proxy: self.clash.transparent_proxy.mode
+                    != nyanpasu_config::clash::config::TransparentProxyMode::Disabled,
+                service_mode: app.enable_service_mode,
                 text: app.enable_tray_text,
                 traffic: app.enable_tray_traffic,
             },
@@ -202,6 +223,7 @@ pub enum EffectKind {
     Logger,
     CoreLogLevel,
     CoreLogStorage,
+    TransparentProxy,
     AutoLaunch,
     SystemProxy,
     ProxyGuard,
@@ -209,6 +231,12 @@ pub enum EffectKind {
     Widget,
     WidgetLogo,
     Tray,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransparentProxyDesired {
+    pub config: nyanpasu_config::clash::config::TransparentProxyConfig,
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,6 +302,8 @@ pub struct TrayPartDesired {
     pub mode: Mode,
     pub system_proxy: bool,
     pub tun: bool,
+    pub transparent_proxy: bool,
+    pub service_mode: bool,
     pub text: bool,
     pub traffic: bool,
 }
@@ -308,6 +338,7 @@ struct ApplicationDesired {
     core_log_level: LogLevel,
     /// Rotation and compression of the stored Core logs.
     core_log_storage: CoreLogSettings,
+    transparent_proxy: TransparentProxyDesired,
     auto_launch: bool,
     system_proxy: SystemProxyDesired,
     /// Split from `system_proxy` on purpose: changing only the interval must
@@ -341,6 +372,7 @@ pub enum ApplicationEffect {
     Logger(LoggerDesired),
     CoreLogLevel(LogLevel),
     CoreLogStorage(CoreLogSettings),
+    TransparentProxy(TransparentProxyDesired),
     AutoLaunch(bool),
     SystemProxy(SystemProxyDesired),
     ProxyGuard(ProxyGuardDesired),
@@ -357,6 +389,7 @@ impl ApplicationEffect {
             Self::Logger(_) => EffectKind::Logger,
             Self::CoreLogLevel(_) => EffectKind::CoreLogLevel,
             Self::CoreLogStorage(_) => EffectKind::CoreLogStorage,
+            Self::TransparentProxy(_) => EffectKind::TransparentProxy,
             Self::AutoLaunch(_) => EffectKind::AutoLaunch,
             Self::SystemProxy(_) => EffectKind::SystemProxy,
             Self::ProxyGuard(_) => EffectKind::ProxyGuard,
@@ -414,6 +447,7 @@ impl ApplicationEffectPlan {
             logger,
             core_log_level,
             core_log_storage,
+            transparent_proxy,
             auto_launch,
             system_proxy,
             proxy_guard,
@@ -430,6 +464,7 @@ impl ApplicationEffectPlan {
         effects.extend(logger.map(ApplicationEffect::Logger));
         effects.extend(core_log_level.map(ApplicationEffect::CoreLogLevel));
         effects.extend(core_log_storage.map(ApplicationEffect::CoreLogStorage));
+        effects.extend(transparent_proxy.map(ApplicationEffect::TransparentProxy));
         effects.extend(auto_launch.map(ApplicationEffect::AutoLaunch));
         effects.extend(system_proxy.map(ApplicationEffect::SystemProxy));
         effects.extend(proxy_guard.map(ApplicationEffect::ProxyGuard));
@@ -469,6 +504,7 @@ mod tests {
         ApplicationEffectInputs {
             app: ApplicationEffectFields {
                 enable_system_proxy: false,
+                enable_service_mode: false,
                 system_proxy_bypass: "localhost".to_owned(),
                 enable_proxy_guard: false,
                 proxy_guard_interval: 30,
@@ -489,6 +525,8 @@ mod tests {
                 core: ClashCore::Mihomo,
             },
             clash: ClashEffectFields {
+                transparent_proxy: nyanpasu_config::clash::config::TransparentProxyConfig::default(
+                ),
                 mode: Mode::Rule,
                 enable_tun_mode: false,
                 log_level: LogLevel::Info,
@@ -658,6 +696,19 @@ mod tests {
             vec![EffectKind::SystemProxy, EffectKind::Tray]
         );
         assert_eq!(plan.effects()[1], tray(TrayRefresh::Part, &after));
+    }
+
+    #[test]
+    fn transparent_capture_and_service_changes_refresh_tray_state() {
+        let before = inputs();
+        let mut after = inputs();
+        after.clash.transparent_proxy.mode =
+            nyanpasu_config::clash::config::TransparentProxyMode::Tproxy;
+        after.app.enable_service_mode = true;
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+        assert!(plan.effects().contains(&tray(TrayRefresh::Part, &after)));
+        assert!(after.tray_view().part.transparent_proxy);
+        assert!(after.tray_view().part.service_mode);
     }
 
     #[test]
@@ -867,6 +918,7 @@ mod tests {
                 EffectKind::Logger,
                 EffectKind::CoreLogLevel,
                 EffectKind::CoreLogStorage,
+                EffectKind::TransparentProxy,
                 EffectKind::AutoLaunch,
                 EffectKind::SystemProxy,
                 EffectKind::ProxyGuard,
@@ -1007,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn service_mode_is_not_an_effect_input_and_core_only_shapes_the_tray() {
+    fn service_mode_refreshes_the_tray_and_core_rebuilds_it() {
         let app = NyanpasuAppConfig::default();
         let clash = ClashConfig::default();
         let before = ApplicationEffectInputs::project(&app, &clash, None);
@@ -1018,8 +1070,8 @@ mod tests {
         };
         let after = ApplicationEffectInputs::project(&host_switched, &clash, None);
         assert_eq!(
-            before, after,
-            "service mode may not enter the effect inputs"
+            ApplicationEffectPlan::diff(&before, &after).effects(),
+            [tray(TrayRefresh::Part, &after)]
         );
 
         // The core reaches the effects only through the tray menu it shapes.
@@ -1071,6 +1123,8 @@ mod tests {
                     mode: Mode::Script,
                     system_proxy: true,
                     tun: true,
+                    transparent_proxy: false,
+                    service_mode: app.enable_service_mode,
                     text: true,
                     traffic: false,
                 },
@@ -1123,6 +1177,7 @@ pub(crate) fn requested_owners(
         || patch.enable_tray_text.is_some()
         || patch.enable_tray_traffic.is_some()
         || patch.enable_system_proxy.is_some()
+        || patch.enable_service_mode.is_some()
     {
         kinds.push(EffectKind::Tray);
     }

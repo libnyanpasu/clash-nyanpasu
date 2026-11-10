@@ -959,6 +959,13 @@ pub async fn patch_runtime_overrides(
 pub fn get_hotkey_functions() -> Vec<&'static str> {
     nyanpasu_core::client::hotkey::ports::HotkeyAction::all()
         .iter()
+        .filter(|action| {
+            cfg!(target_os = "linux")
+                || !matches!(action,
+                nyanpasu_core::client::hotkey::ports::HotkeyAction::ToggleTransparentProxy
+                | nyanpasu_core::client::hotkey::ports::HotkeyAction::EnableTransparentProxy
+                | nyanpasu_core::client::hotkey::ports::HotkeyAction::DisableTransparentProxy)
+        })
         .map(|action| action.as_str())
         .collect()
 }
@@ -2572,4 +2579,13 @@ pub async fn set_debug_http_enabled(
     enabled: bool,
 ) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
     Ok(client.set_debug_http_enabled(enabled).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transparent_proxy_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus> {
+    Ok(client.get_transparent_proxy_status().await?)
 }

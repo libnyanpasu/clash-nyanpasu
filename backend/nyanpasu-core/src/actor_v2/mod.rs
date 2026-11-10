@@ -283,6 +283,15 @@ pub enum CoreActorMessage {
     ConnectedEndpoint {
         reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
     },
+    ReconcileTransparentProxy {
+        request: nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyRequest,
+        reply: RpcReplyPort<
+            Result<
+                nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+                CoreError,
+            >,
+        >,
+    },
     EffectiveConfig {
         reply: RpcReplyPort<
             Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError>,
@@ -695,6 +704,56 @@ impl Actor for CoreActor {
             CoreActorMessage::ConnectedEndpoint { reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(endpoint) => Ok(endpoint.clone()),
+                    _ => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        "core endpoint is not connected",
+                        true,
+                    )),
+                };
+                let _ = reply.send(result);
+            }
+            CoreActorMessage::ReconcileTransparentProxy { mut request, reply } => {
+                use nyanpasu_ipc::api::network::transparent_proxy::{
+                    NetworkTransparentProxyMode, NetworkTransparentProxyStatus,
+                };
+                let result = match &state.slot {
+                    EndpointSlot::Connected(endpoint)
+                        if endpoint.host() == ExecutionHost::Service =>
+                    {
+                        match endpoint.status().await {
+                            Ok(snapshot) => match snapshot.revision {
+                                Some(revision) => {
+                                    request.expected_revision = revision;
+                                    endpoint.reconcile_transparent_proxy(&request).await
+                                }
+                                None if request.mode == NetworkTransparentProxyMode::Disabled => {
+                                    endpoint.reconcile_transparent_proxy(&request).await
+                                }
+                                None => Err(CoreError::new(
+                                    CoreErrorKind::BackendUnavailable,
+                                    "core has no applied runtime revision",
+                                    true,
+                                )),
+                            },
+                            Err(error) => Err(error),
+                        }
+                    }
+                    EndpointSlot::Connected(_)
+                        if request.mode == NetworkTransparentProxyMode::Disabled =>
+                    {
+                        Ok(NetworkTransparentProxyStatus {
+                            supported: false,
+                            active: false,
+                            mode: None,
+                            revision: None,
+                            error: None,
+                        })
+                    }
+                    EndpointSlot::Connected(_) => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        "transparent capture requires service mode",
+                        false,
+                    )),
                     _ => Err(CoreError::new(
                         CoreErrorKind::BackendUnavailable,
                         "core endpoint is not connected",
@@ -1289,6 +1348,30 @@ impl CoreClient {
             _ => Err(CoreError::new(
                 CoreErrorKind::BackendUnavailable,
                 "core actor did not answer the endpoint query",
+                true,
+            )),
+        }
+    }
+
+    pub async fn reconcile_transparent_proxy(
+        &self,
+        request: nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyRequest,
+    ) -> Result<
+        nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+        CoreError,
+    > {
+        match self
+            .actor
+            .call(
+                |reply| CoreActorMessage::ReconcileTransparentProxy { request, reply },
+                None,
+            )
+            .await
+        {
+            Ok(ractor::rpc::CallResult::Success(result)) => result,
+            _ => Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "core actor did not answer transparent proxy reconciliation",
                 true,
             )),
         }

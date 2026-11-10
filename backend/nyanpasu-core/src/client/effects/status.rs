@@ -42,6 +42,7 @@ pub enum EffectFailureCode {
     HotkeyStopped,
     LoggerRefreshFailed,
     CoreLogStorageFailed,
+    TransparentProxyFailed,
     WidgetUnavailable,
     WidgetApplyFailed,
     TrayRefreshFailed,

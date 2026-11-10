@@ -28,6 +28,7 @@ import { CopyEnvOption } from '@nyanpasu/rpc/types'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ActionButton } from './_modules/action-button'
 import { useTrayClickHandler } from './_modules/hooks'
+import { TransparentProxyButton } from './_modules/transparent-proxy-button'
 
 const isDev = import.meta.env.DEV
 
@@ -70,12 +71,14 @@ const SystemProxyButton = () => {
 }
 
 const TunModeButton = () => {
-  const { execute, isActive } = useTunMode()
+  const { execute, isActive, isPending, disabled } = useTunMode()
 
   return (
     <ActionButton
       className="h-14 flex-col items-start gap-0.5"
       checked={isActive}
+      disabled={disabled || isPending}
+      title={disabled ? m.error_transparent_proxy_tun_conflict() : undefined}
       onClick={() => execute()}
     >
       <SettingsEthernet />
@@ -304,6 +307,8 @@ function RouteComponent() {
       <SystemProxyButton />
 
       <TunModeButton />
+
+      <TransparentProxyButton />
 
       <ProxyMode />
 

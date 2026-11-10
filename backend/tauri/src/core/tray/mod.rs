@@ -89,6 +89,10 @@ fn tray_view<R: Runtime>(app_handle: &AppHandle<R>) -> Option<TrayView> {
 
 pub struct Tray {}
 
+fn has_transparent_proxy(core: ClashCore) -> bool {
+    cfg!(target_os = "linux") && matches!(core, ClashCore::Mihomo | ClashCore::MihomoAlpha)
+}
+
 const TRAY_ID: &str = "main-tray";
 
 #[cfg(target_os = "linux")]
@@ -259,7 +263,11 @@ impl Tray {
         menu = menu
             .separator()
             .check("system_proxy", t!("tray.system_proxy"))
-            .check("tun_mode", t!("tray.tun_mode"))
+            .check("tun_mode", t!("tray.tun_mode"));
+        if has_transparent_proxy(view.menu.core) {
+            menu = menu.check("transparent_proxy", t!("tray.transparent_proxy"));
+        }
+        menu = menu
             .separator()
             .text("copy_env_sh", t!("tray.copy_env.sh"))
             .text("copy_env_cmd", t!("tray.copy_env.cmd"))
@@ -454,6 +462,22 @@ impl Tray {
             whole &= check("script_mode", mode == Mode::Script);
         }
         whole &= check("system_proxy", system_proxy) & check("tun_mode", tun_mode);
+        whole &= menu
+            .get("tun_mode")
+            .and_then(|item| {
+                item.as_check_menuitem()?
+                    .set_enabled(tun_mode || !view.part.transparent_proxy)
+                    .ok()
+            })
+            .is_some();
+        if has_transparent_proxy(view.menu.core) {
+            let enabled = view.part.transparent_proxy || (view.part.service_mode && !tun_mode);
+            whole &= check("transparent_proxy", view.part.transparent_proxy);
+            whole &= menu
+                .get("transparent_proxy")
+                .and_then(|item| item.as_check_menuitem()?.set_enabled(enabled).ok())
+                .is_some();
+        }
         let shown = if whole { Shown::Whole } else { Shown::Partly };
         state.display.lock().repainted(None, shown);
 
@@ -492,13 +516,21 @@ impl Tray {
         #[cfg(target_os = "linux")]
         {
             if enable_tray_text {
-                let _ = tray.set_title(Some(&format!(
+                let mut title = format!(
                     "{}: {}\n{}: {}",
                     t!("tray.system_proxy"),
                     switch_map[&system_proxy],
                     t!("tray.tun_mode"),
                     switch_map[&tun_mode]
-                )));
+                );
+                if has_transparent_proxy(view.menu.core) {
+                    title.push_str(&format!(
+                        "\n{}: {}",
+                        t!("tray.transparent_proxy"),
+                        switch_map[&view.part.transparent_proxy]
+                    ));
+                }
+                let _ = tray.set_title(Some(&title));
             } else {
                 let _ = tray.set_title::<&str>(None);
             }
@@ -533,6 +565,9 @@ impl Tray {
             }
             "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
             "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
+            "transparent_proxy" => {
+                dispatch_action(app_handle, HotkeyAction::ToggleTransparentProxy)
+            }
             "copy_env_sh" => copy_clash_env(app_handle, CopyEnvOption::Shell),
             #[cfg(target_os = "windows")]
             "copy_env_cmd" => copy_clash_env(app_handle, CopyEnvOption::Cmd),

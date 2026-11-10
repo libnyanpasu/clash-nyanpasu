@@ -288,9 +288,9 @@ dependencies = [
 
 [[package]]
 name = "arc-swap"
-version = "1.9.4"
+version = "1.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db4c94f57a570fce5d381be3289b3f79aef6332d72948fe82ab5772e423ccf92"
+checksum = "84a22b5d51209f6de83d37a0b33d320acb8da88823e42a94c075140708f032a5"
 dependencies = [
  "rustversion",
 ]
@@ -1756,7 +1756,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clash-api"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "backon",
  "chrono",
@@ -3277,9 +3277,9 @@ version = "0.1.0"
 
 [[package]]
 name = "fancy-regex"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20ed7f62ce0ae0da1a8b93c3c7104ab7e0760a74491e097c701fff966e945390"
+checksum = "7b32c6266c2b14b0db7aa3409d3ee3f0ddda3b1d0279c4ba24fbec18af81d90e"
 dependencies = [
  "bit-set 0.8.0",
  "regex-automata",
@@ -6848,7 +6848,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "backon",
  "camino",
@@ -6876,7 +6876,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "constcat",
  "enumset",
@@ -6948,7 +6948,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.2"
+version = "2.0.3"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -6973,7 +6973,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "futures-util",
  "jiff",
@@ -7019,7 +7019,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-logging"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "chrono",
  "file-id",
@@ -7275,7 +7275,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-serde-derive",
@@ -7284,7 +7284,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde-derive"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -7430,7 +7430,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-windows-security"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "windows 0.62.2",

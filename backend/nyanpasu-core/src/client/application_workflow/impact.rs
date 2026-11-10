@@ -181,6 +181,9 @@ impl RequestedRuntimeFields {
                 || !patch.mixed_port.is_empty()
                 || patch.socks_port.is_some()
                 || patch.http_port.is_some()
+                || patch.redir_port.is_some()
+                || patch.tproxy_port.is_some()
+                || !patch.transparent_proxy.is_empty()
                 || !patch.external_controller.is_empty()
                 || patch.clash_control_channel.is_some()
                 || patch.clash_ipc_disable_http_controller.is_some(),
@@ -349,6 +352,9 @@ struct ClashRuntimeInputs<'a> {
     mixed_port: &'a PortStrategy,
     socks_port: Option<&'a PortStrategy>,
     http_port: Option<&'a PortStrategy>,
+    redir_port: Option<&'a PortStrategy>,
+    tproxy_port: Option<&'a PortStrategy>,
+    transparent_proxy: &'a nyanpasu_config::clash::config::TransparentProxyConfig,
     external_controller: &'a ExternalControllerStrategy,
     control_channel: ClashControlChannel,
     disable_http_controller: bool,
@@ -366,6 +372,9 @@ fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
         mixed_port: &clash.mixed_port,
         socks_port: clash.socks_port.as_ref(),
         http_port: clash.http_port.as_ref(),
+        redir_port: clash.redir_port.as_ref(),
+        tproxy_port: clash.tproxy_port.as_ref(),
+        transparent_proxy: &clash.transparent_proxy,
         external_controller: &clash.external_controller,
         control_channel: clash.clash_control_channel,
         disable_http_controller: clash.clash_ipc_disable_http_controller,
@@ -655,7 +664,7 @@ mod tests {
                 field: "enable_service_mode",
                 mutate: |app| app.enable_service_mode = true,
                 impact: RuntimeImpact::HostSwitch,
-                owners: &[],
+                owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "core",
@@ -1165,6 +1174,33 @@ mod tests {
             field: "http_port",
             candidate: || ClashConfig {
                 http_port: Some(PortStrategy::new_allow_fallback(1081)),
+                ..base_clash()
+            },
+            impact: RuntimeImpact::Reconcile,
+        },
+        ClashCase {
+            field: "redir_port",
+            candidate: || ClashConfig {
+                redir_port: Some(PortStrategy::new_allow_fallback(12345)),
+                ..base_clash()
+            },
+            impact: RuntimeImpact::Reconcile,
+        },
+        ClashCase {
+            field: "tproxy_port",
+            candidate: || ClashConfig {
+                tproxy_port: Some(PortStrategy::new_allow_fallback(12346)),
+                ..base_clash()
+            },
+            impact: RuntimeImpact::Reconcile,
+        },
+        ClashCase {
+            field: "transparent_proxy",
+            candidate: || ClashConfig {
+                transparent_proxy: nyanpasu_config::clash::config::TransparentProxyConfig {
+                    mode: nyanpasu_config::clash::config::TransparentProxyMode::Tproxy,
+                    ..Default::default()
+                },
                 ..base_clash()
             },
             impact: RuntimeImpact::Reconcile,
@@ -1830,6 +1866,13 @@ mod tests {
                 tun_mips: MipsConfigPatch {
                     congestion_controller: Some(Some(TunCongestionController::Bbr)),
                 },
+                ..ClashConfigPatch::default()
+            }),
+            RequestedRuntimeFields::runtime()
+        );
+        assert_eq!(
+            RequestedRuntimeFields::of_clash(&ClashConfigPatch {
+                redir_port: Some(Some(PortStrategy::new_allow_fallback(12345))),
                 ..ClashConfigPatch::default()
             }),
             RequestedRuntimeFields::runtime()

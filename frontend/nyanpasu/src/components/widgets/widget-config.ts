@@ -97,7 +97,7 @@ export type WidgetConfigs = {
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts
     layout: 'equal' | 'flex'
-    buttons: 'both' | 'system' | 'tun'
+    buttons: ('system' | 'tun' | 'transparent')[]
     order: 'system-first' | 'tun-first'
   }
   [WidgetId.CoreShortcuts]: {
@@ -186,7 +186,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts,
     layout: 'flex',
-    buttons: 'both',
+    buttons: ['system', 'tun', 'transparent'],
     order: 'system-first',
   },
   [WidgetId.CoreShortcuts]: {
@@ -238,6 +238,25 @@ export function normalizeWidgetConfigStorage(
       const candidate = value[key]
       if (typeof candidate === 'boolean' && typeof defaultValue === 'boolean') {
         Object.assign(config, { [key]: candidate })
+      } else if (key === 'buttons' && config.type === WidgetId.ProxyShortcuts) {
+        if (candidate === 'both') {
+          Object.assign(config, { buttons: ['system', 'tun', 'transparent'] })
+        } else if (
+          candidate === 'system' ||
+          candidate === 'tun' ||
+          candidate === 'transparent'
+        ) {
+          Object.assign(config, { buttons: [candidate] })
+        } else if (
+          Array.isArray(candidate) &&
+          candidate.length > 0 &&
+          candidate.every(
+            (entry) =>
+              entry === 'system' || entry === 'tun' || entry === 'transparent',
+          )
+        ) {
+          Object.assign(config, { buttons: [...new Set(candidate)] })
+        }
       } else if (key === 'target' && isRecord(candidate)) {
         if (candidate.kind === 'current')
           Object.assign(config, { target: { kind: 'current' } })
@@ -294,10 +313,6 @@ export function normalizeWidgetConfigStorage(
         (key === 'unit' && (candidate === 'bytes' || candidate === 'bits')) ||
         (key === 'waveStyle' &&
           (candidate === 'filled' || candidate === 'outline')) ||
-        (key === 'buttons' &&
-          (candidate === 'both' ||
-            candidate === 'system' ||
-            candidate === 'tun')) ||
         (key === 'order' &&
           (candidate === 'system-first' || candidate === 'tun-first')) ||
         (key === 'layout' &&

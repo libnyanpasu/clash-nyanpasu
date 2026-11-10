@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import z from 'zod'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import useCustomCss from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
@@ -31,28 +32,34 @@ const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS/LESS Editor! */
 
 export const Route = createFileRoute('/(editor)/editor/css/')({
   component: RouteComponent,
+  validateSearch: z.object({
+    uid: z.string(),
+  }),
 })
 
 function RouteComponent() {
+  const { uid } = Route.useSearch()
+
   const { clientOs } = usePlatform()
   const [currentWindow] = useState(createWindowAdapter)
   const { themeMode } = useExperimentalThemeContext()
 
   const customCss = useCustomCss()
+  const item = customCss.state.items.find((item) => item.id === uid)
   const [editorValue, setEditorValue] = useState('')
   const [initialized, setInitialized] = useState(false)
 
   // Sync the initial value once the KV storage has loaded
   useEffect(() => {
-    if (!initialized && !customCss.isLoading) {
-      setEditorValue(customCss.value || EMPTY_CSS_TEMPLATE)
+    if (!initialized && !customCss.isLoading && item) {
+      setEditorValue(item.source || EMPTY_CSS_TEMPLATE)
       setInitialized(true)
     }
-  }, [customCss.value, customCss.isLoading, initialized])
+  }, [item, customCss.isLoading, initialized])
 
   const handleSave = useLockFn(async (close?: boolean) => {
     try {
-      await customCss.upsert(editorValue)
+      await customCss.saveSource(uid, editorValue)
       if (close) {
         await currentWindow?.close()
       }
@@ -62,7 +69,7 @@ function RouteComponent() {
   })
 
   const handleClear = useLockFn(async () => {
-    await customCss.upsert('')
+    await customCss.saveSource(uid, '')
     setEditorValue('')
   })
 
@@ -72,7 +79,13 @@ function RouteComponent() {
 
   return (
     <>
-      <Header title="Clash Nyanpasu - CSS Editor" />
+      <Header
+        title={
+          item
+            ? `${item.name} - Clash Nyanpasu CSS Editor`
+            : 'Clash Nyanpasu - CSS Editor'
+        }
+      />
 
       <div className="min-h-0 flex-1" data-slot="editor-content">
         <MonacoEditor

@@ -2,7 +2,8 @@ import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
-import CustomCssCard from './_modules/custom-css-card'
+import CustomCssItems from './_modules/custom-css-items'
+import CustomCssPresets from './_modules/custom-css-presets'
 import LanguageSelector from './_modules/language-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
@@ -52,14 +53,14 @@ const ThemeModeSettings = () => {
 
 const CustomCssSettings = () => {
   return (
-    <div data-slot="custom-css-settings-container">
-      <SettingsLabel>
-        {m.settings_user_interface_custom_css_group()}
-      </SettingsLabel>
+    <div className="space-y-4" data-slot="custom-css-settings-container">
+      <CustomCssPresets />
 
-      <SettingsGroup>
-        <CustomCssCard />
-      </SettingsGroup>
+      <CustomCssItems />
+
+      <p className="text-on-surface-variant px-3 text-xs">
+        {m.settings_user_interface_custom_css_description()}
+      </p>
     </div>
   )
 }

@@ -319,6 +319,15 @@ mod tests {
         }
     }
 
+    /// Binds `N` ephemeral ports simultaneously so the returned values are
+    /// distinct and currently free.
+    fn unused_ports<const N: usize>() -> [u16; N] {
+        let listeners: [std::net::TcpListener; N] = std::array::from_fn(|_| {
+            std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap()
+        });
+        listeners.map(|listener| listener.local_addr().unwrap().port())
+    }
+
     /// A config pinned to two free-standing fixed ports, for the tests that
     /// only care about which binding is readable rather than about probing.
     fn pinned(mixed: u16, external: u16) -> ClashConfig {
@@ -336,8 +345,9 @@ mod tests {
     fn a_taken_fixed_port_names_the_field_and_the_port() {
         let taken = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = taken.local_addr().unwrap().port();
+        let [external] = unused_ports();
         let error = SessionPortResolver::default()
-            .resolve_candidate(&pinned(port, port.wrapping_add(1).max(1024)))
+            .resolve_candidate(&pinned(port, external))
             .unwrap_err();
         assert_eq!(
             serde_json::to_value(&error).unwrap(),
@@ -398,19 +408,20 @@ mod tests {
     #[test]
     fn resolves_fixed_strategies_and_formats_external_controller() {
         let resolver = SessionPortResolver::default();
+        let [mixed, socks, external] = unused_ports();
         let mut clash = ClashConfig::default();
-        clash.mixed_port = fixed(48231);
-        clash.socks_port = Some(fixed(48232));
+        clash.mixed_port = fixed(mixed);
+        clash.socks_port = Some(fixed(socks));
         clash.http_port = None;
-        clash.external_controller.port = fixed(48233);
+        clash.external_controller.port = fixed(external);
         let candidate = resolver.resolve_candidate(&clash).unwrap();
         let ports = candidate.bindings();
-        assert_eq!(ports.mixed_port, 48231);
-        assert_eq!(ports.socks_port, Some(48232));
+        assert_eq!(ports.mixed_port, mixed);
+        assert_eq!(ports.socks_port, Some(socks));
         assert_eq!(ports.port, None);
         assert_eq!(
             ports.external_controller.as_deref(),
-            Some("127.0.0.1:48233")
+            Some(format!("127.0.0.1:{external}").as_str())
         );
         assert_eq!(
             resolver.mixed_port(),
@@ -418,26 +429,12 @@ mod tests {
             "a candidate nobody applied is not a listening endpoint"
         );
         resolver.confirm(&receipt_for(candidate));
-        assert_eq!(resolver.mixed_port(), Some(48231));
+        assert_eq!(resolver.mixed_port(), Some(mixed));
     }
 
     #[test]
     fn resolves_managed_redir_and_tproxy_ports() {
-        let unused_port = || {
-            let socket = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
-            let port = socket.local_addr().unwrap().port();
-            drop(socket);
-            port
-        };
-        let redir = unused_port();
-        let mut tproxy = unused_port();
-        while tproxy == redir {
-            tproxy = unused_port();
-        }
-        let mut mixed = unused_port();
-        while mixed == redir || mixed == tproxy {
-            mixed = unused_port();
-        }
+        let [redir, tproxy, mixed] = unused_ports();
         let clash = ClashConfig {
             mixed_port: fixed(mixed),
             redir_port: Some(fixed(redir)),
@@ -480,19 +477,20 @@ mod tests {
     #[test]
     fn resolve_candidate_never_moves_the_confirmed_binding() {
         let resolver = SessionPortResolver::default();
-        let clash = pinned(48331, 48332);
+        let [mixed, external, next_mixed] = unused_ports();
+        let clash = pinned(mixed, external);
         let confirmed = resolve_and_confirm(&resolver, &clash);
 
         let mut next = clash.clone();
-        next.mixed_port = fixed(48333);
+        next.mixed_port = fixed(next_mixed);
         let candidate = resolver.resolve_candidate(&next).unwrap();
-        assert_eq!(candidate.bindings().mixed_port, 48333);
+        assert_eq!(candidate.bindings().mixed_port, next_mixed);
         assert_eq!(
             resolver.confirmed(),
             Some(confirmed),
             "a failed apply leaves the previously confirmed binding in place"
         );
-        assert_eq!(resolver.mixed_port(), Some(48331));
+        assert_eq!(resolver.mixed_port(), Some(mixed));
     }
 
     /// V11 (port half): with no instance known to be listening there is no
@@ -500,7 +498,8 @@ mod tests {
     #[test]
     fn an_unconfirmed_or_invalidated_session_reports_no_endpoint() {
         let resolver = SessionPortResolver::default();
-        let clash = pinned(48431, 48432);
+        let [mixed, external] = unused_ports();
+        let clash = pinned(mixed, external);
         assert_eq!(resolver.confirmed(), None);
         assert_eq!(resolver.mixed_port(), None);
 
@@ -515,6 +514,7 @@ mod tests {
     #[test]
     fn random_pick_is_sticky_until_fingerprint_changes() {
         let resolver = SessionPortResolver::default();
+        let [socks] = unused_ports();
         let mut clash = ClashConfig::default();
         clash.mixed_port = PortStrategy {
             kind: PortStrategyKind::Random,
@@ -527,10 +527,10 @@ mod tests {
             second.bindings(),
             "same fingerprint must reuse the session pick"
         );
-        clash.socks_port = Some(fixed(48234));
+        clash.socks_port = Some(fixed(socks));
         let third = resolver.resolve_candidate(&clash).unwrap();
         let third = third.bindings();
-        assert_eq!(third.socks_port, Some(48234));
+        assert_eq!(third.socks_port, Some(socks));
         assert_eq!(
             third.mixed_port, first.mixed_port,
             "unchanged mixed strategy must keep the session pick"

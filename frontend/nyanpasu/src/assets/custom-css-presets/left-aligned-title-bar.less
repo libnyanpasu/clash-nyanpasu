@@ -1,0 +1,18 @@
+/*
+ * Left-aligned title bar (macOS only).
+ *
+ * The macOS title bar centres its title between the traffic lights and puts
+ * the menu bar at the left. Start the title and logo at the left instead,
+ * after the window buttons, and put the menu bar right after them. Only the
+ * macOS title bar has these slots, so other platforms are unaffected.
+ */
+app-header-macos {
+  gap: 16px;
+  justify-content: flex-start;
+  padding-left: 88px;
+
+  app-header-macos-left {
+    position: static;
+    order: 1;
+  }
+}

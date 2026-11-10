@@ -1,0 +1,77 @@
+/*
+ * Material You sidebar.
+ *
+ * Turns the navbar into a Material 3 navigation rail on the left: icons only,
+ * each in a rounded active indicator, with the content on a rounded surface
+ * beside it. It replaces the same layout as the Vertical Navbar preset, so
+ * enable one of the two.
+ */
+app-root {
+  --nyanpasu-rail-width: 80px;
+  --nyanpasu-rail-item-size: 56px;
+  --nyanpasu-rail-item-radius: 20px;
+  --nyanpasu-content-radius: 24px;
+}
+
+/* The frame around the content takes the rail's surface colour. */
+app-header,
+app-header-macos,
+app-content-container {
+  background-color: var(--color-surface);
+}
+
+app-content-container {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+app-content {
+  background-color: var(--color-mixed-background);
+  border-top-left-radius: var(--nyanpasu-content-radius);
+  border-bottom-left-radius: var(--nyanpasu-content-radius);
+}
+
+/* The navbar wrapper; its `animated-tabs-container` descendant is the tab list. */
+app-content-container > app-navbar {
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: var(--nyanpasu-rail-width);
+  height: auto;
+  padding: 12px 0;
+  background-color: transparent;
+
+  animated-tabs-container {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    height: auto;
+    background-color: transparent;
+    border-radius: 0;
+  }
+
+  animated-tabs-item {
+    flex: none;
+    justify-content: center;
+    width: var(--nyanpasu-rail-item-size);
+    height: var(--nyanpasu-rail-item-size) !important;
+    padding: 0;
+    border-radius: var(--nyanpasu-rail-item-radius) !important;
+  }
+
+  animated-tabs-indicator,
+  animated-tabs-hover-layer {
+    border-radius: var(--nyanpasu-rail-item-radius) !important;
+  }
+
+  animated-tabs-item-label svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  navbar-label {
+    display: none;
+  }
+}

@@ -601,6 +601,13 @@ test('rows open and switch the panel through the address, and close it again', a
   await panelEntry(container, 'transforms')!.click()
   await expect.poll(() => search().panel).toBe('transforms')
   await expect.element(region(m.profile_chain_editor_title())).toBeVisible()
+  // The panel slides in: its slot grows to the width of the panel.
+  const slot = () =>
+    container.querySelector<HTMLElement>(
+      '[data-slot="profile-detail-panel-slot"]',
+    )!
+  await expect.poll(() => slot().style.width).toBe('auto')
+  expect(slot().getBoundingClientRect().width).toBeCloseTo(416, 0)
   // The panel takes the focus and its row is the selected one, beside the
   // detail column.
   await expect
@@ -647,9 +654,10 @@ test('rows open and switch the panel through the address, and close it again', a
 
   await page.getByRole('button', { name: m.common_close() }).click()
   await expect.poll(() => search().panel).toBeUndefined()
-  expect(
-    container.querySelector('[data-slot="profile-detail-panel"]'),
-  ).toBeNull()
+  // The panel leaves once it has slid out.
+  await expect
+    .poll(() => container.querySelector('[data-slot="profile-detail-panel"]'))
+    .toBeNull()
   // The row of the panel that closed gets the focus back.
   await expect
     .poll(() => document.activeElement?.getAttribute('data-panel'))
@@ -714,8 +722,12 @@ test('a narrow content area gives the page to the panel, with a back button', as
   const panel = () =>
     container.querySelector<HTMLElement>('[data-slot="profile-detail-panel"]')
   await expect.poll(() => panel()?.getAttribute('data-layout')).toBe('narrow')
-  // The panel replaces the detail column and names the profile it belongs to.
-  expect(container.querySelector('[data-slot="profile-detail"]')).toBeNull()
+  // The panel covers the detail column and names the profile it belongs to.
+  const column = () =>
+    container.querySelector<HTMLElement>(
+      '[data-slot="profile-detail-scroll-area"]',
+    )
+  expect(column()!.inert).toBe(true)
   expect(
     panel()!.querySelector('[data-slot="profile-detail-panel-subtitle"]')
       ?.textContent,
@@ -736,10 +748,8 @@ test('a narrow content area gives the page to the panel, with a back button', as
   expect(router.state.location.pathname).toBe(
     '/main/profiles/profile/detail/remote',
   )
-  await expect
-    .poll(() => container.querySelector('[data-slot="profile-detail"]'))
-    .not.toBeNull()
-  expect(panel()).toBeNull()
+  expect(column()!.inert).toBe(false)
+  await expect.poll(panel).toBeNull()
   await expect
     .poll(() => document.activeElement?.getAttribute('data-panel'))
     .toBe('transforms')
@@ -789,9 +799,10 @@ test('closing or switching the panel with unapplied changes asks first', async (
   await page.getByRole('button', { name: m.common_close() }).click()
   await page.getByRole('button', { name: m.profile_leave_confirm() }).click()
   await expect.poll(() => search().panel).toBeUndefined()
-  expect(
-    container.querySelector('[data-slot="profile-detail-panel"]'),
-  ).toBeNull()
+  // The panel leaves once it has slid out.
+  await expect
+    .poll(() => container.querySelector('[data-slot="profile-detail-panel"]'))
+    .toBeNull()
   await panelEntry(container, 'transforms')!.click()
   await expect.poll(() => search().panel).toBe('transforms')
   await expect.element(region(m.profile_chain_editor_title())).toBeVisible()

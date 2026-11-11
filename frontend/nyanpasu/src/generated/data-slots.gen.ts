@@ -412,6 +412,7 @@ export const DATA_SLOTS = [
   'profile-detail-panel-entries',
   'profile-detail-panel-header',
   'profile-detail-panel-scroll-area',
+  'profile-detail-panel-slot',
   'profile-detail-panel-subtitle',
   'profile-detail-row',
   'profile-detail-row-value',

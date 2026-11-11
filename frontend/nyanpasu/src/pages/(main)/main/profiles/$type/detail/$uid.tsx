@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { AnimatePresence } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
@@ -14,6 +15,7 @@ import DeleteSection from './_modules/delete-section'
 import {
   DETAIL_PANELS,
   DetailPanel,
+  DetailPanelSlot,
   type DetailPanelKind,
   type DetailPanelLayout,
 } from './_modules/detail-panel'
@@ -84,6 +86,17 @@ function RouteComponent() {
     shownPanelRef.current = openPanel
   }, [openPanel])
 
+  // Every opening is a panel of its own, so one that is still sliding out is
+  // never brought back, draft included, by opening it again.
+  const [opening, setOpening] = useState({ count: 0, open: !!openPanel })
+
+  if (opening.open !== !!openPanel) {
+    setOpening({
+      count: openPanel ? opening.count + 1 : opening.count,
+      open: !!openPanel,
+    })
+  }
+
   const openPanelOf = (next: DetailPanelKind) =>
     navigate({ search: { panel: next } })
 
@@ -96,99 +109,99 @@ function RouteComponent() {
     <div
       ref={workspaceRef}
       data-slot="profile-detail-workspace"
-      className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
     >
-      {/* The panel takes the column's place when there is no room for both. */}
-      {!(openPanel && layout === 'narrow') && (
-        <ScrollArea
-          data-slot="profile-detail-scroll-area"
-          className="min-h-0 min-w-0 flex-1"
+      {/* The panel covers the column when there is no room for both. */}
+      <ScrollArea
+        data-slot="profile-detail-scroll-area"
+        className="min-h-0 min-w-0 flex-1"
+        inert={!!openPanel && layout === 'narrow'}
+      >
+        <div
+          data-slot="profile-detail"
+          className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pb-8"
         >
-          <div
-            data-slot="profile-detail"
-            className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pb-8"
-          >
-            {query.isPending ? (
-              <ProfileDetailSkeleton />
-            ) : !currentProfile ? (
-              <EmptyState
-                className="flex-1"
-                message={m.profile_detail_not_found()}
-              >
-                <Button variant="stroked" asChild>
-                  <Link to="/main/profiles/$type" params={{ type }}>
-                    {m.profile_detail_back({
-                      destination: PROFILE_TYPE_NAMES[type as ProfileType],
-                    })}
-                  </Link>
-                </Button>
-              </EmptyState>
-            ) : (
-              <>
-                <ProfileDetailHeader
-                  type={type as ProfileType}
-                  profile={currentProfile}
-                />
+          {query.isPending ? (
+            <ProfileDetailSkeleton />
+          ) : !currentProfile ? (
+            <EmptyState
+              className="flex-1"
+              message={m.profile_detail_not_found()}
+            >
+              <Button variant="stroked" asChild>
+                <Link to="/main/profiles/$type" params={{ type }}>
+                  {m.profile_detail_back({
+                    destination: PROFILE_TYPE_NAMES[type as ProfileType],
+                  })}
+                </Link>
+              </Button>
+            </EmptyState>
+          ) : (
+            <>
+              <ProfileDetailHeader
+                type={type as ProfileType}
+                profile={currentProfile}
+              />
 
-                <ProfileOverviewCard
-                  profile={currentProfile}
+              <ProfileOverviewCard
+                profile={currentProfile}
+                profiles={profiles}
+                isGlobal={!!query.data?.global_transforms?.includes(uid)}
+              />
+
+              {isChainProfile(currentProfile) && (
+                <UsedBySection
+                  uid={currentProfile.uid}
                   profiles={profiles}
-                  isGlobal={!!query.data?.global_transforms?.includes(uid)}
+                  globalTransforms={query.data?.global_transforms ?? []}
                 />
+              )}
 
-                {isChainProfile(currentProfile) && (
-                  <UsedBySection
-                    uid={currentProfile.uid}
-                    profiles={profiles}
-                    globalTransforms={query.data?.global_transforms ?? []}
-                  />
-                )}
+              {isRemoteItem(currentProfile) && (
+                <SubscriptionSection profile={currentProfile} />
+              )}
 
-                {isRemoteItem(currentProfile) && (
-                  <SubscriptionSection profile={currentProfile} />
-                )}
+              <PanelEntries
+                profile={currentProfile}
+                panel={openPanel}
+                restoreFocus={closedPanel}
+                onOpen={openPanelOf}
+              />
 
-                <PanelEntries
-                  profile={currentProfile}
-                  panel={openPanel}
-                  restoreFocus={closedPanel}
-                  onOpen={openPanelOf}
-                />
+              <FileSection profile={currentProfile} />
 
-                <FileSection profile={currentProfile} />
+              <DeleteSection profile={currentProfile} onDeleted={backToList} />
+            </>
+          )}
+        </div>
+      </ScrollArea>
 
-                <DeleteSection
-                  profile={currentProfile}
-                  onDeleted={backToList}
-                />
-              </>
+      <AnimatePresence initial={false}>
+        {currentProfile && openPanel && (
+          <DetailPanelSlot key={opening.count} layout={layout}>
+            {openPanel === 'transforms' && isProxyProfile(currentProfile) && (
+              <TransformsPanel
+                key={currentProfile.uid}
+                profile={currentProfile}
+                layout={layout}
+                onClose={closePanel}
+              />
             )}
-          </div>
-        </ScrollArea>
-      )}
 
-      {currentProfile &&
-        openPanel === 'transforms' &&
-        isProxyProfile(currentProfile) && (
-          <TransformsPanel
-            key={currentProfile.uid}
-            profile={currentProfile}
-            layout={layout}
-            onClose={closePanel}
-          />
+            {openPanel === 'sync' && (
+              <DetailPanel
+                key={currentProfile.uid}
+                title={m.profile_sync_history_title()}
+                profileName={currentProfile.name}
+                layout={layout}
+                onClose={closePanel}
+              >
+                <SyncHistory uid={currentProfile.uid} />
+              </DetailPanel>
+            )}
+          </DetailPanelSlot>
         )}
-
-      {currentProfile && openPanel === 'sync' && (
-        <DetailPanel
-          key={currentProfile.uid}
-          title={m.profile_sync_history_title()}
-          profileName={currentProfile.name}
-          layout={layout}
-          onClose={closePanel}
-        >
-          <SyncHistory uid={currentProfile.uid} />
-        </DetailPanel>
-      )}
+      </AnimatePresence>
     </div>
   )
 }

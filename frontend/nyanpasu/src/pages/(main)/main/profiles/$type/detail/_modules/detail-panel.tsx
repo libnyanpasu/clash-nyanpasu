@@ -1,6 +1,7 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import { cva } from 'class-variance-authority'
+import { motion, useReducedMotion, type Variants } from 'motion/react'
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
@@ -16,6 +17,67 @@ export type DetailPanelKind = (typeof DETAIL_PANELS)[number]
  * (`wide`), or the panel takes the place of the column (`narrow`).
  */
 export type DetailPanelLayout = 'wide' | 'narrow'
+
+const detailPanelSlotVariants = cva('flex min-h-0', {
+  variants: {
+    layout: {
+      // Clips the panel while the slot grows to its width.
+      wide: 'shrink-0 overflow-hidden',
+      narrow: 'absolute inset-0 z-10',
+    },
+  },
+})
+
+// The wide slot grows from nothing, which pushes the detail column aside; the
+// narrow one slides over the column the way a routed page does. A whole
+// `transform` value runs off the main thread, and the settled panel drops it.
+const PANEL_SLIDE = {
+  wide: {
+    hidden: { width: 0, opacity: 0 },
+    visible: { width: 'auto', opacity: 1 },
+  },
+  narrow: {
+    hidden: { transform: 'translateX(30%)', opacity: 0 },
+    visible: {
+      transform: 'translateX(0%)',
+      opacity: 1,
+      transitionEnd: { transform: 'none' },
+    },
+  },
+} satisfies Record<DetailPanelLayout, Variants>
+
+/**
+ * The place of the open panel in the detail page. Render it in an
+ * `AnimatePresence` so the panel slides in when it opens and out when it
+ * closes; the panels themselves swap inside it.
+ */
+export function DetailPanelSlot({
+  layout,
+  children,
+}: {
+  layout: DetailPanelLayout
+  children: ReactNode
+}) {
+  const reduceMotion = useReducedMotion()
+
+  return (
+    <motion.div
+      data-slot="profile-detail-panel-slot"
+      className={detailPanelSlotVariants({ layout })}
+      variants={PANEL_SLIDE[layout]}
+      initial="hidden"
+      animate="visible"
+      exit="hidden"
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { type: 'spring', bounce: 0, duration: 0.35 }
+      }
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 const detailPanelVariants = cva(
   'bg-mixed-background flex min-h-0 min-w-0 flex-col outline-none',
@@ -63,13 +125,17 @@ export function DetailPanel({
   const Title = layout === 'narrow' ? 'h1' : 'h2'
 
   return (
-    <section
+    <motion.section
       ref={regionRef}
       tabIndex={-1}
       aria-labelledby={titleId}
       data-slot="profile-detail-panel"
       data-layout={layout}
       className={detailPanelVariants({ layout })}
+      // A panel that takes the place of another one fades in.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
     >
       <header
         data-slot="profile-detail-panel-header"
@@ -126,6 +192,6 @@ export function DetailPanel({
           {children}
         </div>
       </ScrollArea>
-    </section>
+    </motion.section>
   )
 }

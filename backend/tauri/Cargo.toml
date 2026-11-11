@@ -283,6 +283,9 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
+  'test-support'
+] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
   'local-client'
 ] }

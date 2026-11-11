@@ -35,6 +35,11 @@ fn sample<T: DeserializeOwned>(value: Value) -> T {
 }
 
 fn request<O: RpcOperation>(expected: Value) {
+    let fixtures: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/contracts/2026-11-12.json"
+    ))
+    .unwrap();
+    assert_eq!(expected, fixtures[O::NAME]["request"], "{}", O::NAME);
     let request: O::Request = sample(expected.clone());
     assert_eq!(
         serde_json::to_value(request).unwrap(),
@@ -83,6 +88,18 @@ where
     O::ReceivedResponse: Serialize,
 {
     let expected = serde_json::to_value(&response).unwrap();
+    let fixtures: Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/contracts/2026-11-12.json"
+    ))
+    .unwrap();
+    assert!(
+        fixtures[O::NAME]["successes"]
+            .as_array()
+            .unwrap()
+            .contains(&expected),
+        "{}: {expected}",
+        O::NAME
+    );
     let received: O::ReceivedResponse = sample(expected.clone());
     assert_eq!(
         serde_json::to_value(received).unwrap(),

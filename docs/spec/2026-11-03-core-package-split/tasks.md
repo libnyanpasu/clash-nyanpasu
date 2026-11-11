@@ -1386,6 +1386,8 @@ HTTP 迁/留处置（锚点均为 `T/ipc.rs` 的函数；共 104 声明，无删
 
 ## E1b-a — 完整 DTO 闭包与接收投影
 
+> **修订（2026-11-11，V-67）**：本卡与 E1b-b 已按 `docs/audit/2026-11-07-rpc-contract-design.md` 精简实施，以 design §8.1 V-67 为准：闭包只覆盖 13 个 local 操作及其完整值流，普通值下沉 foundation 作唯一定义，protocol `types` 只含接收错误/mutation 形状与连接详情，绑定由 `RpcOperation` 契约编译期保证；下列清单中超出该范围的条目（全命令闭包、投影、AST oracle）不再实施。
+
 本卡是保行为接缝，前置 D2e、A2b 与 E3e 全部完成；不再移动 D2e 的定义，不改业务结果或 wire。基础值保持 canonical；只有不适合基础层的应用输出/不可重建来源使用 protocol projection。
 
 - [ ] 逐 registered command 建 request/result/error/event 闭包清单，含 native-only schema、cfg 分支与外部 crate 嵌套值。现有基础 DTO 直接引用；D2e 的 MutationOutcome/RuntimeError/ProfilesError 从 values 引用。Serialize-only 错误含 skipped operational sources 时，新建显式 receiving DTO，不伪造 IO/engine cause、不给 domain error 强塞 Deserialize、不把内部 MutationReceipt/RuntimeApplyReceipt 导出。
@@ -1406,6 +1408,8 @@ HTTP 迁/留处置（锚点均为 `T/ipc.rs` 的函数；共 104 声明，无删
 - `rg 'nyanpasu_core::|nyanpasu_state_engine|nyanpasu_observers|nyanpasu_updater|MutationReceipt|RuntimeApplyReceipt' backend/nyanpasu-rpc-protocol/src --glob '*.rs'` 退出码 1；旧 shell DTO 按实际迁移清单 scoped 检查，不全局禁止合法 domain 定义。反向嵌 core error/删除 receiving variant/改变空值或 source skip，tree/schema/接收测试失败。
 
 ## E1b-b — typed client 与闭包验收
+
+> **修订（2026-11-11，V-67）**：本卡与 E1b-b 已按 `docs/audit/2026-11-07-rpc-contract-design.md` 精简实施，以 design §8.1 V-67 为准：闭包只覆盖 13 个 local 操作及其完整值流，普通值下沉 foundation 作唯一定义，protocol `types` 只含接收错误/mutation 形状与连接详情，绑定由 `RpcOperation` 契约编译期保证；下列清单中超出该范围的条目（全命令闭包、投影、AST oracle）不再实施。
 
 本卡是保行为接缝；合并原独立的 client/schema integrity 验收，不新增业务命令。
 

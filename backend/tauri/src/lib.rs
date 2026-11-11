@@ -407,6 +407,7 @@ pub fn run() -> std::process::ExitCode {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("nyanpasu-icons", unified_rpc::icons::handle)
         .manage(utils::exit::ExitBoundary::default())
         .manage(init::logging::LoggingShutdown(logger_reload.clone()))
         .invoke_handler(transport_builder.invoke_handler())

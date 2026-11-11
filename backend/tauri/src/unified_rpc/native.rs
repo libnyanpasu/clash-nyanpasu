@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
 use serde_json::Value;
 use tauri::Manager as _;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use nyanpasu_rpc::{
     audit::RpcTransport,
@@ -26,6 +27,8 @@ inventory::collect!(TauriCommandEntry);
 pub struct DesktopRpc {
     rpc: UnifiedRpc,
     handlers: Arc<HashMap<&'static str, TauriRpcHandler>>,
+    pub(super) tasks: TaskTracker,
+    pub(super) shutdown: CancellationToken,
 }
 
 pub(super) fn register_native_commands(
@@ -41,11 +44,21 @@ pub(super) fn register_native_commands(
 }
 
 impl DesktopRpc {
-    pub fn new(rpc: UnifiedRpc) -> Result<Self, SetupError> {
+    pub fn new(
+        rpc: UnifiedRpc,
+        tasks: TaskTracker,
+        shutdown: CancellationToken,
+    ) -> Result<Self, SetupError> {
         Ok(Self {
             rpc,
+            tasks,
+            shutdown,
             handlers: register_native_commands(inventory::iter::<TauriCommandEntry>)?,
         })
+    }
+
+    pub(super) fn icon_dependencies(&self) -> Arc<nyanpasu_rpc::registry::RpcDependencies> {
+        self.rpc.dependencies()
     }
 
     pub(super) async fn call(

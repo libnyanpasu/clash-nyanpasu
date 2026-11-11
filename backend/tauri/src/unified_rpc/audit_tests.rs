@@ -77,30 +77,38 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
         let capture = Capture::default();
         async {
             for fail in [false, true] {
-                let result = super::native::DesktopRpc::new(fixture.rpc.clone())
-                    .unwrap()
-                    .call(
-                        app.handle().clone(),
-                        window.as_ref().window(),
-                        window.as_ref().clone(),
-                        command,
-                        json!({"value": SECRET, "fail": fail}),
-                    )
-                    .await;
-                assert_eq!(result.is_err(), fail);
-                fixture.sink.sequence.lock().push("returned");
-            }
-            let error = super::native::DesktopRpc::new(fixture.rpc.clone())
+                let result = super::native::DesktopRpc::new(
+                    fixture.rpc.clone(),
+                    tokio_util::task::TaskTracker::new(),
+                    tokio_util::sync::CancellationToken::new(),
+                )
                 .unwrap()
                 .call(
                     app.handle().clone(),
                     window.as_ref().window(),
                     window.as_ref().clone(),
                     command,
-                    json!({}),
+                    json!({"value": SECRET, "fail": fail}),
                 )
-                .await
-                .unwrap_err();
+                .await;
+                assert_eq!(result.is_err(), fail);
+                fixture.sink.sequence.lock().push("returned");
+            }
+            let error = super::native::DesktopRpc::new(
+                fixture.rpc.clone(),
+                tokio_util::task::TaskTracker::new(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap()
+            .call(
+                app.handle().clone(),
+                window.as_ref().window(),
+                window.as_ref().clone(),
+                command,
+                json!({}),
+            )
+            .await
+            .unwrap_err();
             assert_eq!(error.kind, "invalid_params");
         }
         .with_subscriber(tracing_subscriber::registry().with(capture.clone()))
@@ -170,17 +178,21 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
             assert_eq!(calls.load(Ordering::SeqCst), 2);
             let fixture = Fixture::with_capabilities(false, &[]).await;
             for params in [json!({"value": SECRET, "fail": false}), json!({})] {
-                let error = super::native::DesktopRpc::new(fixture.rpc.clone())
-                    .unwrap()
-                    .call(
-                        app.handle().clone(),
-                        window.as_ref().window(),
-                        window.as_ref().clone(),
-                        command,
-                        params,
-                    )
-                    .await
-                    .unwrap_err();
+                let error = super::native::DesktopRpc::new(
+                    fixture.rpc.clone(),
+                    tokio_util::task::TaskTracker::new(),
+                    tokio_util::sync::CancellationToken::new(),
+                )
+                .unwrap()
+                .call(
+                    app.handle().clone(),
+                    window.as_ref().window(),
+                    window.as_ref().clone(),
+                    command,
+                    params,
+                )
+                .await
+                .unwrap_err();
                 assert_eq!(
                     serde_json::to_value(error).unwrap(),
                     json!({

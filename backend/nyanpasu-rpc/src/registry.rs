@@ -295,6 +295,11 @@ pub struct UnifiedRpc {
 }
 
 impl UnifiedRpc {
+    /// Shares the explicitly assembled inputs with special transport adapters.
+    pub fn dependencies(&self) -> Arc<RpcDependencies> {
+        self.dependencies.clone()
+    }
+
     pub fn new(
         dependencies: RpcDependencies,
         provided: &[ShellCapability],
@@ -354,7 +359,7 @@ impl UnifiedRpc {
         admission: Result<(), RpcError>,
     ) -> Result<Value, RpcError> {
         let target = match transport {
-            RpcTransport::TauriIpc => RpcTarget::Desktop,
+            RpcTransport::TauriIpc | RpcTransport::TauriProtocol => RpcTarget::Desktop,
             RpcTransport::Http => RpcTarget::Http,
             RpcTransport::Local => RpcTarget::Local,
         };

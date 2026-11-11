@@ -54,7 +54,9 @@ impl RpcAudit {
     /// one session's calls but never reveals the cookie.
     fn owner(&self, transport: RpcTransport, owner: &RpcOwner) -> RpcAuditOwner {
         match transport {
-            RpcTransport::TauriIpc => RpcAuditOwner(owner.label().to_owned()),
+            RpcTransport::TauriIpc | RpcTransport::TauriProtocol => {
+                RpcAuditOwner(owner.label().to_owned())
+            }
             RpcTransport::Http => RpcAuditOwner(format!(
                 "http:{:016x}",
                 self.owner_key.hash_one(owner.label())
@@ -85,6 +87,7 @@ pub trait RpcAuditSink: Send + Sync + 'static {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RpcTransport {
     TauriIpc,
+    TauriProtocol,
     Http,
     Local,
 }
@@ -355,7 +358,7 @@ impl RpcAuditSink for TracingRpcAuditSink {
             ($level:expr) => {
                 tracing::event!(target: "nyanpasu::rpc_audit", $level,
                     invocation_id = record.header.invocation_id,
-                    transport = match record.header.transport { RpcTransport::Http => "Http", RpcTransport::Local => "Local", RpcTransport::TauriIpc => "TauriIpc" },
+                    transport = match record.header.transport { RpcTransport::Http => "Http", RpcTransport::Local => "Local", RpcTransport::TauriIpc => "TauriIpc", RpcTransport::TauriProtocol => "TauriProtocol" },
                     command = record.header.method,
                     owner = record.header.owner.as_str(),
                     request_id = record.header.request_id.map(|id| serde_json::to_string(&id).expect("request ID serializes")),
@@ -367,7 +370,7 @@ impl RpcAuditSink for TracingRpcAuditSink {
         }
         match record.header.transport {
             RpcTransport::Http | RpcTransport::Local => emit!(tracing::Level::INFO),
-            RpcTransport::TauriIpc => emit!(tracing::Level::DEBUG),
+            RpcTransport::TauriIpc | RpcTransport::TauriProtocol => emit!(tracing::Level::DEBUG),
         }
     }
 }

@@ -57,7 +57,14 @@ fn app_patch_decode_rejects_dedicated_fields_on_desktop() {
     .unwrap();
     tauri::async_runtime::block_on(async {
         let fixture = Fixture::new(false).await;
-        app.manage(native::DesktopRpc::new(fixture.rpc.clone()).unwrap());
+        app.manage(
+            native::DesktopRpc::new(
+                fixture.rpc.clone(),
+                tokio_util::task::TaskTracker::new(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap(),
+        );
         let before = fixture.call("get_app_config", json!({})).await;
         let status = fixture.call("get_configuration_status", json!({})).await.1;
         for patch in [

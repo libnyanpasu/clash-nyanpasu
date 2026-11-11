@@ -659,7 +659,12 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
         owners,
     ))
     .context(StartLocalRpcSnafu)?;
-    let desktop = crate::unified_rpc::native::DesktopRpc::new(rpc).context(BuildRpcSnafu)?;
+    let desktop = crate::unified_rpc::native::DesktopRpc::new(
+        rpc,
+        owners.tasks.clone(),
+        owners.shutdown.clone(),
+    )
+    .context(BuildRpcSnafu)?;
     snafu::ensure!(app.manage(desktop), RegisterStateSnafu);
     Ok(())
 }

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -45,10 +45,7 @@ export function initializeSubmodules(
     const destinationPath = resolve(destination, path)
     let sourceGitDir: string | undefined
     try {
-      if (
-        realpathSync(git(sourcePath, ['rev-parse', '--show-toplevel'])) ===
-        realpathSync(sourcePath)
-      ) {
+      if (git(sourcePath, ['rev-parse', '--show-prefix']) === '') {
         sourceGitDir = git(sourcePath, ['rev-parse', '--absolute-git-dir'])
       }
     } catch {

@@ -40,7 +40,7 @@ configuration and named task entrypoints. CI invokes repository tooling through
 - Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
 - `.github/workflows/actions.lock` records the commit every action resolves to, and a workflow run is rejected when one of its `uses:` references is missing from it. After adding an action or changing its version, run `gh actions-lock` and commit the regenerated lockfile in the same change; never edit it by hand. Renovate does not regenerate the lockfile, so its action updates are not automerged: regenerate the lockfile on the update branch before merging.
 
-The repository currently keeps all 17 workflows. Reusable workflows have callers or a manual
+The repository currently keeps all 18 workflows. Reusable workflows have callers or a manual
 entry point. The central-storage publisher is called by nightly and release workflows;
 the SourceForge release backfill is a manual entry point. Release publication and
 SourceForge backfills share one concurrency group so a backfill cannot race a newly
@@ -58,6 +58,7 @@ these YAML files.
 | File under `.github/workflows/`     | Display name                                          | Purpose / entry point                                                                                                |
 | ----------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `ci.yml`                            | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes; a pull request checks only the parts it changes.                                       |
+| `plumber.yml`                       | `[CI] Check Workflow Security with Plumber`           | Check the workflows on pushes to main and on pull requests, and publish the score behind the README badge.           |
 | `daily.yml`                         | `[Maintenance] Update Core Version Manifests`         | Scheduled or manual refresh of core versions on main and v1/dev.                                                     |
 | `stale.yml`                         | `[Maintenance] Close Stale Issues and Pull Requests`  | Scheduled or manual stale issue and pull request maintenance.                                                        |
 | `publish.yml`                       | `[Release] Prepare Version and Draft Release`         | Manual version bump, tag, and draft release creation; publishing the draft starts package builds.                    |

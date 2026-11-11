@@ -775,6 +775,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.restartService>) =>
         commands.restartService(...input),
     }),
+    setServiceMode: mutationOptions({
+      mutationKey: ['setServiceMode'],
+      mutationFn: (input: Parameters<typeof commands.setServiceMode>) =>
+        commands.setServiceMode(...input),
+    }),
     selectProxy: mutationOptions({
       mutationKey: ['selectProxy'],
       mutationFn: (input: Parameters<typeof commands.selectProxy>) =>

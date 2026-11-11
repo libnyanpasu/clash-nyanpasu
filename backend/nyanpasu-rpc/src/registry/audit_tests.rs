@@ -192,11 +192,7 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
     let fixture = Fixture::with_capabilities(false, &[]).await;
     let command = &fixture.rpc.commands["patch_app_config"];
     assert!(command.metadata.capabilities.is_empty());
-    for capability in [
-        ShellCapability::Hotkey,
-        ShellCapability::Presentation,
-        ShellCapability::Elevation,
-    ] {
+    for capability in [ShellCapability::Presentation, ShellCapability::Elevation] {
         assert!(command.metadata.optional_capabilities.contains(&capability));
     }
     let (status, value) = fixture

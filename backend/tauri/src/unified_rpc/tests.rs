@@ -29,6 +29,68 @@ fn dispatchers_cover_each_command_category() {
 }
 
 #[test]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux"),
+    ignore = "a native Wry window needs the main thread on macOS and a display on Linux"
+)]
+fn app_patch_decode_rejects_dedicated_fields_on_desktop() {
+    use nyanpasu_rpc::test_support::Fixture;
+    use nyanpasu_rpc_protocol::RpcValue;
+    use serde_json::json;
+    use tauri::Manager as _;
+
+    let directory = tempfile::tempdir().unwrap();
+    let builder = tauri::Builder::default();
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.any_thread();
+    let app = builder
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .unwrap();
+    let window = tauri::WebviewWindowBuilder::new(
+        &app,
+        "settings-window",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .visible(false)
+    .data_directory(directory.path().join("webview"))
+    .build()
+    .unwrap();
+    tauri::async_runtime::block_on(async {
+        let fixture = Fixture::new(false).await;
+        app.manage(native::DesktopRpc::new(fixture.rpc.clone()).unwrap());
+        let before = fixture.call("get_app_config", json!({})).await;
+        let status = fixture.call("get_configuration_status", json!({})).await.1;
+        for patch in [
+            json!({"hotkeys": []}),
+            json!({"enable_service_mode": false}),
+            json!({"hotkeys": [], "enable_service_mode": true, "proxy_layout_column": 97}),
+        ] {
+            let error = native::call_rpc(
+                app.handle().clone(),
+                window.as_ref().window(),
+                window.as_ref().clone(),
+                "patch_app_config".into(),
+                RpcValue(json!({"patch": patch})),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.kind, "invalid_params");
+            assert!(error.domain_error.is_none());
+            assert!(error.message.contains(
+                "use set_hotkeys for hotkeys and set_service_mode for enable_service_mode"
+            ));
+            assert_eq!(fixture.call("get_app_config", json!({})).await, before);
+            let after = fixture.call("get_configuration_status", json!({})).await.1;
+            assert_eq!(after["source_versions"], status["source_versions"]);
+            assert_eq!(after["recent_operations"], status["recent_operations"]);
+        }
+        app.unmanage::<native::DesktopRpc>();
+        fixture.shutdown().await;
+    });
+    window.destroy().unwrap();
+}
+
+#[test]
 #[ignore = "requires pnpm web:build and Playwright Chromium; optional NYANPASU_HTTP_UI_DEV_URL tests Vite proxy"]
 fn browser_debug_page_and_real_rpc() {
     use nyanpasu_rpc::http::{Frontend, FrontendAssets};

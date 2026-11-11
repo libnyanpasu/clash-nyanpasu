@@ -186,6 +186,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::service::start_service,
             ipc::service::stop_service,
             ipc::service::restart_service,
+            commands::host::set_service_mode,
             commands::clash::select_proxy,
             commands::clash::clear_proxy_fixed,
             commands::clash::update_proxy_provider,

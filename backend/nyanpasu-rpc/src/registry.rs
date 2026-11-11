@@ -366,6 +366,8 @@ pub enum SetupError {
 #[cfg(all(test, feature = "http"))]
 mod audit_tests;
 #[cfg(all(test, feature = "http"))]
+mod settings_tests;
+#[cfg(all(test, feature = "http"))]
 mod tests;
 
 /// Verify linked shared/native metadata and known unlinked names in a host test.

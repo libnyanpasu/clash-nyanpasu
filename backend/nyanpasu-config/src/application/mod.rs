@@ -79,7 +79,7 @@ impl ReleaseChannel {
     }
 }
 
-/// ### `verge.yaml` schema
+/// `application.yaml` schema.
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, specta::Type)))]
@@ -111,7 +111,10 @@ pub struct NyanpasuAppConfig {
     /// global ui framer motion effects
     pub lighten_animation_effects: bool,
 
-    /// service mode
+    /// Service mode, stored in the application domain.
+    /// RPC writes use only `set_service_mode`: this setting can request privileged
+    /// host state and must never be writable over HTTP. Core domain patches remain
+    /// supported.
     pub enable_service_mode: bool,
 
     /// can the app auto startup
@@ -142,8 +145,10 @@ pub struct NyanpasuAppConfig {
     #[patch(attribute(serde(alias = "clash_core")))]
     pub core: ClashCore,
 
-    /// hotkey map
-    /// format: {func},{key}
+    /// Global shortcut bindings, stored in the application domain.
+    /// RPC writes use only `set_hotkeys`: these host-bound bindings must never be
+    /// writable over HTTP. Core domain patches remain supported.
+    /// Format: `{function},{key}`.
     pub hotkeys: Vec<String>,
 
     /// 默认的延迟测试连接

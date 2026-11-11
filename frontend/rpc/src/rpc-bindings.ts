@@ -211,15 +211,8 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
-    getCachedIcon: (url: string) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
-    getTrayIcon: (mode: TrayIcon) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_tray_icon', { mode })),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
-    /**  The statistic widget's own icon for `mode`, or the bundled one. */
-    getWidgetIcon: (mode: TrayIcon) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_widget_icon', { mode })),
     isWidgetIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(
         __RPC_INVOKE('is_widget_icon_set', { mode }),
@@ -2480,10 +2473,6 @@ export type I18nLanguage_Deserialize =
  */
 export type I18nLanguage_Serialize =
   'en' | 'ja' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
-
-export type IconData = {
-  data_url: string
-}
 
 /**  Input to the icon URL transport; versions refresh mutable URLs only. */
 export type IconRequest =

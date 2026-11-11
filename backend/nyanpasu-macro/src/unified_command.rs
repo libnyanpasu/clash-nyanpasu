@@ -234,10 +234,10 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             } else if let Some(slot) = host_port_slot(state_name.as_deref()) {
                 let slot = format_ident!("{slot}");
                 dependency_bindings.push(quote! {
-                    let #ident = dependencies.#slot.as_deref().ok_or_else(||
+                    let #ident = dependencies.#slot.clone().ok_or_else(||
                         ::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))?;
                 });
-                neutral_args.push(quote!(#ident));
+                neutral_args.push(quote!(#ident.as_ref()));
             } else {
                 neutral_supported = false;
             }
@@ -312,21 +312,34 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         original.asyncness.is_some(),
         None,
     );
-    let neutral_handler_body =
-        if neutral_supported && !matches!(original.output, ReturnType::Default) {
-            let output = output_value(&neutral_call, &original.output, options.result);
-            let response_type =
-                operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
-            quote! {
-                #(#dependency_bindings)*
-                #neutral_parse
-                let output #response_type = #output?;
-                ::serde_json::to_value(output)
-                    .map_err(::nyanpasu_rpc::error::application_error)
-            }
-        } else {
-            quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
-        };
+    let neutral_handler_body = if neutral_supported
+        && !matches!(original.output, ReturnType::Default)
+    {
+        let output = output_value(&neutral_call, &original.output, options.result);
+        let response_type =
+            operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
+        let completion = completion_summary(&original.output, options.result);
+        quote! {
+            #(#dependency_bindings)*
+            #neutral_parse
+            Ok(::std::boxed::Box::pin(async move {
+                match #output {
+                    Ok(output) => {
+                        let output #response_type = output;
+                        let completion = #completion;
+                        ::nyanpasu_rpc::registry::RpcCompletion {
+                            result: ::serde_json::to_value(output)
+                                .map_err(::nyanpasu_rpc::error::application_error),
+                            completion,
+                        }
+                    }
+                    Err(error) => ::nyanpasu_rpc::registry::RpcCompletion::unreported(Err(error)),
+                }
+            }))
+        }
+    } else {
+        quote! { Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name))) }
+    };
 
     let tauri_handler_definition = if !native {
         quote!()
@@ -379,6 +392,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         let parser = parser(&tauri_fields, &tauri_field_names, operation);
         let response_type =
             operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
+        let completion = completion_summary(&original.output, options.result);
         quote! {
             #(#cfg_attrs)*
             fn #tauri_handler(
@@ -386,14 +400,23 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 window: ::tauri::Window,
                 webview: ::tauri::Webview,
                 params: ::serde_json::Value,
-            ) -> ::nyanpasu_rpc::registry::RpcFuture {
-                ::std::boxed::Box::pin(async move {
-                    #parser
+            ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
+                #parser
+                Ok(::std::boxed::Box::pin(async move {
                     #(#state_bindings)*
-                    let output #response_type = #output?;
-                    ::serde_json::to_value(output)
-                        .map_err(::nyanpasu_rpc::error::application_error)
-                })
+                    match #output {
+                        Ok(output) => {
+                            let output #response_type = output;
+                            let completion = #completion;
+                            ::nyanpasu_rpc::registry::RpcCompletion {
+                                result: ::serde_json::to_value(output)
+                                    .map_err(::nyanpasu_rpc::error::application_error),
+                                completion,
+                            }
+                        }
+                        Err(error) => ::nyanpasu_rpc::registry::RpcCompletion::unreported(Err(error)),
+                    }
+                }))
             }
         }
     } else {
@@ -404,10 +427,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 _window: ::tauri::Window,
                 _webview: ::tauri::Webview,
                 _params: ::serde_json::Value,
-            ) -> ::nyanpasu_rpc::registry::RpcFuture {
-                ::std::boxed::Box::pin(async move {
-                    Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))
-                })
+            ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
+                Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))
             }
         }
     };
@@ -435,10 +456,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             dependencies: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
             owner: ::nyanpasu_rpc_protocol::RpcOwner,
             params: ::serde_json::Value,
-        ) -> ::nyanpasu_rpc::registry::RpcFuture {
-            ::std::boxed::Box::pin(async move {
-                #neutral_handler_body
-            })
+        ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
+            #neutral_handler_body
         }
 
         #tauri_handler_definition
@@ -477,6 +496,38 @@ fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenS
         }
         ReturnType::Type(_, _) => quote!(Ok(#call)),
         ReturnType::Default => quote!(Ok(#call)),
+    }
+}
+
+fn completion_summary(output: &ReturnType, result: bool) -> TokenStream {
+    let success = match output {
+        ReturnType::Type(_, ty) if result || is_result(ty) => {
+            let Type::Path(path) = ty.as_ref() else {
+                return quote!(::nyanpasu_rpc::audit::CompletionSummary::NotReported);
+            };
+            let segment = path
+                .path
+                .segments
+                .last()
+                .expect("a type path has a segment");
+            match &segment.arguments {
+                syn::PathArguments::AngleBracketed(args) => args.args.iter().find_map(|arg| {
+                    if let syn::GenericArgument::Type(ty) = arg {
+                        Some(ty)
+                    } else {
+                        None
+                    }
+                }),
+                _ => None,
+            }
+        }
+        ReturnType::Type(_, ty) => Some(ty.as_ref()),
+        ReturnType::Default => None,
+    };
+    if success.is_some_and(|ty| is_context_type(ty, "MutationOutcome")) {
+        quote!(::nyanpasu_rpc::audit::summarize_mutation(&output))
+    } else {
+        quote!(::nyanpasu_rpc::audit::CompletionSummary::NotReported)
     }
 }
 
@@ -661,6 +712,78 @@ mod tests {
     use syn::{Item, ItemFn};
 
     use super::expand;
+
+    #[test]
+    fn mutation_summary_requires_an_explicit_success_type() {
+        for (output, reports) in [
+            (quote::quote!(MutationOutcome<()>), true),
+            (quote::quote!(Result<values::MutationOutcome<String>>), true),
+            (quote::quote!(CommandResult<MutationOutcome<()>>), true),
+            (quote::quote!(MutationAlias), false),
+            (quote::quote!(Result<MutationAlias>), false),
+            (quote::quote!(Result<()>), false),
+            (quote::quote!(CommitReceipt), false),
+        ] {
+            let item = syn::parse2(quote::quote! {
+                #[nyanpasu_macro::rpc(result)]
+                #[tauri::command]
+                fn test() -> #output { todo!() }
+            })
+            .unwrap();
+            // The explicit Result hint applies only to the result-shaped signatures.
+            let mut options = super::options(&item).unwrap();
+            options.result = output.to_string().starts_with("CommandResult");
+            let expanded = super::expand_with_options(item, options)
+                .unwrap()
+                .to_string();
+            assert_eq!(expanded.contains("summarize_mutation"), reports, "{output}");
+        }
+    }
+
+    #[test]
+    fn production_mutation_summary_commands_are_fixed() {
+        let mut reported = crate::command_catalog::production_declarations()
+            .into_iter()
+            .filter(|item| {
+                expand(item.clone())
+                    .unwrap()
+                    .to_string()
+                    .contains("summarize_mutation")
+            })
+            .map(|item| item.sig.ident.to_string())
+            .collect::<Vec<_>>();
+        reported.sort();
+        assert_eq!(
+            reported,
+            [
+                "activate_profile",
+                "clear_proxy_fixed",
+                "create_profile",
+                "create_profile_folder",
+                "create_proxy_group_folder",
+                "delete_profile",
+                "import_profile",
+                "patch_app_config",
+                "patch_clash_config",
+                "patch_profile_metadata",
+                "patch_remote_profile_options",
+                "patch_runtime_overrides",
+                "reorder_profile",
+                "reorder_profiles_by_list",
+                "replace_profile_definition",
+                "save_profile_file",
+                "select_proxy",
+                "set_global_transforms",
+                "set_hotkeys",
+                "set_profile_layout",
+                "set_profile_valid_fields",
+                "set_proxy_group_layout",
+                "set_release_channel",
+                "set_service_mode",
+                "update_profile",
+            ]
+        );
+    }
 
     #[test]
     fn operation_bindings_use_the_existing_generator() {

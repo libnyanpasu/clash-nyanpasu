@@ -2,16 +2,21 @@
 
 use std::{
     hash::{BuildHasher as _, RandomState},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use nyanpasu_rpc_protocol::RpcOwner;
+use nyanpasu_runtime_values::runtime::{CommitReceipt, MutationOutcome};
 
-/// The injected audit sink and the per-process key for HTTP caller identities.
+/// The injected audit sink, invocation counter and instance key for remote owners.
 pub struct RpcAudit {
     sink: Arc<dyn RpcAuditSink>,
     owner_key: RandomState,
+    next_invocation: AtomicU64,
 }
 
 impl RpcAudit {
@@ -19,6 +24,7 @@ impl RpcAudit {
         Self {
             sink,
             owner_key: RandomState::new(),
+            next_invocation: AtomicU64::new(1),
         }
     }
 
@@ -69,18 +75,78 @@ pub enum RpcAuditOutcome {
         kind: &'static str,
         code: Option<String>,
     },
-    Cancelled,
+    /// The dispatch future was dropped; owner-started work may still complete.
+    NotObserved,
     Panicked,
 }
 
-/// Local metadata only; this record is never serialized onto a transport.
+/// Per-invocation correlation, never serialized onto a transport.
+#[derive(Debug, Clone)]
+pub struct AuditHeader {
+    pub invocation_id: u64,
+    pub transport: RpcTransport,
+    pub method: &'static str,
+    pub owner: RpcAuditOwner,
+    pub request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
+}
+
+/// Receipt metadata only. `NotReported` makes no claim about side effects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompletionSummary {
+    NotReported,
+    Mutation {
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
+        degradation_count: usize,
+    },
+}
+
+/// Extract metadata before erasing the typed success value, without inspecting it.
+#[must_use]
+pub fn summarize_mutation<T>(outcome: &MutationOutcome<T>) -> CompletionSummary {
+    match outcome {
+        MutationOutcome::Committed {
+            commits,
+            notifications_pending,
+            ..
+        } => CompletionSummary::Mutation {
+            commits: commits.clone(),
+            notifications_pending: *notifications_pending,
+            degradation_count: 0,
+        },
+        MutationOutcome::CommittedDegraded {
+            commits,
+            notifications_pending,
+            degradations,
+            ..
+        } => CompletionSummary::Mutation {
+            commits: commits.clone(),
+            notifications_pending: *notifications_pending,
+            degradation_count: degradations.len(),
+        },
+    }
+}
+
+/// Phases follow preparation and execution, rather than the returned error kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditPhase {
+    Rejected {
+        kind: &'static str,
+        code: Option<String>,
+    },
+    Admitted,
+    Finished {
+        outcome: RpcAuditOutcome,
+        completion: CompletionSummary,
+    },
+}
+
+/// Local diagnostic metadata; duration is monotonic elapsed time since dispatch.
 #[derive(Debug, Clone)]
 pub struct RpcAuditRecord {
-    pub transport: RpcTransport,
-    pub command: &'static str,
-    pub owner: RpcAuditOwner,
+    pub header: AuditHeader,
     pub duration: Duration,
-    pub outcome: RpcAuditOutcome,
+    pub phase: AuditPhase,
 }
 
 pub(crate) struct RpcAuditGuard<'a> {
@@ -88,43 +154,60 @@ pub(crate) struct RpcAuditGuard<'a> {
     record: RpcAuditRecord,
     started: Instant,
     completed: bool,
+    admitted: bool,
 }
 
 impl<'a> RpcAuditGuard<'a> {
-    pub(crate) fn new(audit: &'a RpcAudit, transport: RpcTransport, owner: &RpcOwner) -> Self {
+    pub(crate) fn new(
+        audit: &'a RpcAudit,
+        transport: RpcTransport,
+        owner: &RpcOwner,
+        method: &'static str,
+        request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
+    ) -> Self {
         Self {
             sink: audit.sink.as_ref(),
             record: RpcAuditRecord {
-                transport,
-                command: "unknown_method",
-                owner: audit.owner(transport, owner),
+                header: AuditHeader {
+                    invocation_id: audit.next_invocation.fetch_add(1, Ordering::Relaxed),
+                    transport,
+                    method,
+                    owner: audit.owner(transport, owner),
+                    request_id,
+                },
                 duration: Duration::ZERO,
-                outcome: RpcAuditOutcome::Cancelled,
+                phase: AuditPhase::Admitted,
             },
             started: Instant::now(),
             completed: false,
+            admitted: false,
         }
     }
 
-    pub(crate) fn set_command(&mut self, command: &'static str) {
-        self.record.command = command;
+    pub(crate) fn admit(&mut self) {
+        self.admitted = true;
+        self.record(AuditPhase::Admitted);
     }
 
-    pub(crate) fn record(&mut self, outcome: RpcAuditOutcome) {
+    pub(crate) fn record(&mut self, phase: AuditPhase) {
         self.record.duration = self.started.elapsed();
-        self.record.outcome = outcome;
-        self.completed = true;
+        self.completed = !matches!(phase, AuditPhase::Admitted);
+        self.record.phase = phase;
         self.sink.record(&self.record);
     }
 }
 
 impl Drop for RpcAuditGuard<'_> {
     fn drop(&mut self) {
-        if !self.completed {
-            self.record(if std::thread::panicking() {
+        if self.admitted && !self.completed {
+            let outcome = if std::thread::panicking() {
                 RpcAuditOutcome::Panicked
             } else {
-                RpcAuditOutcome::Cancelled
+                RpcAuditOutcome::NotObserved
+            };
+            self.record(AuditPhase::Finished {
+                outcome,
+                completion: CompletionSummary::NotReported,
             });
         }
     }
@@ -135,18 +218,55 @@ pub struct TracingRpcAuditSink;
 
 impl RpcAuditSink for TracingRpcAuditSink {
     fn record(&self, record: &RpcAuditRecord) {
+        let (phase, outcome, kind, code, completion) = match &record.phase {
+            AuditPhase::Rejected { kind, code } => {
+                ("rejected", None, Some(*kind), code.as_deref(), None)
+            }
+            AuditPhase::Admitted => ("admitted", None, None, None, None),
+            AuditPhase::Finished {
+                outcome,
+                completion,
+            } => {
+                let (outcome, kind, code) = match outcome {
+                    RpcAuditOutcome::Success => ("success", None, None),
+                    RpcAuditOutcome::Failure { kind, code } => {
+                        ("failure", Some(*kind), code.as_deref())
+                    }
+                    RpcAuditOutcome::NotObserved => ("not_observed", None, None),
+                    RpcAuditOutcome::Panicked => ("panicked", None, None),
+                };
+                ("finished", Some(outcome), kind, code, Some(completion))
+            }
+        };
+        let (completion, commits, notifications_pending, degradation_count) = match completion {
+            Some(CompletionSummary::Mutation {
+                commits,
+                notifications_pending,
+                degradation_count,
+            }) => (
+                Some("mutation"),
+                Some(serde_json::to_string(commits).expect("commit receipt metadata serializes")),
+                Some(*notifications_pending),
+                Some(*degradation_count as u64),
+            ),
+            Some(CompletionSummary::NotReported) => (Some("not_reported"), None, None, None),
+            None => (None, None, None, None),
+        };
         macro_rules! emit {
             ($level:expr) => {
                 tracing::event!(target: "nyanpasu::rpc_audit", $level,
-                    transport = ?record.transport,
-                    command = record.command,
-                    owner = record.owner.as_str(),
+                    invocation_id = record.header.invocation_id,
+                    transport = match record.header.transport { RpcTransport::Http => "Http", RpcTransport::Local => "Local", RpcTransport::TauriIpc => "TauriIpc" },
+                    command = record.header.method,
+                    owner = record.header.owner.as_str(),
+                    request_id = record.header.request_id.map(|id| serde_json::to_string(&id).expect("request ID serializes")),
                     duration_ns = record.duration.as_nanos() as u64,
-                    outcome = ?record.outcome,
+                    phase, outcome, kind, code, completion,
+                    commits = commits.as_deref(), notifications_pending, degradation_count,
                 )
             };
         }
-        match record.transport {
+        match record.header.transport {
             RpcTransport::Http | RpcTransport::Local => emit!(tracing::Level::INFO),
             RpcTransport::TauriIpc => emit!(tracing::Level::DEBUG),
         }

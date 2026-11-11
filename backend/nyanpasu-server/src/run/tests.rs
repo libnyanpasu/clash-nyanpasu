@@ -30,7 +30,7 @@ use nyanpasu_ipc::api::{
 };
 use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
 use nyanpasu_rpc_protocol::{
-    CommandKind, CommandMetadata, RpcOwner, RpcTarget, client::LocalClient, frame::Reply,
+    CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, client::LocalClient, frame::Reply,
 };
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use serde_json::{Value, json};
@@ -408,9 +408,9 @@ async fn server_startup_failure_releases_bound_endpoints() {
     );
 }
 
-fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
+fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
     use struct_patch::Patch as _;
-    Box::pin(async move {
+    Ok(Box::pin(nyanpasu_rpc::registry::unreported(async move {
         let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
         patch.max_log_file_size = Some(9);
         deps.client
@@ -418,7 +418,7 @@ fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
             .await
             .map_err(nyanpasu_rpc::error::application_error)?;
         Ok(Value::Null)
-    })
+    })))
 }
 
 inventory::submit! {

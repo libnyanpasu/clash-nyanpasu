@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use nyanpasu_rpc::{
-    audit::{RpcAuditOutcome, RpcTransport},
+    audit::{AuditPhase, CompletionSummary, RpcAuditOutcome, RpcAuditRecord, RpcTransport},
     registry::{CommandEntry, SetupError},
     test_support::{Capture, Fixture, SECRET},
 };
@@ -16,12 +16,18 @@ async fn audit_native_echo(
     calls: tauri::State<'_, AtomicUsize>,
     value: String,
     fail: bool,
-) -> Result<String, std::io::Error> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<String>, std::io::Error> {
     calls.fetch_add(1, Ordering::SeqCst);
     if fail {
         Err(std::io::Error::other(value))
     } else {
-        Ok(value)
+        Ok(
+            nyanpasu_runtime_values::runtime::MutationOutcome::Committed {
+                value,
+                commits: Vec::new(),
+                notifications_pending: true,
+            },
+        )
     }
 }
 
@@ -84,18 +90,56 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
                 assert_eq!(result.is_err(), fail);
                 fixture.sink.sequence.lock().push("returned");
             }
+            let error = super::native::DesktopRpc::new(fixture.rpc.clone())
+                .unwrap()
+                .call(
+                    app.handle().clone(),
+                    window.as_ref().window(),
+                    window.as_ref().clone(),
+                    command,
+                    json!({}),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.kind, "invalid_params");
         }
         .with_subscriber(tracing_subscriber::registry().with(capture.clone()))
         .await;
         {
             let records = fixture.sink.records.lock();
-            assert_eq!(records.len(), 2);
-            assert!(records.iter().all(|r| r.transport == RpcTransport::TauriIpc
-                && r.command == command
-                && r.owner.as_str() == "audit-window"));
-            assert_eq!(records[0].outcome, RpcAuditOutcome::Success);
+            assert_eq!(records.len(), 5);
+            assert!(
+                records
+                    .iter()
+                    .all(|r| r.header.transport == RpcTransport::TauriIpc
+                        && r.header.method == command
+                        && r.header.owner.as_str() == "audit-window")
+            );
+            assert_eq!(finished(&records[1]), RpcAuditOutcome::Success);
+            assert_eq!(records[0].phase, AuditPhase::Admitted);
+            assert_eq!(records[2].phase, AuditPhase::Admitted);
+            assert_eq!(
+                records[4].phase,
+                AuditPhase::Rejected {
+                    kind: "invalid_params",
+                    code: None
+                }
+            );
+            if command == "audit_native_echo" {
+                assert_eq!(
+                    records[1].phase,
+                    AuditPhase::Finished {
+                        outcome: RpcAuditOutcome::Success,
+                        completion: CompletionSummary::Mutation {
+                            commits: Vec::new(),
+                            notifications_pending: true,
+                            degradation_count: 0
+                        },
+                    }
+                );
+            }
             assert!(matches!(
-                records[1].outcome,
+                finished(&records[3]),
                 RpcAuditOutcome::Failure {
                     kind: "application_error",
                     ..
@@ -103,9 +147,11 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
             ));
             assert_eq!(
                 *fixture.sink.sequence.lock(),
-                ["record", "returned", "record", "returned"]
+                [
+                    "record", "record", "returned", "record", "record", "returned", "record"
+                ]
             );
-            assert_eq!(capture.0.lock().len(), 2);
+            assert_eq!(capture.0.lock().len(), 5);
             assert!(
                 capture
                     .0
@@ -154,12 +200,12 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
                 let mut records = fixture.sink.records.lock();
                 assert_eq!(records.len(), 1, "each rejected dispatch is audited once");
                 let record = records.pop().unwrap();
-                assert_eq!(record.command, command);
-                assert_eq!(record.transport, RpcTransport::TauriIpc);
-                assert_eq!(record.owner.as_str(), "audit-window");
+                assert_eq!(record.header.method, command);
+                assert_eq!(record.header.transport, RpcTransport::TauriIpc);
+                assert_eq!(record.header.owner.as_str(), "audit-window");
                 assert_eq!(
-                    record.outcome,
-                    RpcAuditOutcome::Failure {
+                    record.phase,
+                    AuditPhase::Rejected {
                         kind: "unsupported",
                         code: None
                     }
@@ -188,4 +234,11 @@ fn duplicate_commands_fail_even_when_a_capability_is_missing() {
             name: "read_clipboard_text"
         })
     ));
+}
+
+fn finished(record: &RpcAuditRecord) -> RpcAuditOutcome {
+    match &record.phase {
+        AuditPhase::Finished { outcome, .. } => outcome.clone(),
+        phase => panic!("expected Finished, got {phase:?}"),
+    }
 }

@@ -139,13 +139,38 @@ paths or provide per-call authority.
 
 All dispatched application calls enter `dispatch_audited`, including direct HTTP
 archive and subscription routes and dispatch-time parameter rejections. The
-injected synchronous sink records only transport, fixed command name, caller
-(the window label, or a per-process keyed hash of the HTTP/local owner; the HTTP
-session cookie authorizes log sessions and never reaches a record), monotonic duration and
-outcome (failure kind/code only). HTTP and local use INFO and Tauri
+injected synchronous sink records an `AuditHeader` for each invocation: an
+instance-owned atomic invocation ID, transport, fixed method name, safe caller
+(the window label, or an instance-keyed hash of the HTTP/local owner), and optional
+local request ID. Invocation IDs are independent of transport request IDs and do
+not promise cross-process uniqueness. Unknown names record `unknown_method`;
+owner cookies and request values never reach a record. Records include monotonic
+elapsed duration and phases from actual control flow:
+
+- `Rejected { kind, code }` is the only record when target, capability, injected
+  dependency or argument decoding fails before a prepared handler future exists.
+- `Admitted` precedes polling that future. A handler error is then `Finished`
+  with a failure outcome, even when its kind also occurs in admission errors.
+- `Finished` includes the handler outcome and a `CompletionSummary`. Explicit
+  `MutationOutcome<_>` success signatures report receipt metadata, notification
+  status and degradation counts before JSON erasure, retaining them on response
+  encoding failure. Aliases are not inferred; a test fixes the current reporting
+  command set. Other signatures report `NotReported`, which does not mean no side
+  effects, no commit or transaction cancellation.
+
+A dropped admitted future records `Finished` with `NotObserved` and `NotReported`:
+the dispatch observation ended without a handler result; owner-started work may
+still complete. Unwinding records `Panicked` without catching or converting the
+panic; abort builds cannot record on Drop. Audit durability is diagnostic tracing
+only, best effort on crashes, with no durable transaction log or delivery guarantee.
+The sink is synchronous and must not panic, queue business work or wait on external
+services. Records exclude business values, full degradations and Debug dumps.
+Native shell dispatch uses the same preparation boundary and audit kernel.
+
+HTTP and local use INFO and Tauri
 IPC uses DEBUG on `nyanpasu::rpc_audit`, regardless of outcome. Results, polling,
-cancellation and panic propagation are unchanged; abort builds cannot record on
-Drop. Streams are audited once when established, never per frame. Authentication
+cancellation and panic propagation are unchanged. Streams have one invocation
+record chain when established, never per frame. Authentication
 rejections, static assets and envelopes rejected by Tauri before `call_rpc` are
 outside this boundary. E2b moved the kernel and its port with the registry; E3's
 local socket/CLI must enter this same kernel at INFO.

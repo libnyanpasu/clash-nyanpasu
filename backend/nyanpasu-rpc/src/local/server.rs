@@ -25,7 +25,7 @@ use super::{
 };
 use crate::{
     audit::RpcTransport,
-    registry::{UnifiedRpc, dispatch_audited},
+    registry::{RpcFuture, UnifiedRpc, dispatch_audited, unreported},
 };
 
 /// Bounds are per connection, so a blocked peer cannot consume another's capacity.
@@ -271,6 +271,7 @@ impl Connection {
                                 &method,
                                 owner,
                                 params.clone(),
+                                Some(id),
                                 admission,
                             )
                             .await;
@@ -333,7 +334,8 @@ impl Connection {
                         RpcTransport::Local,
                         self.owner.clone(),
                         || "local_subscribe",
-                        async { Err::<(), _>(subscription_error(code)) },
+                        Some(id),
+                        || Err::<RpcFuture, _>(subscription_error(code)),
                     )
                     .await;
                     drop(permit);
@@ -359,15 +361,16 @@ impl Connection {
                             RpcTransport::Local,
                             owner,
                             || "local_subscribe",
-                            async {
-                                if stream == "connection-details" {
-                                    return source.details().await.map(Subscription::Details);
-                                }
-                                let event = RECOVERABLE_EVENTS
-                                    .into_iter()
-                                    .find(|name| Some(name.as_str()) == event.as_deref())
-                                    .expect("session admitted a recoverable identity");
-                                if event == nyanpasu_rpc_protocol::EventName::AppUpdateStateChanged
+                            Some(id),
+                            || {
+                                let event = (stream != "connection-details").then(|| {
+                                    RECOVERABLE_EVENTS
+                                        .into_iter()
+                                        .find(|name| Some(name.as_str()) == event.as_deref())
+                                        .expect("session admitted a recoverable identity")
+                                });
+                                if event
+                                    == Some(nyanpasu_rpc_protocol::EventName::AppUpdateStateChanged)
                                     && !rpc.command_capabilities_available("get_app_update_state")
                                 {
                                     failure = SubscriptionErrorCode::Unsupported;
@@ -376,28 +379,37 @@ impl Connection {
                                         "application updates are unavailable in this shell",
                                     ));
                                 }
-                                let snapshot =
-                                    subscriptions::snapshot(source.as_ref(), event, &mut receiver)
-                                        .await
-                                        .map_err(|code| {
-                                            failure = code;
-                                            subscription_error(code)
-                                        })?;
-                                if frame::encode(&Frame::Reset {
-                                    subscription: "s18446744073709551615".into(),
-                                    event: event.as_str().into(),
-                                    snapshot: snapshot.clone(),
-                                })
-                                .is_err()
-                                {
-                                    failure = SubscriptionErrorCode::ResourceLimit;
-                                    return Err(subscription_error(failure));
-                                }
-                                Ok(Subscription::Events {
-                                    event,
-                                    receiver,
-                                    snapshot,
-                                })
+                                let failure = &mut failure;
+                                Ok(unreported(async move {
+                                    let Some(event) = event else {
+                                        return source.details().await.map(Subscription::Details);
+                                    };
+                                    let snapshot = subscriptions::snapshot(
+                                        source.as_ref(),
+                                        event,
+                                        &mut receiver,
+                                    )
+                                    .await
+                                    .map_err(|code| {
+                                        *failure = code;
+                                        subscription_error(code)
+                                    })?;
+                                    if frame::encode(&Frame::Reset {
+                                        subscription: "s18446744073709551615".into(),
+                                        event: event.as_str().into(),
+                                        snapshot: snapshot.clone(),
+                                    })
+                                    .is_err()
+                                    {
+                                        *failure = SubscriptionErrorCode::ResourceLimit;
+                                        return Err(subscription_error(*failure));
+                                    }
+                                    Ok(Subscription::Events {
+                                        event,
+                                        receiver,
+                                        snapshot,
+                                    })
+                                }))
                             },
                         )
                         .await
@@ -413,7 +425,8 @@ impl Connection {
                     RpcTransport::Local,
                     self.owner.clone(),
                     || "local_unsubscribe",
-                    async { Ok(()) },
+                    Some(id),
+                    || Ok(unreported(async { Ok(()) })),
                 )
                 .await;
                 self.remove_subscription(&subscription).await;

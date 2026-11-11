@@ -8,6 +8,7 @@ import { memo, useRef } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { ModalAnchor } from '@nyanpasu/ui/modal'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import {
@@ -96,130 +97,132 @@ export const GridViewProfile = memo(function GridViewProfile({
           )}
           asChild
         >
-          <div ref={cardRef}>
-            <AnimatePresence initial={false}>
-              {isPending && (
-                <motion.div
-                  data-slot="profile-card-mask"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+          <ModalAnchor asChild>
+            <div ref={cardRef}>
+              <AnimatePresence initial={false}>
+                {isPending && (
+                  <motion.div
+                    data-slot="profile-card-mask"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className={cn(
+                      'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
+                      'flex flex-col items-center justify-center gap-2',
+                    )}
+                  >
+                    <LinearProgress className="w-2/3 max-w-60" indeterminate />
+
+                    <p className="text-on-surface-variant text-xs">
+                      {m.profile_pending_mask_message()}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {activeProfile.isActive && <ActiveGradient cardRef={cardRef} />}
+
+              <CardHeader
+                className="relative flex flex-col items-start justify-between gap-2 px-4 pt-4 sm:flex-row sm:items-center"
+                data-slot="profile-card-title"
+              >
+                <TextMarquee
                   className={cn(
-                    'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
-                    'flex flex-col items-center justify-center gap-2',
+                    'w-full min-w-0 flex-1 sm:w-auto',
+                    featured && 'text-xl sm:text-2xl',
                   )}
                 >
-                  <LinearProgress className="w-2/3 max-w-60" indeterminate />
+                  {profile.name}
+                </TextMarquee>
 
-                  <p className="text-on-surface-variant text-xs">
-                    {m.profile_pending_mask_message()}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                {activeProfile.isActive && (
+                  <ProfileCardChip className="bg-primary/60 text-on-primary shrink-0">
+                    {m.profile_is_active_label()}
+                  </ProfileCardChip>
+                )}
+              </CardHeader>
 
-            {activeProfile.isActive && <ActiveGradient cardRef={cardRef} />}
-
-            <CardHeader
-              className="relative flex flex-col items-start justify-between gap-2 px-4 pt-4 sm:flex-row sm:items-center"
-              data-slot="profile-card-title"
-            >
-              <TextMarquee
+              <CardContent
                 className={cn(
-                  'w-full min-w-0 flex-1 sm:w-auto',
-                  featured && 'text-xl sm:text-2xl',
+                  'relative min-h-0 flex-1 overflow-hidden px-4',
+                  isProxyProfile(profile) && !featured
+                    ? 'gap-1 py-2'
+                    : 'gap-2 py-3',
                 )}
               >
-                {profile.name}
-              </TextMarquee>
-
-              {activeProfile.isActive && (
-                <ProfileCardChip className="bg-primary/60 text-on-primary shrink-0">
-                  {m.profile_is_active_label()}
-                </ProfileCardChip>
-              )}
-            </CardHeader>
-
-            <CardContent
-              className={cn(
-                'relative min-h-0 flex-1 overflow-hidden px-4',
-                isProxyProfile(profile) && !featured
-                  ? 'gap-1 py-2'
-                  : 'gap-2 py-3',
-              )}
-            >
-              <ProfileCardFeatures
-                profile={profile}
-                profiles={profiles}
-                isGlobal={isGlobal}
-                compact={isProxyProfile(profile) && !featured}
-              />
-
-              {remote ? (
-                <ProfileCardSubscription
+                <ProfileCardFeatures
                   profile={profile}
-                  featured={featured}
+                  profiles={profiles}
+                  isGlobal={isGlobal}
+                  compact={isProxyProfile(profile) && !featured}
                 />
-              ) : isConfigItem(profile) ? (
-                <ProfileCardTraffic profile={profile} featured={featured} />
-              ) : null}
-            </CardContent>
 
-            <CardFooter className="relative shrink-0 flex-row items-center justify-between gap-1">
-              {isProxyProfile(profile) && !activeProfile.isActive ? (
-                <Button
-                  variant="stroked"
-                  className="flex shrink-0 items-center gap-2 px-4 text-xs"
-                  disabled={isPending}
-                  aria-label={m.profile_active_title()}
-                  onClick={activeProfile.handleClick}
-                >
-                  <PowerSettingsNewRounded aria-hidden />
-                  {m.profile_active_title()}
-                </Button>
-              ) : (
-                <span />
-              )}
+                {remote ? (
+                  <ProfileCardSubscription
+                    profile={profile}
+                    featured={featured}
+                  />
+                ) : isConfigItem(profile) ? (
+                  <ProfileCardTraffic profile={profile} featured={featured} />
+                ) : null}
+              </CardContent>
 
-              <div className="flex shrink-0 items-center gap-1">
-                {remote && (
-                  <ProfileCardUpdate profile={profile} disabled={isPending} />
-                )}
-
-                {hasMaterializedFile(profile) && (
-                  <ProfileCardAction label={m.profile_view_content_title()}>
-                    <ViewContent
-                      profile={profile}
-                      icon
-                      className="size-9 sm:size-11"
-                      disabled={isPending}
-                      aria-label={m.profile_view_content_title()}
-                    >
-                      <EditSquareOutlineRounded
-                        className="size-5"
-                        aria-hidden
-                      />
-                    </ViewContent>
-                  </ProfileCardAction>
-                )}
-
-                <ProfileCardAction label={m.profile_view_details_title()}>
-                  <Button icon className="size-9 sm:size-11" asChild>
-                    <Link
-                      to="/main/profiles/$type/detail/$uid"
-                      params={{
-                        type: profileTypeOf(profile),
-                        uid: profile.uid,
-                      }}
-                      aria-label={m.profile_view_details_title()}
-                    >
-                      <InfoOutlineRounded className="size-5" aria-hidden />
-                    </Link>
+              <CardFooter className="relative shrink-0 flex-row items-center justify-between gap-1">
+                {isProxyProfile(profile) && !activeProfile.isActive ? (
+                  <Button
+                    variant="stroked"
+                    className="flex shrink-0 items-center gap-2 px-4 text-xs"
+                    disabled={isPending}
+                    aria-label={m.profile_active_title()}
+                    onClick={activeProfile.handleClick}
+                  >
+                    <PowerSettingsNewRounded aria-hidden />
+                    {m.profile_active_title()}
                   </Button>
-                </ProfileCardAction>
-              </div>
-            </CardFooter>
-          </div>
+                ) : (
+                  <span />
+                )}
+
+                <div className="flex shrink-0 items-center gap-1">
+                  {remote && (
+                    <ProfileCardUpdate profile={profile} disabled={isPending} />
+                  )}
+
+                  {hasMaterializedFile(profile) && (
+                    <ProfileCardAction label={m.profile_view_content_title()}>
+                      <ViewContent
+                        profile={profile}
+                        icon
+                        className="size-9 sm:size-11"
+                        disabled={isPending}
+                        aria-label={m.profile_view_content_title()}
+                      >
+                        <EditSquareOutlineRounded
+                          className="size-5"
+                          aria-hidden
+                        />
+                      </ViewContent>
+                    </ProfileCardAction>
+                  )}
+
+                  <ProfileCardAction label={m.profile_view_details_title()}>
+                    <Button icon className="size-9 sm:size-11" asChild>
+                      <Link
+                        to="/main/profiles/$type/detail/$uid"
+                        params={{
+                          type: profileTypeOf(profile),
+                          uid: profile.uid,
+                        }}
+                        aria-label={m.profile_view_details_title()}
+                      >
+                        <InfoOutlineRounded className="size-5" aria-hidden />
+                      </Link>
+                    </Button>
+                  </ProfileCardAction>
+                </div>
+              </CardFooter>
+            </div>
+          </ModalAnchor>
         </Card>
       </RegisterContextMenuTrigger>
 

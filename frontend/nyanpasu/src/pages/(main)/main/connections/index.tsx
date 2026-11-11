@@ -1,6 +1,7 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import { useCallback, useDeferredValue, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo } from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { Modal } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   RegisterContextMenu,
@@ -89,8 +90,6 @@ function RouteComponent() {
   // the rows render right after.
   const showTable = useDeferredValue(true, false)
 
-  const [settingsOpen, setSettingsOpen] = useState(false)
-
   const crossNavigate = useCrossNavigate()
 
   // No proxy or search on the rules page, so nothing hides the rule.
@@ -149,8 +148,6 @@ function RouteComponent() {
             search={deferredSearch}
             proxy={proxy}
             selection={selection}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
             onLocateRule={handleLocateRule}
             onViewRuleUsage={handleViewRuleUsage}
             focusRowId={focusRowId}
@@ -160,8 +157,6 @@ function RouteComponent() {
             search={deferredSearch}
             proxy={proxy}
             selection={selection}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
             onLocateRule={handleLocateRule}
             onViewRuleUsage={handleViewRuleUsage}
             focusRowId={focusRowId}
@@ -171,8 +166,6 @@ function RouteComponent() {
             search={deferredSearch}
             proxy={proxy}
             filters={filters}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
             onLocateRule={handleLocateRule}
             onViewRuleUsage={handleViewRuleUsage}
             focusRowId={focusRowId}
@@ -182,52 +175,53 @@ function RouteComponent() {
   )
 
   return (
-    <DataPage
-      title={m.navbar_label_connections()}
-      toolbar={
-        <ConnectionsToolbar
-          tabs={
-            <ConnectionsStatusTabs
-              value={scope}
-              onValueChange={(next) =>
-                navigate({
-                  search: (previous) => ({ ...previous, scope: next }),
-                  state: keepReturn,
-                })
-              }
-              selection={selection}
-            />
-          }
-          start={<ReturnButton />}
-          selection={selection}
-          onSelectionChange={handleSelectionChange}
-          search={search}
-          onSearchChange={setSearch}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onCloseAll={
-            scope === 'closed' ? undefined : handleCloseAllConnections
-          }
-        />
-      }
-    >
-      <DataPageSurface>
-        {scope === 'closed' ? (
-          scrollArea
-        ) : (
-          <RegisterContextMenu>
-            <RegisterContextMenuTrigger asChild>
-              {scrollArea}
-            </RegisterContextMenuTrigger>
+    <Modal>
+      <DataPage
+        title={m.navbar_label_connections()}
+        toolbar={
+          <ConnectionsToolbar
+            tabs={
+              <ConnectionsStatusTabs
+                value={scope}
+                onValueChange={(next) =>
+                  navigate({
+                    search: (previous) => ({ ...previous, scope: next }),
+                    state: keepReturn,
+                  })
+                }
+                selection={selection}
+              />
+            }
+            start={<ReturnButton />}
+            selection={selection}
+            onSelectionChange={handleSelectionChange}
+            search={search}
+            onSearchChange={setSearch}
+            onCloseAll={
+              scope === 'closed' ? undefined : handleCloseAllConnections
+            }
+          />
+        }
+      >
+        <DataPageSurface>
+          {scope === 'closed' ? (
+            scrollArea
+          ) : (
+            <RegisterContextMenu>
+              <RegisterContextMenuTrigger asChild>
+                {scrollArea}
+              </RegisterContextMenuTrigger>
 
-            <RegisterContextMenuContent>
-              <ContextMenuItem onSelect={() => handleCloseAllConnections()}>
-                <CloseRounded className="size-4" />
-                <span>{m.connections_close_all_connections()}</span>
-              </ContextMenuItem>
-            </RegisterContextMenuContent>
-          </RegisterContextMenu>
-        )}
-      </DataPageSurface>
-    </DataPage>
+              <RegisterContextMenuContent>
+                <ContextMenuItem onSelect={() => handleCloseAllConnections()}>
+                  <CloseRounded className="size-4" />
+                  <span>{m.connections_close_all_connections()}</span>
+                </ContextMenuItem>
+              </RegisterContextMenuContent>
+            </RegisterContextMenu>
+          )}
+        </DataPageSurface>
+      </DataPage>
+    </Modal>
   )
 }

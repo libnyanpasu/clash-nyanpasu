@@ -3,6 +3,7 @@ import DescriptionRounded from '~icons/material-symbols/description-rounded'
 import DocumentSearchRounded from '~icons/material-symbols/document-search-rounded'
 import PublicIcon from '~icons/material-symbols/public'
 import { Button } from '@nyanpasu/ui/button'
+import { ModalTrigger } from '@nyanpasu/ui/modal'
 import {
   NavigationList,
   NavigationListGroup,
@@ -38,15 +39,17 @@ export default function ProfilesNavigate() {
       <NavigationListGroup
         label={m.profile_group_config()}
         action={
-          <Button
-            icon
-            className="mr-2 size-8"
-            aria-label={m.profile_folder_new_title()}
-            data-slot="profiles-folder-add"
-            onClick={() => openCreateFolder()}
-          >
-            <AddRounded className="size-5" />
-          </Button>
+          <ModalTrigger asChild>
+            <Button
+              icon
+              className="mr-2 size-8"
+              aria-label={m.profile_folder_new_title()}
+              data-slot="profiles-folder-add"
+              onClick={() => openCreateFolder()}
+            >
+              <AddRounded className="size-5" />
+            </Button>
+          </ModalTrigger>
         }
       >
         <ProfilesNavigationItem

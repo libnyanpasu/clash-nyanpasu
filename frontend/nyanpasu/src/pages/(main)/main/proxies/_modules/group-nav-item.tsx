@@ -9,6 +9,7 @@ import SpeedRounded from '~icons/material-symbols/speed-rounded'
 import TouchAppRounded from '~icons/material-symbols/touch-app-rounded'
 import { memo, type ComponentType, type SVGProps } from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { ModalAnchor } from '@nyanpasu/ui/modal'
 import {
   NavigationListItem,
   NavigationListItemIcon,
@@ -127,64 +128,66 @@ const GroupNavItem = memo(function GroupNavItem({
 
   return (
     <RegisterContextMenu>
-      <RegisterContextMenuTrigger asChild>
-        <NavigationListItem
-          ref={ref}
-          active={active}
-          asChild
-          data-dragging={isDragging || undefined}
-        >
-          <Link
-            // dnd-kit gives its drag source the button role unless one is set.
-            role="link"
-            aria-current={active ? 'page' : undefined}
-            to="/main/proxies/group/$name"
-            params={{ name: group.name }}
-            search={(previous) => ({ q: previous.q })}
+      <ModalAnchor className="rounded-3xl [&>*:first-child]:rounded-[inherit]">
+        <RegisterContextMenuTrigger asChild>
+          <NavigationListItem
+            ref={ref}
+            active={active}
+            asChild
+            data-dragging={isDragging || undefined}
           >
-            {group.icon ? (
-              <NavigationListItemIcon image>
-                <CacheImage
-                  icon={group.icon}
-                  className="size-full"
-                  // The picture is never clipped, but its placeholder stays round.
-                  loadingClassName="rounded-full"
-                />
-              </NavigationListItemIcon>
-            ) : (
-              <NavigationListItemIcon color={glyph.color}>
-                <glyph.icon />
-              </NavigationListItemIcon>
-            )}
+            <Link
+              // dnd-kit gives its drag source the button role unless one is set.
+              role="link"
+              aria-current={active ? 'page' : undefined}
+              to="/main/proxies/group/$name"
+              params={{ name: group.name }}
+              search={(previous) => ({ q: previous.q })}
+            >
+              {group.icon ? (
+                <NavigationListItemIcon image>
+                  <CacheImage
+                    icon={group.icon}
+                    className="size-full"
+                    // The picture is never clipped, but its placeholder stays round.
+                    loadingClassName="rounded-full"
+                  />
+                </NavigationListItemIcon>
+              ) : (
+                <NavigationListItemIcon color={glyph.color}>
+                  <glyph.icon />
+                </NavigationListItemIcon>
+              )}
 
-            <NavigationListItemText
-              headline={group.name}
-              supporting={group.now ?? ''}
-              supportingStart={
-                <>
-                  <span className="bg-secondary-container text-on-secondary-container shrink-0 rounded-full px-1.5 py-0.5 text-[10px] leading-3">
-                    {group.type}
-                  </span>
-
-                  {group.now && group.fixed && (
-                    <span
-                      className="shrink-0"
-                      title={group.fixed}
-                      data-slot="group-summary-fixed-icon"
-                    >
-                      <KeepRounded className="size-3.5" />
+              <NavigationListItemText
+                headline={group.name}
+                supporting={group.now ?? ''}
+                supportingStart={
+                  <>
+                    <span className="bg-secondary-container text-on-secondary-container shrink-0 rounded-full px-1.5 py-0.5 text-[10px] leading-3">
+                      {group.type}
                     </span>
-                  )}
-                </>
-              }
-            />
 
-            <NavigationListItemTrailing>
-              <GroupDelay group={group} proxies={proxies} />
-            </NavigationListItemTrailing>
-          </Link>
-        </NavigationListItem>
-      </RegisterContextMenuTrigger>
+                    {group.now && group.fixed && (
+                      <span
+                        className="shrink-0"
+                        title={group.fixed}
+                        data-slot="group-summary-fixed-icon"
+                      >
+                        <KeepRounded className="size-3.5" />
+                      </span>
+                    )}
+                  </>
+                }
+              />
+
+              <NavigationListItemTrailing>
+                <GroupDelay group={group} proxies={proxies} />
+              </NavigationListItemTrailing>
+            </Link>
+          </NavigationListItem>
+        </RegisterContextMenuTrigger>
+      </ModalAnchor>
 
       <RegisterContextMenuContent>
         <GroupMoveContextMenu move={move} />

@@ -23,7 +23,9 @@ async function renderForm(
 
     // The field error, read the way the editor renders it inline.
     return (
-      <p>{view.current.form.formState.errors.externalController?.message}</p>
+      <form onSubmit={view.current.handleSubmit}>
+        <p>{view.current.form.formState.errors.externalController?.message}</p>
+      </form>
     )
   }
 
@@ -70,4 +72,34 @@ test('a valid address reaches apply parsed', async ({ onTestFinished }) => {
 
   expect(apply).toHaveBeenCalledExactlyOnceWith({ host: '::1', port: 9091 })
   expect(container.textContent).toBe('')
+})
+
+test('repeated submissions do not start another pending save', async ({
+  onTestFinished,
+}) => {
+  const { apply, submit, container } = await renderForm(
+    '127.0.0.1:9090',
+    onTestFinished,
+  )
+  let finish!: () => void
+  const saved = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  apply.mockImplementationOnce(async () => saved)
+  onTestFinished(() => finish())
+
+  const first = submit('127.0.0.1:9091')
+  await expect.poll(() => apply.mock.calls.length).toBe(1)
+  const repeatedSubmit = new Event('submit', {
+    bubbles: true,
+    cancelable: true,
+  })
+  container.querySelector('form')!.dispatchEvent(repeatedSubmit)
+  expect(repeatedSubmit.defaultPrevented).toBe(true)
+  expect(apply).toHaveBeenCalledTimes(1)
+  finish()
+  await first
+
+  await submit('127.0.0.1:9092')
+  expect(apply).toHaveBeenCalledTimes(2)
 })

@@ -1,3 +1,4 @@
+import { Modal } from '@nyanpasu/ui/modal'
 // Tailwind sizes the scroll area, so the table has rows out of view.
 import '@/assets/styles/tailwind.css'
 import { useState } from 'react'
@@ -45,18 +46,18 @@ test('the focused row scrolls into view and is highlighted', async ({
   })
 
   root.render(
-    <ScrollArea className="h-96">
-      <ConnectionsTable
-        settingsKey="connections-columns-focus-test"
-        columns={columns}
-        data={rows}
-        getRowId={rowId}
-        emptyMessage=""
-        focusRowId="row-150"
-        settingsOpen={false}
-        onSettingsOpenChange={() => {}}
-      />
-    </ScrollArea>,
+    <Modal>
+      <ScrollArea className="h-96">
+        <ConnectionsTable
+          settingsKey="connections-columns-focus-test"
+          columns={columns}
+          data={rows}
+          getRowId={rowId}
+          emptyMessage=""
+          focusRowId="row-150"
+        />
+      </ScrollArea>
+    </Modal>,
   )
 
   const viewport = () =>
@@ -100,8 +101,6 @@ function Tabs({
         getRowId={rowId}
         emptyMessage=""
         focusRowId={focusRowId}
-        settingsOpen={false}
-        onSettingsOpenChange={() => {}}
       />
     </ScrollArea>
   )
@@ -122,12 +121,14 @@ test('switching tabs and back does not focus the row again', async ({
   let setScope: (scope: string) => void = () => {}
 
   root.render(
-    <Tabs
-      focus="row-150"
-      onScopeChange={(next) => {
-        setScope = next
-      }}
-    />,
+    <Modal>
+      <Tabs
+        focus="row-150"
+        onScopeChange={(next) => {
+          setScope = next
+        }}
+      />
+    </Modal>,
   )
 
   const focused = () => container.querySelector('tr[data-focused="true"]')
@@ -188,15 +189,13 @@ test('the last connection scrolls clear of the dock after it wraps', async ({
                 />
               )}
               emptyMessage=""
-              settingsOpen={false}
-              onSettingsOpenChange={() => {}}
             />
           </div>
         </ScrollArea>
       </DataPageSurface>
     </DataPage>
   )
-  root.render(content)
+  root.render(<Modal>{content}</Modal>)
 
   const viewport = () =>
     container.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!
@@ -213,7 +212,7 @@ test('the last connection scrolls clear of the dock after it wraps', async ({
       // A new page mount must use the same geometry as an existing page.
       root.render(null)
       await expect.poll(() => container.childElementCount).toBe(0)
-      root.render(content)
+      root.render(<Modal>{content}</Modal>)
       await expect.poll(() => dock()?.offsetHeight ?? 0).toBeGreaterThan(0)
     }
     container.style.width = `${width}px`

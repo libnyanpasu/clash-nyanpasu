@@ -1,9 +1,9 @@
 import { AnimatePresence } from 'motion/react'
-import { ComponentProps, useState } from 'react'
+import { ComponentProps } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { NumericInput } from '@nyanpasu/ui/input'
-import { ModalTrigger } from '@nyanpasu/ui/modal'
+import { Modal, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { getRemoteSource } from '@nyanpasu/query'
@@ -22,7 +22,17 @@ const formSchema = z.object({
 })
 
 /** Edits the minutes between the automatic updates of a remote profile. */
-export default function UpdateIntervalEditor({
+export default function UpdateIntervalEditor(
+  props: ComponentProps<typeof UpdateIntervalEditorForm>,
+) {
+  return (
+    <Modal>
+      <UpdateIntervalEditorForm {...props} />
+    </Modal>
+  )
+}
+
+function UpdateIntervalEditorForm({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
@@ -33,7 +43,7 @@ export default function UpdateIntervalEditor({
     'update-interval',
   )
 
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const currentInterval =
     getRemoteSource(profile)?.option.update_interval_minutes ?? 0
@@ -43,14 +53,6 @@ export default function UpdateIntervalEditor({
     defaultValues: { update_interval: currentInterval },
   })
 
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next)
-
-    if (!next) {
-      form.reset({ update_interval: currentInterval })
-    }
-  }
-
   const handleSave = form.handleSubmit(async ({ update_interval }) => {
     const saved = await patch({
       ...UNCHANGED_REMOTE_OPTIONS,
@@ -58,7 +60,7 @@ export default function UpdateIntervalEditor({
     })
 
     if (saved) {
-      handleOpenChange(false)
+      setOpen(false)
     }
   })
 
@@ -66,10 +68,8 @@ export default function UpdateIntervalEditor({
     <ProfileFieldDialog
       {...props}
       title={m.profile_update_interval_editor_label()}
-      open={open}
-      onOpenChange={handleOpenChange}
+      onOpen={() => form.reset({ update_interval: currentInterval })}
       onSave={handleSave}
-      onCancel={() => handleOpenChange(false)}
       saving={isPending}
       field={
         <Controller

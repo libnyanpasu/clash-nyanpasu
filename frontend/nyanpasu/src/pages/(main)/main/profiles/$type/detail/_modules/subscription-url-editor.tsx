@@ -1,9 +1,9 @@
 import { AnimatePresence } from 'motion/react'
-import { ComponentProps, useState } from 'react'
+import { ComponentProps } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Input } from '@nyanpasu/ui/input'
-import { ModalTrigger } from '@nyanpasu/ui/modal'
+import { Modal, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -38,7 +38,17 @@ const withRemoteUrl = (
   return { type: 'config', config: { ...profile.config, source } }
 }
 
-export default function SubscriptionUrlEditor({
+export default function SubscriptionUrlEditor(
+  props: ComponentProps<typeof SubscriptionUrlEditorForm>,
+) {
+  return (
+    <Modal>
+      <SubscriptionUrlEditorForm {...props} />
+    </Modal>
+  )
+}
+
+function SubscriptionUrlEditorForm({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
@@ -46,7 +56,7 @@ export default function SubscriptionUrlEditor({
 }) {
   const { replaceDefinition, update } = useProfileMutations()
 
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const currentUrl = getRemoteSource(profile)?.url ?? ''
 
@@ -56,14 +66,6 @@ export default function SubscriptionUrlEditor({
       url: currentUrl,
     },
   })
-
-  const handleClose = () => {
-    setOpen(false)
-    // get latest name
-    form.reset({
-      url: currentUrl,
-    })
-  }
 
   const blockTask = useBlockTask(
     `update-remote-profile-url-${profile.uid}`,
@@ -82,7 +84,7 @@ export default function SubscriptionUrlEditor({
             await update.mutateAsync({ uid: profile.uid, option: null })
           }
 
-          handleClose()
+          setOpen(false)
         } catch (error) {
           message(m.profile_update_failed({ error: formatError(error) }), {
             title: m.profile_error_title(),
@@ -107,10 +109,8 @@ export default function SubscriptionUrlEditor({
     <ProfileFieldDialog
       {...props}
       title={m.profile_subscription_url_editor_label()}
-      open={open}
-      onOpenChange={setOpen}
+      onOpen={() => form.reset({ url: currentUrl })}
       onSave={handleSubmit}
-      onCancel={handleClose}
       saving={blockTask.isPending}
       field={
         <Controller

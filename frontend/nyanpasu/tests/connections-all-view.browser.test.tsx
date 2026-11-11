@@ -2,6 +2,7 @@ import { useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
+import { Modal } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
@@ -132,11 +133,13 @@ function render(
     localStorage.clear()
   })
   root.render(
-    <QueryClientProvider client={queries}>
-      <ContextMenuProvider>
-        <ScrollArea className="h-96">{node}</ScrollArea>
-      </ContextMenuProvider>
-    </QueryClientProvider>,
+    <Modal>
+      <QueryClientProvider client={queries}>
+        <ContextMenuProvider>
+          <ScrollArea className="h-96">{node}</ScrollArea>
+        </ContextMenuProvider>
+      </QueryClientProvider>
+    </Modal>,
   )
   return container
 }
@@ -160,12 +163,7 @@ test('lists live and closed connections in one table', async ({
   }))
 
   const container = render(
-    <AllViewer
-      search=""
-      selection={{ filters: [] }}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <AllViewer search="" selection={{ filters: [] }} />,
     onTestFinished,
   )
 

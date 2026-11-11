@@ -36,8 +36,6 @@ const ActiveViewer = memo(function ActiveViewer({
   search,
   proxy,
   filters,
-  settingsOpen,
-  onSettingsOpenChange,
   onLocateRule,
   onViewRuleUsage,
   focusRowId,
@@ -45,8 +43,6 @@ const ActiveViewer = memo(function ActiveViewer({
   search: string
   proxy?: string | null
   filters: SearchFilter[]
-  settingsOpen: boolean
-  onSettingsOpenChange: (open: boolean) => void
   onLocateRule?: (detail: ConnectionDetail) => void
   onViewRuleUsage?: (detail: ConnectionDetail) => void
   // The row to scroll to and highlight once it appears.
@@ -262,8 +258,6 @@ const ActiveViewer = memo(function ActiveViewer({
               : m.connections_empty_message()
         }
         focusRowId={focusRowId}
-        settingsOpen={settingsOpen}
-        onSettingsOpenChange={onSettingsOpenChange}
       />
 
       <RowsTickContext.Provider value={connections}>

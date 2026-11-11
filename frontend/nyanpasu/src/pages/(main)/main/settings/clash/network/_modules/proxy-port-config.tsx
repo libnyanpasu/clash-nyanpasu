@@ -1,6 +1,6 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { AnimatePresence } from 'motion/react'
-import { PropsWithChildren, useState } from 'react'
+import { PropsWithChildren } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
@@ -12,6 +12,7 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import {
   SegmentedButton,
@@ -22,6 +23,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useLockFn } from '@nyanpasu/hooks'
 import { useClashConfig, useClashSetting } from '@nyanpasu/query'
 import {
   type ClashApiConfig,
@@ -111,7 +113,19 @@ const describeStrategy = (
   return parts.join(' · ')
 }
 
-const PortStrategyDialog = ({
+const PortStrategyDialog = (
+  props: PropsWithChildren<{
+    title: string
+    value: PortStrategy
+    onApply: (strategy: PortStrategy) => Promise<void>
+  }>,
+) => (
+  <Modal>
+    <PortStrategyForm {...props} />
+  </Modal>
+)
+
+const PortStrategyForm = ({
   title,
   value,
   onApply,
@@ -121,7 +135,7 @@ const PortStrategyDialog = ({
   value: PortStrategy
   onApply: (strategy: PortStrategy) => Promise<void>
 }>) => {
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -130,36 +144,39 @@ const PortStrategyDialog = ({
 
   const kind = form.watch('kind')
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      form.reset(value)
-    }
+  const handleSubmit = useLockFn(
+    form.handleSubmit(async (data) => {
+      try {
+        await onApply(data)
 
-    setOpen(next)
-  }
-
-  const handleSubmit = form.handleSubmit(async (data) => {
-    try {
-      await onApply(data)
-
-      setOpen(false)
-    } catch (error) {
-      reportError(error)
-    }
-  })
+        setOpen(false)
+      } catch (error) {
+        reportError(error)
+      }
+    }),
+  )
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange}>
+    <>
       {children}
 
-      <ModalContent>
+      <ModalContent
+        dismissible={!form.formState.isSubmitting}
+        onOpenAutoFocus={() => form.reset(value)}
+      >
         <Card className="flex min-w-96 flex-col">
           <CardHeader>
             <ModalTitle>{title}</ModalTitle>
           </CardHeader>
 
           <CardContent asChild>
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                handleSubmit(event)
+              }}
+            >
               <Controller
                 name="kind"
                 control={form.control}
@@ -224,15 +241,18 @@ const PortStrategyDialog = ({
               variant="flat"
               onClick={handleSubmit}
               loading={form.formState.isSubmitting}
+              disabled={form.formState.isSubmitting}
             >
               {m.common_apply()}
             </Button>
 
-            <ModalClose>{m.common_close()}</ModalClose>
+            <ModalClose disabled={form.formState.isSubmitting}>
+              {m.common_close()}
+            </ModalClose>
           </CardFooter>
         </Card>
       </ModalContent>
-    </Modal>
+    </>
   )
 }
 

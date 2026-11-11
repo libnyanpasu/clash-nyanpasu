@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { FilterChip } from '@nyanpasu/ui/chip'
+import { Modal } from '@nyanpasu/ui/modal'
 import { CircularProgress } from '@nyanpasu/ui/progress'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { PageTitle } from '@/components/page-title'
@@ -32,7 +33,6 @@ function CreditsBrowser({ credits }: { credits: OpenSourceCredits }) {
 
   // The last selected package stays while the dialog plays its exit.
   const [selected, setSelected] = useState<CreditPackage | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
 
   const counts = useMemo(() => {
     const result: Record<CreditSource, number> = {
@@ -60,11 +60,10 @@ function CreditsBrowser({ credits }: { credits: OpenSourceCredits }) {
 
   const handleSelect = (pkg: CreditPackage) => {
     setSelected(pkg)
-    setModalOpen(true)
   }
 
   return (
-    <>
+    <Modal>
       <div
         className="flex flex-col gap-3 sm:flex-row sm:items-center"
         data-slot="credits-toolbar"
@@ -106,13 +105,8 @@ function CreditsBrowser({ credits }: { credits: OpenSourceCredits }) {
         </SettingsCardContent>
       </SettingsCard>
 
-      <CreditLicenseModal
-        pkg={selected}
-        texts={credits.texts}
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-      />
-    </>
+      <CreditLicenseModal pkg={selected} texts={credits.texts} />
+    </Modal>
   )
 }
 

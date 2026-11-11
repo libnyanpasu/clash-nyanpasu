@@ -2,7 +2,7 @@ import { ComponentProps, ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
-  Modal,
+  ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
@@ -16,27 +16,23 @@ import { m } from '@/paraglide/messages'
 export default function ProfileFieldDialog({
   title,
   field,
-  open,
-  onOpenChange,
+  onOpen,
   onSave,
-  onCancel,
   saving,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
   title: ReactNode
   /** The input and its validation message. */
   field: ReactNode
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  onOpen: () => void
   onSave: () => void
-  onCancel: () => void
   saving: boolean
 }) {
   return (
-    <Modal open={open} onOpenChange={onOpenChange}>
+    <>
       <ModalTrigger {...props} />
 
-      <ModalContent>
+      <ModalContent dismissible={!saving} onOpenAutoFocus={onOpen}>
         <Card className="w-96" data-slot="profile-field-dialog">
           <CardHeader>
             <ModalTitle>{title}</ModalTitle>
@@ -45,14 +41,14 @@ export default function ProfileFieldDialog({
           <CardContent>{field}</CardContent>
 
           <CardFooter className="gap-1">
-            <Button onClick={onSave} loading={saving}>
+            <Button onClick={onSave} loading={saving} disabled={saving}>
               {m.common_save()}
             </Button>
 
-            <Button onClick={onCancel}>{m.common_cancel()}</Button>
+            <ModalClose disabled={saving}>{m.common_cancel()}</ModalClose>
           </CardFooter>
         </Card>
       </ModalContent>
-    </Modal>
+    </>
   )
 }

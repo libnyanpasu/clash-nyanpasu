@@ -2,13 +2,14 @@ import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded
 import LinkRounded from '~icons/material-symbols/link-rounded'
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
 import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentProps } from 'react'
 import {
   FabMenu,
   FabMenuContent,
   FabMenuItem,
   FabMenuTrigger,
 } from '@nyanpasu/ui/fab-menu'
+import { Modal, ModalAnchor, useModal } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { type FolderId } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
@@ -37,11 +38,24 @@ const SOURCE_ITEMS = [
   label: () => string
 }[]
 
-export default function ImportButton({
+export default function ImportButton(
+  props: ComponentProps<typeof ImportButtonContent>,
+) {
+  return (
+    <Modal
+      onOpenChange={(open) => {
+        if (!open && props.localImportRequested) props.onLocalImportHandled?.()
+      }}
+    >
+      <ImportButtonContent {...props} />
+    </Modal>
+  )
+}
+
+function ImportButtonContent({
   kind,
   folder,
   localImportRequested = false,
-  onLocalImportHandled,
 }: {
   /** Initial kind of the create modal. */
   kind: CreateKind
@@ -52,7 +66,7 @@ export default function ImportButton({
   /** Called once the modal opened for `localImportRequested` closes. */
   onLocalImportHandled?: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const [source, setSource] = useState<CreateSource>('remote')
 
@@ -70,15 +84,7 @@ export default function ImportButton({
     return () => {
       clearTimeout(timeout)
     }
-  }, [localImportRequested])
-
-  const handleOpenChange = (value: boolean) => {
-    setOpen(value)
-
-    if (!value && localImportRequested) {
-      onLocalImportHandled?.()
-    }
-  }
+  }, [localImportRequested, setOpen])
 
   return (
     <div
@@ -108,19 +114,15 @@ export default function ImportButton({
           ))}
         </FabMenuContent>
 
-        <FabMenuTrigger
-          icon={<NoteStackAddRounded className="size-6" />}
-          aria-label={m.profile_import_title()}
-        />
+        <ModalAnchor className="w-fit">
+          <FabMenuTrigger
+            icon={<NoteStackAddRounded className="size-6" />}
+            aria-label={m.profile_import_title()}
+          />
+        </ModalAnchor>
       </FabMenu>
 
-      <CreateProfileModal
-        open={open}
-        onOpenChange={handleOpenChange}
-        kind={kind}
-        folder={folder}
-        source={source}
-      />
+      <CreateProfileModal kind={kind} folder={folder} source={source} />
     </div>
   )
 }

@@ -37,8 +37,6 @@ const ClosedViewer = memo(function ClosedViewer({
   search,
   proxy,
   selection,
-  settingsOpen,
-  onSettingsOpenChange,
   onLocateRule,
   onViewRuleUsage,
   focusRowId,
@@ -46,8 +44,6 @@ const ClosedViewer = memo(function ClosedViewer({
   search: string
   proxy?: string | null
   selection: ConnectionsSelection
-  settingsOpen: boolean
-  onSettingsOpenChange: (open: boolean) => void
   onLocateRule?: (detail: ConnectionDetail) => void
   onViewRuleUsage?: (detail: ConnectionDetail) => void
   // The row to scroll to and highlight once it appears.
@@ -229,8 +225,6 @@ const ClosedViewer = memo(function ClosedViewer({
         }
         onEndReached={onEndReached}
         focusRowId={focusRowId}
-        settingsOpen={settingsOpen}
-        onSettingsOpenChange={onSettingsOpenChange}
       />
 
       <RowsTickContext.Provider value={rows}>

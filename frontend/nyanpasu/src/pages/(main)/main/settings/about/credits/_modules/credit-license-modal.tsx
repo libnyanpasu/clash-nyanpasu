@@ -1,7 +1,7 @@
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import { ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { openExternal } from '../../../_modules/open-external'
@@ -15,20 +15,16 @@ import type { CreditPackage } from './use-open-source-credits'
 export default function CreditLicenseModal({
   pkg,
   texts,
-  open,
-  onOpenChange,
 }: {
   pkg: CreditPackage | null
   texts: Record<string, string>
-  open: boolean
-  onOpenChange: (open: boolean) => void
 }) {
   const platforms = creditPlatforms(pkg?.platforms)
 
   return (
-    <Modal open={open && pkg != null} onOpenChange={onOpenChange}>
+    <ModalContent>
       {pkg && (
-        <ModalContent>
+        <>
           <Card
             className="flex max-h-[90dvh] w-[min(48rem,calc(100vw-2rem))] flex-col"
             data-slot="credits-license-modal"
@@ -100,8 +96,8 @@ export default function CreditLicenseModal({
               )}
             </CardFooter>
           </Card>
-        </ModalContent>
+        </>
       )}
-    </Modal>
+    </ModalContent>
   )
 }

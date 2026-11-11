@@ -5,6 +5,7 @@ import { CircularProgress } from './progress'
 
 export const Switch = ({
   className,
+  children,
   loading,
   ...props
 }: React.ComponentProps<typeof SwitchPrimitives.Root> & {
@@ -50,6 +51,8 @@ export const Switch = ({
           </span>
         )}
       </SwitchPrimitives.Thumb>
+
+      {children}
     </SwitchPrimitives.Root>
   )
 }

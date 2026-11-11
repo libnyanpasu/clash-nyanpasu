@@ -1,7 +1,7 @@
-import { ComponentProps, useState } from 'react'
+import { ComponentProps } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Input } from '@nyanpasu/ui/input'
-import { ModalTrigger } from '@nyanpasu/ui/modal'
+import { Modal, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { getRemoteSource } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
@@ -12,7 +12,17 @@ import {
 } from './use-remote-options-patch'
 
 /** Edits the User-Agent a remote profile is downloaded with. */
-export default function UserAgentEditor({
+export default function UserAgentEditor(
+  props: ComponentProps<typeof UserAgentEditorForm>,
+) {
+  return (
+    <Modal>
+      <UserAgentEditorForm {...props} />
+    </Modal>
+  )
+}
+
+function UserAgentEditorForm({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
@@ -20,19 +30,11 @@ export default function UserAgentEditor({
 }) {
   const { patch, isPending } = useRemoteOptionsPatch(profile.uid, 'user-agent')
 
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const currentUserAgent = getRemoteSource(profile)?.option.user_agent ?? ''
 
   const form = useForm({ defaultValues: { user_agent: currentUserAgent } })
-
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next)
-
-    if (!next) {
-      form.reset({ user_agent: currentUserAgent })
-    }
-  }
 
   const handleSave = form.handleSubmit(async ({ user_agent }) => {
     // An empty value clears the override, so the default applies again.
@@ -42,7 +44,7 @@ export default function UserAgentEditor({
     })
 
     if (saved) {
-      handleOpenChange(false)
+      setOpen(false)
     }
   })
 
@@ -50,10 +52,8 @@ export default function UserAgentEditor({
     <ProfileFieldDialog
       {...props}
       title={m.profile_user_agent_editor_label()}
-      open={open}
-      onOpenChange={handleOpenChange}
+      onOpen={() => form.reset({ user_agent: currentUserAgent })}
       onSave={handleSave}
-      onCancel={() => handleOpenChange(false)}
       saving={isPending}
       field={
         <Controller

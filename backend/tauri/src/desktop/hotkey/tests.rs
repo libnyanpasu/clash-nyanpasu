@@ -3,9 +3,13 @@
 use std::sync::{Arc, Mutex};
 
 use nyanpasu_core::client::{
-    effects::status::{EffectFailureCode, EffectHealth, EffectRevision},
-    hotkey::ports::{HotkeyAction, HotkeyBindings, HotkeyParseError},
+    effects::status::{EffectHealth, EffectRevision},
+    hotkey::ports::HotkeyBindings,
     test_support::AnyAccelerator,
+};
+use nyanpasu_runtime_values::{
+    configuration::EffectFailureCode,
+    hotkey::{HotkeyAction, HotkeyParseError},
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 

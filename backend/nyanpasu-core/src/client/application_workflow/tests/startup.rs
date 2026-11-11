@@ -9,6 +9,9 @@
 //! the instants taken around the call that set it; nothing sleeps.
 
 use nyanpasu_contracts::service::ServiceProcessControl;
+use nyanpasu_runtime_values::{
+    configuration::ConvergenceHealth, core_status::ServicePhase, execution_host::ExecutionHost,
+};
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -58,18 +61,16 @@ use crate::{
             ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
             CoreSubmission, EndpointHandle,
         },
-        service_actor::{ServiceClient, ServicePhase},
+        service_actor::ServiceClient,
     },
     client::{
         SessionPortResolver,
-        convergence::ConvergenceHealth,
         core_lifecycle::Ownership,
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
     state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
 };
-use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
 

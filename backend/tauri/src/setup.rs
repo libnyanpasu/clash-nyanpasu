@@ -2,6 +2,7 @@
 use nyanpasu_observers::{logs::UnavailableCoreLogStore, traffic::TrafficOwnerFactory};
 use nyanpasu_owner_support::shutdown::track_until_shutdown;
 use nyanpasu_rpc_protocol::ShellCapability;
+use nyanpasu_runtime_values::hotkey::HotkeyAction;
 
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_net::{
@@ -48,7 +49,6 @@ use nyanpasu_core::{
         debug_http::DebugHttpControl,
         effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
-        hotkey::ports::HotkeyAction,
         system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
     storage::RedbHotkeyStoreOpener,

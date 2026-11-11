@@ -9,12 +9,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use nyanpasu_core::client::{
-    effects::{
-        plan::EffectKind,
-        status::{EffectHealth, EffectRevision, EffectStatus},
-    },
-    hotkey::ports::{HotkeyAction, HotkeyBindings, HotkeyOp},
+    effects::status::{EffectHealth, EffectRevision, EffectStatus},
+    hotkey::ports::{HotkeyBindings, HotkeyOp},
 };
+use nyanpasu_runtime_values::{configuration::EffectKind, hotkey::HotkeyAction};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio_util::sync::CancellationToken;
 

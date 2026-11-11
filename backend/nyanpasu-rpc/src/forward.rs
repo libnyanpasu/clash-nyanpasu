@@ -9,17 +9,17 @@
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
+use nyanpasu_contracts::logs::CoreLogStatus;
 use nyanpasu_core::{
-    actor_v2::CoreStatusInfo,
     clash::ws::{ClashWsPacket, ClashWsUpdate},
     client::{NyanpasuClient, StateChanged, UiEventSink},
-    storage::{self, Storage, StorageNotification, StorageRevision},
+    storage,
+    storage::{Storage, StorageNotification},
 };
 use nyanpasu_rpc_protocol::EventName;
+use nyanpasu_runtime_values::{core_status::CoreStatusInfo, storage::StorageRevision};
 use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
-
-use nyanpasu_observers::logs::CoreLogStatus;
 
 use crate::events::EventBus;
 

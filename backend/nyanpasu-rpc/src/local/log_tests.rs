@@ -6,8 +6,9 @@ use interprocess::local_socket::{
     tokio::{Listener, Stream},
     traits::tokio::Listener as _,
 };
+use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_core::client::{
-    logs::{IpcServiceLogs, LogSource, ServiceLogsPort},
+    logs::{IpcServiceLogs, ServiceLogsPort},
     test_support::TestControlEndpoint,
 };
 use nyanpasu_ipc::api::{

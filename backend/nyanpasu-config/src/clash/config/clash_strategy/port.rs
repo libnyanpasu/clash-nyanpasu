@@ -77,7 +77,7 @@ impl PartialEq for PortStrategy {
     }
 }
 
-#[derive(Debug, Snafu, Serialize, Type)]
+#[derive(Debug, Snafu, Serialize, serde::Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PickPortError {
     #[snafu(display("Port {port} is not available"))]

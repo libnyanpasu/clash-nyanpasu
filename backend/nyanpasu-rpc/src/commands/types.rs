@@ -28,8 +28,8 @@ pub struct ServiceStatusInfo {
     pub version: std::borrow::Cow<'static, str>,
     pub status: nyanpasu_ipc::types::ServiceStatus,
     pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
-    pub compat: nyanpasu_core::service::compat::ServiceCompat,
-    pub phase: nyanpasu_core::actor_v2::service_actor::ServicePhase,
+    pub compat: nyanpasu_runtime_values::core_status::ServiceCompat,
+    pub phase: nyanpasu_runtime_values::core_status::ServicePhase,
     pub restart_attempts: u8,
 }
 

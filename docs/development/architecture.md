@@ -176,7 +176,8 @@ control; control must not import `client`. Source owners must not directly impor
 factory defined in `state/mutation/ports.rs`; `client/application_workflow/participant.rs`
 implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
 stay under `state/mutation/`; public wire values live in runtime-values. The
-notification contract and `EffectKind` remain in `client/effects`, so the policy
+notification contract remains in `client/effects`; `EffectKind` lives in
+`nyanpasu-runtime-values::configuration`. The policy
 allows source dependencies on effects, jobs and value/validation contracts. It
 uses a bounded syntax guard for explicit use trees/paths and lexical scopes,
 including tests. Same-core provider aliases/re-exports are followed for at most

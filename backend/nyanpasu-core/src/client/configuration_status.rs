@@ -1,64 +1,12 @@
 //! Read-only configuration status. No repair or retry occurs on inspection.
-use super::{
-    NyanpasuClient,
-    effects::{
-        plan::EffectKind,
-        status::{EffectFailureCode, EffectHealth},
-    },
-};
-use crate::{
-    client::convergence::ConvergenceHealth,
-    state::profiles::sources::{SourceStatus, SourcesSnapshot},
+use nyanpasu_runtime_values::configuration::{
+    ConfigurationStatus, ConvergenceHealth, EffectConvergence, OperationStatus, RuntimeConvergence,
+    SourceVersions,
 };
 
-#[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct ConfigurationStatus {
-    pub event_seq: u64,
-    pub maintenance: Option<String>,
-    pub source_versions: SourceVersions,
-    pub runtime: RuntimeConvergence,
-    pub effects: Vec<EffectConvergence>,
-    /// The latest background-source receipt per profile.
-    pub sources: Vec<SourceStatus>,
-    pub active: Option<String>,
-    pub recent_operations: Vec<OperationStatus>,
-}
-#[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct SourceVersions {
-    pub application: u64,
-    pub clash: u64,
-    pub session: u64,
-    pub profiles: u64,
-}
-#[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct RuntimeConvergence {
-    pub health: ConvergenceHealth,
-    pub operation_id: Option<String>,
-    pub attempts: u32,
-    pub automatic_remaining: u8,
-    pub message: Option<String>,
-}
-#[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct EffectConvergence {
-    pub kind: EffectKind,
-    pub health: ConvergenceHealth,
-    pub desired_revision: u64,
-    pub applied_revision: u64,
-    pub attempts: u32,
-    pub automatic_remaining: u8,
-    /// What kind of failure the effect is in, for the UI to localize.
-    pub code: Option<EffectFailureCode>,
-    /// The failure's diagnostic text, as the owner reported it.
-    pub message: Option<String>,
-}
-#[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct OperationStatus {
-    pub operation_id: String,
-    pub domain: String,
-    pub outcome: String,
-    pub conclusion: String,
-    pub message: Option<String>,
-}
+use super::{NyanpasuClient, effects::status::EffectHealth};
+use crate::state::profiles::sources::SourcesSnapshot;
+
 impl NyanpasuClient {
     pub fn configuration_status(&self) -> ConfigurationStatus {
         let journal = self.inner.application_workflow.mutation_journal();

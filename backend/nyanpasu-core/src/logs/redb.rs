@@ -7,10 +7,14 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use nyanpasu_config::application::CoreLogSettings;
-use nyanpasu_observers::logs::{
-    self, CoreLogCursor, CoreLogDirection, CoreLogError, CoreLogExport, CoreLogPage, CoreLogQuery,
-    CoreLogRecord, CoreLogResult, CoreLogRow, CoreLogStatus, CoreLogStore, MAX_PAGE_ROWS,
-    MAX_SCAN_BYTES, MAX_SCAN_ROWS, PAGE_BYTES, PreparedCoreLog,
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
+use nyanpasu_observers::{
+    logs,
+    logs::{
+        CoreLogDirection, CoreLogError, CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord,
+        CoreLogResult, CoreLogRow, CoreLogStore, MAX_PAGE_ROWS, MAX_SCAN_BYTES, MAX_SCAN_ROWS,
+        PAGE_BYTES, PreparedCoreLog,
+    },
 };
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 

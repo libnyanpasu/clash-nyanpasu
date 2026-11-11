@@ -9,6 +9,7 @@
 //! 换线后唯一在用的 `/v2/core/*` 路由。
 
 use nyanpasu_ipc::types::{ServiceStatus, StatusInfo};
+use nyanpasu_runtime_values::core_status::ServiceCompat;
 
 /// PR-5-pre 起，只有主版本等于此值的 daemon 允许承载核心生命周期。
 pub const REQUIRED_SERVICE_MAJOR: u64 = 2;
@@ -17,58 +18,36 @@ pub const REQUIRED_SERVICE_MAJOR: u64 = 2;
 /// Earlier services cannot provide those routes or authorize the current desktop session.
 pub const REQUIRED_SERVICE_MIN: &str = "2.0.3";
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum ServiceCompat {
-    /// daemon 未安装 / 未运行 / 未上报 server 信息，没有可判定的版本。
-    Unknown,
-    /// 主版本匹配，允许进入 Service backend。
-    Compatible { server_version: String },
-    /// 主版本不匹配（典型：v1.4.5），或主版本对但低于最低版本（典型：
-    /// v2.0.0-rc.1）。fail-closed。
-    Incompatible {
-        server_version: String,
-        required_major: u64,
-        /// 供 UI 展示：只说"需要 v2.x"无法解释一台 major 正确却被拒的
-        /// daemon，它装的**就是** v2.x。
-        required_min: String,
-    },
-    /// server 上报的版本不是合法 semver。fail-closed。
-    Unparsable { server_version: String },
+/// 纯函数：无 I/O、无全局状态、无 `Config::*()`。
+pub fn classify(info: &StatusInfo<'_>) -> ServiceCompat {
+    if info.status != ServiceStatus::Running {
+        return ServiceCompat::Unknown;
+    }
+
+    let Some(server) = info.server.as_ref() else {
+        return ServiceCompat::Unknown;
+    };
+    let server_version = server.version.to_string();
+    let Some(version) = parse_service_version(&server_version) else {
+        return ServiceCompat::Unparsable { server_version };
+    };
+
+    // 两条判据都要：最低版本挡住同主版本的旧 rc，主版本挡住比它更高的
+    // 大版本（`3.0.0` 满足最低版本，却不该被这一代承载）。
+    if version.major != REQUIRED_SERVICE_MAJOR || version < required_service_min() {
+        return ServiceCompat::Incompatible {
+            server_version,
+            required_major: REQUIRED_SERVICE_MAJOR,
+            required_min: REQUIRED_SERVICE_MIN.to_owned(),
+        };
+    }
+
+    ServiceCompat::Compatible { server_version }
 }
 
-impl ServiceCompat {
-    /// 纯函数：无 I/O、无全局状态、无 `Config::*()`。
-    pub fn classify(info: &StatusInfo<'_>) -> Self {
-        if info.status != ServiceStatus::Running {
-            return Self::Unknown;
-        }
-
-        let Some(server) = info.server.as_ref() else {
-            return Self::Unknown;
-        };
-        let server_version = server.version.to_string();
-        let Some(version) = parse_service_version(&server_version) else {
-            return Self::Unparsable { server_version };
-        };
-
-        // 两条判据都要：最低版本挡住同主版本的旧 rc，主版本挡住比它更高的
-        // 大版本（`3.0.0` 满足最低版本，却不该被这一代承载）。
-        if version.major != REQUIRED_SERVICE_MAJOR || version < required_service_min() {
-            return Self::Incompatible {
-                server_version,
-                required_major: REQUIRED_SERVICE_MAJOR,
-                required_min: REQUIRED_SERVICE_MIN.to_owned(),
-            };
-        }
-
-        Self::Compatible { server_version }
-    }
-
-    /// 唯一的放行判据。
-    pub fn allows_service_backend(&self) -> bool {
-        matches!(self, Self::Compatible { .. })
-    }
+/// 唯一的放行判据。
+pub fn allows_service_backend(compat: &ServiceCompat) -> bool {
+    matches!(compat, ServiceCompat::Compatible { .. })
 }
 
 /// 供 `ServiceCompat` 与启动时自动升级检查复用的唯一版本解析入口。
@@ -101,8 +80,10 @@ mod tests {
 
     use super::{
         REQUIRED_SERVICE_MAJOR, REQUIRED_SERVICE_MIN, STATUS_V1_4_5_FIXTURE,
-        STATUS_V2_0_0_RC1_FIXTURE, ServiceCompat, parse_service_version, required_service_min,
+        STATUS_V2_0_0_RC1_FIXTURE, allows_service_backend, classify, parse_service_version,
+        required_service_min,
     };
+    use nyanpasu_runtime_values::core_status::ServiceCompat;
 
     fn parse_fixture(fixture: &'static str) -> StatusInfo<'static> {
         serde_json::from_str(fixture).expect("status fixture must decode")
@@ -131,7 +112,7 @@ mod tests {
     #[test]
     fn v1_daemon_is_incompatible() {
         let info = parse_fixture(STATUS_V1_4_5_FIXTURE);
-        let compat = ServiceCompat::classify(&info);
+        let compat = classify(&info);
 
         assert_eq!(
             compat,
@@ -141,7 +122,7 @@ mod tests {
                 required_min: REQUIRED_SERVICE_MIN.to_owned(),
             }
         );
-        assert!(!compat.allows_service_backend());
+        assert!(!allows_service_backend(&compat));
     }
 
     /// 本卡的判据本身：主版本对不再等于放行。换线后 `/v2/core/*` 是唯一路径，
@@ -149,7 +130,7 @@ mod tests {
     #[test]
     fn an_rc_daemon_with_the_right_major_is_still_incompatible() {
         let info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
-        let compat = ServiceCompat::classify(&info);
+        let compat = classify(&info);
 
         assert_eq!(
             compat,
@@ -159,7 +140,7 @@ mod tests {
                 required_min: REQUIRED_SERVICE_MIN.to_owned(),
             }
         );
-        assert!(!compat.allows_service_backend());
+        assert!(!allows_service_backend(&compat));
     }
 
     #[test]
@@ -168,7 +149,7 @@ mod tests {
         info.server.as_mut().unwrap().version = Cow::Borrowed("2.0.0-rc.2");
 
         assert_eq!(
-            ServiceCompat::classify(&info),
+            classify(&info),
             ServiceCompat::Incompatible {
                 server_version: "2.0.0-rc.2".to_owned(),
                 required_major: REQUIRED_SERVICE_MAJOR,
@@ -181,14 +162,14 @@ mod tests {
     fn rc3_without_control_channel_settings_is_incompatible() {
         let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
         info.server.as_mut().unwrap().version = Cow::Borrowed("2.0.0-rc.3");
-        assert!(!ServiceCompat::classify(&info).allows_service_backend());
+        assert!(!allows_service_backend(&classify(&info)));
     }
 
     #[test]
     fn rc4_before_control_channel_release_is_incompatible() {
         let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
         info.server.as_mut().unwrap().version = Cow::Borrowed("2.0.0-rc.4");
-        assert!(!ServiceCompat::classify(&info).allows_service_backend());
+        assert!(!allows_service_backend(&classify(&info)));
     }
 
     #[test]
@@ -197,7 +178,7 @@ mod tests {
             let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
             info.server.as_mut().unwrap().version = Cow::Borrowed(version);
             assert!(
-                !ServiceCompat::classify(&info).allows_service_backend(),
+                !allows_service_backend(&classify(&info)),
                 "{version} must require an upgrade"
             );
         }
@@ -209,7 +190,7 @@ mod tests {
             let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
             info.server.as_mut().unwrap().version = Cow::Borrowed(version);
             assert!(
-                !ServiceCompat::classify(&info).allows_service_backend(),
+                !allows_service_backend(&classify(&info)),
                 "{version} must require an upgrade"
             );
         }
@@ -222,7 +203,7 @@ mod tests {
             .as_mut()
             .expect("running fixture must include server info")
             .version = Cow::Borrowed(REQUIRED_SERVICE_MIN);
-        let compat = ServiceCompat::classify(&info);
+        let compat = classify(&info);
 
         assert_eq!(
             compat,
@@ -230,7 +211,7 @@ mod tests {
                 server_version: REQUIRED_SERVICE_MIN.to_owned(),
             }
         );
-        assert!(compat.allows_service_backend());
+        assert!(allows_service_backend(&compat));
     }
 
     #[test]
@@ -240,7 +221,7 @@ mod tests {
             .as_mut()
             .expect("running fixture must include server info")
             .version = Cow::Borrowed("2.0.1");
-        let compat = ServiceCompat::classify(&info);
+        let compat = classify(&info);
 
         assert_eq!(
             compat,
@@ -250,7 +231,7 @@ mod tests {
                 required_min: REQUIRED_SERVICE_MIN.to_owned(),
             }
         );
-        assert!(!compat.allows_service_backend());
+        assert!(!allows_service_backend(&compat));
     }
 
     #[test]
@@ -260,7 +241,7 @@ mod tests {
             .as_mut()
             .expect("running fixture must include server info")
             .version = Cow::Borrowed("2.0.2");
-        let compat = ServiceCompat::classify(&info);
+        let compat = classify(&info);
 
         assert_eq!(
             compat,
@@ -270,7 +251,7 @@ mod tests {
                 required_min: REQUIRED_SERVICE_MIN.to_owned(),
             }
         );
-        assert!(!compat.allows_service_backend());
+        assert!(!allows_service_backend(&compat));
     }
 
     /// 最低版本是编译期字面量，写错了要在测试里就炸，而不是等运行时 `expect`。
@@ -289,7 +270,7 @@ mod tests {
             .as_mut()
             .expect("running fixture must include server info")
             .version = Cow::Borrowed("nightly");
-        let compat = ServiceCompat::classify(&info);
+        let compat = classify(&info);
 
         assert_eq!(
             compat,
@@ -297,7 +278,7 @@ mod tests {
                 server_version: "nightly".to_owned(),
             }
         );
-        assert!(!compat.allows_service_backend());
+        assert!(!allows_service_backend(&compat));
     }
 
     #[test]
@@ -305,14 +286,14 @@ mod tests {
         let mut info = parse_fixture(STATUS_V2_0_0_RC1_FIXTURE);
 
         info.status = ServiceStatus::Stopped;
-        let stopped = ServiceCompat::classify(&info);
+        let stopped = classify(&info);
         assert_eq!(stopped, ServiceCompat::Unknown);
-        assert!(!stopped.allows_service_backend());
+        assert!(!allows_service_backend(&stopped));
 
         info.status = ServiceStatus::NotInstalled;
-        let not_installed = ServiceCompat::classify(&info);
+        let not_installed = classify(&info);
         assert_eq!(not_installed, ServiceCompat::Unknown);
-        assert!(!not_installed.allows_service_backend());
+        assert!(!allows_service_backend(&not_installed));
     }
 
     #[test]

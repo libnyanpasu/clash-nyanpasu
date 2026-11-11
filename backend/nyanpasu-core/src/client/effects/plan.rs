@@ -15,6 +15,7 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_runtime_values::configuration::EffectKind;
 use struct_patch::Patch;
 
 /// The only configuration an effect may depend on.
@@ -199,38 +200,6 @@ impl ApplicationEffectInputs {
     pub fn tray_view(&self) -> TrayView {
         self.desired().tray_view()
     }
-}
-
-/// Execution order of a plan. The ordering is load-bearing: the tray menu is
-/// rendered with the process-wide locale, and the proxy guard re-applies the
-/// system proxy value that the `SystemProxy` effect just installed.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    specta::Type,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum EffectKind {
-    Locale,
-    Logger,
-    CoreLogLevel,
-    CoreLogStorage,
-    TransparentProxy,
-    AutoLaunch,
-    SystemProxy,
-    ProxyGuard,
-    Hotkeys,
-    Widget,
-    WidgetLogo,
-    Tray,
 }
 
 #[derive(Debug, Clone, PartialEq)]

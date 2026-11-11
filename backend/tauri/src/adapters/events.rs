@@ -1,14 +1,14 @@
 //! GUI event wrappers for application status, streams, and storage changes.
 
-use nyanpasu_observers::logs::CoreLogStatus;
+use nyanpasu_contracts::logs::CoreLogStatus;
+use nyanpasu_core::{clash::ws::ClashWsUpdate, client::StateChanged};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::Event;
 
-use nyanpasu_core::{
-    actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
-    clash::ws::ClashWsUpdate,
-    client::{StateChanged, app_update::AppUpdateSnapshot},
+use nyanpasu_runtime_values::{
+    app_update::AppUpdateSnapshot,
+    core_status::{CoreStatusInfo, ServiceHostStatus},
     storage::StorageRevision,
 };
 

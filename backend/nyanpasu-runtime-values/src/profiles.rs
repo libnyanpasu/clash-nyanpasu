@@ -32,7 +32,7 @@ pub enum ProfileContentError {
 }
 
 /// What the materialization port was doing when it failed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum MaterializationOperation {
     PrepareFileFirst,

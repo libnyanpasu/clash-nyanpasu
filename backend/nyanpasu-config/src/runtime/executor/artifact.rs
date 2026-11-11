@@ -70,7 +70,7 @@ pub struct RuntimeArtifact {
     pub transform_failures: Vec<TransformFailure>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TransformFailure {
     Profile { id: String },

@@ -151,7 +151,7 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
         ));
         assert_eq!(
             client.configuration_status().runtime.health,
-            crate::client::convergence::ConvergenceHealth::RetryScheduled
+            nyanpasu_runtime_values::configuration::ConvergenceHealth::RetryScheduled
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =

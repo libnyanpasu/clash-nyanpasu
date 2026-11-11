@@ -737,7 +737,7 @@ pub async fn set_release_channel(
 #[specta::specta]
 pub async fn get_app_update_state(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.get_app_update_state().await?)
 }
 
@@ -757,7 +757,7 @@ pub async fn get_app_update_changelog(
 #[specta::specta]
 pub async fn check_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.check_app_update().await?)
 }
 
@@ -766,7 +766,7 @@ pub async fn check_app_update(
 #[specta::specta]
 pub async fn download_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.download_app_update().await?)
 }
 
@@ -775,7 +775,7 @@ pub async fn download_app_update(
 #[specta::specta]
 pub async fn cancel_app_update_download(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.cancel_app_update_download().await?)
 }
 
@@ -784,7 +784,7 @@ pub async fn cancel_app_update_download(
 #[specta::specta]
 pub async fn install_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.install_app_update().await?)
 }
 
@@ -793,7 +793,7 @@ pub async fn install_app_update(
 #[specta::specta]
 pub async fn discard_app_update_package(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::app_update::AppUpdateSnapshot> {
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.discard_app_update_package().await?)
 }
 
@@ -886,7 +886,7 @@ pub async fn report_window_ready(
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ConfigurationStatusChanged(
-    pub nyanpasu_core::client::configuration_status::ConfigurationStatus,
+    pub nyanpasu_runtime_values::configuration::ConfigurationStatus,
 );
 
 #[cfg(test)]
@@ -907,8 +907,8 @@ mod tests {
         profiles::error::{ProfileFileError, SubscriptionFetchError},
         system_proxy::OsProxyError,
     };
-    use nyanpasu_core::client::effects::error::EffectsError;
     use nyanpasu_runtime_values::{
+        effects::EffectsError,
         mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
         runtime_error::RuntimeError,
     };

@@ -9,15 +9,18 @@ use nyanpasu_core_manager::{
 use nyanpasu_ipc::api::core::v2::{
     OperationInfo, OperationOutputInfo, OperationPhase, ReconcileOutcomeKind,
 };
+use nyanpasu_runtime_values::{
+    core_status::{EndpointConnectivity, ServiceHostStatus},
+    execution_host::ExecutionHost,
+};
 
 use super::{
-    ControllerGeneration, CoreClient, CoreStatusProjection, EndpointConnectivity, HandoffReport,
-    ShutdownReport, SubmitFailure,
+    ControllerGeneration, CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
+    SubmitFailure,
     endpoint::{CoreSubmission, EndpointHandle},
     intent::RuntimeIntent,
-    service_actor::{ServiceClient, ServiceCommandKind, ServiceHostStatus},
+    service_actor::{ServiceClient, ServiceCommandKind},
 };
-use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 const OPERATION_WAIT: Duration = Duration::from_secs(60);
 

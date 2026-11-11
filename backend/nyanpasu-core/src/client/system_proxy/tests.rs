@@ -8,12 +8,13 @@ use std::{
     time::Duration,
 };
 
+use nyanpasu_runtime_values::configuration::{EffectFailureCode, EffectKind};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{SystemProxyArgs, SystemProxyClient};
 use crate::client::effects::{
-    plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    plan::{ProxyGuardDesired, SystemProxyDesired},
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use nyanpasu_contracts::system_proxy::{
     AutoLaunchError, AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort,

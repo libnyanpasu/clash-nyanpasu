@@ -9,10 +9,11 @@ use nyanpasu_config::application::{
     I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
 };
 use nyanpasu_core::client::effects::{
-    plan::{ApplicationEffect, ApplicationEffectPlan, EffectKind, TrayRefresh},
+    plan::{ApplicationEffect, ApplicationEffectPlan, TrayRefresh},
     ports::{ApplicationEffectsPort, LoggerError, MockLoggerRefresher},
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
+use nyanpasu_runtime_values::configuration::{EffectFailureCode, EffectKind};
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
 
 use super::{

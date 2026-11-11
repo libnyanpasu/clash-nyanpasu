@@ -15,12 +15,10 @@ mod tests;
 use std::collections::BTreeMap;
 
 use nyanpasu_core::client::{
-    effects::{
-        plan::EffectKind,
-        status::{EffectHealth, EffectRevision, EffectStatus},
-    },
-    hotkey::ports::{HotkeyAction, HotkeyBindings},
+    effects::status::{EffectHealth, EffectRevision, EffectStatus},
+    hotkey::ports::HotkeyBindings,
 };
+use nyanpasu_runtime_values::{configuration::EffectKind, hotkey::HotkeyAction};
 use ractor::{Actor, ActorRef, rpc::CallResult};
 use tokio_util::task::TaskTracker;
 

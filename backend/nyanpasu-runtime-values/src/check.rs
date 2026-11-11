@@ -6,7 +6,7 @@
 /// and this attempt made nothing less certain than it already was — which is
 /// why it is a plain refusal the caller may retry (v2 §2.4, first row) and
 /// never the isolated state §11.4 reserves for "结果可能已经执行".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceGap {
     /// The core is mid-transition — starting, restarting, switching or
@@ -27,7 +27,7 @@ pub enum EvidenceGap {
 
 /// Why no check ran. Every variant is a reason, never a verdict: an absent
 /// check must not be reported as a passing one (v2 §2.4).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "cause", rename_all = "snake_case")]
 pub enum RuntimeCheckUnavailable {
     /// No host owns the runtime, so there is nothing to check against.

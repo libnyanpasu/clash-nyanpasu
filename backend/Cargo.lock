@@ -7335,6 +7335,7 @@ dependencies = [
  "nyanpasu-config",
  "nyanpasu-contracts",
  "nyanpasu-core-metadata",
+ "nyanpasu-ipc",
  "nyanpasu-profile-transform",
  "serde",
  "serde_json",

@@ -2,13 +2,12 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::{
-    actor_v2::CoreStatusInfo, clash::ws::ClashConnectionDetails, client::NyanpasuClient,
-};
+use nyanpasu_core::{clash::ws::ClashConnectionDetails, client::NyanpasuClient};
 use nyanpasu_rpc_protocol::{
     EventName, RpcError,
     frame::{Frame, LagReason, SubscriptionErrorCode, SubscriptionTarget},
 };
+use nyanpasu_runtime_values::core_status::CoreStatusInfo;
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;

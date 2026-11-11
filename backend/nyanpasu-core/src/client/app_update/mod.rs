@@ -7,53 +7,14 @@ use std::{any::Any, sync::Arc};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use nyanpasu_config::application::{ReleaseChannel, UpdateSource};
+use nyanpasu_runtime_values::app_update::{AppUpdatePhase, AppUpdateRelease, AppUpdateSnapshot};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, SupervisionEvent};
-use serde::{Deserialize, Serialize};
-use specta::Type;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum AppUpdatePhase {
-    Idle,
-    Checking,
-    UpToDate,
-    Available,
-    Downloading,
-    Cancelling,
-    Cancelled,
-    Verifying,
-    Ready,
-    Installing,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct AppUpdateRelease {
-    pub version: String,
-    pub date: Option<String>,
-    pub body: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct AppUpdateSnapshot {
-    pub revision: u64,
-    pub phase: AppUpdatePhase,
-    pub release: Option<AppUpdateRelease>,
-    pub downloaded: u64,
-    pub total: Option<u64>,
-    pub speed: f64,
-    pub source: Option<UpdateSource>,
-    pub error: Option<String>,
-    pub last_checked_at: Option<String>,
-    pub supported: bool,
-    pub endpoints: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

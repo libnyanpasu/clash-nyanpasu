@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::client::hotkey::ports::{HotkeyAction, HotkeyParseError};
+use nyanpasu_runtime_values::hotkey::{HotkeyAction, HotkeyParseError};
 use snafu::Snafu;
 
 use crate::desktop::main_thread::MainThreadError;

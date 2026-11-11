@@ -3,10 +3,11 @@
 use std::sync::Arc;
 
 use nyanpasu_config::{profile::ProfileId, runtime::executor::ResolvedPortBindings};
+use nyanpasu_runtime_values::configuration::EffectKind;
 use serde::{Deserialize, Serialize};
 
 use super::effects::{
-    plan::{ApplicationEffectFields, ClashEffectFields, EffectKind},
+    plan::{ApplicationEffectFields, ClashEffectFields},
     ports::CommitNotifications,
 };
 

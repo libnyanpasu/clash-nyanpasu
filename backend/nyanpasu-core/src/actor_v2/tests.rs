@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use nyanpasu_runtime_values::{core_status::EndpointConnectivity, execution_host::ExecutionHost};
 use tokio::sync::Notify;
 
 use nyanpasu_core_manager::{
@@ -21,11 +22,10 @@ use nyanpasu_ipc::api::{
 };
 
 use super::{
-    CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
-    ShutdownReport, SubmitFailure,
+    CoreActorMessage, CoreClient, CoreSubmission, HandoffReport, STOP_WAIT, ShutdownReport,
+    SubmitFailure,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle},
 };
-use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 /// The three answers a host gives are scripted independently, because the
 /// defect class this suite guards against is a router filling one in from

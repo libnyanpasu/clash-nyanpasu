@@ -5,6 +5,7 @@ use std::{future::Future, sync::Arc, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow};
 use async_trait::async_trait;
+use nyanpasu_runtime_values::app_update::AppUpdateRelease;
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio_util::sync::CancellationToken;
 
@@ -14,8 +15,8 @@ use nyanpasu_contracts::{
     net::{SelfProxyPortSource, SystemProxySource},
 };
 use nyanpasu_core::client::app_update::{
-    AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateRelease, AppUpdateSettings,
-    PreparedAppUpdate, VerifiedAppUpdate,
+    AppUpdateBackend, AppUpdateDownloadProgress, AppUpdateSettings, PreparedAppUpdate,
+    VerifiedAppUpdate,
 };
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);

@@ -2,6 +2,10 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use nyanpasu_config::runtime::executor::ResolvedPortBindings;
+use nyanpasu_runtime_values::{
+    configuration::{ConvergenceHealth, EffectKind},
+    effects::{EffectsError, EffectsStoppedSnafu},
+};
 #[cfg(any(test, feature = "test-support"))]
 use ractor::RpcReplyPort;
 use ractor::{Actor, ActorProcessingErr, ActorRef};
@@ -10,15 +14,14 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    error::{EffectsError, EffectsStoppedSnafu},
     plan::{
         ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
-        ClashEffectFields, EffectKind, TrayRefresh,
+        ClashEffectFields, TrayRefresh,
     },
     ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
-use crate::client::convergence::{ConvergenceHealth, RetryBudget};
+use crate::client::convergence::RetryBudget;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {

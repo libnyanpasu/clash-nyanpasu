@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use nyanpasu_core::client::logs::LogSource;
+use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_logging::LogSession;
 use nyanpasu_owner_support::blocking;
 use nyanpasu_rpc_protocol::{

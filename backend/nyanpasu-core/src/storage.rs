@@ -3,13 +3,14 @@ use nyanpasu_migration::{
     backup::StorageSnapshot,
     modules::storage::{HotkeyStore, HotkeyStoreOpener},
 };
+use nyanpasu_runtime_values::storage::{StorageItem, StorageRevision};
 use nyanpasu_utils::{
     io::IoFailure,
     redb_ext::{RedbFailure, find_failure},
 };
 use parking_lot::Mutex;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 use snafu::{ResultExt as _, Snafu};
 use specta::Type;
 use std::{fs, ops::Deref, path::Path, result::Result as StdResult, sync::Arc};
@@ -206,29 +207,6 @@ pub struct StorageInner {
 #[cfg(test)]
 type PublishHook = Box<dyn Fn(&str) + Send + Sync>;
 
-/// Orders the commits of one open store, every key alike. It is kept in
-/// memory and starts at 0 each time the store opens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
-#[serde(transparent)]
-pub struct StorageRevision(u64);
-
-impl StorageRevision {
-    fn next(self) -> Self {
-        Self(
-            self.0
-                .checked_add(1)
-                .expect("an open store never commits u64::MAX times"),
-        )
-    }
-}
-
-/// A stored value, or `None` if the key is absent, as of `revision`.
-#[derive(Debug, Clone, Serialize, Type)]
-pub struct StorageItem<T> {
-    pub value: Option<T>,
-    pub revision: StorageRevision,
-}
-
 /// A committed change: the stored bytes, or `None` once the key is removed.
 #[derive(Debug, Clone)]
 pub struct StorageChange {
@@ -342,7 +320,7 @@ impl StorageInner {
         };
         Ok(Self {
             instance,
-            revision: Mutex::new(StorageRevision(0)),
+            revision: Mutex::new(StorageRevision::INITIAL),
             tx: broadcast::channel(16).0,
             #[cfg(test)]
             before_publish: None,
@@ -391,7 +369,9 @@ impl StorageInner {
             }
         }
         write_txn.commit().context(CommitTransactionSnafu)?;
-        *revision = revision.next();
+        *revision = revision
+            .checked_next()
+            .expect("an open store never commits u64::MAX times");
         #[cfg(test)]
         if let Some(before_publish) = &self.before_publish {
             before_publish(key);
@@ -793,7 +773,7 @@ mod tests {
             tx.send(StorageChange {
                 key: format!("web:{index}"),
                 value: None,
-                revision: StorageRevision(index + 1),
+                revision: serde_json::from_value(serde_json::json!(index + 1)).unwrap(),
             })
             .unwrap();
         }
@@ -904,7 +884,7 @@ mod tests {
 
         let empty = storage.get_item::<String>("web:key").unwrap();
         assert_eq!(empty.value, None);
-        assert_eq!(empty.revision, StorageRevision(0));
+        assert_eq!(empty.revision, StorageRevision::INITIAL);
 
         let written = storage.set_item("web:key", &"kept").unwrap();
         let item = storage.get_item::<String>("web:key").unwrap();
@@ -946,6 +926,6 @@ mod tests {
         let item = open(&dir).get_item::<String>("web:key").unwrap();
 
         assert_eq!(item.value.as_deref(), Some("saved"));
-        assert_eq!(item.revision, StorageRevision(0));
+        assert_eq!(item.revision, StorageRevision::INITIAL);
     }
 }

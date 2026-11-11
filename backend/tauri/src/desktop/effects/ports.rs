@@ -3,10 +3,8 @@
 use nyanpasu_config::application::{
     I18nLanguage, NetworkStatisticWidgetConfig, NetworkStatisticWidgetLogoSource,
 };
-use nyanpasu_core::client::effects::{
-    plan::{TrayView, WidgetLogoState},
-    status::EffectFailureCode,
-};
+use nyanpasu_core::client::effects::plan::{TrayView, WidgetLogoState};
+use nyanpasu_runtime_values::configuration::EffectFailureCode;
 use nyanpasu_widget_protocol::ipc::WidgetIpcError;
 use snafu::Snafu;
 

@@ -1,3 +1,4 @@
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -29,12 +30,6 @@ impl From<anyhow::Error> for CoreLogError {
     fn from(error: anyhow::Error) -> Self {
         Self::Unavailable(format!("{error:#}"))
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq, PartialOrd, Ord)]
-pub struct CoreLogCursor {
-    pub generation: String,
-    pub sequence: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -123,17 +118,6 @@ pub struct CoreLogQuery {
     pub level: Option<String>,
     pub keyword: String,
     pub limit: usize,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
-pub struct CoreLogStatus {
-    pub generation: String,
-    pub version: u64,
-    pub first: Option<CoreLogCursor>,
-    pub head: Option<CoreLogCursor>,
-    pub bytes: u64,
-    pub error: Option<String>,
-    pub discarded: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

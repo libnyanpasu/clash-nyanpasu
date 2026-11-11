@@ -1,9 +1,8 @@
 //! Shared traffic command adapters.
 
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
 use nyanpasu_core::client::NyanpasuClient;
-use nyanpasu_observers::logs::{
-    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
-};
+use nyanpasu_observers::logs::{CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult};
 
 use crate::{error::Result, registry::RpcState};
 

@@ -282,7 +282,7 @@ pub struct DeferredTarget {
     /// from the budget, which such attempts never spend, and reset only by an
     /// application result or a new identity (T10 §1.8).
     pub waits: u8,
-    pub health: crate::client::convergence::ConvergenceHealth,
+    pub health: nyanpasu_runtime_values::configuration::ConvergenceHealth,
     pub next_attempt: Option<tokio::time::Instant>,
 }
 

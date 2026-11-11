@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

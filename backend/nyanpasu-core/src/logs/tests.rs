@@ -6,9 +6,13 @@ use std::{
     },
 };
 
-use nyanpasu_observers::logs::{
-    self, CoreLogCursor, CoreLogDirection, CoreLogError, CoreLogPage, CoreLogQuery, CoreLogRecord,
-    CoreLogResult, CoreLogSource, CoreLogStatus, CoreLogStore, CoreLogsClient, PreparedCoreLog,
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
+use nyanpasu_observers::{
+    logs,
+    logs::{
+        CoreLogDirection, CoreLogError, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult,
+        CoreLogSource, CoreLogStore, CoreLogsClient, PreparedCoreLog,
+    },
 };
 use tempfile::TempDir;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

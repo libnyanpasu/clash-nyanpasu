@@ -5,7 +5,7 @@ use serde::Serialize;
 use snafu::Snafu;
 
 /// The elevated operations `nyanpasu-service` is asked to perform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceCommand {
     Install,

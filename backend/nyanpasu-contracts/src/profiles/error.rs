@@ -56,7 +56,7 @@ impl From<&ExternalProfilePath> for ErrorPath {
 }
 
 /// What a path was required to be when it was not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ExpectedNode {
     RealDirectory,

@@ -15,8 +15,10 @@ use crate::desktop::{
     main_thread::MainThreadExecutor,
 };
 use nyanpasu_core::client::hotkey::ports::{
-    AcceleratorValidator, HotkeyAction, HotkeyParseError, MissingSuperKeySnafu,
-    UnsupportedAcceleratorSnafu, WindowControl, WindowError, has_super_key,
+    AcceleratorValidator, WindowControl, WindowError, has_super_key,
+};
+use nyanpasu_runtime_values::hotkey::{
+    HotkeyAction, HotkeyParseError, MissingSuperKeySnafu, UnsupportedAcceleratorSnafu,
 };
 
 /// The accelerator rules the platform actually enforces: the shortcut plugin's

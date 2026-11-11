@@ -10,14 +10,16 @@
 use std::sync::Arc;
 
 use nyanpasu_observers::logs::CoreLogsClient;
+use nyanpasu_runtime_values::configuration::{EffectFailureCode, EffectKind};
 
 use super::{
     plan::{
-        ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
+        ApplicationEffect, ApplicationEffectPlan, LoggerDesired, ProxyGuardDesired,
         SystemProxyDesired,
     },
     ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, PresentationEffectsPort},
-    status::{self, EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    status,
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::{clash::ws::StreamsClient, client::system_proxy::SystemProxyClient};
 

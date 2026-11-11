@@ -8,6 +8,7 @@ mod patch;
 mod path;
 mod profiles;
 mod proxy_group;
+mod request;
 mod source;
 
 pub use definition::*;
@@ -20,6 +21,7 @@ pub use patch::*;
 pub use path::*;
 pub use profiles::*;
 pub use proxy_group::*;
+pub use request::*;
 pub use source::*;
 
 #[cfg(test)]

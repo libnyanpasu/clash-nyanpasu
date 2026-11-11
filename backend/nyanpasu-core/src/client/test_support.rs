@@ -23,7 +23,7 @@ use nyanpasu_config::{
     clash::config::{ClashConfig, clash_strategy::PortStrategy},
     profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-        ProfileDefinition, ProfileMetadata, ProfileSource,
+        NewProfileRequest, ProfileDefinition, ProfileMetadata, ProfileSource,
     },
 };
 use nyanpasu_paths::PathResolver;
@@ -39,7 +39,6 @@ use super::{
 use crate::{
     actor_v2::test_support::{successful_reconcile, test_v2_clients_with_endpoint},
     client::test_support::workflow::{Installer, NoopSystemDnsCache},
-    state::profiles::NewProfileRequest,
     storage::Storage,
     utils::test_support::test_paths,
 };
@@ -875,14 +874,14 @@ impl hotkey::ports::AcceleratorValidator for AnyAccelerator {
     fn validate(
         &self,
         _accelerator: &str,
-    ) -> std::result::Result<(), hotkey::ports::HotkeyParseError> {
+    ) -> std::result::Result<(), nyanpasu_runtime_values::hotkey::HotkeyParseError> {
         Ok(())
     }
 
     fn canonical(
         &self,
         accelerator: &str,
-    ) -> std::result::Result<String, hotkey::ports::HotkeyParseError> {
+    ) -> std::result::Result<String, nyanpasu_runtime_values::hotkey::HotkeyParseError> {
         Ok(accelerator.to_owned())
     }
 }

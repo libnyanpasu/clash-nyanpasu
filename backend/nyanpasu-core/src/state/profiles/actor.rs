@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
-    ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
+    ManagedProfilePath, MaterializedFile, NewProfileRequest, OverlayTransform, ProfileDefinition,
     ProfileDependencyIndex, ProfileFolder, ProfileId, ProfileItem, ProfileLayout, ProfileMetadata,
     ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles, ProxyGroupFolder,
     ProxyGroupLayout, RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval,
@@ -20,6 +20,7 @@ use nyanpasu_contracts::profiles::{
     },
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
+use nyanpasu_runtime_values::configuration::{SourceOrigin, SourceOutcome};
 use nyanpasu_state_engine::{
     PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
     error::StateChangedError,
@@ -53,7 +54,7 @@ use tokio_util::sync::CancellationToken;
 use super::{
     jobs::{ProfileJobs, ProfileSyncContext},
     scheduler::ExternalWatchers,
-    sources::{SourceLedger, SourceOrigin, SourceOutcome, SourcesSnapshot},
+    sources::{SourceLedger, SourcesSnapshot},
 };
 
 #[derive(Debug, Clone)]
@@ -67,16 +68,6 @@ pub struct CommitReport {
     /// Server-generated uid (D13); set by Add / import commit, consumed by
     /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize, specta::Type)]
-pub struct NewProfileRequest {
-    pub metadata: ProfileMetadata,
-    /// Add rewrites the materialized path to `{uid}.{ext}`.
-    pub definition: ProfileDefinition,
-    /// Folder the new Config profile joins in the same commit.
-    #[serde(default)]
-    pub folder: Option<FolderId>,
 }
 
 #[derive(Debug, Clone)]

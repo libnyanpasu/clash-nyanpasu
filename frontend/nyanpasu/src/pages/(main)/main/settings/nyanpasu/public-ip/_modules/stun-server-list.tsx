@@ -31,6 +31,7 @@ import {
 import {
   sortableItemVariants,
   SortableOrder,
+  useSortableTransition,
 } from '../../../../_modules/sortable-item'
 import AddStunServerDialog from './add-stun-server-dialog'
 import StunCapabilities, { stunChipVariants } from './stun-capabilities'
@@ -63,6 +64,7 @@ function StunServerItem({
     id: address,
     index,
     disabled,
+    transition: useSortableTransition(),
   })
 
   return (

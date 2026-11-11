@@ -280,6 +280,11 @@ test.for(['scoped', 'global'] as const)(
         '[data-slot="profile-chain-editor-unapplied"]',
       ),
     ).toBeNull()
+    // The added row grows into place, and a row keeps the transition of its
+    // lift although the group sets one for the corners.
+    expect(getComputedStyle(item('lua')).animationName).toBe('row-enter')
+    expect(getComputedStyle(item('self')).animationName).toBe('none')
+    expect(getComputedStyle(item('self')).transitionProperty).toContain('scale')
     await expect
       .element(
         view.getByText(m.profile_chain_editor_summary_added({ count: 1 }), {

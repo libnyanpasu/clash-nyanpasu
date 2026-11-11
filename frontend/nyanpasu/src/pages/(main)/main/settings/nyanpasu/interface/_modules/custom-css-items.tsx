@@ -30,7 +30,10 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../../../../_modules/settings-card'
-import { sortableItemVariants } from '../../../../_modules/sortable-item'
+import {
+  sortableItemVariants,
+  useSortableTransition,
+} from '../../../../_modules/sortable-item'
 import CustomCssNameDialog from './custom-css-name-dialog'
 
 const LARGE_CSS_CHARS = 100_000
@@ -66,6 +69,7 @@ function CustomCssListItem({
   const { ref, isDragging } = useSortable({
     id: item.id,
     index,
+    transition: useSortableTransition(),
   })
 
   const charCount = item.source.length

@@ -20,6 +20,7 @@ import { Link } from '@tanstack/react-router'
 import {
   sortableItemVariants,
   SortableOrder,
+  useSortableTransition,
 } from '../../_modules/sortable-item'
 import { RowAction } from './compact-controls'
 import { PROFILE_TYPE_NAMES } from './consts'
@@ -76,6 +77,8 @@ function ItemContent({
         cardVariants(),
         sortableItemVariants({ draggable, dragging, disabled: saving }),
         'group/row flex min-h-14 min-w-0 items-center gap-3 py-1.5 pr-2 pl-3',
+        // A transform that has just joined the chain grows into place.
+        unapplied && 'animate-row-enter motion-reduce:animate-none',
       )}
     >
       <SortableOrder active data-slot="profile-chain-editor-order">
@@ -155,6 +158,7 @@ const Item = memo(function Item(props: ItemProps) {
     id: props.profile.uid,
     index: props.index,
     disabled: props.saving,
+    transition: useSortableTransition(),
   })
 
   return (

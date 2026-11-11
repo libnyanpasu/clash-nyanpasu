@@ -34,12 +34,33 @@ const TYPE_FILTERS = [
 ] as const satisfies readonly { value: TypeFilter; label: () => string }[]
 
 const libraryToggleVariants = cva([
+  'group/toggle',
   // A transform in the chain reads as a filled tonal check.
   'aria-pressed:bg-secondary-container aria-pressed:text-on-secondary-container',
   'dark:aria-pressed:bg-secondary-container dark:aria-pressed:text-on-secondary-container',
   'aria-pressed:hover:bg-secondary-container aria-pressed:hover:brightness-95',
   'dark:aria-pressed:hover:bg-secondary-container dark:aria-pressed:hover:brightness-110',
 ])
+
+// The plus turns into the check, and back, as the transform joins the chain.
+const libraryToggleIconVariants = cva(
+  'size-5 transition-[opacity,rotate,scale] duration-200 motion-reduce:transition-none',
+  {
+    variants: {
+      shows: {
+        add: [
+          'group-aria-pressed/toggle:scale-50 group-aria-pressed/toggle:rotate-90',
+          'group-aria-pressed/toggle:opacity-0',
+        ],
+        check: [
+          'absolute inset-0 m-auto scale-50 -rotate-90 opacity-0',
+          'group-aria-pressed/toggle:scale-100 group-aria-pressed/toggle:rotate-0',
+          'group-aria-pressed/toggle:opacity-100',
+        ],
+      },
+    },
+  },
+)
 
 function LibraryRow({
   profile,
@@ -99,11 +120,15 @@ function LibraryRow({
         className={libraryToggleVariants()}
         onClick={() => (inChain ? onRemove(profile.uid) : onAdd(profile.uid))}
       >
-        {inChain ? (
-          <CheckRounded className="size-5" aria-hidden />
-        ) : (
-          <AddRounded className="size-5" aria-hidden />
-        )}
+        <AddRounded
+          className={libraryToggleIconVariants({ shows: 'add' })}
+          aria-hidden
+        />
+
+        <CheckRounded
+          className={libraryToggleIconVariants({ shows: 'check' })}
+          aria-hidden
+        />
       </RowAction>
     </div>
   )
@@ -204,6 +229,7 @@ export function TransformLibrary({
               'flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium outline-none',
               'text-on-surface-variant shadow-[inset_0_0_0_1px_var(--color-outline-variant)]',
               'hover:bg-on-surface/8 focus-visible:outline-primary focus-visible:outline-2',
+              'transition-[background-color,color,box-shadow] motion-reduce:transition-none',
               'aria-pressed:bg-secondary-container aria-pressed:text-on-secondary-container aria-pressed:shadow-none',
             )}
           >

@@ -1,10 +1,12 @@
 import {
   PropsWithChildren,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+import { Modal, useModal } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { ask, message } from '@/utils/notification'
@@ -32,7 +34,7 @@ type NameDialog =
       members: string[]
       onCreated?: (id: FolderId) => void
     }
-  | { mode: 'rename'; id: FolderId }
+  | { mode: 'rename'; id: FolderId; name: string }
 
 const showLayoutError = (error: unknown) =>
   message(m.proxies_layout_failed({ error: formatError(error) }), {
@@ -49,6 +51,16 @@ const EMPTY_LAYOUT: ProxyGroupLayout = { folders: [], ungrouped: [] }
  * `useGroupLayout`.
  */
 export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
+  return (
+    <Modal>
+      <ProxiesLayoutContent>{children}</ProxiesLayoutContent>
+    </Modal>
+  )
+}
+
+function ProxiesLayoutContent({ children }: PropsWithChildren) {
+  const { open, setOpen } = useModal()
+
   const { query, setProxyGroupLayout, createProxyGroupFolder } = useProfile()
   const {
     proxies: { data: proxies },
@@ -211,18 +223,28 @@ export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
   }, [commitTo])
 
   const openCreateFolder = useCallback<GroupLayoutActions['openCreateFolder']>(
-    (options) =>
+    (options) => {
       setDialog({
         mode: 'create',
         members: options?.members ?? [],
         onCreated: options?.onCreated,
-      }),
-    [],
+      })
+      setOpen(true)
+    },
+    [setOpen],
   )
 
   const openRenameFolder = useCallback<GroupLayoutActions['openRenameFolder']>(
-    (id) => setDialog({ mode: 'rename', id }),
-    [],
+    (id) => {
+      const folder = latest.current.layout?.folders.find(
+        (folder) => folder.id === id,
+      )
+      if (!folder) return
+
+      setDialog({ mode: 'rename', id, name: folder.name })
+      setOpen(true)
+    },
+    [setOpen],
   )
 
   const arranged = stored !== undefined
@@ -263,6 +285,11 @@ export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
       ? layout?.folders.find((folder) => folder.id === dialog.id)
       : undefined
 
+  // A deleted target ends the interaction; the captured name survives exit.
+  useEffect(() => {
+    if (open && dialog?.mode === 'rename' && !renaming) setOpen(false)
+  }, [open, dialog, renaming, setOpen])
+
   const handleSubmitName = async (name: string) => {
     if (!dialog) {
       return
@@ -271,7 +298,7 @@ export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
     if (dialog.mode === 'rename') {
       // An unchanged name commits nothing, which is not a failure.
       if (name === renaming?.name || (await renameFolder(dialog.id, name))) {
-        setDialog(null)
+        setOpen(false)
       }
 
       return
@@ -280,7 +307,7 @@ export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
     const id = await createFolderWith(name, dialog.members)
 
     if (id) {
-      setDialog(null)
+      setOpen(false)
       dialog.onCreated?.(id)
     }
   }
@@ -290,14 +317,12 @@ export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
       {children}
 
       <FolderNameDialog
-        open={dialog !== null && (dialog.mode === 'create' || !!renaming)}
-        onOpenChange={(open) => !open && setDialog(null)}
         title={
           dialog?.mode === 'rename'
             ? m.profile_folder_rename_title()
             : m.profile_folder_new_title()
         }
-        initialName={renaming?.name}
+        initialName={dialog?.mode === 'rename' ? dialog.name : ''}
         onSubmit={handleSubmitName}
       />
     </GroupLayoutContext.Provider>

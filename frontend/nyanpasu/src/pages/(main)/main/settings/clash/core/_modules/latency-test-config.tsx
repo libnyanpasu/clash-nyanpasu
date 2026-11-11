@@ -1,6 +1,6 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { AnimatePresence } from 'motion/react'
-import { useEffect, useId, useState, type BaseSyntheticEvent } from 'react'
+import { useEffect, useId, type BaseSyntheticEvent } from 'react'
 import { Controller, useForm, type UseFormReturn } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
@@ -12,12 +12,14 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { DEFAULT_LATENCY_TEST_URL } from '@nyanpasu/constants'
+import { useLockFn } from '@nyanpasu/hooks'
 import { useSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
@@ -80,7 +82,10 @@ const LatencyUrlForm = ({
     <form
       className="flex flex-col gap-2"
       data-slot="latency-test-url-form"
-      onSubmit={onSubmit}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit(event)
+      }}
     >
       <Controller
         name="url"
@@ -129,7 +134,10 @@ const LatencyTimeoutForm = ({
     <form
       className="flex flex-col gap-2"
       data-slot="latency-test-timeout-form"
-      onSubmit={onSubmit}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit(event)
+      }}
     >
       <Controller
         name="timeout"
@@ -164,7 +172,15 @@ const LatencyTimeoutForm = ({
 }
 
 export default function LatencyTestConfig() {
-  const [open, setOpen] = useState(false)
+  return (
+    <Modal>
+      <LatencyTestConfigForm />
+    </Modal>
+  )
+}
+
+function LatencyTestConfigForm() {
+  const { setOpen } = useModal()
 
   const latencyUrl = useSetting('default_latency_test')
   const latencyTimeoutMs = useSetting('default_latency_timeout_ms')
@@ -201,50 +217,45 @@ export default function LatencyTestConfig() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedTimeoutMs])
 
-  const submitUrl = urlForm.handleSubmit(async (data) => {
-    const url = data.url || DEFAULT_LATENCY_TEST_URL
+  const submitUrl = useLockFn(
+    urlForm.handleSubmit(async (data) => {
+      const url = data.url || DEFAULT_LATENCY_TEST_URL
 
-    try {
-      if (url !== savedUrl) {
-        await latencyUrl.upsert(url)
+      try {
+        if (url !== savedUrl) {
+          await latencyUrl.upsert(url)
+        }
+
+        urlForm.reset({ url })
+
+        return true
+      } catch (error) {
+        reportError(error)
+
+        return false
       }
+    }),
+  )
 
-      urlForm.reset({ url })
+  const submitTimeout = useLockFn(
+    timeoutForm.handleSubmit(async (data) => {
+      const ms = Math.round(data.timeout * MS_PER_SECOND)
 
-      return true
-    } catch (error) {
-      reportError(error)
+      try {
+        if (ms !== savedTimeoutMs) {
+          await latencyTimeoutMs.upsert(ms)
+        }
 
-      return false
-    }
-  })
+        timeoutForm.reset({ timeout: data.timeout })
 
-  const submitTimeout = timeoutForm.handleSubmit(async (data) => {
-    const ms = Math.round(data.timeout * MS_PER_SECOND)
+        return true
+      } catch (error) {
+        reportError(error)
 
-    try {
-      if (ms !== savedTimeoutMs) {
-        await latencyTimeoutMs.upsert(ms)
+        return false
       }
-
-      timeoutForm.reset({ timeout: data.timeout })
-
-      return true
-    } catch (error) {
-      reportError(error)
-
-      return false
-    }
-  })
-
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      urlForm.reset({ url: savedUrl })
-      timeoutForm.reset({ timeout: savedSeconds })
-    }
-
-    setOpen(next)
-  }
+    }),
+  )
 
   const handleReset = () => {
     urlForm.reset({ url: savedUrl })
@@ -253,19 +264,19 @@ export default function LatencyTestConfig() {
 
   // A submit resolves `undefined` when validation rejects its form, so the
   // dialog closes only after both forms are saved.
-  const handleApply = async () => {
+  const handleApply = useLockFn(async () => {
     const saved = await Promise.all([submitUrl(), submitTimeout()])
 
     if (saved.every(Boolean)) {
       setOpen(false)
     }
-  }
+  })
 
   return (
     <SettingsCard data-slot="latency-test-config">
-      <Modal open={open} onOpenChange={handleOpenChange}>
+      <>
         <SettingsCardContent asChild>
-          <ModalTrigger asChild>
+          <ModalTrigger asChild onClick={handleReset}>
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
@@ -284,7 +295,7 @@ export default function LatencyTestConfig() {
           </ModalTrigger>
         </SettingsCardContent>
 
-        <ModalContent>
+        <ModalContent dismissible={!isSubmitting}>
           <Card className="flex min-w-96 flex-col">
             <CardHeader>
               <ModalTitle>{m.settings_clash_latency_test_label()}</ModalTitle>
@@ -301,20 +312,22 @@ export default function LatencyTestConfig() {
                 variant="flat"
                 onClick={handleApply}
                 loading={isSubmitting}
-                disabled={!isDirty}
+                disabled={!isDirty || isSubmitting}
               >
                 {m.common_apply()}
               </Button>
 
-              <Button onClick={handleReset} disabled={!isDirty}>
+              <Button onClick={handleReset} disabled={!isDirty || isSubmitting}>
                 {m.common_reset()}
               </Button>
 
-              <ModalClose>{m.common_close()}</ModalClose>
+              <ModalClose disabled={isSubmitting}>
+                {m.common_close()}
+              </ModalClose>
             </CardFooter>
           </Card>
         </ModalContent>
-      </Modal>
+      </>
     </SettingsCard>
   )
 }

@@ -1,6 +1,7 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { Modal } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
@@ -74,11 +75,13 @@ function render(
     localStorage.clear()
   })
   root.render(
-    <QueryClientProvider client={queries}>
-      <ContextMenuProvider>
-        <ScrollArea className="h-96">{node}</ScrollArea>
-      </ContextMenuProvider>
-    </QueryClientProvider>,
+    <Modal>
+      <QueryClientProvider client={queries}>
+        <ContextMenuProvider>
+          <ScrollArea className="h-96">{node}</ScrollArea>
+        </ContextMenuProvider>
+      </QueryClientProvider>
+    </Modal>,
   )
   return container
 }
@@ -124,12 +127,7 @@ test('a filtered active view lists only the connections the backend matched', as
   stream.publish({ connections: twoConnections() })
 
   const container = render(
-    <ActiveViewer
-      search=""
-      filters={[{ d: 'process', v: 'curl' }]}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ActiveViewer search="" filters={[{ d: 'process', v: 'curl' }]} />,
     onTestFinished,
   )
 
@@ -155,12 +153,7 @@ test('a filtered active view explains unavailable ids and shows no rows', async 
   stream.publish({ connections: twoConnections() })
 
   const container = render(
-    <ActiveViewer
-      search=""
-      filters={[{ d: 'process', v: 'curl' }]}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ActiveViewer search="" filters={[{ d: 'process', v: 'curl' }]} />,
     onTestFinished,
   )
 
@@ -208,8 +201,6 @@ test('a filtered closed view asks for the selection and pages past empty pages',
     <ClosedViewer
       search=""
       selection={{ range: 'last_hour', filters: [{ d: 'process', v: 'curl' }] }}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
     />,
     onTestFinished,
   )
@@ -234,8 +225,6 @@ test('a filtered closed view explains an unavailable history', async ({
     <ClosedViewer
       search=""
       selection={{ filters: [{ d: 'process', v: 'curl' }] }}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
     />,
     onTestFinished,
   )

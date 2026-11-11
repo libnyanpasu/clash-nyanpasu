@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'motion/react'
-import { ComponentProps, useState } from 'react'
+import { ComponentProps } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
@@ -7,9 +7,11 @@ import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
+  ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
@@ -25,7 +27,17 @@ const formSchema = z.object({
   name: z.string().min(1),
 })
 
-export default function ProfileNameEditor({
+export default function ProfileNameEditor(
+  props: ComponentProps<typeof ProfileNameEditorForm>,
+) {
+  return (
+    <Modal>
+      <ProfileNameEditorForm {...props} />
+    </Modal>
+  )
+}
+
+function ProfileNameEditorForm({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
@@ -33,7 +45,7 @@ export default function ProfileNameEditor({
 }) {
   const { patchMetadata } = useProfileMutations()
 
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -41,14 +53,6 @@ export default function ProfileNameEditor({
       name: profile.name,
     },
   })
-
-  const handleClose = () => {
-    setOpen(false)
-    // get latest name
-    form.reset({
-      name: profile.name,
-    })
-  }
 
   const blockTask = useBlockTask(
     `update-profile-name-${profile.uid}`,
@@ -60,7 +64,7 @@ export default function ProfileNameEditor({
             patch: { name },
           })
 
-          handleClose()
+          setOpen(false)
         } catch (error) {
           message(m.profile_update_failed({ error: formatError(error) }), {
             title: m.profile_error_title(),
@@ -82,10 +86,13 @@ export default function ProfileNameEditor({
   const handleSubmit = useLockFn(blockTask.execute)
 
   return (
-    <Modal open={open} onOpenChange={setOpen}>
+    <>
       <ModalTrigger {...props} />
 
-      <ModalContent>
+      <ModalContent
+        dismissible={!blockTask.isPending}
+        onOpenAutoFocus={() => form.reset({ name: profile.name })}
+      >
         <Card className="w-96">
           <CardHeader>
             <ModalTitle>{m.profile_name_editor_title()}</ModalTitle>
@@ -116,14 +123,20 @@ export default function ProfileNameEditor({
           </CardContent>
 
           <CardFooter className="gap-1">
-            <Button onClick={handleSubmit} loading={blockTask.isPending}>
+            <Button
+              onClick={handleSubmit}
+              loading={blockTask.isPending}
+              disabled={blockTask.isPending}
+            >
               {m.common_save()}
             </Button>
 
-            <Button onClick={handleClose}>{m.common_cancel()}</Button>
+            <ModalClose disabled={blockTask.isPending}>
+              {m.common_cancel()}
+            </ModalClose>
           </CardFooter>
         </Card>
       </ModalContent>
-    </Modal>
+    </>
   )
 }

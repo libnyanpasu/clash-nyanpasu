@@ -1,6 +1,6 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { AnimatePresence } from 'motion/react'
-import { ChangeEvent, useState } from 'react'
+import { ChangeEvent } from 'react'
 import { Controller } from 'react-hook-form'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
@@ -11,6 +11,7 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -33,7 +34,15 @@ import {
 import { useExternalControllerForm } from './use-external-controller-form'
 
 export default function ExternalControllerConfig() {
-  const [open, setOpen] = useState(false)
+  return (
+    <Modal>
+      <ExternalControllerConfigForm />
+    </Modal>
+  )
+}
+
+function ExternalControllerConfigForm() {
+  const { setOpen } = useModal()
 
   const { data, refetch } = useClashInfo()
 
@@ -73,7 +82,7 @@ export default function ExternalControllerConfig() {
 
   return (
     <SettingsCard data-slot="external-controller-config-card">
-      <Modal open={open} onOpenChange={setOpen}>
+      <>
         <SettingsCardContent asChild>
           <ModalTrigger asChild>
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
@@ -92,7 +101,12 @@ export default function ExternalControllerConfig() {
           </ModalTrigger>
         </SettingsCardContent>
 
-        <ModalContent>
+        <ModalContent
+          dismissible={!form.formState.isSubmitting}
+          onOpenAutoFocus={() =>
+            form.reset({ externalController: configuredAddress })
+          }
+        >
           <Card className="flex min-w-96 flex-col">
             <CardHeader>
               <ModalTitle>
@@ -140,15 +154,18 @@ export default function ExternalControllerConfig() {
                 variant="flat"
                 onClick={handleSubmit}
                 loading={form.formState.isSubmitting}
+                disabled={form.formState.isSubmitting}
               >
                 {m.common_apply()}
               </Button>
 
-              <ModalClose>{m.common_close()}</ModalClose>
+              <ModalClose disabled={form.formState.isSubmitting}>
+                {m.common_close()}
+              </ModalClose>
             </CardFooter>
           </Card>
         </ModalContent>
-      </Modal>
+      </>
     </SettingsCard>
   )
 }

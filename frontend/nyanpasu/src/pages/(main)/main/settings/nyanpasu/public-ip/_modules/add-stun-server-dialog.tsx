@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { Input, NumericInput } from '@nyanpasu/ui/input'
 import {
   Modal,
+  ModalClose,
   ModalContent,
   ModalDescription,
   ModalTitle,
@@ -87,7 +88,6 @@ export default function AddStunServerDialog({
   /** Resolves whether the server was saved. */
   onAdd: (server: StunServer) => Promise<boolean>
 }) {
-  const [open, setOpen] = useState(false)
   const [host, setHost] = useState('')
   const [port, setPort] = useState<number | null>(DEFAULT_STUN_PORT)
   const [added, setAdded] = useState(false)
@@ -125,12 +125,13 @@ export default function AddStunServerDialog({
   const test = serverTest.data
 
   const handleOpenChange = (next: boolean) => {
-    setOpen(next)
-    if (!next) {
+    if (next) {
       setHost('')
       setPort(DEFAULT_STUN_PORT)
       setAdded(false)
       discardTest()
+    } else {
+      submission.current += 1
     }
   }
 
@@ -157,7 +158,7 @@ export default function AddStunServerDialog({
   }
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange}>
+    <Modal onOpenChange={handleOpenChange}>
       <ModalTrigger asChild>
         <Button variant="raised" className="flex items-center gap-1 px-4">
           <AddRounded className="size-6" aria-hidden />
@@ -248,14 +249,12 @@ export default function AddStunServerDialog({
 
           <CardFooter className="gap-1">
             {added ? (
-              <Button variant="flat" onClick={() => handleOpenChange(false)}>
+              <ModalClose variant="flat">
                 {m.settings_public_ip_stun_added_done()}
-              </Button>
+              </ModalClose>
             ) : (
               <>
-                <Button onClick={() => handleOpenChange(false)}>
-                  {m.common_cancel()}
-                </Button>
+                <ModalClose>{m.common_cancel()}</ModalClose>
 
                 <Button
                   variant="flat"

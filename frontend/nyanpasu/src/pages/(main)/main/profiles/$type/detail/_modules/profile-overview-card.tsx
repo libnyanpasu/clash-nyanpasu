@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
+import { ModalAnchor } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { getRemoteSource, isConfigItem } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
@@ -143,15 +144,17 @@ export default function ProfileOverviewCard({
 
             {(hasFile || isConfigItem(profile)) && (
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    icon
-                    className="size-9 sm:size-11"
-                    aria-label={m.profile_detail_more_actions()}
-                  >
-                    <MoreVertRounded className="size-5" aria-hidden />
-                  </Button>
-                </DropdownMenuTrigger>
+                <ModalAnchor className="w-fit">
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      icon
+                      className="size-9 sm:size-11"
+                      aria-label={m.profile_detail_more_actions()}
+                    >
+                      <MoreVertRounded className="size-5" aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </ModalAnchor>
 
                 <DropdownMenuContent align="end">
                   {hasFile && (

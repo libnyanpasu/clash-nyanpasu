@@ -213,6 +213,47 @@ Use a feature-scoped context and hook when multiple descendants share state or
 callbacks; expose only the values they share. Keep each page's composition and
 page-specific data selection in its route.
 
+## Compose modals and preserve their lifecycle
+
+- Compose ordinary dialogs with `Modal`, `ModalTrigger`, `ModalContent`, and
+  `ModalClose` from `@nyanpasu/ui/modal`. Let `Modal` own its open state. Do not
+  lift a boolean into the page/provider and forward `open`/`onOpenChange` through
+  dialog wrappers merely to handle a button click or a successful save.
+- Keep the root, trigger, and `ModalContent` mounted across opening and closing.
+  `ModalContent` owns presence and unmounts its portal after the exit animation.
+  Do not use `{open && <Dialog />}`, mount a permanently open root to show a
+  dialog, or conditionally remove `ModalContent` when clearing a selection.
+- Descendants can call `useModal().setOpen(false)` after a successful asynchronous
+  operation. Keep form hooks in a component under the root. Use `ModalClose` for
+  cancel/close buttons; it forwards button variants, loading, disabled, and
+  `asChild` behavior. Validation or save failures must leave the dialog open.
+- Reset drafts on the next opening (for example with `onOpenAutoFocus`), or clean
+  up through `ModalContent.onExitComplete`. Do not reset fields or remove the
+  displayed data as soon as closing starts. Invalidate pending work on close when
+  necessary, without resetting its visible result during exit.
+- For submissions that must finish before dismissal, set
+  `ModalContent dismissible={!saving}` and disable explicit close actions while
+  saving. `dismissible` blocks Escape and outside interaction; application code
+  can still close through the local context when the save completes. Disable the
+  submit button too, and use the existing `useLockFn` on submit handlers when a
+  form also accepts Enter. Prevent the native submit event before entering the
+  lock, including for repeated submissions. Query refreshes must not reset a
+  pending form; reset
+  its draft on opening instead.
+- A menu item disappears after selection. Use a persistent `ModalAnchor` around
+  its menu button/heading and open through the nearest modal context. The anchor
+  provides a shared layout origin without changing the button's own behavior.
+  Keep it mounted through exit. Use `ModalTrigger` directly for normal buttons;
+  each trigger has its own origin, including when several triggers share a root.
+- Controlled roots are reserved for external lifecycles such as a router blocker,
+  incoming import requests, or one detail dialog over virtualized/live rows.
+  Explain the reason at the owner, keep the root/content mounted, and retain the
+  content until exit. Controlled state itself does not disable animation; a
+  missing origin or premature unmount interrupts it.
+- Preserve the trigger/anchor's positioning and accessible behavior. Closing
+  restores focus to the actual opener when it is still connected; consumers can
+  override the autofocus callbacks for a concrete interaction requirement.
+
 ## Organize routed pages and their modules
 
 - A feature with distinct navigable pages must use nested file routes and a

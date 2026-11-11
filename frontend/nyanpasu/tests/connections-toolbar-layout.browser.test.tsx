@@ -1,3 +1,4 @@
+import { Modal } from '@nyanpasu/ui/modal'
 // Layout is measured with the app's Inter font, theme and Tailwind classes.
 // Scripts Inter does not cover (CJK, Hangul) fall back to the platform fonts.
 import '@fontsource-variable/inter'
@@ -86,7 +87,6 @@ async function openToolbar(ticket: boolean) {
               onSelectionChange={() => {}}
               search=""
               onSearchChange={() => {}}
-              onOpenSettings={() => {}}
               onCloseAll={() => {}}
             />
           }
@@ -103,11 +103,13 @@ async function openToolbar(ticket: boolean) {
   })
 
   const view = await render(
-    <TestQueryProvider client={queries}>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-      </TooltipProvider>
-    </TestQueryProvider>,
+    <Modal>
+      <TestQueryProvider client={queries}>
+        <TooltipProvider>
+          <RouterProvider router={router} />
+        </TooltipProvider>
+      </TestQueryProvider>
+    </Modal>,
   )
   onTestFinished(() => view.unmount())
 

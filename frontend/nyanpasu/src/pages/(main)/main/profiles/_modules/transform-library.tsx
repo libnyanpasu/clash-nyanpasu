@@ -6,6 +6,7 @@ import SearchOffRounded from '~icons/material-symbols/search-off-rounded'
 import { cva } from 'class-variance-authority'
 import { useId, useMemo, useState } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
+import { Modal, ModalTrigger } from '@nyanpasu/ui/modal'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
@@ -151,7 +152,6 @@ export function TransformLibrary({
   const headingId = useId()
   const [search, setSearch] = useState('')
   const [type, setType] = useState<TypeFilter>(ALL)
-  const [createOpen, setCreateOpen] = useState(false)
 
   const positions = useMemo(
     () =>
@@ -182,111 +182,109 @@ export function TransformLibrary({
       : searched.filter((profile) => profileTypeOf(profile) === filter).length
 
   return (
-    <section
-      data-slot="profile-transform-library"
-      aria-labelledby={headingId}
-      className={cn('flex min-w-0 flex-col gap-4', className)}
-    >
-      <div className="flex min-h-8 items-center gap-2 pl-4">
-        <h2
-          id={headingId}
-          className="text-on-surface min-w-0 flex-1 truncate text-sm font-semibold"
-        >
-          {m.profile_global_library_title()}
-        </h2>
-
-        <CompactButton
-          data-slot="profile-transform-library-create"
-          onClick={() => setCreateOpen(true)}
-        >
-          <AddRounded aria-hidden />
-          {m.profile_create_transform_title()}
-        </CompactButton>
-      </div>
-
-      <SearchField
-        className={searchPillClassName}
-        value={search}
-        onValueChange={setSearch}
-        placeholder={m.profile_global_library_search()}
-        aria-label={m.profile_global_library_search()}
-        clearLabel={m.common_clear()}
-      />
-
-      <div
-        role="group"
-        data-slot="profile-transform-library-filters"
-        aria-label={m.profile_global_library_filter()}
-        className="flex flex-wrap gap-1.5 px-4"
+    <Modal>
+      <section
+        data-slot="profile-transform-library"
+        aria-labelledby={headingId}
+        className={cn('flex min-w-0 flex-col gap-4', className)}
       >
-        {TYPE_FILTERS.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            aria-pressed={type === item.value}
-            onClick={() => setType(item.value)}
-            className={cn(
-              'flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium outline-none',
-              'text-on-surface-variant shadow-[inset_0_0_0_1px_var(--color-outline-variant)]',
-              'hover:bg-on-surface/8 focus-visible:outline-primary focus-visible:outline-2',
-              'transition-[background-color,color,box-shadow] motion-reduce:transition-none',
-              'aria-pressed:bg-secondary-container aria-pressed:text-on-secondary-container aria-pressed:shadow-none',
-            )}
+        <div className="flex min-h-8 items-center gap-2 pl-4">
+          <h2
+            id={headingId}
+            className="text-on-surface min-w-0 flex-1 truncate text-sm font-semibold"
           >
-            {item.label()}
+            {m.profile_global_library_title()}
+          </h2>
 
-            <span className="tabular-nums opacity-70">
-              {countOf(item.value)}
-            </span>
-          </button>
-        ))}
-      </div>
+          <ModalTrigger asChild>
+            <CompactButton data-slot="profile-transform-library-create">
+              <AddRounded aria-hidden />
+              {m.profile_create_transform_title()}
+            </CompactButton>
+          </ModalTrigger>
+        </div>
 
-      {chain.candidates.length === 0 ? (
-        <EmptyState
-          size="compact"
-          tone="normal"
-          data-slot="profile-transform-library-empty"
-          className="min-h-40 py-5"
-          icon={PlaylistAddRounded}
-          message={m.profile_global_library_empty()}
-          description={m.profile_global_library_empty_hint()}
-        >
-          <CompactButton onClick={() => setCreateOpen(true)}>
-            {m.profile_create_transform_title()}
-          </CompactButton>
-        </EmptyState>
-      ) : matches.length === 0 ? (
-        <EmptyState
-          size="compact"
-          tone="normal"
-          data-slot="profile-transform-library-no-match"
-          className="min-h-40 py-5"
-          icon={SearchOffRounded}
-          message={m.profile_global_library_no_match()}
+        <SearchField
+          className={searchPillClassName}
+          value={search}
+          onValueChange={setSearch}
+          placeholder={m.profile_global_library_search()}
+          aria-label={m.profile_global_library_search()}
+          clearLabel={m.common_clear()}
         />
-      ) : (
-        <StepGroup data-slot="profile-transform-library-list">
-          {matches.map((profile) => (
-            <LibraryRow
-              key={profile.uid}
-              profile={profile}
-              position={positions.get(profile.uid)}
-              usedBy={usedByOf?.(profile.uid)}
-              disabled={chain.actionsDisabled}
-              onAdd={chain.handleAdd}
-              onRemove={chain.handleRemove}
-            />
-          ))}
-        </StepGroup>
-      )}
 
-      <CreateProfileModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        kind={ProfileType.JavaScript}
-        source="local"
-      />
-    </section>
+        <div
+          role="group"
+          data-slot="profile-transform-library-filters"
+          aria-label={m.profile_global_library_filter()}
+          className="flex flex-wrap gap-1.5 px-4"
+        >
+          {TYPE_FILTERS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              aria-pressed={type === item.value}
+              onClick={() => setType(item.value)}
+              className={cn(
+                'flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium outline-none',
+                'text-on-surface-variant shadow-[inset_0_0_0_1px_var(--color-outline-variant)]',
+                'hover:bg-on-surface/8 focus-visible:outline-primary focus-visible:outline-2',
+                'transition-[background-color,color,box-shadow] motion-reduce:transition-none',
+                'aria-pressed:bg-secondary-container aria-pressed:text-on-secondary-container aria-pressed:shadow-none',
+              )}
+            >
+              {item.label()}
+
+              <span className="tabular-nums opacity-70">
+                {countOf(item.value)}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {chain.candidates.length === 0 ? (
+          <EmptyState
+            size="compact"
+            tone="normal"
+            data-slot="profile-transform-library-empty"
+            className="min-h-40 py-5"
+            icon={PlaylistAddRounded}
+            message={m.profile_global_library_empty()}
+            description={m.profile_global_library_empty_hint()}
+          >
+            <ModalTrigger asChild>
+              <CompactButton>
+                {m.profile_create_transform_title()}
+              </CompactButton>
+            </ModalTrigger>
+          </EmptyState>
+        ) : matches.length === 0 ? (
+          <EmptyState
+            size="compact"
+            tone="normal"
+            data-slot="profile-transform-library-no-match"
+            className="min-h-40 py-5"
+            icon={SearchOffRounded}
+            message={m.profile_global_library_no_match()}
+          />
+        ) : (
+          <StepGroup data-slot="profile-transform-library-list">
+            {matches.map((profile) => (
+              <LibraryRow
+                key={profile.uid}
+                profile={profile}
+                position={positions.get(profile.uid)}
+                usedBy={usedByOf?.(profile.uid)}
+                disabled={chain.actionsDisabled}
+                onAdd={chain.handleAdd}
+                onRemove={chain.handleRemove}
+              />
+            ))}
+          </StepGroup>
+        )}
+
+        <CreateProfileModal kind={ProfileType.JavaScript} source="local" />
+      </section>
+    </Modal>
   )
 }

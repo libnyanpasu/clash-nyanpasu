@@ -20,6 +20,7 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import {
   ScrollArea,
@@ -101,11 +102,19 @@ const FileLogRecord = memo(function FileLogRecord({
 })
 
 export default function FileLogs({ source }: { source: LogSource }) {
+  return (
+    <Modal>
+      <FileLogsContent source={source} />
+    </Modal>
+  )
+}
+
+function FileLogsContent({ source }: { source: LogSource }) {
+  const { setOpen } = useModal()
   const { level } = Route.useSearch()
   const filterForm = useRef<HTMLFormElement>(null)
   const [following, setFollowing] = useState(true)
   const [unseen, setUnseen] = useState(0)
-  const [filterOpen, setFilterOpen] = useState(false)
   const [draft, setDraft] = useState({ target: '', from: '', to: '' })
   const [file, setFile] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -155,14 +164,11 @@ export default function FileLogs({ source }: { source: LogSource }) {
             files={logs.files}
             onValueChange={selectFile}
           />
-          <Modal
-            open={filterOpen}
-            onOpenChange={(open) => {
-              if (open) setDraft({ target, from, to })
-              setFilterOpen(open)
-            }}
-          >
-            <ModalTrigger asChild>
+          <>
+            <ModalTrigger
+              asChild
+              onClick={() => setDraft({ target, from, to })}
+            >
               <Button
                 variant="glass"
                 icon
@@ -199,7 +205,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
                   setFrom(draft.from)
                   setTo(draft.to)
                   setFollowing(true)
-                  setFilterOpen(false)
+                  setOpen(false)
                 }}
               >
                 <ModalTitle className="text-xl">{m.logs_filters()}</ModalTitle>
@@ -259,7 +265,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
                 </div>
               </form>
             </ModalContent>
-          </Modal>
+          </>
           <LogClearButton
             disabled={logs.loading || !logs.rows.length}
             onClick={() => logs.clear()}

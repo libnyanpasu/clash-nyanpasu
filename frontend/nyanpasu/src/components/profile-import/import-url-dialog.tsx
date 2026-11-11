@@ -60,7 +60,8 @@ const IMPORT_TASK = 'import-url'
 /**
  * Downloads `request.url`, suggests what it is, and imports it the way the
  * user confirms: kept as a remote subscription or imported once as a local
- * profile. Closing resolves with the new profile, or `null` when cancelled.
+ * profile. The provider controls this request/promise lifecycle for deep links
+ * and other external entries; keep the root mounted through exit. Closing resolves with the new profile, or `null` when cancelled.
  */
 export default function ImportUrlDialog({
   open,

@@ -1,7 +1,7 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
 import { AnimatePresence } from 'motion/react'
-import { ChangeEvent, useEffect, useState } from 'react'
+import { ChangeEvent } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
@@ -13,6 +13,7 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -41,7 +42,15 @@ const formSchema = z.object({
 })
 
 export default function CoreSecretConfig() {
-  const [open, setOpen] = useState(false)
+  return (
+    <Modal>
+      <CoreSecretConfigForm />
+    </Modal>
+  )
+}
+
+function CoreSecretConfigForm() {
+  const { setOpen } = useModal()
 
   const { data, refetch } = useClashInfo()
 
@@ -56,38 +65,34 @@ export default function CoreSecretConfig() {
     },
   })
 
-  useEffect(() => {
-    form.reset({
-      coreSecret: data?.secret || '',
-    })
-  }, [data?.secret, form])
+  const handleSubmit = useLockFn(
+    form.handleSubmit(
+      async (data) => {
+        try {
+          await upsert.mutateAsync({
+            secret: data.coreSecret,
+          })
+          await refetch()
 
-  const handleSubmit = form.handleSubmit(
-    async (data) => {
-      try {
-        await upsert.mutateAsync({
-          secret: data.coreSecret,
-        })
-        await refetch()
+          await runtimeProfile.refetch()
 
-        await runtimeProfile.refetch()
-
-        setOpen(false)
-      } catch (error) {
+          setOpen(false)
+        } catch (error) {
+          message(formatError(error), {
+            title: 'Error',
+            kind: 'error',
+            error,
+          })
+        }
+      },
+      (error) => {
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
           error,
         })
-      }
-    },
-    (error) => {
-      message(formatError(error), {
-        title: 'Error',
-        kind: 'error',
-        error,
-      })
-    },
+      },
+    ),
   )
 
   const handleCopyClick = useLockFn(async () => {
@@ -113,7 +118,7 @@ export default function CoreSecretConfig() {
 
   return (
     <SettingsCard data-slot="core-secret-config-card">
-      <Modal open={open} onOpenChange={setOpen}>
+      <>
         <SettingsCardContent asChild>
           <ModalTrigger asChild>
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
@@ -155,7 +160,10 @@ export default function CoreSecretConfig() {
           </ModalTrigger>
         </SettingsCardContent>
 
-        <ModalContent>
+        <ModalContent
+          dismissible={!form.formState.isSubmitting}
+          onOpenAutoFocus={() => form.reset({ coreSecret: data?.secret || '' })}
+        >
           <Card className="flex min-w-96 flex-col">
             <CardHeader>
               <ModalTitle>
@@ -164,7 +172,13 @@ export default function CoreSecretConfig() {
             </CardHeader>
 
             <CardContent asChild>
-              <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  handleSubmit(event)
+                }}
+              >
                 <Controller
                   control={form.control}
                   name="coreSecret"
@@ -203,15 +217,18 @@ export default function CoreSecretConfig() {
                 variant="flat"
                 onClick={handleSubmit}
                 loading={form.formState.isSubmitting}
+                disabled={form.formState.isSubmitting}
               >
                 {m.common_apply()}
               </Button>
 
-              <ModalClose>{m.common_close()}</ModalClose>
+              <ModalClose disabled={form.formState.isSubmitting}>
+                {m.common_close()}
+              </ModalClose>
             </CardFooter>
           </Card>
         </ModalContent>
-      </Modal>
+      </>
     </SettingsCard>
   )
 }

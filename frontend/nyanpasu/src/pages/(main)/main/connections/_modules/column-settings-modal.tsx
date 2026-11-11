@@ -1,5 +1,5 @@
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import { ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
@@ -55,16 +55,12 @@ function ColumnItem({
 }
 
 export default function ColumnSettingsModal({
-  open,
-  onOpenChange,
   labels,
   order,
   visibility,
   onOrderChange,
   onVisibilityChange,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   labels: ReadonlyMap<string, () => string>
   order: ColumnOrderState
   visibility: ColumnVisibilityState
@@ -74,7 +70,7 @@ export default function ColumnSettingsModal({
   const visibleCount = order.filter((id) => visibility[id] !== false).length
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange}>
+    <>
       {/* Focusing the first row on open would mark it as if picked. */}
       <ModalContent onOpenAutoFocus={(event) => event.preventDefault()}>
         <Card divider className="flex w-96 max-w-[90vw] flex-col">
@@ -124,6 +120,6 @@ export default function ColumnSettingsModal({
           </CardFooter>
         </Card>
       </ModalContent>
-    </Modal>
+    </>
   )
 }

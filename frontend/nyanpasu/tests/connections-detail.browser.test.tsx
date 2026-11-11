@@ -1,6 +1,7 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { Modal } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
@@ -74,11 +75,13 @@ function render(
     localStorage.clear()
   })
   root.render(
-    <QueryClientProvider client={queries}>
-      <ContextMenuProvider>
-        <ScrollArea className="h-96">{node}</ScrollArea>
-      </ContextMenuProvider>
-    </QueryClientProvider>,
+    <Modal>
+      <QueryClientProvider client={queries}>
+        <ContextMenuProvider>
+          <ScrollArea className="h-96">{node}</ScrollArea>
+        </ContextMenuProvider>
+      </QueryClientProvider>
+    </Modal>,
   )
   return container
 }
@@ -114,12 +117,7 @@ test('double-clicking a closed connection shows its details', async ({
   mockIPC(() => ({ connections: [connection], next: null }))
 
   const container = render(
-    <ClosedViewer
-      search=""
-      selection={{ filters: [] }}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="" selection={{ filters: [] }} />,
     onTestFinished,
   )
 
@@ -146,12 +144,7 @@ test('the details of an active connection stay open after it closes', async ({
   stream.publish({ connections: [connection, other] })
 
   const container = render(
-    <ActiveViewer
-      search=""
-      filters={[]}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ActiveViewer search="" filters={[]} />,
     onTestFinished,
   )
 

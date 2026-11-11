@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
+import { ModalAnchor } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import type { FolderId } from '@nyanpasu/rpc/types'
 import { useProfileLayout } from './use-profile-layout'
@@ -33,16 +34,18 @@ export default function FolderActionsMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          icon
-          className="size-9 shrink-0"
-          aria-label={m.profile_detail_more_actions()}
-          data-slot="profiles-folder-actions"
-        >
-          <MoreVertRounded className="size-5" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
+      <ModalAnchor className="w-fit">
+        <DropdownMenuTrigger asChild>
+          <Button
+            icon
+            className="size-9 shrink-0"
+            aria-label={m.profile_detail_more_actions()}
+            data-slot="profiles-folder-actions"
+          >
+            <MoreVertRounded className="size-5" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+      </ModalAnchor>
 
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={handleRename}>

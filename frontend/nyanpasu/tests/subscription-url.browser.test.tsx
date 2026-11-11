@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { userEvent } from 'vitest/browser'
+import { Modal } from '@nyanpasu/ui/modal'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CreateProfileModal from '@/pages/(main)/main/profiles/_modules/create-profile-modal'
@@ -157,12 +159,9 @@ test('remote profile creation submits legal loopback URLs unchanged', async ({
   const calls: RpcCall[] = []
   installRpcMock(calls)
   const view = await mount(
-    <CreateProfileModal
-      open
-      onOpenChange={() => {}}
-      kind="file"
-      source="remote"
-    />,
+    <Modal open>
+      <CreateProfileModal kind="file" source="remote" />
+    </Modal>,
     onTestFinished,
   )
   const input = view.getByRole('textbox').nth(2)
@@ -261,4 +260,84 @@ test('subscription URL editor blocks invalid URLs and resets unsaved input on re
   await expect
     .element(view.getByRole('textbox').first())
     .toHaveValue(profile.config.source.url)
+})
+
+test('a pending subscription save cannot be dismissed before it finishes', async ({
+  onTestFinished,
+}) => {
+  let finish!: () => void
+  const saving = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const calls: string[] = []
+  mockIPC(
+    async (command, args) => {
+      expect(command).toBe('call_rpc')
+      const call = args as RpcCall
+      calls.push(call.method)
+      if (call.method === 'replace_profile_definition') {
+        await saving
+        return outcome(null)
+      }
+      if (call.method === 'update_profile') return outcome(null)
+      throw new Error(`Unexpected RPC: ${call.method}`)
+    },
+    { shouldMockEvents: true },
+  )
+  onTestFinished(() => finish())
+  const view = await mount(
+    <SubscriptionUrlEditor profile={profile} asChild>
+      <button>edit subscription</button>
+    </SubscriptionUrlEditor>,
+    onTestFinished,
+  )
+  await view.getByRole('button', { name: 'edit subscription' }).click()
+  await view.getByRole('textbox').fill(loopbackUrls[0])
+  await view.getByRole('button', { name: m.common_save() }).click()
+  await expect.poll(() => calls).toContain('replace_profile_definition')
+  await expect
+    .element(view.getByRole('button', { name: m.common_cancel() }))
+    .toBeDisabled()
+  await userEvent.keyboard('{Escape}')
+  await expect.element(view.getByRole('dialog')).toBeInTheDocument()
+  finish()
+  await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
+  expect(calls).toEqual(['replace_profile_definition', 'update_profile'])
+})
+
+test('a failed subscription save keeps the draft and restores cancellation', async ({
+  onTestFinished,
+}) => {
+  let finish!: () => void
+  const saving = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  mockIPC(
+    async (command, args) => {
+      expect(command).toBe('call_rpc')
+      const call = args as RpcCall
+      expect(call.method).toBe('replace_profile_definition')
+      await saving
+      throw new Error('disk full')
+    },
+    { shouldMockEvents: true },
+  )
+  onTestFinished(() => finish())
+  const view = await mount(
+    <SubscriptionUrlEditor profile={profile} asChild>
+      <button>edit subscription</button>
+    </SubscriptionUrlEditor>,
+    onTestFinished,
+  )
+  await view.getByRole('button', { name: 'edit subscription' }).click()
+  await view.getByRole('textbox').fill(loopbackUrls[0])
+  await view.getByRole('button', { name: m.common_save() }).click()
+  const cancel = view.getByRole('button', { name: m.common_cancel() })
+  await expect.element(cancel).toBeDisabled()
+  finish()
+  await expect.poll(() => notifications.message.mock.calls.length).toBe(1)
+  await expect.element(cancel).not.toBeDisabled()
+  await expect.element(view.getByRole('textbox')).toHaveValue(loopbackUrls[0])
+  await cancel.click()
+  await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
 })

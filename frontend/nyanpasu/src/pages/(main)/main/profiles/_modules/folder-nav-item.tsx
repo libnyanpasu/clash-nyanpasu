@@ -4,6 +4,7 @@ import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-
 import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import FolderRounded from '~icons/material-symbols/folder-rounded'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { ModalAnchor } from '@nyanpasu/ui/modal'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -60,24 +61,26 @@ export default function FolderNavItem({
 
   return (
     <RegisterContextMenu>
-      <RegisterContextMenuTrigger asChild>
-        <ProfilesNavigationItem
-          ref={ref}
-          // dnd-kit gives its drag source the button role unless one is set.
-          role="link"
-          to="/main/profiles/folder/$folderId"
-          params={{ folderId: folder.id }}
-          color="neutral"
-          icon={<FolderRounded />}
-          label={folder.name}
-          description={m.profile_nav_count_profiles({
-            count: folder.members.length,
-          })}
-          data-slot="profiles-folder-nav-item"
-          data-dragging={isDragging || undefined}
-          data-drop-target={isDropTarget || undefined}
-        />
-      </RegisterContextMenuTrigger>
+      <ModalAnchor className="rounded-3xl [&>*:first-child]:rounded-[inherit]">
+        <RegisterContextMenuTrigger asChild>
+          <ProfilesNavigationItem
+            ref={ref}
+            // dnd-kit gives its drag source the button role unless one is set.
+            role="link"
+            to="/main/profiles/folder/$folderId"
+            params={{ folderId: folder.id }}
+            color="neutral"
+            icon={<FolderRounded />}
+            label={folder.name}
+            description={m.profile_nav_count_profiles({
+              count: folder.members.length,
+            })}
+            data-slot="profiles-folder-nav-item"
+            data-dragging={isDragging || undefined}
+            data-drop-target={isDropTarget || undefined}
+          />
+        </RegisterContextMenuTrigger>
+      </ModalAnchor>
 
       <RegisterContextMenuContent>
         <ContextMenuItem onClick={() => openRenameFolder(folder.id)}>

@@ -493,16 +493,56 @@ test('Collapse all and Expand all fold every folder', async () => {
     .toHaveAttribute('aria-expanded', 'true')
 })
 
-test('the add button creates a folder', async () => {
+test('the add button creates a folder and animates back to its trigger', async ({
+  onTestFinished,
+}) => {
   const { created } = await renderAt('/main/proxies/group/Alpha')
+  const opener = page.getByRole('button', {
+    name: m.profile_folder_new_title(),
+  })
+  const openerElement = opener.element() as HTMLElement
+  const placeholder = openerElement.querySelector<HTMLElement>(
+    '[data-slot="modal-trigger-placeholder"]',
+  )!
+  let openingTranslation = 0
+  let returningTranslation = 0
+  const translation = (element: HTMLElement) => {
+    const transform = getComputedStyle(element).transform
+    return transform === 'none' ? 0 : Math.abs(new DOMMatrix(transform).m41)
+  }
+  const observer = new MutationObserver(() => {
+    const content = document.querySelector<HTMLElement>(
+      '[data-slot="modal-content"]',
+    )
+    if (content)
+      openingTranslation = Math.max(openingTranslation, translation(content))
+    returningTranslation = Math.max(
+      returningTranslation,
+      translation(placeholder),
+    )
+  })
+  observer.observe(document.body, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style'],
+  })
+  onTestFinished(() => observer.disconnect())
 
-  await page.getByRole('button', { name: m.profile_folder_new_title() }).click()
+  await opener.click()
+  await expect.poll(() => openingTranslation).toBeGreaterThan(10)
+  expect(
+    document.querySelector<HTMLElement>('[data-slot="modal-content"]')?.dataset
+      .layoutId,
+  ).toBe(openerElement.dataset.layoutId)
   await page
     .getByRole('textbox', { name: m.profile_folder_name_label() })
     .fill('Games')
   await page.getByRole('button', { name: m.common_save() }).click()
 
   await expect.poll(() => created).toEqual([['Games', []]])
+  await expect.poll(() => returningTranslation).toBeGreaterThan(10)
+  await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+  await expect.poll(() => document.activeElement).toBe(openerElement)
 })
 
 test('a folder is renamed from its menu', async () => {

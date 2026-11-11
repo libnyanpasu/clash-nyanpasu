@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
+import { ModalTrigger } from '@nyanpasu/ui/modal'
 import { useScrollAreaViewportElement } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
@@ -57,40 +58,42 @@ function CreditRow({
   style: CSSProperties
 }) {
   return (
-    <button
-      type="button"
-      className={cn(
-        'absolute inset-x-0 top-0 flex items-center gap-3 rounded-2xl px-4 text-left',
-        'hover:bg-on-surface/8 focus-visible:outline-primary outline-none focus-visible:outline-2',
-        'cursor-pointer transition-colors',
-      )}
-      style={{ ...style, height: CREDIT_ROW_HEIGHT }}
-      onClick={() => onSelect(pkg)}
-      data-slot="credits-row"
-      data-source={pkg.source}
-    >
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="truncate text-sm font-medium">{pkg.name}</span>
-
-        {pkg.version && (
-          <span className="text-on-surface-variant shrink-0 text-xs tabular-nums">
-            {pkg.version}
-          </span>
-        )}
-      </div>
-
-      <span
+    <ModalTrigger asChild>
+      <button
+        type="button"
         className={cn(
-          'bg-surface-variant/60 dark:bg-surface-variant/30 max-w-[45%] truncate rounded-full px-2.5 py-0.5 text-xs',
-          !pkg.license && 'text-on-surface-variant',
+          'absolute inset-x-0 top-0 flex items-center gap-3 rounded-2xl px-4 text-left',
+          'hover:bg-on-surface/8 focus-visible:outline-primary outline-none focus-visible:outline-2',
+          'cursor-pointer transition-colors',
         )}
-        data-slot="credits-row-license"
+        style={{ ...style, height: CREDIT_ROW_HEIGHT }}
+        onClick={() => onSelect(pkg)}
+        data-slot="credits-row"
+        data-source={pkg.source}
       >
-        {pkg.license ?? m.settings_about_credits_no_license()}
-      </span>
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="truncate text-sm font-medium">{pkg.name}</span>
 
-      <ChevronRightRounded className="text-on-surface-variant size-5 shrink-0" />
-    </button>
+          {pkg.version && (
+            <span className="text-on-surface-variant shrink-0 text-xs tabular-nums">
+              {pkg.version}
+            </span>
+          )}
+        </div>
+
+        <span
+          className={cn(
+            'bg-surface-variant/60 dark:bg-surface-variant/30 max-w-[45%] truncate rounded-full px-2.5 py-0.5 text-xs',
+            !pkg.license && 'text-on-surface-variant',
+          )}
+          data-slot="credits-row-license"
+        >
+          {pkg.license ?? m.settings_about_credits_no_license()}
+        </span>
+
+        <ChevronRightRounded className="text-on-surface-variant size-5 shrink-0" />
+      </button>
+    </ModalTrigger>
   )
 }
 

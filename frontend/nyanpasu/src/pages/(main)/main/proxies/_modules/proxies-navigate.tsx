@@ -1,6 +1,7 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import { useEffect } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import { ModalTrigger } from '@nyanpasu/ui/modal'
 import {
   NavigationList,
   NavigationListGroup,
@@ -108,15 +109,17 @@ export default function ProxiesNavigate() {
         label={m.proxies_nav_folders()}
         className="[&>[role=group]]:gap-2"
         action={
-          <Button
-            icon
-            className="mr-2 size-8"
-            aria-label={m.profile_folder_new_title()}
-            data-slot="proxies-folder-add"
-            onClick={() => openCreateFolder()}
-          >
-            <AddRounded className="size-5" />
-          </Button>
+          <ModalTrigger asChild>
+            <Button
+              icon
+              className="mr-2 size-8"
+              aria-label={m.profile_folder_new_title()}
+              data-slot="proxies-folder-add"
+              onClick={() => openCreateFolder()}
+            >
+              <AddRounded className="size-5" />
+            </Button>
+          </ModalTrigger>
         }
       >
         {folders.map((folder, index) => {

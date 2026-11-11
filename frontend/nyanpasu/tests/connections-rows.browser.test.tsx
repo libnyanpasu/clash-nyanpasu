@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { Modal } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import parseTraffic from '@/utils/parse-traffic'
@@ -52,18 +53,15 @@ function renderActiveViewer(onTestFinished: (fn: () => void) => void) {
     localStorage.clear()
   })
   root.render(
-    <QueryClientProvider client={queries}>
-      <ContextMenuProvider>
-        <ScrollArea className="h-96">
-          <ActiveViewer
-            search=""
-            filters={[]}
-            settingsOpen={false}
-            onSettingsOpenChange={() => {}}
-          />
-        </ScrollArea>
-      </ContextMenuProvider>
-    </QueryClientProvider>,
+    <Modal>
+      <QueryClientProvider client={queries}>
+        <ContextMenuProvider>
+          <ScrollArea className="h-96">
+            <ActiveViewer search="" filters={[]} />
+          </ScrollArea>
+        </ContextMenuProvider>
+      </QueryClientProvider>
+    </Modal>,
   )
   return container
 }

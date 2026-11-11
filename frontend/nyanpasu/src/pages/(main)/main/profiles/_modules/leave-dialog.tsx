@@ -8,7 +8,7 @@ import {
 } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 
-/** Asks before navigating away from a page with unapplied changes. */
+/** Controlled by the pending navigation/editor decision, with no local trigger. */
 export default function LeaveDialog({
   open,
   description,

@@ -3,13 +3,7 @@ import DeleteRounded from '~icons/material-symbols/delete-rounded'
 import EditSquareRounded from '~icons/material-symbols/edit-square-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import { AnimatePresence, motion } from 'motion/react'
-import {
-  ChangeEvent,
-  PropsWithChildren,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { ChangeEvent, PropsWithChildren, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'
 import { Button } from '@nyanpasu/ui/button'
@@ -21,6 +15,7 @@ import {
   ModalContent,
   ModalTitle,
   ModalTrigger,
+  useModal,
 } from '@nyanpasu/ui/modal'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
@@ -114,11 +109,17 @@ const formSchema = z.object({
   url: z.httpUrl(),
 })
 
-const EditItemButton = ({
+const EditItemButton = (props: PropsWithChildren<{ defaultUrl?: string }>) => (
+  <Modal>
+    <EditItemForm {...props} />
+  </Modal>
+)
+
+const EditItemForm = ({
   defaultUrl,
   children,
 }: PropsWithChildren<{ defaultUrl?: string }>) => {
-  const [open, setOpen] = useState(false)
+  const { setOpen } = useModal()
 
   const { value, upsert } = useClashSetting('web_ui_list')
 
@@ -131,52 +132,40 @@ const EditItemButton = ({
     },
   })
 
-  // sync default url to form
-  useEffect(() => {
-    form.reset({
-      url: defaultUrl,
-    })
-  }, [defaultUrl, form])
-
-  const handleOpenChange = (open: boolean) => {
-    if (!open) {
-      form.reset({
-        url: defaultUrl,
-      })
-    }
-
-    setOpen(open)
-  }
-
   const urlValue = form.watch('url')
 
-  const handleSubmit = form.handleSubmit(
-    async (data) => {
-      try {
-        await upsert([...(value || []), data.url])
-        handleOpenChange(false)
-      } catch (error) {
+  const handleSubmit = useLockFn(
+    form.handleSubmit(
+      async (data) => {
+        try {
+          await upsert([...(value || []), data.url])
+          setOpen(false)
+        } catch (error) {
+          message(formatError(error), {
+            title: 'Error',
+            kind: 'error',
+            error,
+          })
+        }
+      },
+      (error) => {
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
           error,
         })
-      }
-    },
-    (error) => {
-      message(formatError(error), {
-        title: 'Error',
-        kind: 'error',
-        error,
-      })
-    },
+      },
+    ),
   )
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange}>
+    <>
       <ModalTrigger asChild>{children}</ModalTrigger>
 
-      <ModalContent>
+      <ModalContent
+        dismissible={!form.formState.isSubmitting}
+        onOpenAutoFocus={() => form.reset({ url: defaultUrl })}
+      >
         <Card className="w-96">
           <CardHeader>
             <ModalTitle>{m.settings_web_ui_add_button()}</ModalTitle>
@@ -231,15 +220,22 @@ const EditItemButton = ({
           </CardContent>
 
           <CardFooter className="gap-2">
-            <Button variant="flat" onClick={handleSubmit}>
+            <Button
+              variant="flat"
+              onClick={handleSubmit}
+              loading={form.formState.isSubmitting}
+              disabled={form.formState.isSubmitting}
+            >
               {m.common_submit()}
             </Button>
 
-            <ModalClose>{m.common_cancel()}</ModalClose>
+            <ModalClose disabled={form.formState.isSubmitting}>
+              {m.common_cancel()}
+            </ModalClose>
           </CardFooter>
         </Card>
       </ModalContent>
-    </Modal>
+    </>
   )
 }
 

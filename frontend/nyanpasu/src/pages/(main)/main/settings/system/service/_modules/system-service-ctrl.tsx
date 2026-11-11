@@ -167,7 +167,7 @@ const ServiceDetailButton = () => {
   const rawJson = useMemo(() => JSON.stringify(data, null, 2), [data])
 
   return (
-    <Modal onOpenChange={(open) => !open && setShowRawJson(false)}>
+    <Modal onOpenChange={(open) => open && setShowRawJson(false)}>
       <ModalTrigger asChild>
         <Button data-slot="system-service-detail-button">
           {m.settings_system_proxy_system_service_ctrl_detail()}

@@ -2,7 +2,12 @@ import { useEffect } from 'react'
 import { FormProvider, useForm, useWatch } from 'react-hook-form'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Modal, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import {
+  ModalClose,
+  ModalContent,
+  ModalTitle,
+  useModal,
+} from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   SegmentedButton,
@@ -52,20 +57,18 @@ const SOURCE_LABELS = {
 const PENDING_FILE = 'pending.yaml'
 
 export default function CreateProfileModal({
-  open,
-  onOpenChange,
   kind,
   folder,
   source,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   /** Initial kind; also decides whether config or transform kinds are offered. */
   kind: CreateKind
   /** Folder a created Config joins; transforms are never foldered. */
   folder?: FolderId | null
   source: CreateSource
 }) {
+  const { open, setOpen } = useModal()
+
   const { create, patchMetadata } = useProfileMutations()
   const importUrl = useImportUrl()
 
@@ -192,7 +195,7 @@ export default function CreateProfileModal({
           await createManual(values)
         }
 
-        onOpenChange(false)
+        setOpen(false)
       } catch (error) {
         message(
           m.profile_create_failed_message({ error: formatError(error) }),
@@ -204,104 +207,96 @@ export default function CreateProfileModal({
 
   const handleSubmit = useLockFn(blockTask.execute)
 
-  const handleOpenChange = (value: boolean) => {
-    if (blockTask.isPending) {
-      return
-    }
-
-    onOpenChange(value)
-  }
-
   const kinds = isConfig ? CONFIG_KINDS : TRANSFORM_KINDS
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange}>
-      <ModalContent>
-        <Card className="w-96">
-          <CardHeader>
-            <ModalTitle>
-              {isConfig
-                ? m.profile_create_config_title()
-                : m.profile_create_transform_title()}
-            </ModalTitle>
-          </CardHeader>
+    <ModalContent dismissible={!blockTask.isPending}>
+      <Card className="w-96">
+        <CardHeader>
+          <ModalTitle>
+            {isConfig
+              ? m.profile_create_config_title()
+              : m.profile_create_transform_title()}
+          </ModalTitle>
+        </CardHeader>
 
-          <CardContent asChild>
-            <ScrollArea className="max-h-[80dvh]">
-              <FormProvider {...form}>
-                <div className="space-y-4 pt-2">
-                  {/* A remote kind is confirmed after the download. */}
-                  {(currentSource !== 'remote' ||
-                    currentKind === 'composition') && (
-                    <SegmentedButton
-                      size="sm"
-                      value={currentKind}
-                      onValueChange={(value) => {
-                        if (value) {
-                          form.setValue('kind', value as CreateKind)
-                          // accepted file types follow the kind
-                          form.setValue('fileName', null)
-                          form.setValue('fileContent', null)
-                          form.setValue('externalPath', '')
-                        }
-                      }}
-                    >
-                      {kinds.map((item) => (
-                        <SegmentedButtonItem key={item} value={item}>
-                          {KIND_LABELS[item]()}
-                        </SegmentedButtonItem>
-                      ))}
-                    </SegmentedButton>
-                  )}
+        <CardContent asChild>
+          <ScrollArea className="max-h-[80dvh]">
+            <FormProvider {...form}>
+              <div className="space-y-4 pt-2">
+                {/* A remote kind is confirmed after the download. */}
+                {(currentSource !== 'remote' ||
+                  currentKind === 'composition') && (
+                  <SegmentedButton
+                    size="sm"
+                    value={currentKind}
+                    onValueChange={(value) => {
+                      if (value) {
+                        form.setValue('kind', value as CreateKind)
+                        // accepted file types follow the kind
+                        form.setValue('fileName', null)
+                        form.setValue('fileContent', null)
+                        form.setValue('externalPath', '')
+                      }
+                    }}
+                  >
+                    {kinds.map((item) => (
+                      <SegmentedButtonItem key={item} value={item}>
+                        {KIND_LABELS[item]()}
+                      </SegmentedButtonItem>
+                    ))}
+                  </SegmentedButton>
+                )}
 
-                  {currentKind !== 'composition' && (
-                    <SegmentedButton
-                      size="sm"
-                      value={currentSource}
-                      onValueChange={(value) => {
-                        if (value) {
-                          form.setValue('source', value as CreateSource)
-                          form.clearErrors()
-                        }
-                      }}
-                    >
-                      {(['remote', 'local', 'external'] as const).map(
-                        (item) => (
-                          <SegmentedButtonItem key={item} value={item}>
-                            {SOURCE_LABELS[item]()}
-                          </SegmentedButtonItem>
-                        ),
-                      )}
-                    </SegmentedButton>
-                  )}
+                {currentKind !== 'composition' && (
+                  <SegmentedButton
+                    size="sm"
+                    value={currentSource}
+                    onValueChange={(value) => {
+                      if (value) {
+                        form.setValue('source', value as CreateSource)
+                        form.clearErrors()
+                      }
+                    }}
+                  >
+                    {(['remote', 'local', 'external'] as const).map((item) => (
+                      <SegmentedButtonItem key={item} value={item}>
+                        {SOURCE_LABELS[item]()}
+                      </SegmentedButtonItem>
+                    ))}
+                  </SegmentedButton>
+                )}
 
-                  <MetadataFields />
+                <MetadataFields />
 
-                  {currentKind === 'composition' ? (
-                    <CompositionMembersField />
-                  ) : currentSource === 'remote' ? (
-                    <RemoteFields />
-                  ) : currentSource === 'local' ? (
-                    <LocalFileField disabled={blockTask.isPending} />
-                  ) : (
-                    <ExternalFileField disabled={blockTask.isPending} />
-                  )}
-                </div>
-              </FormProvider>
-            </ScrollArea>
-          </CardContent>
+                {currentKind === 'composition' ? (
+                  <CompositionMembersField />
+                ) : currentSource === 'remote' ? (
+                  <RemoteFields />
+                ) : currentSource === 'local' ? (
+                  <LocalFileField disabled={blockTask.isPending} />
+                ) : (
+                  <ExternalFileField disabled={blockTask.isPending} />
+                )}
+              </div>
+            </FormProvider>
+          </ScrollArea>
+        </CardContent>
 
-          <CardFooter className="gap-1">
-            <Button onClick={handleSubmit} loading={blockTask.isPending}>
-              {m.common_submit()}
-            </Button>
+        <CardFooter className="gap-1">
+          <Button
+            onClick={handleSubmit}
+            loading={blockTask.isPending}
+            disabled={blockTask.isPending}
+          >
+            {m.common_submit()}
+          </Button>
 
-            <Button onClick={() => handleOpenChange(false)}>
-              {m.common_cancel()}
-            </Button>
-          </CardFooter>
-        </Card>
-      </ModalContent>
-    </Modal>
+          <ModalClose disabled={blockTask.isPending}>
+            {m.common_cancel()}
+          </ModalClose>
+        </CardFooter>
+      </Card>
+    </ModalContent>
   )
 }

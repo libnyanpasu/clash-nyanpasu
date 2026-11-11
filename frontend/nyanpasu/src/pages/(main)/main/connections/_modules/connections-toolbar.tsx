@@ -6,6 +6,7 @@ import {
   GlassControlGroup,
   glassControlGroupVariants,
 } from '@nyanpasu/ui/glass-control-group'
+import { ModalTrigger } from '@nyanpasu/ui/modal'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -21,7 +22,6 @@ export default function ConnectionsToolbar({
   onSelectionChange,
   search,
   onSearchChange,
-  onOpenSettings,
   onCloseAll,
 }: {
   /** Rendered before every control, such as the way back after a jump. */
@@ -31,7 +31,6 @@ export default function ConnectionsToolbar({
   onSelectionChange: (selection: ConnectionsSelection) => void
   search: string
   onSearchChange: (search: string) => void
-  onOpenSettings: () => void
   /** Absent while no live connection is listed. */
   onCloseAll?: () => void
 }) {
@@ -76,14 +75,15 @@ export default function ConnectionsToolbar({
       >
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="glass"
-              onClick={onOpenSettings}
-              aria-label={m.connections_column_settings()}
-              icon
-            >
-              <ViewColumnRounded />
-            </Button>
+            <ModalTrigger asChild>
+              <Button
+                variant="glass"
+                aria-label={m.connections_column_settings()}
+                icon
+              >
+                <ViewColumnRounded />
+              </Button>
+            </ModalTrigger>
           </TooltipTrigger>
 
           <TooltipContent>{m.connections_column_settings()}</TooltipContent>

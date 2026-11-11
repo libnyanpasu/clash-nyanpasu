@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
+import { Modal, ModalAnchor, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { Switch } from '@nyanpasu/ui/switch'
 import useCustomCss, { reportCustomCssError } from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
@@ -125,19 +126,21 @@ function CustomCssListItem({
       />
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            icon
-            aria-label={m.settings_user_interface_custom_css_row_actions({
-              name: item.name,
-            })}
-            className="text-on-surface-variant size-9 shrink-0"
-            data-slot="custom-css-item-actions"
-          >
-            <MoreVertRounded className="size-5" aria-hidden />
-          </Button>
-        </DropdownMenuTrigger>
+        <ModalAnchor className="w-fit">
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              icon
+              aria-label={m.settings_user_interface_custom_css_row_actions({
+                name: item.name,
+              })}
+              className="text-on-surface-variant size-9 shrink-0"
+              data-slot="custom-css-item-actions"
+            >
+              <MoreVertRounded className="size-5" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+        </ModalAnchor>
 
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={onRename}>
@@ -175,6 +178,15 @@ function CustomCssListItem({
  * be enabled; dragging an item or the row menu changes its place.
  */
 export default function CustomCssItems() {
+  return (
+    <Modal>
+      <CustomCssItemsContent />
+    </Modal>
+  )
+}
+
+function CustomCssItemsContent() {
+  const { setOpen } = useModal()
   const customCss = useCustomCss()
 
   const { items } = customCss.state
@@ -233,7 +245,10 @@ export default function CustomCssItems() {
               index={index}
               count={items.length}
               onEdit={() => openEditor(item.id)}
-              onRename={() => setDialog({ kind: 'rename', item })}
+              onRename={() => {
+                setDialog({ kind: 'rename', item })
+                setOpen(true)
+              }}
               onToggle={(enabled) =>
                 attempt(() => customCss.setEnabled(item.id, enabled))
               }
@@ -245,40 +260,42 @@ export default function CustomCssItems() {
       </DragDropProvider>
 
       <SettingsListActions>
-        <Button
-          variant="raised"
-          className="flex items-center gap-1 px-4"
-          data-slot="custom-css-add"
-          onClick={() => setDialog({ kind: 'add' })}
-        >
-          <AddRounded className="size-6" aria-hidden />
-          <span>{m.settings_user_interface_custom_css_add()}</span>
-        </Button>
+        <ModalTrigger asChild>
+          <Button
+            variant="raised"
+            className="flex items-center gap-1 px-4"
+            data-slot="custom-css-add"
+            onClick={() => setDialog({ kind: 'add' })}
+          >
+            <AddRounded className="size-6" aria-hidden />
+            <span>{m.settings_user_interface_custom_css_add()}</span>
+          </Button>
+        </ModalTrigger>
       </SettingsListActions>
 
-      {dialog?.kind === 'add' && (
-        <CustomCssNameDialog
-          title={m.settings_user_interface_custom_css_add_title()}
-          initialName={m.settings_user_interface_custom_css_new_item_name({
-            number: items.length + 1,
-          })}
-          onSubmit={(name) =>
-            attempt(async () => openEditor(await customCss.add(name)))
+      <CustomCssNameDialog
+        title={
+          dialog?.kind === 'rename'
+            ? m.settings_user_interface_custom_css_rename_title()
+            : m.settings_user_interface_custom_css_add_title()
+        }
+        initialName={
+          dialog?.kind === 'rename'
+            ? dialog.item.name
+            : m.settings_user_interface_custom_css_new_item_name({
+                number: items.length + 1,
+              })
+        }
+        onSubmit={async (name) => {
+          if (dialog?.kind === 'rename') {
+            await customCss.rename(dialog.item.id, name)
+          } else {
+            const id = await customCss.add(name)
+            // Saving succeeded even if the separate editor window cannot open.
+            await openEditor(id).catch(reportCustomCssError)
           }
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === 'rename' && (
-        <CustomCssNameDialog
-          title={m.settings_user_interface_custom_css_rename_title()}
-          initialName={dialog.item.name}
-          onSubmit={(name) =>
-            attempt(() => customCss.rename(dialog.item.id, name))
-          }
-          onClose={() => setDialog(null)}
-        />
-      )}
+        }}
+      />
     </SettingsList>
   )
 }

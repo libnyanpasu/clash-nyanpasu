@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { Modal, ModalTrigger } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
@@ -67,11 +68,14 @@ function render(
     localStorage.clear()
   })
   root.render(
-    <QueryClientProvider client={queries}>
-      <ContextMenuProvider>
-        <ScrollArea className="h-96">{node}</ScrollArea>
-      </ContextMenuProvider>
-    </QueryClientProvider>,
+    <Modal>
+      <ModalTrigger>columns</ModalTrigger>
+      <QueryClientProvider client={queries}>
+        <ContextMenuProvider>
+          <ScrollArea className="h-96">{node}</ScrollArea>
+        </ContextMenuProvider>
+      </QueryClientProvider>
+    </Modal>,
   )
   return container
 }
@@ -114,12 +118,7 @@ test('lists closed connections and loads older pages at the end', async ({
   })
 
   const container = render(
-    <ClosedViewer
-      search=""
-      selection={UNFILTERED}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="" selection={UNFILTERED} />,
     onTestFinished,
   )
 
@@ -151,12 +150,7 @@ test('a search keeps loading older pages until it finds a match', async ({
   })
 
   const container = render(
-    <ClosedViewer
-      search="older"
-      selection={UNFILTERED}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="older" selection={UNFILTERED} />,
     onTestFinished,
   )
 
@@ -175,18 +169,25 @@ test('column settings hide a column and remember it', async ({
   }))
 
   const container = render(
-    <ClosedViewer
-      search=""
-      selection={UNFILTERED}
-      settingsOpen
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="" selection={UNFILTERED} />,
     onTestFinished,
   )
 
   await expect
     .poll(() => headers(container))
     .toContain(m.connections_column_process())
+
+  container
+    .querySelector<HTMLButtonElement>('[data-slot="modal-trigger"]')!
+    .click()
+  await expect
+    .poll(
+      () =>
+        document.querySelectorAll(
+          '[data-slot="connections-column-settings-item"]',
+        ).length,
+    )
+    .toBeGreaterThan(0)
 
   const item = [
     ...document.querySelectorAll(
@@ -212,22 +213,36 @@ test('column settings reorder a column by dragging its whole row', async ({
   }))
 
   const container = render(
-    <ClosedViewer
-      search=""
-      selection={UNFILTERED}
-      settingsOpen
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="" selection={UNFILTERED} />,
     onTestFinished,
   )
 
   await expect.poll(() => headers(container).length).toBeGreaterThan(2)
+
+  container
+    .querySelector<HTMLButtonElement>('[data-slot="modal-trigger"]')!
+    .click()
+  await expect
+    .poll(
+      () =>
+        document.querySelectorAll(
+          '[data-slot="connections-column-settings-item"]',
+        ).length,
+    )
+    .toBeGreaterThan(0)
 
   const items = () => [
     ...document.querySelectorAll(
       '[data-slot="connections-column-settings-item"]',
     ),
   ]
+  await expect
+    .poll(
+      () =>
+        getComputedStyle(document.querySelector('[data-slot="modal-content"]')!)
+          .transform,
+    )
+    .toBe('none')
   const before = items().map((node) => node.textContent)
   expect(items()[0]!.querySelector('button:not([role="switch"])')).toBeNull()
 
@@ -249,12 +264,7 @@ test('an unavailable traffic history explains the empty table', async ({
   })
 
   const container = render(
-    <ClosedViewer
-      search=""
-      selection={UNFILTERED}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="" selection={UNFILTERED} />,
     onTestFinished,
   )
 
@@ -270,12 +280,7 @@ test('the mock connections setting replaces the traffic history', async ({
   mockIPC(() => ({ connections: [], next: null }))
 
   const container = render(
-    <ClosedViewer
-      search=""
-      selection={UNFILTERED}
-      settingsOpen={false}
-      onSettingsOpenChange={() => {}}
-    />,
+    <ClosedViewer search="" selection={UNFILTERED} />,
     onTestFinished,
   )
 

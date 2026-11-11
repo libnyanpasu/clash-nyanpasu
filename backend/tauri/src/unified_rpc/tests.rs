@@ -3,9 +3,10 @@ use std::sync::Arc;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 use nyanpasu_observers::logs::{CoreLogRecord, CoreLogSource, PreparedCoreLog};
 use nyanpasu_rpc::{
+    audit::RpcAudit,
     events::EventBus,
     http::routes::RpcHttpRoutes,
-    registry::{RpcAudit, RpcDependencies, UnifiedRpc},
+    registry::{RpcDependencies, UnifiedRpc},
     test_support::AuditSink,
 };
 use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandKind};
@@ -123,7 +124,7 @@ fn browser_debug_page_and_real_rpc() {
             core_directory: None,
             service_prompt: None,
             accent_color: None,
-            host_environment: nyanpasu_rpc::commands::ports::HostEnvironment { is_appimage: false },
+            host_environment: nyanpasu_rpc::ports::HostEnvironment { is_appimage: false },
             audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage,

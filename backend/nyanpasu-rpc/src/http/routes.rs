@@ -19,10 +19,9 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::{
+    audit::RpcTransport,
     error::application_error,
-    registry::{
-        CommandHandlers, RpcDependencies, RpcTransport, SetupError, UnifiedRpc, dispatch_audited,
-    },
+    registry::{CommandHandlers, RpcDependencies, SetupError, UnifiedRpc, dispatch_audited},
 };
 
 fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {

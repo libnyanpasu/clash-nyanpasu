@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use nyanpasu_rpc::{
-    registry::{CommandEntry, RpcAuditOutcome, RpcTransport, SetupError},
+    audit::{RpcAuditOutcome, RpcTransport},
+    registry::{CommandEntry, SetupError},
     test_support::{Capture, Fixture, SECRET},
 };
 use serde_json::json;

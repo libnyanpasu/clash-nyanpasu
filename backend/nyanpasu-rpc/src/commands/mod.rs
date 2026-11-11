@@ -1,11 +1,10 @@
-//! Transport-neutral shared command declarations and their consumed host ports.
+//! Transport-neutral shared command declarations.
 
 pub mod archive;
 pub mod clash;
 pub mod host;
 pub mod icons;
 pub mod logs;
-pub mod ports;
 pub mod profiles;
 pub mod runtime;
 pub mod status;

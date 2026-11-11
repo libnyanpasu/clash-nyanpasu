@@ -213,7 +213,8 @@ mod tests {
         use futures::StreamExt as _;
         use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
         use nyanpasu_rpc::{
-            registry::{RpcAudit, RpcDependencies, UnifiedRpc},
+            audit::RpcAudit,
+            registry::{RpcDependencies, UnifiedRpc},
             test_support::AuditSink,
         };
 
@@ -233,9 +234,7 @@ mod tests {
                 core_directory: None,
                 service_prompt: None,
                 accent_color: None,
-                host_environment: nyanpasu_rpc::commands::ports::HostEnvironment {
-                    is_appimage: false,
-                },
+                host_environment: nyanpasu_rpc::ports::HostEnvironment { is_appimage: false },
                 client: client.clone(),
                 storage: Storage::try_new(&directory.path().join("overflow.redb")).unwrap(),
                 paths,

@@ -6,7 +6,10 @@ use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
 use serde_json::Value;
 use tauri::Manager as _;
 
-use nyanpasu_rpc::registry::{RpcFuture, RpcTransport, SetupError, UnifiedRpc};
+use nyanpasu_rpc::{
+    audit::RpcTransport,
+    registry::{RpcFuture, SetupError, UnifiedRpc},
+};
 
 pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
 

@@ -9,6 +9,7 @@ import {
   dependencyViolations,
   serverProductionFeatureViolations,
 } from './backend-boundaries.ts'
+import { createLexState, stripCommentsAndLiterals } from './lexer.ts'
 
 test('server production probe retains workspace patches with relative paths', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'server-patched-policy-'))
@@ -1300,4 +1301,35 @@ test('server production closure rejects panic injection while its own tests enab
   )
   assert.match(tests, /env!\("CARGO_BIN_EXE_nyanpasu-server"\)/)
   assert.doesNotMatch(tests, /current_exe/)
+})
+
+test('rpc_module_dependencies_remain_acyclic', () => {
+  const root = new URL('../../../backend/nyanpasu-rpc/src/', import.meta.url)
+  for (const [file, forbidden] of [
+    ['audit.rs', ['registry', 'commands', 'http', 'local']],
+    ['ports.rs', ['commands', 'registry']],
+    ['registry.rs', ['commands']],
+  ] as const) {
+    const state = createLexState()
+    const source = readFileSync(new URL(file, root), 'utf8')
+      .split('\n')
+      .map((line) => stripCommentsAndLiterals(line, state))
+      .join('\n')
+    for (const module of forbidden) {
+      // Check qualified paths and grouped crate imports, including aliases.
+      const dependency = new RegExp(
+        `\\bcrate\\s*::\\s*(?:${module}\\b|\\{[^;]*?\\b${module}\\b)`,
+      )
+      assert.match(`use crate::${module}::Thing;`, dependency)
+      assert.match(
+        `use crate::{error::Result, ${module} as forbidden};`,
+        dependency,
+      )
+      assert.doesNotMatch(
+        source,
+        dependency,
+        `${file} must not depend on ${module}`,
+      )
+    }
+  }
 })

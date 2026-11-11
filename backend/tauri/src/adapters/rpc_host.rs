@@ -4,10 +4,8 @@ use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
 use nyanpasu_rpc::{
-    commands::ports::{
-        AccentColorQuery, CoreDirectoryResolver, HostIconFiles, ServiceInstallPrompt,
-    },
     error::{IpcError, Result},
+    ports::{AccentColorQuery, CoreDirectoryResolver, HostIconFiles, ServiceInstallPrompt},
 };
 
 use crate::core::{tray::icon, widget_logo};

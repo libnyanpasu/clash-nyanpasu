@@ -32,8 +32,9 @@ use nyanpasu_os::{
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use nyanpasu_rpc::{
+    audit::RpcAudit,
     events::EventBus,
-    registry::{RpcAudit, RpcDependencies, UnifiedRpc},
+    registry::{RpcDependencies, UnifiedRpc},
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -132,9 +133,7 @@ impl Server {
                 core_directory: None,
                 service_prompt: None,
                 accent_color: None,
-                host_environment: nyanpasu_rpc::commands::ports::HostEnvironment {
-                    is_appimage: false,
-                },
+                host_environment: nyanpasu_rpc::ports::HostEnvironment { is_appimage: false },
                 client: client.clone(),
                 storage: storage.clone(),
                 paths,
@@ -346,7 +345,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
             core_directory: None,
             service_prompt: None,
             accent_color: None,
-            host_environment: nyanpasu_rpc::commands::ports::HostEnvironment {
+            host_environment: nyanpasu_rpc::ports::HostEnvironment {
                 is_appimage: bundle_metadata.is_appimage,
             },
             client: client.clone(),

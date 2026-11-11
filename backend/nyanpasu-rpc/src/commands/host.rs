@@ -4,10 +4,10 @@ use crate::error::Result;
 
 use nyanpasu_paths::PathResolver;
 
-use super::ports::{
-    AccentColorQuery, CoreDirectoryResolver, HostEnvironment, ServiceInstallPrompt,
+use crate::{
+    ports::{AccentColorQuery, CoreDirectoryResolver, HostEnvironment, ServiceInstallPrompt},
+    registry::RpcState,
 };
-use crate::registry::RpcState;
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

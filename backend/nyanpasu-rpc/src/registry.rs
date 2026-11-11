@@ -1,13 +1,6 @@
 //! Shared command registry, audit kernel and experimental HTTP routes.
 
-use std::{
-    collections::HashMap,
-    future::Future,
-    hash::{BuildHasher as _, RandomState},
-    pin::Pin,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use nyanpasu_rpc_protocol::{
     COMMAND_CATALOG, CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, ShellCapability,
@@ -16,16 +9,19 @@ use serde_json::Value;
 
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
-use crate::events::EventBus;
+use crate::{
+    audit::{RpcAudit, RpcAuditGuard, RpcAuditOutcome, RpcTransport},
+    events::EventBus,
+};
 
 /// Explicit inputs for shared handlers. Declarations use `RpcState` and `RpcCaller`
 /// for injected values that must not appear in request JSON or exported schemas.
 pub struct RpcDependencies {
-    pub icon_files: Option<Arc<dyn crate::commands::ports::HostIconFiles>>,
-    pub core_directory: Option<Arc<dyn crate::commands::ports::CoreDirectoryResolver>>,
-    pub service_prompt: Option<Arc<dyn crate::commands::ports::ServiceInstallPrompt>>,
-    pub accent_color: Option<Arc<dyn crate::commands::ports::AccentColorQuery>>,
-    pub host_environment: crate::commands::ports::HostEnvironment,
+    pub icon_files: Option<Arc<dyn crate::ports::HostIconFiles>>,
+    pub core_directory: Option<Arc<dyn crate::ports::CoreDirectoryResolver>>,
+    pub service_prompt: Option<Arc<dyn crate::ports::ServiceInstallPrompt>>,
+    pub accent_color: Option<Arc<dyn crate::ports::AccentColorQuery>>,
+    pub host_environment: crate::ports::HostEnvironment,
     pub client: NyanpasuClient,
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
@@ -66,109 +62,6 @@ impl specta::function::FunctionArg for RpcCaller {
     }
 }
 
-/// The injected audit sink and the per-process key for HTTP caller identities.
-pub struct RpcAudit {
-    sink: Arc<dyn RpcAuditSink>,
-    owner_key: RandomState,
-}
-
-impl RpcAudit {
-    pub fn new(sink: Arc<dyn RpcAuditSink>) -> Self {
-        Self {
-            sink,
-            owner_key: RandomState::new(),
-        }
-    }
-
-    /// IPC callers are window labels. An HTTP owner carries the session cookie, which
-    /// authorizes log sessions, so records get a keyed hash that still correlates
-    /// one session's calls but never reveals the cookie.
-    fn owner(&self, transport: RpcTransport, owner: &RpcOwner) -> RpcAuditOwner {
-        match transport {
-            RpcTransport::TauriIpc => RpcAuditOwner(owner.label().to_owned()),
-            RpcTransport::Http => RpcAuditOwner(format!(
-                "http:{:016x}",
-                self.owner_key.hash_one(owner.label())
-            )),
-            RpcTransport::Local => RpcAuditOwner(format!(
-                "local:{:016x}",
-                self.owner_key.hash_one(owner.label())
-            )),
-        }
-    }
-}
-
-/// A caller identity that is safe to log.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RpcAuditOwner(String);
-
-impl RpcAuditOwner {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Synchronous observation only: implementations must not panic or queue work.
-pub trait RpcAuditSink: Send + Sync + 'static {
-    fn record(&self, record: &RpcAuditRecord);
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RpcTransport {
-    TauriIpc,
-    Http,
-    Local,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RpcAuditOutcome {
-    Success,
-    Failure {
-        kind: &'static str,
-        code: Option<String>,
-    },
-    Cancelled,
-    Panicked,
-}
-
-/// Local metadata only; this record is never serialized onto a transport.
-#[derive(Debug, Clone)]
-pub struct RpcAuditRecord {
-    pub transport: RpcTransport,
-    pub command: &'static str,
-    pub owner: RpcAuditOwner,
-    pub duration: Duration,
-    pub outcome: RpcAuditOutcome,
-}
-
-struct RpcAuditGuard<'a> {
-    sink: &'a dyn RpcAuditSink,
-    record: RpcAuditRecord,
-    started: Instant,
-    completed: bool,
-}
-
-impl RpcAuditGuard<'_> {
-    fn record(&mut self, outcome: RpcAuditOutcome) {
-        self.record.duration = self.started.elapsed();
-        self.record.outcome = outcome;
-        self.completed = true;
-        self.sink.record(&self.record);
-    }
-}
-
-impl Drop for RpcAuditGuard<'_> {
-    fn drop(&mut self) {
-        if !self.completed {
-            self.record(if std::thread::panicking() {
-                RpcAuditOutcome::Panicked
-            } else {
-                RpcAuditOutcome::Cancelled
-            });
-        }
-    }
-}
-
 /// Observe dispatch without changing its result, polling, cancellation or unwind.
 /// The name resolver runs under the guard and returns only registry or fixed names.
 /// Aborting the process cannot produce a Drop record.
@@ -179,19 +72,8 @@ pub async fn dispatch_audited<T>(
     command: impl FnOnce() -> &'static str,
     call: impl Future<Output = Result<T, RpcError>>,
 ) -> Result<T, RpcError> {
-    let mut guard = RpcAuditGuard {
-        sink: audit.sink.as_ref(),
-        record: RpcAuditRecord {
-            transport,
-            command: "unknown_method",
-            owner: audit.owner(transport, &owner),
-            duration: Duration::ZERO,
-            outcome: RpcAuditOutcome::Cancelled,
-        },
-        started: Instant::now(),
-        completed: false,
-    };
-    guard.record.command = command();
+    let mut guard = RpcAuditGuard::new(audit, transport, &owner);
+    guard.set_command(command());
     let result = call.await;
     guard.record(match &result {
         Ok(_) => RpcAuditOutcome::Success,

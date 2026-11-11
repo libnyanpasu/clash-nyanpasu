@@ -23,7 +23,10 @@ use super::{
     endpoint::{EndpointError, EndpointListener},
     subscriptions::{self, Delivery, Output, Subscription, SubscriptionSource},
 };
-use crate::registry::{RpcTransport, UnifiedRpc, dispatch_audited};
+use crate::{
+    audit::RpcTransport,
+    registry::{UnifiedRpc, dispatch_audited},
+};
 
 /// Bounds are per connection, so a blocked peer cannot consume another's capacity.
 #[derive(Debug, Clone, Copy)]

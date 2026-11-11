@@ -636,10 +636,10 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
         core_directory: Some(Arc::new(crate::adapters::rpc_host::DesktopCoreDirectory)),
         service_prompt: Some(Arc::new(crate::adapters::rpc_host::OsServiceInstallPrompt)),
         accent_color: Some(Arc::new(crate::adapters::rpc_host::DesktopAccentColor)),
-        host_environment: nyanpasu_rpc::commands::ports::HostEnvironment {
+        host_environment: nyanpasu_rpc::ports::HostEnvironment {
             is_appimage: *crate::consts::IS_APPIMAGE,
         },
-        audit: nyanpasu_rpc::registry::RpcAudit::new(Arc::new(
+        audit: nyanpasu_rpc::audit::RpcAudit::new(Arc::new(
             nyanpasu_rpc::audit::TracingRpcAuditSink,
         )),
         client: (*app.state::<NyanpasuClient>()).clone(),

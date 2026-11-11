@@ -273,6 +273,7 @@
   "settings_clash_settings_expand_include_all_label": "Раскрывать include-all",
   "settings_clash_settings_expand_include_all_description": "Раскрывать поля include-all в группах прокси на стороне Nyanpasu по правилам mihomo. Если выключено, они передаются ядру без изменений",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Управляющие поля Nyanpasu",
+  "settings_list_empty": "Записей нет.",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "Добавить",
   "settings_web_ui_empty_item": "Не найдено записей, попробуйте добавить одну",

@@ -14,7 +14,6 @@ import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
@@ -31,11 +30,13 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useClashInfo, useClashSetting } from '@nyanpasu/query'
+import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 import {
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
+  SettingsList,
+  SettingsListActions,
+  SettingsListContent,
+  SettingsListItem,
+} from '../../../../_modules/settings-list'
 
 const useUrlLabels = () => {
   const { data } = useClashInfo()
@@ -256,14 +257,15 @@ const WebUIItem = ({ url }: { url: string }) => {
   })
 
   return (
-    <Card className="w-full min-w-0 space-y-4 overflow-hidden">
-      <CardHeader className="flex w-full min-w-0 flex-row">
-        <TextMarquee className="relative w-0 min-w-0 flex-1 text-base">
-          {formattedUrl}
-        </TextMarquee>
-      </CardHeader>
+    <SettingsListItem data-slot="web-ui-item">
+      <TextMarquee className="relative w-0 min-w-0 flex-1 text-base">
+        {formattedUrl}
+      </TextMarquee>
 
-      <CardFooter className="gap-1">
+      <div
+        className="flex shrink-0 items-center gap-1"
+        data-slot="web-ui-item-actions"
+      >
         <Button variant="flat" icon onClick={handleOpen}>
           <OpenInNewRounded className="size-5" />
         </Button>
@@ -277,8 +279,8 @@ const WebUIItem = ({ url }: { url: string }) => {
         <Button icon onClick={handleDelete}>
           <DeleteRounded className="size-5" />
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </SettingsListItem>
   )
 }
 
@@ -286,22 +288,18 @@ export default function WebUI() {
   const { value } = useClashSetting('web_ui_list')
 
   return (
-    <div className="space-y-3">
-      <SettingsCard data-slot="web-ui-card">
-        <SettingsCardContent data-slot="web-ui-card-content">
-          {value && value.length > 0 ? (
-            value.map((item, index) => <WebUIItem key={index} url={item} />)
-          ) : (
-            <EmptyState
-              tone="normal"
-              className="min-h-40"
-              message={m.settings_web_ui_empty_item()}
-            />
-          )}
-        </SettingsCardContent>
-      </SettingsCard>
+    <SettingsList data-slot="web-ui-card">
+      <SettingsListContent
+        data-slot="web-ui-card-content"
+        empty={!value?.length}
+        emptyMessage={m.settings_web_ui_empty_item()}
+      >
+        {value?.map((item, index) => (
+          <WebUIItem key={index} url={item} />
+        ))}
+      </SettingsListContent>
 
-      <div className="flex justify-end">
+      <SettingsListActions>
         <EditItemButton>
           <Button
             className="flex items-center justify-center gap-1 px-4"
@@ -311,7 +309,7 @@ export default function WebUI() {
             <span>{m.settings_web_ui_add_button()}</span>
           </Button>
         </EditItemButton>
-      </div>
-    </div>
+      </SettingsListActions>
+    </SettingsList>
   )
 }

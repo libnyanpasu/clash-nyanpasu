@@ -3,7 +3,6 @@ import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import DeleteOutlineRounded from '~icons/material-symbols/delete-outline-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import { Button } from '@nyanpasu/ui/button'
-import { cardVariants } from '@nyanpasu/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,11 +22,13 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSetting } from '@nyanpasu/query'
 import type { StunServer } from '@nyanpasu/rpc/types'
-import { cn } from '@nyanpasu/utils'
+import { SettingsLabel } from '../../../../_modules/settings-card'
 import {
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../../_modules/settings-card'
+  SettingsList,
+  SettingsListActions,
+  SettingsListContent,
+  SettingsListItem,
+} from '../../../../_modules/settings-list'
 import {
   sortableItemVariants,
   SortableOrder,
@@ -68,19 +69,15 @@ function StunServerItem({
   })
 
   return (
-    <div
+    <SettingsListItem
       ref={ref}
       tabIndex={disabled ? -1 : 0}
       aria-label={`${m.settings_public_ip_stun_reorder()} ${address}`}
-      className={cn(
-        cardVariants(),
-        sortableItemVariants({
-          draggable: !disabled,
-          dragging: isDragging,
-          disabled,
-        }),
-        'flex min-h-[72px] min-w-0 items-center gap-4 px-4 py-3',
-      )}
+      className={sortableItemVariants({
+        draggable: !disabled,
+        dragging: isDragging,
+        disabled,
+      })}
       data-slot="stun-server-item"
       data-server={address}
       data-builtin={server.builtin}
@@ -158,7 +155,7 @@ function StunServerItem({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </SettingsListItem>
   )
 }
 
@@ -192,27 +189,8 @@ export default function StunServerList() {
   }
 
   return (
-    <section className="flex flex-col gap-3" data-slot="stun-server-list">
+    <SettingsList data-slot="stun-server-list">
       <SettingsLabel>{m.settings_public_ip_stun_label()}</SettingsLabel>
-
-      <div
-        className="flex items-center justify-between gap-3"
-        data-slot="stun-server-list-header"
-      >
-        <p className="text-on-surface-variant px-3 text-sm">
-          {m.settings_public_ip_stun_enabled_count({ count: enabledCount })}
-        </p>
-
-        {/* The test opens sockets to an arbitrary host, which only the desktop app may do. */}
-        <PlatformDesktop>
-          {servers && (
-            <AddStunServerDialog
-              servers={servers}
-              onAdd={(server) => save([...servers, server])}
-            />
-          )}
-        </PlatformDesktop>
-      </div>
 
       <DragDropProvider
         sensors={WHOLE_ITEM_DRAG_SENSORS}
@@ -225,7 +203,25 @@ export default function StunServerList() {
           }
         }}
       >
-        <SettingsGroup data-slot="stun-server-items">
+        <SettingsListContent
+          data-slot="stun-server-items"
+          empty={servers?.length === 0}
+          description={
+            <>
+              <p data-slot="stun-server-list-header">
+                {m.settings_public_ip_stun_enabled_count({
+                  count: enabledCount,
+                })}
+              </p>
+              <p>
+                {m.settings_public_ip_stun_description()}
+                <PlatformDesktop
+                  fallback={` ${m.settings_public_ip_stun_desktop_only()}`}
+                />
+              </p>
+            </>
+          }
+        >
           {servers?.map((server, index) => (
             <StunServerItem
               key={serverKey(server)}
@@ -246,15 +242,20 @@ export default function StunServerList() {
               }
             />
           ))}
-        </SettingsGroup>
+        </SettingsListContent>
       </DragDropProvider>
 
-      <p className="text-on-surface-variant px-3 text-xs">
-        {m.settings_public_ip_stun_description()}
-        <PlatformDesktop
-          fallback={` ${m.settings_public_ip_stun_desktop_only()}`}
-        />
-      </p>
-    </section>
+      {/* The test opens sockets to an arbitrary host, which only the desktop app may do. */}
+      <PlatformDesktop>
+        {servers && (
+          <SettingsListActions>
+            <AddStunServerDialog
+              servers={servers}
+              onAdd={(server) => save([...servers, server])}
+            />
+          </SettingsListActions>
+        )}
+      </PlatformDesktop>
+    </SettingsList>
   )
 }

@@ -303,6 +303,7 @@
   "settings_clash_settings_expand_include_all_label": "「include-all」フィールドを展開",
   "settings_clash_settings_expand_include_all_description": "Nyanpasu 内で Mihomo の仕様に従い、プロキシグループの「include-all」フィールドを展開します。無効にすると、フィールドはそのままコアに渡されます。",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 制御フィールド",
+  "settings_list_empty": "項目がありません",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "新規追加",
   "settings_web_ui_empty_item": "レコードが見つかりません。追加してみてください。",

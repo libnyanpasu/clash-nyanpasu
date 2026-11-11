@@ -303,6 +303,7 @@
   "settings_clash_settings_expand_include_all_label": "Expand “include-all” fields",
   "settings_clash_settings_expand_include_all_description": "Expands the “include-all” fields in proxy groups using Mihomo semantics within Nyanpasu. When disabled, fields are passed directly to the core as-is.",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu Control Fields",
+  "settings_list_empty": "No records found.",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "Add new",
   "settings_web_ui_empty_item": "No records found, try adding one.",

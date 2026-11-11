@@ -159,11 +159,8 @@ export default function AddStunServerDialog({
   return (
     <Modal open={open} onOpenChange={handleOpenChange}>
       <ModalTrigger asChild>
-        <Button
-          variant="stroked"
-          className="flex items-center gap-2 self-start"
-        >
-          <AddRounded className="size-5" />
+        <Button variant="raised" className="flex items-center gap-1 px-4">
+          <AddRounded className="size-6" aria-hidden />
 
           <span>{m.settings_public_ip_stun_add()}</span>
         </Button>

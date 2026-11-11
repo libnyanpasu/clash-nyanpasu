@@ -303,6 +303,7 @@
   "settings_clash_settings_expand_include_all_label": "展开「include-all」字段",
   "settings_clash_settings_expand_include_all_description": "在 Nyanpasu 中按 Mihomo 语义预先展开代理组的「include-all」字段；关闭后，将原样直接递交给内核处理。",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 覆写控制字段",
+  "settings_list_empty": "没有找到记录",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "添加",
   "settings_web_ui_empty_item": "没有找到记录，尝试添加一个吧",

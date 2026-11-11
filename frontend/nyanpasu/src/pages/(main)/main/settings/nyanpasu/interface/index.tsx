@@ -57,10 +57,6 @@ const CustomCssSettings = () => {
       <CustomCssPresets />
 
       <CustomCssItems />
-
-      <p className="text-on-surface-variant px-3 text-xs">
-        {m.settings_user_interface_custom_css_description()}
-      </p>
     </div>
   )
 }

@@ -303,6 +303,7 @@
   "settings_clash_settings_expand_include_all_label": "“include-all” 필드 확장",
   "settings_clash_settings_expand_include_all_description": "Nyanpasu 안에서 Mihomo 방식으로 프록시 그룹의 “include-all” 필드를 확장합니다. 끄면 필드를 그대로 코어에 전달합니다.",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 제어 필드",
+  "settings_list_empty": "항목이 없습니다.",
   "settings_web_ui_title": "웹 UI",
   "settings_web_ui_add_button": "추가",
   "settings_web_ui_empty_item": "기록이 없습니다. 하나 추가해 보세요",

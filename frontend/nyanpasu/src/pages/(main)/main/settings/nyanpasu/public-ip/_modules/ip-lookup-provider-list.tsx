@@ -1,12 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  cardVariants,
-} from '@nyanpasu/ui/card'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
   Modal,
   ModalContent,
@@ -25,10 +19,12 @@ import type {
   IpLookupProviderInfo,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { SettingsLabel } from '../../../../_modules/settings-card'
 import {
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../../_modules/settings-card'
+  SettingsList,
+  SettingsListContent,
+  SettingsListItem,
+} from '../../../../_modules/settings-list'
 import { stunChipVariants } from './stun-capabilities'
 
 function PrivacyNoticeDialog({
@@ -132,23 +128,20 @@ export default function IpLookupProviderList() {
   }
 
   return (
-    <section
-      className="flex flex-col gap-3"
-      data-slot="ip-lookup-provider-list"
-    >
+    <SettingsList data-slot="ip-lookup-provider-list">
       <SettingsLabel>{m.settings_public_ip_lookup_label()}</SettingsLabel>
 
-      <SettingsGroup data-slot="ip-lookup-provider-items">
+      <SettingsListContent
+        data-slot="ip-lookup-provider-items"
+        empty={providers?.length === 0}
+        description={<p>{m.settings_public_ip_lookup_description()}</p>}
+      >
         {providers?.map((provider) => {
           const name = IP_LOOKUP_PROVIDER_NAMES[provider.provider]
 
           return (
-            <div
+            <SettingsListItem
               key={provider.provider}
-              className={cn(
-                cardVariants(),
-                'flex min-w-0 items-center gap-4 px-5 py-6',
-              )}
               data-slot="ip-lookup-provider-item"
               data-provider={provider.provider}
             >
@@ -166,20 +159,16 @@ export default function IpLookupProviderList() {
                 disabled={accepted === undefined || isPending}
                 onCheckedChange={(checked) => handleToggle(provider, checked)}
               />
-            </div>
+            </SettingsListItem>
           )
         })}
-      </SettingsGroup>
-
-      <p className="text-on-surface-variant px-3 text-xs">
-        {m.settings_public_ip_lookup_description()}
-      </p>
+      </SettingsListContent>
 
       <PrivacyNoticeDialog
         provider={pending}
         onAccept={handleAccept}
         onCancel={() => setPending(null)}
       />
-    </section>
+    </SettingsList>
   )
 }

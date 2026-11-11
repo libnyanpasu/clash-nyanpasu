@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
+import { rpcDomainError, RpcFailure, unwrapResult } from '@nyanpasu/rpc'
 import {
   type Filter,
   type LogCursor,
@@ -162,8 +162,10 @@ export function useFileLogs(
         })
       } catch (error) {
         if (disposed) return
+        const domain =
+          error instanceof RpcFailure ? rpcDomainError(error) : error
         const kind =
-          typeof error === 'string' ? (error as LogError) : 'unavailable'
+          typeof domain === 'string' ? (domain as LogError) : 'unavailable'
         if (kind === 'session_expired' || kind === 'cursor_reset') {
           if (kind === 'session_expired') session = null
           rows = []

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
+import { rpcDomainError, RpcFailure, unwrapResult } from '@nyanpasu/rpc'
 import type {
   CoreLogCursor,
   CoreLogError,
@@ -26,10 +26,13 @@ const empty = (): View => ({
   loadingOlder: false,
   more: false,
 })
-const failure = (error: unknown): CoreLogError =>
-  typeof error === 'object' && error !== null && 'kind' in error
-    ? (error as CoreLogError)
+const failure = (error: unknown): CoreLogError => {
+  const domain = error instanceof RpcFailure ? rpcDomainError(error) : error
+
+  return typeof domain === 'object' && domain !== null && 'kind' in domain
+    ? (domain as CoreLogError)
     : { kind: 'unavailable', message: String(error) }
+}
 
 /** Page-local previews. Neither the query cache nor the global WS provider owns bodies. */
 export function useClashLogs(

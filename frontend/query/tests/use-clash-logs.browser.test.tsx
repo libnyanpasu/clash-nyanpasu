@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
+import { RpcFailure } from '@nyanpasu/rpc'
 import type {
   CoreLogCursor,
   CoreLogQuery,
@@ -285,23 +286,58 @@ test('an old in-flight page cannot restore records after a clear event', async (
   expect(hook.result.current.status?.generation).toBe('replacement')
 })
 
-test('transport resync and an expired cursor recover through a fresh page', async ({
+test.for(['result', 'rpc failure'])(
+  'log cursor recovery handles %s through a fresh page on transport resync',
+  async (shape, { onTestFinished }) => {
+    const hook = await renderHook(() => useClashLogs())
+    onTestFinished(async () => {
+      await hook.unmount()
+      expect(mocked.resync.size).toBe(0)
+    })
+    await expect.poll(() => hook.result.current.data.length).toBe(1)
+    if (shape === 'rpc failure') {
+      mocked.queryCoreLogs.mockRejectedValueOnce(
+        new RpcFailure('query_core_logs', {
+          kind: 'application_error',
+          message: 'Cursor expired',
+          domain_error: { kind: 'cursor_expired' },
+        }),
+      )
+    } else {
+      mocked.queryCoreLogs.mockResolvedValueOnce({
+        status: 'error',
+        error: { kind: 'cursor_expired' },
+      })
+    }
+    head = 20
+    version++
+    for (const listener of mocked.resync) listener()
+    await expect
+      .poll(() => hook.result.current.data.at(-1)?.id.sequence)
+      .toBe(20)
+    expect(mocked.queryCoreLogs.mock.lastCall?.[0].direction).toBe('latest')
+    expect(mocked.getCoreLogStatus).toHaveBeenCalledOnce()
+    expect(hook.result.current.error).toBeNull()
+  },
+)
+
+test('invalid params does not trigger domain cursor recovery', async ({
   onTestFinished,
 }) => {
   const hook = await renderHook(() => useClashLogs())
-  onTestFinished(async () => {
-    await hook.unmount()
-    expect(mocked.resync.size).toBe(0)
-  })
+  onTestFinished(() => hook.unmount())
   await expect.poll(() => hook.result.current.data.length).toBe(1)
-  mocked.queryCoreLogs.mockResolvedValueOnce({
-    status: 'error',
-    error: { kind: 'cursor_expired' },
-  })
+  mocked.queryCoreLogs.mockRejectedValueOnce(
+    new RpcFailure('query_core_logs', {
+      kind: 'invalid_params',
+      message: 'Invalid cursor',
+      domain_error: { kind: 'cursor_expired' },
+    }),
+  )
   head = 20
-  version++
-  for (const listener of mocked.resync) listener()
-  await expect.poll(() => hook.result.current.data.at(-1)?.id.sequence).toBe(20)
-  expect(mocked.queryCoreLogs.mock.lastCall?.[0].direction).toBe('latest')
-  expect(mocked.getCoreLogStatus).toHaveBeenCalledOnce()
+  changed()
+
+  await expect.poll(() => hook.result.current.error?.kind).toBe('unavailable')
+  expect(mocked.queryCoreLogs).toHaveBeenCalledTimes(2)
+  expect(hook.result.current.data.at(-1)?.id.sequence).toBe(3)
 })

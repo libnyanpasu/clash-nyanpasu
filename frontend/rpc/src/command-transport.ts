@@ -1,18 +1,9 @@
-/* oxlint-disable no-throw-literal -- tauri-specta wraps string rejections in its Result return */
 import { detectRuntime, type Bridge, type Surface } from '@nyanpasu/platform'
+import { RpcFailure, type RpcError } from './rpc-failure'
 import { commands as tauriCommands } from './tauri-bindings'
 
 export interface RpcCommandTransport {
   invoke<T>(method: string, params?: Record<string, unknown>): Promise<T>
-}
-
-export interface RpcError {
-  kind: string
-  message: string
-  code?: string | null
-  retryable?: boolean | null
-  operation_id?: string | null
-  domain_error?: unknown
 }
 
 const rpcPath = '/bridge/rpc'
@@ -48,7 +39,7 @@ async function invokeHttpCommand<T>(
   }
 
   if (!response.ok) {
-    if (isRpcError(body)) throw body.domain_error ?? body
+    if (isRpcError(body)) throw new RpcFailure(method, body)
     throw new Error(`RPC failed with HTTP ${response.status}`)
   }
 
@@ -68,8 +59,7 @@ export function createCommandTransport(
       if (bridge !== 'tauri')
         throw new Error('No RPC transport is available for this runtime')
       const result = await tauriCommands.callRpc(method, params)
-      if (result.status === 'error')
-        throw result.error.domain_error ?? result.error
+      if (result.status === 'error') throw new RpcFailure(method, result.error)
       return result.data as T
     },
   }

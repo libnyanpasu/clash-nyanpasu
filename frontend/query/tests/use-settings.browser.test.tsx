@@ -18,6 +18,8 @@ import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 const appConfig = {
   theme_mode: 'dark',
   core: 'mihomo',
+  enable_service_mode: false,
+  hotkeys: ['toggle_tun_mode,Control+Q'],
 } satisfies Partial<NyanpasuAppConfig_Serialize>
 
 const clashConfig = {
@@ -200,6 +202,55 @@ test('upsert takes null only for a field null clears', () => {
   const cleared: ClearableValue = null
 
   expect([app, clash, cleared]).toEqual([null, null, null])
+})
+
+test('ordinary settings writes exclude dedicated fields', () => {
+  type Patch = Parameters<
+    ReturnType<typeof useSettings>['upsert']['mutateAsync']
+  >[0]
+  type ServiceValue = Parameters<
+    ReturnType<typeof useSetting<'enable_service_mode'>>['upsert']
+  >[0]
+  type HotkeysValue = Parameters<
+    ReturnType<typeof useSetting<'hotkeys'>>['upsert']
+  >[0]
+
+  // @ts-expect-error service mode has a dedicated command
+  const servicePatch: Patch = { enable_service_mode: false }
+  // @ts-expect-error hotkeys have a dedicated command
+  const hotkeysPatch: Patch = { hotkeys: [] }
+  // @ts-expect-error service-mode fields are read-only through useSetting
+  const serviceValue: ServiceValue = false
+  // @ts-expect-error hotkey fields are read-only through useSetting
+  const hotkeysValue: HotkeysValue = []
+  const ordinary: Patch = { theme_mode: 'dark' }
+
+  expect([
+    servicePatch,
+    hotkeysPatch,
+    serviceValue,
+    hotkeysValue,
+    ordinary,
+  ]).toEqual([
+    { enable_service_mode: false },
+    { hotkeys: [] },
+    false,
+    [],
+    { theme_mode: 'dark' },
+  ])
+})
+
+test('dedicated settings remain readable', async ({ onTestFinished }) => {
+  const { hook } = await setup(
+    () => ({
+      service: useSetting('enable_service_mode').value,
+      hotkeys: useSetting('hotkeys').value,
+    }),
+    onTestFinished,
+  )
+
+  await expect.poll(() => hook.result.current.service).toBe(false)
+  expect(hook.result.current.hotkeys).toEqual(appConfig.hotkeys)
 })
 
 test('useClashSettings passes the mutation outcome through', async ({

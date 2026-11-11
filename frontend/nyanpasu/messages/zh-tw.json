@@ -303,6 +303,7 @@
   "settings_clash_settings_expand_include_all_label": "展開「include-all」欄位",
   "settings_clash_settings_expand_include_all_description": "在 Nyanpasu 中依 Mihomo 語意展開 Proxy 群組的「include-all」欄位；關閉後，將原樣直接傳送至核心處理。",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 覆寫控制欄位",
+  "settings_list_empty": "找不到記錄",
   "settings_web_ui_title": "Web UI 設定",
   "settings_web_ui_add_button": "新增",
   "settings_web_ui_empty_item": "沒有找到記錄，嘗試新增一個吧",

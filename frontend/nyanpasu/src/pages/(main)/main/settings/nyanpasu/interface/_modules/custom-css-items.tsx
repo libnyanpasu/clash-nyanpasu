@@ -6,7 +6,6 @@ import EditRounded from '~icons/material-symbols/edit-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { cardVariants } from '@nyanpasu/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
-import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Switch } from '@nyanpasu/ui/switch'
 import useCustomCss, { reportCustomCssError } from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
@@ -25,11 +23,13 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
-import { cn } from '@nyanpasu/utils'
+import { SettingsLabel } from '../../../../_modules/settings-card'
 import {
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../../_modules/settings-card'
+  SettingsList,
+  SettingsListActions,
+  SettingsListContent,
+  SettingsListItem,
+} from '../../../../_modules/settings-list'
 import {
   sortableItemVariants,
   useSortableTransition,
@@ -75,20 +75,16 @@ function CustomCssListItem({
   const charCount = item.source.length
 
   return (
-    <div
+    <SettingsListItem
       ref={ref}
       tabIndex={0}
       aria-label={m.settings_user_interface_custom_css_reorder({
         name: item.name,
       })}
-      className={cn(
-        cardVariants(),
-        sortableItemVariants({
-          draggable: true,
-          dragging: isDragging,
-        }),
-        'flex min-w-0 items-center gap-4 px-5 py-4',
-      )}
+      className={sortableItemVariants({
+        draggable: true,
+        dragging: isDragging,
+      })}
       data-slot="custom-css-item"
       data-item-id={item.id}
       data-dragging={isDragging || undefined}
@@ -170,7 +166,7 @@ function CustomCssListItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </SettingsListItem>
   )
 }
 
@@ -200,39 +196,12 @@ export default function CustomCssItems() {
   }
 
   return (
-    <section className="flex flex-col" data-slot="custom-css-items">
-      <div
-        className="flex items-center justify-between gap-3 pr-1"
-        data-slot="custom-css-items-header"
-      >
+    <SettingsList data-slot="custom-css-items">
+      <div data-slot="custom-css-items-header">
         <SettingsLabel>
           {m.settings_user_interface_custom_css_group()}
         </SettingsLabel>
-
-        <Button
-          variant="flat"
-          className="flex items-center gap-2"
-          data-slot="custom-css-add"
-          onClick={() => setDialog({ kind: 'add' })}
-        >
-          <AddRounded className="size-5" aria-hidden />
-
-          <span>{m.settings_user_interface_custom_css_add()}</span>
-        </Button>
       </div>
-
-      {items.length === 0 && (
-        <div
-          className={cn(cardVariants(), 'p-3')}
-          data-slot="custom-css-items-empty"
-        >
-          <EmptyState
-            size="compact"
-            tone="normal"
-            message={m.settings_user_interface_custom_css_empty()}
-          />
-        </div>
-      )}
 
       <DragDropProvider
         sensors={WHOLE_ITEM_DRAG_SENSORS}
@@ -249,7 +218,14 @@ export default function CustomCssItems() {
           }
         }}
       >
-        <SettingsGroup data-slot="custom-css-item-list">
+        <SettingsListContent
+          data-slot="custom-css-item-list"
+          empty={items.length === 0}
+          emptyMessage={m.settings_user_interface_custom_css_empty()}
+          description={
+            <p>{m.settings_user_interface_custom_css_description()}</p>
+          }
+        >
           {items.map((item, index) => (
             <CustomCssListItem
               key={item.id}
@@ -265,8 +241,20 @@ export default function CustomCssItems() {
               onRemove={() => attempt(() => customCss.remove(item.id))}
             />
           ))}
-        </SettingsGroup>
+        </SettingsListContent>
       </DragDropProvider>
+
+      <SettingsListActions>
+        <Button
+          variant="raised"
+          className="flex items-center gap-1 px-4"
+          data-slot="custom-css-add"
+          onClick={() => setDialog({ kind: 'add' })}
+        >
+          <AddRounded className="size-6" aria-hidden />
+          <span>{m.settings_user_interface_custom_css_add()}</span>
+        </Button>
+      </SettingsListActions>
 
       {dialog?.kind === 'add' && (
         <CustomCssNameDialog
@@ -291,6 +279,6 @@ export default function CustomCssItems() {
           onClose={() => setDialog(null)}
         />
       )}
-    </section>
+    </SettingsList>
   )
 }

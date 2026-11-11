@@ -13,7 +13,11 @@ import WidgetItem from '@/components/widgets/widget-item'
 import { m } from '@/paraglide/messages'
 import { DndContext } from '@dnd-kit/core'
 import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import type { ProfileDocument_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -110,7 +114,14 @@ function createRpc() {
     listenResync: () => () => {},
     dispose: () => {},
   }
-  return { rpc: createRpcClient({ commands, events }), dispose: events.dispose }
+  return {
+    rpc: createRpcClient({
+      icons: createIconTransport(false),
+      commands,
+      events,
+    }),
+    dispose: events.dispose,
+  }
 }
 
 function FixtureWidget({ id, type }: { id: string; type: WidgetId }) {

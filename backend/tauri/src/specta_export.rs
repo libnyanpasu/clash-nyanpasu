@@ -229,6 +229,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     // arrive with T08; explicit registration keeps them exported (and the
     // specta nested-tagged-enum risk probed) before any command exists.
     .typ::<nyanpasu_config::profile::Profiles>()
+    .typ::<nyanpasu_rpc::icons::IconRequest>()
     .typ::<nyanpasu_config::profile::FileConfig>()
     .typ::<nyanpasu_config::profile::CompositionConfig>()
     .typ::<nyanpasu_config::profile::OverlayTransform>()
@@ -341,7 +342,7 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
         "const events = {",
     );
     let commands_and_events = format!(
-        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
+        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, icons: transport.icons, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
     );
     let source = format!(
         "{}{}{}",

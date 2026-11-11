@@ -37,7 +37,7 @@ vi.mock('@/services/rpc', () => ({
 }))
 vi.mock('@nyanpasu/query', async (original) => ({
   ...(await original<typeof import('@nyanpasu/query')>()),
-  useWidgetIcon: () => ({ data: undefined }),
+  useWidgetIcon: () => undefined,
   invokeMutation: (mutation: unknown, args: unknown[]) =>
     state.upload(mutation, ...args),
 }))
@@ -83,9 +83,6 @@ test('the widget presets write the widget icons, not the tray icons', async ({
     [state.mutations.setWidgetIconFromBytes, 'tun'],
     [state.mutations.setWidgetIconFromBytes, 'system_proxy'],
   ])
-  expect(invalidate).toHaveBeenCalledWith({
-    queryKey: ['getWidgetIcon', 'tun'],
-  })
   expect(invalidate).toHaveBeenCalledWith({
     queryKey: ['isWidgetIconSet', 'tun'],
   })

@@ -13,7 +13,11 @@ import { ProviderUpdatesWidget } from '@/components/widgets/widget-provider-upda
 import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { DndContext } from '@dnd-kit/core'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -96,6 +100,7 @@ function createRpcHarness() {
   }
   return {
     rpc: createRpcClient({
+      icons: createIconTransport(false),
       commands: {
         invoke: async <T,>(method: string, _params?: Record<string, unknown>) =>
           invoke<T>(method),

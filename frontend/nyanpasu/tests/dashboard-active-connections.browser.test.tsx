@@ -14,7 +14,11 @@ import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { DndContext } from '@dnd-kit/core'
 import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import type {
   ClashConnection_Serialize,
   ClashConnectionDetails_Serialize,
@@ -149,7 +153,11 @@ test.for([3, 2, 4])(
       listenResync: () => () => {},
       dispose: () => {},
     }
-    const rpc = createRpcClient({ commands, events })
+    const rpc = createRpcClient({
+      icons: createIconTransport(false),
+      commands,
+      events,
+    })
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })

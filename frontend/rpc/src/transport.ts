@@ -7,11 +7,13 @@ import {
   createHttpEventTransport,
   type RpcEventTransport,
 } from './event-transport'
+import { createIconTransport, type RpcIconTransport } from './icon-transport'
 import { createTauriEventTransport } from './tauri-event-transport'
 
 export type RpcTransport = {
   commands: RpcCommandTransport
   events: RpcEventTransport
+  icons: RpcIconTransport
 }
 
 /** Creates fresh adapters; event connection state belongs to this result. */
@@ -20,6 +22,7 @@ export function createDefaultRpcTransport(
 ): RpcTransport {
   return {
     commands: createCommandTransport(runtime.bridge, runtime.platform.surface),
+    icons: createIconTransport(runtime.bridge === 'tauri'),
     events:
       runtime.bridge === 'tauri'
         ? createTauriEventTransport()

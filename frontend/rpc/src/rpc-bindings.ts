@@ -777,6 +777,7 @@ export function createRpcClient(
   return {
     ...commands,
     events,
+    icons: transport.icons,
     listenResync: transport.events.listenResync.bind(transport.events),
     dispose: () => transport.events.dispose(),
   }
@@ -2483,6 +2484,12 @@ export type I18nLanguage_Serialize =
 export type IconData = {
   data_url: string
 }
+
+/**  Input to the icon URL transport; versions refresh mutable URLs only. */
+export type IconRequest =
+  | { kind: 'cached'; url: string }
+  | { kind: 'tray'; mode: TrayIcon; version: number | null }
+  | { kind: 'widget'; mode: TrayIcon; version: number | null }
 
 export type ImportClassification = {
   /**  None when the signals do not settle on a kind. */

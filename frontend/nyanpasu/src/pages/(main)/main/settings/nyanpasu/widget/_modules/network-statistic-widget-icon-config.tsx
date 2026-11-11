@@ -11,12 +11,12 @@ import TrayIconConfig from '../../_modules/tray-icon-config'
 // The widget's own icons. Unlike the tray, the widget draws coloured artwork
 // on every platform, so the presets are offered everywhere.
 const WIDGET_ICON_STORE: IconSetStore = {
-  useIcon: (mode) => useWidgetIcon(mode),
+  useIcon: useWidgetIcon,
   Image: WidgetImage,
   isSetQuery: (mode) => queries.isWidgetIconSet(mode),
   setIcon: mutations.setWidgetIcon,
   setIconFromBytes: mutations.setWidgetIconFromBytes,
-  iconKey: 'getWidgetIcon',
+  kind: 'widget',
   isSetKey: 'isWidgetIconSet',
   presets: true,
   messages: {

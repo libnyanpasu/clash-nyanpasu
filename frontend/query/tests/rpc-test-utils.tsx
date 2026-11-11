@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from 'react'
 import { vi } from 'vitest'
 import {
+  createIconTransport,
   createRpcClient,
   type RpcClient,
   type RpcEventTransport,
@@ -88,7 +89,11 @@ export function createTestRpc(
       resyncListeners.clear()
     },
   }
-  const rpc = createRpcClient({ commands: { invoke }, events })
+  const rpc = createRpcClient({
+    icons: createIconTransport(false),
+    commands: { invoke },
+    events,
+  })
   return {
     rpc,
     invoke: invokeMock,

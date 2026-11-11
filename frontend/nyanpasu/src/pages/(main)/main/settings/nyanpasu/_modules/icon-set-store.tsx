@@ -12,15 +12,15 @@ import type { TrayIcon } from '@nyanpasu/rpc/types'
  * writes through it, so one editor serves both.
  */
 export interface IconSetStore {
-  useIcon: (mode: TrayIcon) => { data?: { data_url: string } }
+  useIcon: (mode: TrayIcon, version?: number) => string
   Image: ComponentType<
     Omit<LazyImageProps, 'src'> & { mode: TrayIcon; version?: number }
   >
   isSetQuery: typeof queries.isTrayIconSet
   setIcon: typeof mutations.setTrayIcon
   setIconFromBytes: typeof mutations.setTrayIconFromBytes
-  /** Query key prefixes of the icon and is-set queries, for invalidation. */
-  iconKey: string
+  /** Identifies the icon set in preset detection. */
+  kind: 'tray' | 'widget'
   isSetKey: string
   /** Whether the preset cards are offered; otherwise each state is edited on its own. */
   presets: boolean
@@ -33,12 +33,12 @@ export interface IconSetStore {
 }
 
 export const TRAY_ICON_STORE: IconSetStore = {
-  useIcon: (mode) => useTrayIcon(mode),
+  useIcon: useTrayIcon,
   Image: TrayImage,
   isSetQuery: (mode) => queries.isTrayIconSet(mode),
   setIcon: mutations.setTrayIcon,
   setIconFromBytes: mutations.setTrayIconFromBytes,
-  iconKey: 'getTrayIcon',
+  kind: 'tray',
   isSetKey: 'isTrayIconSet',
   presets: false,
   messages: {

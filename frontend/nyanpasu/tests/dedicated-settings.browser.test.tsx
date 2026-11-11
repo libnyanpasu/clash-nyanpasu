@@ -3,7 +3,11 @@ import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { RpcProvider } from '@nyanpasu/query'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import type { ConfigurationStatus, MutationOutcome } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ConfigurationStatusPage from '../src/pages/(main)/main/settings/debug/_modules/configuration-status'
@@ -121,6 +125,7 @@ async function setup(
     dispose: () => {},
   }
   const rpc = createRpcClient({
+    icons: createIconTransport(false),
     commands: {
       invoke: async <T,>(method: string, params?: Record<string, unknown>) =>
         (await invoke(method, params)) as T,

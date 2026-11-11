@@ -14,7 +14,11 @@ import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { regionName } from '@/utils/traffic-usage'
 import { DndContext } from '@dnd-kit/core'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import type { DirectEgress } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
@@ -114,6 +118,7 @@ function createRpcHarness({
     rpc: createRpcClient({
       commands: { invoke },
       events,
+      icons: createIconTransport(false),
     }),
     probes: () => calls.filter((call) => call === 'probe_direct_egress').length,
     calls,

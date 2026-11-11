@@ -12,14 +12,10 @@ export function CacheImage({
   const src = icon.trim().startsWith('<svg')
     ? `data:image/svg+xml;base64,${btoa(icon)}`
     : icon
-  const query = useCachedIcon(src.startsWith('http') ? src : null)
+  const cachedUrl = useCachedIcon(src.startsWith('http') ? src : null)
+  const imageUrl = src.startsWith('http') ? cachedUrl : src
 
-  return (
-    <LazyImage
-      src={src.startsWith('http') ? query.data?.data_url : src}
-      {...props}
-    />
-  )
+  return <LazyImage src={imageUrl} {...props} />
 }
 
 export function TrayImage({
@@ -30,9 +26,9 @@ export function TrayImage({
   mode: 'system_proxy' | 'tun' | 'normal'
   version?: number
 }) {
-  const query = useTrayIcon(mode, version)
+  const src = useTrayIcon(mode, version)
 
-  return <LazyImage src={query.data?.data_url} {...props} />
+  return <LazyImage src={src} {...props} />
 }
 
 export function WidgetImage({
@@ -43,7 +39,7 @@ export function WidgetImage({
   mode: 'system_proxy' | 'tun' | 'normal'
   version?: number
 }) {
-  const query = useWidgetIcon(mode, version)
+  const src = useWidgetIcon(mode, version)
 
-  return <LazyImage src={query.data?.data_url} {...props} />
+  return <LazyImage src={src} {...props} />
 }

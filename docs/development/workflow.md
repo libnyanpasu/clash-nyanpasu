@@ -119,7 +119,7 @@ Feature/refactoring work runs in isolated git worktrees by default. Working in t
 - Summarize the relevant costs and benefits, state a recommendation, then ask the user whether to work in a worktree or the current checkout. Wait for their choice before implementation; if they have already specified a choice for the task, follow it without asking again.
 - Keep isolated worktrees as the recommended default for feature/refactoring work. Small, isolated edits may be cheaper in the current checkout; broad changes or concurrent work strengthen the case for a worktree. The assessment adds a user-selectable alternative, not a replacement for the isolation and resource reuse policy.
 
-When the user chooses a worktree, use the naming and sibling-directory convention below unless they select another location. Respect any location the developer explicitly selects. Worktrees share the main `.git`. Reuse expensive **branch-independent** assets from the main checkout via symlink. Each worktree owns its **branch-dependent** outputs; its Cargo target may start as an independent copy-on-write (CoW) clone of an existing target.
+When the user chooses a worktree, use the naming and sibling-directory convention below unless they select another location. Respect any location the developer explicitly selects. Worktrees share the main `.git`. Reuse prepared downloads from a compatible checkout by copying; use symlinks only when the pinned versions match and sharing is deliberate. Each worktree owns its **branch-dependent** outputs; its Cargo target may start as an independent copy-on-write (CoW) clone of an existing target.
 
 ### Branch and worktree naming
 
@@ -155,28 +155,96 @@ Native operations include [ReFS block cloning](https://learn.microsoft.com/en-us
 
 ### Reuse policy
 
-| Path (repo-relative)       | Approx size             | Policy                                                                  | Reason                                                                                                                                        |
-| -------------------------- | ----------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/tauri/sidecar/`   | ~213M                   | **Symlink → main**                                                      | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm run prepare:check` is slow |
-| `backend/tauri/resources/` | ~21M                    | **Symlink → main**                                                      | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                         |
-| Submodule checkouts        | varies                  | **Independent checkout from local Git objects when available**          | Each worktree checks out its own pinned revisions, including nested submodules                                                                |
-| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already deduplicates package contents; sharing risks concurrent lock conflicts                                              |
-| `backend/target/`          | tens to hundreds of GiB | **Independent CoW clone when supported; otherwise build independently** | Clones share unchanged data blocks while keeping files and Cargo locks independent; never share a writable target directory                   |
-| `backend/tauri/tmp/dist/`  | build output            | **Independent — never symlink**                                         | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                    |
+| Path (repo-relative)       | Approx size             | Policy                                                                  | Reason                                                                                                                                            |
+| -------------------------- | ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~227M                   | **Copy from a matching checkout; otherwise `prepare:check`**            | gitignored downloaded cores and `nyanpasu-service`; the service version follows the runtime submodule pin, so it is not always branch-independent |
+| `backend/tauri/resources/` | ~28M                    | **Copy from a matching checkout; otherwise `prepare:check`**            | gitignored geo data, wintun and enable-loopback assets; the enable-loopback version follows its submodule pin on Windows                          |
+| Submodule checkouts        | varies                  | **Independent checkout from local Git objects when available**          | Each worktree checks out its own pinned revisions, including nested submodules                                                                    |
+| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already deduplicates package contents; sharing risks concurrent lock conflicts                                                  |
+| `backend/target/`          | tens to hundreds of GiB | **Independent CoW clone when supported; otherwise build independently** | Clones share unchanged data blocks while keeping files and Cargo locks independent; never share a writable target directory                       |
+| `backend/tauri/tmp/dist/`  | build output            | **Independent — never symlink**                                         | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                        |
 
-Only `sidecar/` and `resources/` are symlink candidates.
+Only `sidecar/` and `resources/` are copy or symlink candidates.
 
 ### Reuse Cargo target through CoW
 
 - Seed a new, absent `backend/target/` from a suitable existing target on the same clone-capable volume. Do not overwrite an existing worktree's target. A clone creates independent files; it must not hardlink destination files back to the source, use a symlink/junction to the source target, or point multiple worktrees at one `CARGO_TARGET_DIR`. Hardlinks between files entirely inside the new target may be preserved.
 - Clone only while the source target is not being written by Cargo, rustc, rust-analyzer, or other build tools. A recursive file clone is not an atomic directory snapshot. Do not stop the developer's running processes to obtain a seed; if the source cannot be kept idle, skip seeding and build independently.
-- Prefer a source built with the same resolved Rust toolchain version, target triple, lockfile, profile, features, and rustflags. Reuse an already suitable target; do not clean or rebuild the main checkout just to prepare a seed. Preserve timestamps, permissions and link semantics, and ensure copied links do not redirect writes to the source target.
-- Treat the clone as a build cache, not a completed build for the new worktree. Cargo must validate it through the relevant build/check/test command before use. Absolute paths, build-script outputs and source timestamps can cause rebuilding even at the same commit. Do not rewrite Cargo fingerprints or cached paths to force reuse.
+- Prefer a source built from the same commit with the same resolved Rust toolchain version, target triple, lockfile, profile, features, and rustflags. Reuse an already suitable target; do not clean or rebuild the main checkout just to prepare a seed. Preserve timestamps, permissions and link semantics, and ensure copied links do not redirect writes to the source target.
+- Treat the clone as a build cache, not a completed build for the new worktree. Cargo must validate it through the relevant build/check/test command before use. Do not rewrite Cargo fingerprints or cached paths to force reuse.
 - The root `.cargo/config.toml` enables Cargo content fingerprints, so a seeded target avoids rebuilding local crates only because a new checkout assigned newer source mtimes. Inputs watched by `build.rs` through `cargo::rerun-if-changed` still use mtimes; Cargo must still validate the clone.
 - Cloning saves initial data duplication, not every future build's space: rewritten or newly generated artifacts need storage. Directory size sums can double-count hardlinks and CoW data; assess savings through filesystem allocation information or measured volume-space changes.
 - Keep `node_modules/` installation and `backend/tauri/tmp/dist/` generation independent. Do not extend target cloning into a shared frontend output directory.
 
+#### Why a seeded target still rebuilds
+
+A fresh checkout assigns every source file a new mtime. Content fingerprints keep
+ordinary crates fresh when their contents match, so a seed from the same commit
+usually validates in seconds. Build-script inputs are the exception:
+
+- `cargo::rerun-if-changed` still compares mtimes under `checksum-freshness`.
+  `backend/tauri/build.rs` watches `backend/Cargo.lock` and, on Windows,
+  `windows-app-manifest.xml`. `tauri-build` also watches `tauri.conf.json`,
+  capabilities, icons and every file under `backend/tauri/tmp/dist`.
+- Those inputs are newer in the new worktree, so the build script reruns.
+  `clash-nyanpasu`'s build script embeds `BUILD_DATE = Utc::now()`, so a rerun
+  changes a rustc environment input and the app crate recompiles and relinks even
+  when every dependency was reused.
+- The two local Slint crates, `nyanpasu-crash-reporter` and `nyanpasu-widget`,
+  have the same mtime-driven build-script behavior.
+
+This app rebuild is expected; the seed still saves dependency compilation. Do not
+rewrite fingerprints or backdate source files to suppress it. If dependencies
+themselves rebuild, the seed did not match the command: the commit, toolchain,
+target triple, profile, features, rustflags or `Cargo.lock` differed, the seed was
+cloned while a build was writing it, the clone is incomplete, or
+`CARGO_TARGET_DIR` or `--target-dir` points somewhere else. Commands are not
+interchangeable: `pnpm dev` uses the default features, `pnpm dev:diff` adds
+`verge-dev,deadlock-detection`, and `pnpm test:backend` uses `--all-features`;
+`cargo check`, `clippy`, `test` and `build` also produce different units. Seed
+from the command that will run next, or expect that command's own units to
+compile.
+
 For changes to worktree preparation tooling, verify clone support and write isolation with disposable files, then verify Cargo behavior after seeding: build/check/test as appropriate, rebuild after a source change, build two worktrees concurrently, and remove one without modifying the seed or the other worktree. Test the unsupported-filesystem path as well: it must leave a usable independent worktree without provisioning storage or performing an unannounced full target copy.
+
+### Prepared downloads (`prepare:check`)
+
+`pnpm run prepare:check` populates three gitignored locations:
+
+- `backend/tauri/sidecar/` — core binaries, `nyanpasu-service` and version stamps.
+- `backend/tauri/resources/` — `geoip.dat`, `geosite.dat`, `Country.mmdb`,
+  `wintun.dll` and the enable-loopback assets.
+- `node_modules/.verge/` — a disposable partial-download cache.
+
+`git worktree add` does not create any of them. Do not download the same ~255MB
+again in every worktree. Copy `sidecar/` and `resources/` from an existing
+checkout whose pins and host platform/architecture match, then run
+`prepare:check` to fill anything missing. It also validates the version stamps
+for `nyanpasu-service`, `meow` and `meow-alpha`, but treats the other copied files
+as cached by existence. The pins to compare are `manifest/version.json`, the
+`backend/nyanpasu-runtime` gitlink for `nyanpasu-service`, and on Windows the
+`backend/enable-loopback` gitlink for `enableLoopback.exe`. If a pin differs,
+copy from a checkout with the new pin or run `pnpm run prepare:check --force` to
+replace the assets with that worktree's versions. The geo data and wintun files
+follow their download URLs rather than `manifest/version.json`, so a copy can be
+older; use `--force` when current data matters.
+
+```powershell
+$main = <matching-checkout>
+Copy-Item -Recurse "$main/backend/tauri/sidecar"   backend/tauri/
+Copy-Item -Recurse "$main/backend/tauri/resources" backend/tauri/
+```
+
+```sh
+main=<matching-checkout>
+cp -a "$main/backend/tauri/sidecar" "$main/backend/tauri/resources" backend/tauri/
+```
+
+Prefer copying over symlinking. A copy is owned by the worktree, so running
+`prepare:check --force` or checking out a branch with a different pin cannot
+overwrite another checkout. Symlink only when the pins match and the shared
+download is deliberate; `prepare:check` writes through the symlink. Omit
+`node_modules/.verge/` from the copy — it is only a download cache.
 
 ### Gitignored build prerequisites a fresh worktree lacks
 
@@ -188,17 +256,19 @@ For changes to worktree preparation tooling, verify clone support and write isol
 
 ### Create a worktree
 
-Commands shown for Windows / PowerShell (dir symlinks need Developer Mode, no elevation). Use symlinks only if the developer's existing settings permit them; do not enable Developer Mode or elevate to change the system for worktree setup. Choose `<worktree-path>` according to the filesystem policy above and `<type>/<name>` according to the task's branch convention. After creating the worktree, seed its target according to the CoW policy when supported, before launching build tools; otherwise leave it to Cargo to create independently.
+Commands shown for Windows / PowerShell. Choose `<worktree-path>` according to the filesystem policy above and `<type>/<name>` according to the task's branch convention. After creating the worktree, copy prepared downloads from a matching checkout, then seed its target according to the CoW policy when supported; otherwise leave the target to Cargo.
 
 ```powershell
 $main = git rev-parse --show-toplevel                 # capture main checkout root
 git worktree add <worktree-path> -b <type>/<name>
 cd <worktree-path>
 
-# Reuse downloads only when existing settings allow directory symlinks
-New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/tauri/sidecar"
-New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
-# Otherwise prepare independent downloads: pnpm run prepare:check
+# Copy prepared downloads from a checkout with the same pins (~255MB).
+Copy-Item -Recurse "$main/backend/tauri/sidecar"   backend/tauri/
+Copy-Item -Recurse "$main/backend/tauri/resources" backend/tauri/
+# If the pins differ or the copy is unavailable, let prepare:check materialize
+# this worktree's versions:
+# pnpm run prepare:check
 
 # Seed backend/target through verified CoW cloning when supported.
 # Otherwise let Cargo create it; never link it back to the main target.
@@ -206,6 +276,10 @@ New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/t
 # Initialize the pinned submodules using local objects where available, including
 # nested submodules, and install dependencies from the shared pnpm store.
 pnpm run prepare:worktree "$main"
+
+# Optional when the copied pins match: fill missing files without re-downloading.
+# If a pin differs, copy from a matching checkout or use `prepare:check --force`.
+pnpm run prepare:check
 
 # Satisfy tauri-build's frontendDist check — pick one:
 New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
@@ -219,7 +293,8 @@ Git source, while retaining the original remote URL; missing local repositories 
 commits fall back to the configured remote. The source checkout is not modified.
 The pnpm installation uses `--frozen-lockfile --prefer-offline`: packages already
 in the store are reused, and missing packages may still be downloaded. This does
-not share `node_modules`, clone Cargo targets, or prepare sidecars and resources.
+not share `node_modules`, clone Cargo targets, or prepare sidecars and resources;
+copy them as shown above or run `prepare:check` when the pins differ.
 For a wholly offline setup the required submodule commits and pnpm packages must
 already be cached; use `pnpm install --offline --frozen-lockfile` to enforce offline
 package installation.

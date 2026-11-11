@@ -7258,6 +7258,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "atomicwrites",
  "axum",
  "base64 0.23.1",
  "chrono",
@@ -7282,14 +7283,17 @@ dependencies = [
  "nyanpasu-observers",
  "nyanpasu-owner-support",
  "nyanpasu-paths",
+ "nyanpasu-persistence",
  "nyanpasu-profile-transform",
  "nyanpasu-rpc-protocol",
  "nyanpasu-runtime-values",
+ "nyanpasu-state-engine",
  "nyanpasu-traffic",
  "nyanpasu-updater",
  "parking_lot 0.13.0",
  "percent-encoding",
  "ractor",
+ "redb",
  "reqwest 0.13.5",
  "serde",
  "serde_json",
@@ -7309,6 +7313,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "whoami",
  "widestring 1.2.1",
  "windows-sys 0.61.2",
  "zip 9.4.1",
@@ -7318,13 +7323,22 @@ dependencies = [
 name = "nyanpasu-rpc-protocol"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "clash-api",
+ "indexmap 2.14.2",
  "nyanpasu-config",
+ "nyanpasu-contracts",
+ "nyanpasu-core-metadata",
+ "nyanpasu-profile-transform",
+ "nyanpasu-runtime-values",
  "serde",
  "serde_json",
  "snafu 0.8.9",
  "specta",
  "specta-typescript",
  "tokio",
+ "url",
+ "uuid",
 ]
 
 [[package]]

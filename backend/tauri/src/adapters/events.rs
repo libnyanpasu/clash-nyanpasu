@@ -1,6 +1,5 @@
 //! GUI event wrappers for application status, streams, and storage changes.
 
-use nyanpasu_contracts::logs::CoreLogStatus;
 use nyanpasu_core::{clash::ws::ClashWsUpdate, client::StateChanged};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -27,9 +26,16 @@ pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ServiceStatusChangedEvent(pub ServiceHostStatus);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
-pub struct CoreLogsChanged {
-    pub status: CoreLogStatus,
+/// Attaches Tauri event registration to the canonical payload.
+#[derive(Debug, Clone, Serialize, Deserialize, tauri_specta::Event)]
+#[serde(transparent)]
+#[tauri_specta(event_name = "core-logs-changed")]
+pub struct CoreLogsChangedEvent(pub nyanpasu_rpc_protocol::types::CoreLogsChanged);
+
+impl Type for CoreLogsChangedEvent {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        nyanpasu_rpc_protocol::types::CoreLogsChanged::definition(types)
+    }
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize, Event)]

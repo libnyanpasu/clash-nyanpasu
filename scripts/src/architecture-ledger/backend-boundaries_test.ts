@@ -39,7 +39,7 @@ test('RPC local endpoints are opt-in without widening protocol dependencies', ()
   )
 })
 
-test('protocol frame IO is opt-in and feature-off values need no IO runtime', () => {
+test('protocol frame IO remains opt-in with foundation values', () => {
   const manifest = readFileSync(
     new URL(
       '../../../backend/nyanpasu-rpc-protocol/Cargo.toml',
@@ -106,7 +106,7 @@ test('protocol accepts direct and transitive foundation values and libraries', (
     assert.deepStrictEqual(
       dependencyViolations(
         'nyanpasu-rpc-protocol',
-        `nyanpasu-rpc-protocol v0.1.0\n${intermediate}nyanpasu-config v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\n`,
+        `nyanpasu-rpc-protocol v0.1.0\n${intermediate}nyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-profile-transform v0.1.0\nnyanpasu-core-metadata v0.1.0\nnyanpasu-ipc v0.1.0\nserde v1.0\nserde_json v1.0\nspecta v2.0\n`,
       ),
       [],
     )

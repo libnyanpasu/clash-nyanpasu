@@ -16,7 +16,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![unified_rpc::native::call_rpc])
         .events(collect_events![
             events::AppUpdateStateChanged,
-            events::CoreLogsChanged,
+            events::CoreLogsChangedEvent,
             events::ClashWsEvent,
             window::WindowMessageEvent,
             events::StorageValueChangedEvent,
@@ -213,7 +213,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     )
     .events(collect_events![
         events::AppUpdateStateChanged,
-        events::CoreLogsChanged,
+        events::CoreLogsChangedEvent,
         events::ClashWsEvent,
         window::WindowMessageEvent,
         events::StorageValueChangedEvent,
@@ -503,7 +503,10 @@ mod tests {
                 events::AppUpdateStateChanged::NAME,
             ),
             (EventName::ClashWs, events::ClashWsEvent::NAME),
-            (EventName::CoreLogsChanged, events::CoreLogsChanged::NAME),
+            (
+                EventName::CoreLogsChanged,
+                events::CoreLogsChangedEvent::NAME,
+            ),
             (
                 EventName::ConfigurationStatusChanged,
                 ipc::ConfigurationStatusChanged::NAME,

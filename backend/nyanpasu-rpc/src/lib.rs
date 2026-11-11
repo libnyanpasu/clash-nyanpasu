@@ -14,3 +14,8 @@ pub mod local;
 pub mod registry;
 #[cfg(all(feature = "http", any(test, feature = "test-support")))]
 pub mod test_support;
+
+#[cfg(test)]
+mod connection_tests;
+#[cfg(test)]
+mod receiving_tests;

@@ -1,5 +1,7 @@
 //! Loopback HTTP actor, authenticated frontend and injected assets.
 
+#[cfg(test)]
+mod icon_tests;
 pub mod listener;
 pub mod routes;
 use std::{sync::Arc, time::Duration};
@@ -286,6 +288,20 @@ async fn local_session(
     request: Request,
     next: Next,
 ) -> Response {
+    let reject = |status: StatusCode| {
+        let mut response = status.into_response();
+        if request.uri().path().starts_with("/bridge/icons/") {
+            for (name, value) in crate::icons::SECURITY_HEADERS {
+                response
+                    .headers_mut()
+                    .insert(name, HeaderValue::from_static(value));
+            }
+            response
+                .headers_mut()
+                .insert("cache-control", HeaderValue::from_static("no-store"));
+        }
+        response
+    };
     let authority = &state.authority;
     let host = request.headers().get("host").and_then(|v| v.to_str().ok());
     let origin = request
@@ -295,7 +311,7 @@ async fn local_session(
     if host != Some(authority.as_str())
         || origin.is_some_and(|o| o != format!("http://{authority}"))
     {
-        return StatusCode::FORBIDDEN.into_response();
+        return reject(StatusCode::FORBIDDEN);
     }
     let authenticated = request
         .headers()
@@ -334,12 +350,19 @@ async fn local_session(
         return response;
     }
     if !authenticated {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return reject(StatusCode::UNAUTHORIZED);
     }
     let mut response = next.run(request).await;
+    // Only the icon adapter can mark a successful response for private caching.
+    // Other routes and dev-proxy responses retain the listener's no-store policy.
+    let cache_control = response
+        .extensions()
+        .get::<crate::icons::IconCachePolicy>()
+        .filter(|_| response.status().is_success())
+        .map_or("no-store", |policy| policy.header());
     response
         .headers_mut()
-        .insert("cache-control", HeaderValue::from_static("no-store"));
+        .insert("cache-control", HeaderValue::from_static(cache_control));
     let (parts, body) = response.into_parts();
     Response::from_parts(
         parts,

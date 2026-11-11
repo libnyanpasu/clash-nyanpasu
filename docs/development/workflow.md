@@ -119,7 +119,17 @@ Feature/refactoring work runs in isolated git worktrees by default. Working in t
 - Summarize the relevant costs and benefits, state a recommendation, then ask the user whether to work in a worktree or the current checkout. Wait for their choice before implementation; if they have already specified a choice for the task, follow it without asking again.
 - Keep isolated worktrees as the recommended default for feature/refactoring work. Small, isolated edits may be cheaper in the current checkout; broad changes or concurrent work strengthen the case for a worktree. The assessment adds a user-selectable alternative, not a replacement for the isolation and resource reuse policy.
 
-When the user chooses a worktree, choose a path outside the repo tree using the existing filesystem policy below; respect any location the developer has explicitly selected. Worktrees share the main `.git`. Reuse expensive **branch-independent** assets from the main checkout via symlink. Each worktree owns its **branch-dependent** outputs; its Cargo target may start as an independent copy-on-write (CoW) clone of an existing target.
+When the user chooses a worktree, use the naming and sibling-directory convention below unless they select another location. Respect any location the developer explicitly selects. Worktrees share the main `.git`. Reuse expensive **branch-independent** assets from the main checkout via symlink. Each worktree owns its **branch-dependent** outputs; its Cargo target may start as an independent copy-on-write (CoW) clone of an existing target.
+
+### Branch and worktree naming
+
+Name branches with a type that describes the change, such as `fix/`, `feat/`,
+`docs/`, `chore/`, or `refactor/`; do not use `codex/` as the type. Place
+worktrees outside `.codex` and outside the main repository, as a sibling of the
+main checkout. Name the directory `<repository>-<branch-suffix>` (the part after
+the branch type and slash). For example, branch `fix/mode-state-animation` in
+`/home/keiko/Code/clash-nyanpasu` uses
+`/home/keiko/Code/clash-nyanpasu-mode-state-animation`.
 
 ### Filesystem and location policy
 

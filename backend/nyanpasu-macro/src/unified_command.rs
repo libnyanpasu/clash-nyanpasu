@@ -10,6 +10,7 @@ pub struct Options {
     optional_capabilities: Vec<syn::Ident>,
     result: bool,
     owner: bool,
+    operation: Option<syn::Path>,
 }
 
 impl syn::parse::Parse for Options {
@@ -32,10 +33,17 @@ impl syn::parse::Parse for Options {
                 }
                 "result" => options.result = true,
                 "owner" => options.owner = true,
+                "operation" => {
+                    input.parse::<syn::Token![=]>()?;
+                    if options.operation.is_some() {
+                        return Err(Error::new(option.span(), "duplicate operation binding"));
+                    }
+                    options.operation = Some(input.parse()?);
+                }
                 _ => {
                     return Err(Error::new(
                         option.span(),
-                        "expected http, local, result, owner, capabilities(...) or optional_capabilities(...)",
+                        "expected http, local, result, owner, operation = path, capabilities(...) or optional_capabilities(...)",
                     ));
                 }
             }
@@ -156,6 +164,22 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let native = is_native(&item);
     let neutral_compatible = can_share_with_neutral(original, options.owner);
     let metadata = metadata(&item, &options, quote!(::nyanpasu_rpc_protocol));
+    let operation = options.operation.as_ref();
+    let operation_trait = quote!(::nyanpasu_rpc_protocol::operation::RpcOperation);
+    let name_check = operation.map(|operation| {
+        quote! {
+            const _: () = {
+                let actual = <#operation as #operation_trait>::NAME.as_bytes();
+                let expected = stringify!(#name).as_bytes();
+                assert!(actual.len() == expected.len(), "RPC operation name mismatch");
+                let mut index = 0;
+                while index < actual.len() {
+                    assert!(actual[index] == expected[index], "RPC operation name mismatch");
+                    index += 1;
+                }
+            };
+        }
+    });
     let tauri_handler = format_ident!("__unified_tauri_{}", name);
 
     let mut implementation = item.clone();
@@ -258,6 +282,12 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let generic_args = static_lifetime_args(original, &mut tauri_supported);
     let attrs = &item.attrs;
     let cfg_attrs = implementation.attrs.iter().collect::<Vec<_>>();
+    let name_check = name_check.map(|check| {
+        quote! {
+            #(#cfg_attrs)*
+            #check
+        }
+    });
     let vis = &item.vis;
     let block = &item.block;
     let wrapper_call = call(
@@ -274,7 +304,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     };
     implementation.block = block.clone();
 
-    let params_parser = parser(&fields, &field_names);
+    let params_parser = parser(&fields, &field_names, operation);
     let neutral_parse = params_parser;
     let neutral_call = call(
         &implementation_name,
@@ -285,10 +315,12 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let neutral_handler_body =
         if neutral_supported && !matches!(original.output, ReturnType::Default) {
             let output = output_value(&neutral_call, &original.output, options.result);
+            let response_type =
+                operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
             quote! {
                 #(#dependency_bindings)*
                 #neutral_parse
-                let output = #output?;
+                let output #response_type = #output?;
                 ::serde_json::to_value(output)
                     .map_err(::nyanpasu_rpc::error::application_error)
             }
@@ -344,7 +376,9 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             generic_args,
         );
         let output = output_value(&tauri_call, &original.output, options.result);
-        let parser = parser(&tauri_fields, &tauri_field_names);
+        let parser = parser(&tauri_fields, &tauri_field_names, operation);
+        let response_type =
+            operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
         quote! {
             #(#cfg_attrs)*
             fn #tauri_handler(
@@ -356,7 +390,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 ::std::boxed::Box::pin(async move {
                     #parser
                     #(#state_bindings)*
-                    let output = #output?;
+                    let output #response_type = #output?;
                     ::serde_json::to_value(output)
                         .map_err(::nyanpasu_rpc::error::application_error)
                 })
@@ -393,6 +427,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     Ok(quote! {
         #implementation
         #wrapper
+
+        #name_check
 
         #(#cfg_attrs)*
         fn #neutral_handler(
@@ -444,18 +480,36 @@ fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenS
     }
 }
 
-fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
+fn parser(
+    fields: &[TokenStream],
+    names: &[syn::Ident],
+    operation: Option<&syn::Path>,
+) -> TokenStream {
+    let operation_trait = quote!(::nyanpasu_rpc_protocol::operation::RpcOperation);
     if fields.is_empty() {
+        let unit_check = operation.map(|operation| {
+            quote! {
+                let (): <#operation as #operation_trait>::Request = ();
+            }
+        });
         quote! {
             if !params.is_null() && !matches!(&params, ::serde_json::Value::Object(map) if map.is_empty()) {
                 return Err(::nyanpasu_rpc_protocol::RpcError::invalid_params("expected an empty input object"));
             }
+            #unit_check
         }
     } else {
+        let args = if let Some(operation) = operation {
+            quote!(type Args = <#operation as #operation_trait>::Request;)
+        } else {
+            quote! {
+                #[derive(::serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                struct Args { #(#fields,)* }
+            }
+        };
         quote! {
-            #[derive(::serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct Args { #(#fields,)* }
+            #args
             let Args { #(#names,)* } = ::serde_json::from_value(params)
                 .map_err(|error| ::nyanpasu_rpc_protocol::RpcError::invalid_params(error.to_string()))?;
         }
@@ -607,6 +661,39 @@ mod tests {
     use syn::{Item, ItemFn};
 
     use super::expand;
+
+    #[test]
+    fn operation_bindings_use_the_existing_generator() {
+        let expanded = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(local, http, owner, result, operation = contracts::OpenLogSession)]
+            fn open_log_session(caller: RpcCaller, client: RpcState<'_, NyanpasuClient>, source: Source, request: OpenLogs) -> LogResult<LogSession> { todo!() }
+        }).unwrap();
+        syn::parse2::<syn::File>(expanded.clone()).unwrap();
+        let expanded = expanded.to_string();
+        assert!(expanded.contains("type Args = < contracts :: OpenLogSession as"));
+        assert!(expanded.contains("let Args { source , request , }"));
+        assert!(!expanded.contains("struct Args"));
+        assert!(expanded.contains("owner . clone () , & dependencies . client , source , request"));
+        assert!(expanded.contains(":: Response ="));
+        assert!(expanded.contains(":: NAME . as_bytes ()"));
+        assert_eq!(expanded.matches("CommandEntry {").count(), 1);
+        assert_eq!(expanded.matches("inventory :: submit !").count(), 1);
+        assert!(!expanded.contains("TauriCommandEntry"));
+    }
+
+    #[test]
+    fn zero_argument_contracts_check_unit_without_changing_the_parser() {
+        let expanded = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(local, operation = contracts::GetProfiles)]
+            fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<Profiles> { todo!() }
+        })
+        .unwrap()
+        .to_string();
+        assert!(expanded.contains("params . is_null ()"));
+        assert!(expanded.contains("map . is_empty ()"));
+        assert!(expanded.contains("let () : < contracts :: GetProfiles as"));
+        assert!(!expanded.contains("from_value (params)"));
+    }
 
     #[test]
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {

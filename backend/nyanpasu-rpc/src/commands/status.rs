@@ -22,7 +22,7 @@ pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<Serv
     })
 }
 
-#[nyanpasu_macro::rpc(local, http)]
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetConfigurationStatus)]
 #[specta::specta]
 pub fn get_configuration_status(
     client: RpcState<'_, NyanpasuClient>,

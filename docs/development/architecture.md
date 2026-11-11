@@ -104,7 +104,9 @@ is the plan for the next stage:
   foundation values alongside serialization and optional transport dependencies. Cookie parsing, HTTP status and application error conversion live
   in `nyanpasu-rpc`. `nyanpasu-rpc-protocol::types` contains the receiving
   error/mutation graph, owned error envelope and connection details for the
-  thirteen local operations and their five full-value snapshots. Ordinary values
+  thirteen local operations and their five full-value snapshots. `operation` and
+  `operations` bind local request/sending/receiving/error types and method names
+  on both the client and generated shared handlers. Ordinary values
   have canonical foundation owners; `nyanpasu-rpc` is the thin application adapter
   over core. Protocol forbids GUI,
   CORE_FAMILY and IMPLEMENTATION; foundation/core/implementation crates cannot

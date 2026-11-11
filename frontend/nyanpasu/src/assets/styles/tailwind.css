@@ -140,6 +140,9 @@
 
   /* Log Row Entrance */
   --animate-log-row-enter: log-row-enter 300ms cubic-bezier(0.2, 0, 0, 1);
+
+  /* List Row Entrance */
+  --animate-row-enter: row-enter 250ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Custom Mixed Colors (light) */
@@ -337,5 +340,16 @@
   from {
     opacity: 0;
     translate: 0 8px;
+  }
+}
+
+/*
+ * A row a list gains grows into place. It uses `scale` and leaves `translate`
+ * to the list that moves its rows.
+ */
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    scale: 0.96;
   }
 }

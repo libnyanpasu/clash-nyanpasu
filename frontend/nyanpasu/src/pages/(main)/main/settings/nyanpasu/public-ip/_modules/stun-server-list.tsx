@@ -1,7 +1,6 @@
 import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
 import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import DeleteOutlineRounded from '~icons/material-symbols/delete-outline-rounded'
-import FormatListNumberedRounded from '~icons/material-symbols/format-list-numbered-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import { Button } from '@nyanpasu/ui/button'
 import { cardVariants } from '@nyanpasu/ui/card'
@@ -29,6 +28,11 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../../../../_modules/settings-card'
+import {
+  sortableItemVariants,
+  SortableOrder,
+  useSortableTransition,
+} from '../../../../_modules/sortable-item'
 import AddStunServerDialog from './add-stun-server-dialog'
 import StunCapabilities, { stunChipVariants } from './stun-capabilities'
 
@@ -56,10 +60,11 @@ function StunServerItem({
 }) {
   const address = serverKey(server)
 
-  const { ref, isDragging, isDropTarget } = useSortable({
+  const { ref, isDragging } = useSortable({
     id: address,
     index,
     disabled,
+    transition: useSortableTransition(),
   })
 
   return (
@@ -69,32 +74,21 @@ function StunServerItem({
       aria-label={`${m.settings_public_ip_stun_reorder()} ${address}`}
       className={cn(
         cardVariants(),
-        'flex min-w-0 items-center gap-4 px-5 py-6 select-none',
-        // Only colours transition: dnd-kit animates the item's position itself.
-        'transition-colors motion-reduce:transition-none',
-        'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
-        !disabled &&
-          'hover:bg-surface-variant/60 cursor-grab touch-none active:cursor-grabbing',
-        isDragging && 'bg-secondary-container shadow-lg',
-        isDropTarget && 'ring-primary ring-2',
+        sortableItemVariants({
+          draggable: !disabled,
+          dragging: isDragging,
+          disabled,
+        }),
+        'flex min-h-[72px] min-w-0 items-center gap-4 px-4 py-3',
       )}
       data-slot="stun-server-item"
       data-server={address}
       data-builtin={server.builtin}
       data-dragging={isDragging || undefined}
     >
-      <span
-        className={cn(
-          'grid size-6 shrink-0 place-items-center rounded-full',
-          'text-xs font-medium tabular-nums',
-          server.enabled
-            ? 'bg-primary text-on-primary'
-            : 'bg-surface-variant text-on-surface-variant',
-        )}
-        data-slot="stun-server-order"
-      >
+      <SortableOrder active={server.enabled} data-slot="stun-server-order">
         {index + 1}
-      </span>
+      </SortableOrder>
 
       <div className="min-w-0 flex-1">
         <p className="text-base font-medium [overflow-wrap:anywhere]">
@@ -205,8 +199,7 @@ export default function StunServerList() {
         className="flex items-center justify-between gap-3"
         data-slot="stun-server-list-header"
       >
-        <p className="text-on-surface-variant flex items-center gap-2 px-3 text-sm">
-          <FormatListNumberedRounded className="size-5" aria-hidden />
+        <p className="text-on-surface-variant px-3 text-sm">
           {m.settings_public_ip_stun_enabled_count({ count: enabledCount })}
         </p>
 

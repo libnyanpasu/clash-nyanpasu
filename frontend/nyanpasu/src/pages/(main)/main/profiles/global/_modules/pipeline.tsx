@@ -207,7 +207,6 @@ export default function Pipeline({
         </StageLabel>
 
         <TransformChain
-          variant="step"
           chain={chain}
           traceStepOf={traceStepOf}
           empty={{

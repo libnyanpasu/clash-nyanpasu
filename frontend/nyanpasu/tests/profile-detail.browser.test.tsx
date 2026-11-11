@@ -6,10 +6,12 @@ import { page } from 'vitest/browser'
 import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import { Route } from '@/pages/(main)/main/profiles/$type/detail/$uid'
 import { m } from '@/paraglide/messages'
+import { formatDate } from '@/utils/date'
 import { ask } from '@/utils/notification'
 import type { ProfileItem_Serialize, RunDto } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
@@ -73,6 +75,12 @@ const transform: ProfileItem_Serialize = {
   },
 }
 
+const other: ProfileItem_Serialize = {
+  ...transform,
+  uid: 'other',
+  name: 'Other rules',
+}
+
 const host: ProfileItem_Serialize = {
   uid: 'host',
   name: 'Host profile',
@@ -83,6 +91,32 @@ const host: ProfileItem_Serialize = {
     source: { type: 'local', binding: { type: 'managed', file: 'host.yaml' } },
   },
 }
+
+const chained: ProfileItem_Serialize = {
+  ...remote,
+  config: { ...remote.config, transforms: ['fix'] },
+} as ProfileItem_Serialize
+
+const succeeded = (sequence: number): RunDto => ({
+  id: `run-${sequence}`,
+  job: 'profiles/sync/remote',
+  definition_version: '1',
+  admission_sequence: String(sequence),
+  trigger: 'scheduled',
+  scheduled_at: null,
+  admitted_at: '2026-09-30T00:00:00Z',
+  finished_at: '2026-09-30T00:00:01Z',
+  state: {
+    kind: 'finished',
+    completion: {
+      outcome: { kind: 'succeeded' },
+      output: { kind: 'none' },
+      journal: { kind: 'durable' },
+    },
+  },
+  last_log_sequence: '0',
+  dropped_log_count: '0',
+})
 
 const deferred = () => {
   const gate: { open?: (value: unknown) => void } = {}
@@ -96,18 +130,23 @@ const mountDetail = async ({
   initialIndex,
   globalTransforms = [],
   runs = [],
+  nextRunAt = null,
+  width = 1000,
   rpc,
   onTestFinished,
 }: {
   items: ProfileItem_Serialize[]
   globalTransforms?: string[]
   runs?: RunDto[]
+  nextRunAt?: string | null
+  /** The width of the content area, which decides the panel layout. */
+  width?: number
   initialEntries: string[]
   initialIndex?: number
   rpc?: (method: string, params: Record<string, unknown>) => unknown
   onTestFinished: (fn: () => void) => void
 }) => {
-  await page.viewport(1000, 900)
+  await page.viewport(width, 900)
   vi.stubGlobal('isTauri', true)
   const calls: string[] = []
   mockIPC((command, args) => {
@@ -124,7 +163,7 @@ const mountDetail = async ({
     if (method === 'get_profile_sync_status')
       return {
         scheduled: false,
-        next_run_at: null,
+        next_run_at: nextRunAt,
         active: [],
         journal_degraded: false,
         registration_error: null,
@@ -146,9 +185,11 @@ const mountDetail = async ({
           <TooltipProvider>
             <SharedTooltip>
               <SnackbarProvider>
-                <ProfilesLayoutProvider>
-                  <RouterOutlet />
-                </ProfilesLayoutProvider>
+                <ImportUrlProvider>
+                  <ProfilesLayoutProvider>
+                    <RouterOutlet />
+                  </ProfilesLayoutProvider>
+                </ImportUrlProvider>
               </SnackbarProvider>
             </SharedTooltip>
           </TooltipProvider>
@@ -317,7 +358,7 @@ test('the full sync history unfolds inline instead of opening a drawer', async (
   }))
   const { container } = await mountDetail({
     items: [remote],
-    initialEntries: ['/main/profiles/profile/detail/remote'],
+    initialEntries: ['/main/profiles/profile/detail/remote?panel=sync'],
     runs,
     onTestFinished,
   })
@@ -423,4 +464,375 @@ test('a transform that no profile uses says so', async ({ onTestFinished }) => {
           ?.textContent,
     )
     .toBe(m.profile_detail_used_by_empty())
+})
+
+test('a config lists its chain and the library below it, with chain members pressed', async ({
+  onTestFinished,
+}) => {
+  const { container } = await mountDetail({
+    items: [host, transform, other],
+    initialEntries: ['/main/profiles/profile/detail/host?panel=transforms'],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(() =>
+      Array.from(
+        container.querySelectorAll('[data-slot="profile-chain-editor-item"]'),
+      ).map((item) => item.getAttribute('data-uid')),
+    )
+    .toEqual(['fix'])
+
+  const library = container.querySelector(
+    '[data-slot="profile-transform-library"]',
+  )!
+  expect(
+    container
+      .querySelector('[data-slot="profile-chain-editor-items"]')!
+      .compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  await expect
+    .element(
+      page.getByRole('button', {
+        name: m.profile_transform_library_toggle({ name: transform.name }),
+        exact: true,
+      }),
+    )
+    .toHaveAttribute('aria-pressed', 'true')
+  await expect
+    .element(
+      page.getByRole('button', {
+        name: m.profile_transform_library_toggle({ name: other.name }),
+        exact: true,
+      }),
+    )
+    .toHaveAttribute('aria-pressed', 'false')
+})
+
+const panelEntry = (container: HTMLElement, panel: string) =>
+  container.querySelector<HTMLElement>(`[data-panel="${panel}"]`)
+
+const region = (name: string) => page.getByRole('region', { name })
+
+test('a config shows rows for its chain and sync history instead of the editors', async ({
+  onTestFinished,
+}) => {
+  const nextRunAt = '2026-10-01T00:00:00Z'
+  const { container } = await mountDetail({
+    items: [chained, transform, other],
+    runs: [succeeded(1)],
+    nextRunAt,
+    initialEntries: ['/main/profiles/profile/detail/remote'],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(() => panelEntry(container, 'sync')?.textContent)
+    .toContain(m.profile_sync_succeeded())
+  expect(panelEntry(container, 'sync')!.textContent).toContain(
+    m.profile_sync_next_run({ time: formatDate(nextRunAt) }),
+  )
+  expect(panelEntry(container, 'sync')!.textContent).toContain(
+    m.profile_sync_history_title(),
+  )
+
+  const transforms = panelEntry(container, 'transforms')!
+  expect(transforms.textContent).toContain(m.profile_chain_editor_title())
+  expect(transforms.textContent).toContain(
+    m.profile_chain_editor_enabled_count({ count: 1 }),
+  )
+  expect(transforms.textContent).toContain(transform.name)
+  expect(transforms.textContent).not.toContain(other.name)
+
+  expect(transforms.hasAttribute('data-selected')).toBe(false)
+  expect(
+    container.querySelector('[data-slot="profile-chain-editor"]'),
+  ).toBeNull()
+  expect(
+    container.querySelector('[data-slot="profile-sync-history"]'),
+  ).toBeNull()
+  expect(
+    container.querySelector('[data-slot="profile-detail-panel"]'),
+  ).toBeNull()
+})
+
+test('a chain without transforms and a profile that never synced say so', async ({
+  onTestFinished,
+}) => {
+  const { container } = await mountDetail({
+    items: [remote, transform],
+    initialEntries: ['/main/profiles/profile/detail/remote'],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(() => panelEntry(container, 'transforms')?.textContent)
+    .toContain(m.profile_chain_editor_empty())
+  await expect
+    .poll(() => panelEntry(container, 'sync')?.textContent)
+    .toContain(m.profile_sync_empty())
+})
+
+test('only the rows that apply to a profile are listed', async ({
+  onTestFinished,
+}) => {
+  const { container } = await mountDetail({
+    items: [host, transform],
+    initialEntries: ['/main/profiles/profile/detail/host'],
+    onTestFinished,
+  })
+
+  await expect.poll(() => panelEntry(container, 'transforms')).not.toBeNull()
+  expect(panelEntry(container, 'sync')).toBeNull()
+})
+
+test('rows open and switch the panel through the address, and close it again', async ({
+  onTestFinished,
+}) => {
+  const { router, container } = await mountDetail({
+    items: [chained, transform],
+    runs: [succeeded(1)],
+    initialEntries: ['/main/profiles/profile/detail/remote'],
+    onTestFinished,
+  })
+  const search = () => router.state.location.search as { panel?: string }
+
+  await expect.poll(() => panelEntry(container, 'transforms')).not.toBeNull()
+  await panelEntry(container, 'transforms')!.click()
+  await expect.poll(() => search().panel).toBe('transforms')
+  await expect.element(region(m.profile_chain_editor_title())).toBeVisible()
+  // The panel slides in: its slot grows to the width of the panel.
+  const slot = () =>
+    container.querySelector<HTMLElement>(
+      '[data-slot="profile-detail-panel-slot"]',
+    )!
+  await expect.poll(() => slot().style.width).toBe('auto')
+  expect(slot().getBoundingClientRect().width).toBeCloseTo(416, 0)
+  // The panel takes the focus and its row is the selected one, beside the
+  // detail column.
+  await expect
+    .poll(() => document.activeElement?.getAttribute('data-slot'))
+    .toBe('profile-detail-panel')
+  expect(
+    panelEntry(container, 'transforms')!.hasAttribute('data-selected'),
+  ).toBe(true)
+  expect(
+    panelEntry(container, 'transforms')!.getAttribute('aria-current'),
+  ).toBe('true')
+  expect(panelEntry(container, 'sync')!.hasAttribute('data-selected')).toBe(
+    false,
+  )
+  expect(container.querySelector('[data-slot="profile-detail"]')).not.toBeNull()
+  expect(
+    container
+      .querySelector<HTMLElement>('[data-slot="profile-detail-panel"]')!
+      .getBoundingClientRect().width,
+  ).toBeCloseTo(416, 0)
+  // Switching happens through the rows; the panel has no tabs of its own.
+  expect(
+    container.querySelector('[data-slot="profile-detail-panel"] [role="tab"]'),
+  ).toBeNull()
+  await expect
+    .poll(
+      () =>
+        container.querySelectorAll('[data-slot="profile-chain-editor-item"]')
+          .length,
+    )
+    .toBe(1)
+
+  await panelEntry(container, 'sync')!.click()
+  await expect.poll(() => search().panel).toBe('sync')
+  await expect.element(region(m.profile_sync_history_title())).toBeVisible()
+  expect(
+    container.querySelector('[data-slot="profile-chain-editor"]'),
+  ).toBeNull()
+  await expect
+    .poll(
+      () => container.querySelectorAll('[data-slot="profile-sync-run"]').length,
+    )
+    .toBe(1)
+
+  await page.getByRole('button', { name: m.common_close() }).click()
+  await expect.poll(() => search().panel).toBeUndefined()
+  // The panel leaves once it has slid out.
+  await expect
+    .poll(() => container.querySelector('[data-slot="profile-detail-panel"]'))
+    .toBeNull()
+  // The row of the panel that closed gets the focus back.
+  await expect
+    .poll(() => document.activeElement?.getAttribute('data-panel'))
+    .toBe('sync')
+
+  // History keeps the panel: back reopens it, forward closes it again.
+  router.history.back()
+  await expect.poll(() => search().panel).toBe('sync')
+  await expect.element(region(m.profile_sync_history_title())).toBeVisible()
+  router.history.back()
+  await expect.poll(() => search().panel).toBe('transforms')
+  router.history.forward()
+  await expect.poll(() => search().panel).toBe('sync')
+})
+
+test('an address with a panel opens it on load', async ({ onTestFinished }) => {
+  const { container } = await mountDetail({
+    items: [chained, transform],
+    initialEntries: ['/main/profiles/profile/detail/remote?panel=transforms'],
+    onTestFinished,
+  })
+  await expect.element(region(m.profile_chain_editor_title())).toBeVisible()
+  expect(
+    container.querySelector('[data-slot="profile-detail-panel"]'),
+  ).not.toBeNull()
+})
+
+test.for([
+  ['/main/profiles/profile/detail/remote?panel=bogus', [chained]],
+  ['/main/profiles/profile/detail/host?panel=sync', [host, transform]],
+  ['/main/profiles/javascript/detail/fix?panel=transforms', [transform]],
+] as const)('%s opens no panel', async ([entry, items], { onTestFinished }) => {
+  const { container } = await mountDetail({
+    items: [...items],
+    initialEntries: [entry],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(() => container.querySelector('[data-slot="profile-detail-header"]'))
+    .not.toBeNull()
+  expect(
+    container.querySelector('[data-slot="profile-detail-panel"]'),
+  ).toBeNull()
+})
+
+test('a narrow content area gives the page to the panel, with a back button', async ({
+  onTestFinished,
+}) => {
+  const { router, container } = await mountDetail({
+    items: [chained, transform],
+    width: 700,
+    initialEntries: ['/main/profiles/profile/detail/remote'],
+    onTestFinished,
+  })
+  const search = () => router.state.location.search as { panel?: string }
+
+  await expect.poll(() => panelEntry(container, 'transforms')).not.toBeNull()
+  await panelEntry(container, 'transforms')!.click()
+  await expect.poll(() => search().panel).toBe('transforms')
+
+  const panel = () =>
+    container.querySelector<HTMLElement>('[data-slot="profile-detail-panel"]')
+  await expect.poll(() => panel()?.getAttribute('data-layout')).toBe('narrow')
+  // The panel covers the detail column and names the profile it belongs to.
+  const column = () =>
+    container.querySelector<HTMLElement>(
+      '[data-slot="profile-detail-scroll-area"]',
+    )
+  expect(column()!.inert).toBe(true)
+  expect(
+    panel()!.querySelector('[data-slot="profile-detail-panel-subtitle"]')
+      ?.textContent,
+  ).toBe(chained.name)
+  expect(panel()!.querySelector('h1')?.textContent).toBe(
+    m.profile_chain_editor_title(),
+  )
+  expect(
+    panel()!.querySelector('[data-slot="profile-detail-panel-close"]'),
+  ).toBeNull()
+  expect(
+    container.querySelector('[data-slot="profile-transform-library"]'),
+  ).toBeNull()
+  expect(panel()!.getBoundingClientRect().width).toBeGreaterThan(600)
+
+  await page.getByRole('button', { name: m.profile_back() }).click()
+  await expect.poll(() => search().panel).toBeUndefined()
+  expect(router.state.location.pathname).toBe(
+    '/main/profiles/profile/detail/remote',
+  )
+  expect(column()!.inert).toBe(false)
+  await expect.poll(panel).toBeNull()
+  await expect
+    .poll(() => document.activeElement?.getAttribute('data-panel'))
+    .toBe('transforms')
+})
+
+test('closing or switching the panel with unapplied changes asks first', async ({
+  onTestFinished,
+}) => {
+  const { router, container } = await mountDetail({
+    items: [remote, transform, other],
+    initialEntries: ['/main/profiles/profile/detail/remote?panel=transforms'],
+    onTestFinished,
+  })
+  const search = () => router.state.location.search as { panel?: string }
+  const toggle = (name: string) =>
+    page.getByRole('button', {
+      name: m.profile_transform_library_toggle({ name }),
+      exact: true,
+    })
+  const dialogTitle = () => page.getByText(m.profile_leave_title())
+  const apply = () =>
+    page.getByRole('button', { name: m.common_apply(), exact: true })
+
+  await toggle(transform.name).click()
+  await expect.element(apply()).toBeVisible()
+
+  // Closing and switching both stop at the question. (The memory history of
+  // the test cannot block a history pop, so going back is not exercised.)
+  await page.getByRole('button', { name: m.common_close() }).click()
+  await expect.element(dialogTitle()).toBeVisible()
+  expect(search().panel).toBe('transforms')
+  await page.getByRole('button', { name: m.profile_leave_stay() }).click()
+  await expect.element(dialogTitle()).not.toBeInTheDocument()
+  expect(search().panel).toBe('transforms')
+  await expect.element(apply()).toBeVisible()
+  expect(
+    container.querySelectorAll('[data-slot="profile-chain-editor-item"]'),
+  ).toHaveLength(1)
+
+  await panelEntry(container, 'sync')!.click()
+  await expect.element(dialogTitle()).toBeVisible()
+  expect(search().panel).toBe('transforms')
+  await page.getByRole('button', { name: m.profile_leave_stay() }).click()
+  await expect.element(dialogTitle()).not.toBeInTheDocument()
+
+  // Leaving discards the draft, and the panel opens fresh.
+  await page.getByRole('button', { name: m.common_close() }).click()
+  await page.getByRole('button', { name: m.profile_leave_confirm() }).click()
+  await expect.poll(() => search().panel).toBeUndefined()
+  // The panel leaves once it has slid out.
+  await expect
+    .poll(() => container.querySelector('[data-slot="profile-detail-panel"]'))
+    .toBeNull()
+  await panelEntry(container, 'transforms')!.click()
+  await expect.poll(() => search().panel).toBe('transforms')
+  await expect.element(region(m.profile_chain_editor_title())).toBeVisible()
+  expect(
+    container.querySelectorAll('[data-slot="profile-chain-editor-item"]'),
+  ).toHaveLength(0)
+  await expect.element(apply()).not.toBeInTheDocument()
+})
+
+test('a reset draft leaves the panel without a question', async ({
+  onTestFinished,
+}) => {
+  const { router } = await mountDetail({
+    items: [remote, transform],
+    initialEntries: ['/main/profiles/profile/detail/remote?panel=transforms'],
+    onTestFinished,
+  })
+
+  await page
+    .getByRole('button', {
+      name: m.profile_transform_library_toggle({ name: transform.name }),
+      exact: true,
+    })
+    .click()
+  await page
+    .getByRole('button', { name: m.common_reset(), exact: true })
+    .click()
+  await page.getByRole('button', { name: m.common_close() }).click()
+  await expect
+    .poll(() => (router.state.location.search as { panel?: string }).panel)
+    .toBeUndefined()
+  expect(document.body.textContent).not.toContain(m.profile_leave_title())
 })

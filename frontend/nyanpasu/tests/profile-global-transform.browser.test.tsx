@@ -243,7 +243,7 @@ async function open({
   const libraryNames = () =>
     Array.from(
       view.container.querySelectorAll(
-        '[data-slot="profile-global-library-row"] [data-slot="step-row-title"]',
+        '[data-slot="profile-transform-library-row"] [data-slot="step-row-title"]',
       ),
     ).map((element) => element.textContent)
 
@@ -270,7 +270,7 @@ async function open({
       view.getByRole('button', { name: m.common_reset(), exact: true }),
     add: (name: string) =>
       view.getByRole('button', {
-        name: m.profile_global_library_add({ name }),
+        name: m.profile_transform_library_toggle({ name }),
         exact: true,
       }),
   }
@@ -476,23 +476,17 @@ test('leaving with unapplied changes asks first; Stay keeps the page, Leave navi
     )!
   await userEvent.click(source())
 
-  await expect
-    .element(page.getByText(m.profile_global_leave_title()))
-    .toBeVisible()
-  await page
-    .getByRole('button', { name: m.profile_global_leave_stay() })
-    .click()
+  await expect.element(page.getByText(m.profile_leave_title())).toBeVisible()
+  await page.getByRole('button', { name: m.profile_leave_stay() }).click()
 
   await expect
-    .element(page.getByText(m.profile_global_leave_title()))
+    .element(page.getByText(m.profile_leave_title()))
     .not.toBeInTheDocument()
   expect(ui.router.state.location.pathname).toBe('/main/profiles/global')
   expect(ui.chainIds()).toEqual(['self', 'warp'])
 
   await userEvent.click(source())
-  await page
-    .getByRole('button', { name: m.profile_global_leave_confirm() })
-    .click()
+  await page.getByRole('button', { name: m.profile_leave_confirm() }).click()
 
   await expect
     .poll(() => ui.router.state.location.pathname)
@@ -510,9 +504,7 @@ test('a clean page navigates without asking', async ({ onTestFinished }) => {
   await expect
     .poll(() => ui.router.state.location.pathname)
     .toBe('/main/profiles/profile/detail/cfg')
-  expect(
-    page.getByText(m.profile_global_leave_title()).elements(),
-  ).toHaveLength(0)
+  expect(page.getByText(m.profile_leave_title()).elements()).toHaveLength(0)
 })
 
 test('the library searches, filters by type and explains each empty list', async ({
@@ -529,8 +521,24 @@ test('the library searches, filters by type and explains each empty list', async
     name: m.profile_global_library_search(),
   })
 
+  const filter = page.getByRole('group', {
+    name: m.profile_global_library_filter(),
+  })
+
+  // Each filter counts what the search leaves of its type.
+  for (const label of ['All 4', 'JavaScript 2', 'Lua 1', 'YAML 1']) {
+    await expect
+      .element(filter.getByRole('button', { name: label }))
+      .toBeVisible()
+  }
+
   await search.fill('LUA')
   await expect.poll(() => ui.libraryNames()).toEqual(['lua helper'])
+  for (const label of ['All 1', 'JavaScript 0', 'Lua 1', 'YAML 0']) {
+    await expect
+      .element(filter.getByRole('button', { name: label }))
+      .toBeVisible()
+  }
 
   await search.fill('nothing like this')
   await expect.poll(() => ui.libraryNames()).toEqual([])
@@ -539,24 +547,21 @@ test('the library searches, filters by type and explains each empty list', async
     .toBeVisible()
 
   await search.fill('')
-  const filter = page.getByRole('group', {
-    name: m.profile_global_library_filter(),
-  })
 
-  await filter.getByRole('button', { name: 'JavaScript' }).click()
+  await filter.getByRole('button', { name: 'JavaScript 2' }).click()
   await expect.poll(() => ui.libraryNames()).toEqual(['useself', 'warp'])
 
-  await filter.getByRole('button', { name: 'YAML' }).click()
+  await filter.getByRole('button', { name: 'YAML 1' }).click()
   await expect.poll(() => ui.libraryNames()).toEqual(['DNS override'])
 
-  await filter.getByRole('button', { name: 'Lua' }).click()
+  await filter.getByRole('button', { name: 'Lua 1' }).click()
   await search.fill('warp')
   await expect
     .element(page.getByText(m.profile_global_library_no_match()))
     .toBeVisible()
 })
 
-test('an empty library offers a new transform; a fully used one says so', async ({
+test('an empty library offers a new transform; a fully used one still lists every transform as pressed', async ({
   onTestFinished,
 }) => {
   const none = await open({ transforms: [], globalTransforms: [], scoped: [] })
@@ -580,9 +585,11 @@ test('an empty library offers a new transform; a fully used one says so', async 
   onTestFinished(finish(all))
 
   await expect
-    .element(page.getByText(m.profile_chain_editor_add_empty()))
-    .toBeVisible()
-  expect(all.libraryNames()).toEqual([])
+    .poll(() => all.libraryNames())
+    .toEqual(['DNS override', 'useself', 'warp', 'lua helper'])
+  for (const name of ['DNS override', 'useself', 'warp', 'lua helper']) {
+    await expect.element(all.add(name)).toHaveAttribute('aria-pressed', 'true')
+  }
 })
 
 test('New transform opens the create dialog', async ({ onTestFinished }) => {

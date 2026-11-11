@@ -2,12 +2,13 @@ import { useEffect } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { ErrorMessage } from '@/components/error-message'
 import { m } from '@/paraglide/messages'
-import { commands, events } from '@/services/rpc'
+import { commands, events, queries } from '@/services/rpc'
 import { effectFailureMessage } from '@/utils/ipc-error'
 import {
   acceptConfigurationStatus,
   attentionSources,
   invokeMutation,
+  invokeQuery,
   MutationUnconfirmedError,
   sourceMessage,
 } from '@nyanpasu/query'
@@ -144,11 +145,12 @@ export default function ConfigurationStatus() {
   }
   const unconfirmed = latest?.error instanceof MutationUnconfirmedError
 
+  const statusOptions = queries.getConfigurationStatus()
   const { data: status, isError } = useQuery({
-    queryKey: STATUS_KEY,
+    queryKey: statusOptions.queryKey,
     // A late poll must not replace a newer event already in the cache.
     queryFn: async () => {
-      const next = await commands.getConfigurationStatus()
+      const next = await invokeQuery(statusOptions)
       // Compare with the cache after the reply: an event may have landed meanwhile.
       return acceptConfigurationStatus(
         queryClient.getQueryData<ConfigurationStatus>(STATUS_KEY),

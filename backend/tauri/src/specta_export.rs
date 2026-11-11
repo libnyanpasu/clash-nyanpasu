@@ -44,6 +44,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     let command_set = CommandSet::<tauri::Wry>::new(
         schema_commands![
             commands::status::get_debug_http_status,
+            commands::status::get_configuration_status,
             // Read-only commands
             ipc::read_clipboard_text,
             commands::traffic::query_core_logs,
@@ -119,7 +120,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::ask_native_dialog,
             ipc::open_native_file_dialog,
             ipc::set_debug_http_enabled,
-            commands::status::get_configuration_status,
             commands::status::retry_configuration_runtime,
             commands::status::retry_configuration_effect,
             ipc::set_release_channel,
@@ -593,6 +593,14 @@ mod tests {
                 "injected dependency leaked: {dependency}"
             );
         }
+    }
+
+    #[test]
+    fn configuration_status_is_exported_as_a_query() {
+        let (query_bindings, _) = build_specta_builder();
+        let (queries, mutations) = query_bindings.split_once("export const mutations").unwrap();
+        assert!(queries.contains("getConfigurationStatus"));
+        assert!(!mutations.contains("getConfigurationStatus"));
     }
 
     /// Regenerates the committed TS bindings in place (same path and header as

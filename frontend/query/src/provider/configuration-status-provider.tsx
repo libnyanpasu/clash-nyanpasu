@@ -13,7 +13,11 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { acceptConfigurationStatus } from '../ipc/configuration-status'
-import { invokeMutation, MutationUnconfirmedError } from '../ipc/query-options'
+import {
+  invokeMutation,
+  invokeQuery,
+  MutationUnconfirmedError,
+} from '../ipc/query-options'
 import { useQueryApi } from './rpc-provider'
 
 export const CONFIGURATION_STATUS_QUERY_KEY = [
@@ -62,15 +66,17 @@ export function ConfigurationStatusProvider({
 }: PropsWithChildren<{ enabled?: boolean }>) {
   const api = useQueryApi()
   const queryClient = useQueryClient()
+
+  const statusOptions = api.queries.getConfigurationStatus()
   const query = useQuery({
-    queryKey: CONFIGURATION_STATUS_QUERY_KEY,
+    queryKey: statusOptions.queryKey,
     enabled,
     queryFn: async () =>
       acceptConfigurationStatus(
         queryClient.getQueryData<ConfigurationStatus>(
           CONFIGURATION_STATUS_QUERY_KEY,
         ),
-        await api.getConfigurationStatus(),
+        await invokeQuery(statusOptions),
       ),
     refetchInterval: enabled ? 10_000 : false,
   })

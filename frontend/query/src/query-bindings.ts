@@ -13,6 +13,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getDebugHttpStatus', ...args],
         queryFn: () => commands.getDebugHttpStatus(...args),
       }),
+    getConfigurationStatus: (
+      ...args: Parameters<typeof commands.getConfigurationStatus>
+    ) =>
+      queryOptions({
+        queryKey: ['getConfigurationStatus', ...args],
+        queryFn: () => commands.getConfigurationStatus(...args),
+      }),
     readClipboardText: (
       ...args: Parameters<typeof commands.readClipboardText>
     ) =>
@@ -439,11 +446,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['setDebugHttpEnabled'],
       mutationFn: (input: Parameters<typeof commands.setDebugHttpEnabled>) =>
         commands.setDebugHttpEnabled(...input),
-    }),
-    getConfigurationStatus: mutationOptions({
-      mutationKey: ['getConfigurationStatus'],
-      mutationFn: (input: Parameters<typeof commands.getConfigurationStatus>) =>
-        commands.getConfigurationStatus(...input),
     }),
     retryConfigurationRuntime: mutationOptions({
       mutationKey: ['retryConfigurationRuntime'],

@@ -21,8 +21,13 @@ vi.mock('@/utils', () => ({ formatError: String }))
 vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
 vi.mock('@/services/rpc', () => ({
   commands: {
-    getConfigurationStatus: debug.status,
     retryConfigurationEffect: debug.retryEffect,
+  },
+  queries: {
+    getConfigurationStatus: () => ({
+      queryKey: ['getConfigurationStatus'],
+      queryFn: debug.status,
+    }),
   },
   events: { configurationStatusChanged: { listen: async () => () => {} } },
 }))

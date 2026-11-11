@@ -16,6 +16,8 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('get_debug_http_status'),
       ),
+    getConfigurationStatus: () =>
+      __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
@@ -374,8 +376,6 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('set_debug_http_enabled', { enabled }),
       ),
-    getConfigurationStatus: () =>
-      __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     retryConfigurationRuntime: () =>
       typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
     retryConfigurationEffect: (kind: EffectKind) =>

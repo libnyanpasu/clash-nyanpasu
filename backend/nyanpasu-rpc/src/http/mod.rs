@@ -1004,11 +1004,11 @@ pub(crate) mod tests {
             let records = fixture.sink.records.lock();
             assert_eq!(
                 records.len(),
-                6,
+                9,
                 "rejected requests must not reach dispatch"
             );
-            assert_eq!(records[0].header.owner, records[2].header.owner);
-            assert_ne!(records[0].header.owner, records[4].header.owner);
+            assert_eq!(records[0].header.owner, records[3].header.owner);
+            assert_ne!(records[0].header.owner, records[6].header.owner);
         }
         server.set_enabled(false).await.unwrap();
         let next_entry = server.set_enabled(true).await.unwrap().url.unwrap();

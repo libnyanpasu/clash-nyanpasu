@@ -42,6 +42,9 @@ mod logs;
 #[path = "client_tests.rs"]
 mod client;
 
+#[path = "audit_tests.rs"]
+mod audit;
+
 struct Peer {
     stream: Option<Stream>,
     stop: tokio_util::sync::CancellationToken,
@@ -54,6 +57,7 @@ struct Peer {
 #[derive(Default)]
 struct WriterGate {
     blocked: AtomicBool,
+    fail: AtomicBool,
     entered: Notify,
     waker: futures::task::AtomicWaker,
 }
@@ -82,6 +86,9 @@ impl tokio::io::AsyncWrite for ControlledStream {
         if self.gate.blocked.load(Ordering::SeqCst) {
             self.gate.entered.notify_one();
             return Poll::Pending;
+        }
+        if self.gate.fail.load(Ordering::SeqCst) {
+            return Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)));
         }
         Pin::new(&mut self.stream).poll_write(context, buffer)
     }
@@ -674,8 +681,8 @@ async fn local_dispatch_records_one_info_audit_event() {
         peer.finish().await;
     }.with_subscriber(tracing_subscriber::registry().with(capture.clone())).await;
     assert_eq!(terminal_record_count(&fixture), 5);
-    assert_eq!(fixture.sink.records.lock().len(), 7);
-    assert_eq!(capture.0.lock().len(), 7);
+    assert_eq!(fixture.sink.records.lock().len(), 12);
+    assert_eq!(capture.0.lock().len(), 12);
     assert!(
         capture
             .0
@@ -1106,7 +1113,11 @@ async fn slow_local_peer_has_bounded_buffers() {
             .iter()
             .filter(|record| {
                 record.header.owner.as_str() == slow_owner
-                    && !matches!(record.phase, crate::audit::AuditPhase::Admitted)
+                    && matches!(
+                        record.phase,
+                        crate::audit::AuditPhase::Finished { .. }
+                            | crate::audit::AuditPhase::Rejected { .. }
+                    )
             })
             .count();
         assert!(
@@ -1220,6 +1231,12 @@ fn terminal_record_count(fixture: &Fixture) -> usize {
         .records
         .lock()
         .iter()
-        .filter(|record| !matches!(record.phase, crate::audit::AuditPhase::Admitted))
+        .filter(|record| {
+            matches!(
+                record.phase,
+                crate::audit::AuditPhase::Finished { .. }
+                    | crate::audit::AuditPhase::Rejected { .. }
+            )
+        })
         .count()
 }

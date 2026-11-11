@@ -11,7 +11,8 @@ use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 use crate::{
     audit::{
-        AuditPhase, CompletionSummary, RpcAudit, RpcAuditGuard, RpcAuditOutcome, RpcTransport,
+        AuditInvocation, AuditPhase, CompletionSummary, RpcAudit, RpcAuditGuard, RpcAuditOutcome,
+        RpcTransport,
     },
     events::EventBus,
 };
@@ -79,7 +80,19 @@ pub async fn dispatch_audited<T, F>(
 where
     F: Future<Output = RpcCompletion<T>>,
 {
-    let mut guard = RpcAuditGuard::new(audit, transport, &owner, command(), request_id);
+    let invocation = audit.invocation(transport, &owner, command(), request_id);
+    dispatch_with_audit(&invocation, prepare).await
+}
+
+/// Use adapter-supplied correlation without giving the invocation transport ownership.
+pub(crate) async fn dispatch_with_audit<T, F>(
+    invocation: &AuditInvocation,
+    prepare: impl FnOnce() -> Result<F, RpcError>,
+) -> Result<T, RpcError>
+where
+    F: Future<Output = RpcCompletion<T>>,
+{
+    let mut guard = RpcAuditGuard::new(invocation);
     let call = match prepare() {
         Ok(call) => call,
         Err(error) => {
@@ -326,17 +339,18 @@ impl UnifiedRpc {
         owner: RpcOwner,
         params: Value,
     ) -> Result<Value, RpcError> {
-        self.call_with_admission(transport, method, owner, params, None, Ok(()))
+        let invocation = self.audit_invocation(transport, method, &owner, None);
+        self.call_with_admission(&invocation, transport, method, owner, params, Ok(()))
             .await
     }
 
     pub(crate) async fn call_with_admission(
         &self,
+        invocation: &AuditInvocation,
         transport: RpcTransport,
         method: &str,
         owner: RpcOwner,
         params: Value,
-        request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
         admission: Result<(), RpcError>,
     ) -> Result<Value, RpcError> {
         let target = match transport {
@@ -344,22 +358,15 @@ impl UnifiedRpc {
             RpcTransport::Http => RpcTarget::Http,
             RpcTransport::Local => RpcTarget::Local,
         };
-        dispatch_audited(
-            &self.dependencies.audit,
-            transport,
-            owner.clone(),
-            || self.audit_command_name(method),
-            request_id,
-            || {
-                let handler = self
-                    .commands
-                    .get(method)
-                    .ok_or_else(|| RpcError::unknown_method(method))?;
-                let handler = handler.neutral_handler(target)?;
-                admission?;
-                handler(self.dependencies.clone(), owner, params)
-            },
-        )
+        dispatch_with_audit(invocation, || {
+            let handler = self
+                .commands
+                .get(method)
+                .ok_or_else(|| RpcError::unknown_method(method))?;
+            let handler = handler.neutral_handler(target)?;
+            admission?;
+            handler(self.dependencies.clone(), owner, params)
+        })
         .await
     }
 
@@ -400,6 +407,21 @@ impl UnifiedRpc {
             .get_key_value(method)
             .map_or("unknown_method", |(name, _)| *name)
     }
+
+    pub(crate) fn audit_invocation(
+        &self,
+        transport: RpcTransport,
+        method: &str,
+        owner: &RpcOwner,
+        request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
+    ) -> AuditInvocation {
+        self.dependencies.audit.invocation(
+            transport,
+            owner,
+            self.audit_command_name(method),
+            request_id,
+        )
+    }
 }
 
 /// Failure to install routes or register a unique command name.
@@ -413,6 +435,8 @@ pub enum SetupError {
 
 #[cfg(all(test, feature = "http"))]
 mod audit_tests;
+#[cfg(all(test, feature = "http"))]
+mod delivery_tests;
 #[cfg(all(test, feature = "http"))]
 mod settings_tests;
 #[cfg(all(test, feature = "http"))]

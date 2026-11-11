@@ -315,6 +315,30 @@ async fn delayed(source: LogSource, shutdown: bool) {
             .unwrap_err(),
         LogError::SessionExpired
     );
+    {
+        let records = fixture.sink.records.lock();
+        let late: Vec<_> = records
+            .iter()
+            .filter(|record| {
+                record.header.request_id
+                    == Some(nyanpasu_rpc_protocol::frame::RequestId::new(1).unwrap())
+            })
+            .collect();
+        assert_eq!(late.len(), 3);
+        assert!(matches!(
+            late[1].phase,
+            crate::audit::AuditPhase::Finished {
+                outcome: crate::audit::RpcAuditOutcome::Success,
+                ..
+            }
+        ));
+        assert_eq!(
+            late[2].phase,
+            crate::audit::AuditPhase::Delivery {
+                outcome: crate::audit::DeliveryOutcome::NotAttempted
+            }
+        );
+    }
     if matches!(source, LogSource::Service) {
         assert_eq!(
             *service.state.opened.lock(),

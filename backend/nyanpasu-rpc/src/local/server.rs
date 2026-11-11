@@ -21,11 +21,11 @@ use tracing::instrument::WithSubscriber as _;
 
 use super::{
     endpoint::{EndpointError, EndpointListener},
-    subscriptions::{self, Delivery, Output, Subscription, SubscriptionSource},
+    subscriptions::{self, Delivery, DeliveryAudit, Output, Subscription, SubscriptionSource},
 };
 use crate::{
-    audit::RpcTransport,
-    registry::{RpcFuture, UnifiedRpc, dispatch_audited, unreported},
+    audit::{AuditInvocation, AuditPhase, DeliveryOutcome, RpcTransport, SubscriptionOutcome},
+    registry::{RpcFuture, UnifiedRpc, dispatch_with_audit, unreported},
 };
 
 /// Bounds are per connection, so a blocked peer cannot consume another's capacity.
@@ -129,10 +129,12 @@ impl LogResource {
 struct SubscriptionTask {
     stop: CancellationToken,
     closed: oneshot::Receiver<()>,
+    audit: AuditInvocation,
 }
 
 enum Completion {
     Call {
+        audit: AuditInvocation,
         id: RequestId,
         result: Result<Value, RpcError>,
         opened: Option<LogResource>,
@@ -142,6 +144,7 @@ enum Completion {
         permit: OwnedSemaphorePermit,
     },
     Subscribe {
+        audit: AuditInvocation,
         id: RequestId,
         result: Result<Subscription, SubscriptionErrorCode>,
         permit: OwnedSemaphorePermit,
@@ -170,14 +173,6 @@ impl Connection {
         self.pending_resources + self.logs.len() + self.subscriptions.len() < self.limits.resources
     }
 
-    async fn send(&mut self, frame: Frame) {
-        self.send_delivery(Delivery {
-            frame,
-            written: None,
-        })
-        .await;
-    }
-
     async fn send_delivery(&mut self, delivery: Delivery) {
         let frame = &delivery.frame;
         if self.session.send(frame).is_err() {
@@ -188,7 +183,8 @@ impl Connection {
             // Subscription payload overflow ends only that stream.
             if let Some(subscription) = subscription_id(frame) {
                 let subscription = subscription.to_owned();
-                self.remove_subscription(&subscription).await;
+                self.remove_subscription(&subscription, SubscriptionOutcome::Failed)
+                    .await;
                 let failure = Frame::SubscriptionError {
                     target: SubscriptionTarget::Subscription(subscription),
                     code: SubscriptionErrorCode::ResourceLimit,
@@ -208,6 +204,7 @@ impl Connection {
         self.enqueue_delivery(Delivery {
             frame,
             written: None,
+            audits: Vec::new(),
         })
         .await;
     }
@@ -220,11 +217,12 @@ impl Connection {
         }
     }
 
-    async fn remove_subscription(&mut self, subscription: &str) {
+    async fn remove_subscription(&mut self, subscription: &str, outcome: SubscriptionOutcome) {
         if let Some(task) = self.subscriptions.remove(subscription) {
             task.stop.cancel();
             // Release the receiver/demand before acknowledging unsubscribe.
             let _ = task.closed.await;
+            task.audit.record(AuditPhase::Subscription { outcome });
         }
     }
 
@@ -263,15 +261,18 @@ impl Connection {
                 };
                 let rpc = self.rpc.clone();
                 let owner = self.owner.clone();
+                let audit =
+                    self.rpc
+                        .audit_invocation(RpcTransport::Local, &method, &owner, Some(id));
                 self.calls.spawn(
                     async move {
                         let result = rpc
                             .call_with_admission(
+                                &audit,
                                 RpcTransport::Local,
                                 &method,
                                 owner,
                                 params.clone(),
-                                Some(id),
                                 admission,
                             )
                             .await;
@@ -304,6 +305,7 @@ impl Connection {
                             None
                         };
                         Completion::Call {
+                            audit,
                             id,
                             result,
                             opened,
@@ -317,6 +319,12 @@ impl Connection {
                 );
             }
             Frame::Subscribe { id, stream, event } => {
+                let audit = self.rpc.dependencies.audit.invocation(
+                    RpcTransport::Local,
+                    &self.owner,
+                    "local_subscribe",
+                    Some(id),
+                );
                 let pending = control.is_none();
                 let rejected = control.or_else(|| {
                     (!self.has_capacity()).then_some(Frame::SubscriptionError {
@@ -329,109 +337,118 @@ impl Connection {
                         Frame::SubscriptionError { code, .. } => code,
                         _ => unreachable!("subscribe control reply"),
                     };
-                    let _ = dispatch_audited(
-                        &self.rpc.dependencies.audit,
-                        RpcTransport::Local,
-                        self.owner.clone(),
-                        || "local_subscribe",
-                        Some(id),
-                        || Err::<RpcFuture, _>(subscription_error(code)),
-                    )
+                    let _ = dispatch_with_audit(&audit, || {
+                        Err::<RpcFuture, _>(subscription_error(code))
+                    })
                     .await;
+                    audit.record(AuditPhase::Subscription {
+                        outcome: SubscriptionOutcome::Failed,
+                    });
                     drop(permit);
                     // Session rejects before pending insertion; adapter capacity rejects after it.
                     if pending {
-                        self.send(rejection).await;
+                        self.send_delivery(Delivery {
+                            frame: rejection,
+                            written: None,
+                            audits: vec![DeliveryAudit::new(audit)],
+                        })
+                        .await;
                     } else {
-                        self.enqueue(rejection).await;
+                        self.enqueue_delivery(Delivery {
+                            frame: rejection,
+                            written: None,
+                            audits: vec![DeliveryAudit::new(audit)],
+                        })
+                        .await;
                     }
                     return;
                 }
                 self.pending_resources += 1;
                 let rpc = self.rpc.clone();
                 let source = self.source.clone();
-                let owner = self.owner.clone();
                 // Subscribe synchronously, before polling any snapshot future.
                 let mut receiver = rpc.dependencies.events.subscribe();
                 self.calls.spawn(
                     async move {
                         let mut failure = SubscriptionErrorCode::SnapshotUnavailable;
-                        let result = dispatch_audited(
-                            &rpc.dependencies.audit,
-                            RpcTransport::Local,
-                            owner,
-                            || "local_subscribe",
-                            Some(id),
-                            || {
-                                let event = (stream != "connection-details").then(|| {
-                                    RECOVERABLE_EVENTS
-                                        .into_iter()
-                                        .find(|name| Some(name.as_str()) == event.as_deref())
-                                        .expect("session admitted a recoverable identity")
-                                });
-                                if event
-                                    == Some(nyanpasu_rpc_protocol::EventName::AppUpdateStateChanged)
-                                    && !rpc.command_capabilities_available("get_app_update_state")
+                        let result = dispatch_with_audit(&audit, || {
+                            let event = (stream != "connection-details").then(|| {
+                                RECOVERABLE_EVENTS
+                                    .into_iter()
+                                    .find(|name| Some(name.as_str()) == event.as_deref())
+                                    .expect("session admitted a recoverable identity")
+                            });
+                            if event
+                                == Some(nyanpasu_rpc_protocol::EventName::AppUpdateStateChanged)
+                                && !rpc.command_capabilities_available("get_app_update_state")
+                            {
+                                failure = SubscriptionErrorCode::Unsupported;
+                                return Err(RpcError::new(
+                                    "unsupported",
+                                    "application updates are unavailable in this shell",
+                                ));
+                            }
+                            let failure = &mut failure;
+                            Ok(unreported(async move {
+                                let Some(event) = event else {
+                                    return source.details().await.map(Subscription::Details);
+                                };
+                                let snapshot =
+                                    subscriptions::snapshot(source.as_ref(), event, &mut receiver)
+                                        .await
+                                        .map_err(|code| {
+                                            *failure = code;
+                                            subscription_error(code)
+                                        })?;
+                                if frame::encode(&Frame::Reset {
+                                    subscription: "s18446744073709551615".into(),
+                                    event: event.as_str().into(),
+                                    snapshot: snapshot.clone(),
+                                })
+                                .is_err()
                                 {
-                                    failure = SubscriptionErrorCode::Unsupported;
-                                    return Err(RpcError::new(
-                                        "unsupported",
-                                        "application updates are unavailable in this shell",
-                                    ));
+                                    *failure = SubscriptionErrorCode::ResourceLimit;
+                                    return Err(subscription_error(*failure));
                                 }
-                                let failure = &mut failure;
-                                Ok(unreported(async move {
-                                    let Some(event) = event else {
-                                        return source.details().await.map(Subscription::Details);
-                                    };
-                                    let snapshot = subscriptions::snapshot(
-                                        source.as_ref(),
-                                        event,
-                                        &mut receiver,
-                                    )
-                                    .await
-                                    .map_err(|code| {
-                                        *failure = code;
-                                        subscription_error(code)
-                                    })?;
-                                    if frame::encode(&Frame::Reset {
-                                        subscription: "s18446744073709551615".into(),
-                                        event: event.as_str().into(),
-                                        snapshot: snapshot.clone(),
-                                    })
-                                    .is_err()
-                                    {
-                                        *failure = SubscriptionErrorCode::ResourceLimit;
-                                        return Err(subscription_error(*failure));
-                                    }
-                                    Ok(Subscription::Events {
-                                        event,
-                                        receiver,
-                                        snapshot,
-                                    })
-                                }))
-                            },
-                        )
+                                Ok(Subscription::Events {
+                                    event,
+                                    receiver,
+                                    snapshot,
+                                })
+                            }))
+                        })
                         .await
                         .map_err(|_| failure);
-                        Completion::Subscribe { id, result, permit }
+                        Completion::Subscribe {
+                            audit,
+                            id,
+                            result,
+                            permit,
+                        }
                     }
                     .with_current_subscriber(),
                 );
             }
             Frame::Unsubscribe { id, subscription } => {
-                let _ = dispatch_audited(
-                    &self.rpc.dependencies.audit,
+                let audit = self.rpc.dependencies.audit.invocation(
                     RpcTransport::Local,
-                    self.owner.clone(),
-                    || "local_unsubscribe",
+                    &self.owner,
+                    "local_unsubscribe",
                     Some(id),
-                    || Ok(unreported(async { Ok(()) })),
-                )
-                .await;
-                self.remove_subscription(&subscription).await;
+                );
+                let _ = dispatch_with_audit(&audit, || Ok(unreported(async { Ok(()) }))).await;
+                self.remove_subscription(&subscription, SubscriptionOutcome::Unsubscribed)
+                    .await;
+                audit.record(AuditPhase::Subscription {
+                    outcome: SubscriptionOutcome::Unsubscribed,
+                });
                 drop(permit);
-                self.send(Frame::Unsubscribed { id, subscription }).await;
+                self.send_delivery(Delivery {
+                    frame: Frame::Unsubscribed { id, subscription },
+                    written: None,
+                    audits: vec![DeliveryAudit::new(audit)],
+                })
+                .await;
             }
             _ => self.stop.cancel(),
         }
@@ -440,6 +457,7 @@ impl Connection {
     async fn complete(&mut self, completion: Completion) {
         match completion {
             Completion::Call {
+                audit,
                 id,
                 result,
                 opened,
@@ -475,6 +493,9 @@ impl Connection {
                 // Release work capacity before its reply can reach the peer.
                 drop(permit);
                 if self.stop.is_cancelled() {
+                    audit.record(AuditPhase::Delivery {
+                        outcome: DeliveryOutcome::NotAttempted,
+                    });
                     self.close_logs().await;
                     return;
                 }
@@ -484,13 +505,29 @@ impl Connection {
                         Reply::Error(serde_json::to_value(error).expect("RPC errors serialize"))
                     }
                 };
-                self.send(Frame::Response { id, reply }).await;
+                self.send_delivery(Delivery {
+                    frame: Frame::Response { id, reply },
+                    written: None,
+                    audits: vec![DeliveryAudit::new(audit)],
+                })
+                .await;
             }
-            Completion::Subscribe { id, result, permit } => {
+            Completion::Subscribe {
+                audit,
+                id,
+                result,
+                permit,
+            } => {
                 self.pending_resources -= 1;
                 drop(permit);
                 if self.stop.is_cancelled() {
                     drop(result);
+                    audit.record(AuditPhase::Subscription {
+                        outcome: SubscriptionOutcome::Disconnected,
+                    });
+                    audit.record(AuditPhase::Delivery {
+                        outcome: DeliveryOutcome::NotAttempted,
+                    });
                     return;
                 }
                 match result {
@@ -498,6 +535,13 @@ impl Connection {
                         let ack = match self.session.subscribed(id) {
                             Ok(ack) => ack,
                             Err(_) => {
+                                drop(stream);
+                                audit.record(AuditPhase::Subscription {
+                                    outcome: SubscriptionOutcome::Failed,
+                                });
+                                audit.record(AuditPhase::Delivery {
+                                    outcome: DeliveryOutcome::NotAttempted,
+                                });
                                 self.stop.cancel();
                                 return;
                             }
@@ -516,9 +560,18 @@ impl Connection {
                             SubscriptionTask {
                                 stop: stop.clone(),
                                 closed: receiver,
+                                audit: audit.clone(),
                             },
                         );
-                        self.enqueue(ack).await;
+                        audit.record(AuditPhase::Subscription {
+                            outcome: SubscriptionOutcome::Established,
+                        });
+                        self.enqueue_delivery(Delivery {
+                            frame: ack,
+                            written: None,
+                            audits: vec![DeliveryAudit::new(audit)],
+                        })
+                        .await;
                         let forwarding = subscriptions::forward(
                             subscription,
                             stream,
@@ -532,9 +585,16 @@ impl Connection {
                         });
                     }
                     Err(code) => {
-                        self.send(Frame::SubscriptionError {
-                            target: SubscriptionTarget::Id(id),
-                            code,
+                        audit.record(AuditPhase::Subscription {
+                            outcome: SubscriptionOutcome::Failed,
+                        });
+                        self.send_delivery(Delivery {
+                            frame: Frame::SubscriptionError {
+                                target: SubscriptionTarget::Id(id),
+                                code,
+                            },
+                            written: None,
+                            audits: vec![DeliveryAudit::new(audit)],
                         })
                         .await
                     }
@@ -682,25 +742,35 @@ pub(super) async fn serve_stream<S>(
         reader_stop.cancel();
     });
     let writer_stop = stop.clone();
-    io.spawn(async move {
-        let _cancel_on_exit = writer_stop.clone().drop_guard();
-        let writing = async {
-            while let Some(delivery) = output.recv().await {
-                if frame::write_frame(&mut writer, &delivery.frame)
-                    .await
-                    .is_err()
-                    || matches!(delivery.frame, Frame::Reject { .. })
-                {
-                    break;
+    io.spawn(
+        async move {
+            let _cancel_on_exit = writer_stop.clone().drop_guard();
+            let writing = async {
+                while let Some(mut delivery) = output.recv().await {
+                    for audit in &mut delivery.audits {
+                        audit.observe(DeliveryOutcome::Interrupted);
+                    }
+                    let result = frame::write_frame(&mut writer, &delivery.frame).await;
+                    for audit in &mut delivery.audits {
+                        audit.observe(if result.is_ok() {
+                            DeliveryOutcome::WriteCompleted
+                        } else {
+                            DeliveryOutcome::WriteFailed
+                        });
+                    }
+                    if result.is_err() || matches!(delivery.frame, Frame::Reject { .. }) {
+                        break;
+                    }
+                    if let Some(written) = delivery.written {
+                        let _ = written.send(());
+                    }
                 }
-                if let Some(written) = delivery.written {
-                    let _ = written.send(());
-                }
-            }
-        };
-        tokio::select! { () = writer_stop.cancelled() => (), () = writing => () }
-        writer_stop.cancel();
-    });
+            };
+            tokio::select! { () = writer_stop.cancelled() => (), () = writing => () }
+            writer_stop.cancel();
+        }
+        .with_current_subscriber(),
+    );
     let mut connection = Connection {
         rpc,
         source,
@@ -730,7 +800,7 @@ pub(super) async fn serve_stream<S>(
             },
             Some(delivery) = updates.recv() => {
                 if let Some(id) = subscription_id(&delivery.frame) && connection.subscriptions.contains_key(id) {
-                    if matches!(delivery.frame, Frame::SubscriptionError { .. }) { connection.remove_subscription(id).await; }
+                    if matches!(delivery.frame, Frame::SubscriptionError { .. }) { connection.remove_subscription(id, SubscriptionOutcome::Failed).await; }
                     connection.send_delivery(delivery).await;
                 }
             }
@@ -746,8 +816,10 @@ pub(super) async fn serve_stream<S>(
         }
     }
     connection.session.close();
+    let mut disconnected = Vec::new();
     for (_, task) in connection.subscriptions.drain() {
         task.stop.cancel();
+        disconnected.push(task.audit);
     }
     connection.close_logs().await;
     // Never abort accepted work: successful late resources are registered and closed.
@@ -757,5 +829,10 @@ pub(super) async fn serve_stream<S>(
     connection.close_logs().await;
     while let Some(result) = connection.forwarders.join_next().await {
         blocking::join(result);
+    }
+    for audit in disconnected {
+        audit.record(AuditPhase::Subscription {
+            outcome: SubscriptionOutcome::Disconnected,
+        });
     }
 }

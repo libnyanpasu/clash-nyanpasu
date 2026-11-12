@@ -636,3 +636,44 @@ fn filtering_large_config_does_not_create_spurious_block_moves() {
         .collect();
     assert_eq!(changes, ["-mode: rule"]);
 }
+
+#[test]
+fn disabled_transform_engine_is_a_structured_pipeline_failure() {
+    use super::{
+        orders::base_inputs,
+        support::{FakeScriptRunner, MapContentSource, RunReply},
+    };
+    use crate::{
+        profile::{Profiles, ScriptRuntime},
+        runtime::executor::{
+            BuiltinTransform, ExecutionTarget, RuntimePipelineError, ScriptExecutionError,
+            ScriptOperation, execute,
+        },
+    };
+
+    for runtime in [ScriptRuntime::JavaScript, ScriptRuntime::Lua] {
+        let profiles = Profiles::default();
+        let transforms = [BuiltinTransform {
+            name: "builtin".into(),
+            runtime,
+            source: "disabled".into(),
+        }];
+        let overrides = fixed_overrides();
+        let inputs = base_inputs(&profiles, ExecutionTarget::Bare, &overrides, &transforms);
+        let mut runner = FakeScriptRunner::default();
+        runner.runs.insert("disabled".into(), RunReply::Unavailable);
+        let error = execute(&inputs, &MapContentSource::from_pairs(&[]), &runner).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                RuntimePipelineError::ExecuteScript {
+                    source: ScriptExecutionError::StartEngine {
+                        runtime: actual,
+                        operation: ScriptOperation::Transform,
+                    }
+                } if actual == runtime
+            ),
+            "{error:?}"
+        );
+    }
+}

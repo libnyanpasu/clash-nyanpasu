@@ -1,12 +1,20 @@
+use std::cell::Cell;
+
 use serde_json::json;
 
 use super::support::{
     ExprReply, FakeScriptRunner, MapContentSource, PredicateReply, RunReply, overlay_item,
     profiles_with, script_item,
 };
-use crate::runtime::{
-    executor::{StepLogEntry, StepLogLevel, apply_transform, overlay::apply_overlay},
-    value::ConfigValue,
+use crate::{
+    profile::ScriptRuntime,
+    runtime::{
+        executor::{
+            PortError, ScriptExecutionError, ScriptOperation, ScriptRunner, StepLogEntry,
+            StepLogLevel, apply_transform, overlay::apply_overlay,
+        },
+        value::ConfigValue,
+    },
 };
 
 fn value(json: serde_json::Value) -> ConfigValue {
@@ -26,7 +34,7 @@ fn apply_with(
     runner: &FakeScriptRunner,
 ) -> (serde_json::Value, Vec<(StepLogLevel, String)>) {
     let mut logs = Vec::new();
-    let (result, _) = apply_overlay(&value(overlay), value(config), runner, &mut logs);
+    let (result, _) = apply_overlay(&value(overlay), value(config), runner, &mut logs).unwrap();
     (
         result.to_json(),
         logs.into_iter()
@@ -55,7 +63,8 @@ fn lua_filter_errors_are_transform_failures_even_with_warning_logs() {
         &runner,
         &super::support::pid("overlay"),
         &std::sync::Arc::new(value(json!({"proxies": [{"name": "a"}]}))),
-    );
+    )
+    .unwrap();
     assert!(failed);
     assert!(logs.iter().any(|entry| entry.level == StepLogLevel::Warn));
 }
@@ -87,7 +96,8 @@ fn script_console_error_log_does_not_mean_execution_failed() {
         &runner,
         &super::support::pid("script"),
         &std::sync::Arc::new(value(json!({"mode": "rule"}))),
-    );
+    )
+    .unwrap();
     assert!(!failed);
     assert!(logs.iter().any(|entry| entry.level == StepLogLevel::Error));
 }
@@ -385,4 +395,170 @@ fn overlay_non_mapping_document_warns_and_passes_through() {
     let (result, logs) = apply(json!(["not", "a", "map"]), json!({ "a": 1 }));
     assert_eq!(result, json!({ "a": 1 }));
     assert_eq!(logs.len(), 1);
+}
+
+struct UnavailableLua {
+    operation: ScriptOperation,
+    predicates: Cell<usize>,
+    expressions: Cell<usize>,
+}
+
+impl ScriptRunner for UnavailableLua {
+    fn run(
+        &self,
+        _: ScriptRuntime,
+        _: &str,
+        _: &ConfigValue,
+        _: &mut Vec<StepLogEntry>,
+    ) -> Result<ConfigValue, PortError> {
+        panic!("overlay must use the item operations");
+    }
+
+    fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
+        self.predicates.set(self.predicates.get() + 1);
+        if self.operation == ScriptOperation::ItemExpression {
+            return Ok(true);
+        }
+        Err(ScriptExecutionError::StartEngine {
+            runtime: ScriptRuntime::Lua,
+            operation: ScriptOperation::ItemPredicate,
+        }
+        .into())
+    }
+
+    fn eval_item_expr(&self, _: &str, _: &ConfigValue) -> Result<ConfigValue, PortError> {
+        self.expressions.set(self.expressions.get() + 1);
+        Err(ScriptExecutionError::StartEngine {
+            runtime: ScriptRuntime::Lua,
+            operation: ScriptOperation::ItemExpression,
+        }
+        .into())
+    }
+}
+
+fn assert_disabled_overlay(filter: serde_json::Value, operation: ScriptOperation) {
+    use super::{
+        orders::base_inputs,
+        support::{config_file_item, pid},
+    };
+    use crate::runtime::executor::{ExecutionTarget, RuntimePipelineError, execute};
+
+    let profiles = profiles_with(
+        Some("base"),
+        &["overlay"],
+        &[],
+        vec![
+            config_file_item("base", "base.yaml", &[]),
+            overlay_item("overlay", "overlay.yaml"),
+        ],
+    );
+    let overlay = json!({"filter__proxies": filter}).to_string();
+    let content = MapContentSource::from_pairs(&[
+        ("base.yaml", "proxies: [{name: keep}]"),
+        ("overlay.yaml", &overlay),
+    ]);
+    let overrides = super::builtin::fixed_overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("base")),
+        &overrides,
+        &[],
+    );
+    let runner = UnavailableLua {
+        operation,
+        predicates: Default::default(),
+        expressions: Default::default(),
+    };
+    let error = execute(&inputs, &content, &runner).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            RuntimePipelineError::ExecuteScript {
+                source: ScriptExecutionError::StartEngine {
+                    runtime: ScriptRuntime::Lua,
+                    operation: actual,
+                }
+            } if actual == operation
+        ),
+        "{error:?}"
+    );
+    assert_eq!(runner.predicates.get(), 1);
+    assert_eq!(
+        runner.expressions.get(),
+        usize::from(operation == ScriptOperation::ItemExpression)
+    );
+}
+
+#[test]
+fn disabled_lua_filter_does_not_remove_an_item() {
+    assert_disabled_overlay(json!("true"), ScriptOperation::ItemPredicate);
+}
+
+#[test]
+fn disabled_lua_when_does_not_become_a_false_predicate() {
+    assert_disabled_overlay(
+        json!({"when": "true", "expr": "item"}),
+        ScriptOperation::ItemPredicate,
+    );
+}
+
+#[test]
+fn disabled_lua_expression_does_not_become_a_successful_noop() {
+    assert_disabled_overlay(
+        json!({"when": "true", "expr": "item"}),
+        ScriptOperation::ItemExpression,
+    );
+}
+
+#[test]
+fn ordinary_script_failure_keeps_existing_transform_semantics() {
+    use super::{
+        orders::base_inputs,
+        support::{config_file_item, pid},
+    };
+    use crate::runtime::executor::{ExecutionTarget, TransformFailure, execute};
+
+    let profiles = profiles_with(
+        Some("base"),
+        &["script"],
+        &[],
+        vec![
+            config_file_item("base", "base.yaml", &[]),
+            script_item("script", "script.txt", ScriptRuntime::JavaScript),
+        ],
+    );
+    let content = MapContentSource::from_pairs(&[
+        ("base.yaml", "proxies: [{name: keep}]"),
+        ("script.txt", "throw"),
+    ]);
+    let mut runner = FakeScriptRunner::default();
+    runner.runs.insert(
+        "throw".into(),
+        RunReply::Fail("ordinary execution failure".into(), vec![]),
+    );
+    let overrides = super::builtin::fixed_overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("base")),
+        &overrides,
+        &[],
+    );
+    let artifact = execute(&inputs, &content, &runner).unwrap();
+    assert_eq!(
+        artifact.final_config.to_json()["proxies"],
+        json!([{ "name": "keep" }])
+    );
+    assert_eq!(
+        artifact.transform_failures,
+        vec![TransformFailure::Profile {
+            id: "script".into()
+        }]
+    );
+    assert!(
+        artifact
+            .step_logs
+            .iter()
+            .flat_map(|log| &log.entries)
+            .any(|entry| entry.message == "ordinary execution failure")
+    );
 }

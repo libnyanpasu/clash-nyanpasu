@@ -557,6 +557,70 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_engine_error_reaches_runtime_build_wire_shape() {
+        use nyanpasu_config::runtime::executor::{ScriptExecutionError, ScriptOperation};
+        use std::error::Error as _;
+
+        struct Unavailable;
+        impl ScriptRunner for Unavailable {
+            fn run(
+                &self,
+                runtime: ScriptRuntime,
+                _: &str,
+                _: &ConfigValue,
+                _: &mut Vec<StepLogEntry>,
+            ) -> Result<ConfigValue, PortError> {
+                Err(ScriptExecutionError::StartEngine {
+                    runtime,
+                    operation: ScriptOperation::Transform,
+                }
+                .into())
+            }
+            fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
+                panic!("builtin transform")
+            }
+            fn eval_item_expr(&self, _: &str, _: &ConfigValue) -> Result<ConfigValue, PortError> {
+                panic!("builtin transform")
+            }
+        }
+        for (core, runtime) in [
+            (ClashCore::Mihomo, "javascript"),
+            (ClashCore::ClashRs, "lua"),
+        ] {
+            let mut input = base_input();
+            input.app.core = core;
+            input.app.enable_builtin_enhanced = true;
+            let error = RuntimeBuilder::build(&input, &EmptyContent, &Unavailable).unwrap_err();
+            assert_eq!(
+                serde_json::to_value(&error).unwrap(),
+                serde_json::json!({
+                    "kind": "run_pipeline", "source": {
+                        "kind": "execute_script", "source": { "kind": "start_engine", "runtime": runtime, "operation": "transform" }
+                    }
+                })
+            );
+            let pipeline = error
+                .source()
+                .unwrap()
+                .downcast_ref::<RuntimePipelineError>()
+                .unwrap();
+            let script = pipeline
+                .source()
+                .unwrap()
+                .downcast_ref::<ScriptExecutionError>()
+                .unwrap();
+            assert!(error.to_string().contains(&script.to_string()));
+            assert!(matches!(
+                script,
+                ScriptExecutionError::StartEngine {
+                    operation: ScriptOperation::Transform,
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
     fn build_failures_reach_the_wire_with_their_context() {
         let error = RuntimeBuildError::RunPipeline {
             source: RuntimePipelineError::SelectedProfileNotFound {
@@ -613,3 +677,5 @@ mod fixture_content;
 mod golden;
 #[cfg(test)]
 mod script_tests;
+#[cfg(test)]
+mod test_extensions;

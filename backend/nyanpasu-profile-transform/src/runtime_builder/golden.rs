@@ -63,7 +63,8 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
 fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml_ng::Value {
     let content = FixtureContentSource::new(dir.to_path_buf());
     let dirs = ScriptDirs::under(dir);
-    let scripts = EnhanceScriptRunner::new(dirs).unwrap();
+    let scripts =
+        EnhanceScriptRunner::new(dirs, Arc::new(super::test_extensions::TestExtensions)).unwrap();
     let artifact = RuntimeBuilder::build(input, &content, &scripts).expect("golden build");
     serde_yaml_ng::to_value(&*artifact.final_config).unwrap()
 }

@@ -54,3 +54,72 @@ fn non_sequence_working_proxies_warns_and_skips() {
     assert_eq!(result, json!({ "proxies": 3 }));
     assert_eq!(logs.len(), 1);
 }
+
+#[test]
+fn disabled_transform_engine_is_a_structured_pipeline_failure() {
+    use super::{
+        orders::base_inputs,
+        support::{
+            FakeScriptRunner, MapContentSource, RunReply, composition_item, config_file_item,
+            profiles_with, script_item,
+        },
+    };
+    use crate::{
+        profile::ScriptRuntime,
+        runtime::executor::{
+            ExecutionTarget, RuntimePipelineError, ScriptExecutionError, ScriptOperation, execute,
+        },
+    };
+
+    for runtime in [ScriptRuntime::JavaScript, ScriptRuntime::Lua] {
+        for host in ["composition", "base", "first", "second"] {
+            let transforms = |id| if host == id { vec!["script"] } else { vec![] };
+            let profiles = profiles_with(
+                Some("composition"),
+                &[],
+                &[],
+                vec![
+                    composition_item(
+                        "composition",
+                        Some("base"),
+                        &["first", "second"],
+                        &transforms("composition"),
+                    ),
+                    config_file_item("base", "base.yaml", &transforms("base")),
+                    config_file_item("first", "first.yaml", &transforms("first")),
+                    config_file_item("second", "second.yaml", &transforms("second")),
+                    script_item("script", "script.txt", runtime),
+                ],
+            );
+            profiles.validate().unwrap();
+            let content = MapContentSource::from_pairs(&[
+                ("base.yaml", "proxies: []"),
+                ("first.yaml", "proxies: []"),
+                ("second.yaml", "proxies: []"),
+                ("script.txt", "disabled"),
+            ]);
+            let mut runner = FakeScriptRunner::default();
+            runner.runs.insert("disabled".into(), RunReply::Unavailable);
+            let overrides = super::builtin::fixed_overrides();
+            let inputs = base_inputs(
+                &profiles,
+                ExecutionTarget::Selected(pid("composition")),
+                &overrides,
+                &[],
+            );
+            let error = execute(&inputs, &content, &runner).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    RuntimePipelineError::ExecuteScript {
+                        source: ScriptExecutionError::StartEngine {
+                            runtime: actual,
+                            operation: ScriptOperation::Transform,
+                        }
+                    } if actual == runtime
+                ),
+                "{host}: {error:?}"
+            );
+        }
+    }
+}

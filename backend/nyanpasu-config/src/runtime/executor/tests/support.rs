@@ -10,7 +10,10 @@ use crate::{
         TransformDefinition,
     },
     runtime::{
-        executor::{PortError, ProfileContentSource, ScriptRunner, StepLogEntry},
+        executor::{
+            PortError, ProfileContentSource, ScriptExecutionError, ScriptOperation, ScriptRunner,
+            StepLogEntry,
+        },
         value::ConfigValue,
     },
 };
@@ -47,6 +50,7 @@ impl ProfileContentSource for MapContentSource {
 }
 
 pub enum RunReply {
+    Unavailable,
     Replace(serde_json::Value, Vec<StepLogEntry>),
     Fail(String, Vec<StepLogEntry>),
 }
@@ -74,12 +78,17 @@ pub struct FakeScriptRunner {
 impl ScriptRunner for FakeScriptRunner {
     fn run(
         &self,
-        _runtime: ScriptRuntime,
+        runtime: ScriptRuntime,
         source: &str,
         config: &ConfigValue,
         logs: &mut Vec<StepLogEntry>,
     ) -> Result<ConfigValue, PortError> {
         match self.runs.get(source) {
+            Some(RunReply::Unavailable) => Err(ScriptExecutionError::StartEngine {
+                runtime,
+                operation: ScriptOperation::Transform,
+            }
+            .into()),
             Some(RunReply::Replace(json, replies)) => {
                 logs.extend(replies.iter().cloned());
                 Ok(ConfigValue::try_from(json.clone()).expect("fake run json"))

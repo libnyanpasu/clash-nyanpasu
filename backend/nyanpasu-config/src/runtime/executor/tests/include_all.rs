@@ -198,3 +198,51 @@ fn pipeline_records_the_step_only_when_enabled() {
         json!(true)
     );
 }
+
+#[test]
+fn disabled_transform_engine_is_a_structured_pipeline_failure() {
+    use crate::{
+        profile::ScriptRuntime,
+        runtime::executor::{RuntimePipelineError, ScriptExecutionError, ScriptOperation},
+    };
+
+    for runtime in [ScriptRuntime::JavaScript, ScriptRuntime::Lua] {
+        for global in [false, true] {
+            let profiles = profiles_with(
+                Some("base"),
+                if global { &["script"] } else { &[] },
+                &[],
+                vec![
+                    config_file_item("base", "base.yaml", if global { &[] } else { &["script"] }),
+                    script_item("script", "script.txt", runtime),
+                ],
+            );
+            let content = MapContentSource::from_pairs(&[
+                ("base.yaml", "proxies: []"),
+                ("script.txt", "disabled"),
+            ]);
+            let mut runner = FakeScriptRunner::default();
+            runner.runs.insert("disabled".into(), RunReply::Unavailable);
+            let overrides = super::builtin::fixed_overrides();
+            let inputs = base_inputs(
+                &profiles,
+                ExecutionTarget::Selected(pid("base")),
+                &overrides,
+                &[],
+            );
+            let error = execute(&inputs, &content, &runner).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    RuntimePipelineError::ExecuteScript {
+                        source: ScriptExecutionError::StartEngine {
+                            runtime: actual,
+                            operation: ScriptOperation::Transform,
+                        }
+                    } if actual == runtime
+                ),
+                "global={global}: {error:?}"
+            );
+        }
+    }
+}

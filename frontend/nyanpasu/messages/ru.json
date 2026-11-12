@@ -728,6 +728,7 @@
   "error_runtime_core_not_started": "Не удалось запустить ядро",
   "error_runtime_recovery_unresolved": "Не удалось восстановить среду выполнения",
   "error_runtime_build_runtime": "Не удалось собрать конфигурацию среды выполнения",
+  "error_runtime_script_start_engine": "Движок {runtime} для операции {operation} недоступен в этой сборке",
   "error_runtime_build_start_script_runner": "Не удалось запустить движок скриптов",
   "error_runtime_build_validate_profiles": "В профилях есть недопустимые элементы",
   "error_transparent_proxy_unsupported_target": "Прозрачный прокси поддерживается только в Linux и Mihomo",

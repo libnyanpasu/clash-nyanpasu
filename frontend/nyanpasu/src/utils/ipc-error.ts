@@ -26,6 +26,7 @@ import type {
   RuntimeBuildError,
   RuntimeError,
   RuntimePipelineError,
+  ScriptExecutionError,
   StorageOperationError,
   SystemDnsError,
   TransparentProxyMode,
@@ -658,6 +659,8 @@ function pipelineMessage(
   profileLabel: ProfileLabel = (id) => id,
 ): string {
   switch (error.kind) {
+    case 'execute_script':
+      return scriptExecutionMessage(error.source)
     case 'selected_profile_not_found':
       return m.error_runtime_build_selected_profile_not_found({
         profile: profileLabel(error.profile),
@@ -679,6 +682,16 @@ function pipelineMessage(
     case 'snapshot':
     case 'internal':
       return m.error_runtime_build_runtime()
+  }
+}
+
+function scriptExecutionMessage(error: ScriptExecutionError): string {
+  switch (error.kind) {
+    case 'start_engine':
+      return m.error_runtime_script_start_engine({
+        runtime: error.runtime,
+        operation: error.operation,
+      })
   }
 }
 

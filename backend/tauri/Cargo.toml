@@ -24,6 +24,17 @@ semver = '1.0'
 toml = '1'
 
 [dependencies]
+boa_utils = { path = '../boa_utils', optional = true }
+boa_engine = { workspace = true, optional = true, features = ['annex-b'] }
+mlua = { version = '0.12', optional = true, features = [
+  'lua54',
+  'async',
+  'serialize',
+  'vendored',
+  'error-send'
+] }
+async-fs = '2.1.2'
+postcard = { version = '1.1.1', features = ['use-std'] }
 nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
@@ -52,7 +63,7 @@ nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
-nyanpasu-scripts = { path = '../nyanpasu-scripts' }
+nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-crash-reporter = { path = '../nyanpasu-crash-reporter' }
@@ -298,7 +309,19 @@ mockall = '0.15'
 fake-core = { path = '../fake-core' }
 
 [features]
-default = ['custom-protocol', 'default-meta', 'nesting']
+default = [
+  'custom-protocol',
+  'default-meta',
+  'nesting',
+  'script-javascript',
+  'script-lua'
+]
+script-javascript = [
+  'nyanpasu-scripts/javascript',
+  'dep:boa_engine',
+  'dep:boa_utils'
+]
+script-lua = ['nyanpasu-scripts/lua', 'dep:mlua']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = ['nyanpasu-core/verge-dev', 'nyanpasu-os/verge-dev']

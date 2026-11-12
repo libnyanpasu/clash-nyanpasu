@@ -113,7 +113,11 @@ shell. Their mechanisms stay in the Tauri shell: the hotkey owner, main-thread
 handoff and presentation-effect execution in `backend/tauri/src/desktop/`, the
 concrete GUI adapters in `backend/tauri/src/adapters/`. There is no desktop
 interaction crate: the server needs none of these mechanisms, and new crate
-boundaries brought no desktop compile-time gain. Core owns the ports it
+boundaries brought no desktop compile-time gain. The one exception is the
+single-instance claim, which the server needs as well: its endpoint and
+hand-off live in the leaf `nyanpasu-single-instance`, while the desktop shell
+decides what a handed-over launch does and registers the deep-link schemes in
+`backend/tauri/src/desktop/`. Core owns the ports it
 consumes, hotkey validation before commit, hotkey action dispatch and the shared
 convergence of effects (revisions, status, receipts). No core-family package
 depends on the widget protocol directly; config uses its render-free widget

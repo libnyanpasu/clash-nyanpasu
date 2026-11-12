@@ -130,22 +130,6 @@ backtrace:
     });
 }
 
-/// Queues a deep link for the frontend, then pokes any listening frontend to
-/// take it. With no frontend listening yet the poke is lost but the link is
-/// not: a frontend drains the queue once it has registered its listener.
-fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
-    app_handle.state::<crate::ipc::PendingDeepLinks>().push(url);
-    log_err!(
-        app_handle
-            .state::<nyanpasu_rpc::events::EventBus>()
-            .publish_serialized(
-                nyanpasu_rpc_protocol::EventName::SchemeRequestReceived,
-                &crate::ipc::SchemeRequestReceivedEvent,
-            ),
-        "failed to emit scheme-request-received event"
-    );
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> std::process::ExitCode {
     // Nothing before the logger reaches a trace, so its share is logged.
@@ -179,16 +163,9 @@ pub fn run() -> std::process::ExitCode {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 
-    // Should be in first place in order prevent single instance check block everything
-    // Custom scheme check
-    #[cfg(not(target_os = "macos"))]
-    // on macos the plugin handles this (macos doesn't use cli args for the url)
-    let custom_scheme = match std::env::args().nth(1) {
-        Some(url) => url::Url::parse(&url).ok(),
-        None => None,
-    };
-    #[cfg(target_os = "macos")]
-    let custom_scheme: Option<url::Url> = None;
+    // A deep link is the launch's only argument on Windows and Linux; macOS
+    // delivers it as `RunEvent::Opened` instead.
+    let custom_scheme = desktop::deep_link::from_args(std::env::args_os());
 
     if custom_scheme.is_none() {
         // Parse commands
@@ -204,30 +181,33 @@ pub fn run() -> std::process::ExitCode {
     // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
     // Only the GUI needs it: the subcommands above exit without it, and building
     // it starts a worker thread per CPU, at most four.
-    tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
-    #[cfg(feature = "verge-dev")]
-    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
+    let runtime = nyanpasu_utils::runtime::get_runtime_handle();
+    tauri::async_runtime::set(runtime.clone());
 
-    #[cfg(not(feature = "verge-dev"))]
-    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
+    // The instance is identified by the config dir, so it exists before the claim.
+    // Failing to create it fails the claim, and startup goes on unprotected.
+    let _ = nyanpasu_paths::create_dir_all(paths.app_config_dir());
+    let launches = match runtime.block_on(desktop::instance::acquire(
+        host_paths::INSTANCE_NAMESPACE,
+        paths.app_config_dir().as_std_path(),
+    )) {
+        Ok(desktop::instance::Acquired::Primary(launches)) => Some(launches),
+        Ok(desktop::instance::Acquired::HandedOff) => return std::process::ExitCode::SUCCESS,
+        // Policy: continue startup in best-effort mode.
+        Ok(desktop::instance::Acquired::Unchecked(error)) => {
+            eprintln!(
+                "single-instance check unavailable; continuing: {}",
+                snafu::Report::from_error(&error)
+            );
+            None
+        }
+        Err(error) => {
+            eprintln!("{}", snafu::Report::from_error(&error));
+            return std::process::ExitCode::FAILURE;
+        }
+    };
 
-    // 单例检测 with robust logging
-    let single_instance_result = utils::init::check_singleton(&paths);
-    match &single_instance_result {
-        Ok(Some(_)) => {
-            tracing::info!(target: "app", "Acquired single-instance lock");
-        }
-        Ok(None) => {
-            tracing::warn!(target: "app", "Another instance is running; exiting");
-            return std::process::ExitCode::SUCCESS;
-        }
-        Err(e) => {
-            tracing::error!(target: "app", "Failed to check single-instance lock: {e:?}");
-            // Policy: continue startup in best-effort mode
-        }
-    }
-
-    // Past the single-instance lock, which a losing process never reaches, so it creates nothing.
+    // Past the single-instance claim, which a losing process never reaches, so it creates nothing.
     if let Err(error) = paths.create_base_dirs() {
         startup_failure::show_one_shot(
             startup_failure::FailureKind::Directories,
@@ -238,9 +218,7 @@ pub fn run() -> std::process::ExitCode {
         return std::process::ExitCode::FAILURE;
     }
 
-    if single_instance_result
-        .as_ref()
-        .is_ok_and(|instance| instance.is_some())
+    if launches.is_some()
         && let Err(e) = init::run_pending_migrations(&paths)
     {
         if let init::Error::OpenMigrationLog { path, .. } = &e {
@@ -348,13 +326,6 @@ pub fn run() -> std::process::ExitCode {
         };
     }
 
-    // show a dialog to print the single instance error
-    // Hold the guard until the end of the program if acquired
-    let _singleton = match single_instance_result {
-        Ok(Some(guard)) => Some(guard),
-        _ => None,
-    };
-
     let mut context = tauri::generate_context!();
     let executable_dir = match paths.app_install_dir() {
         Ok(directory) => directory.as_std_path(),
@@ -410,6 +381,9 @@ pub fn run() -> std::process::ExitCode {
         .register_asynchronous_uri_scheme_protocol("nyanpasu-icons", unified_rpc::icons::handle)
         .manage(utils::exit::ExitBoundary::default())
         .manage(init::logging::LoggingShutdown(logger_reload.clone()))
+        // Deep links wait here until a frontend takes them; macOS can deliver
+        // one before setup runs.
+        .manage(crate::ipc::PendingDeepLinks::default())
         .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
@@ -474,35 +448,29 @@ pub fn run() -> std::process::ExitCode {
                     setup::setup_unified_rpc(app, owners)
                         .map_err(|error| startup_failure::StartupFailure::from_rpc(&error))?;
 
-                    // setup custom scheme
-                    let handle = app.handle().clone();
-                    // Deep links wait here until a frontend takes them.
-                    app.manage(crate::ipc::PendingDeepLinks::default());
-                    // For start new app from schema
-                    #[cfg(not(target_os = "macos"))]
-                    if let Some(url) = custom_scheme {
-                        log::info!(target: "app", "started with schema");
-                        queue_deep_link(&handle, url.to_string());
-                        log_err!(
-                            handle
-                                .state::<window::WindowManager>()
-                                .open(&window::kinds::MainWindow, None)
-                        );
+                    if let Some(url) = &custom_scheme {
+                        desktop::deep_link::deliver(app.handle(), url);
                     }
-                    // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
-                    log_err!(tauri_plugin_deep_link::register(
-                        &["clash-nyanpasu", "clash"],
-                        move |request| {
-                            log::info!(target: "app", "scheme request received: {:?}", request);
-                            // create window if not exists
-                            log_err!(
-                                handle
-                                    .state::<window::WindowManager>()
-                                    .open(&window::kinds::MainWindow, None)
-                            );
-                            queue_deep_link(&handle, request);
+                    if let Some(launches) = launches {
+                        desktop::instance::serve(app.handle().clone(), launches);
+                    }
+                    match tauri::utils::platform::current_exe() {
+                        Ok(executable) => {
+                            if let Err(error) = desktop::deep_link::register(
+                                &executable,
+                                &app.config().identifier,
+                                app.package_info().name.as_str(),
+                            ) {
+                                tracing::warn!(
+                                    error = %snafu::Report::from_error(&error),
+                                    "deep links are not registered"
+                                );
+                            }
                         }
-                    ));
+                        Err(error) => {
+                            tracing::warn!(%error, "deep links are not registered");
+                        }
+                    }
                     Ok(())
                 },
                 &failure_host,
@@ -544,6 +512,12 @@ pub fn run() -> std::process::ExitCode {
             // destroy, not just "main"'s: `Channel::send` cannot detect it.
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 adapters::connection_details::cancel_for_webview(app_handle, &label);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Opened { urls } => {
+            for url in urls.into_iter().filter_map(desktop::deep_link::accepted) {
+                desktop::deep_link::deliver(app_handle, &url);
             }
         }
         #[cfg(target_os = "macos")]

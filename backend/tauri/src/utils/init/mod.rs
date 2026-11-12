@@ -59,14 +59,6 @@ pub(crate) enum Error {
     SaveProfiles { path: PathBuf, source: io::Error },
     #[snafu(display("the bundled resources directory is unknown"))]
     LocateResources,
-    #[snafu(display("failed to create singleton directory"))]
-    CreateSingletonDirectory {
-        source: nyanpasu_paths::CreateDirError,
-    },
-    #[snafu(display("failed to create single instance"))]
-    CreateSingleton {
-        source: single_instance::error::SingleInstanceError,
-    },
 }
 
 pub fn run_pending_migrations(paths: &PathResolver) -> std::result::Result<(), Error> {
@@ -298,106 +290,6 @@ pub fn init_resources(app_dir: &Path, res_dir: Option<&Path>) -> std::result::Re
     }
 
     Ok(())
-}
-
-/// The name the instances of one user contend for: a lock file in the config dir, or on
-/// Windows a session-local name carrying the user's SID.
-pub fn single_instance_placeholder(app_name: &str, config_dir: &Path) -> String {
-    #[cfg(windows)]
-    {
-        let sid = current_user_sid().unwrap_or_else(|| config_hash(config_dir));
-        format!("Local\\{app_name}-{sid}")
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = app_name;
-        config_dir
-            .join("instance.lock")
-            .to_string_lossy()
-            .to_string()
-    }
-}
-
-/// The current user's SID, from PowerShell or else WMIC.
-#[cfg(windows)]
-fn current_user_sid() -> Option<String> {
-    use std::os::windows::process::CommandExt;
-
-    let output = Command::new("powershell")
-        .args([
-            "-Command",
-            "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
-        ])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output();
-    if let Ok(output) = output
-        && output.status.success()
-    {
-        let sid = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !sid.is_empty() {
-            return Some(sid);
-        }
-    }
-
-    let output = Command::new("wmic")
-        .args([
-            "useraccount",
-            "where",
-            "name='%username%'",
-            "get",
-            "sid",
-            "/value",
-        ])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output();
-    if let Ok(output) = output
-        && output.status.success()
-    {
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if let Some(sid) = line.strip_prefix("SID=") {
-                let sid = sid.trim();
-                if !sid.is_empty() {
-                    return Some(sid.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-/// What stands in for the SID when it cannot be read.
-#[cfg(windows)]
-fn config_hash(config_dir: &Path) -> String {
-    use std::{
-        collections::hash_map::DefaultHasher,
-        hash::{Hash, Hasher},
-    };
-    let mut hasher = DefaultHasher::new();
-    config_dir.to_string_lossy().hash(&mut hasher);
-    format!("{:x}", hasher.finish())
-}
-
-pub fn check_singleton(
-    paths: &PathResolver,
-) -> std::result::Result<Option<single_instance::SingleInstance>, Error> {
-    // The config dir is created first, as the lock file and the hash fallback live in it.
-    nyanpasu_paths::create_dir_all(paths.app_config_dir())
-        .context(CreateSingletonDirectorySnafu)?;
-    let placeholder = single_instance_placeholder(
-        crate::host_paths::APP_NAME,
-        paths.app_config_dir().as_std_path(),
-    );
-    for i in 0..5 {
-        let instance =
-            single_instance::SingleInstance::new(&placeholder).context(CreateSingletonSnafu)?;
-        if instance.is_single() {
-            return Ok(Some(instance));
-        }
-        if i != 4 {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-    }
-    Ok(None)
 }
 
 pub fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {

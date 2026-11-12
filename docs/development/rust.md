@@ -11,8 +11,7 @@ Architecture, package boundaries, RPC, and test strategy are defined by
 Rust is written and does not relax those rules.
 
 Out of scope: `backend/nyanpasu-runtime` and `backend/enable-loopback` own independent
-workspaces and configurations; `backend/tauri-plugin-deep-link` is a vendored fork that
-keeps its upstream style; generated bindings and `build.rs` output follow their
+workspaces and configurations; generated bindings and `build.rs` output follow their
 generators.
 
 ## 1. Rule status

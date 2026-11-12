@@ -95,6 +95,14 @@ impl<H> Facts<H> {
 }
 
 impl<H: Clone> WindowTable<H> {
+    pub fn window_hooks(&self) -> Vec<(String, H)> {
+        self.entries
+            .iter()
+            .filter(|(_, entry)| entry.built)
+            .map(|(label, entry)| (label.clone(), entry.hooks.clone()))
+            .collect()
+    }
+
     /// Decides what opening a window of `base_label` does. A window to build
     /// is registered before this returns, so its ready always comes after its
     /// registration.

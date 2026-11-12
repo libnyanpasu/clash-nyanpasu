@@ -1065,7 +1065,11 @@ impl NyanpasuClient {
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> Result<runtime::MutationOutcome<()>> {
-        let snapshot = self.inner.session_state.save_main_window(geometry).await?;
+        let snapshot = self
+            .inner
+            .session_state
+            .save_window(self.inner.bundle_metadata.main_window_label, geometry)
+            .await?;
         Ok(
             runtime::MutationOutcome::from_parts((), Vec::new()).with_commit(
                 runtime::CommitReceipt {
@@ -1078,12 +1082,27 @@ impl NyanpasuClient {
         )
     }
 
+    /// Saves geometry for a window kind and waits for the commit.
+    pub async fn save_window_geometry(
+        &self,
+        label: &str,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<()> {
+        self.inner
+            .session_state
+            .save_window(label, geometry)
+            .await?;
+        Ok(())
+    }
+
     /// Queues a save of the main window's geometry; nothing waits for it.
     pub fn queue_main_window_geometry_save(
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> Result<()> {
-        self.inner.session_state.queue_main_window_save(geometry)?;
+        self.inner
+            .session_state
+            .queue_window_save(self.inner.bundle_metadata.main_window_label, geometry)?;
         Ok(())
     }
 
@@ -1092,6 +1111,26 @@ impl NyanpasuClient {
         self.inner
             .session_state
             .main_window_geometry(&self.inner.bundle_metadata)
+    }
+
+    /// Returns the last saved geometry for a window kind.
+    pub fn window_geometry(
+        &self,
+        label: &str,
+    ) -> Option<nyanpasu_config::state::window::WindowState> {
+        self.inner.session_state.window_geometry(label)
+    }
+
+    /// Queues a geometry save for a window kind.
+    pub fn queue_window_geometry_save(
+        &self,
+        label: &str,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<()> {
+        self.inner
+            .session_state
+            .queue_window_save(label, geometry)?;
+        Ok(())
     }
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {

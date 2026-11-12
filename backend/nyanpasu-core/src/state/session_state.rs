@@ -32,7 +32,8 @@ pub struct SessionStateActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum SessionStateActorMessage {
-    SaveMainWindow {
+    SaveWindow {
+        label: nyanpasu_config::state::window::WindowLabel,
         geometry: nyanpasu_config::state::window::WindowState,
         /// `None` for a queued save: nobody waits, so a failure is logged.
         reply: Option<RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>>,
@@ -89,12 +90,21 @@ impl Actor for SessionStateActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SessionStateActorMessage::SaveMainWindow { geometry, reply } => {
+            SessionStateActorMessage::SaveWindow {
+                label,
+                mut geometry,
+                reply,
+            } => {
                 let mut next = Self::snapshot(state).state;
-                next.window_state.insert(
-                    nyanpasu_config::state::window::WindowLabel("main".into()),
-                    geometry,
-                );
+                if geometry.maximized || geometry.fullscreen {
+                    if let Some(previous) = next.window_state.get(&label) {
+                        geometry.width = previous.width;
+                        geometry.height = previous.height;
+                        geometry.x = previous.x;
+                        geometry.y = previous.y;
+                    }
+                }
+                next.window_state.insert(label, geometry);
                 let result = Self::commit(state, next).await;
                 match reply {
                     Some(reply) => {
@@ -103,7 +113,7 @@ impl Actor for SessionStateActor {
                     None => {
                         if let Err(error) = result {
                             tracing::warn!(
-                                "failed to save the main window geometry: {}",
+                                "failed to save window geometry: {}",
                                 snafu::Report::from_error(error)
                             );
                         }

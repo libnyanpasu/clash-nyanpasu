@@ -83,6 +83,49 @@ impl WindowManager {
         self.table.lock().instances(base_label)
     }
 
+    /// Saves a managed window's geometry before returning.
+    pub async fn save_window_geometry(&self, label: &str) -> Result<()> {
+        let hooks = self
+            .table
+            .lock()
+            .window_hooks()
+            .into_iter()
+            .find(|(entry_label, _)| entry_label == label)
+            .map(|(_, hooks)| hooks);
+        if let (Some(hooks), Some(window)) = (hooks, self.app_handle.get_webview_window(label)) {
+            if let Some((key, geometry)) = hooks.geometry(&window)? {
+                self.app_handle
+                    .state::<nyanpasu_core::client::NyanpasuClient>()
+                    .save_window_geometry(&key, geometry)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Queues geometry for all currently managed windows before shutdown.
+    pub fn save_window_geometries(&self) {
+        let entries = self.table.lock().window_hooks();
+        let mut windows: Vec<_> = entries
+            .into_iter()
+            .filter_map(|(label, hooks)| {
+                let window = self.app_handle.get_webview_window(&label)?;
+                window
+                    .is_visible()
+                    .unwrap_or(false)
+                    .then_some((window, hooks))
+            })
+            .collect();
+        // Windows of one kind share a key. Save the focused one last.
+        windows.sort_by_key(|(window, _)| window.is_focused().unwrap_or(false));
+        for (window, hooks) in windows {
+            log_err!(
+                hooks.queue_geometry_save(&window),
+                "failed to save window geometry"
+            );
+        }
+    }
+
     fn ready(&self, label: &str) {
         let first = self.table.lock().ready(label);
         match first {
@@ -420,6 +463,10 @@ fn apply(handle: &AppHandle, label: &str) {
         trace_err!(window.set_focus(), "set win focus");
     } else if actions.retire {
         if actions.dismiss {
+            log_err!(
+                facts.hooks.queue_geometry_save(&window),
+                "failed to save window geometry"
+            );
             facts.hooks.on_dismissed(&window);
         }
         let settings = handle

@@ -14,9 +14,9 @@ use tracing::Subscriber;
 use tracing_subscriber::{Layer, layer::Context};
 
 use crate::{
-    audit::TracingRpcAuditSink,
+    audit::{RpcAudit, RpcAuditRecord, RpcAuditSink, TracingRpcAuditSink},
     events::EventBus,
-    registry::{RpcAudit, RpcAuditRecord, RpcAuditSink, RpcDependencies, UnifiedRpc},
+    registry::{RpcDependencies, UnifiedRpc},
 };
 
 pub const SECRET: &str = "c2f-secret-86a9b379-never-audit";
@@ -89,7 +89,7 @@ impl Fixture {
                 core_directory: None,
                 service_prompt: None,
                 accent_color: None,
-                host_environment: crate::commands::ports::HostEnvironment { is_appimage: false },
+                host_environment: crate::ports::HostEnvironment { is_appimage: false },
                 audit: RpcAudit::new(sink.clone()),
                 client: nyanpasu_core::client::NyanpasuClient::try_new(args)
                     .await

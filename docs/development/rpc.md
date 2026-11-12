@@ -108,8 +108,8 @@ The shell's `DesktopRpc` binds native handlers separately from `UnifiedRpc`;
 both native calls and shared desktop calls enter the same audit kernel exactly
 once. Shared HTTP commands retain their registry entries when an injected host
 port is absent and return `unsupported`. Executable resolution, icon files,
-service-install prompt formatting and accent queries use consumer-owned ports;
-the shell supplies the AppImage process value explicitly.
+service-install prompt formatting and accent queries use consumer-owned ports in
+`nyanpasu-rpc::ports`; the shell supplies the AppImage process value explicitly.
 
 ### Declare capabilities and preserve transport semantics
 
@@ -295,8 +295,13 @@ check that every IPC application command has a working UnifiedRpc desktop handle
 
 E2b preserves the C2f kernel and production sink without changing audit or wire
 behavior. Shared commands and archive collection live in `nyanpasu-rpc/commands`,
-application error conversion in `error.rs`, and HTTP routes/actor/assets ports in
-`http/`. The Tauri shell explicitly enables `http` and injects synchronous native delivery
+application error conversion in `error.rs`, audit instances/owners/sinks/transports,
+records/outcomes and the record guard in `audit.rs`, host facilities in `ports.rs`,
+and HTTP routes/actor/assets ports in `http/`. Dispatch and `dispatch_audited`
+stay in `registry.rs`, which imports audit
+and host ports without depending on commands. Audit imports no registry, commands
+or transport modules; host ports import no commands or registry. The Tauri shell
+explicitly enables `http` and injects synchronous native delivery
 into the bus. It explicitly publishes deep links and window messages; resolved
 window-type instances keep their individual payloads and targeted delivery. E3a allows HTTP enable without frontend assets or a dev frontend, through the same authenticated API server.
 No forwarding modules remain at the old shell paths.

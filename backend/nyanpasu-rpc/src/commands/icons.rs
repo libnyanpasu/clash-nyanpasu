@@ -7,8 +7,8 @@ use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
-use super::{ports::HostIconFiles, types::IconData};
-use crate::registry::RpcState;
+use super::types::IconData;
+use crate::{ports::HostIconFiles, registry::RpcState};
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]

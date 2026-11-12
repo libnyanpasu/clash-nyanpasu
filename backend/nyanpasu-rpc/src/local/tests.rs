@@ -27,11 +27,12 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 use super::{ConnectionLimits, LocalServer, serve_stream};
 use crate::{
+    audit::RpcTransport,
     local::{
         endpoint::{Endpoint, EndpointListener},
         subscriptions::{Details, SubscriptionSource},
     },
-    registry::{RpcDependencies, RpcFuture, RpcTransport},
+    registry::{RpcDependencies, RpcFuture},
     test_support::{Capture, Fixture, SECRET},
 };
 
@@ -506,7 +507,7 @@ async fn local_subscriptions_reject_unknown_stream_and_resource_limit() {
     assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
     assert!(matches!(
         fixture.sink.records.lock()[0].outcome,
-        crate::registry::RpcAuditOutcome::Failure {
+        crate::audit::RpcAuditOutcome::Failure {
             kind: "unsupported",
             ..
         }

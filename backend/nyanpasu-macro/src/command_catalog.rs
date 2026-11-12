@@ -498,7 +498,8 @@ fn shared_signatures_have_no_shell_owned_types() {
                     assert!(
                         !imported.starts_with("crate::")
                             || imported.starts_with("crate::registry::")
-                            || imported.starts_with("crate::error::"),
+                            || imported.starts_with("crate::error::")
+                            || imported.starts_with("crate::ports::"),
                         "shell-owned import: {imported}"
                     );
                 }

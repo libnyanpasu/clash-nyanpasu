@@ -15,8 +15,9 @@ use nyanpasu_rpc_protocol::EventName;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use super::{RpcAudit, RpcDependencies, UnifiedRpc};
+use super::{RpcDependencies, UnifiedRpc};
 use crate::{
+    audit::RpcAudit,
     error::application_error,
     events::EventBus,
     http::routes::{RpcHttpRoutes, connection_detail_events},
@@ -107,7 +108,7 @@ fn http_update_core_is_unsupported_before_job_admission() {
                 core_directory: None,
                 service_prompt: None,
                 accent_color: None,
-                host_environment: crate::commands::ports::HostEnvironment { is_appimage: false },
+                host_environment: crate::ports::HostEnvironment { is_appimage: false },
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
                 client: client.clone(),
                 storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -163,7 +164,7 @@ fn shared_profile_command_over_experimental_http() {
             core_directory: None,
             service_prompt: None,
             accent_color: None,
-            host_environment: crate::commands::ports::HostEnvironment { is_appimage: false },
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
             audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -539,7 +540,7 @@ fn direct_egress_http_requires_permission_and_runs_only_when_requested() {
             core_directory: None,
             service_prompt: None,
             accent_color: None,
-            host_environment: crate::commands::ports::HostEnvironment { is_appimage: false },
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
             audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: runtime.block_on(NyanpasuClient::try_new(args)).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -637,7 +638,7 @@ fn provider_query_returns_summaries_over_http() {
             core_directory: None,
             service_prompt: None,
             accent_color: None,
-            host_environment: crate::commands::ports::HostEnvironment { is_appimage: false },
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
             audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -774,7 +775,7 @@ fn enabled_http_server_joins_application_shutdown() {
             core_directory: None,
             service_prompt: None,
             accent_color: None,
-            host_environment: crate::commands::ports::HostEnvironment { is_appimage: false },
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
             audit: RpcAudit::new(Arc::new(AuditSink::default())),
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),

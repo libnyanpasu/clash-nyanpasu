@@ -17,12 +17,12 @@ use tracing::instrument::WithSubscriber as _;
 use tracing_subscriber::layer::SubscriberExt as _;
 
 use crate::{
-    audit::TracingRpcAuditSink,
-    events::EventBus,
-    registry::{
-        RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink, RpcCaller, RpcDependencies,
-        RpcFuture, RpcState, RpcTransport,
+    audit::{
+        RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink, RpcTransport,
+        TracingRpcAuditSink,
     },
+    events::EventBus,
+    registry::{RpcCaller, RpcDependencies, RpcFuture, RpcState},
     test_support::{Capture, Fixture, SECRET},
 };
 

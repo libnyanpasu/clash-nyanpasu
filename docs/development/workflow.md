@@ -58,7 +58,7 @@ these YAML files.
 | File under `.github/workflows/`     | Display name                                          | Purpose / entry point                                                                                                |
 | ----------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `ci.yml`                            | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes; a pull request checks only the parts it changes.                                       |
-| `plumber.yml`                       | `[CI] Check Workflow Security with Plumber`           | Check the workflows on pushes to main and on pull requests, and publish the score behind the README badge.           |
+| `plumber.yml`                       | `[CI] Check Workflow Security with Plumber`           | Check changed workflows on main and in pull requests, and weekly; publish the score behind the README badge.         |
 | `daily.yml`                         | `[Maintenance] Update Core Version Manifests`         | Scheduled or manual refresh of core versions on main and v1/dev.                                                     |
 | `stale.yml`                         | `[Maintenance] Close Stale Issues and Pull Requests`  | Scheduled or manual stale issue and pull request maintenance.                                                        |
 | `publish.yml`                       | `[Release] Prepare Version and Draft Release`         | Manual version bump, tag, and draft release creation; publishing the draft starts package builds.                    |

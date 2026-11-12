@@ -3,15 +3,17 @@ pub(in crate::client) mod apply;
 pub mod ports;
 mod workflow;
 
+#[cfg(test)]
+use crate::actor_v2::HandoffReport;
 use crate::actor_v2::facade::{ReconcileReport, StopReport};
+#[cfg(test)]
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use nyanpasu_updater::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;
 pub(in crate::client) use workflow::{
     CoreLifecycleWorkflow, RuntimeSubmission, ServiceRecovery, effective_host,
 };
-#[cfg(test)]
-use {crate::actor_v2::HandoffReport, crate::actor_v2::endpoint::ExecutionHost};
 
 pub(in crate::client) const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
 

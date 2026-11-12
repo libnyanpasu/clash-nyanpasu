@@ -60,7 +60,7 @@ impl NyanpasuClient {
         &self,
         group: String,
         name: String,
-    ) -> Result<super::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let strategy = self
             .get_clash_config()
             .await?
@@ -71,7 +71,7 @@ impl NyanpasuClient {
     pub async fn clear_proxy_fixed(
         &self,
         group: String,
-    ) -> Result<super::runtime::MutationOutcome<()>> {
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let strategy = self
             .get_clash_config()
             .await?

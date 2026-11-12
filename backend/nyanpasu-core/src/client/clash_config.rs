@@ -18,8 +18,8 @@ use crate::state::{
         ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
     },
     config_error::{ConfigError, OwnerStoppedSnafu},
-    mutation::value::ConfigDomain,
 };
+use nyanpasu_runtime_values::mutation::ConfigDomain;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {

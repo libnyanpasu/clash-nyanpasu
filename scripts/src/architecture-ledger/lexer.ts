@@ -22,13 +22,15 @@ function isWordBoundaryBefore(raw: string, index: number): boolean {
 // `/* /* */ */`), so a depth counter is tracked instead of a boolean; raw
 // strings (`r"..."`, `r#"..."#`, ...) can also span lines, so the number of
 // `#` needed to close one is carried the same way (-1 means "not in one").
+// Ordinary quoted strings can span lines too.
 export type LexState = {
   blockDepth: number
   rawStringHashes: number
+  quotedString: boolean
 }
 
 export function createLexState(): LexState {
-  return { blockDepth: 0, rawStringHashes: -1 }
+  return { blockDepth: 0, rawStringHashes: -1, quotedString: false }
 }
 
 // Lex `//`, `/* */`, strings, and raw strings in source order so a `//`/`/*`
@@ -47,7 +49,7 @@ export function createLexState(): LexState {
 // counts as real code.
 export function stripCommentsAndLiterals(raw: string, state: LexState): string {
   let code = ''
-  let inDouble = false
+  let inDouble = state.quotedString
   let escapeNext = false
 
   for (let j = 0; j < raw.length; j++) {
@@ -138,5 +140,6 @@ export function stripCommentsAndLiterals(raw: string, state: LexState): string {
     code += ch
   }
 
+  state.quotedString = inDouble
   return code
 }

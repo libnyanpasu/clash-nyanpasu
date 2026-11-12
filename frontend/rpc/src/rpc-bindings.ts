@@ -1709,7 +1709,7 @@ export type CoreErrorKind =
   | 'internal'
 
 /**
- *  The wire mirror of a [`CoreError`], which is a foreign type without serde.
+ *  The wire mirror of a `CoreError`, which is a foreign type without serde.
  *  It is the only place a `CoreError` is unpacked for the frontend.
  */
 export type CoreFailure = {

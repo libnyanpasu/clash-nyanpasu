@@ -12,6 +12,7 @@
 //! lifecycle state (invariant I-R3). The normalized snapshot below is a
 //! field-by-field projection of what the host published, nothing more.
 
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use nyanpasu_core_manager::{
@@ -25,16 +26,6 @@ use nyanpasu_ipc::api::{
     },
     status::{CoreInfos, CoreStateDetail},
 };
-
-/// Which controller owns the runtime. The app perceives the difference in
-/// exactly two places: this tag on the endpoint slot, and the handoff
-/// protocol.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionHost {
-    Local,
-    Service,
-}
 
 /// The host's canonical core status, projected field by field for the app.
 /// No field here is ever derived by the router itself.

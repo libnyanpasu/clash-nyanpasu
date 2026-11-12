@@ -1,10 +1,11 @@
 //! Execution-host adapter for the privileged network owner. No system commands
 //! run in the GUI process; the host verifies the complete applied revision.
-use crate::actor_v2::{CoreClient, endpoint::ExecutionHost};
+use crate::actor_v2::CoreClient;
 use nyanpasu_config::clash::config::TransparentProxyMode;
 use nyanpasu_ipc::api::network::transparent_proxy::{
     NetworkTransparentProxyMode, NetworkTransparentProxyRequest, NetworkTransparentProxyStatus,
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 use super::{NyanpasuClient, effects::plan::TransparentProxyDesired};
 

@@ -17,13 +17,10 @@ use nyanpasu_contracts::{
 };
 use nyanpasu_core::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, agent_skills::CoreAgentSkill,
+        ClientError, NyanpasuClient, agent_skills::CoreAgentSkill,
         debug_http::DebugHttpControlError, effects::error::EffectsError,
     },
-    state::{
-        config_error::ConfigError,
-        profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
-    },
+    state::config_error::ConfigError,
     storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
 };
 use nyanpasu_observers::logs::{
@@ -31,6 +28,10 @@ use nyanpasu_observers::logs::{
 };
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_runtime_values::{
+    profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
+    runtime_error::RuntimeError,
+};
 use nyanpasu_updater::ManifestVersionLatest;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
@@ -438,7 +439,7 @@ pub async fn import_profile(
     option: Option<RemoteProfileOptionsPatch>,
     transform: Option<TransformKind>,
     folder: Option<FolderId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<ProfileId>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
     let url = snafu::ResultExt::context(
         url::Url::parse(&url),
         InvalidSubscriptionUrlSnafu { url: &url },
@@ -496,7 +497,7 @@ pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
     request: NewProfileRequest,
     file_data: Option<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<ProfileId>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
     // Must return the created ProfileId; never drop it on the wire.
     Ok(client.create_profile(request, file_data).await?)
 }
@@ -508,7 +509,7 @@ pub async fn reorder_profile(
     client: State<'_, NyanpasuClient>,
     active_id: ProfileId,
     over_id: ProfileId,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
@@ -518,7 +519,7 @@ pub async fn reorder_profile(
 pub async fn reorder_profiles_by_list(
     client: State<'_, NyanpasuClient>,
     list: Vec<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profiles_by_list(list).await?)
 }
 
@@ -528,7 +529,7 @@ pub async fn reorder_profiles_by_list(
 pub async fn set_profile_layout(
     client: State<'_, NyanpasuClient>,
     layout: ProfileLayout,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.set_profile_layout(layout).await?)
 }
 
@@ -539,7 +540,7 @@ pub async fn set_proxy_group_layout(
     client: State<'_, NyanpasuClient>,
     profile: ProfileId,
     layout: ProxyGroupLayout,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.set_proxy_group_layout(profile, layout).await?)
 }
 
@@ -551,7 +552,7 @@ pub async fn create_proxy_group_folder(
     profile: ProfileId,
     name: String,
     members: Vec<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<FolderId>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
     Ok(client
         .create_proxy_group_folder(profile, name, members)
         .await?)
@@ -564,7 +565,7 @@ pub async fn create_profile_folder(
     client: State<'_, NyanpasuClient>,
     name: String,
     members: Vec<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<FolderId>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
     Ok(client.create_profile_folder(name, members).await?)
 }
 
@@ -608,7 +609,7 @@ pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.refresh_profile(uid, option).await?)
 }
 
@@ -618,7 +619,7 @@ pub async fn update_profile(
 pub async fn delete_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.delete_profile(uid).await?)
 }
 
@@ -628,7 +629,7 @@ pub async fn delete_profile(
 pub async fn activate_profile(
     client: State<'_, NyanpasuClient>,
     uid: Option<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.activate_profile(uid).await?)
 }
 
@@ -638,7 +639,7 @@ pub async fn activate_profile(
 pub async fn set_global_transforms(
     client: State<'_, NyanpasuClient>,
     ids: Vec<ProfileId>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.set_global_transforms(ids).await?)
 }
 
@@ -648,7 +649,7 @@ pub async fn set_global_transforms(
 pub async fn set_profile_valid_fields(
     client: State<'_, NyanpasuClient>,
     fields: Vec<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.set_profile_valid_fields(fields).await?)
 }
 
@@ -659,7 +660,7 @@ pub async fn patch_profile_metadata(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: ProfileMetadataPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.patch_profile_metadata(uid, patch).await?)
 }
 
@@ -670,7 +671,7 @@ pub async fn patch_remote_profile_options(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
@@ -681,7 +682,7 @@ pub async fn replace_profile_definition(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     definition: ProfileDefinition,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
@@ -714,7 +715,7 @@ pub async fn save_profile_file(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     file_data: String,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.save_profile_file(uid, file_data).await?)
 }
 
@@ -890,7 +891,7 @@ pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<Nyanpas
 pub async fn patch_app_config(
     client: State<'_, NyanpasuClient>,
     patch: NyanpasuAppConfigPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.patch_app_config(patch).await?)
 }
 
@@ -914,7 +915,7 @@ pub async fn get_config_features(client: State<'_, NyanpasuClient>) -> Result<Co
 pub async fn patch_clash_config(
     client: State<'_, NyanpasuClient>,
     patch: ClashConfigPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.patch_clash_config(patch).await?)
 }
 
@@ -926,7 +927,7 @@ pub async fn patch_clash_config(
 pub async fn patch_runtime_overrides(
     client: State<'_, NyanpasuClient>,
     patch: ClashGuardOverridesPatch,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     // Explicit-field whitelist so future patch fields never auto-leak into
     // logs; the secret is reported by presence only.
     #[cfg(feature = "default-meta")]
@@ -1290,7 +1291,7 @@ pub async fn select_proxy(
     client: State<'_, NyanpasuClient>,
     group: String,
     name: String,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.select_proxy(group, name).await?)
 }
 
@@ -1300,7 +1301,7 @@ pub async fn select_proxy(
 pub async fn clear_proxy_fixed(
     client: State<'_, NyanpasuClient>,
     group: String,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.clear_proxy_fixed(group).await?)
 }
 
@@ -1686,7 +1687,7 @@ pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Resul
         .await
     }
     .await
-    .context(nyanpasu_core::client::runtime_error::PrepareServiceInstallPromptSnafu)?
+    .context(nyanpasu_runtime_values::runtime_error::PrepareServiceInstallPromptSnafu)?
     .into_iter()
     .map(|arg| {
         #[cfg(unix)]
@@ -1754,7 +1755,7 @@ pub async fn get_hotkeys(client: State<'_, NyanpasuClient>) -> Result<Vec<String
 pub async fn set_hotkeys(
     client: State<'_, NyanpasuClient>,
     hotkeys: Vec<String>,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     // An unparsable list is rejected before anything is written; a shortcut the
     // OS refuses lands as a degradation on a committed config.
     Ok(client
@@ -2076,7 +2077,7 @@ pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<Re
 pub async fn set_release_channel(
     client: State<'_, NyanpasuClient>,
     channel: ReleaseChannel,
-) -> Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.set_release_channel(channel).await?)
 }
 
@@ -2279,9 +2280,10 @@ mod tests {
         profiles::error::{ProfileFileError, SubscriptionFetchError},
         system_proxy::OsProxyError,
     };
-    use nyanpasu_core::{
-        client::{effects::error::EffectsError, runtime_error::RuntimeError},
-        state::mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+    use nyanpasu_core::client::effects::error::EffectsError;
+    use nyanpasu_runtime_values::{
+        mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+        runtime_error::RuntimeError,
     };
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {
@@ -2306,12 +2308,13 @@ mod tests {
 
     #[test]
     fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
-        let failure = nyanpasu_core::client::runtime_error::ApplyRuntimeSnafu.into_error(
-            nyanpasu_core_manager::CoreError::new(
-                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
-                "the core kept the previous configuration",
-                false,
-            ),
+        let failure = nyanpasu_runtime_values::runtime_error::ApplyRuntimeSnafu.into_error(
+            nyanpasu_runtime_values::runtime_error::CoreFailure {
+                kind: Some(nyanpasu_core_manager::CoreErrorKind::ApplyFailed),
+                message: "the core kept the previous configuration".into(),
+                retryable: false,
+                operation_id: None,
+            },
         );
         let wire = wire(failure);
 
@@ -2485,7 +2488,7 @@ mod tests {
                 }),
             },
         }
-        .into_error(cause);
+        .into_error(Box::new(cause) as nyanpasu_contracts::BoxedCause);
         assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
 
         let wire = wire(ProfilesError::Commit {

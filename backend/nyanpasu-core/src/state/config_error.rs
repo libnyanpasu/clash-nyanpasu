@@ -12,13 +12,8 @@ use nyanpasu_state_engine::{
 use serde::Serialize;
 use snafu::{IntoError, Snafu};
 
-use crate::{
-    client::hotkey::ports::HotkeyParseError,
-    state::mutation::{
-        CommitAborted, NotReady,
-        value::{ConfigDomain, MutationReceipt},
-    },
-};
+use crate::{client::hotkey::ports::HotkeyParseError, state::mutation::value::MutationReceipt};
+use nyanpasu_runtime_values::mutation::{CommitAborted, ConfigDomain, NotReady};
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[snafu(visibility(pub(crate)))]
@@ -94,7 +89,9 @@ impl ConfigError {
                 actual: *actual.as_ref(),
             }
             .build(),
-            error => CommitSnafu { domain }.into_error(CommitAborted::classify(error, settlement)),
+            error => CommitSnafu { domain }.into_error(
+                crate::state::mutation::classify_commit_aborted(error, settlement),
+            ),
         }
     }
 }

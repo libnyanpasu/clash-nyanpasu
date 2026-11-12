@@ -13,10 +13,11 @@ use nyanpasu_ipc::api::core::v2::{
 use super::{
     ControllerGeneration, CoreClient, CoreStatusProjection, EndpointConnectivity, HandoffReport,
     ShutdownReport, SubmitFailure,
-    endpoint::{CoreSubmission, EndpointHandle, ExecutionHost},
+    endpoint::{CoreSubmission, EndpointHandle},
     intent::RuntimeIntent,
     service_actor::{ServiceClient, ServiceCommandKind, ServiceHostStatus},
 };
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 const OPERATION_WAIT: Duration = Duration::from_secs(60);
 

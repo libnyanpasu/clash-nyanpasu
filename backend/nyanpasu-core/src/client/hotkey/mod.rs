@@ -15,8 +15,9 @@ use nyanpasu_config::{
 use snafu::ResultExt as _;
 
 use self::ports::{HotkeyAction, HotkeyBindings, WindowError};
-use super::{NyanpasuClient, Result, runtime::MutationOutcome};
+use super::{NyanpasuClient, Result};
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
+use nyanpasu_runtime_values::runtime::MutationOutcome;
 
 /// Rejects a hotkey list before anything is written.
 ///

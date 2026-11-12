@@ -2,6 +2,9 @@
 
 use nyanpasu_contracts::elevation::{ElevationConsent, ElevationConsentError, ElevationOperation};
 
+#[cfg(feature = "test-support")]
+pub mod runner;
+#[cfg(not(feature = "test-support"))]
 pub(crate) mod runner;
 
 /// Refuses to request OS authorization, preserving the requested action.

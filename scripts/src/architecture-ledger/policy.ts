@@ -85,6 +85,7 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-runtime-values/src/',
   'backend/nyanpasu-rpc-protocol/src/',
   'backend/nyanpasu-rpc/src/',
+  'backend/nyanpasu-server/src/',
   'backend/nyanpasu-migration/src/',
   'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-observers/src/',

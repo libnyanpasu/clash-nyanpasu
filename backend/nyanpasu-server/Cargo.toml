@@ -1,0 +1,112 @@
+[package]
+name = 'nyanpasu-server'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = 'nyanpasu-server'
+path = 'src/main.rs'
+
+# Test-only fault injection; never enable in production.
+[features]
+panic-injection = ['dep:inventory', 'dep:serde_json', 'dep:struct-patch']
+
+[dependencies]
+inventory = { version = '0.3', optional = true }
+serde_json = { version = '1', optional = true }
+struct-patch = { version = '0.14', optional = true }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'default-meta',
+  'nesting'
+] }
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
+  'default-meta',
+  'nesting'
+] }
+nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
+  'http',
+  'local-server',
+  'default-meta',
+  'nesting'
+] }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false, features = [
+  'default-meta'
+] }
+nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
+nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
+nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
+nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false, features = [
+  'javascript',
+  'lua'
+] }
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb' }
+nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
+  'specta'
+] }
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
+  'specta'
+] }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
+anyhow = '1'
+async-trait = '0.1'
+boa_engine = { workspace = true }
+boa_utils = { path = '../boa_utils' }
+mlua = { version = '0.12', features = [
+  'lua54',
+  'async',
+  'serialize',
+  'vendored',
+  'error-send'
+] }
+reqwest = { workspace = true }
+postcard = { version = '1', features = ['use-std'] }
+tokio = { workspace = true }
+tokio-util = { version = '0.7', features = ['full'] }
+tracing = { workspace = true }
+url = '2'
+snafu = { workspace = true }
+nyanpasu-panics = { path = '../nyanpasu-panics' }
+nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
+clap = { version = '4.5.4', features = ['derive'] }
+tracing-subscriber = { version = '0.3', features = ['env-filter', 'json'] }
+flexi_logger = { version = '0.31', default-features = false }
+
+[build-dependencies]
+chrono = '0.4'
+serde_json = '1'
+
+[dev-dependencies]
+nyanpasu-server = { path = '.', default-features = false, features = [
+  'panic-injection'
+] }
+inventory = '0.3'
+futures = '0.3'
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
+  'local-client'
+] }
+runas = { workspace = true }
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
+  'default-meta',
+  'nesting',
+  'test-support'
+] }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support'
+] }
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
+nyanpasu-core-manager = { workspace = true }
+tempfile = '3'
+serde_json = '1'
+struct-patch = '0.14'

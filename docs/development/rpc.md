@@ -346,7 +346,38 @@ security rules. With no enable value, no endpoint is discovered or bound.
 There is no frontend control. The listener uses the desktop's existing client,
 capabilities and elevation policy; it makes no global refusal-of-elevation claim.
 The separately composed E4 server remains responsible for its refusal policy.
+E4a delivers its library composition: one client and registry, neutral event/audit
+sinks, no presentation capabilities, and `RefuseElevation` on service, DNS and
+binary installation. E4b activates the resident executable's listeners and
+observations over that single application. Embedded desktop HTTP and local RPC continue to
+use the desktop composition's policy.
 Root shutdown stops admission and joins accepted work and resource cleanup.
+
+### Standalone server usage and shutdown
+
+Run `nyanpasu-server --config-dir <directory> --data-dir <directory>` with explicit
+application roots. It serves the E3 local endpoint for the canonical data directory;
+`--endpoint <path>` uses the same validation and first-binder rules. Add `--http`
+to bind an OS-assigned loopback port, and optionally `--assets <directory>` to serve
+frontend files. HTTP is disabled by default and requires no assets. Readiness prints
+the endpoint and, when enabled, the credential-bearing HTTP bootstrap URL to the
+launching user's stdout. Treat that URL as a credential; it is not an audit field.
+The existing cookies and Host/Origin validation apply unchanged. There are no LAN
+tickets or new RPC commands.
+
+The executable installs its neutral panic hook before creating Tokio or starting
+owners. A running-task panic reports its original payload/location, returns from
+the hook to unwind, and notifies the fatal supervisor. The process stops serving,
+drains resources and exits unsuccessfully; startup without an active supervisor
+exits immediately. This includes library-spawned HTTP request tasks. Owned join
+handles preserve panic propagation; they do not manufacture an RPC error.
+
+Forwarders subscribe before reconciliation and observation/Clash stream activation.
+Readiness is published after both requested listeners bind. Ctrl-C (and SIGTERM on
+Unix), startup failure and listener failure release transports before application
+shutdown. The HTTP network drain bound never aborts business owners; the shell
+waits for admitted work and owner cleanup without a domain deadline. E4c's CLI and
+E4d's consecutive-process session acceptance remain separate work.
 
 The local command allowlist is exactly:
 

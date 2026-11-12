@@ -1,5 +1,6 @@
 //! Loopback HTTP actor, authenticated frontend and injected assets.
 
+pub mod listener;
 pub mod routes;
 use std::{sync::Arc, time::Duration};
 
@@ -82,12 +83,16 @@ impl HttpServerState {
             running.cancellation.cancel();
             // SSE and HMR can remain connected indefinitely. Bound graceful
             // draining, then drop all remaining connections before replying.
-            if tokio::time::timeout(Duration::from_secs(2), &mut running.task)
-                .await
-                .is_err()
-            {
-                running.task.abort();
-                let _ = running.task.await;
+            match tokio::time::timeout(Duration::from_secs(2), &mut running.task).await {
+                Ok(result) => nyanpasu_owner_support::blocking::join(result),
+                Err(_) => {
+                    running.task.abort();
+                    if let Err(error) = running.task.await
+                        && error.is_panic()
+                    {
+                        std::panic::resume_unwind(error.into_panic());
+                    }
+                }
             }
         }
     }
@@ -201,17 +206,22 @@ impl Actor for HttpServerActor {
 pub struct HttpServerClient(Arc<HttpServerClientInner>);
 struct HttpServerClientInner {
     actor: ActorRef<Message>,
+    task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 impl HttpServerClient {
     pub async fn spawn(
         frontend: Option<Frontend>,
         routes: Arc<dyn HttpRoutes>,
     ) -> std::result::Result<Self, Error> {
-        Ok(Self(Arc::new(HttpServerClientInner {
-            actor: Actor::spawn(None, HttpServerActor, HttpServerArgs { frontend, routes })
+        let (actor, task) =
+            Actor::spawn(None, HttpServerActor, HttpServerArgs { frontend, routes })
                 .await
-                .map_err(|source| Error::SpawnActor { source })?
-                .0,
+                .map_err(|source| Error::SpawnActor { source })?;
+        // Observe actor panics even when no subsequent status/shutdown call arrives.
+        let task = tokio::spawn(async move { nyanpasu_owner_support::blocking::join(task.await) });
+        Ok(Self(Arc::new(HttpServerClientInner {
+            actor,
+            task: tokio::sync::Mutex::new(Some(task)),
         })))
     }
     pub async fn set_enabled(&self, enabled: bool) -> Result<DebugHttpStatus> {
@@ -230,6 +240,9 @@ impl HttpServerClient {
     pub async fn shutdown(&self) -> Result<()> {
         self.set_enabled(false).await?;
         self.0.actor.get_cell().drain_and_wait(None).await?;
+        if let Some(task) = self.0.task.lock().await.take() {
+            nyanpasu_owner_support::blocking::join(task.await);
+        }
         Ok(())
     }
     pub async fn status(&self) -> Result<DebugHttpStatus> {

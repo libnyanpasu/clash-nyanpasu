@@ -6,6 +6,7 @@ members = [
   'nyanpasu-macro',
   'nyanpasu-rpc-protocol',
   'nyanpasu-rpc',
+  'nyanpasu-server',
   'nyanpasu-core',
   'nyanpasu-state-engine',
   'nyanpasu-runtime-values',

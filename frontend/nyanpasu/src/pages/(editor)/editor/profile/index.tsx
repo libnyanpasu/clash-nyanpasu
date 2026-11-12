@@ -13,6 +13,7 @@ import { useProfileContent } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import ActionButton from '../_modules/action-button'
 import Chip from '../_modules/chip'
+import { EditorFooter } from '../_modules/footer'
 import Header from '../_modules/header'
 import { useCurrentProfile, useDraft } from '../_modules/hooks'
 import LoadingSkeleton from '../_modules/loading-skeleton'
@@ -241,10 +242,7 @@ function RouteComponent() {
             />
           </div>
 
-          <div
-            className="bg-background flex h-12 shrink-0 items-center gap-2 px-3"
-            data-slot="editor-footer-actions"
-          >
+          <EditorFooter>
             <EditorStatus editor={editorInstance} markers={markers} />
 
             <div className="flex-1" />
@@ -282,7 +280,7 @@ function RouteComponent() {
                 {m.common_save()}
               </ActionButton>
             </ShortcutTooltip>
-          </div>
+          </EditorFooter>
         </>
       )}
     </>

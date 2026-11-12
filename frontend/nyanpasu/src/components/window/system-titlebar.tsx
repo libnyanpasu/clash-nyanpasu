@@ -18,7 +18,7 @@ export function DefaultHeader({
       data-slot="app-header"
       {...props}
     >
-      <div className="flex items-center gap-2" data-tauri-drag-region>
+      <div className="flex min-w-0 items-center gap-2" data-tauri-drag-region>
         {children}
       </div>
 

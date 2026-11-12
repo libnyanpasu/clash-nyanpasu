@@ -36,7 +36,7 @@ export function EditorStatus({
 
   return (
     <div
-      className="text-on-surface-variant flex min-w-0 items-center gap-2 text-xs"
+      className="text-on-surface-variant flex shrink-0 items-center gap-2 text-xs"
       data-slot="editor-status"
     >
       <ActionButton

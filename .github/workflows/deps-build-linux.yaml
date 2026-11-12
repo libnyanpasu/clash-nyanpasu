@@ -77,7 +77,7 @@ jobs:
 
       - name: Setup Cargo binstall
         if: ${{ inputs.arch != 'x86_64' }}
-        uses: cargo-bins/cargo-binstall@v1.26.2
+        uses: cargo-bins/cargo-binstall@v1.27.0
 
       - name: Setup Cross Toolchain
         if: ${{ inputs.arch != 'x86_64' }}

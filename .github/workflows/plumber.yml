@@ -41,8 +41,24 @@ jobs:
         with:
           persist-credentials: false
 
+      # A token from a dedicated read-only GitHub App gives Plumber its own
+      # API quota instead of the GITHUB_TOKEN quota that every workflow run
+      # shares. It covers the same reads the job token allows. Pull
+      # requests from forks get no secrets and fall back to the job token,
+      # as does every run until the app is configured.
+      - name: Create Plumber API token
+        id: plumber-token
+        if: vars.PLUMBER_APP_CLIENT_ID != '' && github.event.pull_request.head.repo.fork != true
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.PLUMBER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PLUMBER_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-contents: read
+
       - uses: getplumber/plumber@v0.7.23
         with:
+          github-token: ${{ steps.plumber-token.outputs.token || github.token }}
           # Code scanning upload needs security-events write, which PRs
           # from forks do not get. The report stays available as a
           # workflow artifact there.

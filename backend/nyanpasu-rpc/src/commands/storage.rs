@@ -1,10 +1,11 @@
 //! Shared storage command adapters.
 
 use crate::error::Result;
+use nyanpasu_runtime_values::storage::{StorageItem, StorageRevision};
 
 use nyanpasu_core::{
     client::NyanpasuClient,
-    storage::{Storage, StorageItem, StorageRevision, WebStorage as _},
+    storage::{Storage, WebStorage as _},
 };
 
 use super::types::StorageEntry;

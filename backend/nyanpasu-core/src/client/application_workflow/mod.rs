@@ -40,7 +40,7 @@ use crate::{
     actor_v2::{
         CoreClient, CoreStatusProjection,
         facade::{CoreFacade, ReconcileReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
+        service_actor::ServiceClient,
     },
     state::mutation::value::MutationReceipt,
 };
@@ -48,8 +48,9 @@ use mutation::{MutationJournal, MutationRequest};
 use nyanpasu_contracts::core_install::BinaryInstaller;
 #[cfg(test)]
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
-use nyanpasu_runtime_values::runtime_error::{
-    OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError,
+use nyanpasu_runtime_values::{
+    core_status::ServiceHostStatus,
+    runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError},
 };
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
@@ -174,7 +175,7 @@ struct PublishedView {
     recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
         OperationId,
-        crate::client::convergence::ConvergenceHealth,
+        nyanpasu_runtime_values::configuration::ConvergenceHealth,
         u32,
         u8,
         String,

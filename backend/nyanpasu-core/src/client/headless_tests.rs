@@ -3,20 +3,22 @@
 use std::{error::Error as _, sync::Arc, time::Duration};
 
 use nyanpasu_config::application::{I18nLanguage, NyanpasuAppConfigPatch};
+use nyanpasu_runtime_values::{
+    configuration::{ConvergenceHealth, EffectFailureCode, EffectKind},
+    hotkey::HotkeyAction,
+};
 use tempfile::TempDir;
 
 use super::{
     ClientError, ClientSetupArgs, NyanpasuClient,
-    convergence::ConvergenceHealth,
     debug_http::{DebugHttpControl, DebugHttpControlError, DebugHttpStatus},
     effects::{
         actor::EffectsSnapshot,
         executor::ApplicationEffectExecutor,
-        plan::EffectKind,
         ports::{CommitNotifications as _, MockLoggerRefresher},
-        status::{EffectFailureCode, EffectHealth, EffectRevision},
+        status::{EffectHealth, EffectRevision},
     },
-    hotkey::ports::{HotkeyAction, WindowError},
+    hotkey::ports::WindowError,
     system_proxy::{SystemProxyArgs, SystemProxyClient},
     test_support,
     test_support::TestControlEndpoint,

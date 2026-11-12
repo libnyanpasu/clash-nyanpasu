@@ -7,12 +7,12 @@ use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core::{
     actor_v2::{endpoint::EndpointHandle, test_support::test_idle_endpoint},
     client::{
-        ClientError, ClientSetupArgs, NyanpasuClient,
-        effects::ports::MockApplicationEffectsPort,
-        hotkey::ports::{HotkeyBindings, HotkeyParseError},
+        ClientError, ClientSetupArgs, NyanpasuClient, effects::ports::MockApplicationEffectsPort,
+        hotkey::ports::HotkeyBindings,
     },
     state::config_error::ConfigError,
 };
+use nyanpasu_runtime_values::hotkey::HotkeyParseError;
 use tempfile::{TempDir, tempdir};
 
 fn entries(raw: &[&str]) -> Vec<String> {

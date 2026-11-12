@@ -183,7 +183,7 @@ impl Default for TransparentProxyConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Snafu, Serialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Snafu, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TransparentProxyValidationError {
     #[snafu(display("transparent proxy listeners require Linux and Mihomo"))]

@@ -1,6 +1,5 @@
 use super::*;
 use crate::actor_v2::{
-    EndpointConnectivity,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
     test_support::HostTransitionServiceAdapter,
 };
@@ -9,6 +8,7 @@ use nyanpasu_contracts::{
     service::{ServiceCommand, ServiceCommandError, ServiceProcessControl},
 };
 use nyanpasu_ipc::api::{core::v2::OperationInfo, status::CoreStateDetail};
+use nyanpasu_runtime_values::core_status::EndpointConnectivity;
 
 struct RecoveringEndpoint {
     delegate: Arc<TestControlEndpoint>,

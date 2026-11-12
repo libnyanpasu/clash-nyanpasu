@@ -4,9 +4,10 @@
 //! login item is classified: the actor builds the variant where it happens and
 //! the degraded status derives its code, its retry flag and its text from it.
 
+use nyanpasu_runtime_values::configuration::EffectFailureCode;
 use snafu::Snafu;
 
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, failure_text};
+use crate::client::effects::status::{EffectHealth, failure_text};
 use nyanpasu_contracts::system_proxy::{AutoLaunchError, OsProxyError, PacError};
 
 /// What happened to the plain proxy that a failed PAC transition falls back to.

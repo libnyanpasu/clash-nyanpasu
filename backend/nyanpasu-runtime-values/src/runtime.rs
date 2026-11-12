@@ -177,7 +177,7 @@ pub enum DegradationReason {
 }
 
 /// How closing the source instance's connections failed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum InterruptFailure {
     /// The Clash API belongs to a core instance that has since been retired.

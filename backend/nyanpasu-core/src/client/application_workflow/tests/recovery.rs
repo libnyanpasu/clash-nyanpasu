@@ -850,7 +850,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     daemon.parked.notified().await;
     assert_eq!(
         service.probe().await.unwrap().phase,
-        crate::actor_v2::service_actor::ServicePhase::Ready,
+        nyanpasu_runtime_values::core_status::ServicePhase::Ready,
         "the daemon probes a stable Ready while the helper runs"
     );
     assert!(client.status().uncertain);
@@ -954,8 +954,9 @@ async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() 
 /// domain.
 #[tokio::test]
 async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
-    use crate::actor_v2::EndpointConnectivity;
-    use nyanpasu_runtime_values::execution_host::ExecutionHost;
+    use nyanpasu_runtime_values::{
+        core_status::EndpointConnectivity, execution_host::ExecutionHost,
+    };
     let g = a_lost_handoff().await;
     let mut status = g.core.subscribe();
 
@@ -991,7 +992,7 @@ async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
         .expect("the runtime still waits for a proven owner");
     assert_eq!(
         target.health,
-        crate::client::convergence::ConvergenceHealth::RecoveryRequired
+        nyanpasu_runtime_values::configuration::ConvergenceHealth::RecoveryRequired
     );
     assert_eq!(
         g.log(),

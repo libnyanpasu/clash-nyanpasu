@@ -2,6 +2,7 @@
 //! snapshot handle; writes go through the actor with no RPC timeout.
 
 use crate::state::mutation::MutationCoordinator;
+use nyanpasu_config::profile::NewProfileRequest;
 
 use std::{sync::Arc, time::Duration};
 
@@ -26,8 +27,8 @@ use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::profiles::{
-    CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-    ReorderOp, sources::SourcesSnapshot,
+    CommitReport, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage, ReorderOp,
+    sources::SourcesSnapshot,
 };
 use nyanpasu_contracts::profiles::{
     error::ProfileFileError,
@@ -4012,13 +4013,8 @@ mod tests {
 
     // --- T10 §2 producer gating (P1–P5) and §3 source receipts (R1–R5) ---
 
-    use crate::{
-        client::convergence::ConvergenceHealth,
-        state::profiles::{
-            RefreshAttemptToken, RefreshOutcome,
-            sources::{SourceOrigin, SourceOutcome},
-        },
-    };
+    use crate::state::profiles::{RefreshAttemptToken, RefreshOutcome};
+    use nyanpasu_runtime_values::configuration::{ConvergenceHealth, SourceOrigin, SourceOutcome};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Fails a test whose call parks instead of answering.

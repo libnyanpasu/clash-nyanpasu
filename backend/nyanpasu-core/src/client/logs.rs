@@ -1,16 +1,10 @@
 use super::NyanpasuClient;
 use async_trait::async_trait;
+use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_ipc::{api::log::OwnedLogRequest, client::Client as IpcClient};
 use nyanpasu_logging::*;
 use nyanpasu_observers::logs::{CoreLogExport, CoreLogResult, CoreLogStore};
 use std::{sync::Arc, time::Duration};
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum LogSource {
-    App,
-    Service,
-}
 
 pub struct LoggingSetup {
     pub core: Box<dyn CoreLogStore>,

@@ -1,10 +1,10 @@
 //! What a request to the effects owner fails with.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
-#[derive(Debug, Snafu, Serialize, specta::Type)]
-#[snafu(visibility(pub(crate)))]
+#[derive(Debug, Snafu, Serialize, Deserialize, specta::Type)]
+#[snafu(visibility(pub))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EffectsError {
     /// The owner's mailbox is closed: the app is exiting, or the owner died.

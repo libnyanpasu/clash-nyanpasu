@@ -17,13 +17,14 @@ use nyanpasu_config::application::{LoggingLevel, NetworkStatisticWidgetConfig, N
 use nyanpasu_contracts::system_proxy::{
     MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
 };
-use nyanpasu_core::client::{
-    effects::{
-        plan::{ApplicationEffectPlan, EffectKind},
-        ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, MockLoggerRefresher},
-        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
-    },
-    hotkey::ports::{HotkeyAction, HotkeyParseError},
+use nyanpasu_core::client::effects::{
+    plan::ApplicationEffectPlan,
+    ports::{ApplicationEffectsPort, LogRotation, LoggerRefresher, MockLoggerRefresher},
+    status::{EffectHealth, EffectRevision, EffectStatus},
+};
+use nyanpasu_runtime_values::{
+    configuration::{EffectFailureCode, EffectKind},
+    hotkey::{HotkeyAction, HotkeyParseError},
 };
 use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use std::sync::{
@@ -344,13 +345,11 @@ impl PacPort for HeldPac {
 
 #[tokio::test(start_paused = true)]
 async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
-    use nyanpasu_core::client::{
-        convergence::ConvergenceHealth,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use nyanpasu_core::client::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
+    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
 
     let pac = Arc::new(HeldPac::default());
     let shutdown = Shutdown::new();

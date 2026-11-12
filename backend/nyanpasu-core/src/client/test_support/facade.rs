@@ -16,14 +16,13 @@ use crate::{
         session_state::SessionStateClient,
         test_support::workflow::{Installer, NoopSystemDnsCache},
     },
-    state::profiles::NewProfileRequest,
     utils::test_support::test_paths,
 };
 use nyanpasu_config::{
     application::ReleaseChannel,
     profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-        ProfileDefinition, ProfileMetadata, ProfileSource,
+        NewProfileRequest, ProfileDefinition, ProfileMetadata, ProfileSource,
     },
 };
 #[cfg(unix)]

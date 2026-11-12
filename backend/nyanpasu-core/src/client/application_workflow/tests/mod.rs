@@ -474,7 +474,7 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
     fn application_committed(
         &self,
         _: crate::client::effects::plan::ApplicationEffectFields,
-        _: Vec<crate::client::effects::plan::EffectKind>,
+        _: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
     ) {
         unreachable!("only the application owner sends its slice")
     }
@@ -1053,7 +1053,8 @@ async fn until_notified(client: &NyanpasuClient) {
         std::time::Duration::from_secs(5),
         effects.wait_for(|snapshot| {
             snapshot.effects.iter().all(|progress| {
-                progress.health != crate::client::convergence::ConvergenceHealth::Pending
+                progress.health
+                    != nyanpasu_runtime_values::configuration::ConvergenceHealth::Pending
             })
         }),
     )

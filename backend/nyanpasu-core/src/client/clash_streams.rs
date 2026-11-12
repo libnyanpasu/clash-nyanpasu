@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use nyanpasu_observers::logs::{
-    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
-};
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
+use nyanpasu_observers::logs::{CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult};
 use tokio::sync::{broadcast, watch};
 
 use super::{NyanpasuClient, Result};

@@ -5,13 +5,14 @@
 //! lookup API here, so this is not a service locator.
 
 use nyanpasu_config::{application::LoggingLevel, runtime::executor::ResolvedPortBindings};
+use nyanpasu_runtime_values::configuration::EffectFailureCode;
 use snafu::Snafu;
 
 #[cfg(any(test, feature = "test-support"))]
 use super::status::EffectHealth;
 use super::{
     plan::ApplicationEffectPlan,
-    status::{EffectFailureCode, EffectRevision, EffectStatus},
+    status::{EffectRevision, EffectStatus},
 };
 
 /// Why the running logger could not be reconfigured.
@@ -151,7 +152,7 @@ pub trait CommitNotifications: Send + Sync + 'static {
     fn application_committed(
         &self,
         fields: super::plan::ApplicationEffectFields,
-        requested: Vec<super::plan::EffectKind>,
+        requested: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
     );
 
     /// The clash config owner, once its commit has settled.
@@ -177,7 +178,7 @@ impl<A: CommitNotifications, B: CommitNotifications> CommitNotifications for (A,
     fn application_committed(
         &self,
         fields: super::plan::ApplicationEffectFields,
-        requested: Vec<super::plan::EffectKind>,
+        requested: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
     ) {
         self.0
             .application_committed(fields.clone(), requested.clone());
@@ -212,7 +213,7 @@ impl CommitNotifications for NoopCommitNotifications {
     fn application_committed(
         &self,
         _: super::plan::ApplicationEffectFields,
-        _: Vec<super::plan::EffectKind>,
+        _: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
     ) {
     }
 

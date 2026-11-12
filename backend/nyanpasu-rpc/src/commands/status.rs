@@ -26,7 +26,7 @@ pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<Serv
 #[specta::specta]
 pub fn get_configuration_status(
     client: RpcState<'_, NyanpasuClient>,
-) -> nyanpasu_core::client::configuration_status::ConfigurationStatus {
+) -> nyanpasu_runtime_values::configuration::ConfigurationStatus {
     client.configuration_status()
 }
 
@@ -40,7 +40,7 @@ pub async fn retry_configuration_runtime(client: RpcState<'_, NyanpasuClient>) -
 #[specta::specta]
 pub fn retry_configuration_effect(
     client: RpcState<'_, NyanpasuClient>,
-    kind: nyanpasu_core::client::effects::plan::EffectKind,
+    kind: nyanpasu_runtime_values::configuration::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
 }

@@ -1,7 +1,8 @@
 //! Pure hotkey parsing and facade action tests.
 
-use super::ports::{HotkeyAction, HotkeyBindings, HotkeyOp, HotkeyParseError};
+use super::ports::{HotkeyBindings, HotkeyOp};
 use crate::client::test_support::AnyAccelerator;
+use nyanpasu_runtime_values::hotkey::{HotkeyAction, HotkeyParseError};
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
@@ -157,7 +158,6 @@ mod facade {
     use nyanpasu_config::application::NyanpasuAppConfig;
     use tempfile::{TempDir, tempdir};
 
-    use super::super::ports::{HotkeyAction, HotkeyParseError};
     use crate::{
         actor_v2::test_support::test_idle_endpoint,
         client::{
@@ -166,6 +166,7 @@ mod facade {
         },
         state::config_error::ConfigError,
     };
+    use nyanpasu_runtime_values::hotkey::{HotkeyAction, HotkeyParseError};
 
     async fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
         let mut args = test_client_args_with_endpoint(

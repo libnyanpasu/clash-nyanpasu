@@ -100,11 +100,13 @@ is the plan for the next stage:
   missing required capabilities return structured `unsupported`; only unknown
   names return `unknown_method`. Capability metadata is not per-call authority.
 - **RPC packages** include the E1a-b protocol base: owner values, request/error
-  envelopes, transparent JSON and shared event identities, with only Serde/JSON/Specta
-  dependencies. Cookie parsing, HTTP status and application error conversion live
-  in `nyanpasu-rpc`. E2b separates `nyanpasu-rpc-protocol` (neutral wire values
-  with the remaining receiving DTOs planned over approved foundation values, including D2e runtime-values)
-  from `nyanpasu-rpc` (thin application adapter over core). Protocol forbids GUI,
+  envelopes, transparent JSON and shared event identities, consuming approved
+  foundation values alongside serialization and optional transport dependencies. Cookie parsing, HTTP status and application error conversion live
+  in `nyanpasu-rpc`. `nyanpasu-rpc-protocol::types` contains the receiving
+  error/mutation graph, owned error envelope and connection details for the
+  thirteen local operations and their five full-value snapshots. Ordinary values
+  have canonical foundation owners; `nyanpasu-rpc` is the thin application adapter
+  over core. Protocol forbids GUI,
   CORE_FAMILY and IMPLEMENTATION; foundation/core/implementation crates cannot
   depend on the RPC adapter. The CLI links protocol/local-client, never the
   registry/server/core-family/implementation/GUI production closure; foundation
@@ -176,7 +178,8 @@ control; control must not import `client`. Source owners must not directly impor
 factory defined in `state/mutation/ports.rs`; `client/application_workflow/participant.rs`
 implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
 stay under `state/mutation/`; public wire values live in runtime-values. The
-notification contract and `EffectKind` remain in `client/effects`, so the policy
+notification contract remains in `client/effects`; `EffectKind` lives in
+`nyanpasu-runtime-values::configuration`. The policy
 allows source dependencies on effects, jobs and value/validation contracts. It
 uses a bounded syntax guard for explicit use trees/paths and lexical scopes,
 including tests. Same-core provider aliases/re-exports are followed for at most

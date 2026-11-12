@@ -10,14 +10,15 @@ use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 use nyanpasu_core::client::{
     effects::{
         plan::{
-            ApplicationEffect, ApplicationEffectPlan, EffectKind, TrayRefresh, TrayView,
-            WidgetLogoDesired,
+            ApplicationEffect, ApplicationEffectPlan, TrayRefresh, TrayView, WidgetLogoDesired,
         },
         ports::PresentationEffectsPort,
-        status::{self, EffectRevision, EffectStatus},
+        status,
+        status::{EffectRevision, EffectStatus},
     },
     hotkey::ports::{AcceleratorValidator, HotkeyBindings},
 };
+use nyanpasu_runtime_values::configuration::EffectKind;
 
 use super::ports::{LocaleSink, TrayRefresher, WidgetController};
 use crate::desktop::hotkey::{HotkeyClient, error::InvalidBindingsSnafu};

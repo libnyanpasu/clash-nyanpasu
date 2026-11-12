@@ -3,11 +3,9 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::client::{
-    StateChanged, UiEventSink,
-    app_update::{AppUpdateEventSink, AppUpdateSnapshot},
-};
+use nyanpasu_core::client::{StateChanged, UiEventSink, app_update::AppUpdateEventSink};
 use nyanpasu_rpc_protocol::EventName;
+use nyanpasu_runtime_values::app_update::AppUpdateSnapshot;
 use serde::Serialize;
 use serde_json::Value;
 use snafu::{ResultExt as _, Snafu};

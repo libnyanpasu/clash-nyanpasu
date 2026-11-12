@@ -1,5 +1,6 @@
 use super::model::*;
 use nyanpasu_config::application::CoreLogSettings;
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
 
 /// Synchronous infrastructure operations run on a blocking thread. The actor
 /// transfers this owner into that thread and awaits its return for each command.

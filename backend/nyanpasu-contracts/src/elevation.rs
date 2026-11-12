@@ -6,7 +6,7 @@ use snafu::Snafu;
 use crate::service::ServiceCommand;
 
 /// The action requesting authorization, never an executable or command string.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ElevationOperation {
     Service { command: ServiceCommand },
@@ -25,7 +25,7 @@ impl std::fmt::Display for ElevationOperation {
 }
 
 /// The shell cannot request OS authorization for this action.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[derive(Debug, Snafu, Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ElevationConsentError {
     #[snafu(display("administrator access cannot be requested for {operation}"))]

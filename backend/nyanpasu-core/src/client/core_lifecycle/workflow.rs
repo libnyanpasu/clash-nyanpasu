@@ -16,13 +16,12 @@ use super::{
 };
 use crate::{
     actor_v2::{
-        EndpointConnectivity, HandoffReport,
+        HandoffReport,
         endpoint::wire_core_type_to_kind,
         facade::{
             CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
             StopReport, UncertainReconcile,
         },
-        service_actor::ServicePhase,
     },
     client::{
         runtime_error,
@@ -31,6 +30,7 @@ use crate::{
     state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 use nyanpasu_runtime_values::{
+    core_status::{EndpointConnectivity, ServicePhase},
     execution_host::ExecutionHost,
     publish::PublishRuntimeError,
     runtime_error::{

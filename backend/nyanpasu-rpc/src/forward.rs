@@ -10,27 +10,20 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use nyanpasu_core::{
-    actor_v2::CoreStatusInfo,
     clash::ws::{ClashWsPacket, ClashWsUpdate},
     client::{NyanpasuClient, StateChanged, UiEventSink},
-    storage::{self, Storage, StorageNotification, StorageRevision},
+    storage,
+    storage::{Storage, StorageNotification},
 };
-use nyanpasu_rpc_protocol::EventName;
+use nyanpasu_rpc_protocol::{EventName, types::CoreLogsChanged};
+use nyanpasu_runtime_values::{core_status::CoreStatusInfo, storage::StorageRevision};
 use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
-
-use nyanpasu_observers::logs::CoreLogStatus;
 
 use crate::events::EventBus;
 
 /// One forwarding loop. It ends when its source closes.
 pub type Forwarder = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-
-/// The payload of `core-logs-changed`.
-#[derive(Debug, Clone, Serialize)]
-struct CoreLogsChanged {
-    pub status: CoreLogStatus,
-}
 
 /// The payload of `storage-value-changed-event`.
 #[derive(Debug, Clone, Serialize)]

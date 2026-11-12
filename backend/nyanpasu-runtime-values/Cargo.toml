@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+nyanpasu-ipc = { path = '../nyanpasu-runtime/nyanpasu_ipc', default-features = false, features = [
+  'specta'
+] }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }

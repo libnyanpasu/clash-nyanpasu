@@ -80,7 +80,7 @@ impl<T: PartialEq + FromStr + AsRef<str>> FieldSupport<T> {
 }
 
 /// A value in the final runtime config that the selected core rejects.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 pub struct UnsupportedConfigValue {
     /// Dotted path in the final config, such as `tun.stack`.
     pub path: String,

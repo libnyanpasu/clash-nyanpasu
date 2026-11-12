@@ -1,8 +1,9 @@
 //! Temporary-directory-backed log storage and actor fixtures shared by backend tests.
 
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
 use nyanpasu_observers::logs::{
-    CoreLogCursor, CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult,
-    CoreLogStatus, CoreLogStore, CoreLogsClient, PreparedCoreLog,
+    CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStore,
+    CoreLogsClient, PreparedCoreLog,
 };
 use tempfile::TempDir;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

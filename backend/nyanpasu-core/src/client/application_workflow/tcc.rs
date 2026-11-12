@@ -242,7 +242,8 @@ impl ApplicationWorkflow {
             )
             .1;
             if unserviceable && deferred.attempts_remaining > 0 {
-                deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+                deferred.health =
+                    nyanpasu_runtime_values::configuration::ConvergenceHealth::WaitingDependency;
                 deferred.next_attempt =
                     Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5));
             }
@@ -332,7 +333,8 @@ impl ApplicationWorkflow {
 
     /// One attempt at the committed target the live attempt carries.
     async fn retry_committed_target(&mut self, explicit: bool) {
-        use crate::client::convergence::{ConvergenceHealth, RETRY_DELAYS};
+        use crate::client::convergence::RETRY_DELAYS;
+        use nyanpasu_runtime_values::configuration::ConvergenceHealth;
         // A mutation's target keeps T8's fixed wait between dependency
         // results; `waits` still counts them.
         let target = self.committed_target();
@@ -1297,8 +1299,8 @@ impl ApplicationWorkflow {
         let running = self.lifecycle.core.core_status().host == ExecutionHost::Local
             && !matches!(
                 service.phase,
-                crate::actor_v2::service_actor::ServicePhase::NotInstalled
-                    | crate::actor_v2::service_actor::ServicePhase::DaemonStopped
+                nyanpasu_runtime_values::core_status::ServicePhase::NotInstalled
+                    | nyanpasu_runtime_values::core_status::ServicePhase::DaemonStopped
             )
             && service.server.as_ref().is_some_and(|server| {
                 super::startup::serves_instance(server, &self.lifecycle.instance_config_dir)
@@ -1372,9 +1374,9 @@ impl ApplicationWorkflow {
             attempts: previous.as_ref().map_or(0, |p| p.attempts),
             waits: previous.as_ref().map_or(0, |p| p.waits),
             health: if attempts_remaining > 0 {
-                crate::client::convergence::ConvergenceHealth::RetryScheduled
+                nyanpasu_runtime_values::configuration::ConvergenceHealth::RetryScheduled
             } else {
-                crate::client::convergence::ConvergenceHealth::Blocked
+                nyanpasu_runtime_values::configuration::ConvergenceHealth::Blocked
             },
             next_attempt: previous.and_then(|p| p.next_attempt).or_else(|| {
                 (attempts_remaining > 0)
@@ -1737,7 +1739,7 @@ mod tests {
     use super::submission_failure;
     use crate::{
         actor_v2::{
-            CoreStatusProjection, EndpointConnectivity,
+            CoreStatusProjection,
             facade::{
                 AppliedConfigBinding, ReconcileReport, ReconcileResult, RolledBackReport,
                 UncertainReconcile,
@@ -1750,6 +1752,7 @@ mod tests {
         status::ConfigRevisionInfo,
     };
     use nyanpasu_runtime_values::{
+        core_status::EndpointConnectivity,
         execution_host::ExecutionHost,
         runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError},
     };

@@ -1,17 +1,14 @@
 //! Profile values and mailbox observations shared by application and host tests.
 
-use crate::{
-    client::profiles::ProfilesClient,
-    state::profiles::{NewProfileRequest, ProfilesActorMessage, sources::SourceStatus},
-};
+use crate::{client::profiles::ProfilesClient, state::profiles::ProfilesActorMessage};
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
-    ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId,
-    ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, SubscriptionInfo,
+    ManagedProfilePath, MaterializedFile, NewProfileRequest, OverlayTransform, ProfileDefinition,
+    ProfileId, ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, SubscriptionInfo,
     TransformDefinition,
 };
 use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
-use nyanpasu_runtime_values::profiles::ProfilesError;
+use nyanpasu_runtime_values::{configuration::SourceStatus, profiles::ProfilesError};
 pub fn add_placeholder_request() -> NewProfileRequest {
     NewProfileRequest {
         metadata: file_config_item("placeholder").metadata,

@@ -98,7 +98,7 @@ pub async fn get_postprocessing_output(
 #[specta::specta]
 pub async fn get_core_status(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::actor_v2::CoreStatusInfo> {
+) -> Result<nyanpasu_runtime_values::core_status::CoreStatusInfo> {
     Ok(client.core_status().into())
 }
 
@@ -192,14 +192,16 @@ pub async fn patch_runtime_overrides(
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub fn get_hotkey_functions() -> Vec<&'static str> {
-    nyanpasu_core::client::hotkey::ports::HotkeyAction::all()
+    nyanpasu_runtime_values::hotkey::HotkeyAction::all()
         .iter()
         .filter(|action| {
             cfg!(target_os = "linux")
-                || !matches!(action,
-                nyanpasu_core::client::hotkey::ports::HotkeyAction::ToggleTransparentProxy
-                | nyanpasu_core::client::hotkey::ports::HotkeyAction::EnableTransparentProxy
-                | nyanpasu_core::client::hotkey::ports::HotkeyAction::DisableTransparentProxy)
+                || !matches!(
+                    action,
+                    nyanpasu_runtime_values::hotkey::HotkeyAction::ToggleTransparentProxy
+                        | nyanpasu_runtime_values::hotkey::HotkeyAction::EnableTransparentProxy
+                        | nyanpasu_runtime_values::hotkey::HotkeyAction::DisableTransparentProxy
+                )
         })
         .map(|action| action.as_str())
         .collect()

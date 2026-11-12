@@ -35,12 +35,11 @@ use super::{
 };
 use crate::{
     actor_v2::{
-        CoreStatusProjection, EndpointConnectivity,
+        CoreStatusProjection,
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
-        service_actor::{ServiceHostStatus, ServicePhase},
     },
     client::{
-        convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
+        convergence::{OutcomeClass, RETRY_DELAYS, next_wait},
         core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
@@ -48,6 +47,8 @@ use crate::{
     state::mutation::{intent::CoreRunIntent, value::CheckRecord},
 };
 use nyanpasu_runtime_values::{
+    configuration::ConvergenceHealth,
+    core_status::{EndpointConnectivity, ServiceHostStatus, ServicePhase},
     execution_host::ExecutionHost,
     runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
 };
@@ -1050,7 +1051,7 @@ mod tests {
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, RuntimeInfos, StatusResBody};
 
     use super::*;
-    use crate::service::compat::ServiceCompat;
+    use nyanpasu_runtime_values::core_status::ServiceCompat;
 
     const INSTANCE_CONFIG_DIR: &str = "/nyanpasu/config";
 

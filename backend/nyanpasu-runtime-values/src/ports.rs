@@ -5,7 +5,7 @@ use serde::Serialize;
 use snafu::Snafu;
 
 /// The port a resolution was picking for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum PortField {
     Mixed,
@@ -17,7 +17,7 @@ pub enum PortField {
 }
 
 /// A failure of resolving the ports a candidate runtime would bind.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[derive(Debug, Snafu, Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum PortResolveError {

@@ -11,7 +11,7 @@ use crate::{
 #[specta::specta]
 pub async fn list_log_files(
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: nyanpasu_contracts::logs::LogSource,
 ) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
     client.list_log_files(source).await
 }
@@ -21,7 +21,7 @@ pub async fn list_log_files(
 pub async fn open_log_session(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: nyanpasu_contracts::logs::LogSource,
     request: nyanpasu_logging::OpenLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
     client
@@ -34,7 +34,7 @@ pub async fn open_log_session(
 pub async fn query_logs(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: nyanpasu_contracts::logs::LogSource,
     request: nyanpasu_logging::QueryLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
     client
@@ -47,7 +47,7 @@ pub async fn query_logs(
 pub async fn close_log_session(
     window: RpcCaller,
     client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
+    source: nyanpasu_contracts::logs::LogSource,
     session: String,
 ) -> nyanpasu_logging::LogResult<()> {
     client

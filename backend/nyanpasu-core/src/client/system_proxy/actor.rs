@@ -8,6 +8,7 @@
 
 use std::{sync::Arc, time::Duration};
 
+use nyanpasu_runtime_values::configuration::{EffectFailureCode, EffectKind};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, concurrency::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -21,8 +22,8 @@ use super::{
     },
 };
 use crate::client::effects::{
-    plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
+    plan::{ProxyGuardDesired, SystemProxyDesired},
+    status::{EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 use nyanpasu_contracts::system_proxy::{
     AutoLaunchPort, OsProxyConfig, OsProxyPort, PacError, PacPort,

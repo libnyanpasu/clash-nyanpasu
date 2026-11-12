@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::{
-    actor_v2::CoreStatusInfo, clash::ws::ClashConnectionDetails, client::NyanpasuClient,
-};
+use nyanpasu_core::{clash::ws::ClashConnectionDetails, client::NyanpasuClient};
 use nyanpasu_rpc_protocol::{
     EventName, RpcError,
     frame::{Frame, LagReason, SubscriptionErrorCode, SubscriptionTarget},
+    types::CoreLogsChanged,
 };
+use nyanpasu_runtime_values::core_status::CoreStatusInfo;
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
@@ -72,9 +72,12 @@ impl SubscriptionSource for NyanpasuClient {
                     .await
                     .map_err(error::application_error)?,
             ),
-            EventName::CoreLogsChanged => Ok(
-                serde_json::json!({"status": self.get_core_log_status().await.map_err(error::application_error)?}),
-            ),
+            EventName::CoreLogsChanged => serde_json::to_value(CoreLogsChanged {
+                status: self
+                    .get_core_log_status()
+                    .await
+                    .map_err(error::application_error)?,
+            }),
             _ => unreachable!("local subscription admission only permits full-value events"),
         };
         value.map_err(error::application_error)

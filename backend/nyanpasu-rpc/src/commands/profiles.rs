@@ -1,10 +1,10 @@
 //! Shared profiles command adapters.
 
 use nyanpasu_config::profile::{
-    FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
+    FolderId, NewProfileRequest, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
     Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
 };
-use nyanpasu_core::{client::NyanpasuClient, state::profiles::actor::NewProfileRequest};
+use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
 
 use crate::{error::Result, registry::RpcState};

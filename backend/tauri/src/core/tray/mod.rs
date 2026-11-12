@@ -13,7 +13,8 @@ use nyanpasu_config::{
     application::{ClashCore, TrayMenuMode},
     clash::config::overrides::Mode,
 };
-use nyanpasu_core::client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction};
+use nyanpasu_core::client::{NyanpasuClient, effects::plan::TrayView};
+use nyanpasu_runtime_values::hotkey::HotkeyAction;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{

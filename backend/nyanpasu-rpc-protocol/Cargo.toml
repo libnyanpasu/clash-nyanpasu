@@ -8,6 +8,8 @@ authors.workspace = true
 
 [features]
 default = []
+default-meta = ['nyanpasu-config/default-meta']
+nesting = ['nyanpasu-config/nesting']
 frame-io = ['dep:tokio']
 local-client = [
   'frame-io',
@@ -19,9 +21,19 @@ local-client = [
 ]
 
 [dependencies]
+nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
+nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
+nyanpasu-core-metadata = { path = '../nyanpasu-runtime/crates/nyanpasu-core-metadata' }
+clash-api = { workspace = true }
+chrono = { version = '0.4', features = ['serde'] }
+indexmap = { version = '2', features = ['serde'] }
+uuid = { version = '1', features = ['serde'] }
+url = { version = '2', features = ['serde'] }
 snafu = '0.8'
 tokio = { version = '1', optional = true, features = ['io-util'] }
-serde = { version = '1.0', features = ['derive'] }
+serde = { version = '1.0', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
 specta = { version = '^2.0.0-rc.25', features = ['derive'] }
 specta-typescript = { version = '0.0.12', features = ['serde'] }

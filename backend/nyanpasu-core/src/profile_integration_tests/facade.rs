@@ -40,7 +40,7 @@ impl Drop for RestoreDirMode {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn logs_facade_reads_app_files_and_degrades_service_independently() {
-    use crate::client::logs::LogSource;
+    use nyanpasu_contracts::logs::LogSource;
     use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
     let dir = tempdir().unwrap();
     let paths = test_paths(dir.path(), dir.path().join("data"));

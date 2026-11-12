@@ -9,7 +9,7 @@ use snafu::Snafu;
 use super::runtime_error::RuntimeError;
 
 /// Which source domain a mutation belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfigDomain {
     Application,

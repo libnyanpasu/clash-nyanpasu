@@ -2,11 +2,11 @@
 use super::{
     actor::{EffectsArgs, EffectsClient, EffectsSnapshot},
     plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-        SystemProxyDesired, TrayRefresh,
+        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, SystemProxyDesired,
+        TrayRefresh,
     },
     ports::{ApplicationEffectsPort, CommitNotifications},
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
     NyanpasuClient,
@@ -17,6 +17,7 @@ use nyanpasu_config::{
     clash::config::ClashConfig,
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_runtime_values::configuration::{EffectFailureCode, EffectKind};
 use std::{
     sync::{
         Arc, Mutex,
@@ -587,7 +588,7 @@ async fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
 
 #[tokio::test(start_paused = true)]
 async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         retryable: true,
@@ -664,7 +665,7 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
 
 #[tokio::test(start_paused = true)]
 async fn stale_retry_callback_keeps_the_replacement_timer_and_shutdown_cancels_it() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         fail_kind: Some(EffectKind::Locale),
@@ -718,7 +719,7 @@ async fn stale_retry_callback_keeps_the_replacement_timer_and_shutdown_cancels_i
 
 #[tokio::test]
 async fn missing_binding_waits_without_spending_apply_budget() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
     let port = Arc::new(Port::default());
     let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
@@ -772,7 +773,8 @@ async fn same_port_runtime_binding_reapplies_transparent_proxy_for_new_generatio
     wait(&client, |snapshot| {
         snapshot.effects.iter().any(|effect| {
             effect.status.kind == EffectKind::TransparentProxy
-                && effect.health == crate::client::convergence::ConvergenceHealth::Healthy
+                && effect.health
+                    == nyanpasu_runtime_values::configuration::ConvergenceHealth::Healthy
         })
     })
     .await;
@@ -790,7 +792,8 @@ async fn same_port_runtime_binding_reapplies_transparent_proxy_for_new_generatio
         snapshot.effects.iter().any(|effect| {
             effect.status.kind == EffectKind::TransparentProxy
                 && effect.attempts >= 2
-                && effect.health == crate::client::convergence::ConvergenceHealth::Healthy
+                && effect.health
+                    == nyanpasu_runtime_values::configuration::ConvergenceHealth::Healthy
         })
     })
     .await;
@@ -808,7 +811,7 @@ async fn same_port_runtime_binding_reapplies_transparent_proxy_for_new_generatio
 
 #[tokio::test]
 async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
         ..Default::default()
@@ -879,7 +882,7 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
     let pending = client.configuration_status();
     assert!(pending.event_seq > before.event_seq);
     assert!(pending.effects.iter().any(|e| e.kind == EffectKind::Locale
-        && e.health == crate::client::convergence::ConvergenceHealth::Pending));
+        && e.health == nyanpasu_runtime_values::configuration::ConvergenceHealth::Pending));
     port.release.notify_one();
     wait(&client.inner.effects, |state| {
         state

@@ -23,7 +23,7 @@ use super::{
 
 /// The wire mirror of a `CoreError`, which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 pub struct CoreFailure {
     /// `None` when the core manager did not classify the failure.
     pub kind: Option<CoreErrorKind>,
@@ -211,7 +211,7 @@ pub enum RuntimeError {
 }
 
 /// Why the runtime baseline could not be put back.
-#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[derive(Debug, Snafu, Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum RestoreFailure {

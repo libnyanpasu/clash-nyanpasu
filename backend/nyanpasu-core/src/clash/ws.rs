@@ -728,7 +728,7 @@ impl Actor for StreamsActor {
                     && let Some(snapshot) = projection.snapshot
                     && matches!(
                         projection.connectivity,
-                        crate::actor_v2::EndpointConnectivity::Connected
+                        nyanpasu_runtime_values::core_status::EndpointConnectivity::Connected
                     )
                     && matches!(
                         snapshot.state,

@@ -74,11 +74,11 @@ use crate::{
     actor_v2::{
         CoreClient as CoreClientV2, CoreStatusProjection,
         facade::{ReconcileReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
+        service_actor::ServiceClient,
     },
     state::{
         config_error::ConfigError,
-        profiles::{CommitReport, NewProfileRequest, ReorderOp},
+        profiles::{CommitReport, ReorderOp},
     },
 };
 use nyanpasu_config::{
@@ -91,7 +91,7 @@ use nyanpasu_config::{
         features::ConfigFeatures,
     },
     profile::{
-        FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
+        FolderId, NewProfileRequest, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
         ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
         RemoteProfileOptionsPatch, TransformKind,
     },
@@ -99,6 +99,10 @@ use nyanpasu_config::{
 };
 use nyanpasu_contracts::{net::SelfProxyPortSource, profiles::ports::ProfileFsPort};
 use nyanpasu_runtime_values::{
+    app_update::AppUpdateSnapshot,
+    configuration::EffectKind,
+    core_status::ServiceHostStatus,
+    effects::EffectsError,
     profiles::{
         ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu, ProfileNotFoundSnafu, ProfilesError,
         ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
@@ -777,27 +781,27 @@ impl NyanpasuClient {
         self.inner.bundle_metadata.release_channel
     }
 
-    pub async fn get_app_update_state(&self) -> Result<app_update::AppUpdateSnapshot> {
+    pub async fn get_app_update_state(&self) -> Result<AppUpdateSnapshot> {
         Ok(self.inner.app_updater.state().await?)
     }
 
-    pub async fn check_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
+    pub async fn check_app_update(&self) -> Result<AppUpdateSnapshot> {
         Ok(self.inner.app_updater.check().await?)
     }
 
-    pub async fn download_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
+    pub async fn download_app_update(&self) -> Result<AppUpdateSnapshot> {
         Ok(self.inner.app_updater.download().await?)
     }
 
-    pub async fn cancel_app_update_download(&self) -> Result<app_update::AppUpdateSnapshot> {
+    pub async fn cancel_app_update_download(&self) -> Result<AppUpdateSnapshot> {
         Ok(self.inner.app_updater.cancel_download().await?)
     }
 
-    pub async fn install_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
+    pub async fn install_app_update(&self) -> Result<AppUpdateSnapshot> {
         Ok(self.inner.app_updater.install().await?)
     }
 
-    pub async fn discard_app_update_package(&self) -> Result<app_update::AppUpdateSnapshot> {
+    pub async fn discard_app_update_package(&self) -> Result<AppUpdateSnapshot> {
         Ok(self.inner.app_updater.discard().await?)
     }
 
@@ -1077,21 +1081,16 @@ impl NyanpasuClient {
         self.inner.application_workflow.retry_runtime().await
     }
 
-    pub fn retry_effect_now(
-        &self,
-        kind: effects::plan::EffectKind,
-    ) -> std::result::Result<(), effects::error::EffectsError> {
+    pub fn retry_effect_now(&self, kind: EffectKind) -> std::result::Result<(), EffectsError> {
         self.inner.effects.retry_now(kind)
     }
 
-    pub fn request_tray_refresh(&self) -> std::result::Result<(), effects::error::EffectsError> {
+    pub fn request_tray_refresh(&self) -> std::result::Result<(), EffectsError> {
         self.inner.effects.request_tray_refresh()
     }
 
     /// Resolves the widget logo again after an icon file changed.
-    pub fn request_widget_logo_refresh(
-        &self,
-    ) -> std::result::Result<(), effects::error::EffectsError> {
+    pub fn request_widget_logo_refresh(&self) -> std::result::Result<(), EffectsError> {
         self.inner.effects.request_widget_logo_refresh()
     }
 
@@ -3008,7 +3007,7 @@ pub(crate) mod tests {
             assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,
-                crate::client::convergence::ConvergenceHealth::Healthy
+                nyanpasu_runtime_values::configuration::ConvergenceHealth::Healthy
             );
         })
         .await;
@@ -3369,7 +3368,7 @@ pub(crate) mod tests {
             assert_eq!(failed.sources[0].profile, uid);
             assert_eq!(
                 failed.sources[0].health,
-                crate::client::convergence::ConvergenceHealth::Blocked
+                nyanpasu_runtime_values::configuration::ConvergenceHealth::Blocked
             );
 
             client.delete_profile(uid).await.unwrap();

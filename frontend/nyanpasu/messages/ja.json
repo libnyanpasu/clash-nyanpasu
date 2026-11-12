@@ -136,6 +136,7 @@
   "settings_system_proxy_service_mode_description": "サービスは Clash コアの管理に使われます。コアには必要な権限だけを与えることで、権限の取得を最小限に抑えます。TUN モードなど特権が必要な場面で使用されます。",
   "settings_system_proxy_service_mode_disabled_tooltip": "サービスモードを有効にするには、Clash Nyanpasu サービスがインストールされ、起動していることを確認してください。",
   "settings_system_proxy_service_mode_incompatible_tooltip": "インストール済みのサービスは互換性がありません。下の「システムサービス」を確認してください。",
+  "settings_system_proxy_service_mode_desktop_only_tooltip": "サービスモードはデスクトップアプリでのみ変更できます。",
   "service_mode_fallback_not_installed": "サービスモードはオンですが、サービスがインストールされていないため、コアはローカルで実行されます。設定の「システムサービス」からインストールすると利用できます。",
   "service_mode_fallback_stopped": "サービスモードはオンですが、サービスが実行されていないため、コアはローカルで実行されます。設定の「システムサービス」から起動すると利用できます。",
   "service_mode_fallback_incompatible": "サービスモードはオンですが、インストール済みのサービスが互換性を満たさないため、コアはローカルで実行されます。設定の「システムサービス」から更新してください。",

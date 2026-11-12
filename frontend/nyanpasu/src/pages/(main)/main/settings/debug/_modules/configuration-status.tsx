@@ -70,6 +70,7 @@ const CONFIGURATION_MUTATIONS = new Set<unknown>([
   'patchRuntimeOverrides',
   'changeClashCore',
   'setHotkeys',
+  'setServiceMode',
   'createProfile',
   'updateProfile',
   'patchProfileMetadata',

@@ -299,7 +299,8 @@ fn catalog_excludes_test_fixtures() {
 #[test]
 fn full_http_exposure_is_preserved_across_shared_split() {
     // E2a parent f56f08143: all 104 HTTP declarations are unconditional across
-    // platform/feature cfgs. Keep guards in the comparison, not only names.
+    // platform/feature cfgs. R3 removes set_hotkeys from HTTP; preserve the
+    // remaining declarations and guards, not only names.
     const BEFORE: &[&str] = &[
         "activate_profile",
         "change_clash_core",
@@ -395,7 +396,6 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "select_proxy",
         "set_clash_ws_recording",
         "set_global_transforms",
-        "set_hotkeys",
         "set_profile_layout",
         "set_profile_valid_fields",
         "set_proxy_group_layout",

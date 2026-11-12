@@ -66,7 +66,7 @@ const useTypedConfig = <TConfig, TPatch>(
 const useTypedConfigField = <
   TConfig,
   TPatch,
-  K extends keyof TConfig & keyof TPatch,
+  K extends keyof TConfig,
   TClearable extends keyof TPatch = never,
 >(
   { query, upsert: update }: ReturnType<typeof useTypedConfig<TConfig, TPatch>>,
@@ -86,9 +86,11 @@ const useTypedConfigField = <
    * Does nothing until the config has loaded.
    */
   const upsert = async (
-    value: K extends TClearable
-      ? Exclude<TPatch[K], undefined>
-      : NonNullable<TPatch[K]>,
+    value: K extends keyof TPatch
+      ? K extends TClearable
+        ? Exclude<TPatch[K], undefined>
+        : NonNullable<TPatch[K]>
+      : never,
   ) => {
     if (!data) {
       return
@@ -107,11 +109,13 @@ const useTypedConfigField = <
 }
 
 /**
- * A patch of the application config. The serialize form of the generated type
- * requires the nested patches, which a patch that does not touch them leaves
- * out.
+ * Ordinary application preferences only. Host-bound hotkeys and privileged
+ * service mode use `set_hotkeys` and `set_service_mode`; reads keep the full
+ * application config. Keep nested patches optional when they are untouched.
  */
-type AppConfigPatch = Partial<NyanpasuAppConfigPatch_Serialize>
+type AppConfigPatch = Partial<
+  Omit<NyanpasuAppConfigPatch_Serialize, 'hotkeys' | 'enable_service_mode'>
+>
 
 /**
  * The application config (`NyanpasuAppConfig`).
@@ -139,9 +143,7 @@ export const useSettings = () => {
  * const { value, upsert } = useSetting('theme_mode')
  * ```
  */
-export const useSetting = <
-  K extends keyof NyanpasuAppConfig_Serialize & keyof AppConfigPatch,
->(
+export const useSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
   key: K,
 ) => {
   return useTypedConfigField(useSettings(), key)

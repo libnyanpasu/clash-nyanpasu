@@ -42,7 +42,8 @@ pub async fn get_hotkeys(client: RpcState<'_, NyanpasuClient>) -> Result<Vec<Str
     Ok(client.get_app_config().await?.hotkeys)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(hotkey))]
+// See commands/runtime.rs::AppPreferencesPatch for the command-scope and domain-split rule.
+#[nyanpasu_macro::rpc(optional_capabilities(hotkey))]
 #[specta::specta]
 pub async fn set_hotkeys(
     client: RpcState<'_, NyanpasuClient>,

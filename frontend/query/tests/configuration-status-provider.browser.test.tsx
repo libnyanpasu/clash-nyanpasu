@@ -7,6 +7,7 @@ import {
 } from '@nyanpasu/rpc'
 import type { ConfigurationStatus } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationUnconfirmedError } from '../src/ipc/query-options'
 import {
   CONFIGURATION_STATUS_QUERY_KEY,
   ConfigurationStatusProvider,
@@ -180,4 +181,23 @@ test('does not query or subscribe while disabled', async ({
   expect(disabled.invoke).not.toHaveBeenCalled()
   expect(disabled.eventListen).not.toHaveBeenCalled()
   expect(disabled.listenerCount()).toBe(0)
+})
+
+test('service mode mutations participate in configuration status', async ({
+  onTestFinished,
+}) => {
+  const { queryClient, values } = await setup(onTestFinished, false)
+  const mutation = queryClient.getMutationCache().build(queryClient, {
+    mutationKey: ['setServiceMode'],
+    mutationFn: async () => {
+      throw new MutationUnconfirmedError(new Error('lost reply'))
+    },
+  })
+
+  await expect(mutation.execute(undefined)).rejects.toBeInstanceOf(
+    MutationUnconfirmedError,
+  )
+  await expect
+    .poll(() => values.at(-1)?.isLatestOperationUnconfirmed)
+    .toBe(true)
 })

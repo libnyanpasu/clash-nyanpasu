@@ -637,6 +637,10 @@ export function createRpcClient(
     stopService: () => typedError<null, IpcError>(__RPC_INVOKE('stop_service')),
     restartService: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_service')),
+    setServiceMode: (enabled: boolean) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_service_mode', { enabled }),
+      ),
     selectProxy: (group: string, name: string) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('select_proxy', { group, name }),
@@ -2932,7 +2936,7 @@ export type NewProfileRequest_Serialize = {
   folder: FolderId | null
 }
 
-/**  ### `verge.yaml` schema */
+/**  `application.yaml` schema. */
 export type NyanpasuAppConfig =
   NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
 
@@ -3042,7 +3046,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   use_legacy_ui?: boolean | null
 }
 
-/**  ### `verge.yaml` schema */
+/**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Deserialize = {
   /**  app listening port for app singleton */
   app_singleton_port: number
@@ -3062,7 +3066,12 @@ export type NyanpasuAppConfig_Deserialize = {
   enable_memory_usage: boolean
   /**  global ui framer motion effects */
   lighten_animation_effects: boolean
-  /**  service mode */
+  /**
+   *  Service mode, stored in the application domain.
+   *  RPC writes use only `set_service_mode`: this setting can request privileged
+   *  host state and must never be writable over HTTP. Core domain patches remain
+   *  supported.
+   */
   enable_service_mode: boolean
   /**  can the app auto startup */
   enable_auto_launch: boolean
@@ -3081,8 +3090,10 @@ export type NyanpasuAppConfig_Deserialize = {
   /**  clash core path */
   core: ClashCore_Deserialize
   /**
-   *  hotkey map
-   *  format: {func},{key}
+   *  Global shortcut bindings, stored in the application domain.
+   *  RPC writes use only `set_hotkeys`: these host-bound bindings must never be
+   *  writable over HTTP. Core domain patches remain supported.
+   *  Format: `{function},{key}`.
    */
   hotkeys: string[]
   /**  默认的延迟测试连接 */
@@ -3157,7 +3168,7 @@ export type NyanpasuAppConfig_Deserialize = {
   use_legacy_ui: boolean
 }
 
-/**  ### `verge.yaml` schema */
+/**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Serialize = {
   /**  app listening port for app singleton */
   app_singleton_port: number
@@ -3177,7 +3188,12 @@ export type NyanpasuAppConfig_Serialize = {
   enable_memory_usage: boolean
   /**  global ui framer motion effects */
   lighten_animation_effects: boolean
-  /**  service mode */
+  /**
+   *  Service mode, stored in the application domain.
+   *  RPC writes use only `set_service_mode`: this setting can request privileged
+   *  host state and must never be writable over HTTP. Core domain patches remain
+   *  supported.
+   */
   enable_service_mode: boolean
   /**  can the app auto startup */
   enable_auto_launch: boolean
@@ -3196,8 +3212,10 @@ export type NyanpasuAppConfig_Serialize = {
   /**  clash core path */
   core: ClashCore_Serialize
   /**
-   *  hotkey map
-   *  format: {func},{key}
+   *  Global shortcut bindings, stored in the application domain.
+   *  RPC writes use only `set_hotkeys`: these host-bound bindings must never be
+   *  writable over HTTP. Core domain patches remain supported.
+   *  Format: `{function},{key}`.
    */
   hotkeys: string[]
   /**  默认的延迟测试连接 */

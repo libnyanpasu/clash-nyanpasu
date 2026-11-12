@@ -5,7 +5,8 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting, useSystemService } from '@nyanpasu/query'
+import { usePlatform } from '@nyanpasu/platform/react'
+import { useServiceMode, useSystemService } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -14,7 +15,8 @@ import {
 } from '../../../../_modules/settings-card'
 
 export default function SystemServiceSwitch() {
-  const serviceMode = useSetting('enable_service_mode')
+  const serviceMode = useServiceMode()
+  const browser = usePlatform().surface === 'browser'
 
   const { query } = useSystemService()
 
@@ -29,17 +31,20 @@ export default function SystemServiceSwitch() {
 
   // 未安装或不兼容时只拦「打开」，已开启的仍可关闭；开启期间内核回退到本地运行，
   // 原因由开关旁的警告图标说明。
-  const disabled = !serviceMode.value && (notInstalled || compatBlocked)
+  const disabled =
+    browser || (!serviceMode.value && (notInstalled || compatBlocked))
 
-  const hint = !disabled
-    ? null
-    : compatBlocked
-      ? m.settings_system_proxy_service_mode_incompatible_tooltip()
-      : m.settings_system_proxy_service_mode_disabled_tooltip()
+  const hint = browser
+    ? m.settings_system_proxy_service_mode_desktop_only_tooltip()
+    : !disabled
+      ? null
+      : compatBlocked
+        ? m.settings_system_proxy_service_mode_incompatible_tooltip()
+        : m.settings_system_proxy_service_mode_disabled_tooltip()
 
   const handleServiceMode = useLockFn(async () => {
     try {
-      await serviceMode.upsert(!serviceMode.value)
+      await serviceMode.mutate(!serviceMode.value)
     } catch (error) {
       message(
         `Activation Service Mode failed!\n Error: ${formatError(error)}`,

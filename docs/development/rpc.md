@@ -39,6 +39,8 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 ### Use the unified RPC surface
 
+A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. General `patch_*` commands accept ordinary preferences only; reject out-of-scope fields while decoding their request types, and split the domain when another such field or a policy group would grow the exception list.
+
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
 - Frontend application calls use generated protocol types and transport adapters from `@nyanpasu/rpc`, then query/mutation bindings from `@nyanpasu/query`. The app injects the RPC client/context into query providers. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.

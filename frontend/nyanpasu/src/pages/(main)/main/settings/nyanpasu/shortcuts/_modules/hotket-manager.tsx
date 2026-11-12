@@ -10,6 +10,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { parseHotkey } from '@/utils/parse-hotkey'
 import { useLockFn } from '@nyanpasu/hooks'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { useHotkeyFunctions, useHotkeys } from '@nyanpasu/query'
 import {
   ItemContainer,
@@ -24,9 +25,11 @@ type HotkeyMap = Record<string, string[]>
 const HotkeyItem = ({
   keys,
   onChange,
+  disabled,
 }: {
   keys: string[]
   onChange: (keys: string[]) => Promise<void> | void
+  disabled: boolean
 }) => {
   const [isListening, setIsListening] = useState(false)
   const [currentKeys, setCurrentKeys] = useState(keys)
@@ -122,6 +125,7 @@ const HotkeyItem = ({
 
       <Button
         icon
+        disabled={disabled}
         onClick={isListening ? handleStopListening : handleStartListening}
         className="relative size-8 shrink-0"
         variant="raised"
@@ -129,6 +133,7 @@ const HotkeyItem = ({
         {isListening ? <ErrorRounded /> : <EditOutlineRounded />}
 
         <input
+          disabled={disabled}
           ref={inputRef}
           type="text"
           className="absolute inset-0 cursor-pointer opacity-0"
@@ -140,6 +145,7 @@ const HotkeyItem = ({
 
       <Button
         icon
+        disabled={disabled}
         onClick={handleClear}
         className="size-8 shrink-0"
         variant="raised"
@@ -152,6 +158,7 @@ const HotkeyItem = ({
 
 export default function HotkeyManager() {
   const [hotkeyMap, setHotkeyMap] = useState<HotkeyMap>({})
+  const browser = usePlatform().surface === 'browser'
 
   const { data: supportedFuncs = [] } = useHotkeyFunctions()
 
@@ -222,6 +229,11 @@ export default function HotkeyManager() {
         className="gap-4 py-4"
         data-slot="hotkey-manager-content"
       >
+        {browser && (
+          <p className="text-on-surface-variant text-sm">
+            {m.error_config_hotkey_capability_unsupported()}
+          </p>
+        )}
         {supportedFuncs.map((func) => (
           <ItemContainer key={func}>
             <ItemLabel>
@@ -231,6 +243,7 @@ export default function HotkeyManager() {
             </ItemLabel>
 
             <HotkeyItem
+              disabled={browser}
               keys={hotkeyMap[func] ?? []}
               onChange={(keys) => handleChange(func, keys)}
             />

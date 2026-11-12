@@ -81,6 +81,7 @@ export const STATIC_ITEM_RE =
 export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/tauri/src/',
   'backend/nyanpasu-core/src/',
+  'backend/nyanpasu-state-engine/src/',
   'backend/nyanpasu-migration/src/',
   'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-observers/src/',

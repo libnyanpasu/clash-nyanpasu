@@ -16,7 +16,7 @@
 //! 1. Happy cascade: A commits → B commits → C notified
 //! 2. Effect failure at A: with_pending_state effect fails → nothing committed
 
-use crate::state::{error::WithEffectError, *};
+use crate::{error::WithEffectError, *};
 use std::sync::{
     Arc, Mutex as StdMutex,
     atomic::{AtomicUsize, Ordering},
@@ -109,7 +109,7 @@ impl StateAckSubscriber<SourceConfig> for BridgeAckSubscriber {
         let mut mgr = self.b_manager.lock().await;
         match mgr.upsert(new_b).await {
             Ok(_) => Ack::Ok,
-            Err(e) => Ack::Failed(crate::state::ack::test_ack_error(&e.to_string())),
+            Err(e) => Ack::Failed(crate::ack::test_ack_error(&e.to_string())),
         }
     }
 }

@@ -1,5 +1,5 @@
-use crate::state::{PersistentStateManager, VersionedState};
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
+use nyanpasu_state_engine::{PersistentStateManager, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::ResultExt as _;
 use struct_patch::Patch;

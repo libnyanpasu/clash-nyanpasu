@@ -3,11 +3,11 @@
 //! has settled a mutation.
 use std::sync::Arc;
 
-use crate::state::{
+use nyanpasu_core_manager::OperationId;
+use nyanpasu_state_engine::{
     AckStatus, DecisionHandle, ReplaceIfVersionError, StateChange, StateParticipant,
     error::StateChangedError,
 };
-use nyanpasu_core_manager::OperationId;
 use serde::Serialize;
 use snafu::{IntoError, Snafu, ensure};
 use tokio::sync::{oneshot, watch};
@@ -390,12 +390,17 @@ struct IsolatedParticipant;
 
 #[cfg(any(test, feature = "test-support"))]
 #[async_trait::async_trait]
-impl<T: Clone + Send + Sync + 'static> crate::state::StateAckSubscriber<T> for IsolatedParticipant {
-    fn name(&self) -> crate::state::SubscriberName<'_> {
-        crate::state::SubscriberName("isolated-domain-test".into())
+impl<T: Clone + Send + Sync + 'static> nyanpasu_state_engine::StateAckSubscriber<T>
+    for IsolatedParticipant
+{
+    fn name(&self) -> nyanpasu_state_engine::SubscriberName<'_> {
+        nyanpasu_state_engine::SubscriberName("isolated-domain-test".into())
     }
 
-    async fn on_prepare(&self, _: crate::state::StateChange<T>) -> crate::state::Ack {
-        crate::state::Ack::Ok
+    async fn on_prepare(
+        &self,
+        _: nyanpasu_state_engine::StateChange<T>,
+    ) -> nyanpasu_state_engine::Ack {
+        nyanpasu_state_engine::Ack::Ok
     }
 }

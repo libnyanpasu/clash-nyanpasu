@@ -1,6 +1,6 @@
 use bon::Builder;
 
-use crate::state::PrepareReport;
+use crate::PrepareReport;
 
 use super::{super::error::*, *};
 
@@ -69,7 +69,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Ack, StateAckSubscriber, StateChange, SubscriberName};
+    use crate::{Ack, StateAckSubscriber, StateChange, SubscriberName};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -92,7 +92,7 @@ mod tests {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(crate::state::ack::test_ack_error("init ACK failed"))
+            Ack::Failed(crate::ack::test_ack_error("init ACK failed"))
         }
     }
 

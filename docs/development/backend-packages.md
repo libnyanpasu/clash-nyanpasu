@@ -19,7 +19,8 @@ dependency rules.
 | `nyanpasu-observers`         | Core-log, traffic and country-index owners over injected store, frame and mode ports              | Implementation crates, `redb`, `clash-api`, core manager, `notify`, `notify-debouncer-full`, Tauri, egui/eframe or Slint      |
 | `nyanpasu-migration`         | Configuration upgrades, backups and session document reads through storage ports                  | Implementation crates, `redb`, core manager, Tauri, egui/eframe or Slint                                                      |
 | `nyanpasu-updater`           | Core update owner, artifact preparation, downloads and unpacking over an injected backend factory | Implementation crates, Tauri, egui/eframe or Slint                                                                            |
-| `nyanpasu-core`              | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions  | Implementation crates, Tauri, egui/eframe or Slint                                                                            |
+| `nyanpasu-state-engine`      | Generic state coordination, persistence, snapshots and transaction settlement                     | Every parent-workspace package except persistence; other core-family packages and GUI                                         |
+| `nyanpasu-core`              | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and source state owners | Implementation crates, Tauri, egui/eframe or Slint                                                                            |
 | `nyanpasu-scripts`           | JavaScript and Lua script runners behind config's `ScriptRunner`                                  | Core, other implementation crates, Tauri, egui/eframe or Slint                                                                |
 | `nyanpasu-widget-protocol`   | Render-free statistic widget contract: variants, messages and the optional `ipc` channel          | Tauri, egui/eframe or Slint                                                                                                   |
 | `nyanpasu-widget`            | Statistic widget process frontend, rendered with Slint                                            | Tauri; no neutral crate may depend on it                                                                                      |
@@ -44,9 +45,9 @@ implementation crates. Tauri-specific adapters remain in the host.
 The [target
 ownership](../design/application-platform-extraction.md#target-ownership)
 keeps facade, application and core control as modules in `nyanpasu-core`, above
-the delivered owner, foundation and implementation crates. Phase D adds the
-state-engine leaf and the upper-foundation runtime-values package; these two
-packages are planned, not yet delivered.
+the delivered owner, foundation and implementation crates. D1 delivered the
+state-engine leaf. The upper-foundation runtime-values package remains planned
+for D2.
 Names are working names until the PR that creates each crate.
 
 | Group                         | Packages (planned)                                                                                                                             | Depends on                                                                                                                                              |
@@ -55,7 +56,7 @@ Names are working names until the PR that creates each crate.
 | CLI                           | `nyanpasu-cli`, a client of a running shell over the local socket                                                                              | `nyanpasu-rpc-protocol` and the local-socket client; not core                                                                                           |
 | RPC                           | `nyanpasu-rpc-protocol`, `nyanpasu-rpc`, WebUI and local-socket transports                                                                     | Protocol: lower foundation DTOs, including runtime-values after D2. Registry: core                                                                      |
 | Target crates                 | `nyanpasu-os` (OS integration), `nyanpasu-openwrt` (on resume)                                                                                 | The foundation layer only; never core or other implementation crates                                                                                    |
-| Core package family           | `nyanpasu-core` (facade, application and control modules), migration, owner-support, observers, updater; planned `nyanpasu-state-engine`       | Downward to foundation; engine is a leaf and may depend only on persistence among parent-workspace packages                                             |
+| Core package family           | `nyanpasu-core` (facade, application and control modules), migration, owner-support, observers, updater, `nyanpasu-state-engine`               | Downward to foundation; engine is a leaf and may depend only on persistence among parent-workspace packages                                             |
 | Foundation leaves             | `nyanpasu-config`, `nyanpasu-contracts`, `nyanpasu-persistence`, `nyanpasu-profile-transform`                                                  | Existing leaf rules remain; none may depend on runtime-values                                                                                           |
 | Upper foundation (planned D2) | `nyanpasu-runtime-values`: public mutation results, degradation, runtime/profile error closure                                                 | Config (defaults off), contracts, transform, neutral core metadata and required libraries; no CORE_FAMILY, engine, implementations, GUI or core manager |
 | Implementation crates         | `nyanpasu-scripts` (JS and Lua runners), `nyanpasu-profile-io` (profile files), `nyanpasu-net` (subscription and other HTTP), storage backends | The foundation layer only; never core, never each other                                                                                                 |

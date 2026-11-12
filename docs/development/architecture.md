@@ -50,7 +50,7 @@ backend/tauri/src/
           v
 backend/nyanpasu-core/src/
   client/                  NyanpasuClient, typed clients, workflows, runtime builds and artifact conversion
-  state/                   configuration transactions
+  state/                   configuration source owners
   actor_v2/, clash/        core control and API streams
   logs/                    redb log storage and codec adapters
   geo/, traffic/           geodata and traffic accounting
@@ -62,6 +62,7 @@ nyanpasu-profile-transform  runtime builder, builtin transforms and output types
           v
 nyanpasu-config             domain models and pure runtime executor
 
+backend/nyanpasu-state-engine/src/ generic state coordination, persistence and transaction settlement
 backend/nyanpasu-observers/src/    log capture owner and storage ports
 backend/nyanpasu-updater/src/      core update owner, HTTP backend, downloads and unpacking
 backend/nyanpasu-migration/src/    configuration upgrades, backups and session document reads
@@ -98,7 +99,7 @@ is the plan for the next stage:
   registered only by a shell that provides it.
 - **The core package family** keeps facade, application and control as modules
   in `nyanpasu-core`, above migration, owner-support, observers and updater.
-  Phase D plans `nyanpasu-state-engine` as a core-family leaf: among parent-workspace
+  D1 delivered `nyanpasu-state-engine` as a core-family leaf: among parent-workspace
   packages it depends only on persistence, with default features disabled; other
   core-family members and parent-workspace packages are forbidden. The purpose
   is dependency enforcement, not an assumed compile-time gain.
@@ -162,14 +163,15 @@ Rules for maintaining the separation:
 - Tests of moved code construct the client or service graph with fake adapters and
   must not need the Tauri runtime.
 - The architecture-ledger static gate covers `backend/tauri/src/`,
-  `backend/nyanpasu-core/src/`, `backend/nyanpasu-contracts/src/`,
+  `backend/nyanpasu-core/src/`, `backend/nyanpasu-state-engine/src/`,
+  `backend/nyanpasu-contracts/src/`,
   `backend/nyanpasu-scripts/src/`, `backend/nyanpasu-profile-transform/src/`,
   `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
   `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/`,
   `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
   `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All thirteen use the same explicit path-and-name allowlist; other backend library
+  All fourteen use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

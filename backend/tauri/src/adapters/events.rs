@@ -7,7 +7,7 @@ use tauri_specta::Event;
 
 use nyanpasu_core::{
     actor_v2::{CoreStatusInfo, service_actor::ServiceHostStatus},
-    clash::ws::{ClashWsPacket, ClashWsUpdate},
+    clash::ws::ClashWsUpdate,
     client::{StateChanged, app_update::AppUpdateSnapshot},
     storage::StorageRevision,
 };
@@ -36,15 +36,6 @@ pub struct CoreLogsChanged {
 pub struct ClashWsEvent {
     pub sequence: u64,
     pub update: ClashWsUpdate,
-}
-
-impl From<ClashWsPacket> for ClashWsEvent {
-    fn from(packet: ClashWsPacket) -> Self {
-        Self {
-            sequence: packet.sequence,
-            update: packet.update,
-        }
-    }
 }
 
 /// Event emitted to all windows when storage changes were dropped, so every

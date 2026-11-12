@@ -88,7 +88,7 @@ it and which shell capabilities it needs.
 Every dispatched call passes one audit seam in the RPC layer, whatever the
 transport. It records metadata only (transport, command, caller, duration and
 outcome), never payloads; the shell decides where the records go.
-E2 moves `dispatch_audited`, its injected synchronous sink port and the neutral
+E2b moved `dispatch_audited`, its injected synchronous sink port and the neutral
 production `TracingRpcAuditSink` with its level/secret-exclusion tests into
 `nyanpasu-rpc`; both shells reuse this implementation. E3's local socket/CLI enters the same kernel at INFO,
 as HTTP does; Tauri IPC stays at DEBUG regardless of outcome. Direct HTTP archive
@@ -385,8 +385,10 @@ Known gaps against the target ownership:
 - Runtime candidate file IO is implemented by `RuntimePaths`.
 - Watcher and service-log IO remains in core: geodata and external-profile
   watchers, and service-log IPC (`client/logs.rs`).
-- The RPC registry, command declarations and HTTP server live in the Tauri
-  crate ([RPC targets](#rpc-targets)).
+- E2b moved the shared RPC registry, commands, audit and HTTP server to
+  `nyanpasu-rpc`. Native IPC and asset resolution stay in Tauri. E2c replaces
+  the event input bridge with bus-first publication and synchronous targeted
+  native delivery; assets remain required until E3a.
 
 ### Core split stack
 
@@ -428,11 +430,11 @@ Part 24 (M10) documents the delivered layout. Review of that PR recorded the own
 correction above
 ([comment](https://github.com/libnyanpasu/clash-nyanpasu/pull/6108#issuecomment-6545500519)).
 
-Planned E2a uses schema-only Specta collection, retaining only `call_rpc` in the Tauri transport builder and byte-identical generated files. Its complete 104-command HTTP disposition table preserves host behavior through injected ports, including Tauri executable resolution and pure icon/file queries. E1b explicitly projects and decodes `CoreAgentSkill` as well as runtime values.
+E2a uses schema-only Specta collection, retaining only `call_rpc` in the Tauri transport builder and byte-identical generated files. Its complete 104-command HTTP disposition table preserves host behavior through injected ports, including Tauri executable resolution and pure icon/file queries. E1b explicitly projects and decodes `CoreAgentSkill` as well as runtime values.
 
 Planned E3 shares one default endpoint per user/app data directory across desktop and server; the first binder owns it, a second live binder fails, and CLI may use `--endpoint`. Unix only reclaims a valid private-directory user-owned socket on connect refused; Windows uses first-instance exclusivity without stale cleanup. E3b defines version/features, canonical JSON and subscribe/unsubscribe/lag ordering. Planned E4 keeps the current Redb log store and observers fallback, and installs a neutral process panic policy before tasks start. HTTP/local/background-owner subprocess panic tests require non-zero exit with original panic evidence and no RPC-error conversion. These are acceptance requirements, not delivered capabilities.
 
-Round-2 refinement remains planned: E2a moves the four shared HTTP response definitions before RPC extraction, with the icon-mode value owned by protocol and asset functions owned by the shell. E2b includes runtime-values unconditionally. E3b now retains only full-value configuration/core/service status, app-update state when available, and core-log status, with an initial snapshot and fresh reset after local lag. The separate connection-detail contract is unchanged. All other event identities are excluded from E3 local subscriptions. Real-connection reset tests cover only those five identities; the thirteen-command allowlist is unchanged. O-46/V-63 defer invalidation/storage recovery to a separate reviewed card with round-3 findings 1–3 as acceptance criteria. E4a's real OS refusal-adapter tests use a narrowly scoped, default-off OS test-support feature enabled only by the server dev-dependency; production feature closure excludes it. Decisions O-40–O-45 and deviations V-56–V-62 record these changes and the Service-open lease limitation.
+E2a moved the four shared HTTP response definitions before RPC extraction, with the icon-mode value owned by protocol and asset functions owned by the shell. E2b includes runtime-values unconditionally in dependency roots and reverse-edge policy. E3b now retains only full-value configuration/core/service status, app-update state when available, and core-log status, with an initial snapshot and fresh reset after local lag. The separate connection-detail contract is unchanged. All other event identities are excluded from E3 local subscriptions. Real-connection reset tests cover only those five identities; the thirteen-command allowlist is unchanged. O-46/V-63 defer invalidation/storage recovery to a separate reviewed card with round-3 findings 1–3 as acceptance criteria. E4a's real OS refusal-adapter tests use a narrowly scoped, default-off OS test-support feature enabled only by the server dev-dependency; production feature closure excludes it. Decisions O-40–O-45 and deviations V-56–V-62 record these changes and the Service-open lease limitation.
 
 ## Next stage
 
@@ -574,3 +576,18 @@ Shared musl tests are not server, procd, SDK package or hardware acceptance.
 Validate these separately after resume, including native dependencies, CPU
 requirements and JS/Lua resource costs. The
 [MVP definition](openwrt-mvp.md) retains the product scope and deferred policies.
+
+### E2b delivered ownership
+
+`nyanpasu-rpc` now owns shared commands/responses, application error mapping,
+archive collection, registry/dependencies, the C2f audit kernel and production
+tracing sink, EventBus, and the neutral HTTP actor/router/assets port. Tauri keeps
+native dispatch, event derives, and the executable and asset resolvers. HTTP is
+default-off and enabled explicitly by the desktop; no-assets refusal and
+transport exposure are unchanged. E2c now publishes all seven observation sources
+and the UI/app-update sinks through the bus, with synchronous targeted native
+delivery and bounded SSE lag/resync. Forwarders subscribe at construction before
+reconciliation, streams and listeners; root tasks own their shutdown. Deep links
+and window messages publish explicitly, and connection details remain demand
+streams outside the global broadcast. E3a API-only startup, local RPC and the
+headless shell remain planned.

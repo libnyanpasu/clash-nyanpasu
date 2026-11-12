@@ -1,42 +1,21 @@
 use crate::{
-    core::*,
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
     window::{
         WindowManager, kinds,
         kinds::{EditorWindow, EditorWindowType, MainWindow},
     },
 };
-use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
-use indexmap::IndexMap;
 use log::debug;
-use nyanpasu_contracts::{
-    net::{DirectEgress, StunServerTest},
-    system_dns::SystemDnsError,
-    system_proxy::OsProxyError,
-};
-use nyanpasu_core::{
-    client::{
-        ClientError, NyanpasuClient, agent_skills::CoreAgentSkill,
-        debug_http::DebugHttpControlError, effects::error::EffectsError,
-    },
-    state::config_error::ConfigError,
-    storage::{Storage, StorageItem, StorageOperationError, StorageRevision, WebStorage},
-};
-use nyanpasu_observers::logs::{
-    CoreLogCursor, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult, CoreLogStatus,
-};
+use nyanpasu_contracts::net::StunServerTest;
+use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
-use nyanpasu_profile_transform::PostProcessingOutput;
-use nyanpasu_runtime_values::{
-    profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
-    runtime_error::RuntimeError,
-};
-use nyanpasu_updater::ManifestVersionLatest;
+use nyanpasu_rpc::error::{IpcError, Result};
+use nyanpasu_rpc_protocol::values::TrayIcon;
+use nyanpasu_runtime_values::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, result::Result as StdResult};
+use std::path::PathBuf;
 use tauri::{AppHandle, State, Webview};
-use tray::icon::TrayIcon;
 
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::{
@@ -44,136 +23,6 @@ use tauri_plugin_dialog::{
     MessageDialogKind as TauriDialogKind, MessageDialogResult as TauriDialogResult,
 };
 use tauri_plugin_notification::NotificationExt;
-
-impl std::fmt::Display for IpcError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-impl std::error::Error for IpcError {}
-
-/// A failed command as the frontend receives it.
-#[derive(Debug, Serialize, specta::Type)]
-pub struct IpcError {
-    /// The domain failure; the frontend localizes it.
-    kind: IpcErrorKind,
-    /// The error's own message, shown when `kind` cannot be localized.
-    message: String,
-    /// The original error, copied by the user for diagnosis.
-    detail: String,
-}
-
-/// The domain a command failed in. A domain joins once its errors are typed.
-#[derive(Debug, Serialize, specta::Type)]
-#[serde(tag = "domain", content = "error", rename_all = "snake_case")]
-pub enum IpcErrorKind {
-    /// Not classified into a domain; only `message` describes it.
-    Unknown,
-    Profiles(Box<ProfilesError>),
-    Runtime(Box<RuntimeError>),
-    Config(Box<ConfigError>),
-    Storage(Box<StorageOperationError>),
-    SystemDns(Box<SystemDnsError>),
-    SystemProxy(Box<OsProxyError>),
-    Effects(Box<EffectsError>),
-    DebugHttp(Box<DebugHttpControlError>),
-}
-
-impl From<DebugHttpControlError> for IpcErrorKind {
-    fn from(error: DebugHttpControlError) -> Self {
-        Self::DebugHttp(Box::new(error))
-    }
-}
-
-impl From<EffectsError> for IpcErrorKind {
-    fn from(error: EffectsError) -> Self {
-        Self::Effects(Box::new(error))
-    }
-}
-
-impl From<OsProxyError> for IpcErrorKind {
-    fn from(error: OsProxyError) -> Self {
-        Self::SystemProxy(Box::new(error))
-    }
-}
-
-impl From<SystemDnsError> for IpcErrorKind {
-    fn from(error: SystemDnsError) -> Self {
-        Self::SystemDns(Box::new(error))
-    }
-}
-
-impl From<StorageOperationError> for IpcErrorKind {
-    fn from(error: StorageOperationError) -> Self {
-        Self::Storage(Box::new(error))
-    }
-}
-
-impl From<ConfigError> for IpcErrorKind {
-    fn from(error: ConfigError) -> Self {
-        Self::Config(Box::new(error))
-    }
-}
-
-impl From<RuntimeError> for IpcErrorKind {
-    fn from(error: RuntimeError) -> Self {
-        Self::Runtime(Box::new(error))
-    }
-}
-
-impl From<ProfilesError> for IpcErrorKind {
-    fn from(error: ProfilesError) -> Self {
-        Self::Profiles(Box::new(error))
-    }
-}
-
-impl From<ClientError> for IpcErrorKind {
-    fn from(error: ClientError) -> Self {
-        match error {
-            ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
-            ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
-            ClientError::Config(error) => Self::Config(Box::new(error)),
-            ClientError::Storage(error) => Self::Storage(Box::new(error)),
-            _ => Self::Unknown,
-        }
-    }
-}
-
-impl<E> From<E> for IpcError
-where
-    E: std::fmt::Display + std::fmt::Debug,
-    IpcErrorKind: From<E>,
-{
-    fn from(error: E) -> Self {
-        Self {
-            message: error.to_string(),
-            detail: format!("{error:?}"),
-            kind: error.into(),
-        }
-    }
-}
-
-macro_rules! unknown_domain {
-    ($($error:ty),* $(,)?) => {$(
-        impl From<$error> for IpcErrorKind {
-            fn from(_: $error) -> Self {
-                Self::Unknown
-            }
-        }
-    )*};
-}
-
-unknown_domain!(
-    String,
-    std::io::Error,
-    serde_yaml::Error,
-    serde_json::Error,
-    tauri::Error,
-    anyhow::Error,
-    nyanpasu_migration::backup::BackupError,
-);
-
-type Result<T = ()> = StdResult<T, IpcError>;
 
 #[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -366,51 +215,9 @@ pub async fn open_native_file_dialog(
         .map_err(Into::into)
 }
 
-// TODO: remove this struct use Sysproxy
-#[derive(specta::Type, serde::Serialize)]
-pub struct GetSysProxyResponse {
-    // Sysproxy fields (manually defined),
-    // because specta not support serde(flatten)
-    pub enable: bool,
-    pub host: String,
-    pub port: u16,
-    pub bypass: String,
-
-    // old version compatible
-    pub server: String,
-}
-
 // ---- profiles domain commands (PR-3 T08, thin adapters over NyanpasuClient) ----
 
-use nyanpasu_config::profile::{
-    FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
-    Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
-};
-use nyanpasu_core::state::profiles::actor::NewProfileRequest;
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainProfiles> {
-    Ok((*client.get_profiles().await?).clone())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
-    Ok(client.is_portable())
-}
-
-/// Rebuild-only command: there is no prior state commit, so a failure is a
-/// plain error — the committed/degraded model (spec §6.2) does not apply.
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
-    client.reconcile_core().await?;
-    Ok(())
-}
+use nyanpasu_config::profile::{ProfileId, RemoteProfileOptionsPatch};
 
 /// Downloads a profile URL and suggests how to import it, for the user to
 /// confirm. Desktop-only: it sends a request to any URL the caller names.
@@ -427,29 +234,6 @@ pub async fn probe_profile_url(
         InvalidSubscriptionUrlSnafu { url: &url },
     )?;
     Ok(client.probe_profile_url(url, option).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn import_profile(
-    client: State<'_, NyanpasuClient>,
-    url: String,
-    name: Option<String>,
-    option: Option<RemoteProfileOptionsPatch>,
-    transform: Option<TransformKind>,
-    folder: Option<FolderId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
-    let url = snafu::ResultExt::context(
-        url::Url::parse(&url),
-        InvalidSubscriptionUrlSnafu { url: &url },
-    )?;
-    // `name` carries deep-link intent (e.g. an install-config `name=` param);
-    // when absent the facade derives the name from the url server-side. Return
-    // MutationOutcome so a degraded post-import rebuild still carries the uid.
-    Ok(client
-        .import_profile(url, name, option, transform, folder)
-        .await?)
 }
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -489,203 +273,6 @@ pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Re
     Ok(pending.take_all())
 }
 
-/// create a new profile
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn create_profile(
-    client: State<'_, NyanpasuClient>,
-    request: NewProfileRequest,
-    file_data: Option<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
-    // Must return the created ProfileId; never drop it on the wire.
-    Ok(client.create_profile(request, file_data).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn reorder_profile(
-    client: State<'_, NyanpasuClient>,
-    active_id: ProfileId,
-    over_id: ProfileId,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.reorder_profile(active_id, over_id).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn reorder_profiles_by_list(
-    client: State<'_, NyanpasuClient>,
-    list: Vec<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.reorder_profiles_by_list(list).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_profile_layout(
-    client: State<'_, NyanpasuClient>,
-    layout: ProfileLayout,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_profile_layout(layout).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_proxy_group_layout(
-    client: State<'_, NyanpasuClient>,
-    profile: ProfileId,
-    layout: ProxyGroupLayout,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_proxy_group_layout(profile, layout).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn create_proxy_group_folder(
-    client: State<'_, NyanpasuClient>,
-    profile: ProfileId,
-    name: String,
-    members: Vec<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
-    Ok(client
-        .create_proxy_group_folder(profile, name, members)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn create_profile_folder(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-    members: Vec<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
-    Ok(client.create_profile_folder(name, members).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profile_sync_status(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result<nyanpasu_core::client::jobs::ProfileSyncStatus> {
-    Ok(client.profile_sync_status(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profile_sync_runs(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    after: Option<nyanpasu_jobs::dto::RunCursorDto>,
-) -> Result<nyanpasu_jobs::dto::RunPageDto> {
-    Ok(client.profile_sync_runs(uid, after).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_profile_sync_logs(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    run: String,
-    after: Option<String>,
-) -> Result<nyanpasu_jobs::dto::LogPageDto> {
-    Ok(client.profile_sync_logs(uid, run, after).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn update_profile(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    option: Option<RemoteProfileOptionsPatch>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.refresh_profile(uid, option).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn delete_profile(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.delete_profile(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn activate_profile(
-    client: State<'_, NyanpasuClient>,
-    uid: Option<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.activate_profile(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_global_transforms(
-    client: State<'_, NyanpasuClient>,
-    ids: Vec<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_global_transforms(ids).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_profile_valid_fields(
-    client: State<'_, NyanpasuClient>,
-    fields: Vec<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_profile_valid_fields(fields).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_profile_metadata(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    patch: ProfileMetadataPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_profile_metadata(uid, patch).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_remote_profile_options(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    patch: RemoteProfileOptionsPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_remote_profile_options(uid, patch).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn replace_profile_definition(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    definition: ProfileDefinition,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.replace_profile_definition(uid, definition).await?)
-}
-
 #[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
@@ -696,122 +283,6 @@ pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     }
     help::open_file(&path)?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn read_profile_file(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result<String> {
-    Ok(client.read_profile_file(uid).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn save_profile_file(
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-    file_data: String,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.save_profile_file(uid, file_data).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_clash_info(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::clash_info::ClashInfo> {
-    Ok(client.clash_info())
-}
-
-/// get the runtime config
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-// TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
-// Any<> to avoid infinite type expansion. Replace with a typed ClashConfig struct if desired.
-pub async fn get_runtime_config(
-    client: State<'_, NyanpasuClient>,
-) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    Ok(client
-        .runtime_config()
-        .await?
-        .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    Ok(client.runtime_yaml().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_runtime(
-    client: State<'_, NyanpasuClient>,
-) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
-    Ok(client.inspect_runtime().await)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_applied_runtime(
-    client: State<'_, NyanpasuClient>,
-) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
-    Ok(client.inspect_applied_runtime().await)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_runtime_node(
-    client: State<'_, NyanpasuClient>,
-    snapshot_id: String,
-    node_id: u32,
-) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
-    Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
-    Ok(client
-        .promoted_runtime()
-        .await
-        .as_ref()
-        .map(|state| state.exists_keys.clone())
-        .unwrap_or_default())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_postprocessing_output(
-    client: State<'_, NyanpasuClient>,
-) -> Result<PostProcessingOutput> {
-    Ok(client
-        .promoted_runtime()
-        .await
-        .as_ref()
-        .map(|state| state.postprocessing_output.clone())
-        .unwrap_or_default())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_status(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::actor_v2::CoreStatusInfo> {
-    Ok(client.core_status().into())
 }
 
 #[nyanpasu_macro::rpc]
@@ -838,22 +309,6 @@ pub async fn get_ipsb_asn(
     Ok(wrapped)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<DirectEgress> {
-    Ok(client.probe_direct_egress().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_ip_lookup_providers(
-    client: State<'_, NyanpasuClient>,
-) -> Result<Vec<IpLookupProviderInfo>> {
-    Ok(client.ip_lookup_providers())
-}
-
 /// Desktop-only: the host is whatever the caller types, like a URL probe.
 #[nyanpasu_macro::rpc]
 #[tauri::command]
@@ -868,147 +323,7 @@ pub async fn test_stun_server(
 
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----
 
-use nyanpasu_config::{
-    application::{
-        ClashCore, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel,
-    },
-    clash::{
-        config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
-        features::ConfigFeatures,
-    },
-};
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
-    Ok(client.get_app_config().await?)
-}
-
-#[nyanpasu_macro::rpc(
-    http,
-    optional_capabilities(hotkey, os_integration, presentation, elevation)
-)]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_app_config(
-    client: State<'_, NyanpasuClient>,
-    patch: NyanpasuAppConfigPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_app_config(patch).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_clash_config(client: State<'_, NyanpasuClient>) -> Result<ClashConfig> {
-    Ok(client.get_clash_config().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_config_features(client: State<'_, NyanpasuClient>) -> Result<ConfigFeatures> {
-    Ok(client.config_features())
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_clash_config(
-    client: State<'_, NyanpasuClient>,
-    patch: ClashConfigPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_clash_config(patch).await?)
-}
-
-/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-#[tracing_attributes::instrument(skip_all)]
-pub async fn patch_runtime_overrides(
-    client: State<'_, NyanpasuClient>,
-    patch: ClashGuardOverridesPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future patch fields never auto-leak into
-    // logs; the secret is reported by presence only.
-    #[cfg(feature = "default-meta")]
-    tracing::debug!(
-        log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
-        unified_delay = ?patch.unified_delay,
-        tcp_concurrent = ?patch.tcp_concurrent,
-        ipv6 = ?patch.ipv6,
-        "patch_runtime_overrides"
-    );
-    // `unified_delay` and `tcp_concurrent` exist only with `default-meta`.
-    #[cfg(not(feature = "default-meta"))]
-    tracing::debug!(
-        log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
-        ipv6 = ?patch.ipv6,
-        "patch_runtime_overrides"
-    );
-    Ok(client.patch_runtime_overrides(patch).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_hotkey_functions() -> Vec<&'static str> {
-    nyanpasu_core::client::hotkey::ports::HotkeyAction::all()
-        .iter()
-        .filter(|action| {
-            cfg!(target_os = "linux")
-                || !matches!(action,
-                nyanpasu_core::client::hotkey::ports::HotkeyAction::ToggleTransparentProxy
-                | nyanpasu_core::client::hotkey::ports::HotkeyAction::EnableTransparentProxy
-                | nyanpasu_core::client::hotkey::ports::HotkeyAction::DisableTransparentProxy)
-        })
-        .map(|action| action.as_str())
-        .collect()
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn change_clash_core(client: State<'_, NyanpasuClient>, clash_core: ClashCore) -> Result {
-    client.update_core(clash_core).await?;
-    Ok(())
-}
-
-/// restart the sidecar
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
-    client.reconcile_core().await?;
-    Ok(())
-}
-
-/// get the system proxy
-/// server field is the combination of host and port
-#[nyanpasu_macro::rpc(http, capabilities(os_integration))]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
-    let current = client.get_os_proxy().await?;
-
-    let server = format!("{}:{}", current.host, current.port);
-
-    Ok(GetSysProxyResponse {
-        enable: current.enable,
-        host: current.host,
-        port: current.port,
-        bypass: current.bypass,
-        server,
-    })
-}
+use nyanpasu_config::application::{ClashCore, ReleaseChannel};
 
 #[nyanpasu_macro::rpc(capabilities(elevation))]
 #[tauri::command]
@@ -1071,30 +386,6 @@ pub fn open_core_dir() -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_core_dir() -> Result<String> {
-    let core_dir = (tauri::utils::platform::current_exe())?;
-    let core_dir = core_dir
-        .parent()
-        .ok_or("failed to get core dir".to_string())?;
-    let core_dir = dunce::canonicalize(core_dir)?;
-    Ok(core_dir.to_string_lossy().to_string())
-}
-
-/// The agent skills a core ships. Their folders are on the host that runs
-/// Nyanpasu, which is also where an agent driving the core has to run.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_agent_skills(
-    client: State<'_, NyanpasuClient>,
-    core_type: ClashCore,
-) -> Result<Vec<CoreAgentSkill>> {
-    Ok(client.core_agent_skills(core_type).await)
-}
-
 #[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
@@ -1109,15 +400,6 @@ pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
 pub fn open_web_url(url: String) -> Result<()> {
     (crate::utils::open::that(url))?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn fetch_latest_core_versions(
-    client: State<'_, NyanpasuClient>,
-) -> Result<ManifestVersionLatest> {
-    Ok(client.fetch_latest_core_versions().await?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -1138,7 +420,8 @@ pub async fn collect_logs(
     paths: State<'_, PathResolver>,
     client: State<'_, NyanpasuClient>,
 ) -> Result {
-    let archive = crate::utils::collect::logs_archive((*paths).clone(), (*client).clone()).await?;
+    let archive =
+        nyanpasu_rpc::commands::archive::logs_archive((*paths).clone(), (*client).clone()).await?;
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());
@@ -1168,163 +451,6 @@ pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore
     Ok(client.download_core_update(core_type).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn inspect_updater(
-    client: State<'_, NyanpasuClient>,
-    updater_id: usize,
-) -> Result<nyanpasu_updater::UpdaterSummary> {
-    Ok(client.inspect_updater(updater_id).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_proxy_delay(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-    provider: Option<String>,
-    url: Option<String>,
-    expected: Option<String>,
-) -> Result<clash_api::Delay> {
-    Ok(client.proxy_delay(name, provider, url, expected).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_configs(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ClashConfig> {
-    Ok(client.clash_configs().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_delete_connections(
-    client: State<'_, NyanpasuClient>,
-    id: Option<String>,
-) -> Result<()> {
-    Ok(client.close_clash_connections(id).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_version(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ClashVersion> {
-    Ok(client.clash_version().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_rules(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::RulesRes> {
-    Ok(client.clash_rules().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_providers_rules(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::api::ProvidersRulesRes> {
-    Ok(client.clash_rule_providers().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_update_providers_rules(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-) -> Result<()> {
-    Ok(client.update_clash_rule_provider(name).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_group_delay(
-    client: State<'_, NyanpasuClient>,
-    group: String,
-    url: Option<String>,
-    expected: Option<String>,
-) -> Result<IndexMap<clash_api::ProxyName, u16>> {
-    Ok(client.group_delay(group, url, expected).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_get_providers_proxies(
-    client: State<'_, NyanpasuClient>,
-) -> Result<IndexMap<clash_api::ProviderName, nyanpasu_core::clash::proxies::ProxyProviderSummary>>
-{
-    Ok(client.proxy_providers().await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_proxies(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.get_proxies().await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn mutate_proxies(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.refresh_proxies().await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn select_proxy(
-    client: State<'_, NyanpasuClient>,
-    group: String,
-    name: String,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.select_proxy(group, name).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_proxy_fixed(
-    client: State<'_, NyanpasuClient>,
-    group: String,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.clear_proxy_fixed(group).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
-    Ok(client.update_proxy_provider(name).await?)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn clash_api_healthcheck_proxy_provider(
-    client: State<'_, NyanpasuClient>,
-    name: String,
-) -> Result<()> {
-    Ok(client.healthcheck_proxy_provider(name).await?)
-}
-
 #[nyanpasu_macro::rpc(capabilities(opener))]
 #[tauri::command]
 #[specta::specta]
@@ -1343,13 +469,6 @@ pub fn report_issue(
 pub fn open_that(path: String) -> Result {
     (crate::utils::open::that(path))?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn is_appimage() -> Result<bool> {
-    Ok(*crate::consts::IS_APPIMAGE)
 }
 
 #[cfg(windows)]
@@ -1410,7 +529,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
             Ok::<_, anyhow::Error>(())
         })
         .await;
-    ((res)?)?;
+    (res.map_err(IpcError::unknown)?)?;
     Ok(())
 }
 
@@ -1420,31 +539,6 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
 pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
     crate::utils::help::restart_application(&app_handle);
     Ok(())
-}
-
-#[derive(Serialize, specta::Type)]
-pub struct IconData {
-    pub data_url: String,
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> Result<IconData> {
-    let (mime, bytes) = client.get_cached_icon(&url).await?;
-    Ok(IconData {
-        data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_tray_icon(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<IconData> {
-    let bytes = crate::core::tray::icon::get_raw_icon(paths, mode);
-    Ok(IconData {
-        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
 }
 
 #[cfg(not(windows))]
@@ -1489,69 +583,11 @@ pub async fn set_tray_icon(
     // Checked here, so a bad icon reaches the caller; only applying it to the
     // tray is queued.
     (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode)))?;
-    (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
+    crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART)
+        .map_err(IpcError::unknown)?;
     // The widget logo may show the tray's icons.
     client.request_widget_logo_refresh()?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc(http, capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_tray_icon_from_bytes(
-    client: State<'_, NyanpasuClient>,
-    paths: State<'_, PathResolver>,
-    mode: TrayIcon,
-    bytes_base64: String,
-) -> Result {
-    let bytes = decode_icon_upload(&bytes_base64, "Tray")?;
-    crate::core::tray::icon::set_icon_from_bytes(paths, mode, &bytes)?;
-    crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode))?;
-    client.request_tray_refresh()?;
-    Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> {
-    let icon_path = crate::core::tray::icon::tray_icons_path(paths, mode.as_str());
-    Ok(tokio::fs::metadata(icon_path).await.is_ok())
-}
-
-/// Decodes an uploaded icon of at most 1 MiB. `kind` names the icon in the
-/// error.
-fn decode_icon_upload(bytes_base64: &str, kind: &str) -> Result<Vec<u8>> {
-    const MAX_ICON_BYTES: usize = 1024 * 1024;
-    let too_large = || Err(format!("{kind} icon image exceeds the 1 MiB limit").into());
-    if bytes_base64.len() > MAX_ICON_BYTES.div_ceil(3) * 4 {
-        return too_large();
-    }
-    let bytes = BASE64_STANDARD
-        .decode(bytes_base64)
-        .map_err(anyhow::Error::from)?;
-    if bytes.len() > MAX_ICON_BYTES {
-        return too_large();
-    }
-    Ok(bytes)
-}
-
-/// The statistic widget's own icon for `mode`, or the bundled one.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_widget_icon(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<IconData> {
-    let bytes = crate::core::widget_logo::get_raw_icon(paths, mode);
-    Ok(IconData {
-        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn is_widget_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> {
-    Ok(crate::core::widget_logo::is_icon_set(paths, mode))
 }
 
 /// Sets the statistic widget's own icon for `mode` from a file, or resets it
@@ -1570,54 +606,9 @@ pub async fn set_widget_icon(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_widget_icon_from_bytes(
-    client: State<'_, NyanpasuClient>,
-    paths: State<'_, PathResolver>,
-    mode: TrayIcon,
-    bytes_base64: String,
-) -> Result {
-    let bytes = decode_icon_upload(&bytes_base64, "Widget")?;
-    crate::core::widget_logo::set_icon_from_bytes(paths, mode, &bytes)?;
-    client.request_widget_logo_refresh()?;
-    Ok(())
-}
-
 pub mod service {
     use super::{NyanpasuClient, Result};
     use tauri::State;
-
-    /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
-    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
-    /// wire 是原结构的严格超集，前端既有消费点不受影响。
-    #[derive(serde::Serialize, specta::Type)]
-    pub struct ServiceStatusInfo {
-        pub name: std::borrow::Cow<'static, str>,
-        pub version: std::borrow::Cow<'static, str>,
-        pub status: nyanpasu_ipc::types::ServiceStatus,
-        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
-        pub compat: nyanpasu_core::service::compat::ServiceCompat,
-        pub phase: nyanpasu_core::actor_v2::service_actor::ServicePhase,
-        pub restart_attempts: u8,
-    }
-
-    #[nyanpasu_macro::rpc(http)]
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn status_service(client: State<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
-        let info = client.service_status();
-        Ok(ServiceStatusInfo {
-            name: info.name,
-            version: info.version,
-            status: info.status,
-            server: info.server,
-            compat: info.compat,
-            phase: info.phase,
-            restart_attempts: info.restart_attempts,
-        })
-    }
 
     #[nyanpasu_macro::rpc(capabilities(elevation), optional_capabilities(presentation))]
     #[tauri::command]
@@ -1672,289 +663,6 @@ pub mod uwp {
     }
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
-    use nyanpasu_contracts::service::ResolveServiceDirsSnafu;
-    use nyanpasu_os::service::get_service_install_args;
-    use snafu::ResultExt;
-
-    let args = async {
-        let app_dir = paths.app_install_dir().context(ResolveServiceDirsSnafu)?;
-        get_service_install_args(
-            paths.app_data_dir().as_std_path(),
-            paths.app_config_dir().as_std_path(),
-            app_dir.as_std_path(),
-        )
-        .await
-    }
-    .await
-    .context(nyanpasu_runtime_values::runtime_error::PrepareServiceInstallPromptSnafu)?
-    .into_iter()
-    .map(|arg| {
-        #[cfg(unix)]
-        {
-            format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''"))
-        }
-        #[cfg(windows)]
-        {
-            arg.to_string_lossy().to_string()
-        }
-    })
-    .collect::<Vec<_>>()
-    .join(" ");
-    let mut prompt = format!("./nyanpasu-service {args}");
-    if cfg!(not(windows)) {
-        prompt = format!("sudo {prompt}");
-    }
-    Ok(prompt)
-}
-
-/// Namespace prefix for all frontend-visible KV entries.
-/// Internal subsystems (e.g. task storage) use un-prefixed keys and are
-/// never exposed to the frontend through these IPC commands.
-const WEB_STORAGE_KEY_PREFIX: &str = "web:";
-
-fn web_key(key: &str) -> String {
-    format!("{WEB_STORAGE_KEY_PREFIX}{key}")
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageItem<String>> {
-    Ok(storage.get_item(web_key(&key))?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn set_storage_item(
-    storage: State<'_, Storage>,
-    key: String,
-    value: String,
-) -> Result<StorageRevision> {
-    Ok(storage.set_item(web_key(&key), &value)?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result<StorageRevision> {
-    Ok(storage.remove_item(web_key(&key))?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_hotkeys(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
-    Ok(client.get_app_config().await?.hotkeys)
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(hotkey))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_hotkeys(
-    client: State<'_, NyanpasuClient>,
-    hotkeys: Vec<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // An unparsable list is rejected before anything is written; a shortcut the
-    // OS refuses lands as a degradation on a committed config.
-    Ok(client
-        .patch_app_config(nyanpasu_config::application::NyanpasuAppConfigPatch {
-            hotkeys: Some(hotkeys),
-            ..Default::default()
-        })
-        .await?)
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct StorageEntry {
-    pub key: String,
-    /// Raw JSON-encoded value string.
-    pub value: String,
-}
-
-/// Debug: returns all frontend KV entries (keys with the `web:` prefix).
-/// Internal storage entries used by other subsystems are excluded.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_all_storage_items(storage: State<'_, Storage>) -> Result<Vec<StorageEntry>> {
-    let items = storage.get_all()?;
-    Ok(items
-        .into_iter()
-        .filter_map(|(raw_key, value)| {
-            raw_key
-                .strip_prefix(WEB_STORAGE_KEY_PREFIX)
-                .map(|key| StorageEntry {
-                    key: key.to_string(),
-                    value,
-                })
-        })
-        .collect())
-}
-
-/// Debug: clears all frontend KV entries (keys with the `web:` prefix).
-/// Internal storage entries used by other subsystems are left intact.
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn clear_storage(storage: State<'_, Storage>) -> Result {
-    let web_keys: Vec<String> = storage
-        .get_all()?
-        .into_iter()
-        .filter(|(k, _)| k.starts_with(WEB_STORAGE_KEY_PREFIX))
-        .map(|(k, _)| k)
-        .collect();
-    for key in web_keys {
-        storage.remove_item(&key)?;
-    }
-    Ok(())
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_clash_ws_snapshot(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::clash::ws::ClashWsSnapshot> {
-    Ok(client.clash_ws_snapshot().await?)
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_core_logs(
-    client: tauri::State<'_, NyanpasuClient>,
-    query: CoreLogQuery,
-) -> CoreLogResult<CoreLogPage> {
-    client.query_core_logs(query).await
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_log(
-    client: tauri::State<'_, NyanpasuClient>,
-    cursor: CoreLogCursor,
-) -> CoreLogResult<CoreLogRecord> {
-    client.get_core_log(cursor).await
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_core_log_status(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> CoreLogResult<CoreLogStatus> {
-    client.get_core_log_status().await
-}
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_core_logs(client: tauri::State<'_, NyanpasuClient>) -> CoreLogResult<()> {
-    client.clear_core_logs().await
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_traffic_summary(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_traffic::TrafficSummary> {
-    Ok(client.traffic_summary().await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_report(
-    client: tauri::State<'_, NyanpasuClient>,
-    request: nyanpasu_traffic::ReportRequest,
-) -> Result<nyanpasu_traffic::TrafficReport> {
-    Ok(client.query_traffic_report(request).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_usage(
-    client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_traffic::TrafficQuery,
-    group_by: nyanpasu_traffic::Dimension,
-    metric: nyanpasu_traffic::Metric,
-    after: Option<nyanpasu_traffic::UsageCursor>,
-    limit: usize,
-) -> Result<nyanpasu_traffic::UsagePage> {
-    Ok(client
-        .query_traffic_usage(query, group_by, metric, after, limit)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_usage_by_keys(
-    client: tauri::State<'_, NyanpasuClient>,
-    query: nyanpasu_traffic::TrafficQuery,
-    group_by: nyanpasu_traffic::Dimension,
-    keys: Vec<String>,
-) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
-    Ok(client
-        .query_traffic_usage_by_keys(query, group_by, keys)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_closed_connections(
-    client: tauri::State<'_, NyanpasuClient>,
-    range: nyanpasu_traffic::TrafficRange,
-    filters: Vec<nyanpasu_traffic::TrafficFilter>,
-    before: Option<nyanpasu_traffic::ClosedCursor>,
-    limit: usize,
-) -> Result<nyanpasu_traffic::ClosedPage> {
-    Ok(client
-        .query_traffic_closed_connections(range, filters, before, limit)
-        .await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_active_connection_ids(
-    client: tauri::State<'_, NyanpasuClient>,
-    filters: Vec<nyanpasu_traffic::TrafficFilter>,
-) -> Result<Vec<String>> {
-    Ok(client.query_traffic_active_connection_ids(filters).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_clash_ws_recording(
-    client: tauri::State<'_, NyanpasuClient>,
-    kind: nyanpasu_core::clash::ws::ClashWsKind,
-    enabled: bool,
-) -> Result<nyanpasu_core::clash::ws::ClashWsRecording> {
-    Ok(client.set_clash_ws_recording(kind, enabled).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn clear_clash_ws_history(
-    client: tauri::State<'_, NyanpasuClient>,
-    kind: nyanpasu_core::clash::ws::ClashWsKind,
-) -> Result {
-    client.clear_clash_ws_history(kind).await?;
-    Ok(())
-}
-
 // Subscription control uses UnifiedRpc; only frame delivery is a native Channel.
 // HTTP consumers use the dedicated SSE adapter instead of a webview channel.
 #[nyanpasu_macro::rpc(owner, capabilities(caller_webview))]
@@ -1995,66 +703,6 @@ pub fn unsubscribe_clash_connection_details(
 }
 
 // Updater block
-
-#[nyanpasu_macro::rpc(http, result)]
-#[tauri::command]
-#[specta::specta]
-pub async fn list_log_files(
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
-    client.list_log_files(source).await
-}
-#[nyanpasu_macro::rpc(http, result, owner)]
-#[tauri::command]
-#[specta::specta]
-pub async fn open_log_session(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-    request: nyanpasu_logging::OpenLogs,
-) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
-    client
-        .open_log_session(source, window.label().to_string(), request)
-        .await
-}
-#[nyanpasu_macro::rpc(http, result, owner)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_logs(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-    request: nyanpasu_logging::QueryLogs,
-) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
-    client
-        .query_logs(source, window.label().to_string(), request)
-        .await
-}
-#[nyanpasu_macro::rpc(http, result, owner)]
-#[tauri::command]
-#[specta::specta]
-pub async fn close_log_session(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    source: nyanpasu_core::client::logs::LogSource,
-    session: String,
-) -> nyanpasu_logging::LogResult<()> {
-    client
-        .close_log_session(source, window.label().to_string(), session)
-        .await
-}
-#[nyanpasu_macro::rpc(http, owner)]
-#[tauri::command]
-#[specta::specta]
-pub fn report_frontend_events(
-    window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    batch: nyanpasu_core::client::frontend_events::FrontendEventBatch,
-) -> Result {
-    client.report_frontend_events(window.label(), batch);
-    Ok(())
-}
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ReleaseChannelInfo {
@@ -2183,7 +831,9 @@ pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> 
 #[specta::specta]
 pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<()> {
     if main_thread {
-        app_handle.run_on_main_thread(|| panic!("simulated crash on the main thread"))?;
+        app_handle
+            .run_on_main_thread(|| panic!("simulated crash on the main thread"))
+            .map_err(IpcError::unknown)?;
     } else {
         std::thread::spawn(|| panic!("simulated crash on a background thread"));
     }
@@ -2234,47 +884,21 @@ pub async fn report_window_ready(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(accent_color))]
-#[tauri::command]
-#[specta::specta]
-pub fn get_system_accent_color() -> Result<Option<String>> {
-    Ok(crate::utils::color::get_system_accent_color())
-}
-
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ConfigurationStatusChanged(
     pub nyanpasu_core::client::configuration_status::ConfigurationStatus,
 );
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub fn get_configuration_status(
-    client: State<'_, NyanpasuClient>,
-) -> nyanpasu_core::client::configuration_status::ConfigurationStatus {
-    client.configuration_status()
-}
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub async fn retry_configuration_runtime(client: State<'_, NyanpasuClient>) -> Result<()> {
-    Ok(client.retry_runtime_now().await?)
-}
-#[nyanpasu_macro::rpc(http, optional_capabilities(hotkey, os_integration, presentation))]
-#[tauri::command]
-#[specta::specta]
-pub fn retry_configuration_effect(
-    client: State<'_, NyanpasuClient>,
-    kind: nyanpasu_core::client::effects::plan::EffectKind,
-) -> Result<()> {
-    Ok(client.retry_effect_now(kind)?)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
+    use super::{IpcError, PendingDeepLinks};
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_contracts::system_dns::SystemDnsError;
+    use nyanpasu_core::{
+        client::{ClientError, debug_http::DebugHttpControlError},
+        state::config_error::ConfigError,
+    };
+    use nyanpasu_runtime_values::profiles::ProfilesError;
     use nyanpasu_state_engine::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
@@ -2337,7 +961,7 @@ mod tests {
             })
         );
         assert_eq!(
-            serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
+            serde_json::to_value(IpcError::from(RuntimeError::Isolated)).unwrap()["kind"],
             json!({ "domain": "runtime", "error": { "kind": "isolated" } })
         );
     }
@@ -2397,16 +1021,16 @@ mod tests {
     #[test]
     fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
         assert_eq!(
-            wire(super::ConfigError::ValidateHotkeyCapability)["kind"],
+            wire(ConfigError::ValidateHotkeyCapability)["kind"],
             json!({ "domain": "config", "error": { "kind": "validate_hotkey_capability" } })
         );
         for (error, kind) in [
             (
-                super::DebugHttpControlError::ReadStatusUnsupported,
+                DebugHttpControlError::ReadStatusUnsupported,
                 "read_status_unsupported",
             ),
             (
-                super::DebugHttpControlError::ChangeEnabledUnsupported,
+                DebugHttpControlError::ChangeEnabledUnsupported,
                 "change_enabled_unsupported",
             ),
         ] {
@@ -2429,13 +1053,13 @@ mod tests {
     fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
         for (error, kind) in [
             (
-                super::DebugHttpControlError::ReadStatus {
+                DebugHttpControlError::ReadStatus {
                     source: anyhow::anyhow!("read cause"),
                 },
                 "read_status",
             ),
             (
-                super::DebugHttpControlError::ChangeEnabled {
+                DebugHttpControlError::ChangeEnabled {
                     source: anyhow::anyhow!("change cause"),
                 },
                 "change_enabled",
@@ -2734,14 +1358,6 @@ mod tests {
     }
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(debug_http))]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_debug_http_status(
-    client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
-    Ok(client.debug_http_status().await?)
-}
 #[nyanpasu_macro::rpc(capabilities(debug_http))]
 #[tauri::command]
 #[specta::specta]

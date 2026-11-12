@@ -8,7 +8,7 @@ use syn::{Attribute, Item, ItemFn, Meta, Token, punctuated::Punctuated};
 use crate::unified_command;
 
 // Move these roots together with the schema and handler inventories when commands move.
-const DECLARATION_ROOTS: &[&str] = &["../tauri/src/ipc.rs"];
+const DECLARATION_ROOTS: &[&str] = &["../tauri/src/ipc.rs", "../nyanpasu-rpc/src/commands/mod.rs"];
 const CATALOG: &str = "../nyanpasu-rpc-protocol/src/command_catalog.rs";
 
 pub(super) fn production_declarations() -> Vec<ItemFn> {
@@ -294,4 +294,219 @@ fn catalog_excludes_test_fixtures() {
     assert_eq!(commands.len(), 1);
     assert_eq!(commands[0].sig.ident, "production");
     assert!(!render(&production_declarations()).contains("audit_echo"));
+}
+
+#[test]
+fn full_http_exposure_is_preserved_across_shared_split() {
+    // E2a parent f56f08143: all 104 HTTP declarations are unconditional across
+    // platform/feature cfgs. Keep guards in the comparison, not only names.
+    const BEFORE: &[&str] = &[
+        "activate_profile",
+        "change_clash_core",
+        "clash_api_delete_connections",
+        "clash_api_get_configs",
+        "clash_api_get_group_delay",
+        "clash_api_get_providers_proxies",
+        "clash_api_get_providers_rules",
+        "clash_api_get_proxy_delay",
+        "clash_api_get_rules",
+        "clash_api_get_version",
+        "clash_api_healthcheck_proxy_provider",
+        "clash_api_update_providers_rules",
+        "clear_clash_ws_history",
+        "clear_core_logs",
+        "clear_proxy_fixed",
+        "clear_storage",
+        "close_log_session",
+        "create_profile",
+        "create_profile_folder",
+        "create_proxy_group_folder",
+        "delete_profile",
+        "enhance_profiles",
+        "fetch_latest_core_versions",
+        "get_all_storage_items",
+        "get_app_config",
+        "get_cached_icon",
+        "get_clash_config",
+        "get_clash_info",
+        "get_clash_ws_snapshot",
+        "get_config_features",
+        "get_configuration_status",
+        "get_core_agent_skills",
+        "get_core_dir",
+        "get_core_log",
+        "get_core_log_status",
+        "get_core_status",
+        "get_debug_http_status",
+        "get_hotkey_functions",
+        "get_hotkeys",
+        "get_ip_lookup_providers",
+        "get_postprocessing_output",
+        "get_profile_sync_logs",
+        "get_profile_sync_runs",
+        "get_profile_sync_status",
+        "get_profiles",
+        "get_proxies",
+        "get_runtime_config",
+        "get_runtime_exists",
+        "get_runtime_yaml",
+        "get_service_install_prompt",
+        "get_storage_item",
+        "get_sys_proxy",
+        "get_system_accent_color",
+        "get_traffic_summary",
+        "get_tray_icon",
+        "get_widget_icon",
+        "import_profile",
+        "inspect_applied_runtime",
+        "inspect_runtime",
+        "inspect_runtime_node",
+        "inspect_updater",
+        "is_appimage",
+        "is_portable",
+        "is_tray_icon_set",
+        "is_widget_icon_set",
+        "list_log_files",
+        "mutate_proxies",
+        "open_log_session",
+        "patch_app_config",
+        "patch_clash_config",
+        "patch_profile_metadata",
+        "patch_remote_profile_options",
+        "patch_runtime_overrides",
+        "probe_direct_egress",
+        "query_core_logs",
+        "query_logs",
+        "query_traffic_active_connection_ids",
+        "query_traffic_closed_connections",
+        "query_traffic_report",
+        "query_traffic_usage",
+        "query_traffic_usage_by_keys",
+        "read_profile_file",
+        "remove_storage_item",
+        "reorder_profile",
+        "reorder_profiles_by_list",
+        "replace_profile_definition",
+        "report_frontend_events",
+        "restart_sidecar",
+        "retry_configuration_effect",
+        "retry_configuration_runtime",
+        "save_profile_file",
+        "select_proxy",
+        "set_clash_ws_recording",
+        "set_global_transforms",
+        "set_hotkeys",
+        "set_profile_layout",
+        "set_profile_valid_fields",
+        "set_proxy_group_layout",
+        "set_storage_item",
+        "set_tray_icon_from_bytes",
+        "set_widget_icon_from_bytes",
+        "status_service",
+        "update_profile",
+        "update_proxy_provider",
+    ];
+    let mut actual = Vec::new();
+    for command in production_declarations() {
+        let options = unified_command::options(&command).unwrap();
+        if !unified_command::metadata(&command, &options, quote!(::nyanpasu_rpc_protocol))
+            .to_string()
+            .contains("RpcTarget :: Http")
+        {
+            continue;
+        }
+        assert!(
+            guards(&command.attrs).next().is_none(),
+            "HTTP cfg changed: {}",
+            command.sig.ident
+        );
+        assert!(
+            !unified_command::is_native(&command),
+            "HTTP entry must be shared: {}",
+            command.sig.ident
+        );
+        let expanded = unified_command::expand(command.clone())
+            .unwrap()
+            .to_string();
+        assert!(
+            expanded.contains("RpcTarget :: Http"),
+            "HTTP handler missing: {}",
+            command.sig.ident
+        );
+        assert!(!expanded.contains(":: tauri"));
+        actual.push(command.sig.ident.to_string());
+    }
+    actual.sort();
+    assert_eq!(actual, BEFORE);
+}
+
+#[test]
+fn shared_signatures_have_no_shell_owned_types() {
+    fn use_paths(tree: &syn::UseTree, prefix: String, paths: &mut Vec<String>) {
+        match tree {
+            syn::UseTree::Path(path) => {
+                use_paths(&path.tree, format!("{prefix}{}::", path.ident), paths)
+            }
+            syn::UseTree::Group(group) => {
+                for item in &group.items {
+                    use_paths(item, prefix.clone(), paths);
+                }
+            }
+            syn::UseTree::Name(name) => paths.push(format!("{prefix}{}", name.ident)),
+            syn::UseTree::Rename(rename) => paths.push(format!("{prefix}{}", rename.ident)),
+            syn::UseTree::Glob(_) => panic!("neutral command imports must be explicit"),
+        }
+    }
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../nyanpasu-rpc/src/commands");
+    let mut count = 0;
+    for entry in fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        assert!(
+            path.is_file(),
+            "audit new nested neutral modules explicitly"
+        );
+        if path.extension().is_none_or(|extension| extension != "rs") {
+            continue;
+        }
+        count += 1;
+        let source = fs::read_to_string(&path).unwrap();
+        let file = syn::parse_file(&source).unwrap();
+        let tokens = file.to_token_stream().to_string();
+        for forbidden in [
+            "tauri ::",
+            "AppHandle",
+            "Webview",
+            "JavaScriptChannelId",
+            "crate :: ipc",
+            "crate :: core",
+            "crate :: utils",
+            "crate :: window",
+            "crate :: adapters",
+            "nyanpasu_crash_reporter",
+        ] {
+            assert!(
+                !tokens.contains(forbidden),
+                "{} contains {forbidden}",
+                path.display()
+            );
+        }
+        for item in &file.items {
+            if let Item::Use(item) = item {
+                let mut paths = Vec::new();
+                use_paths(&item.tree, String::new(), &mut paths);
+                for imported in paths {
+                    assert!(
+                        !imported.starts_with("crate::")
+                            || imported.starts_with("crate::registry::")
+                            || imported.starts_with("crate::error::"),
+                        "shell-owned import: {imported}"
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        count >= 4,
+        "the complete shared signature and archive closure must be inspected"
+    );
 }

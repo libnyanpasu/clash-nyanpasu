@@ -2,6 +2,7 @@
 //! Shared by `lib.rs` (runtime registration + debug export) and the
 //! `export_typescript_bindings` test (CI freshness).
 
+use nyanpasu_rpc::commands;
 use tauri_specta::{collect_commands, collect_events};
 use tauri_specta_query::{CommandSet, TanstackQueryFramework};
 
@@ -12,7 +13,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         // The only direct Tauri command is the UnifiedRpc transport entrypoint.
         // Application operations, including Channel subscription control, belong
         // in the schema builder below and dispatch through call_rpc.
-        .commands(collect_commands![unified_rpc::call_rpc])
+        .commands(collect_commands![unified_rpc::native::call_rpc])
         .events(collect_events![
             events::AppUpdateStateChanged,
             events::CoreLogsChanged,
@@ -29,88 +30,98 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .dangerously_cast_bigints_to_number()
 }
 
+/// Collect only function schemas; shared declarations have no native wrappers.
+macro_rules! schema_commands {
+    ($($command:tt)*) => {
+        tauri_specta::Commands::<tauri::Wry>(
+            std::sync::Arc::new(|_| false),
+            std::sync::Arc::new(specta::function::collect_functions![$($command)*]),
+        )
+    };
+}
+
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
-        collect_commands![
-            ipc::get_debug_http_status,
+        schema_commands![
+            commands::status::get_debug_http_status,
             // Read-only commands
             ipc::read_clipboard_text,
-            ipc::query_core_logs,
-            ipc::get_core_log,
-            ipc::get_core_log_status,
-            ipc::list_log_files,
-            ipc::get_sys_proxy,
-            ipc::get_clash_info,
-            ipc::get_runtime_config,
-            ipc::get_runtime_yaml,
-            ipc::get_runtime_exists,
-            ipc::inspect_runtime,
-            ipc::inspect_applied_runtime,
-            ipc::inspect_runtime_node,
-            ipc::get_postprocessing_output,
-            ipc::clash_api_get_proxy_delay,
-            ipc::clash_api_get_configs,
-            ipc::clash_api_get_version,
-            ipc::clash_api_get_rules,
-            ipc::clash_api_get_providers_rules,
-            ipc::clash_api_get_group_delay,
-            ipc::clash_api_get_providers_proxies,
-            ipc::fetch_latest_core_versions,
-            ipc::inspect_updater,
+            commands::traffic::query_core_logs,
+            commands::traffic::get_core_log,
+            commands::traffic::get_core_log_status,
+            commands::logs::list_log_files,
+            commands::runtime::get_sys_proxy,
+            commands::runtime::get_clash_info,
+            commands::runtime::get_runtime_config,
+            commands::runtime::get_runtime_yaml,
+            commands::runtime::get_runtime_exists,
+            commands::runtime::inspect_runtime,
+            commands::runtime::inspect_applied_runtime,
+            commands::runtime::inspect_runtime_node,
+            commands::runtime::get_postprocessing_output,
+            commands::clash::clash_api_get_proxy_delay,
+            commands::clash::clash_api_get_configs,
+            commands::clash::clash_api_get_version,
+            commands::clash::clash_api_get_rules,
+            commands::clash::clash_api_get_providers_rules,
+            commands::clash::clash_api_get_group_delay,
+            commands::clash::clash_api_get_providers_proxies,
+            commands::updater::fetch_latest_core_versions,
+            commands::updater::inspect_updater,
             ipc::get_core_version,
-            ipc::get_app_config,
-            ipc::get_clash_config,
-            ipc::get_config_features,
-            ipc::get_ip_lookup_providers,
-            ipc::get_hotkey_functions,
-            ipc::get_profiles,
+            commands::runtime::get_app_config,
+            commands::runtime::get_clash_config,
+            commands::runtime::get_config_features,
+            commands::runtime::get_ip_lookup_providers,
+            commands::runtime::get_hotkey_functions,
+            commands::profiles::get_profiles,
             ipc::probe_profile_url,
-            ipc::get_profile_sync_status,
-            ipc::get_profile_sync_runs,
-            ipc::get_profile_sync_logs,
-            ipc::read_profile_file,
+            commands::profiles::get_profile_sync_status,
+            commands::profiles::get_profile_sync_runs,
+            commands::profiles::get_profile_sync_logs,
+            commands::profiles::read_profile_file,
             ipc::get_custom_app_dir,
-            ipc::service::status_service,
-            ipc::is_portable,
-            ipc::get_proxies,
-            ipc::get_cached_icon,
-            ipc::get_tray_icon,
-            ipc::is_tray_icon_set,
-            ipc::get_widget_icon,
-            ipc::is_widget_icon_set,
-            ipc::get_core_status,
+            commands::status::status_service,
+            commands::profiles::is_portable,
+            commands::clash::get_proxies,
+            commands::icons::get_cached_icon,
+            commands::icons::get_tray_icon,
+            commands::icons::is_tray_icon_set,
+            commands::icons::get_widget_icon,
+            commands::icons::is_widget_icon_set,
+            commands::runtime::get_core_status,
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
-            ipc::is_appimage,
-            ipc::get_service_install_prompt,
-            ipc::get_storage_item,
-            ipc::get_all_storage_items,
-            ipc::get_hotkeys,
-            ipc::get_core_dir,
-            ipc::get_core_agent_skills,
-            ipc::get_clash_ws_snapshot,
-            ipc::get_traffic_summary,
-            ipc::query_traffic_report,
-            ipc::query_traffic_usage,
-            ipc::query_traffic_usage_by_keys,
-            ipc::query_traffic_closed_connections,
-            ipc::query_traffic_active_connection_ids,
+            commands::host::is_appimage,
+            commands::host::get_service_install_prompt,
+            commands::storage::get_storage_item,
+            commands::storage::get_all_storage_items,
+            commands::storage::get_hotkeys,
+            commands::host::get_core_dir,
+            commands::updater::get_core_agent_skills,
+            commands::traffic::get_clash_ws_snapshot,
+            commands::traffic::get_traffic_summary,
+            commands::traffic::query_traffic_report,
+            commands::traffic::query_traffic_usage,
+            commands::traffic::query_traffic_usage_by_keys,
+            commands::traffic::query_traffic_closed_connections,
+            commands::traffic::query_traffic_active_connection_ids,
             ipc::get_app_update_state,
             ipc::get_app_update_changelog,
             ipc::get_release_channel,
-            ipc::get_system_accent_color,
+            commands::host::get_system_accent_color,
             ipc::get_transparent_proxy_status,
         ],
-        collect_commands![
+        schema_commands![
             ipc::write_clipboard_text,
             ipc::show_native_notification,
             ipc::show_native_message_dialog,
             ipc::ask_native_dialog,
             ipc::open_native_file_dialog,
             ipc::set_debug_http_enabled,
-            ipc::get_configuration_status,
-            ipc::retry_configuration_runtime,
-            ipc::retry_configuration_effect,
+            commands::status::get_configuration_status,
+            commands::status::retry_configuration_runtime,
+            commands::status::retry_configuration_effect,
             ipc::set_release_channel,
             ipc::check_app_update,
             ipc::download_app_update,
@@ -121,13 +132,13 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::subscribe_clash_connection_details,
             ipc::unsubscribe_clash_connection_details,
             // Side-effecting commands
-            ipc::probe_direct_egress,
+            commands::runtime::probe_direct_egress,
             ipc::test_stun_server,
-            ipc::clear_core_logs,
-            ipc::open_log_session,
-            ipc::query_logs,
-            ipc::close_log_session,
-            ipc::report_frontend_events,
+            commands::traffic::clear_core_logs,
+            commands::logs::open_log_session,
+            commands::logs::query_logs,
+            commands::logs::close_log_session,
+            commands::logs::report_frontend_events,
             ipc::flush_system_dns_cache,
             ipc::open_app_config_dir,
             ipc::open_app_data_dir,
@@ -136,60 +147,60 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_logs_dir,
             ipc::open_web_url,
             ipc::open_core_dir,
-            ipc::restart_sidecar,
-            ipc::patch_app_config,
-            ipc::patch_clash_config,
-            ipc::patch_runtime_overrides,
-            ipc::change_clash_core,
-            ipc::clash_api_delete_connections,
-            ipc::clash_api_update_providers_rules,
+            commands::runtime::restart_sidecar,
+            commands::runtime::patch_app_config,
+            commands::runtime::patch_clash_config,
+            commands::runtime::patch_runtime_overrides,
+            commands::runtime::change_clash_core,
+            commands::clash::clash_api_delete_connections,
+            commands::clash::clash_api_update_providers_rules,
             ipc::uwp::invoke_uwp_tool,
             ipc::update_core,
             ipc::collect_logs,
             ipc::report_issue,
-            ipc::set_tray_icon_from_bytes,
-            ipc::set_widget_icon_from_bytes,
-            ipc::enhance_profiles,
-            ipc::import_profile,
+            commands::icons::set_tray_icon_from_bytes,
+            commands::icons::set_widget_icon_from_bytes,
+            commands::profiles::enhance_profiles,
+            commands::profiles::import_profile,
             ipc::take_pending_deep_links,
-            ipc::create_profile,
-            ipc::reorder_profile,
-            ipc::reorder_profiles_by_list,
-            ipc::set_profile_layout,
-            ipc::create_profile_folder,
-            ipc::set_proxy_group_layout,
-            ipc::create_proxy_group_folder,
-            ipc::update_profile,
-            ipc::delete_profile,
-            ipc::activate_profile,
-            ipc::set_global_transforms,
-            ipc::set_profile_valid_fields,
-            ipc::patch_profile_metadata,
-            ipc::patch_remote_profile_options,
-            ipc::replace_profile_definition,
+            commands::profiles::create_profile,
+            commands::profiles::reorder_profile,
+            commands::profiles::reorder_profiles_by_list,
+            commands::profiles::set_profile_layout,
+            commands::profiles::create_profile_folder,
+            commands::profiles::set_proxy_group_layout,
+            commands::profiles::create_proxy_group_folder,
+            commands::profiles::update_profile,
+            commands::profiles::delete_profile,
+            commands::profiles::activate_profile,
+            commands::profiles::set_global_transforms,
+            commands::profiles::set_profile_valid_fields,
+            commands::profiles::patch_profile_metadata,
+            commands::profiles::patch_remote_profile_options,
+            commands::profiles::replace_profile_definition,
             ipc::view_profile,
-            ipc::save_profile_file,
+            commands::profiles::save_profile_file,
             ipc::set_custom_app_dir,
             ipc::service::install_service,
             ipc::service::uninstall_service,
             ipc::service::start_service,
             ipc::service::stop_service,
             ipc::service::restart_service,
-            ipc::select_proxy,
-            ipc::clear_proxy_fixed,
-            ipc::update_proxy_provider,
-            ipc::clash_api_healthcheck_proxy_provider,
+            commands::clash::select_proxy,
+            commands::clash::clear_proxy_fixed,
+            commands::clash::update_proxy_provider,
+            commands::clash::clash_api_healthcheck_proxy_provider,
             ipc::restart_application,
             ipc::set_tray_icon,
             ipc::set_widget_icon,
             ipc::open_that,
-            ipc::set_storage_item,
-            ipc::remove_storage_item,
-            ipc::clear_storage,
-            ipc::set_hotkeys,
-            ipc::mutate_proxies,
-            ipc::set_clash_ws_recording,
-            ipc::clear_clash_ws_history,
+            commands::storage::set_storage_item,
+            commands::storage::remove_storage_item,
+            commands::storage::clear_storage,
+            commands::storage::set_hotkeys,
+            commands::clash::mutate_proxies,
+            commands::traffic::set_clash_ws_recording,
+            commands::traffic::clear_clash_ws_history,
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
@@ -522,6 +533,61 @@ mod tests {
         {
             assert_eq!(event, expected_event);
             assert_eq!(event.as_str(), desktop_name);
+        }
+    }
+
+    #[test]
+    fn tray_icon_wire_mode_matches_existing_schema() {
+        use nyanpasu_rpc_protocol::values::TrayIcon;
+        let expected = ["normal", "tun", "system_proxy"];
+        assert_eq!(TrayIcon::default().as_str(), expected[0]);
+        assert_eq!(TrayIcon::all_supported().len(), expected.len());
+        for (mode, expected) in TrayIcon::all_supported().iter().zip(expected) {
+            assert_eq!(mode.as_str(), expected);
+            assert_eq!(mode.to_string(), expected);
+            assert_eq!(<&str>::from(*mode), expected);
+            assert_eq!(<&str>::from(mode), expected);
+            let value = serde_json::to_value(mode).unwrap();
+            assert_eq!(value, expected);
+            assert_eq!(
+                serde_json::from_value::<TrayIcon>(value).unwrap().as_str(),
+                expected
+            );
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("icons.ts");
+        let (_, builder) = build_specta_builder();
+        builder.export(Typescript::default(), &path).unwrap();
+        let generated = std::fs::read_to_string(path).unwrap();
+        let declaration = exported_type(&generated, "TrayIcon");
+        assert_eq!(
+            declaration.lines().next().unwrap(),
+            "export type TrayIcon = \"normal\" | \"tun\" | \"system_proxy\";"
+        );
+    }
+
+    #[test]
+    fn schema_collector_accepts_neutral_external_commands() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("neutral.ts");
+        tauri_specta::Builder::<tauri::Wry>::new()
+            .commands(schema_commands![
+                nyanpasu_rpc::commands::profiles::get_profiles,
+                nyanpasu_rpc::commands::logs::open_log_session,
+                nyanpasu_rpc::commands::icons::get_tray_icon,
+            ])
+            .dangerously_cast_bigints_to_number()
+            .export(Typescript::default(), &path)
+            .unwrap();
+        let generated = std::fs::read_to_string(path).unwrap();
+        for name in ["getProfiles", "openLogSession", "getTrayIcon"] {
+            assert!(generated.contains(name), "missing external schema: {name}");
+        }
+        for dependency in ["RpcState", "RpcCaller", "HostIconFiles", "PathResolver"] {
+            assert!(
+                !generated.contains(dependency),
+                "injected dependency leaked: {dependency}"
+            );
         }
     }
 

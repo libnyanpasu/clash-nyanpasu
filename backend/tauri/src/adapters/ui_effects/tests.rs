@@ -76,7 +76,10 @@ async fn widget_logo_hands_the_resolved_icon_to_the_runtime() {
     let paths = nyanpasu_core::utils::test_support::test_paths(dir.path(), dir.path().join("data"));
     let mascot = include_bytes!("../../../icons/tray/mascot/tun.png").to_vec();
     std::fs::write(
-        crate::core::widget_logo::widget_icon_path(&paths, crate::core::tray::icon::TrayIcon::Tun),
+        crate::core::widget_logo::widget_icon_path(
+            &paths,
+            nyanpasu_rpc_protocol::values::TrayIcon::Tun,
+        ),
         &mascot,
     )
     .unwrap();

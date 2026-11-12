@@ -13,3 +13,5 @@ pub use error::{RpcError, RpcValue};
 pub use event::EventName;
 pub use owner::RpcOwner;
 pub use request::Request;
+
+pub mod values;

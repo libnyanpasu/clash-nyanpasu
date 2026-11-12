@@ -7,11 +7,12 @@ import {
 } from '@/utils/ipc-error'
 import type {
   ConfigError,
-  DebugHttpControlError,
   EffectsError,
+  HttpServerControlError,
   IpcError,
   OsProxyError,
   ProfilesError,
+  RemoteAccessError,
   RuntimeError,
   ScriptOperation,
   ScriptRuntime,
@@ -650,16 +651,15 @@ test('hotkey_capability_error_uses_its_message', () => {
 })
 
 test.each([
-  ['read_status_unsupported', m.error_debug_http_read_status_unsupported],
-  ['change_enabled_unsupported', m.error_debug_http_change_enabled_unsupported],
-  ['read_status', m.error_debug_http_read_status],
-  ['change_enabled', m.error_debug_http_change_enabled],
-] satisfies [DebugHttpControlError['kind'], () => string][])(
-  'debug_http_errors_use_their_messages: %s',
+  ['read_status_unsupported', m.error_http_server_read_status_unsupported],
+  ['change_unsupported', m.error_http_server_change_unsupported],
+  ['read_status', m.error_http_server_read_status],
+] satisfies [HttpServerControlError['kind'], () => string][])(
+  'http_server_errors_use_their_messages: %s',
   (kind, message) => {
     expect(
       ipcErrorMessage({
-        kind: { domain: 'debug_http', error: { kind } },
+        kind: { domain: 'http_server', error: { kind } },
         message: 'the backend text',
         detail: 'the backend text: caused by',
       }),
@@ -768,3 +768,28 @@ test.each(
     ).toBe(expected)
   },
 )
+
+test.each([
+  ['port_zero', m.error_config_remote_access_port_zero],
+  ['use_dedicated_command', m.error_config_remote_access_use_dedicated_command],
+] satisfies [RemoteAccessError['kind'], () => string][])(
+  'remote_access_config_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: {
+          domain: 'config',
+          error: { kind: 'invalid_remote_access', reason: { kind } },
+        },
+        message: 'the backend text',
+        detail: 'the backend text: caused by',
+      }),
+    ).toBe(message())
+  },
+)
+
+test('a listener that cannot follow the settings has its own degradation message', () => {
+  expect(degradationReasonMessage({ code: 'http_server_unavailable' })).toBe(
+    m.mutation_degradation_reason_http_server_unavailable(),
+  )
+})

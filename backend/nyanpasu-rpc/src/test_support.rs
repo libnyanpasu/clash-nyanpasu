@@ -165,7 +165,7 @@ pub const CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::OsIntegration,
     ShellCapability::Elevation,
     ShellCapability::AccentColor,
-    ShellCapability::DebugHttp,
+    ShellCapability::HttpServer,
 ];
 
 pub async fn rpc_for_test_call(

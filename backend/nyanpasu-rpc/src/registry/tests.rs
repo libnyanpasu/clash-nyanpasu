@@ -174,7 +174,7 @@ fn shared_profile_command_over_experimental_http() {
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    assert!(rpc.command_names().contains(&"get_debug_http_status"));
+    assert!(rpc.command_names().contains(&"get_http_server_status"));
     assert!(rpc.command_names().contains(&"get_profiles"));
     assert!(rpc.command_names().contains(&"quit_application"));
     assert!(
@@ -763,7 +763,7 @@ fn enabled_http_server_joins_application_shutdown() {
     ));
     let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
     let routes = Arc::new(RpcHttpRoutes::default());
-    args.host_adapters.debug_http = Some(crate::http::test_support::control_factory(
+    args.host_adapters.http_server = Some(crate::http::test_support::control_factory(
         frontend,
         routes.clone(),
     ));
@@ -787,12 +787,27 @@ fn enabled_http_server_joins_application_shutdown() {
     .unwrap();
     routes.install(&rpc).unwrap();
     runtime.block_on(async {
-        let url = client
-            .set_debug_http_enabled(true)
+        let outcome = client
+            .set_remote_access(nyanpasu_config::application::RemoteAccessConfig {
+                http: nyanpasu_config::application::HttpAccessConfig {
+                    enabled: true,
+                    ..Default::default()
+                },
+            })
             .await
-            .unwrap()
-            .url
             .unwrap();
+        assert!(outcome.degradations().is_empty());
+        let status = client.http_server_status().await.unwrap();
+        assert!(
+            !status.url.as_deref().unwrap().contains("access_token"),
+            "the status never carries the credential"
+        );
+        assert_eq!(
+            client.remote_access_config().http.port,
+            status.port,
+            "the first start records the bound port"
+        );
+        let url = client.http_launch_url().await.unwrap().unwrap();
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
         let base = url::Url::parse(&url)
             .unwrap()
@@ -811,7 +826,7 @@ fn enabled_http_server_joins_application_shutdown() {
             .await
             .unwrap();
         assert!(http.get(url).send().await.is_err());
-        assert!(client.debug_http_status().await.is_err());
+        assert!(client.http_server_status().await.is_err());
         drop(rpc);
         assert!(crate::http::HttpRoutes::build(&*routes).is_err());
     });

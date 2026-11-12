@@ -51,8 +51,8 @@ pub enum ShellCapability {
     Elevation,
     /// Host accent color queries.
     AccentColor,
-    /// Host debug HTTP server control.
-    DebugHttp,
+    /// Host HTTP server control.
+    HttpServer,
 }
 
 /// Static facts generated from a command declaration, even without its handler.

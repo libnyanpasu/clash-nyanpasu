@@ -21,7 +21,10 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientRequest};
 use tokio_util::sync::CancellationToken;
 
-use nyanpasu_core::client::debug_http::{DebugHttpControl, DebugHttpStatus, Error};
+use nyanpasu_config::application::HttpAccessConfig;
+use nyanpasu_core::client::http_server::{
+    Error, HttpServerControl, HttpServerFault, HttpServerStatus,
+};
 
 /// Production assets are supplied by the composition root's Tauri adapter.
 pub trait FrontendAssets: Send + Sync + 'static {
@@ -50,17 +53,20 @@ pub struct HttpServerArgs {
 }
 
 pub enum Message {
-    SetEnabled {
-        enabled: bool,
-        reply: RpcReplyPort<Result<DebugHttpStatus>>,
+    Configure {
+        config: HttpAccessConfig,
+        reply: RpcReplyPort<HttpServerStatus>,
     },
-    Status(RpcReplyPort<DebugHttpStatus>),
+    Status(RpcReplyPort<HttpServerStatus>),
+    LaunchUrl(RpcReplyPort<Option<String>>),
     Stopped(u64),
 }
 
 struct Running {
     generation: u64,
-    url: String,
+    port: u16,
+    serve_webui: bool,
+    access_token: String,
     cancellation: CancellationToken,
     task: tokio::task::JoinHandle<()>,
 }
@@ -70,16 +76,108 @@ pub struct HttpServerState {
     frontend: Option<Frontend>,
     routes: Arc<dyn HttpRoutes>,
     running: Option<Running>,
+    fault: Option<HttpServerFault>,
     generation: u64,
 }
 
 impl HttpServerState {
-    fn status(&self) -> DebugHttpStatus {
-        DebugHttpStatus {
+    fn status(&self) -> HttpServerStatus {
+        HttpServerStatus {
             enabled: self.running.is_some(),
-            url: self.running.as_ref().map(|r| r.url.clone()),
+            // The origin only: the per-start credential is available through `launch_url`.
+            url: self
+                .running
+                .as_ref()
+                .map(|r| format!("http://127.0.0.1:{}/", r.port)),
+            port: self.running.as_ref().map(|r| r.port),
+            fault: self.fault,
         }
     }
+
+    /// Whether the running listener already satisfies `config`.
+    fn follows(&self, config: &HttpAccessConfig) -> bool {
+        self.running.as_ref().is_some_and(|running| {
+            running.serve_webui == config.serve_webui
+                && config.port.is_none_or(|port| port == running.port)
+        })
+    }
+
+    async fn start(&mut self, myself: ActorRef<Message>, config: &HttpAccessConfig) {
+        let listener = match TcpListener::bind((
+            std::net::Ipv4Addr::LOCALHOST,
+            config.port.unwrap_or(0),
+        ))
+        .await
+        {
+            Ok(listener) => listener,
+            Err(error) => {
+                tracing::warn!(%error, "the HTTP server could not bind");
+                self.fault = Some(if error.kind() == std::io::ErrorKind::AddrInUse {
+                    HttpServerFault::PortInUse
+                } else {
+                    HttpServerFault::BindFailed
+                });
+                return;
+            }
+        };
+        match self.serve(myself, listener, config.serve_webui) {
+            Ok(running) => {
+                self.fault = None;
+                self.running = Some(running);
+            }
+            Err(error) => {
+                tracing::warn!(%error, "the HTTP server could not be prepared");
+                self.fault = Some(HttpServerFault::BindFailed);
+            }
+        }
+    }
+
+    fn serve(
+        &mut self,
+        myself: ActorRef<Message>,
+        listener: TcpListener,
+        serve_webui: bool,
+    ) -> Result<Running> {
+        let local = listener.local_addr()?;
+        let authority = local.to_string();
+        let access_token = uuid::Uuid::new_v4().to_string();
+        let cancellation = CancellationToken::new();
+        let mut app = self.routes.build()?;
+        if serve_webui && let Some(frontend) = self.frontend.clone() {
+            app = app.fallback_service(frontend_router(frontend, cancellation.clone())?);
+        }
+        let app = app.layer(middleware::from_fn_with_state(
+            LocalSession {
+                authority,
+                access_token: access_token.clone(),
+                shutdown: cancellation.clone(),
+            },
+            local_session,
+        ));
+        self.generation += 1;
+        let generation = self.generation;
+        let shutdown = cancellation.clone();
+        let task = tokio::spawn(async move {
+            // Dropping serve's connection tasks alone does not
+            // stop upgraded sockets; frontend upgrades share this token.
+            if let Err(error) = axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown.cancelled_owned())
+                .await
+            {
+                tracing::error!(%error, "HTTP server stopped");
+            }
+            let _ = myself.cast(Message::Stopped(generation));
+        });
+        Ok(Running {
+            generation,
+            port: local.port(),
+            serve_webui,
+            access_token,
+            cancellation,
+            task,
+        })
+    }
+
     async fn stop(&mut self) {
         if let Some(mut running) = self.running.take() {
             running.cancellation.cancel();
@@ -114,6 +212,7 @@ impl Actor for HttpServerActor {
             frontend: args.frontend,
             routes: args.routes,
             running: None,
+            fault: None,
             generation: 0,
         })
     }
@@ -128,6 +227,14 @@ impl Actor for HttpServerActor {
             Message::Status(reply) => {
                 let _ = reply.send(state.status());
             }
+            Message::LaunchUrl(reply) => {
+                let _ = reply.send(state.running.as_ref().map(|running| {
+                    format!(
+                        "http://127.0.0.1:{}/?access_token={}",
+                        running.port, running.access_token
+                    )
+                }));
+            }
             Message::Stopped(generation) => {
                 if state
                     .running
@@ -137,58 +244,19 @@ impl Actor for HttpServerActor {
                     state.stop().await;
                 }
             }
-            Message::SetEnabled { enabled, reply } => {
-                let result = if !enabled {
+            Message::Configure { config, reply } => {
+                if !config.enabled {
                     state.stop().await;
-                    Ok(state.status())
-                } else if state.running.is_some() {
-                    Ok(state.status())
+                    state.fault = None;
+                } else if state.follows(&config) {
+                    state.fault = None;
                 } else {
-                    async {
-                        let listener =
-                            TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
-                        let authority = listener.local_addr()?.to_string();
-                        let access_token = uuid::Uuid::new_v4().to_string();
-                        let url = format!("http://{authority}/?access_token={access_token}");
-                        let cancellation = CancellationToken::new();
-                        let mut app = state.routes.build()?;
-                        if let Some(frontend) = state.frontend.clone() {
-                            app = app
-                                .fallback_service(frontend_router(frontend, cancellation.clone())?);
-                        }
-                        let app = app.layer(middleware::from_fn_with_state(
-                            LocalSession {
-                                authority,
-                                access_token,
-                                shutdown: cancellation.clone(),
-                            },
-                            local_session,
-                        ));
-                        state.generation += 1;
-                        let generation = state.generation;
-                        let shutdown = cancellation.clone();
-                        let task = tokio::spawn(async move {
-                            // Dropping serve's connection tasks alone does not
-                            // stop upgraded sockets; frontend upgrades share this token.
-                            if let Err(error) = axum::serve(listener, app)
-                                .with_graceful_shutdown(shutdown.cancelled_owned())
-                                .await
-                            {
-                                tracing::error!(%error, "debug HTTP server stopped");
-                            }
-                            let _ = myself.cast(Message::Stopped(generation));
-                        });
-                        state.running = Some(Running {
-                            generation,
-                            url,
-                            cancellation,
-                            task,
-                        });
-                        Ok(state.status())
-                    }
-                    .await
-                };
-                let _ = reply.send(result);
+                    // A changed port or asset mode needs a new listener; the old one is
+                    // released first so a persisted port can be bound again.
+                    state.stop().await;
+                    state.start(myself, &config).await;
+                }
+                let _ = reply.send(state.status());
             }
         }
         Ok(())
@@ -226,42 +294,53 @@ impl HttpServerClient {
             task: tokio::sync::Mutex::new(Some(task)),
         })))
     }
-    pub async fn set_enabled(&self, enabled: bool) -> Result<DebugHttpStatus> {
-        match self
-            .0
-            .actor
-            .call(|reply| Message::SetEnabled { enabled, reply }, None)
-            .await?
-        {
-            CallResult::Success(result) => result,
+
+    async fn ask<T>(&self, make: impl FnOnce(RpcReplyPort<T>) -> Message) -> Result<T>
+    where
+        T: Send + 'static,
+    {
+        match self.0.actor.call(make, None).await? {
+            CallResult::Success(result) => Ok(result),
             _ => anyhow::bail!(
                 "HTTP server response unavailable; inspect its status before retrying"
             ),
         }
     }
+
+    pub async fn configure(&self, config: &HttpAccessConfig) -> Result<HttpServerStatus> {
+        let config = config.clone();
+        self.ask(|reply| Message::Configure { config, reply }).await
+    }
+
+    pub async fn status(&self) -> Result<HttpServerStatus> {
+        self.ask(Message::Status).await
+    }
+
+    pub async fn launch_url(&self) -> Result<Option<String>> {
+        self.ask(Message::LaunchUrl).await
+    }
+
     pub async fn shutdown(&self) -> Result<()> {
-        self.set_enabled(false).await?;
+        self.configure(&HttpAccessConfig::default()).await?;
         self.0.actor.get_cell().drain_and_wait(None).await?;
         if let Some(task) = self.0.task.lock().await.take() {
             nyanpasu_owner_support::blocking::join(task.await);
         }
         Ok(())
     }
-    pub async fn status(&self) -> Result<DebugHttpStatus> {
-        match self.0.actor.call(Message::Status, None).await? {
-            CallResult::Success(result) => Ok(result),
-            _ => anyhow::bail!("HTTP server status unavailable"),
-        }
-    }
 }
 #[async_trait::async_trait]
-impl DebugHttpControl for HttpServerClient {
-    async fn status(&self) -> Result<DebugHttpStatus> {
+impl HttpServerControl for HttpServerClient {
+    async fn status(&self) -> Result<HttpServerStatus> {
         Self::status(self).await
     }
 
-    async fn set_enabled(&self, enabled: bool) -> Result<DebugHttpStatus> {
-        Self::set_enabled(self, enabled).await
+    async fn configure(&self, config: &HttpAccessConfig) -> Result<HttpServerStatus> {
+        Self::configure(self, config).await
+    }
+
+    async fn launch_url(&self) -> Result<Option<String>> {
+        Self::launch_url(self).await
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -614,6 +693,78 @@ pub(crate) mod tests {
         )
     }
 
+    fn enabled_config() -> HttpAccessConfig {
+        HttpAccessConfig {
+            enabled: true,
+            ..Default::default()
+        }
+    }
+
+    async fn enable(server: &HttpServerClient) -> HttpServerStatus {
+        server.configure(&enabled_config()).await.unwrap()
+    }
+
+    async fn disable(server: &HttpServerClient) -> HttpServerStatus {
+        server
+            .configure(&HttpAccessConfig::default())
+            .await
+            .unwrap()
+    }
+
+    /// Starts the listener and returns the credential-bearing launch URL.
+    async fn entry_of(server: &HttpServerClient) -> String {
+        enable(server).await;
+        server.launch_url().await.unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_taken_port_is_reported_and_never_replaced() {
+        // A real socket holds the port, so the bind fails in the operating system.
+        let blocker = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = blocker.local_addr().unwrap().port();
+        let server = HttpServerClient::spawn(
+            None,
+            Arc::new(|| Ok(Router::new().route("/bridge/test", get(|| async { "ok" })))),
+        )
+        .await
+        .unwrap();
+        let config = HttpAccessConfig {
+            enabled: true,
+            port: Some(port),
+            ..Default::default()
+        };
+
+        let status = server.configure(&config).await.unwrap();
+
+        assert!(!status.enabled);
+        assert_eq!(status.port, None, "it did not move to another port");
+        assert_eq!(status.fault, Some(HttpServerFault::PortInUse));
+        assert_eq!(server.launch_url().await.unwrap(), None);
+
+        // Once the port is free the same settings start on exactly that port.
+        drop(blocker);
+        let status = server.configure(&config).await.unwrap();
+        assert_eq!(status.fault, None);
+        assert_eq!(status.port, Some(port));
+        let entry = server.launch_url().await.unwrap().unwrap();
+        assert!(entry.starts_with(&format!("http://127.0.0.1:{port}/?")));
+
+        // Changing the port restarts the listener; leaving it open keeps the bound one.
+        assert_eq!(enable(&server).await.port, Some(port));
+        let free = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let moved = HttpAccessConfig {
+            port: Some(free),
+            ..config
+        };
+        let status = server.configure(&moved).await.unwrap();
+        assert_eq!(status.port, moved.port);
+        disable(&server).await;
+    }
+
     struct Assets;
     impl FrontendAssets for Assets {
         fn get(&self, path: &str) -> Option<(String, Vec<u8>)> {
@@ -690,10 +841,13 @@ pub(crate) mod tests {
         .await
         .unwrap();
         assert!(!server.status().await.unwrap().enabled);
-        let (first, second) = tokio::join!(server.set_enabled(true), server.set_enabled(true));
-        let first = first.unwrap();
-        assert_eq!(first, second.unwrap());
-        let entry = first.url.unwrap();
+        let (first, second) = tokio::join!(enable(&server), enable(&server));
+        assert_eq!(first, second);
+        assert!(
+            !first.url.as_ref().unwrap().contains("access_token"),
+            "the status never carries the credential"
+        );
+        let entry = server.launch_url().await.unwrap().unwrap();
         let (client, url) = authenticated_client(&entry).await;
         let unauthorized = reqwest::Client::builder().no_proxy().build().unwrap();
         for path in [
@@ -782,11 +936,10 @@ pub(crate) mod tests {
                 .status(),
             StatusCode::FORBIDDEN
         );
-        assert!(!server.set_enabled(false).await.unwrap().enabled);
+        assert!(!disable(&server).await.enabled);
         assert!(client.get(&url).send().await.is_err());
-        assert!(!server.set_enabled(false).await.unwrap().enabled);
-        let restarted = server.set_enabled(true).await.unwrap();
-        let next_entry = restarted.url.unwrap();
+        assert!(!disable(&server).await.enabled);
+        let next_entry = entry_of(&server).await;
         assert_ne!(
             url::Url::parse(&entry).unwrap().query(),
             url::Url::parse(&next_entry).unwrap().query()
@@ -804,7 +957,7 @@ pub(crate) mod tests {
             next_client.get(&next_url).send().await.unwrap().status(),
             StatusCode::OK
         );
-        server.set_enabled(false).await.unwrap();
+        disable(&server).await;
     }
 
     #[tokio::test]
@@ -826,7 +979,7 @@ pub(crate) mod tests {
         )
         .await
         .unwrap();
-        let entry = server.set_enabled(true).await.unwrap().url.unwrap();
+        let entry = entry_of(&server).await;
         let (client, url) = authenticated_client(&entry).await;
         let mut stream = client
             .get(format!("{url}/bridge/events"))
@@ -835,7 +988,7 @@ pub(crate) mod tests {
             .unwrap()
             .bytes_stream();
         assert!(stream.next().await.unwrap().unwrap().starts_with(b"data:"));
-        server.set_enabled(false).await.unwrap();
+        disable(&server).await;
         assert!(
             tokio::time::timeout(Duration::from_secs(1), stream.next())
                 .await
@@ -852,9 +1005,9 @@ pub(crate) mod tests {
         routes.install(&fixture.rpc).unwrap();
         let server = HttpServerClient::spawn(None, routes).await.unwrap();
         assert!(!server.status().await.unwrap().enabled);
-        let status = server.set_enabled(true).await.unwrap();
+        let status = enable(&server).await;
         assert!(status.enabled);
-        let entry = status.url.unwrap();
+        let entry = server.launch_url().await.unwrap().unwrap();
         assert_eq!(
             url::Url::parse(&entry).unwrap().host_str(),
             Some("127.0.0.1")
@@ -919,7 +1072,7 @@ pub(crate) mod tests {
         let routes = Arc::new(routes::RpcHttpRoutes::default());
         routes.install(&fixture.rpc).unwrap();
         let server = HttpServerClient::spawn(None, routes).await.unwrap();
-        let entry = server.set_enabled(true).await.unwrap().url.unwrap();
+        let entry = entry_of(&server).await;
         let url = url::Url::parse(&entry)
             .unwrap()
             .origin()
@@ -1033,8 +1186,8 @@ pub(crate) mod tests {
             assert_eq!(records[0].header.owner, records[3].header.owner);
             assert_ne!(records[0].header.owner, records[6].header.owner);
         }
-        server.set_enabled(false).await.unwrap();
-        let next_entry = server.set_enabled(true).await.unwrap().url.unwrap();
+        disable(&server).await;
+        let next_entry = entry_of(&server).await;
         assert_ne!(
             url::Url::parse(&entry).unwrap().query(),
             url::Url::parse(&next_entry).unwrap().query()
@@ -1110,7 +1263,7 @@ pub(crate) mod tests {
         )
         .await
         .unwrap();
-        let url = server.set_enabled(true).await.unwrap().url.unwrap();
+        let url = entry_of(&server).await;
         let (client, url) = authenticated_client(&url).await;
         let response = client
             .get(format!("{url}/@vite/client?token=a"))
@@ -1145,7 +1298,7 @@ pub(crate) mod tests {
             .unwrap();
         request.headers_mut().insert(
             "cookie",
-            cookie_from_entry(&server.status().await.unwrap().url.unwrap())
+            cookie_from_entry(&server.launch_url().await.unwrap().unwrap())
                 .await
                 .parse()
                 .unwrap(),
@@ -1160,7 +1313,7 @@ pub(crate) mod tests {
             ws.next().await.unwrap().unwrap(),
             WsMessage::Text("update".into())
         );
-        server.set_enabled(false).await.unwrap();
+        disable(&server).await;
         assert!(
             tokio::time::timeout(Duration::from_secs(1), ws.next())
                 .await
@@ -1176,12 +1329,12 @@ pub mod test_support {
     pub fn control_factory(
         frontend: Option<Frontend>,
         routes: Arc<dyn HttpRoutes>,
-    ) -> Arc<nyanpasu_core::client::host_adapters::DebugHttpFactory> {
+    ) -> Arc<nyanpasu_core::client::host_adapters::HttpServerFactory> {
         Arc::new(move || {
             let (frontend, routes) = (frontend.clone(), routes.clone());
             Box::pin(async move {
                 let server = HttpServerClient::spawn(frontend, routes).await?;
-                Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
+                Ok(Arc::new(server) as Arc<dyn HttpServerControl>)
             })
         })
     }

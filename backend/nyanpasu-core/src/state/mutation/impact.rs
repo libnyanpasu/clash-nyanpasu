@@ -833,6 +833,14 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                // The HTTP listener follows this section through the remote-access owner,
+                // not through the runtime build or a peripheral effect owner.
+                field: "remote_access",
+                mutate: |app| app.remote_access.http.enabled = true,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "enable_local_ip_probe",
                 mutate: |app| app.enable_local_ip_probe = true,
                 impact: RuntimeImpact::None,

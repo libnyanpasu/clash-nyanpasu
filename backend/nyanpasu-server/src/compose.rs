@@ -402,7 +402,7 @@ fn host_adapters(
     ClientHostAdapters {
         icon_fetcher: network.clone(),
         network_diagnostics: network,
-        debug_http: None,
+        http_server: None,
         changelog_http: Arc::new(move |ports| {
             Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(
                 ports,

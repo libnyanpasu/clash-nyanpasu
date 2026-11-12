@@ -19,9 +19,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::instrument::WithSubscriber as _;
 
-use super::{
-    endpoint::{EndpointError, EndpointListener},
-    subscriptions::{self, Delivery, DeliveryAudit, Output, Subscription, SubscriptionSource},
+use nyanpasu_single_instance::endpoint::{EndpointError, EndpointListener};
+
+use super::subscriptions::{
+    self, Delivery, DeliveryAudit, Output, Subscription, SubscriptionSource,
 };
 use crate::{
     audit::{AuditInvocation, AuditPhase, DeliveryOutcome, RpcTransport, SubscriptionOutcome},

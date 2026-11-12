@@ -611,7 +611,7 @@ async fn start_runtime_owners(
 pub(crate) enum UnifiedRpcError {
     #[snafu(display("failed to start desktop local RPC listener"))]
     StartLocalRpc {
-        source: nyanpasu_rpc::local::endpoint::EndpointError,
+        source: nyanpasu_single_instance::endpoint::EndpointError,
     },
     #[snafu(display("failed to build unified RPC"))]
     BuildRpc {

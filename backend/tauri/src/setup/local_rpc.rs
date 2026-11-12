@@ -7,11 +7,12 @@ use std::{
 
 use nyanpasu_rpc::{
     local::{
-        endpoint::{Endpoint, EndpointError, EndpointListener},
+        ENDPOINT_NAMESPACE,
         server::{ConnectionLimits, LocalServer},
     },
     registry::UnifiedRpc,
 };
+use nyanpasu_single_instance::endpoint::{Endpoint, EndpointError, EndpointListener};
 
 use super::StartupOwners;
 
@@ -49,7 +50,7 @@ pub(super) async fn start(
     let directory = data_directory.to_owned();
     let endpoint = nyanpasu_owner_support::blocking::join(
         tokio::task::spawn_blocking(move || {
-            Endpoint::discover(&directory, config.endpoint.as_deref())
+            Endpoint::discover(ENDPOINT_NAMESPACE, &directory, config.endpoint.as_deref())
         })
         .await,
     )?;

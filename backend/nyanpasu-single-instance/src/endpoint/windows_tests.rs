@@ -16,8 +16,8 @@ use windows_sys::Win32::{
     },
 };
 
-use super::{connect, exchange, location};
-use crate::local::endpoint::{Endpoint, EndpointError, EndpointListener, platform};
+use super::{TEST, connect, exchange, location};
+use crate::endpoint::{Endpoint, EndpointError, EndpointListener, platform};
 
 fn assert_current_user_acl(stream: &Stream) {
     let Stream::NamedPipe(pipe) = stream;
@@ -156,9 +156,18 @@ async fn windows_pipe_name_competition_is_exclusive() {
     let listener = EndpointListener::bind(&endpoint).await.unwrap();
     let (mut client, mut server) = connect(&listener, &endpoint).await;
     exchange(&mut client, &mut server, 13).await;
-    for foreign in [r"\\.\pipe\foreign", r"\\remote\pipe\nyanpasu-rpc-test"] {
+    // Another namespace of the same user is not this endpoint's location.
+    let other_namespace = endpoint
+        .path()
+        .to_string_lossy()
+        .replace("nyanpasu-endpoint-test", "nyanpasu-other-test");
+    for foreign in [
+        r"\\.\pipe\foreign",
+        r"\\remote\pipe\nyanpasu-endpoint-test",
+        other_namespace.as_str(),
+    ] {
         assert!(matches!(
-            Endpoint::discover(directory.path(), Some(foreign.as_ref())),
+            Endpoint::discover(TEST, directory.path(), Some(foreign.as_ref())),
             Err(EndpointError::InvalidLocation { .. })
         ));
     }

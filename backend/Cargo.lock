@@ -1849,6 +1849,7 @@ dependencies = [
  "nyanpasu-rpc-protocol",
  "nyanpasu-runtime-values",
  "nyanpasu-scripts",
+ "nyanpasu-single-instance",
  "nyanpasu-state-engine",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
@@ -7291,7 +7292,6 @@ dependencies = [
  "indexmap 2.14.2",
  "interprocess",
  "inventory",
- "libc",
  "mockall",
  "nyanpasu-config",
  "nyanpasu-contracts",
@@ -7310,6 +7310,7 @@ dependencies = [
  "nyanpasu-profile-transform",
  "nyanpasu-rpc-protocol",
  "nyanpasu-runtime-values",
+ "nyanpasu-single-instance",
  "nyanpasu-state-engine",
  "nyanpasu-traffic",
  "nyanpasu-updater",
@@ -7321,9 +7322,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
- "sha2 0.11.1",
  "snafu 0.9.2",
- "socket2",
  "specta",
  "specta-typescript",
  "tempfile",
@@ -7337,8 +7336,6 @@ dependencies = [
  "url",
  "uuid",
  "whoami",
- "widestring 1.2.1",
- "windows-sys 0.61.2",
  "zip 9.5.1",
 ]
 
@@ -7468,6 +7465,7 @@ dependencies = [
  "nyanpasu-runtime-values",
  "nyanpasu-scripts",
  "nyanpasu-server",
+ "nyanpasu-single-instance",
  "nyanpasu-tsdb",
  "nyanpasu-updater",
  "nyanpasu-utils",
@@ -7483,6 +7481,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "nyanpasu-single-instance"
+version = "0.1.0"
+dependencies = [
+ "interprocess",
+ "libc",
+ "sha2 0.11.1",
+ "snafu 0.9.2",
+ "socket2",
+ "tempfile",
+ "tokio",
+ "widestring 1.2.1",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

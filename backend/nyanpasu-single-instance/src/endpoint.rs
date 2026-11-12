@@ -9,9 +9,9 @@ use interprocess::local_socket::{
     tokio::{Listener, Stream},
     traits::tokio::{Listener as _, Stream as _},
 };
-use nyanpasu_owner_support::blocking;
 use sha2::{Digest as _, Sha256};
 use snafu::{ResultExt as _, Snafu};
+use tokio::task::JoinError;
 
 #[cfg(any(unix, test))]
 #[path = "endpoint/directory_chain.rs"]
@@ -55,25 +55,68 @@ pub enum EndpointError {
     Connect { path: PathBuf, source: io::Error },
 }
 
+/// One family of endpoints, such as the RPC listener. Endpoints of different
+/// namespaces never share a location, so their owners never compete.
+///
+/// The name starts every Windows pipe name and every Unix socket directory of
+/// the family, so changing it moves every endpoint of that family.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Namespace(&'static str);
+
+impl Namespace {
+    /// The longest name that still leaves room for the user and directory identity.
+    pub const MAX_LEN: usize = 32;
+
+    /// # Panics
+    /// Panics, at compile time in a `const`, unless the name has 1 to
+    /// [`Self::MAX_LEN`] bytes of lowercase ASCII letters, digits and `-`.
+    pub const fn new(name: &'static str) -> Self {
+        let bytes = name.as_bytes();
+        assert!(
+            !bytes.is_empty() && bytes.len() <= Self::MAX_LEN,
+            "namespace length"
+        );
+        let mut index = 0;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            assert!(
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-',
+                "namespace characters"
+            );
+            index += 1;
+        }
+        Self(name)
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        self.0
+    }
+}
+
 /// A validated location, without a listener or connection owned by its discoverer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Endpoint {
+    namespace: Namespace,
     path: PathBuf,
 }
 
 impl Endpoint {
-    /// Resolves one location per OS user and canonical, existing app data directory.
+    /// Resolves one location per namespace, OS user and canonical, existing directory.
     ///
     /// An override changes only the location. Unix paths must be absolute and in a
     /// private directory; Windows paths must be in this user's named-pipe namespace.
     /// Performs filesystem inspection; call on a blocking thread in async hosts.
     ///
     /// # Errors
-    /// Refuses unavailable data directories and insecure or invalid locations.
-    pub fn discover(data_directory: &Path, location: Option<&Path>) -> Result<Self, EndpointError> {
-        let directory = data_directory.canonicalize().context(NormalizeSnafu {
-            path: data_directory,
-        })?;
+    /// Refuses unavailable directories and insecure or invalid locations.
+    pub fn discover(
+        namespace: Namespace,
+        directory: &Path,
+        location: Option<&Path>,
+    ) -> Result<Self, EndpointError> {
+        let directory = directory
+            .canonicalize()
+            .context(NormalizeSnafu { path: directory })?;
         let user = platform::current_user()?;
         let mut digest = Sha256::new();
         digest.update(user.as_bytes());
@@ -86,10 +129,10 @@ impl Endpoint {
             .collect();
         let path = match location {
             Some(path) => path.to_owned(),
-            None => platform::default_path(&user, &identity)?,
+            None => platform::default_path(namespace, &user, &identity)?,
         };
-        platform::validate_location(&path)?;
-        Ok(Self { path })
+        platform::validate(namespace, &path)?;
+        Ok(Self { namespace, path })
     }
 
     /// The complete Unix socket path or Windows pipe path, suitable for `--endpoint`.
@@ -102,10 +145,11 @@ impl Endpoint {
     /// # Errors
     /// Refuses invalid locations, insecure Unix paths and failed OS connections.
     pub async fn connect(&self) -> Result<Stream, EndpointError> {
+        let namespace = self.namespace;
         let path = self.path.clone();
-        let name = blocking::join(
+        let name = join_blocking(
             tokio::task::spawn_blocking(move || {
-                platform::validate_connect(&path)?;
+                platform::validate_connect(namespace, &path)?;
                 platform::socket_name(&path).context(ConnectSnafu { path })
             })
             .await,
@@ -131,8 +175,9 @@ impl EndpointListener {
     /// # Errors
     /// A live owner, uncertain stale state or invalid permissions prevents binding.
     pub async fn bind(endpoint: &Endpoint) -> Result<Self, EndpointError> {
+        let namespace = endpoint.namespace;
         let path = endpoint.path.clone();
-        blocking::join(tokio::task::spawn_blocking(move || platform::bind(&path)).await)
+        join_blocking(tokio::task::spawn_blocking(move || platform::bind(namespace, &path)).await)
     }
 
     /// Accepts the next stream, retaining the listener for further connections.
@@ -141,5 +186,18 @@ impl EndpointListener {
     /// Reports the OS accept error without treating the endpoint as stale.
     pub async fn accept(&self) -> Result<Stream, EndpointError> {
         self.listener.accept().await.context(AcceptSnafu)
+    }
+}
+
+/// The result of a `spawn_blocking` task. A panic in it is a bug that must
+/// interrupt the caller, so it is resumed instead of becoming an error.
+pub(crate) fn join_blocking<T>(joined: Result<T, JoinError>) -> T {
+    match joined {
+        Ok(value) => value,
+        Err(error) => match error.try_into_panic() {
+            Ok(panic) => std::panic::resume_unwind(panic),
+            // Nothing aborts a blocking task, so only a dropped runtime cancels one.
+            Err(error) => panic!("a blocking task was cancelled: {error}"),
+        },
     }
 }

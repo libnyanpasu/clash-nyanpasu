@@ -1015,6 +1015,7 @@ for (const root of [
   'backend/nyanpasu-persistence/src/',
   'backend/nyanpasu-profile-io/src/',
   'backend/nyanpasu-net/src/',
+  'backend/nyanpasu-single-instance/src/',
 ]) {
   test(`scanFile / evaluateGate: service statics fail in ${root}`, () => {
     const relPath = `${root}services/nested.rs`

@@ -29,12 +29,13 @@ use super::{ConnectionLimits, LocalServer, serve_stream};
 use crate::{
     audit::RpcTransport,
     local::{
-        endpoint::{Endpoint, EndpointListener},
+        ENDPOINT_NAMESPACE,
         subscriptions::{Details, SubscriptionSource},
     },
     registry::{RpcDependencies, RpcFuture},
     test_support::{Capture, Fixture, SECRET},
 };
+use nyanpasu_single_instance::endpoint::{Endpoint, EndpointListener};
 
 #[path = "log_tests.rs"]
 mod logs;
@@ -116,7 +117,7 @@ struct ListeningServer {
 impl ListeningServer {
     async fn start(server: LocalServer) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let endpoint = Endpoint::discover(directory.path(), None).unwrap();
+        let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
         let listener = EndpointListener::bind(&endpoint).await.unwrap();
         let stop = CancellationToken::new();
         let shutdown = stop.clone();
@@ -162,7 +163,7 @@ impl ListeningServer {
 impl Peer {
     async fn start_server(server: LocalServer, features: &[&str]) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let endpoint = Endpoint::discover(directory.path(), None).unwrap();
+        let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
         let listener = EndpointListener::bind(&endpoint).await.unwrap();
         let stop = tokio_util::sync::CancellationToken::new();
         let shutdown = stop.clone();
@@ -189,7 +190,7 @@ impl Peer {
 
     async fn start(server: LocalServer, features: &[&str]) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let endpoint = Endpoint::discover(directory.path(), None).unwrap();
+        let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
         let listener = EndpointListener::bind(&endpoint).await.unwrap();
         let (stream, accepted) = tokio::join!(endpoint.connect(), listener.accept());
         let stop = tokio_util::sync::CancellationToken::new();
@@ -991,7 +992,7 @@ async fn local_handler_panic_reaches_fatal_supervision() {
         .rpc
         .enable_local_test_command("audit_echo", Some(panic_handler));
     let directory = tempfile::tempdir().unwrap();
-    let endpoint = Endpoint::discover(directory.path(), None).unwrap();
+    let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
     let listener = EndpointListener::bind(&endpoint).await.unwrap();
     let task = tokio::spawn(
         LocalServer::new(fixture.rpc.clone(), ConnectionLimits::default())

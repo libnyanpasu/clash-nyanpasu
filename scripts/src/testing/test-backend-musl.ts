@@ -71,7 +71,7 @@ export async function main(args: string[]): Promise<void> {
         // The independent production closure is checked by lint:backend-boundaries.
         '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
         '-p nyanpasu-rpc --features nyanpasu-rpc/http --features nyanpasu-rpc/local-server -p nyanpasu-rpc-protocol --features nyanpasu-rpc-protocol/frame-io --features nyanpasu-rpc-protocol/local-client -p nyanpasu-contracts -p nyanpasu-core -p nyanpasu-state-engine -p nyanpasu-runtime-values -p nyanpasu-migration -p nyanpasu-profile-transform -p nyanpasu-scripts -p boa_utils ' +
-        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater -p nyanpasu-os -p nyanpasu-server --features nyanpasu-os/test-support --lib --tests ' +
+        '-p nyanpasu-persistence -p nyanpasu-profile-io -p nyanpasu-net -p nyanpasu-owner-support -p nyanpasu-observers -p nyanpasu-updater -p nyanpasu-os -p nyanpasu-single-instance -p nyanpasu-server --features nyanpasu-os/test-support --lib --tests ' +
         '--no-run --message-format=json --jobs 4',
     ],
     stdout: 'piped',
@@ -100,6 +100,7 @@ export async function main(args: string[]): Promise<void> {
     'lib:nyanpasu_observers',
     'lib:nyanpasu_updater',
     'lib:nyanpasu_os',
+    'lib:nyanpasu_single_instance',
   ])
   const expectedCount = expectedTargets.size
   for (const line of build.stdout.toString('utf8').split('\n')) {

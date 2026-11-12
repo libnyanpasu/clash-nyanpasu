@@ -8,10 +8,11 @@ use nyanpasu_rpc::{
     forward,
     http::{Frontend, listener::LoopbackListener},
     local::{
-        endpoint::{Endpoint, EndpointError, EndpointListener},
+        ENDPOINT_NAMESPACE,
         server::{ConnectionLimits, LocalServer},
     },
 };
+use nyanpasu_single_instance::endpoint::{Endpoint, EndpointError, EndpointListener};
 use snafu::{ResultExt as _, Snafu};
 use tokio::{
     sync::oneshot,
@@ -120,7 +121,11 @@ async fn serve(
         }
         let endpoint = blocking::join(
             tokio::task::spawn_blocking(move || {
-                Endpoint::discover(&options.data_directory, options.endpoint.as_deref())
+                Endpoint::discover(
+                    ENDPOINT_NAMESPACE,
+                    &options.data_directory,
+                    options.endpoint.as_deref(),
+                )
             })
             .await,
         )

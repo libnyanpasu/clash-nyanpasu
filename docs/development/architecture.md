@@ -72,6 +72,7 @@ backend/nyanpasu-profile-io/src/   profile files, materialization and content ad
 backend/nyanpasu-net/src/          subscription, changelog, egress, icon, diagnostics and HTTP policy
 backend/nyanpasu-os/src/           proxy, PAC, autostart, device identity, version probes, service control, DNS flush and binary installation
 backend/nyanpasu-scripts/src/      JavaScript and Lua script runners over config ports
+backend/nyanpasu-single-instance/src/ user-private local endpoints with first-binder ownership
 ```
 
 `NyanpasuClient` and its actor/workflow graph live in
@@ -258,9 +259,10 @@ Rules for maintaining the separation:
   `backend/nyanpasu-persistence/src/`, `backend/nyanpasu-profile-io/src/`,
   `backend/nyanpasu-net/src/`, `backend/nyanpasu-migration/src/`,
   `backend/nyanpasu-owner-support/src/`, `backend/nyanpasu-observers/src/`,
-  `backend/nyanpasu-updater/src/` and `backend/nyanpasu-os/src/`
+  `backend/nyanpasu-updater/src/`, `backend/nyanpasu-os/src/` and
+  `backend/nyanpasu-single-instance/src/`
   (`STATIC_GATE_PREFIXES` in `scripts/src/architecture-ledger/policy.ts`).
-  All nineteen use the same explicit path-and-name allowlist; other backend library
+  All twenty use the same explicit path-and-name allowlist; other backend library
   statics remain outside this gate. The backend dependency gate complements
   this source scan; it does not replace it.
 

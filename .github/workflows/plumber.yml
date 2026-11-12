@@ -1,10 +1,24 @@
 name: '[CI] Check Workflow Security with Plumber'
 
+# Plumber reads the GitHub API through the repository's GITHUB_TOKEN,
+# whose hourly quota every workflow run shares. Run on every push, bursts
+# of Renovate rebases ran that quota out and failed the attestation check
+# in its install step, so it runs only when its inputs change. The weekly
+# run catches newly published advisories and repository setting changes
+# that no file change triggers.
 on:
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/**'
+      - '.plumber.yaml'
   pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.plumber.yaml'
+  schedule:
+    - cron: '0 3 * * 1'
 
 permissions:
   contents: read

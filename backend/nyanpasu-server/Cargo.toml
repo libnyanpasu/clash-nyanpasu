@@ -33,6 +33,7 @@ nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = 
   'nesting'
 ] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
+nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false, features = [
   'default-meta'

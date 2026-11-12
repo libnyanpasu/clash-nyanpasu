@@ -366,11 +366,14 @@ async fn server_shutdown_drains_admitted_owner_work() {
     effects.release.notify_one();
     bounded(effects.completed.notified()).await;
     bounded(task).await.unwrap().unwrap();
-    let endpoint =
-        nyanpasu_rpc::local::endpoint::Endpoint::discover(directory.path(), Some(&ready.endpoint))
-            .unwrap();
+    let endpoint = nyanpasu_single_instance::endpoint::Endpoint::discover(
+        nyanpasu_rpc::local::ENDPOINT_NAMESPACE,
+        directory.path(),
+        Some(&ready.endpoint),
+    )
+    .unwrap();
     drop(
-        nyanpasu_rpc::local::endpoint::EndpointListener::bind(&endpoint)
+        nyanpasu_single_instance::endpoint::EndpointListener::bind(&endpoint)
             .await
             .unwrap(),
     );
@@ -381,8 +384,12 @@ async fn server_startup_failure_releases_bound_endpoints() {
     let Fixture {
         server, directory, ..
     } = fixture(false).await;
-    let endpoint =
-        nyanpasu_rpc::local::endpoint::Endpoint::discover(directory.path(), None).unwrap();
+    let endpoint = nyanpasu_single_instance::endpoint::Endpoint::discover(
+        nyanpasu_rpc::local::ENDPOINT_NAMESPACE,
+        directory.path(),
+        None,
+    )
+    .unwrap();
     let mut options = options(&directory);
     let http = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = http.local_addr().unwrap();
@@ -402,7 +409,7 @@ async fn server_startup_failure_releases_bound_endpoints() {
             .expect("failed startup releases the acquired HTTP address"),
     );
     drop(
-        nyanpasu_rpc::local::endpoint::EndpointListener::bind(&endpoint)
+        nyanpasu_single_instance::endpoint::EndpointListener::bind(&endpoint)
             .await
             .unwrap(),
     );

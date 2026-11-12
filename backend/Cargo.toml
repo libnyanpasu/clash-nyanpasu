@@ -29,6 +29,7 @@ members = [
   'nyanpasu-panics',
   'nyanpasu-scripts',
   'nyanpasu-local-channel',
+  'nyanpasu-single-instance',
   'nyanpasu-widget-protocol',
   'nyanpasu-widget',
   'nyanpasu-crash-reporter',

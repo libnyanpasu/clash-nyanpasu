@@ -19,7 +19,8 @@ use socket2::{Domain, SockAddr, Socket, Type};
 
 use super::{
     AccessControlSnafu, AlreadyServingSnafu, BindSnafu, ClaimSnafu, EndpointError,
-    EndpointListener, InsecurePathSnafu, InspectSnafu, InvalidLocationSnafu, ReclaimSnafu,
+    EndpointListener, InsecurePathSnafu, InspectSnafu, InvalidLocationSnafu, Namespace,
+    ReclaimSnafu,
     directory_chain::{self, DirectoryMetadata, FileType},
 };
 
@@ -38,13 +39,17 @@ pub(super) fn current_user() -> Result<String, EndpointError> {
     Ok(uid().to_string())
 }
 
-pub(super) fn default_path(user: &str, identity: &str) -> Result<PathBuf, EndpointError> {
+pub(super) fn default_path(
+    namespace: Namespace,
+    user: &str,
+    identity: &str,
+) -> Result<PathBuf, EndpointError> {
     // A fixed, short root keeps discovery independent of shell environment/PID.
     // Canonicalize the system root because macOS's /tmp is /private/tmp.
     let root = Path::new("/tmp")
         .canonicalize()
         .context(InspectSnafu { path: "/tmp" })?;
-    let directory = root.join(format!("nyanpasu-rpc-{user}"));
+    let directory = root.join(format!("{}-{user}", namespace.as_str()));
     match DirBuilder::new().mode(0o700).create(&directory) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
@@ -59,7 +64,12 @@ pub(super) fn default_path(user: &str, identity: &str) -> Result<PathBuf, Endpoi
     Ok(directory.join(format!("{identity}.sock")))
 }
 
-pub(super) fn validate_location(path: &Path) -> Result<(), EndpointError> {
+/// Any private location is valid on Unix; the namespace only names the default directory.
+pub(super) fn validate(_namespace: Namespace, path: &Path) -> Result<(), EndpointError> {
+    validate_location(path)
+}
+
+fn validate_location(path: &Path) -> Result<(), EndpointError> {
     ensure!(
         path.is_absolute()
             && path.file_name().is_some()
@@ -133,7 +143,7 @@ fn socket_metadata_for_user(path: &Path, user: libc::uid_t) -> Result<Metadata, 
     Ok(metadata)
 }
 
-pub(super) fn validate_connect(path: &Path) -> Result<(), EndpointError> {
+pub(super) fn validate_connect(_namespace: Namespace, path: &Path) -> Result<(), EndpointError> {
     validate_location(path)?;
     socket_metadata(path)?;
     Ok(())
@@ -285,7 +295,7 @@ impl Drop for Claim {
     }
 }
 
-pub(super) fn bind(path: &Path) -> Result<EndpointListener, EndpointError> {
+pub(super) fn bind(_namespace: Namespace, path: &Path) -> Result<EndpointListener, EndpointError> {
     let mut claim = Claim::acquire(path)?;
     claim.reclaim_stale(probe)?;
     let listener = ListenerOptions::new()

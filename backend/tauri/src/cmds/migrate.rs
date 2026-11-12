@@ -185,7 +185,7 @@ pub fn migrate_home_dir_handler(target_path: &str, paths: &PathResolver) -> anyh
     use crate::utils;
     use anyhow::Context;
     use deelevate::{PrivilegeLevel, Token};
-    use std::{borrow::Cow, path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
+    use std::{borrow::Cow, path::PathBuf, process::Command, str::FromStr};
     use sysinfo::System;
     use tauri::utils::platform::current_exe;
     println!("target path {target_path}");
@@ -202,17 +202,13 @@ pub fn migrate_home_dir_handler(target_path: &str, paths: &PathResolver) -> anyh
 
     // 1. waiting for app exited
     println!("waiting for app exited.");
-    let placeholder =
-        utils::init::single_instance_placeholder(crate::host_paths::APP_NAME, &current_home_dir);
-    let mut single_instance: single_instance::SingleInstance;
-    loop {
-        single_instance = single_instance::SingleInstance::new(&placeholder)
-            .context("failed to create single instance")?;
-        if single_instance.is_single() {
-            break;
-        }
-        thread::sleep(Duration::from_secs(1));
-    }
+    let single_instance = nyanpasu_utils::runtime::get_runtime_handle()
+        .block_on(crate::desktop::instance::wait_for_release(
+            crate::host_paths::INSTANCE_NAMESPACE,
+            &current_home_dir,
+            None,
+        ))
+        .context("failed to claim the application instance")?;
 
     // 2. kill all related processes.
     let related_names = [

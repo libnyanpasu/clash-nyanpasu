@@ -27,6 +27,7 @@ dependency rules.
 | `nyanpasu-core`              | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and source state owners   | Implementation crates, Tauri, egui/eframe or Slint                                                                            |
 | `boa_utils`                  | Boa module parsing and builtins over injected HTTP source ports                                     | Core family, implementation crates and GUI                                                                                    |
 | `nyanpasu-scripts`           | JavaScript and Lua script runners behind config's `ScriptRunner`                                    | Core, other implementation crates, Tauri, egui/eframe or Slint                                                                |
+| `nyanpasu-single-instance`   | User-private local endpoints with first-binder ownership, used before composition                   | Every workspace package, Tauri, egui/eframe or Slint                                                                          |
 | `nyanpasu-widget-protocol`   | Render-free statistic widget contract: variants, messages and the optional `ipc` channel            | Tauri, egui/eframe or Slint                                                                                                   |
 | `nyanpasu-widget`            | Statistic widget process frontend, rendered with Slint                                              | Tauri; no neutral crate may depend on it                                                                                      |
 | `nyanpasu-diagnose`          | Host facts, diagnostic reports, redacted archives and synchronous progress protocol                 | Core, Tauri, egui/eframe or Slint                                                                                             |
@@ -112,7 +113,11 @@ shell. Their mechanisms stay in the Tauri shell: the hotkey owner, main-thread
 handoff and presentation-effect execution in `backend/tauri/src/desktop/`, the
 concrete GUI adapters in `backend/tauri/src/adapters/`. There is no desktop
 interaction crate: the server needs none of these mechanisms, and new crate
-boundaries brought no desktop compile-time gain. Core owns the ports it
+boundaries brought no desktop compile-time gain. The one exception is the
+single-instance claim, which the server needs as well: its endpoint and
+hand-off live in the leaf `nyanpasu-single-instance`, while the desktop shell
+decides what a handed-over launch does and registers the deep-link schemes in
+`backend/tauri/src/desktop/`. Core owns the ports it
 consumes, hotkey validation before commit, hotkey action dispatch and the shared
 convergence of effects (revisions, status, receipts). No core-family package
 depends on the widget protocol directly; config uses its render-free widget

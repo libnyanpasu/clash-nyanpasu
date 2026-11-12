@@ -96,7 +96,19 @@ fn dispatch(
                 migrate::migrate_home_dir_handler(target_path, paths).unwrap();
             }
             Commands::Launch { args } => {
-                let _ = utils::init::check_singleton(paths).unwrap();
+                // Start once the old process has released the instance, so the
+                // new one becomes primary instead of handing itself back. After
+                // five seconds start anyway; the new one then retries the hand-off.
+                let released = nyanpasu_utils::runtime::get_runtime_handle().block_on(
+                    crate::desktop::instance::wait_for_release(
+                        crate::host_paths::INSTANCE_NAMESPACE,
+                        paths.app_config_dir().as_std_path(),
+                        Some(std::time::Duration::from_secs(5)),
+                    ),
+                );
+                if let Err(error) = released {
+                    eprintln!("{}", snafu::Report::from_error(&error));
+                }
                 let appimage: Option<String> = {
                     #[cfg(target_os = "linux")]
                     {

@@ -195,11 +195,7 @@ test('RPC local endpoints are opt-in without widening protocol dependencies', ()
   assert.match(local, /'nyanpasu-rpc-protocol\/frame-io'/)
   for (const dependency of [
     'interprocess',
-    'sha2',
-    'libc',
-    'socket2',
-    'widestring',
-    'windows-sys',
+    'nyanpasu-single-instance',
     'tokio-util',
     'uuid',
   ]) {
@@ -538,6 +534,46 @@ for (const dependency of [
     }
   })
 }
+
+test('single instance stands on libraries only, with no workspace or GUI package', () => {
+  const workspaceMembers = [
+    'nyanpasu-single-instance',
+    'nyanpasu-owner-support',
+    'nyanpasu-local-channel',
+  ]
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-single-instance',
+      'nyanpasu-single-instance v0.1.0\ninterprocess v2.4.8\nsha2 v0.11\ntokio v1.54.1\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+  for (const dependency of [
+    'nyanpasu-owner-support',
+    'nyanpasu-local-channel',
+  ]) {
+    for (const prefix of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-single-instance',
+          `nyanpasu-single-instance v0.1.0\n${prefix}${dependency} v0.1.0\n`,
+          undefined,
+          workspaceMembers,
+        ),
+        [`nyanpasu-single-instance must not depend on ${dependency}`],
+      )
+    }
+  }
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-single-instance',
+      'nyanpasu-single-instance v0.1.0\ntauri v2.0\n',
+    ),
+    ['nyanpasu-single-instance must not depend on tauri'],
+  )
+})
 
 for (const owner of [
   'nyanpasu-config',

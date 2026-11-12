@@ -16,12 +16,13 @@ use tokio_util::sync::CancellationToken;
 use super::{ControlledStream, Source, WriterGate, server};
 use crate::{
     local::{
-        endpoint::{Endpoint, EndpointListener},
+        ENDPOINT_NAMESPACE,
         server::{ConnectionLimits, serve_stream},
         subscriptions::SubscriptionSource as _,
     },
     test_support::Fixture,
 };
+use nyanpasu_single_instance::endpoint::{Endpoint, EndpointListener};
 
 struct Peer {
     client: LocalClient,
@@ -34,7 +35,7 @@ struct Peer {
 impl Peer {
     async fn start(fixture: &Fixture, source: Arc<Source>) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let endpoint = Endpoint::discover(directory.path(), None).unwrap();
+        let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
         let listener = EndpointListener::bind(&endpoint).await.unwrap();
         let server = server(
             fixture,

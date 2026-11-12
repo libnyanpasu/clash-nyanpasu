@@ -161,6 +161,12 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     package: 'nyanpasu-os',
     forbids: ['nyanpasu-ipc', 'nyanpasu-core-manager'],
   },
+  // Shells claim it before composing anything, so it stands on no workspace package.
+  {
+    package: 'nyanpasu-single-instance',
+    forbids: GUI,
+    allowedWorkspace: ['nyanpasu-single-instance'],
+  },
   {
     package: 'nyanpasu-diagnose',
     forbids: [...CORE_FAMILY, ...IMPLEMENTATION],

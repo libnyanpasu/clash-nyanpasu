@@ -40,6 +40,7 @@ mlua = { version = '0.12', optional = true, features = [
 async-fs = '2.1.2'
 postcard = { version = '1.1.1', features = ['use-std'] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
+nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
 nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
@@ -165,7 +166,6 @@ nanoid = '0.5.0'
 # System Utilities
 dunce = '1.0.4'  # for cross platform path normalization
 runas = { workspace = true }
-single-instance = '0.3.3'
 which = '8'
 open = '5.0.1'
 sysinfo = '0.39'
@@ -212,7 +212,6 @@ tauri = { version = '2.4', features = [
   'rustls-tls',
   'specta',
 ] }
-tauri-plugin-deep-link = { path = '../tauri-plugin-deep-link', version = '0.1.2' }  # This should be migrated to official tauri plugin
 tauri-plugin-os = '2.2'
 tauri-plugin-clipboard-manager = '2.2'
 tauri-plugin-fs = '2.2'

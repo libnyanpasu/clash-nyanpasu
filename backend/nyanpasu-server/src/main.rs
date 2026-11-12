@@ -14,7 +14,14 @@ use nyanpasu_server::{
     process::PanicPolicy,
     run::{self, RunOptions},
 };
+use nyanpasu_single_instance::{
+    endpoint::Namespace,
+    instance::{self, Claim, ClaimError, Primary},
+};
 use tokio_util::sync::CancellationToken;
+
+/// One server per configuration directory; apart from the desktop's instances.
+const INSTANCE_NAMESPACE: Namespace = Namespace::new("nyanpasu-server-instance");
 
 #[derive(clap::Parser)]
 #[command(
@@ -51,6 +58,18 @@ fn main() -> ExitCode {
 fn start(policy: PanicPolicy, options: Options) -> anyhow::Result<bool> {
     let paths = PathResolver::with_base_dirs(options.config_dir.into(), options.data_dir.into());
     paths.create_base_dirs()?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    // Before logging and composition: a second server must not touch either.
+    // Owned until the runtime is gone, which ends every owner using the directory.
+    let Some(_instance) = runtime.block_on(claim_instance(&paths))? else {
+        eprintln!(
+            "another nyanpasu-server already serves {}",
+            paths.app_config_dir()
+        );
+        return Ok(false);
+    };
     let capture = nyanpasu_core::client::jobs::capture();
     let (logger, logging) = logging::start(&paths, capture.clone())?;
     let result = (|| {
@@ -79,9 +98,6 @@ fn start(policy: PanicPolicy, options: Options) -> anyhow::Result<bool> {
                 nyanpasu_rpc::http::Frontend::Embedded(Arc::new(DirectoryAssets(path)))
             }),
         };
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
         let stop = CancellationToken::new();
         let shell_stop = stop.clone();
         let success = runtime.block_on(policy.supervise(stop, async move {
@@ -121,6 +137,15 @@ fn start(policy: PanicPolicy, options: Options) -> anyhow::Result<bool> {
     })();
     logging.finish();
     result
+}
+
+/// The instance of the configuration directory, or `None` when another server owns it.
+/// A server takes no hand-off: nothing it would do with a second launch's arguments.
+async fn claim_instance(paths: &PathResolver) -> Result<Option<Primary>, ClaimError> {
+    match instance::claim(INSTANCE_NAMESPACE, paths.app_config_dir().as_std_path()).await? {
+        Claim::Primary(primary) => Ok(Some(primary)),
+        Claim::AlreadyRunning(_) => Ok(None),
+    }
 }
 
 async fn shutdown_signal() -> std::io::Result<()> {
@@ -163,8 +188,26 @@ impl nyanpasu_rpc::http::FrontendAssets for DirectoryAssets {
 
 #[cfg(test)]
 mod tests {
-    use super::Options;
+    use super::{Options, claim_instance};
     use clap::Parser as _;
+    use nyanpasu_paths::PathResolver;
+
+    #[tokio::test]
+    async fn one_server_per_configuration_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let paths = |config: &str| {
+            let path = |name: &str| directory.path().join(name).to_str().unwrap().into();
+            let paths = PathResolver::with_base_dirs(path(config), path("data"));
+            paths.create_base_dirs().unwrap();
+            paths
+        };
+        let first = claim_instance(&paths("config")).await.unwrap();
+        assert!(first.is_some());
+        assert!(claim_instance(&paths("config")).await.unwrap().is_none());
+        assert!(claim_instance(&paths("other")).await.unwrap().is_some());
+        drop(first);
+        assert!(claim_instance(&paths("config")).await.unwrap().is_some());
+    }
 
     #[test]
     fn http_requires_explicit_enable() {

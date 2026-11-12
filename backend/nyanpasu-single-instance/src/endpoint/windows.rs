@@ -14,22 +14,27 @@ use widestring::U16CString;
 
 use super::{
     AccessControlSnafu, BindSnafu, CurrentUserSnafu, EndpointError, EndpointListener,
-    InvalidLocationSnafu,
+    InvalidLocationSnafu, Namespace,
 };
 
 pub(super) fn current_user() -> Result<String, EndpointError> {
     current_user_sid().context(CurrentUserSnafu)
 }
 
-pub(super) fn default_path(user: &str, identity: &str) -> Result<PathBuf, EndpointError> {
+pub(super) fn default_path(
+    namespace: Namespace,
+    user: &str,
+    identity: &str,
+) -> Result<PathBuf, EndpointError> {
     Ok(PathBuf::from(format!(
-        r"\\.\pipe\nyanpasu-rpc-{user}-{identity}"
+        r"\\.\pipe\{}-{user}-{identity}",
+        namespace.as_str()
     )))
 }
 
-pub(super) fn validate_location(path: &Path) -> Result<(), EndpointError> {
+pub(super) fn validate(namespace: Namespace, path: &Path) -> Result<(), EndpointError> {
     let user = current_user()?;
-    let prefix = format!(r"\\.\pipe\nyanpasu-rpc-{user}-");
+    let prefix = format!(r"\\.\pipe\{}-{user}-", namespace.as_str());
     let leaf = path.to_str().and_then(|path| path.strip_prefix(&prefix));
     ensure!(
         leaf.is_some_and(|leaf| !leaf.is_empty()
@@ -42,16 +47,16 @@ pub(super) fn validate_location(path: &Path) -> Result<(), EndpointError> {
     Ok(())
 }
 
-pub(super) fn validate_connect(path: &Path) -> Result<(), EndpointError> {
-    validate_location(path)
+pub(super) fn validate_connect(namespace: Namespace, path: &Path) -> Result<(), EndpointError> {
+    validate(namespace, path)
 }
 
 pub(super) fn socket_name(path: &Path) -> io::Result<Name<'static>> {
     path.to_owned().to_fs_name::<GenericFilePath>()
 }
 
-pub(super) fn bind(path: &Path) -> Result<EndpointListener, EndpointError> {
-    validate_location(path)?;
+pub(super) fn bind(namespace: Namespace, path: &Path) -> Result<EndpointListener, EndpointError> {
+    validate(namespace, path)?;
     let sddl = U16CString::from_str(format!("D:P(A;;GA;;;{})", current_user()?))
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
         .context(AccessControlSnafu)?;

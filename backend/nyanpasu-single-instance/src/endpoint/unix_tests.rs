@@ -7,15 +7,15 @@ use std::{
 };
 
 use super::{Claim, private_directory_for_user, socket_metadata_for_user, uid, validate_location};
-use crate::local::endpoint::{
+use crate::endpoint::{
     Endpoint, EndpointError, EndpointListener,
-    tests::{connect, exchange, location},
+    tests::{TEST, connect, exchange, location},
 };
 
 #[tokio::test]
 async fn default_endpoint_uses_a_secure_directory_chain() {
     let directory = tempfile::tempdir().unwrap();
-    let endpoint = Endpoint::discover(directory.path(), None).unwrap();
+    let endpoint = Endpoint::discover(TEST, directory.path(), None).unwrap();
     validate_location(endpoint.path()).unwrap();
     let parent = fs::symlink_metadata(endpoint.path().parent().unwrap()).unwrap();
     assert!(parent.is_dir());
@@ -123,12 +123,12 @@ async fn local_endpoint_refuses_foreign_or_symlinked_paths() {
     let link = parent.join("linked");
     symlink(parent, &link).unwrap();
     assert!(matches!(
-        Endpoint::discover(directory.path(), Some(&link.join("rpc.sock"))),
+        Endpoint::discover(TEST, directory.path(), Some(&link.join("rpc.sock"))),
         Err(EndpointError::InsecurePath { .. })
     ));
     fs::set_permissions(parent, fs::Permissions::from_mode(0o777)).unwrap();
     assert!(matches!(
-        Endpoint::discover(directory.path(), Some(endpoint.path())),
+        Endpoint::discover(TEST, directory.path(), Some(endpoint.path())),
         Err(EndpointError::InsecurePath { .. })
     ));
     fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();

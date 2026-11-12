@@ -22,11 +22,7 @@ local-server = [
   'dep:tokio-util',
   'dep:uuid',
   'dep:interprocess',
-  'dep:sha2',
-  'dep:libc',
-  'dep:socket2',
-  'dep:widestring',
-  'dep:windows-sys'
+  'dep:nyanpasu-single-instance'
 ]
 http = [
   'dep:axum',
@@ -63,6 +59,7 @@ nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-single-instance = { path = '../nyanpasu-single-instance', optional = true }
 nyanpasu-core-manager = { workspace = true }
 nyanpasu-ipc = { workspace = true }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
@@ -83,7 +80,6 @@ futures = { version = '0.3', optional = true }
 indexmap = { version = '2.2.3', features = ['serde'] }
 inventory = '0.3'
 interprocess = { workspace = true, features = ['tokio'], optional = true }
-sha2 = { version = '0.11', optional = true }
 serde = { version = '1', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
 serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [
@@ -122,19 +118,6 @@ tracing-subscriber = { optional = true, version = '0.3', features = [
   'parking_lot',
 ] }
 tower = { version = '0.5', features = ['util'], optional = true }
-
-[target.'cfg(unix)'.dependencies]
-libc = { version = '0.2', optional = true }
-socket2 = { version = '0.6', optional = true }
-
-[target.'cfg(windows)'.dependencies]
-widestring = { version = '1', optional = true }
-windows-sys = { version = '0.61', optional = true, features = [
-  'Win32_Foundation',
-  'Win32_Security',
-  'Win32_Security_Authorization',
-  'Win32_System_Threading'
-] }
 
 [dev-dependencies]
 whoami = '2.0.0'

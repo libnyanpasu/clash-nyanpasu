@@ -438,12 +438,17 @@ No forwarding modules remain at the old shell paths.
 ## Local endpoint infrastructure
 
 E3c adds `nyanpasu-rpc/local-server`, off by default, with `protocol/frame-io`
-and OS socket dependencies. `local::endpoint::Endpoint::discover` is the shared
+and the endpoint crate. The endpoint mechanism lives in
+`nyanpasu-single-instance::endpoint`, a leaf crate with no workspace dependency,
+so shells can also claim endpoints before composing the application.
+`Endpoint::discover` with `nyanpasu_rpc::local::ENDPOINT_NAMESPACE` is the shared
 mapping for desktop, server and CLI: canonicalize the existing app data directory,
 then derive a stable 128-bit SHA-256 identity from that path and the current UID/SID.
-No shell name or PID enters the identity. An explicit location uses the same
-validation as the default. Discovery performs synchronous filesystem inspection;
-async hosts call it on a blocking thread. Binding already uses a blocking task.
+No shell name or PID enters the identity. The namespace names the pipe prefix and
+the Unix socket directory, so other endpoint families never meet this one. An
+explicit location uses the same validation as the default. Discovery performs
+synchronous filesystem inspection; async hosts call it on a blocking thread.
+Binding already uses a blocking task.
 
 | Platform           | Location and ownership                                                                                                                                               | Acceptance tests                                                                                                                                                     |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -466,7 +471,8 @@ listener closes. The byte-stream library can defer a Windows stream's close whil
 flushing unread output; connection lifecycle code must account for that ownership.
 Endpoint construction alone does not enable desktop service or dispatch.
 The parent-child `nyanpasu-local-channel` API and wire protocol are unchanged.
-Musl explicitly enables `nyanpasu-rpc/local-server` on the existing RPC library target.
+Musl explicitly enables `nyanpasu-rpc/local-server` on the existing RPC library target
+and runs the endpoint crate's own tests.
 
 ## Desktop local client and listener
 

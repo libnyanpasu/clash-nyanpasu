@@ -8,6 +8,14 @@ pub(crate) const APP_NAME: &str = "clash-nyanpasu";
 #[cfg(feature = "verge-dev")]
 pub(crate) const APP_NAME: &str = "clash-nyanpasu-dev";
 
+/// The single-instance endpoints of this build, apart from the other build's.
+#[cfg(not(feature = "verge-dev"))]
+pub(crate) const INSTANCE_NAMESPACE: nyanpasu_single_instance::endpoint::Namespace =
+    nyanpasu_single_instance::endpoint::Namespace::new("clash-nyanpasu-instance");
+#[cfg(feature = "verge-dev")]
+pub(crate) const INSTANCE_NAMESPACE: nyanpasu_single_instance::endpoint::Namespace =
+    nyanpasu_single_instance::endpoint::Namespace::new("clash-nyanpasu-dev-instance");
+
 /// Collects the host inputs once and resolves the process's directories from them. `run()`
 /// calls this once and passes the resolver down.
 pub fn discover() -> Result<PathResolver, DiscoverError> {

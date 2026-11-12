@@ -269,10 +269,10 @@ Script runtimes are part of profile enhancement, not platform infrastructure.
 
 System capabilities vary along two independent axes.
 
-| Kind                       | Varies with                         | Capabilities                                                                                                          | Owner                                                                         |
-| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Presentation / interaction | Shell form: desktop, mobile, server | Global hotkeys, windows, tray, widgets, dialogs, notifications, clipboard, opener, deep links, single instance        | The shell; the desktop mechanisms live in `backend/tauri/src/desktop/`        |
-| OS integration             | Operating system and privileges     | System proxy, PAC, autostart, service install and control, DNS flush, device identity, core binary install, elevation | An OS integration crate per target family, used by every shell on that target |
+| Kind                       | Varies with                         | Capabilities                                                                                                          | Owner                                                                                                                                                 |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Presentation / interaction | Shell form: desktop, mobile, server | Global hotkeys, windows, tray, widgets, dialogs, notifications, clipboard, opener, deep links, single instance        | The shell; the desktop mechanisms live in `backend/tauri/src/desktop/`, the single-instance claim shared by both shells in `nyanpasu-single-instance` |
+| OS integration             | Operating system and privileges     | System proxy, PAC, autostart, service install and control, DNS flush, device identity, core binary install, elevation | An OS integration crate per target family, used by every shell on that target                                                                         |
 
 An OS integration crate sits over the foundation layer like an implementation
 crate: it implements contracts, the shells inject it, and core never depends

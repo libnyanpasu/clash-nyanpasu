@@ -155,7 +155,7 @@ pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> Result<RpcFut
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// type WriteResult = Result<StorageRevision, std::io::Error>;
-/// #[nyanpasu_macro::rpc(local, result, operation = SetStorageItem)]
+/// #[nyanpasu_macro::rpc(scope = settings, local, result, operation = SetStorageItem)]
 /// fn set_storage_item(key: String, value: String) -> WriteResult {
 ///     Ok(StorageRevision::INITIAL)
 /// }
@@ -167,7 +167,7 @@ pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> Result<RpcFut
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_request_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(local, operation = SetStorageItem)]
+///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
 ///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -179,8 +179,24 @@ pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> Result<RpcFut
 /// ```compile_fail,E0308
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// fn operation_response_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(local, operation = SetStorageItem)]
+///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
 ///     fn set_storage_item(key: String, value: String) -> bool { true }
+/// }
+/// ```
+///
+/// A mutation that names no scope does not compile, and a query cannot hold a write scope:
+///
+/// ```compile_fail
+/// fn a_mutation_without_a_scope_fails_to_compile() {
+///     #[nyanpasu_macro::rpc(http)]
+///     fn reorder() -> bool { true }
+/// }
+/// ```
+///
+/// ```compile_fail
+/// fn a_query_cannot_hold_a_write_scope() {
+///     #[nyanpasu_macro::rpc(http, query, scope = proxy)]
+///     fn read_with_a_write_scope() -> bool { true }
 /// }
 /// ```
 ///
@@ -190,7 +206,7 @@ pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> Result<RpcFut
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_method_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(local, operation = SetStorageItem)]
+///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
 ///     fn different_method(key: String, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }

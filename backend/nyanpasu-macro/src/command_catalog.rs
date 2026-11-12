@@ -224,9 +224,9 @@ fn catalog_preserves_mutually_exclusive_platform_cfg() {
         r#"
         #[cfg(windows)] mod platform {
             #[cfg_attr(unix, cfg(target_os = "linux"))]
-            mod nested { #[nyanpasu_macro::rpc] #[tauri::command] fn platform_call() {} }
+            mod nested { #[nyanpasu_macro::rpc(scope = settings)] #[tauri::command] fn platform_call() {} }
         }
-        #[cfg(not(windows))] #[nyanpasu_macro::rpc] #[tauri::command] fn platform_call() {}
+        #[cfg(not(windows))] #[nyanpasu_macro::rpc(scope = settings)] #[tauri::command] fn platform_call() {}
     "#,
     )
     .unwrap();
@@ -279,13 +279,13 @@ fn catalog_follows_external_shared_modules() {
 fn catalog_excludes_test_fixtures() {
     let source = syn::parse_file(
         r#"
-        #[cfg(test)] mod fixtures { #[nyanpasu_macro::rpc] fn fixture() -> bool { true } }
+        #[cfg(test)] mod fixtures { #[nyanpasu_macro::rpc(scope = settings)] fn fixture() -> bool { true } }
         #[cfg(all(test, windows))] mod external_fixture;
         #[cfg_attr(not(test), cfg(any()))] mod conditional_fixture;
-        mod test_support { #[nyanpasu_macro::rpc] fn support() -> bool { true } }
-        #[test] #[nyanpasu_macro::rpc] fn fixture_test() -> bool { true }
-        #[tokio::test] #[nyanpasu_macro::rpc] async fn async_fixture() -> bool { true }
-        #[cfg(any(test, windows))] #[nyanpasu_macro::rpc] fn production() -> bool { true }
+        mod test_support { #[nyanpasu_macro::rpc(scope = settings)] fn support() -> bool { true } }
+        #[test] #[nyanpasu_macro::rpc(scope = settings)] fn fixture_test() -> bool { true }
+        #[tokio::test] #[nyanpasu_macro::rpc(scope = settings)] async fn async_fixture() -> bool { true }
+        #[cfg(any(test, windows))] #[nyanpasu_macro::rpc(scope = settings)] fn production() -> bool { true }
     "#,
     )
     .unwrap();

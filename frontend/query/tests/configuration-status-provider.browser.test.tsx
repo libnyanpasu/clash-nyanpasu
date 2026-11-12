@@ -14,6 +14,7 @@ import {
   useConfigurationStatus,
 } from '../src/provider/configuration-status-provider'
 import { RpcProvider } from '../src/provider/rpc-provider'
+import { createQueryBindings } from '../src/query-bindings'
 
 const status = (event_seq: number): ConfigurationStatus => ({
   event_seq,
@@ -128,6 +129,29 @@ async function setup(
 }
 
 afterEach(() => vi.restoreAllMocks())
+
+test('configuration status query keeps its method and result', async ({
+  onTestFinished,
+}) => {
+  const mock = mockRpc(status(7))
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  onTestFinished(() => {
+    mock.rpc.dispose()
+    queryClient.clear()
+  })
+  const { queries, mutations } = createQueryBindings(mock.rpc)
+  const options = queries.getConfigurationStatus()
+
+  expect(options.queryKey).toEqual(CONFIGURATION_STATUS_QUERY_KEY)
+  expect(mutations).not.toHaveProperty('getConfigurationStatus')
+  await expect(queryClient.fetchQuery(options)).resolves.toEqual(status(7))
+  expect(mock.invoke).toHaveBeenCalledExactlyOnceWith(
+    'get_configuration_status',
+    undefined,
+  )
+})
 
 test('shares one status listener and accepts events without letting older data win', async ({
   onTestFinished,

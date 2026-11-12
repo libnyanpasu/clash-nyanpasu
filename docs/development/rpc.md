@@ -208,6 +208,44 @@ local socket/CLI must enter this same kernel at INFO.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
 
+## Icon byte entries
+
+Icon reads use special byte entries rather than JSON commands. The neutral
+`nyanpasu_rpc::icons` module owns `IconRequest`, the shared path/query parser,
+MIME validation and reads through the existing cache and host ports. HTTP mounts
+`GET /bridge/icons/{*path}` behind the listener's Host/Origin and access-cookie
+authentication; the session cookie identifies the audit owner. Desktop registers
+`nyanpasu-icons` and calls the neutral module directly, with accepted requests
+tracked by the existing startup task tracker and refused during shutdown.
+Neither entry exposes a local command or a resource registry.
+
+Both entries allow only the explicit image MIME list (including SVG), and apply
+`X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: sandbox; default-src 'none'` on success and error.
+Validation also applies to old cache hits. These headers isolate direct image
+document navigation; app-page CSP alone is insufficient for Tauri local protocols.
+Desktop CORS permits packaged app origins and the configured development origin,
+with `Vary: Origin`, so preset detection can read canvas pixels.
+
+Successful remote icons use `private, max-age=3600`; mutable tray/widget icons use
+`private, no-cache` with a page-owned version in their URL. Errors use `no-store`.
+Only successful icon responses carry the internal cache-policy extension that
+overrides the listener's `no-store`; all other routes retain that policy.
+The core file cache remains seven days, with up to one extra browser TTL.
+Headless hosts can read cached remote icons; absent host icon ports return 501.
+
+Frontend callers use `rpc.icons.url(IconRequest)` through `@nyanpasu/rpc` and the
+URL hooks in `@nyanpasu/query`. The transport owns encoding and platform URL
+construction. Components handle image load/error events; mutable writes refresh
+preview and preset-detection versions even after partial failure. The old
+`get_cached_icon`, `get_tray_icon`, `get_widget_icon` commands and `IconData` are
+removed; icon write and is-set operations remain commands.
+
+Each fetch enters the audit kernel as fixed `icon_fetch`, using HTTP or
+`TauriProtocol` with the host webview label. Parser failures are rejected before
+admission; reads and MIME checks finish after admission. Audit records contain no
+URL, image bytes or credential and make no per-byte delivery claim.
+
 ## Frontend error handling
 
 Both HTTP and Tauri command transports reject reported RPC error envelopes with

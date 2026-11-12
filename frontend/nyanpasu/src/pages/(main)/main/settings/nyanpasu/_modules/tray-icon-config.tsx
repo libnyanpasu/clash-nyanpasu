@@ -93,13 +93,18 @@ type ActivePreset = TrayPreset | 'custom'
 // The backend re-encodes saved icons, so presets are matched on decoded pixels
 // rather than file bytes.
 const imagePixels = async (src: string) => {
-  const bitmap = await createImageBitmap(await (await fetch(src)).blob())
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Failed to load icon pixels'))
+    image.src = src
+  })
   const canvas = document.createElement('canvas')
-  canvas.width = bitmap.width
-  canvas.height = bitmap.height
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
   const context = canvas.getContext('2d')!
-  context.drawImage(bitmap, 0, 0)
-  bitmap.close()
+  context.drawImage(image, 0, 0)
 
   return context.getImageData(0, 0, canvas.width, canvas.height)
 }
@@ -109,16 +114,19 @@ const isSamePixels = (a: ImageData, b: ImageData) =>
   a.height === b.height &&
   a.data.every((value, index) => value === b.data[index])
 
-const useActivePreset = () => {
+const useActivePreset = (revisions: Record<TrayIconStateMode, number>) => {
   const store = useIconSetStore()
 
-  const normal = store.useIcon(TrayIconMode.normal).data?.data_url
-  const tun = store.useIcon(TrayIconMode.tun).data?.data_url
-  const systemProxy = store.useIcon(TrayIconMode.system_proxy).data?.data_url
+  const normal = store.useIcon(TrayIconMode.normal, revisions.normal)
+  const tun = store.useIcon(TrayIconMode.tun, revisions.tun)
+  const systemProxy = store.useIcon(
+    TrayIconMode.system_proxy,
+    revisions.system_proxy,
+  )
   const urls = [normal, tun, systemProxy]
 
   return useQuery({
-    queryKey: ['iconSetActivePreset', store.iconKey, ...urls],
+    queryKey: ['iconSetActivePreset', store.kind, ...urls],
     enabled: urls.every(Boolean),
     queryFn: async (): Promise<ActivePreset> => {
       const current = await Promise.all(urls.map((url) => imagePixels(url!)))
@@ -212,14 +220,16 @@ const TrayIconItem = ({
   mode,
   disabled,
   onBusyChange,
+  version,
+  onRefresh,
 }: {
   mode: TrayIconMode
   disabled: boolean
   onBusyChange: (busy: boolean) => void
+  version: number
+  onRefresh: (modes: TrayIconStateMode[]) => Promise<unknown>
 }) => {
   const store = useIconSetStore()
-
-  const [iconVersion, setIconVersion] = useState(0)
 
   const isIconSetQuery = store.isSetQuery(mode)
   const isIconSet = useQuery(
@@ -230,16 +240,16 @@ const TrayIconItem = ({
 
   const handleChangeIcon = useLockFn(async () => {
     onBusyChange(true)
+    let attempted = false
     try {
       const selected = await pickFile(null, IMAGE_FILTERS)
 
       if (!selected) return null
 
       setIsLoading(true)
+      attempted = true
 
       await setIconFromSelection(store, mode, selected)
-      await isIconSet.refetch()
-      setIconVersion((prev) => prev + 1)
 
       message(store.messages.setSuccess(), {
         kind: 'info',
@@ -251,6 +261,7 @@ const TrayIconItem = ({
         error: e,
       })
     } finally {
+      if (attempted) await onRefresh([mode])
       setIsLoading(false)
       onBusyChange(false)
     }
@@ -261,8 +272,6 @@ const TrayIconItem = ({
     try {
       // null means reset
       await invokeMutation(store.setIcon, [mode, null])
-      await isIconSet.refetch()
-      setIconVersion((prev) => prev + 1)
 
       message(m.settings_nyanpasu_tray_icon_reset_success(), {
         kind: 'info',
@@ -274,6 +283,7 @@ const TrayIconItem = ({
         error: e,
       })
     } finally {
+      await onRefresh([mode])
       onBusyChange(false)
     }
   })
@@ -316,7 +326,7 @@ const TrayIconItem = ({
           disabled={disabled}
         >
           <MaterialShape className="bg-surface-variant size-12 shrink-0">
-            <store.Image className="size-8" mode={mode} version={iconVersion} />
+            <store.Image className="size-8" mode={mode} version={version} />
           </MaterialShape>
 
           <div className="flex flex-1 flex-col">
@@ -381,20 +391,27 @@ function TrayIconConfigContent() {
   // that preset after the user chose to edit it.
   const [chosenMode, setChosenMode] = useState<ActivePreset>()
 
-  const detectedPreset = useActivePreset().data
+  const detectedPreset = useActivePreset(revisions).data
   const activeMode = chosenMode ?? detectedPreset
   const isCustom = activeMode === 'custom'
   const busy = isEditing || applyingPreset != null || pendingMode != null
 
   const lock = useLockFn(async (task: () => Promise<void>) => task())
 
-  const refreshIcons = (modes: TrayIconMode[]) =>
-    Promise.all(
-      modes.flatMap((mode) => [
-        queryClient.invalidateQueries({ queryKey: [store.iconKey, mode] }),
+  const refreshIcons = (modes: TrayIconStateMode[]) => {
+    setRevisions((previous) => {
+      const next = { ...previous }
+      for (const mode of modes) next[mode] += 1
+
+      return next
+    })
+
+    return Promise.all(
+      modes.map((mode) =>
         queryClient.invalidateQueries({ queryKey: [store.isSetKey, mode] }),
-      ]),
+      ),
     )
+  }
 
   const applyPreset = (preset: TrayPreset) =>
     lock(async () => {
@@ -420,11 +437,6 @@ function TrayIconConfigContent() {
       } finally {
         // Refresh even after a failure: earlier writes may have succeeded.
         await refreshIcons(Object.values(TrayIconMode))
-        setRevisions((prev) => ({
-          normal: prev.normal + 1,
-          tun: prev.tun + 1,
-          system_proxy: prev.system_proxy + 1,
-        }))
         setApplyingPreset(undefined)
       }
     })
@@ -444,7 +456,6 @@ function TrayIconConfigContent() {
           return
         }
 
-        setRevisions((prev) => ({ ...prev, [mode]: prev[mode] + 1 }))
         message(success, { kind: 'info' })
       } catch (error) {
         console.error(error)
@@ -515,6 +526,8 @@ function TrayIconConfigContent() {
         mode={mode}
         disabled={busy}
         onBusyChange={setIsEditing}
+        version={revisions[mode]}
+        onRefresh={refreshIcons}
       />
     ))
   }

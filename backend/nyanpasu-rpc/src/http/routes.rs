@@ -140,10 +140,61 @@ impl UnifiedRpc {
         Router::new()
             .route("/bridge/rpc", post(http_call))
             .route("/bridge/logs/archive", get(http_logs_archive))
+            .route("/bridge/icons/{*path}", get(http_icon))
             .route("/bridge/events", get(http_events))
             .route("/bridge/connection-details", get(http_connection_details))
             .with_state(self)
     }
+}
+
+async fn http_icon(
+    State(rpc): State<UnifiedRpc>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Response {
+    let audit = rpc.dependencies.audit.invocation(
+        RpcTransport::Http,
+        &http_owner_or_anonymous(&headers),
+        "icon_fetch",
+        None,
+    );
+    let result = dispatch_with_audit(&audit, || {
+        http_owner(&headers)?;
+        let path = uri
+            .path()
+            .strip_prefix("/bridge/icons")
+            .ok_or_else(|| RpcError::invalid_params("invalid icon path"))?;
+        let request = crate::icons::parse(path, uri.query())?;
+        Ok(unreported(async {
+            let body = crate::icons::read(&rpc.dependencies, request).await?;
+            let mut response = Response::builder()
+                .header("content-type", body.content_type)
+                .body(Body::from(body.bytes))
+                .map_err(application_error)?;
+            response.extensions_mut().insert(body.cache_policy);
+            Ok(response)
+        }))
+    })
+    .await;
+    let mut response = result.unwrap_or_else(|error| {
+        let status = match error.kind {
+            "invalid_params" => StatusCode::BAD_REQUEST,
+            "invalid_icon" => StatusCode::UNPROCESSABLE_ENTITY,
+            "unavailable" => StatusCode::NOT_IMPLEMENTED,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(error)).into_response()
+    });
+    response.headers_mut().insert(
+        "cache-control",
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    for (name, value) in crate::icons::SECURITY_HEADERS {
+        response
+            .headers_mut()
+            .insert(name, axum::http::HeaderValue::from_static(value));
+    }
+    response_prepared(&audit, response)
 }
 
 async fn http_logs_archive(State(rpc): State<UnifiedRpc>, headers: HeaderMap) -> Response {

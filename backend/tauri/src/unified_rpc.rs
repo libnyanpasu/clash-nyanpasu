@@ -1,5 +1,6 @@
 //! Desktop binding over the shared RPC crate.
 
+pub(crate) mod icons;
 pub mod native;
 
 #[cfg(test)]

@@ -211,15 +211,8 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
-    getCachedIcon: (url: string) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
-    getTrayIcon: (mode: TrayIcon) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_tray_icon', { mode })),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
-    /**  The statistic widget's own icon for `mode`, or the bundled one. */
-    getWidgetIcon: (mode: TrayIcon) =>
-      typedError<IconData, IpcError>(__RPC_INVOKE('get_widget_icon', { mode })),
     isWidgetIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(
         __RPC_INVOKE('is_widget_icon_set', { mode }),
@@ -777,6 +770,7 @@ export function createRpcClient(
   return {
     ...commands,
     events,
+    icons: transport.icons,
     listenResync: transport.events.listenResync.bind(transport.events),
     dispose: () => transport.events.dispose(),
   }
@@ -2480,9 +2474,11 @@ export type I18nLanguage_Deserialize =
 export type I18nLanguage_Serialize =
   'en' | 'ja' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
 
-export type IconData = {
-  data_url: string
-}
+/**  Input to the icon URL transport; versions refresh mutable URLs only. */
+export type IconRequest =
+  | { kind: 'cached'; url: string }
+  | { kind: 'tray'; mode: TrayIcon; version: number | null }
+  | { kind: 'widget'; mode: TrayIcon; version: number | null }
 
 export type ImportClassification = {
   /**  None when the signals do not settle on a kind. */

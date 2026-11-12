@@ -13,7 +13,11 @@ import { DashboardProvider } from '@/components/widgets/provider'
 import { WidgetId } from '@/components/widgets/widget-config'
 import { ProxyShortcutsWidget } from '@/components/widgets/widget-shortcut'
 import { DndContext } from '@dnd-kit/core'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -94,6 +98,7 @@ test('the proxy status header settles instead of flickering in a narrow widget',
     dispose: () => {},
   }
   const rpc = createRpcClient({
+    icons: createIconTransport(false),
     commands: { invoke: async (m: string) => invoke(m) as never },
     events,
   })

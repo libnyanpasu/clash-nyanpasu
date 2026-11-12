@@ -14,11 +14,16 @@ import TrayIconConfig from '../src/pages/(main)/main/settings/nyanpasu/_modules/
 const state = vi.hoisted(() => ({
   upload: vi.fn(),
   icons: undefined as Record<string, string> | undefined,
+  reads: [] as { mode: string; version?: number }[],
 }))
 vi.mock('@nyanpasu/platform/react', () => ({
   useMatchesPlatform: (condition: unknown) => condition !== 'browser',
 }))
-vi.mock('@/components/ui/image', () => ({ TrayImage: () => <span /> }))
+vi.mock('@/components/ui/image', () => ({
+  TrayImage: ({ mode, version }: { mode: string; version?: number }) => (
+    <span data-testid="icon-preview" data-mode={mode} data-version={version} />
+  ),
+}))
 vi.mock('@/utils/file-picker', () => ({ pickFile: vi.fn() }))
 vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
 vi.mock('@/services/rpc', () => ({
@@ -32,9 +37,12 @@ vi.mock('@/services/rpc', () => ({
 }))
 vi.mock('@nyanpasu/query', async (original) => ({
   ...(await original<typeof import('@nyanpasu/query')>()),
-  useTrayIcon: (mode: string) => ({
-    data: state.icons ? { data_url: state.icons[mode] } : undefined,
-  }),
+  useTrayIcon: (mode: string, version?: number) => {
+    state.reads.push({ mode, version })
+    const url = state.icons?.[mode]
+
+    return url ? `${url}?version=${version ?? 0}` : undefined
+  },
   invokeMutation: (_mutation: unknown, args: unknown[]) =>
     state.upload(...args),
 }))
@@ -45,6 +53,7 @@ async function setup(
   onTestFinished: (callback: () => Promise<void>) => void,
   icons?: Record<string, string>,
 ) {
+  state.reads = []
   state.icons = icons
   state.upload.mockReset().mockResolvedValue(undefined)
   const client = new QueryClient({
@@ -63,7 +72,7 @@ async function setup(
     client.clear()
   })
 
-  return { view, invalidate }
+  return { view, invalidate, client }
 }
 
 type View = Awaited<ReturnType<typeof setup>>['view']
@@ -169,7 +178,9 @@ test('a Windows preset uploads three real PNGs and locks controls until completi
     expect(atob(base64).slice(0, 8)).toBe(PNG_SIGNATURE)
     expect(atob(base64).length).toBeLessThan(1024 * 1024)
   }
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['getTrayIcon', 'tun'] })
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['isTrayIconSet', 'tun'],
+  })
 })
 
 test('a failed write refreshes partial results and releases the controls', async ({
@@ -255,9 +266,11 @@ test('clicking a library icon applies it to the selected state only', async ({
   await expect.poll(() => state.upload.mock.calls.length).toBe(1)
   expect(state.upload.mock.calls[0][0]).toBe('tun')
   expect(atob(state.upload.mock.calls[0][1]).slice(0, 8)).toBe(PNG_SIGNATURE)
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['getTrayIcon', 'tun'] })
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['isTrayIconSet', 'tun'],
+  })
   expect(invalidate).not.toHaveBeenCalledWith({
-    queryKey: ['getTrayIcon', 'normal'],
+    queryKey: ['isTrayIconSet', 'normal'],
   })
 })
 
@@ -297,4 +310,46 @@ test('Space picks an icon up for keyboard dragging, Escape cancels, and Enter ap
   await userEvent.keyboard('{Enter}')
   await expect.poll(() => state.upload.mock.calls.length).toBe(1)
   expect(state.upload.mock.calls[0][0]).toBe('normal')
+})
+
+test('mutable_icon_versions_refresh_preview_and_preset_detection', async ({
+  onTestFinished,
+}) => {
+  const { view, client } = await setup(onTestFinished, {
+    normal: catNormal,
+    tun: catTun,
+    system_proxy: catSystemProxy,
+  })
+  await expect
+    .element(presetRadio(view, m.settings_nyanpasu_tray_icon_preset_cat()))
+    .toBeChecked()
+  state.upload
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error('partial write'))
+  await presetRadio(view, m.settings_nyanpasu_tray_icon_preset_mascot()).click()
+  await expect.poll(() => state.upload.mock.calls.length).toBe(2)
+  await expect
+    .poll(() => state.reads.filter(({ version }) => version === 1).length)
+    .toBeGreaterThanOrEqual(3)
+  await expect
+    .poll(() =>
+      client
+        .getQueryCache()
+        .findAll({ queryKey: ['iconSetActivePreset', 'tray'] })
+        .some(({ queryKey }) =>
+          queryKey
+            .slice(2)
+            .every(
+              (url) => typeof url === 'string' && url.endsWith('?version=1'),
+            ),
+        ),
+    )
+    .toBe(true)
+  await expect
+    .poll(() =>
+      document
+        .querySelector('[data-testid="icon-preview"][data-mode="normal"]')
+        ?.getAttribute('data-version'),
+    )
+    .toBe('1')
 })

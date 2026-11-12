@@ -1312,7 +1312,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 162, "{platform} command inventory");
+            assert_eq!(rows.len(), 159, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)
@@ -1495,11 +1495,8 @@ mod tests {
             );
         }
         for name in [
-            "get_tray_icon",
             "is_tray_icon_set",
-            "get_widget_icon",
             "is_widget_icon_set",
-            "get_cached_icon",
             "get_release_channel",
             "set_release_channel",
             "get_app_update_changelog",

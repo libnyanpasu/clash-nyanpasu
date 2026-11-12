@@ -471,9 +471,7 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
     let fixture = Fixture::with_capabilities(false, crate::test_support::CAPABILITIES).await;
     for method in [
         "get_core_dir",
-        "get_tray_icon",
         "is_tray_icon_set",
-        "get_widget_icon",
         "is_widget_icon_set",
         "set_tray_icon_from_bytes",
         "set_widget_icon_from_bytes",

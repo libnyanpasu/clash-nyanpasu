@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi, type TestContext } from 'vitest'
 import { render } from 'vitest-browser-react'
 import {
+  createIconTransport,
   createRpcClient,
   type RpcEventCallback,
   type RpcEventTransport,
@@ -73,7 +74,11 @@ function mockRpc(initial: ConfigurationStatus) {
     dispose: vi.fn(),
   }
   return {
-    rpc: createRpcClient({ commands, events }),
+    rpc: createRpcClient({
+      icons: createIconTransport(false),
+      commands,
+      events,
+    }),
     invoke,
     emit(next: ConfigurationStatus) {
       sequence = next.event_seq

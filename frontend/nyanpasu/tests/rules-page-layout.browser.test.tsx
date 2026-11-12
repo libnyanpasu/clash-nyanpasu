@@ -25,9 +25,9 @@ vi.mock('@nyanpasu/query', () => ({
   useClashRules: () => ({ data: { rules: backend.rules } }),
   useClashProxies: () => ({ proxies: { data: { groups: [] } } }),
   useCurrentProfileUid: () => 'profile',
-  useCachedIcon: () => ({ data: undefined }),
-  useTrayIcon: () => ({ data: undefined }),
-  useWidgetIcon: () => ({ data: undefined }),
+  useCachedIcon: () => undefined,
+  useTrayIcon: () => undefined,
+  useWidgetIcon: () => undefined,
 }))
 
 vi.mock('../src/pages/(main)/main/rules/_modules/use-rule-stats', () => ({

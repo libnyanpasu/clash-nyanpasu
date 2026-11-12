@@ -1,6 +1,7 @@
 import { expect, test, vi, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
 import {
+  createIconTransport,
   createRpcClient,
   type RpcEventCallback,
   type RpcEventTransport,
@@ -66,7 +67,11 @@ function makeRpc(
     dispose: vi.fn(),
   }
   return {
-    rpc: createRpcClient({ commands, events }),
+    rpc: createRpcClient({
+      icons: createIconTransport(false),
+      commands,
+      events,
+    }),
     invoke,
     listen: events.listen,
     unlisten,

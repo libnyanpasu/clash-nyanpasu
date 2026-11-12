@@ -41,7 +41,6 @@ get_all_storage_items | desktop,http | - | -
 get_app_config | desktop,http | - | -
 get_app_update_changelog | desktop | - | -
 get_app_update_state | desktop | app_update | -
-get_cached_icon | desktop,http | - | -
 get_clash_config | desktop,http | - | -
 get_clash_info | desktop,http | - | -
 get_clash_ws_snapshot | desktop,http | - | -
@@ -75,8 +74,6 @@ get_sys_proxy | desktop,http | os_integration | -
 get_system_accent_color | desktop,http | accent_color | -
 get_traffic_summary | desktop,http | - | -
 get_transparent_proxy_status | desktop | - | -
-get_tray_icon | desktop,http | - | -
-get_widget_icon | desktop,http | - | -
 import_profile | desktop,http | - | elevation,os_integration,presentation
 inspect_applied_runtime | desktop,http | - | -
 inspect_runtime | desktop,http | - | -

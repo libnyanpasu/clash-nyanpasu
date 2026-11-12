@@ -14,11 +14,6 @@ pub struct GetSysProxyResponse {
     pub server: String,
 }
 
-#[derive(serde::Serialize, specta::Type)]
-pub struct IconData {
-    pub data_url: String,
-}
-
 /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
 /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
 /// wire 是原结构的严格超集，前端既有消费点不受影响。

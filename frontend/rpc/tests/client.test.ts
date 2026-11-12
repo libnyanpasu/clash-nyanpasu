@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  createIconTransport,
   createRpcClient,
   isIpcError,
   unwrapResult,
@@ -26,7 +27,11 @@ function fakeTransport() {
     listenResync: vi.fn(() => vi.fn()),
     dispose,
   }
-  const transport: RpcTransport = { commands: { invoke }, events }
+  const transport: RpcTransport = {
+    icons: createIconTransport(false),
+    commands: { invoke },
+    events,
+  }
   return {
     transport,
     invoke: invokeMock,

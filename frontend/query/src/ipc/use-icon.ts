@@ -1,38 +1,21 @@
 import type { TrayIcon } from '@nyanpasu/rpc/types'
-import { useQuery } from '@tanstack/react-query'
-import { useQueryApi } from '../provider/rpc-provider'
-import { unwrapQueryOptions } from './query-options'
+import { useRpc } from '../provider/rpc-provider'
 
 export const useCachedIcon = (url: string | null) => {
-  const api = useQueryApi()
-  const options = api.queries.getCachedIcon(url ?? '')
+  const rpc = useRpc()
 
-  return useQuery({
-    ...unwrapQueryOptions(options, options.queryFn!),
-    enabled: url !== null,
-    // An icon's URL names its image for good. Each fetch is an IPC call on
-    // the main thread, and a list of groups mounts dozens of icons at once.
-    staleTime: Infinity,
-  })
+  return url === null ? undefined : rpc.icons.url({ kind: 'cached', url })
 }
 
 export const useTrayIcon = (mode: TrayIcon, version?: number) => {
-  const api = useQueryApi()
-  const options = api.queries.getTrayIcon(mode)
+  const rpc = useRpc()
 
-  return useQuery({
-    ...unwrapQueryOptions(options, options.queryFn!),
-    queryKey: [...options.queryKey, version],
-  })
+  return rpc.icons.url({ kind: 'tray', mode, version: version ?? null })
 }
 
 /** The statistic widget's own icon for a proxy state. */
 export const useWidgetIcon = (mode: TrayIcon, version?: number) => {
-  const api = useQueryApi()
-  const options = api.queries.getWidgetIcon(mode)
+  const rpc = useRpc()
 
-  return useQuery({
-    ...unwrapQueryOptions(options, options.queryFn!),
-    queryKey: [...options.queryKey, version],
-  })
+  return rpc.icons.url({ kind: 'widget', mode, version: version ?? null })
 }

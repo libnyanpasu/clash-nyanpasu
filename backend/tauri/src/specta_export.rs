@@ -85,10 +85,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::status::status_service,
             commands::profiles::is_portable,
             commands::clash::get_proxies,
-            commands::icons::get_cached_icon,
-            commands::icons::get_tray_icon,
             commands::icons::is_tray_icon_set,
-            commands::icons::get_widget_icon,
             commands::icons::is_widget_icon_set,
             commands::runtime::get_core_status,
             ipc::url_delay_test,
@@ -229,6 +226,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     // arrive with T08; explicit registration keeps them exported (and the
     // specta nested-tagged-enum risk probed) before any command exists.
     .typ::<nyanpasu_config::profile::Profiles>()
+    .typ::<nyanpasu_rpc::icons::IconRequest>()
     .typ::<nyanpasu_config::profile::FileConfig>()
     .typ::<nyanpasu_config::profile::CompositionConfig>()
     .typ::<nyanpasu_config::profile::OverlayTransform>()
@@ -341,7 +339,7 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
         "const events = {",
     );
     let commands_and_events = format!(
-        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
+        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, icons: transport.icons, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
     );
     let source = format!(
         "{}{}{}",
@@ -578,13 +576,13 @@ mod tests {
             .commands(schema_commands![
                 nyanpasu_rpc::commands::profiles::get_profiles,
                 nyanpasu_rpc::commands::logs::open_log_session,
-                nyanpasu_rpc::commands::icons::get_tray_icon,
+                nyanpasu_rpc::commands::icons::is_tray_icon_set,
             ])
             .dangerously_cast_bigints_to_number()
             .export(Typescript::default(), &path)
             .unwrap();
         let generated = std::fs::read_to_string(path).unwrap();
-        for name in ["getProfiles", "openLogSession", "getTrayIcon"] {
+        for name in ["getProfiles", "openLogSession", "isTrayIconSet"] {
             assert!(generated.contains(name), "missing external schema: {name}");
         }
         for dependency in ["RpcState", "RpcCaller", "HostIconFiles", "PathResolver"] {

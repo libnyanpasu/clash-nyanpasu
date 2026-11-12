@@ -300,7 +300,8 @@ fn catalog_excludes_test_fixtures() {
 fn full_http_exposure_is_preserved_across_shared_split() {
     // E2a parent f56f08143: all 104 HTTP declarations are unconditional across
     // platform/feature cfgs. R3 removes set_hotkeys from HTTP; preserve the
-    // remaining declarations and guards, not only names.
+    // remaining declarations and guards, not only names. R12 removes the three
+    // icon reads in favor of the special byte entries.
     const BEFORE: &[&str] = &[
         "activate_profile",
         "change_clash_core",
@@ -327,7 +328,6 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "fetch_latest_core_versions",
         "get_all_storage_items",
         "get_app_config",
-        "get_cached_icon",
         "get_clash_config",
         "get_clash_info",
         "get_clash_ws_snapshot",
@@ -356,8 +356,6 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "get_sys_proxy",
         "get_system_accent_color",
         "get_traffic_summary",
-        "get_tray_icon",
-        "get_widget_icon",
         "import_profile",
         "inspect_applied_runtime",
         "inspect_runtime",
@@ -438,6 +436,29 @@ fn full_http_exposure_is_preserved_across_shared_split() {
     }
     actual.sort();
     assert_eq!(actual, BEFORE);
+}
+
+#[test]
+fn removed_icon_reads_are_absent_from_the_command_catalog() {
+    let commands = production_declarations();
+    let catalog = render(&commands);
+    for name in ["get_cached_icon", "get_tray_icon", "get_widget_icon"] {
+        assert!(
+            !catalog.contains(&format!("\"{name}\"")),
+            "removed read: {name}"
+        );
+    }
+    for name in [
+        "is_tray_icon_set",
+        "is_widget_icon_set",
+        "set_tray_icon_from_bytes",
+        "set_widget_icon_from_bytes",
+    ] {
+        assert!(
+            catalog.contains(&format!("\"{name}\"")),
+            "preserved operation: {name}"
+        );
+    }
 }
 
 #[test]

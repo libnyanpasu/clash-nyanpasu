@@ -7,33 +7,7 @@ use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
-use super::types::IconData;
 use crate::{ports::HostIconFiles, registry::RpcState};
-
-#[nyanpasu_macro::rpc(http)]
-#[specta::specta]
-pub async fn get_cached_icon(
-    client: RpcState<'_, NyanpasuClient>,
-    url: String,
-) -> Result<IconData> {
-    let (mime, bytes) = client.get_cached_icon(&url).await?;
-    Ok(IconData {
-        data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[specta::specta]
-pub async fn get_tray_icon(
-    icons: RpcState<'_, dyn HostIconFiles>,
-    paths: RpcState<'_, PathResolver>,
-    mode: TrayIcon,
-) -> Result<IconData> {
-    let bytes = icons.tray_icon(paths, mode);
-    Ok(IconData {
-        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
-}
 
 #[nyanpasu_macro::rpc(http, capabilities(presentation))]
 #[specta::specta]
@@ -58,20 +32,6 @@ pub async fn is_tray_icon_set(
     mode: TrayIcon,
 ) -> Result<bool> {
     Ok(icons.is_tray_icon_set(paths, mode).await)
-}
-
-/// The statistic widget's own icon for `mode`, or the bundled one.
-#[nyanpasu_macro::rpc(http)]
-#[specta::specta]
-pub async fn get_widget_icon(
-    icons: RpcState<'_, dyn HostIconFiles>,
-    paths: RpcState<'_, PathResolver>,
-    mode: TrayIcon,
-) -> Result<IconData> {
-    let bytes = icons.widget_icon(paths, mode);
-    Ok(IconData {
-        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
-    })
 }
 
 #[nyanpasu_macro::rpc(http)]

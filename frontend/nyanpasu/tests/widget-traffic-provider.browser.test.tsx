@@ -13,7 +13,11 @@ import { DashboardTrafficProvider } from '@/components/widgets/widget-traffic-pr
 import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { DndContext } from '@dnd-kit/core'
-import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
+import {
+  createIconTransport,
+  createRpcClient,
+  type RpcEventTransport,
+} from '@nyanpasu/rpc'
 import type { ReportRequest, TrafficReport, Usage } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
@@ -102,7 +106,11 @@ function createRpc(storage: string, retention: string | null = '7d') {
     dispose: () => {},
   }
 
-  return createRpcClient({ commands: { invoke }, events })
+  return createRpcClient({
+    icons: createIconTransport(false),
+    commands: { invoke },
+    events,
+  })
 }
 
 const items: DashboardItem[] = [

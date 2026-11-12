@@ -150,7 +150,7 @@ const StateSlot = ({
         transition={transition}
         className="my-1 flex size-12 items-center justify-center"
       >
-        <store.Image className="size-11" mode={mode} />
+        <store.Image className="size-11" mode={mode} version={revision} />
       </motion.span>
 
       <span

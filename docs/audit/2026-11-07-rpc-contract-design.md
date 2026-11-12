@@ -1,6 +1,6 @@
 # RPC 契约设计：命令范围、类型绑定与传输边界
 
-> **状态：主体已实施（2026-11-12）；R10 与 R2 rename 半项待实施。**
+> **状态：主体与 R10 已实施（2026-11-12）；R2 rename 半项待实施。**
 >
 > 基线：`refactor/core-split-e6-server`，提交  
 > **`3288f8569dff2a79783ce547fb3c8ae9e1771dd6`**。
@@ -9,8 +9,8 @@
 > **`a27c3fcc1ed57980034f25084613baa98efc01c4`**。
 >
 > 原设计基于上述提交；交付校订核对当前 HEAD 的提交与源码。
-> 本次仅修改本文并执行单文件 Prettier 检查，不执行 Cargo、构建或实现测试。
-> 下列验证命令与验收清单不代表本次已经运行或通过。
+> R10 的本次验收与平台限制见 §6.12；其他卡片保留原验收清单，
+> 不将历史要求或未执行的平台验证记为本次通过。
 >
 > 设计遵循项目开发指南。
 > 模块环审查采用输入报告的 Part B。
@@ -34,7 +34,7 @@ PR 编号按交付记录；未决设计选择仍见 §7。
 | R9                      | `feat/rpc-audit-delivery`（#6307）             | 已实施；delivery、observation、subscription 事实                                                 |
 | R11                     | —                                              | 已被替代；模块引入时即名为 types，无需改名                                                       |
 | R12                     | `feat/icon-byte-entry`（#6308）                | 已实施                                                                                           |
-| R10                     | —                                              | 尚未实施                                                                                         |
+| R10                     | `test/rpc-contract-acceptance`                 | 已实施；D2 首个基线、命令范围矩阵与条件提权验收，执行记录见 §6.12                                |
 | R2 rename 半项          | —                                              | 尚未实施                                                                                         |
 
 ---
@@ -82,7 +82,7 @@ PR 编号按交付记录；未决设计选择仍见 §7。
 | 服务端 typed registration 在范围内 | 宏生成参数、成功类型与 contract 的绑定                          |
 | core 不依赖 RPC                    | 不新增观察 port 或 facade RPC 参数                              |
 | protocol 不依赖 core-family        | contract 只使用中性类型                                         |
-| DG-D/E/F 保持开放                  | 默认 D2、E1、F1                                                 |
+| DG-D = D2；DG-E/F 保持开放         | D2 首个基线已建立；E1、F1 仍为默认                              |
 | RPC 合批仅属于 adapter             | 不排期；是否实施由 #5997 的真机 trace 决定                      |
 | 图标改为特殊字节入口               | HTTP GET 与桌面 URI scheme 共用中性函数，不作为 command         |
 
@@ -4255,7 +4255,7 @@ cargo check -p nyanpasu-rpc --no-default-features --features local-server
 - 只允许声明过的前缀移动。
 - 显式 staging，单一 commit 只做一件事。
 - 清单保留原验收要求，不把未勾选项等同于未交付；交付状态见文首。
-- 本次文档校订仅运行单文件 Prettier，不重跑实现测试。
+- R10 的已执行验证单列于 §6.12；其他卡片的未勾选历史要求不表示本次重跑。
 
 ### 6.2 R0：audit 与 ports 搬移
 
@@ -4673,35 +4673,76 @@ cargo check -p nyanpasu-rpc --no-default-features --features local-server
 **依赖：R1–R9。**  
 **规模：M。**
 
-- [ ] D2 fixtures。
-- [ ] 十三项双端测试。
-- [ ] command-scope matrix。
-- [ ] shell conditional elevation。
-- [ ] 测试名清单。
-- [ ] catalog/bindings。
-- [ ] comments/rpc.md。
-- [ ] pending 列表。
+- [x] D2 fixtures。
+- [x] 十三项双端测试（复用 `local::client_tests::typed_operations_round_trip_through_the_local_server`）。
+- [x] command-scope matrix。
+- [x] shell conditional elevation（headless 复用 E4a 真实装配测试，见下）。
+- [x] 测试名清单。
+- [x] catalog/bindings。
+- [x] comments/rpc.md。
+- [x] pending 列表。
 
 **NEW 测试：**
 
-- [ ] `current_contract_accepts_the_supported_previous_fixtures`。
-- [ ] `command_scope_is_identical_across_rpc_transports`。
-- [ ] `headless_conditional_elevation_uses_existing_refusal_policy`。
-- [ ] `desktop_conditional_elevation_uses_existing_consent_policy`。
+- [x] `current_contract_accepts_the_supported_previous_fixtures`。
+- [x] `command_scope_is_identical_across_rpc_transports`。
+- [x] `headless_conditional_elevation_uses_existing_refusal_policy`：复用
+      `nyanpasu-server/src/compose/tests.rs` 的
+      `server_refuses_elevation_on_config_retry_compensation_and_copy_paths_*`
+      五例与 `server_refuses_dns_elevation_without_launching_commands`，不新增同义测试。
+- [x] `desktop_conditional_elevation_uses_existing_consent_policy`。
 
 **验证：**
 
-- [ ] G/B/V、boundaries、platforms。
+- [x] Windows G/B/V：workspace all-targets/all-features Clippy、下表 package tests、两项 boundaries gate。
+- [ ] Linux/macOS/musl、WSL 与原生 WebView 平台验收（本次未执行）。
 
 **反向检查：**
 
-- [ ] 每行可追溯。
-- [ ] 无禁止依赖、shim、隐性协议变化。
-- [ ] 不把未执行测试记为通过。
+- [x] 每行可追溯：仅 contract fixture/测试、test-only OS runner 接线与 RPC 文档。
+- [x] 无禁止依赖、shim、隐性协议变化：两项架构门禁通过；catalog 未改，三份 bindings 重生成零 diff。
+- [x] 不把未执行测试记为通过：执行结果与未运行平台分别列出。
 
 **文档：**
 
-- [ ] development/spec/tasks。
+- [x] development/spec/tasks：本节为 R10 任务记录；开发规则同步到 `docs/development/rpc.md`。
+
+**验收证据与剩余项：**
+
+以下命令均在 Windows 运行，Cargo 使用已验证的 F: toolchain/target wrapper，build/test/clippy 限制 `-j 12`。
+每组 before/after inventory 均退出 0、非空、保留 stderr 并排序比较；无删除或改名，仅下列新增。
+
+| package / features                            | before → after | 本次 package tests（exit 0）            |
+| --------------------------------------------- | -------------- | --------------------------------------- |
+| protocol / default                            | 26 → 27        | 27 passed                               |
+| protocol / no-default-features + local-client | 40 → 41        | 41 passed                               |
+| RPC / http,local-server                       | 109 → 111      | 111 passed（含四个 doc tests）          |
+| server / default                              | 16 → 16        | 16 passed（含三个 fatal-process tests） |
+| Tauri / default                               | 219 → 220      | 217 passed、3 ignored                   |
+| macro / syn/full                              | 28 → 28        | 26 passed、2 ignored                    |
+
+新增项：两组 protocol 各增加 `current_contract_accepts_the_supported_previous_fixtures`；
+RPC 增加 `command_scope_is_identical_across_rpc_transports` 与 `current_failure_encoding_matches_the_contract_baseline`；
+Tauri 增加 `desktop_conditional_elevation_uses_existing_consent_policy`。
+workspace Clippy、精确修改文件的 rustfmt 检查、两项架构门禁、文档 Prettier 均退出 0。
+另执行 Tauri `--lib`（217 passed、3 ignored），重生成三份 bindings 后 `git diff --stat -- frontend/` 为空。
+macro suite 包含 catalog freshness，R10 未改 catalog 或 binding。
+补充 `cargo check -j 12 -p clash-nyanpasu --all-targets --target x86_64-unknown-linux-gnu`
+退出 101（E0463：已验证 toolchain 未安装该 target 的 core/std），未改 toolchain 或系统配置。
+首次扩展 Prettier 检查发现新 JSON fixture 排版问题，精确格式化该文件后四个文件检查通过（exit 0）。
+
+- D2 首个基线：`backend/nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json`，
+  十三个操作的请求、十六个成功值、二十五个失败信封。operation 单测约束当前发送值，
+  `current_failure_encoding_matches_the_contract_baseline` 约束真实解码错误与既有错误映射，
+  protocol integration test 用当前接收类型解码。下次契约发布新增一套并保留此前一套；不保留旧实现。
+- scope matrix 遍历 catalog 中所有多 transport 命令的实际 prepare 边界，不 poll handler；
+  包括普通/null/受限/混合 patch 与 local fixtures，另执行 storage 的三 transport 调用及 HTTP 路由。
+  `patch_app_config` 的 Local target 仍拒绝，既有 Desktop/HTTP 的拒绝与无部分提交测试保持。
+- headless 五条条件路径和 DNS 使用真实 server elevation 装配与拦截 runner，断言零提权命令；
+  desktop 使用同一 interactive policy 与真实 binary installer，普通复制不提权，失败后才进入拦截的提权 runner。
+  桌面策略仍由 `tauri/src/setup.rs` 注入，不改变共享 client 的执行策略。
+- pending：R2 `rename` 半项仍未实施；E2 tracked executor、合批、CLI/LAN/OpenWrt 与更长历史 fixture 均未扩面。
+  本次 Windows 验证不代替 Linux/macOS/musl、WSL 或原生 WebView 图标安全/渲染验收。
 
 ### 6.13 R11：已被替代
 
@@ -4712,7 +4753,7 @@ R11 不再排期，也不作为其他卡片的前置。
 ### 6.14 顺序与依赖
 
 原任务拆分顺序保留如下；实际交付见文首。
-R5/R6 已由 E5 提前交付，R2 仅 rename 半项与 R10 仍待实施：
+R5/R6 已由 E5 提前交付，R10 已验收；R2 仅 rename 半项仍待实施：
 
 1. R0。
 2. R1。
@@ -4915,6 +4956,8 @@ Desktop 交互 consent 与 headless refusal 保持。
 - D3：更长历史。
 - 不保留旧实现 shim。
 - 首次无历史基线时从本提交建立。
+- R10 已建立 `tests/fixtures/contracts/2026-11-12.json` 首个基线；下一契约发布增加自己的集合，
+  保留此集合为 previous，此后只保留 current + previous。
 - 新专用命令与通用 patch 范围变化列入显式兼容说明。
 - R12 的三个读取命令删除属于显式迁移，前端切换与删除共同发布，不以 D2 留下旧命令。
 

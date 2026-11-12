@@ -16,12 +16,11 @@ Allowed shape:
 
 ```rust
 #[nyanpasu_macro::rpc(http)]
-pub async fn patch_verge_config(
+pub async fn patch_app_config(
     client: nyanpasu_rpc::registry::RpcState<'_, NyanpasuClient>,
-    patch: NyanpasuAppConfigPatch,
-) -> Result<()> {
-    client.patch_app_config(patch).await?;
-    Ok(())
+    patch: AppPreferencesPatch,
+) -> Result<MutationOutcome<()>> {
+    Ok(client.patch_app_config(patch.0).await?)
 }
 ```
 
@@ -40,6 +39,24 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 ### Use the unified RPC surface
 
 A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. General `patch_*` commands accept ordinary preferences only; reject out-of-scope fields while decoding their request types, and split the domain when another such field or a policy group would grow the exception list.
+
+`set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
+`patch_app_config` command accepts `AppPreferencesPatch`: its validating Serde
+conversion rejects `Some` for `hotkeys` or `enable_service_mode` on both Desktop
+and HTTP, before handler admission. Empty arrays, `false` and same-value writes
+still count as requests; a mixed patch is rejected as a whole with
+`invalid_params` (HTTP 400, no domain payload). Explicit `null` leaves these two
+ordinary Option fields unchanged. The wrapper delegates its Specta type to the
+domain patch, so it adds no binding type or parameter shape. The core facade
+continues to accept the complete domain patch.
+
+HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
+conditional elevation follows the injected shell policy. Desktop, including
+embedded HTTP/local, uses interactive OS consent. The standalone server injects
+`RefuseElevation`; command metadata does not replace that execution policy.
+`patch_app_config` has no Local target, and neither dedicated command expands
+the thirteen-operation Local allowlist. `get_configuration_status` is a query;
+the two dedicated setters are mutations in the hand-maintained Specta metadata.
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
@@ -570,6 +587,31 @@ To bind a local command after its exposure has been separately reviewed:
    binding checks and a typed real-server round trip. Regenerate the catalog when
    metadata changes, and regenerate all three frontend bindings. A contract-only
    refactor must leave those files byte-identical.
+
+Contract fixtures follow D2: retain the current and previous contract releases,
+without an old implementation shim. The first baseline is
+`backend/nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json`.
+`current_contract_accepts_the_supported_previous_fixtures` decodes every
+operation's requests, successes and failures using current receiving types and
+checks request encoding. The operation unit tests and RPC failure-encoding test
+also compare current sending values with the baseline. The next contract release
+adds its own fixture set and keeps this one as previous; later releases remove
+the oldest set beyond that pair. A fixture proves JSON compatibility, while
+macro compile tests prove Request/Response/name binding and real local round
+trips prove dispatch and owner behavior.
+
+`command_scope_is_identical_across_rpc_transports` exercises preparation for
+every catalog command with multiple targets, including dedicated-field patches
+on Desktop/HTTP and Local requests on all three transports. Existing server
+composition tests
+`server_refuses_elevation_on_config_retry_compensation_and_copy_paths_*`
+cover config changes, runtime retry, compensation and binary-copy fallback
+without starting an elevated command. The desktop adapter test
+`desktop_conditional_elevation_uses_existing_consent_policy` intercepts execution
+after interactive consent on conditional copy fallback; ordinary copies need no
+elevated command. These tests use injected adapters and never perform real
+elevation. The acceptance record and remaining R2 `rename` work are tracked in
+the [contract design](../audit/2026-11-07-rpc-contract-design.md#612-r10整体验收).
 
 The client applies initial/reset/event values by whole replacement for the five
 full-value identities. Lag clears trust in the old value until fresh reset;

@@ -1,0 +1,490 @@
+{
+  "get_profiles": {
+    "request": null,
+    "successes": [
+      {
+        "valid": ["dns", "unified-delay", "tcp-concurrent"],
+        "items": []
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "expected an empty input object",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "create_profile": {
+    "request": {
+      "request": {
+        "metadata": {
+          "name": "profile"
+        },
+        "definition": {
+          "type": "config",
+          "config": {
+            "type": "composition"
+          }
+        },
+        "folder": null
+      },
+      "fileData": "proxies: []\n"
+    },
+    "successes": [
+      {
+        "status": "committed",
+        "value": "profile-1",
+        "commits": [],
+        "notifications_pending": true
+      },
+      {
+        "status": "committed_degraded",
+        "value": "profile-1",
+        "commits": [],
+        "notifications_pending": true,
+        "degradations": []
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct CreateProfileRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "delete_profile": {
+    "request": {
+      "uid": "profile-1"
+    },
+    "successes": [
+      {
+        "status": "committed",
+        "value": null,
+        "commits": [],
+        "notifications_pending": true
+      },
+      {
+        "status": "committed_degraded",
+        "value": null,
+        "commits": [],
+        "notifications_pending": true,
+        "degradations": []
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct DeleteProfileRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "read_profile_file": {
+    "request": {
+      "uid": "profile-1"
+    },
+    "successes": ["proxies: []\n"],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct ReadProfileFileRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "get_configuration_status": {
+    "request": null,
+    "successes": [
+      {
+        "event_seq": 1,
+        "maintenance": null,
+        "source_versions": {
+          "application": 1,
+          "clash": 2,
+          "session": 3,
+          "profiles": 4
+        },
+        "runtime": {
+          "health": "healthy",
+          "operation_id": null,
+          "attempts": 0,
+          "automatic_remaining": 0,
+          "message": null
+        },
+        "effects": [],
+        "sources": [],
+        "active": null,
+        "recent_operations": []
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "expected an empty input object",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      }
+    ]
+  },
+  "get_core_status": {
+    "request": null,
+    "successes": [
+      {
+        "controller": null,
+        "host": "local",
+        "connectivity": {
+          "kind": "shut_down"
+        },
+        "generation": 1,
+        "state": null,
+        "state_changed_at": 0,
+        "revision": null,
+        "healthy": null
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "expected an empty input object",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "get_storage_item": {
+    "request": {
+      "key": "key"
+    },
+    "successes": [
+      {
+        "value": null,
+        "revision": 7
+      },
+      {
+        "value": "stored",
+        "revision": 7
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct GetStorageItemRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "set_storage_item": {
+    "request": {
+      "key": "key",
+      "value": "value"
+    },
+    "successes": [8],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct SetStorageItemRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "remove_storage_item": {
+    "request": {
+      "key": "key"
+    },
+    "successes": [9],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct RemoveStorageItemRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "contract fixture failure",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": {
+          "kind": {
+            "domain": "unknown"
+          },
+          "message": "contract fixture failure",
+          "detail": "Custom { kind: Other, error: \"contract fixture failure\" }"
+        }
+      }
+    ]
+  },
+  "list_log_files": {
+    "request": {
+      "source": "app"
+    },
+    "successes": [
+      [
+        {
+          "id": "file-1",
+          "name": "app.log",
+          "bytes": "123"
+        }
+      ]
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct ListLogFilesRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "log source unavailable",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": "unavailable"
+      }
+    ]
+  },
+  "open_log_session": {
+    "request": {
+      "source": "service",
+      "request": {
+        "request_id": "request-1",
+        "file": null
+      }
+    },
+    "successes": [
+      {
+        "id": "session-1",
+        "lease_ms": 45000
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct OpenLogSessionRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "log source unavailable",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": "unavailable"
+      }
+    ]
+  },
+  "query_logs": {
+    "request": {
+      "source": "app",
+      "request": {
+        "session": "session-1",
+        "filter": {
+          "levels": [],
+          "target": null,
+          "from_ms": null,
+          "to_ms": null,
+          "text": null
+        },
+        "direction": "latest",
+        "cursor": null,
+        "limit": 20
+      }
+    },
+    "successes": [
+      {
+        "rows": [],
+        "cursor": {
+          "generation": "1",
+          "offset": "0"
+        },
+        "head": {
+          "generation": "1",
+          "offset": "0"
+        },
+        "start": "0",
+        "file": "file-1",
+        "building": false,
+        "more": false,
+        "partial": false,
+        "malformed": "0",
+        "truncated": "0",
+        "indexed_bytes": "0",
+        "file_bytes": "0"
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct QueryLogsRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "log source unavailable",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": "unavailable"
+      }
+    ]
+  },
+  "close_log_session": {
+    "request": {
+      "source": "app",
+      "session": "session-1"
+    },
+    "successes": [null],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "invalid type: boolean `false`, expected struct CloseLogSessionRequest",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      },
+      {
+        "kind": "application_error",
+        "message": "log source unavailable",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": "unavailable"
+      }
+    ]
+  }
+}

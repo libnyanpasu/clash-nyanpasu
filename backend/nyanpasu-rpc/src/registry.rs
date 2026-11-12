@@ -206,6 +206,56 @@ pub async fn dispatch_audited<T>(
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
 
 pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
+/// One declaration registers one neutral handler, including operation-bound commands.
+/// The macro checks public requests, success types and method names before JSON erasure.
+///
+/// A matching declaration compiles (Result aliases use the same success assignment):
+///
+/// ```no_run
+/// use nyanpasu_rpc_protocol::operations::SetStorageItem;
+/// use nyanpasu_runtime_values::storage::StorageRevision;
+/// type WriteResult = Result<StorageRevision, std::io::Error>;
+/// #[nyanpasu_macro::rpc(local, result, operation = SetStorageItem)]
+/// fn set_storage_item(key: String, value: String) -> WriteResult {
+///     Ok(StorageRevision::INITIAL)
+/// }
+/// ```
+///
+/// Request fields must match the handler's parameters:
+///
+/// ```compile_fail,E0308
+/// use nyanpasu_rpc_protocol::operations::SetStorageItem;
+/// use nyanpasu_runtime_values::storage::StorageRevision;
+/// fn operation_request_mismatch_fails_to_compile() {
+///     #[nyanpasu_macro::rpc(local, operation = SetStorageItem)]
+///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
+///         StorageRevision::INITIAL
+///     }
+/// }
+/// ```
+///
+/// Successful values must have the contract's sending type:
+///
+/// ```compile_fail,E0308
+/// use nyanpasu_rpc_protocol::operations::SetStorageItem;
+/// fn operation_response_mismatch_fails_to_compile() {
+///     #[nyanpasu_macro::rpc(local, operation = SetStorageItem)]
+///     fn set_storage_item(key: String, value: String) -> bool { true }
+/// }
+/// ```
+///
+/// The name is checked in a constant, including declarations never called:
+///
+/// ```compile_fail,E0080
+/// use nyanpasu_rpc_protocol::operations::SetStorageItem;
+/// use nyanpasu_runtime_values::storage::StorageRevision;
+/// fn operation_method_mismatch_fails_to_compile() {
+///     #[nyanpasu_macro::rpc(local, operation = SetStorageItem)]
+///     fn different_method(key: String, value: String) -> StorageRevision {
+///         StorageRevision::INITIAL
+///     }
+/// }
+/// ```
 pub struct CommandEntry {
     pub metadata: CommandMetadata,
     pub handler: RpcHandler,

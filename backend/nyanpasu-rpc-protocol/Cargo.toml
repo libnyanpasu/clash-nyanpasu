@@ -21,6 +21,7 @@ local-client = [
 ]
 
 [dependencies]
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', default-features = false }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }

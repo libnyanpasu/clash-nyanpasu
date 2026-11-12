@@ -7329,6 +7329,7 @@ dependencies = [
  "nyanpasu-config",
  "nyanpasu-contracts",
  "nyanpasu-core-metadata",
+ "nyanpasu-logging",
  "nyanpasu-profile-transform",
  "nyanpasu-runtime-values",
  "serde",

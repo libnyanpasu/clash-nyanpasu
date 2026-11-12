@@ -15,6 +15,8 @@ pub use owner::RpcOwner;
 pub use request::Request;
 
 pub mod frame;
+pub mod operation;
+pub mod operations;
 pub mod session;
 pub mod types;
 pub mod values;

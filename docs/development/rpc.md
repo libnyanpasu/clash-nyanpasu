@@ -181,9 +181,9 @@ Request, subscribe and unsubscribe share strictly increasing positive u64 JSON
 integer IDs for the entire connection lifetime, including completed/rejected
 requests. They cannot wrap; exhaustion requires a new connection. Responses
 repeat the request ID and contain exactly one of `result`/`error`. Business
-errors preserve existing RpcError JSON and do not close the connection. Until
-E1b, result/error reception owns JSON rather than deserializing operational error
-sources or static strings. Frame failures never provide request payloads to audit.
+errors preserve existing RpcError JSON and do not close the connection. Raw calls
+retain JSON; typed calls decode owned receiving values without reconstructing
+operational sources or static strings. Frame failures never provide request payloads to audit.
 
 Each events subscription names exactly one of configuration status, core status,
 service status, app-update state (when available), or core-log status. The
@@ -254,7 +254,7 @@ E1a-b moved `RpcOwner`, `RpcError`, `RpcValue`, the request envelope and the ele
 
 E1a-c separates neutral declarations from native wrappers and generates independent target/capability metadata and the neutral catalog. E1a-d annotates production declarations and enforces required-capability admission while retaining known commands as `unsupported`; `unknown_method` remains reserved for unknown names. Desktop/HTTP exposure and all three bindings are unchanged. Optional effect metadata does not deny unrelated configuration edits and does not replace elevation policy. The remaining changes are planned in [tasks §5](../spec/2026-11-03-core-package-split/tasks.md#5-phase-e-的-pr-划分).
 
-E2b moved shared commands, registry, error conversion, HTTP infrastructure, event bus and `dispatch_audited`/`RpcAuditSink` and the Tauri-free production `TracingRpcAuditSink` into `nyanpasu-rpc`; the desktop injects that sink, with the same implementation available to the planned headless shell. Native IPC/window/Channel binding and Tauri asset resolution stay in the shell. A schema-only Specta collector accepts neutral commands without generating Tauri handlers; `build_transport_builder` registers only `call_rpc`. Retained host HTTP facilities use explicitly injected ports, including the original Tauri executable resolver and pure icon/file queries. E2a compares the full HTTP exposure set before and after extraction. `nyanpasu-rpc-protocol::types` owns the receiving error/mutation graph, owned error envelope and connection details needed by the thirteen local operations and their five full-value snapshots; application downcasts stay in the registry. Ordinary values have one canonical foundation definition in config, contracts or runtime-values. Separate receiving shapes exist only where skipped operational sources or borrowed sending values prevent faithful deserialization. Other commands retain their existing domain types; typed operation contracts and the local bridge remain separate work.
+E2b moved shared commands, registry, error conversion, HTTP infrastructure, event bus and `dispatch_audited`/`RpcAuditSink` and the Tauri-free production `TracingRpcAuditSink` into `nyanpasu-rpc`; the desktop injects that sink, with the same implementation available to the planned headless shell. Native IPC/window/Channel binding and Tauri asset resolution stay in the shell. A schema-only Specta collector accepts neutral commands without generating Tauri handlers; `build_transport_builder` registers only `call_rpc`. Retained host HTTP facilities use explicitly injected ports, including the original Tauri executable resolver and pure icon/file queries. E2a compares the full HTTP exposure set before and after extraction. `nyanpasu-rpc-protocol::types` owns the receiving error/mutation graph, owned error envelope and connection details needed by the thirteen local operations and their five full-value snapshots; application downcasts stay in the registry. Ordinary values have one canonical foundation definition in config, contracts or runtime-values. Separate receiving shapes exist only where skipped operational sources or borrowed sending values prevent faithful deserialization. Other commands retain their existing domain types. The thirteen local operations bind their public contracts to both the client and shared handlers.
 
 E2c makes observations publish first to `nyanpasu-rpc::events::EventBus` through the seven-source `forward` module and bus adapters for state invalidations and app-update snapshots. Its injected Tauri delivery sink runs synchronously, preserving single-window/type/all-window targets, missing-window errors and payloads; it cannot lag behind an asynchronous native queue. SSE/local receivers are bounded and retain lag/resync. The `listen_any` input bridge is removed; native delivery must never re-enter publication. Acquire forwarder subscriptions synchronously after client construction but before reconciliation, stream activation and listener admission, with initial snapshots where needed. Preserve source order without promising a causal total order across independent producers. Full connection details remain demand-driven, outside the shared broadcast. Shell-originated shared events publish explicitly into the bus.
 
@@ -369,6 +369,59 @@ Timeout, partial IO, malformed replies and disconnect permanently invalidate the
 connection. Every failure after writing may have started reports outcome unknown;
 connect/negotiation and unsent submission failures remain distinct. No automatic
 retry or replay occurs. A fresh connection has fresh correlation state.
+
+### Typed local operation contracts
+
+`nyanpasu_rpc_protocol::operation::RpcOperation` binds `NAME`, `Request`,
+`Response`, `ReceivedResponse` and `DomainError`. The thirteen contracts live in
+`operations`; they use canonical foundation values and `types` receiving values
+where sending mutations/errors cannot be deserialized faithfully. These contracts
+do not grant target admission or duplicate capability metadata. Commands outside
+the local allowlist have no protocol operation contract.
+
+Prefer the operation API for reviewed local commands:
+
+```rust
+use nyanpasu_rpc_protocol::{client::LocalClient, operations::GetCoreStatus};
+
+let status = client.call_operation::<GetCoreStatus>(()).await?;
+```
+
+`call_operation_with_timeout::<O>(request, timeout)` delegates to the same
+connection owner and exchange deadline as raw calls. `call_typed::<T>(method,
+params)` and its timeout variant remain available for generic Serde consumers;
+`call` and `call_with_timeout` retain the raw `Reply` API. No typed API retries,
+reconnects or replays a mutation.
+
+The non-generic `TypedCallError` distinguishes unsent request encoding failures,
+local transport failures, reply decoding failures and reported remote errors.
+`Remote` retains all six envelope fields and the original domain JSON, including
+nested causes. `operation_domain_error::<O>(&error)` decodes only a reported
+`application_error` payload; protocol errors and local failures return `None`.
+An absent domain payload also stays `None`; an incompatible payload returns a
+Serde error. `GetConfigurationStatus` uses the empty `NoDomainError` enum.
+Malformed success values or error envelopes close the connection and report an
+unknown outcome. This does not prove a mutation failed or make retry safe.
+
+To bind a local command after its exposure has been separately reviewed:
+
+1. Define its public request and operation in protocol. Outer argument keys use
+   camelCase (`fileData`), nested DTOs retain their own Serde names, and injected
+   `RpcState` and caller/owner values are not fields. Preserve optional and
+   unknown-field handling.
+2. Add `operation = nyanpasu_rpc_protocol::operations::YourOperation` to the
+   existing `#[nyanpasu_macro::rpc(...)]` declaration. Keep target, capability,
+   `owner` and Result-alias hints. The existing generator decodes the contract's
+   `Request`, destructures its fields into handler parameters, assigns success to
+   `Response`, and checks `NAME` against the function name in a constant. It emits
+   one neutral `CommandEntry`; native wrappers retain their shell supplementary
+   table. Unbound commands use the same generator with private `Args` and their
+   declared success type.
+3. Keep unit requests compatible with both `null` and `{}`; nonempty objects and
+   other JSON inputs are rejected. Add request/receiving fixtures, compile-fail
+   binding checks and a typed real-server round trip. Regenerate the catalog when
+   metadata changes, and regenerate all three frontend bindings. A contract-only
+   refactor must leave those files byte-identical.
 
 The client applies initial/reset/event values by whole replacement for the five
 full-value identities. Lag clears trust in the old value until fresh reset;

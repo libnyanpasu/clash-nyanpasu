@@ -21,6 +21,9 @@ use crate::{
 #[cfg(test)]
 mod tests;
 mod transport;
+mod typed;
+
+pub use typed::{TypedCallError, operation_domain_error};
 
 /// Maximum queued exchanges; only one request is written at a time.
 const REQUEST_CAPACITY: usize = 16;
@@ -179,7 +182,7 @@ impl LocalClient {
         })
     }
 
-    /// Calls a command, retaining success/error JSON separately until typed receiving is available.
+    /// Calls a command, retaining success/error JSON separately for callers needing raw values.
     ///
     /// # Errors
     /// A transport failure after submission has an unknown outcome; no call is replayed.

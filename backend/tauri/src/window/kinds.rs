@@ -6,11 +6,7 @@ use super::{
     build_url_with_params,
 };
 use anyhow::Result;
-use nyanpasu_config::{
-    application::{WindowCloseOverride, WindowCloseSettings},
-    state::window::WindowState,
-};
-use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_config::application::{WindowCloseOverride, WindowCloseSettings};
 use std::collections::HashMap;
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
@@ -102,19 +98,16 @@ impl AppWindow for MainWindow {
             .center(true)
     }
 
-    fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState> {
-        app_handle
-            .try_state::<NyanpasuClient>()?
-            .main_window_geometry()
+    fn geometry_key(&self) -> Option<&str> {
+        Some(crate::consts::MAIN_WINDOW_LABEL)
     }
 
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
         settings.main
     }
 
-    fn on_dismissed(&self, window: &WebviewWindow) {
+    fn on_dismissed(&self, _window: &WebviewWindow) {
         log::debug!(target: "app", "window dismissed");
-        let _ = save_window_state(window.app_handle());
         #[cfg(target_os = "macos")]
         crate::utils::dock::macos::hide_dock_icon();
     }
@@ -245,38 +238,13 @@ impl AppWindow for EditorWindow {
             .center(true)
     }
 
-    fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
-        // EditorWindow does not remember window state
-        None
+    fn geometry_key(&self) -> Option<&str> {
+        Some(crate::consts::EDITOR_WINDOW_LABEL)
     }
 
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
         settings.editor
     }
-}
-
-pub async fn save_main_window_state_async(
-    app_handle: &AppHandle,
-    _save_to_file: bool,
-) -> Result<()> {
-    if let Some(geometry) = MainWindow.capture_state(app_handle)? {
-        app_handle
-            .state::<NyanpasuClient>()
-            .save_main_window_geometry(geometry)
-            .await?;
-    }
-    Ok(())
-}
-
-/// Queues a save of the main window's geometry, so the caller never waits
-/// for the write: it runs on the main thread.
-pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
-    if let Some(geometry) = MainWindow.capture_state(app_handle)? {
-        app_handle
-            .state::<NyanpasuClient>()
-            .queue_main_window_geometry_save(geometry)?;
-    }
-    Ok(())
 }
 
 const TRAY_MENU_WIDTH: f64 = 240.0;
@@ -323,10 +291,6 @@ impl AppWindow for TrayMenuWindow {
             // Its focus loss dismisses it, so only the focus it gets when it
             // is shown may count as its first.
             .focused_on_create(false)
-    }
-
-    fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
-        None
     }
 
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
@@ -521,6 +485,22 @@ mod tests {
         assert_eq!(first.label(), again.label());
         assert_ne!(first.label(), second.label());
         assert!(first.config().singleton);
+    }
+
+    #[test]
+    fn window_kinds_choose_geometry_memory() {
+        let (profile, _) = EditorWindow::for_type(EditorWindowType::Profile, Some("a")).unwrap();
+        let (css, _) = EditorWindow::for_type(EditorWindowType::CssEditor, Some("b")).unwrap();
+        assert_eq!(
+            MainWindow.geometry_key(),
+            Some(crate::consts::MAIN_WINDOW_LABEL)
+        );
+        assert_eq!(
+            profile.geometry_key(),
+            Some(crate::consts::EDITOR_WINDOW_LABEL)
+        );
+        assert_eq!(css.geometry_key(), profile.geometry_key());
+        assert_eq!(TrayMenuWindow { cursor: None }.geometry_key(), None);
     }
 
     #[test]

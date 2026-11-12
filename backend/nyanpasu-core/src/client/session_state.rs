@@ -95,32 +95,44 @@ impl SessionStateClient {
         SessionStateSnapshot::from_versioned(&self.inner.snapshot.load())
     }
 
+    pub fn window_geometry(&self, label: &str) -> Option<WindowState> {
+        self.snapshot()
+            .state
+            .window_state
+            .get(&WindowLabel(label.into()))
+            .cloned()
+    }
+
     /// The geometry the main window reopens with.
     pub fn main_window_geometry(&self, metadata: &BundleMetadata) -> Option<WindowState> {
         main_window_geometry(&self.snapshot().state, metadata)
     }
 
-    pub async fn save_main_window(
+    pub async fn save_window(
         &self,
+        label: &str,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> Result<SessionStateSnapshot, ConfigError> {
-        self.call(|reply| SessionStateActorMessage::SaveMainWindow {
+        self.call(|reply| SessionStateActorMessage::SaveWindow {
+            label: WindowLabel(label.into()),
             geometry,
             reply: Some(reply),
         })
         .await
     }
 
-    /// Queues a save of the main window's geometry without waiting for it:
+    /// Queues a save of a window's geometry without waiting for it:
     /// the actor writes it after what is already queued.
-    pub fn queue_main_window_save(
+    pub fn queue_window_save(
         &self,
+        label: &str,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> Result<(), ConfigError> {
         match self
             .inner
             .actor_ref
-            .cast(SessionStateActorMessage::SaveMainWindow {
+            .cast(SessionStateActorMessage::SaveWindow {
+                label: WindowLabel(label.into()),
                 geometry,
                 reply: None,
             }) {
@@ -274,7 +286,7 @@ mod tests {
         assert_eq!(client.main_window_geometry(&TEST_BUNDLE_METADATA), None);
 
         client
-            .save_main_window(geometry(42))
+            .save_window("main", geometry(42))
             .await
             .expect("saving the main window geometry should succeed");
 
@@ -285,10 +297,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn window_kinds_keep_separate_geometry_and_maximized_restore_bounds() {
+        let (client, dir) = test_client().await;
+        client.save_window("main", geometry(10)).await.unwrap();
+        client.save_window("editor", geometry(20)).await.unwrap();
+        let mut maximized = WindowState::default();
+        maximized.maximized = true;
+        client.save_window("editor", maximized).await.unwrap();
+
+        assert_eq!(client.window_geometry("main"), Some(geometry(10)));
+        let mut expected = geometry(20);
+        expected.maximized = true;
+        assert_eq!(client.window_geometry("editor"), Some(expected));
+        let saved = nyanpasu_migration::session_state::read(temp_config_path(&dir).as_std_path())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            saved.window_state.get(&WindowLabel("main".into())),
+            Some(&geometry(10))
+        );
+        assert_eq!(
+            saved.window_state.get(&WindowLabel("editor".into())),
+            client.window_geometry("editor").as_ref()
+        );
+    }
+
+    #[tokio::test]
     async fn a_queued_geometry_save_is_written_before_the_next_request() {
         let (client, _dir) = test_client().await;
 
-        client.queue_main_window_save(geometry(7)).unwrap();
+        client.queue_window_save("main", geometry(7)).unwrap();
         // The mailbox is FIFO: a request sent afterwards is answered only once
         // the queued save has been written.
         client

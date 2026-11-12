@@ -236,7 +236,7 @@ pub fn shutdown_before_exit_blocking(app_handle: &AppHandle) {
     }
 }
 
-/// Queues the main window's final geometry before the caller cancels the root
+/// Queues remembered windows' final geometry before the caller cancels the root
 /// token, so the session state owner drains the save before it stops.
 fn prepare_shutdown(
     app_handle: &AppHandle,
@@ -247,15 +247,10 @@ fn prepare_shutdown(
     let partial = app_handle
         .try_state::<crate::setup::StartupOwners>()
         .map(|state| state.inner().clone());
-    if client.is_some()
-        && app_handle
-            .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
-            .is_some()
-    {
-        crate::log_err!(
-            crate::window::kinds::save_window_state(app_handle),
-            "failed to queue the final main window geometry"
-        );
+    if client.is_some() {
+        if let Some(windows) = app_handle.try_state::<crate::window::WindowManager>() {
+            windows.save_window_geometries();
+        }
     }
     (client, partial)
 }

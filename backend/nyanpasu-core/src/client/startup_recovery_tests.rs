@@ -61,14 +61,17 @@ async fn session_state_recovers_in_each_migration_and_client_startup() {
         .unwrap();
         assert!(state.snapshot().state.window_state.is_empty());
         state
-            .save_main_window(nyanpasu_config::state::window::WindowState {
-                width: 800,
-                height: 600,
-                x: 1,
-                y: 2,
-                maximized: false,
-                fullscreen: false,
-            })
+            .save_window(
+                "main",
+                nyanpasu_config::state::window::WindowState {
+                    width: 800,
+                    height: 600,
+                    x: 1,
+                    y: 2,
+                    maximized: false,
+                    fullscreen: false,
+                },
+            )
             .await
             .unwrap();
         let saved: nyanpasu_config::state::PersistentState =

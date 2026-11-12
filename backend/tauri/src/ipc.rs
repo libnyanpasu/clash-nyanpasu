@@ -2148,10 +2148,11 @@ pub async fn discard_app_update_package(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
-    if label == crate::consts::MAIN_WINDOW_LABEL {
-        kinds::save_main_window_state_async(&app_handle, true).await?;
-    }
+pub async fn save_window_size_state(
+    windows: State<'_, WindowManager>,
+    label: String,
+) -> Result<()> {
+    windows.save_window_geometry(&label).await?;
     Ok(())
 }
 

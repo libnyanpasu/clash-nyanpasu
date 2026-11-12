@@ -11,6 +11,7 @@ import { createWindowAdapter } from '@nyanpasu/platform'
 import { usePlatform } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
 import ActionButton from '../_modules/action-button'
+import { EditorFooter } from '../_modules/footer'
 import Header from '../_modules/header'
 import { EDITOR_SHORTCUTS, useShortcuts } from '../_modules/shortcuts'
 import { EditorStatus } from '../_modules/status'
@@ -155,10 +156,7 @@ function RouteComponent() {
         />
       </div>
 
-      <div
-        className="bg-background flex h-12 shrink-0 items-center gap-2 px-3"
-        data-slot="editor-footer-actions"
-      >
+      <EditorFooter>
         <EditorStatus editor={editorInstance} markers={markers} />
 
         <div className="flex-1" />
@@ -190,7 +188,7 @@ function RouteComponent() {
             {m.common_save()}
           </ActionButton>
         </ShortcutTooltip>
-      </div>
+      </EditorFooter>
     </>
   )
 }

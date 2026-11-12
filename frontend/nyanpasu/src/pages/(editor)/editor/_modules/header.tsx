@@ -38,7 +38,10 @@ const Title = ({ title, dirty }: { title?: string; dirty?: boolean }) => {
         )}
 
         <span
-          className={cn(title ? 'text-on-surface/60 text-sm' : 'font-bold')}
+          className={cn(
+            'truncate',
+            title ? 'text-on-surface/60 text-sm' : 'font-bold',
+          )}
           data-slot="editor-title-app"
           data-tauri-drag-region
         >

@@ -1,6 +1,6 @@
 # Remote access, CLI, agent skill and MCP: design
 
-Status: **in progress**. Layer 01 (R1) is implemented; everything else is proposed.
+Status: **in progress**. Layers 01–02 are implemented; the remaining layers are proposed.
 The maintainer's decisions are recorded in [§11](#11-decisions) and the delivery
 state in [§12](#12-order).
 
@@ -669,14 +669,15 @@ authorization are complete.
 | Layer | Change                                                                                                                                                                                   | State           |
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | 01    | R1: `remote_access` settings and persisted switch and port, one serial owner, degraded results, credential-free status, desktop-only launch URL, the debug HTTP wire rename, this design | **implemented** |
-| 02    | Scope and kind metadata generated with the catalog, privilege-separated patch boundaries, sensitive-read review                                                                          | proposed        |
-| 03    | Shared authorization over commands, direct routes (including icons) and events; `rpc_describe`; generated JSON Schema                                                                    | proposed        |
-| 04    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | proposed        |
-| 05    | TLS, `lan_authenticated`, `local_open` and the remote access UI                                                                                                                          | proposed        |
-| 06    | Persisted local-socket switch and the reviewed CLI local allowlist                                                                                                                       | proposed        |
-| 07    | `nyanpasu-cli`: target resolution, contexts, transports, curated commands                                                                                                                | proposed        |
-| 08    | CLI packaging, PATH integration and completions                                                                                                                                          | proposed        |
-| 09    | Agent skill and `nyanpasu-cli mcp`                                                                                                                                                       | proposed        |
+| 02    | Canonical `Scope`, query/mutation effect and mandatory mutation scopes generated with the catalog; initial sensitive-read classification                                                 | **implemented** |
+| 03    | Privilege-separated application, Clash and runtime request contracts, retry-helper review, secret-free summaries                                                                         | proposed        |
+| 04    | Shared authorization over commands, direct routes (including icons) and events; `rpc_describe`; generated JSON Schema                                                                    | proposed        |
+| 05    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | proposed        |
+| 06    | TLS, `lan_authenticated`, `local_open` and the remote access UI                                                                                                                          | proposed        |
+| 07    | Persisted local-socket switch and the reviewed CLI local allowlist                                                                                                                       | proposed        |
+| 08    | `nyanpasu-cli`: target resolution, contexts, transports, curated commands                                                                                                                | proposed        |
+| 09    | CLI packaging, PATH integration and completions                                                                                                                                          | proposed        |
+| 10    | Agent skill and `nyanpasu-cli mcp`                                                                                                                                                       | proposed        |
 
 Layer 01 corrections to the original sketch: the strategy enum has one variant so
 unimplemented strategies are unrepresentable rather than rejected late; the HTTP status

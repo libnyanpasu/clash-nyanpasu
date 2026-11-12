@@ -30,7 +30,8 @@ use nyanpasu_ipc::api::{
 };
 use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
 use nyanpasu_rpc_protocol::{
-    CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, client::LocalClient, frame::Reply,
+    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, Scope,
+    client::LocalClient, frame::Reply,
 };
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use serde_json::{Value, json};
@@ -431,6 +432,7 @@ fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFu
 inventory::submit! {
     CommandEntry {
         metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared,
+            effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: owner_work,
     }

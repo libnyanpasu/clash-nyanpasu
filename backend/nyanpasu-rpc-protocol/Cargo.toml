@@ -32,7 +32,7 @@ chrono = { version = '0.4', features = ['serde'] }
 indexmap = { version = '2', features = ['serde'] }
 uuid = { version = '1', features = ['serde'] }
 url = { version = '2', features = ['serde'] }
-snafu = '0.8'
+snafu = '0.9'
 tokio = { version = '1', optional = true, features = ['io-util'] }
 serde = { version = '1.0', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }

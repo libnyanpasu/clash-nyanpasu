@@ -1,14 +1,20 @@
 //! The async server and client, for processes that run a Tokio runtime.
 
-use std::{io, marker::PhantomData};
+use std::{
+    io,
+    marker::PhantomData,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use bytes::{Buf as _, BytesMut};
 use futures_util::StreamExt as _;
-use interprocess::local_socket::tokio::{Listener, RecvHalf, SendHalf, Stream, prelude::*};
+use interprocess::local_socket::tokio::{Listener, Stream, prelude::*};
 use serde::{Serialize, de::DeserializeOwned};
 use snafu::ResultExt as _;
 use tokio::{
-    io::AsyncWriteExt as _,
+    io::{AsyncRead, AsyncWriteExt as _, ReadBuf},
     sync::{mpsc, oneshot},
 };
 use tokio_util::codec::{Decoder, FramedRead};
@@ -86,8 +92,11 @@ where
                 .accept()
                 .await
                 .context(accept_error::AcceptSnafu)?;
-            let (recv, mut send) = stream.split();
-            let mut reader = FramedRead::new(recv, FrameDecoder::new(HANDSHAKE_MAX_FRAME_LEN));
+            let stream = Arc::new(stream);
+            let mut reader = FramedRead::new(
+                SharedStream(Arc::clone(&stream)),
+                FrameDecoder::new(HANDSHAKE_MAX_FRAME_LEN),
+            );
             let Some(Ok(frame)) = reader.next().await else {
                 continue;
             };
@@ -96,14 +105,14 @@ where
                 Some(reply) => {
                     let frame = wire::encode_frame(&reply, HANDSHAKE_MAX_FRAME_LEN)
                         .expect("a reply always fits a handshake frame");
-                    send.write_all(&frame).await.is_ok()
+                    (&*stream).write_all(&frame).await.is_ok()
                 }
                 None => false,
             };
             match verdict {
                 // A child that left before reading its welcome is not waiting
                 // for a channel; whoever starts next might be.
-                Verdict::Accept if replied => return Ok(open(reader, send, self.options)),
+                Verdict::Accept if replied => return Ok(open(reader, stream, self.options)),
                 Verdict::Accept | Verdict::Ignore(_) => continue,
                 Verdict::Fail(_, error) => {
                     return Err(AcceptError::Handshake { source: error });
@@ -137,19 +146,22 @@ where
     let stream = Stream::connect(socket_name)
         .await
         .context(connect_error::ConnectSnafu { name })?;
-    let (recv, mut send) = stream.split();
-    let mut reader = FramedRead::new(recv, FrameDecoder::new(HANDSHAKE_MAX_FRAME_LEN));
+    let stream = Arc::new(stream);
+    let mut reader = FramedRead::new(
+        SharedStream(Arc::clone(&stream)),
+        FrameDecoder::new(HANDSHAKE_MAX_FRAME_LEN),
+    );
     let hello = ClientHello::new(*bootstrap.token(), wire::fingerprint::<R, S>());
-    handshake(&mut reader, &mut send, &hello)
+    handshake(&mut reader, &stream, &hello)
         .await
         .context(connect_error::HandshakeSnafu)?;
-    Ok(open(reader, send, options))
+    Ok(open(reader, stream, options))
 }
 
 /// Both directions of a connection that has completed its handshake.
 fn open<S, R>(
-    mut reader: FramedRead<RecvHalf, FrameDecoder>,
-    send: SendHalf,
+    mut reader: FramedRead<SharedStream, FrameDecoder>,
+    stream: Arc<Stream>,
     options: Options,
 ) -> (Sender<S>, Receiver<R>)
 where
@@ -157,16 +169,28 @@ where
     R: DeserializeOwned,
 {
     reader.decoder_mut().max_frame_len = options.max_frame_len();
-    let (park, parked) = oneshot::channel();
-    (
-        Sender::spawn(send, park, options),
-        Receiver::new(reader, parked),
-    )
+    (Sender::spawn(stream, options), Receiver::new(reader))
+}
+
+/// The receiving side of a connection whose [`Sender`] writes to the same
+/// stream. Sharing the stream instead of splitting it keeps the connection
+/// open in both directions until both sides are dropped, where a dropped Unix
+/// write half would shut the socket down for writing.
+struct SharedStream(Arc<Stream>);
+
+impl AsyncRead for SharedStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut &*self.0).poll_read(cx, buf)
+    }
 }
 
 async fn handshake(
-    reader: &mut FramedRead<RecvHalf, FrameDecoder>,
-    send: &mut SendHalf,
+    reader: &mut FramedRead<SharedStream, FrameDecoder>,
+    mut send: &Stream,
     hello: &ClientHello,
 ) -> Result<(), HandshakeError> {
     let frame = wire::encode_frame(hello, HANDSHAKE_MAX_FRAME_LEN)
@@ -213,11 +237,11 @@ impl<T> Clone for Sender<T> {
 }
 
 impl<T: Serialize> Sender<T> {
-    fn spawn(mut half: SendHalf, park: oneshot::Sender<SendHalf>, options: Options) -> Self {
+    fn spawn(stream: Arc<Stream>, options: Options) -> Self {
         let (queue, mut frames) = mpsc::channel::<(Vec<u8>, Ack)>(QUEUED_FRAMES);
         tokio::spawn(async move {
             while let Some((frame, ack)) = frames.recv().await {
-                let written = half.write_all(&frame).await;
+                let written = (&*stream).write_all(&frame).await;
                 // After a failed write the peer is gone, or the stream lost its
                 // place part-way through a frame; nothing more can be delivered,
                 // and closing the queue tells every sender so.
@@ -227,11 +251,6 @@ impl<T: Serialize> Sender<T> {
                     break;
                 }
             }
-            // Dropping the write half shuts down the Unix socket for writing,
-            // which the peer would read as the end of the channel while this
-            // end's receiver still works. The receiver keeps it instead, until
-            // it is dropped as well; if it already is, the half drops here.
-            let _ = park.send(half);
         });
         Self {
             queue,
@@ -265,21 +284,14 @@ impl<T: Serialize> Sender<T> {
 /// Receives messages of type `T`.
 pub struct Receiver<T> {
     /// `None` once the channel has ended.
-    reader: Option<FramedRead<RecvHalf, FrameDecoder>>,
-    /// Holds the write half once every sender of this end is gone, so the
-    /// connection stays open until this receiver is dropped too.
-    _parked_write_half: oneshot::Receiver<SendHalf>,
+    reader: Option<FramedRead<SharedStream, FrameDecoder>>,
     _message: PhantomData<fn() -> T>,
 }
 
 impl<T: DeserializeOwned> Receiver<T> {
-    fn new(
-        reader: FramedRead<RecvHalf, FrameDecoder>,
-        parked_write_half: oneshot::Receiver<SendHalf>,
-    ) -> Self {
+    fn new(reader: FramedRead<SharedStream, FrameDecoder>) -> Self {
         Self {
             reader: Some(reader),
-            _parked_write_half: parked_write_half,
             _message: PhantomData,
         }
     }

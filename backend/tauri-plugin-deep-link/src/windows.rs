@@ -4,7 +4,6 @@ use std::{
 };
 
 use interprocess::{
-    bound_util::RefTokioAsyncRead,
     local_socket::{
         tokio::prelude::*,
         traits::tokio::{Listener, Stream},
@@ -118,8 +117,7 @@ fn listen_on<F: FnMut(String) + Send + 'static>(name: &str, mut handler: F) -> R
                 loop {
                     match listener.accept().await {
                         Ok(conn) => {
-                            let (rx, mut tx) = conn.split();
-                            let mut reader = BufReader::new(rx);
+                            let mut reader = BufReader::new(&conn);
                             let mut buf = String::new();
                             if let Err(e) = reader.read_line(&mut buf).await {
                                 log::error!("Error reading from connection: {e}");
@@ -128,7 +126,7 @@ fn listen_on<F: FnMut(String) + Send + 'static>(name: &str, mut handler: F) -> R
                             buf.pop();
                             let current_pid = std::process::id();
                             let response = format!("{current_pid}\n");
-                            if let Err(e) = tx.write_all(response.as_bytes()).await {
+                            if let Err(e) = (&conn).write_all(response.as_bytes()).await {
                                 log::error!("Error writing to connection: {e}");
                                 continue;
                             }
@@ -189,11 +187,9 @@ fn forward_to_primary(identifier: &str, url: Option<String>) -> Result<()> {
                     //         log::warn!("AllowSetForegroundWindow failed.");
                     //     }
                     // }
-                    let (socket_rx, mut socket_tx) = conn.split();
-                    let mut socket_rx = socket_rx.as_tokio_async_read();
-                    send_url(&mut socket_tx, url.as_deref()).await?;
+                    send_url(&mut &conn, url.as_deref()).await?;
 
-                    let mut reader = BufReader::new(&mut socket_rx);
+                    let mut reader = BufReader::new(&conn);
                     let mut buf = String::new();
                     if let Err(e) = reader.read_line(&mut buf).await {
                         eprintln!("Error reading from connection: {e}");

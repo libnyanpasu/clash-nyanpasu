@@ -58,7 +58,7 @@ token 只是防止误连的第二道防线。同一用户的进程本来就能�
 ## 5. 连接语义
 
 - **写入完成：** tokio 版 `send` 把帧交给后台写任务，等它确认写入后才返回；future 中途被取消，结果只有"整帧未发"或"整帧发出"两种。阻塞版 `send` 直接写入。因此，一个进程发完消息后立即退出，对端仍能收到全部消息，这一点有 e2e 测试覆盖。
-- **关闭：** 一端只有在所有 `Sender` 和 `Receiver` 都 drop 后才关闭连接；只 drop 其中一边，另一方向照常工作。tokio 在 Unix 上 drop `OwnedWriteHalf` 时会对写方向执行 shutdown，所以写任务结束后，写半边交给 `Receiver` 保管，等它也被 drop 再关闭。没有这一步，Unix 的对端会提前读到 EOF，而 Windows 测不出这个问题，有回归测试和 Linux 上的变异验证覆盖。
+- **关闭：** 一端只有在所有 `Sender` 和 `Receiver` 都 drop 后才关闭连接；只 drop 其中一边，另一方向照常工作。tokio 在 Unix 上 drop `OwnedWriteHalf` 时会对写方向执行 shutdown，所以两端不拆分流，而是由写任务和 `Receiver` 通过 `Arc` 共享同一个 `Stream`（interprocess 2.4.7 起也弃用了拆分），最后一个持有者 drop 时才关闭。若拆分后提前 drop 写半边，Unix 的对端会提前读到 EOF，而 Windows 测不出这个问题，有回归测试和 Linux 上的变异验证覆盖。
 - **背压：** 只有操作系统在缓冲已写出的数据。读端卡死时，发送端在缓冲写满后停住（压力测试以 64 KiB 一条发送，Windows 停在 64 KiB，Linux 停在 192 KiB）。
 - **one-shot：** 服务端被 accept 或 drop 之后，不能再建立新连接。Unix 下晚到的客户端会立即失败。Windows 下管道名字随任一实例存在，已接受的连接本身就是一个实例；interprocess 的客户端会无限等待空闲实例，所以晚到的客户端会等到通道关闭后才失败（见 §7）。
 - **错误：** 非断连的 I/O 错误（`SendError::Io`、`RecvError::Io`）和超长的入站帧都会结束通道；解码失败只丢弃这一条消息，通道继续可用。

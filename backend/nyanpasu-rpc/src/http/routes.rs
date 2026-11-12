@@ -1,5 +1,10 @@
 //! Audited HTTP command, archive and subscription routes.
-use std::{convert::Infallible, sync::Arc};
+use std::{
+    convert::Infallible,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use axum::{
     Json, Router,
@@ -19,13 +24,69 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::{
-    audit::RpcTransport,
+    audit::{AuditInvocation, AuditPhase, DeliveryOutcome, RpcTransport, SubscriptionOutcome},
     error::application_error,
     registry::{
-        CommandHandlers, RpcDependencies, RpcFuture, SetupError, UnifiedRpc, dispatch_audited,
+        CommandHandlers, RpcDependencies, RpcFuture, SetupError, UnifiedRpc, dispatch_with_audit,
         unreported,
     },
 };
+
+fn response_prepared(audit: &AuditInvocation, response: Response) -> Response {
+    audit.record(AuditPhase::Delivery {
+        outcome: DeliveryOutcome::ResponsePrepared,
+    });
+    response
+}
+
+/// The inner stream releases its receiver before recording termination, even if
+/// its body is dropped without ever being polled. No frame delivery is audited.
+struct AuditedSubscription<S> {
+    stream: Option<Pin<Box<S>>>,
+    audit: AuditInvocation,
+}
+
+impl<S> AuditedSubscription<S> {
+    fn new(stream: S, audit: &AuditInvocation) -> Self {
+        audit.record(AuditPhase::Subscription {
+            outcome: SubscriptionOutcome::Established,
+        });
+        Self {
+            stream: Some(Box::pin(stream)),
+            audit: audit.clone(),
+        }
+    }
+}
+
+impl<S: futures::Stream> futures::Stream for AuditedSubscription<S> {
+    type Item = S::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        let Some(stream) = &mut this.stream else {
+            return Poll::Ready(None);
+        };
+        let result = stream.as_mut().poll_next(cx);
+        if matches!(result, Poll::Ready(None)) {
+            drop(this.stream.take());
+            this.audit.record(AuditPhase::Subscription {
+                outcome: SubscriptionOutcome::Failed,
+            });
+        }
+        result
+    }
+}
+
+impl<S> Drop for AuditedSubscription<S> {
+    fn drop(&mut self) {
+        if let Some(stream) = self.stream.take() {
+            drop(stream);
+            self.audit.record(AuditPhase::Subscription {
+                outcome: SubscriptionOutcome::Disconnected,
+            });
+        }
+    }
+}
 
 fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
     let cookie = headers
@@ -85,51 +146,48 @@ impl UnifiedRpc {
     }
 }
 
-async fn http_logs_archive(
-    State(rpc): State<UnifiedRpc>,
-    headers: HeaderMap,
-) -> Result<Response, (StatusCode, Json<RpcError>)> {
-    dispatch_audited(
-        &rpc.dependencies.audit,
+async fn http_logs_archive(State(rpc): State<UnifiedRpc>, headers: HeaderMap) -> Response {
+    let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
-        http_owner_or_anonymous(&headers),
-        || "logs_archive",
+        &http_owner_or_anonymous(&headers),
+        "logs_archive",
         None,
-        || {
-            Ok(unreported(async {
-                let paths = rpc.dependencies.paths.clone();
-                let archive =
-                    crate::commands::archive::logs_archive(paths, rpc.dependencies.client.clone())
-                        .await
-                        .map_err(|error| RpcError::new("application_error", error.to_string()))?;
-                let file = tokio::fs::File::open(&archive)
+    );
+    let result = dispatch_with_audit(&audit, || {
+        Ok(unreported(async {
+            let paths = rpc.dependencies.paths.clone();
+            let archive =
+                crate::commands::archive::logs_archive(paths, rpc.dependencies.client.clone())
                     .await
-                    .map_err(application_error)?;
-                let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
-                    use tokio::io::AsyncReadExt;
+                    .map_err(|error| RpcError::new("application_error", error.to_string()))?;
+            let file = tokio::fs::File::open(&archive)
+                .await
+                .map_err(application_error)?;
+            let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
+                use tokio::io::AsyncReadExt;
 
-                    let mut bytes = vec![0; 64 * 1024];
-                    let count = file.read(&mut bytes).await?;
-                    if count == 0 {
-                        return Ok::<_, std::io::Error>(None);
-                    }
-                    bytes.truncate(count);
-                    Ok(Some((bytes, (file, _archive))))
-                });
-                let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
-                Response::builder()
-                    .header("content-type", "application/zip")
-                    .header(
-                        "content-disposition",
-                        format!("attachment; filename=\"{file_name}\""),
-                    )
-                    .body(Body::from_stream(body))
-                    .map_err(application_error)
-            }))
-        },
-    )
+                let mut bytes = vec![0; 64 * 1024];
+                let count = file.read(&mut bytes).await?;
+                if count == 0 {
+                    return Ok::<_, std::io::Error>(None);
+                }
+                bytes.truncate(count);
+                Ok(Some((bytes, (file, _archive))))
+            });
+            let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+            Response::builder()
+                .header("content-type", "application/zip")
+                .header(
+                    "content-disposition",
+                    format!("attachment; filename=\"{file_name}\""),
+                )
+                .body(Body::from_stream(body))
+                .map_err(application_error)
+        }))
+    })
     .await
-    .map_err(http_rpc_error)
+    .unwrap_or_else(|error| http_rpc_error(error).into_response());
+    response_prepared(&audit, result)
 }
 
 fn http_status(error: &RpcError) -> StatusCode {
@@ -147,31 +205,37 @@ fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
 
 // Subscribe only while a page consumes full connection details. Dropping the
 // SSE body releases the watch receiver, just like a native channel teardown.
-async fn http_connection_details(
-    State(rpc): State<UnifiedRpc>,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, (StatusCode, Json<RpcError>)> {
-    dispatch_audited(
-        &rpc.dependencies.audit,
+async fn http_connection_details(State(rpc): State<UnifiedRpc>, headers: HeaderMap) -> Response {
+    let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
-        http_owner_or_anonymous(&headers),
-        || "connection_details_subscribe",
+        &http_owner_or_anonymous(&headers),
+        "connection_details_subscribe",
         None,
-        || {
-            Ok(unreported(async {
-                let receiver = rpc
-                    .dependencies
-                    .client
-                    .subscribe_clash_connection_details()
-                    .await
-                    .map_err(application_error)?;
-                Ok(Sse::new(connection_detail_events(receiver))
-                    .keep_alive(axum::response::sse::KeepAlive::default()))
-            }))
-        },
-    )
+    );
+    let result = dispatch_with_audit(&audit, || {
+        Ok(unreported(async {
+            let receiver = rpc
+                .dependencies
+                .client
+                .subscribe_clash_connection_details()
+                .await
+                .map_err(application_error)?;
+            Ok(Sse::new(AuditedSubscription::new(
+                connection_detail_events(receiver),
+                &audit,
+            ))
+            .keep_alive(axum::response::sse::KeepAlive::default())
+            .into_response())
+        }))
+    })
     .await
-    .map_err(http_rpc_error)
+    .unwrap_or_else(|error| {
+        audit.record(AuditPhase::Subscription {
+            outcome: SubscriptionOutcome::Failed,
+        });
+        http_rpc_error(error).into_response()
+    });
+    response_prepared(&audit, result)
 }
 
 pub(crate) fn connection_detail_events(
@@ -207,103 +271,196 @@ async fn http_events(
     request: Result<Query<EventRequest>, QueryRejection>,
 ) -> Response {
     let owner = http_owner_or_anonymous(&headers);
+    let audit =
+        rpc.dependencies
+            .audit
+            .invocation(RpcTransport::Http, &owner, "events_subscribe", None);
     let request = match request {
         Ok(Query(request)) => request,
         Err(error) => {
-            let _ = dispatch_audited(
-                &rpc.dependencies.audit,
-                RpcTransport::Http,
-                owner,
-                || "events_subscribe",
-                None,
-                || Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string())),
-            )
+            let _ = dispatch_with_audit(&audit, || {
+                Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string()))
+            })
             .await;
-            return error.into_response();
+            audit.record(AuditPhase::Subscription {
+                outcome: SubscriptionOutcome::Failed,
+            });
+            return response_prepared(&audit, error.into_response());
         }
     };
-    dispatch_audited(
-        &rpc.dependencies.audit,
-        RpcTransport::Http,
-        owner,
-        || "events_subscribe",
-        None,
-        || {
-            if request
-                .name
-                .as_ref()
-                .is_some_and(|name| !EventName::ALL.iter().any(|event| event.as_str() == name))
-            {
-                return Err(RpcError::unknown_method(request.name.as_deref().unwrap()));
-            }
-            Ok(unreported(async {
-                let receiver = rpc.dependencies.events.subscribe();
-                let name = request.name;
-                let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
-                    loop {
-                        match receiver.recv().await {
-                            Ok((event_name, payload))
-                                if name.as_ref().is_none_or(|name| event_name == name) =>
-                            {
-                                let payload = if name.is_some() {
-                                    payload
-                                } else {
-                                    serde_json::json!({"name": event_name, "payload": payload})
-                                };
-                                let data = serde_json::to_string(&payload).ok()?;
-                                return Some((
-                                    Ok::<Event, Infallible>(Event::default().data(data)),
-                                    (receiver, name),
-                                ));
-                            }
-                            Ok(_) => continue,
-                            Err(broadcast::error::RecvError::Lagged(_)) => {
-                                return Some((
-                                    Ok(Event::default().event("resync").data("{}")),
-                                    (receiver, name),
-                                ));
-                            }
-                            Err(broadcast::error::RecvError::Closed) => return None,
+    let result = dispatch_with_audit(&audit, || {
+        if request
+            .name
+            .as_ref()
+            .is_some_and(|name| !EventName::ALL.iter().any(|event| event.as_str() == name))
+        {
+            return Err(RpcError::unknown_method(request.name.as_deref().unwrap()));
+        }
+        Ok(unreported(async {
+            let receiver = rpc.dependencies.events.subscribe();
+            let name = request.name;
+            let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
+                loop {
+                    match receiver.recv().await {
+                        Ok((event_name, payload))
+                            if name.as_ref().is_none_or(|name| event_name == name) =>
+                        {
+                            let payload = if name.is_some() {
+                                payload
+                            } else {
+                                serde_json::json!({"name": event_name, "payload": payload})
+                            };
+                            let data = serde_json::to_string(&payload).ok()?;
+                            return Some((
+                                Ok::<Event, Infallible>(Event::default().data(data)),
+                                (receiver, name),
+                            ));
                         }
+                        Ok(_) => continue,
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            return Some((
+                                Ok(Event::default().event("resync").data("{}")),
+                                (receiver, name),
+                            ));
+                        }
+                        Err(broadcast::error::RecvError::Closed) => return None,
                     }
-                });
-                let ready = stream::once(async {
-                    Ok::<Event, Infallible>(Event::default().comment("ready"))
-                });
-                Ok(Sse::new(ready.chain(events))
+                }
+            });
+            let ready =
+                stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
+            Ok(
+                Sse::new(AuditedSubscription::new(ready.chain(events), &audit))
                     .keep_alive(axum::response::sse::KeepAlive::default())
-                    .into_response())
-            }))
-        },
-    )
+                    .into_response(),
+            )
+        }))
+    })
     .await
-    .unwrap_or_else(|error| http_rpc_error(error).into_response())
+    .unwrap_or_else(|error| {
+        audit.record(AuditPhase::Subscription {
+            outcome: SubscriptionOutcome::Failed,
+        });
+        http_rpc_error(error).into_response()
+    });
+    response_prepared(&audit, result)
 }
 
 async fn http_call(
     State(rpc): State<UnifiedRpc>,
     headers: HeaderMap,
     request: Result<Json<Request>, JsonRejection>,
-) -> Result<Json<Value>, (StatusCode, Json<RpcError>)> {
+) -> Response {
     let owner = http_owner_or_anonymous(&headers);
     let request = match request {
         Ok(Json(request)) => request,
         Err(error) => {
-            return dispatch_audited(
-                &rpc.dependencies.audit,
+            let audit = rpc.dependencies.audit.invocation(
                 RpcTransport::Http,
-                owner,
-                || "invalid_envelope",
+                &owner,
+                "invalid_envelope",
                 None,
-                || Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string())),
-            )
+            );
+            let result = dispatch_with_audit(&audit, || {
+                Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string()))
+            })
             .await
-            .map(Json)
-            .map_err(http_rpc_error);
+            .map(Json::<Value>)
+            .map_err(http_rpc_error)
+            .into_response();
+            return response_prepared(&audit, result);
         }
     };
-    rpc.call(RpcTransport::Http, &request.method, owner, request.params)
+    let audit = rpc.audit_invocation(RpcTransport::Http, &request.method, &owner, None);
+    let result = rpc
+        .call_with_admission(
+            &audit,
+            RpcTransport::Http,
+            &request.method,
+            owner,
+            request.params,
+            Ok(()),
+        )
         .await
         .map(Json)
         .map_err(|error| (http_status(&error), Json(error)))
+        .into_response();
+    response_prepared(&audit, result)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        pin::Pin,
+        sync::Arc,
+        task::{Context, Poll},
+    };
+
+    use futures::{Stream, StreamExt as _};
+    use nyanpasu_rpc_protocol::RpcOwner;
+    use tokio::sync::watch;
+
+    use super::{AuditedSubscription, connection_detail_events};
+    use crate::audit::{
+        AuditPhase, RpcAudit, RpcAuditRecord, RpcAuditSink, RpcTransport, SubscriptionOutcome,
+    };
+
+    struct TeardownSink(
+        watch::Sender<Option<Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>>,
+    );
+
+    impl RpcAuditSink for TeardownSink {
+        fn record(&self, record: &RpcAuditRecord) {
+            if matches!(
+                record.phase,
+                AuditPhase::Subscription {
+                    outcome: SubscriptionOutcome::Disconnected | SubscriptionOutcome::Failed
+                }
+            ) {
+                assert_eq!(
+                    self.0.receiver_count(),
+                    0,
+                    "HTTP receiver is released before its audit fact"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn http_subscription_audit_follows_receiver_teardown() {
+        let (sender, receiver) = watch::channel(None);
+        let sink = Arc::new(TeardownSink(sender));
+        let audit = RpcAudit::new(sink.clone()).invocation(
+            RpcTransport::Http,
+            &RpcOwner::desktop("test"),
+            "connection_details_subscribe",
+            None,
+        );
+        let events = AuditedSubscription::new(connection_detail_events(receiver), &audit);
+        assert_eq!(sink.0.receiver_count(), 1);
+        drop(events);
+        assert_eq!(
+            sink.0.receiver_count(),
+            0,
+            "unpolled stream still tears down"
+        );
+
+        struct Ended(
+            watch::Receiver<Option<Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>>,
+        );
+        impl Stream for Ended {
+            type Item = ();
+            fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<()>> {
+                assert!(!self.0.has_changed().unwrap());
+                Poll::Ready(None)
+            }
+        }
+        let mut events = AuditedSubscription::new(Ended(sink.0.subscribe()), &audit);
+        assert_eq!(events.next().await, None);
+        assert_eq!(
+            sink.0.receiver_count(),
+            0,
+            "upstream end also releases demand before audit"
+        );
+    }
 }

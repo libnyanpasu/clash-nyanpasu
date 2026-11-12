@@ -23,8 +23,9 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 use crate::{
     audit::{
-        AuditHeader, AuditPhase, CompletionSummary, RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord,
-        RpcAuditSink, RpcTransport, TracingRpcAuditSink,
+        AuditHeader, AuditPhase, CompletionSummary, DeliveryOutcome, ObservationEnd,
+        RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink, RpcTransport,
+        SubscriptionOutcome, TracingRpcAuditSink,
     },
     events::EventBus,
     registry::{RpcCaller, RpcDependencies, RpcFuture, RpcState},
@@ -111,7 +112,7 @@ async fn audit_distinguishes_rejection_from_handler_failure() {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(error["kind"], "invalid_params");
         let mut records = fixture.sink.records.lock();
-        assert_eq!(records.len(), expected);
+        assert_eq!(records.len(), expected + 1);
         if expected == 1 {
             assert_eq!(
                 records[0].phase,
@@ -182,7 +183,7 @@ async fn audit_preserves_committed_degraded_summary() {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value["value"], SECRET);
         let mut records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 2);
+        assert_eq!(records.len(), 3);
         assert_eq!(
             records[1].phase,
             AuditPhase::Finished {
@@ -245,7 +246,7 @@ async fn audit_never_records_request_values_or_owner_cookies() {
     }
     .with_subscriber(tracing_subscriber::registry().with(capture.clone()))
     .await;
-    assert_eq!(capture.0.lock().len(), 4);
+    assert_eq!(capture.0.lock().len(), 6);
     for secret in [SECRET, "99999999-8888-4777-8666-555555555555"] {
         assert!(!format!("{:?}", fixture.sink.records.lock()).contains(secret));
         assert!(!format!("{:?}", capture.0.lock()).contains(secret));
@@ -258,14 +259,19 @@ async fn audit_invocation_headers_follow_calls_and_keep_local_request_ids() {
     let fixture = Fixture::new(false).await;
     let id = nyanpasu_rpc_protocol::frame::RequestId::new(1).unwrap();
     for _ in 0..2 {
+        let owner = RpcOwner::new(SECRET.into());
+        let audit =
+            fixture
+                .rpc
+                .audit_invocation(RpcTransport::Local, "get_profiles", &owner, Some(id));
         fixture
             .rpc
             .call_with_admission(
+                &audit,
                 RpcTransport::Local,
                 "get_profiles",
-                RpcOwner::new(SECRET.into()),
+                owner,
                 json!({}),
-                Some(id),
                 Ok(()),
             )
             .await
@@ -426,7 +432,13 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         assert_eq!(error["kind"], "unsupported");
         let records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 1);
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            records[1].phase,
+            AuditPhase::Delivery {
+                outcome: DeliveryOutcome::ResponsePrepared
+            }
+        );
         assert_eq!(records[0].header.method, "requires_clipboard");
         assert_eq!(
             records[0].phase,
@@ -473,7 +485,7 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method}");
         assert_eq!(error["kind"], "unsupported", "{method}");
         let records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 1);
+        assert_eq!(records.len(), 2);
         assert_eq!(records[0].header.method, method);
         assert!(matches!(
             records[0].phase,
@@ -528,7 +540,7 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
         4
     );
     assert_eq!(
-        finished(fixture.sink.records.lock().last().unwrap()),
+        finished(&fixture.sink.records.lock()[1]),
         RpcAuditOutcome::Success
     );
     // Optional effects never imply local exposure, even for a compatible signature.
@@ -595,7 +607,13 @@ async fn http_dispatch_records_one_audit_event() {
     assert_eq!(result, "response");
     {
         let records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 2);
+        assert_eq!(records.len(), 3);
+        assert_eq!(
+            records[2].phase,
+            AuditPhase::Delivery {
+                outcome: DeliveryOutcome::ResponsePrepared
+            }
+        );
         assert_eq!(records[0].header.transport, RpcTransport::Http);
         assert_eq!(records[0].header.method, "audit_echo");
         assert_eq!(records[0].phase, AuditPhase::Admitted);
@@ -603,7 +621,7 @@ async fn http_dispatch_records_one_audit_event() {
         assert!(records[0].header.owner.as_str().starts_with("http:"));
         assert_eq!(
             *fixture.sink.sequence.lock(),
-            ["record", "record", "returned"]
+            ["record", "record", "record", "returned"]
         );
     }
     fixture.shutdown().await;
@@ -632,23 +650,54 @@ async fn direct_http_routes_use_the_same_audit_seam() {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{path}");
-        let record = fixture.sink.records.lock().pop().unwrap();
-        assert_eq!(
-            fixture.sink.records.lock().pop().unwrap().phase,
-            AuditPhase::Admitted
-        );
-        assert_eq!(record.header.method, command);
-        assert!(record.header.owner.as_str().starts_with("http:"));
-        assert!(!record.header.owner.as_str().contains(&session.to_string()));
-        owners.push(record.header.owner.clone());
-        assert_eq!(record.header.transport, RpcTransport::Http);
-        assert_eq!(finished(&record), RpcAuditOutcome::Success);
-        assert!(fixture.sink.records.lock().is_empty());
+        {
+            let records = fixture.sink.records.lock();
+            let admitted = records
+                .iter()
+                .find(|record| record.phase == AuditPhase::Admitted)
+                .unwrap();
+            let finished_record = records
+                .iter()
+                .find(|record| matches!(record.phase, AuditPhase::Finished { .. }))
+                .unwrap();
+            assert_eq!(finished(finished_record), RpcAuditOutcome::Success);
+            assert_eq!(admitted.header.method, command);
+            assert!(admitted.header.owner.as_str().starts_with("http:"));
+            assert!(
+                !admitted
+                    .header
+                    .owner
+                    .as_str()
+                    .contains(&session.to_string())
+            );
+            owners.push(admitted.header.owner.clone());
+            assert_eq!(admitted.header.transport, RpcTransport::Http);
+            assert_eq!(
+                records.last().unwrap().phase,
+                AuditPhase::Delivery {
+                    outcome: DeliveryOutcome::ResponsePrepared
+                }
+            );
+            assert!(
+                records
+                    .iter()
+                    .all(|record| record.header.invocation_id == admitted.header.invocation_id)
+            );
+        }
+        fixture.sink.records.lock().clear();
         drop(response);
-        assert!(
-            fixture.sink.records.lock().is_empty(),
-            "no stream teardown event"
-        );
+        let records = std::mem::take(&mut *fixture.sink.records.lock());
+        if command == "logs_archive" {
+            assert!(records.is_empty(), "download completion is not observed");
+        } else {
+            assert_eq!(records.len(), 1);
+            assert_eq!(
+                records[0].phase,
+                AuditPhase::Subscription {
+                    outcome: SubscriptionOutcome::Disconnected
+                }
+            );
+        }
     }
     assert!(
         owners.windows(2).all(|pair| pair[0] == pair[1]),
@@ -685,7 +734,7 @@ async fn audit_records_rejected_dispatches() {
     ] {
         assert_eq!(fixture.call(method, params).await.0, status);
         let records = fixture.sink.records.lock();
-        let record = records.last().unwrap();
+        let record = &records[records.len() - 2];
         assert_eq!(record.header.method, command);
         assert_eq!(record.phase, AuditPhase::Rejected { kind, code: None });
     }
@@ -727,7 +776,11 @@ async fn audit_records_rejected_dispatches() {
         .contains("duplicate field")
     );
     {
-        let records = fixture.sink.records.lock();
+        let all_records = fixture.sink.records.lock();
+        let records: Vec<_> = all_records
+            .iter()
+            .filter(|record| matches!(record.phase, AuditPhase::Rejected { .. }))
+            .collect();
         assert_eq!(records.len(), 5);
         assert_eq!(records[3].header.method, "invalid_envelope");
         assert_eq!(records[4].header.method, "events_subscribe");
@@ -777,8 +830,8 @@ async fn audit_never_records_payloads_or_error_details() {
         assert!(!format!("{:?}", fixture.sink.records.lock()).contains(&secret));
         assert!(!format!("{:?}", capture.0.lock()).contains(&secret));
     }
-    assert_eq!(fixture.sink.records.lock().len(), 7);
-    assert_eq!(capture.0.lock().len(), 7);
+    assert_eq!(fixture.sink.records.lock().len(), 11);
+    assert_eq!(capture.0.lock().len(), 11);
     fixture.shutdown().await;
 }
 
@@ -813,12 +866,12 @@ async fn audited_failure_preserves_the_original_rpc_error() {
     // The structured domain error carries a secret too; only kind and code are audited.
     assert!(!format!("{:?}", fixture.sink.records.lock()).contains(SECRET));
     assert!(!format!("{:?}", capture.0.lock()).contains(SECRET));
-    assert_eq!(capture.0.lock().len(), 2);
+    assert_eq!(capture.0.lock().len(), 3);
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(error, serde_json::to_value(original_error()).unwrap());
     {
         let records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 2);
+        assert_eq!(records.len(), 3);
         assert_eq!(
             finished(&records[1]),
             RpcAuditOutcome::Failure {
@@ -883,10 +936,10 @@ async fn audit_level_follows_transport_not_outcome() {
     .await;
     {
         let events = capture.0.lock();
-        assert_eq!(events.len(), 16, "captured audit events: {events:?}");
-        assert!(events[..12].iter().all(|e| e.level == tracing::Level::INFO));
+        assert_eq!(events.len(), 18, "captured audit events: {events:?}");
+        assert!(events[..14].iter().all(|e| e.level == tracing::Level::INFO));
         assert!(
-            events[12..]
+            events[14..]
                 .iter()
                 .all(|e| e.level == tracing::Level::DEBUG)
         );
@@ -954,9 +1007,15 @@ async fn dropping_audited_call_preserves_cancellation() {
         "dropping the request drops its command before returning"
     );
     assert!(sequence.try_recv().is_err());
-    assert_eq!(fixture.sink.records.lock().len(), 2);
+    assert_eq!(fixture.sink.records.lock().len(), 3);
     assert_eq!(
-        finished(fixture.sink.records.lock().last().unwrap()),
+        fixture.sink.records.lock()[2].phase,
+        AuditPhase::ObservationEnded {
+            reason: ObservationEnd::FutureDropped
+        }
+    );
+    assert_eq!(
+        finished(&fixture.sink.records.lock()[1]),
         RpcAuditOutcome::NotObserved
     );
     fixture.shutdown().await;

@@ -13,7 +13,10 @@ use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::error;
+use crate::{
+    audit::{AuditInvocation, AuditPhase, DeliveryOutcome},
+    error,
+};
 
 // Bound recovery work even when a publisher never becomes idle.
 const SNAPSHOT_ATTEMPTS: usize = 4;
@@ -25,6 +28,34 @@ pub(super) type Events = broadcast::Receiver<(&'static str, Value)>;
 pub(super) struct Delivery {
     pub frame: Frame,
     pub written: Option<oneshot::Sender<()>>,
+    pub audits: Vec<DeliveryAudit>,
+}
+
+/// A write observation may be associated with several invocation headers.
+pub(super) struct DeliveryAudit {
+    invocation: AuditInvocation,
+    outcome: DeliveryOutcome,
+}
+
+impl DeliveryAudit {
+    pub(super) fn new(invocation: AuditInvocation) -> Self {
+        Self {
+            invocation,
+            outcome: DeliveryOutcome::NotAttempted,
+        }
+    }
+
+    pub(super) fn observe(&mut self, outcome: DeliveryOutcome) {
+        self.outcome = outcome;
+    }
+}
+
+impl Drop for DeliveryAudit {
+    fn drop(&mut self) {
+        self.invocation.record(AuditPhase::Delivery {
+            outcome: self.outcome,
+        });
+    }
 }
 
 pub(super) struct Output(mpsc::Sender<Delivery>);
@@ -42,6 +73,7 @@ impl Output {
             .send(Delivery {
                 frame,
                 written: Some(written),
+                audits: Vec::new(),
             })
             .await
             .map_err(|_| ())?;

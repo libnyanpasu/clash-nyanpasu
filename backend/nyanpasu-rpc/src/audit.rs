@@ -28,6 +28,27 @@ impl RpcAudit {
         }
     }
 
+    /// Start one invocation's diagnostic chain, independent of response ownership.
+    pub(crate) fn invocation(
+        &self,
+        transport: RpcTransport,
+        owner: &RpcOwner,
+        method: &'static str,
+        request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
+    ) -> AuditInvocation {
+        AuditInvocation {
+            sink: self.sink.clone(),
+            header: AuditHeader {
+                invocation_id: self.next_invocation.fetch_add(1, Ordering::Relaxed),
+                transport,
+                method,
+                owner: self.owner(transport, owner),
+                request_id,
+            },
+            started: Instant::now(),
+        }
+    }
+
     /// IPC callers are window labels. An HTTP owner carries the session cookie, which
     /// authorizes log sessions, so records get a keyed hash that still correlates
     /// one session's calls but never reveals the cookie.
@@ -139,6 +160,42 @@ pub enum AuditPhase {
         outcome: RpcAuditOutcome,
         completion: CompletionSummary,
     },
+    Delivery {
+        outcome: DeliveryOutcome,
+    },
+    ObservationEnded {
+        reason: ObservationEnd,
+    },
+    Subscription {
+        outcome: SubscriptionOutcome,
+    },
+}
+
+/// Adapter facts only; a completed write does not prove client processing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliveryOutcome {
+    WriteCompleted,
+    WriteFailed,
+    NotAttempted,
+    Interrupted,
+    /// HTTP constructed a response, without observing body delivery.
+    ResponsePrepared,
+}
+
+/// Why a dispatch stopped observing its handler before receiving an outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObservationEnd {
+    /// The future was dropped; owner-started business work may still complete.
+    FutureDropped,
+}
+
+/// Subscription lifecycle facts, recorded after receiver teardown on termination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubscriptionOutcome {
+    Established,
+    Unsubscribed,
+    Disconnected,
+    Failed,
 }
 
 /// Local diagnostic metadata; duration is monotonic elapsed time since dispatch.
@@ -149,36 +206,34 @@ pub struct RpcAuditRecord {
     pub phase: AuditPhase,
 }
 
-pub(crate) struct RpcAuditGuard<'a> {
-    sink: &'a dyn RpcAuditSink,
-    record: RpcAuditRecord,
+/// Cloneable correlation only. It owns no handler, response or transport resource.
+#[derive(Clone)]
+pub(crate) struct AuditInvocation {
+    sink: Arc<dyn RpcAuditSink>,
+    header: AuditHeader,
     started: Instant,
+}
+
+impl AuditInvocation {
+    pub(crate) fn record(&self, phase: AuditPhase) {
+        self.sink.record(&RpcAuditRecord {
+            header: self.header.clone(),
+            duration: self.started.elapsed(),
+            phase,
+        });
+    }
+}
+
+pub(crate) struct RpcAuditGuard<'a> {
+    invocation: &'a AuditInvocation,
     completed: bool,
     admitted: bool,
 }
 
 impl<'a> RpcAuditGuard<'a> {
-    pub(crate) fn new(
-        audit: &'a RpcAudit,
-        transport: RpcTransport,
-        owner: &RpcOwner,
-        method: &'static str,
-        request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
-    ) -> Self {
+    pub(crate) fn new(invocation: &'a AuditInvocation) -> Self {
         Self {
-            sink: audit.sink.as_ref(),
-            record: RpcAuditRecord {
-                header: AuditHeader {
-                    invocation_id: audit.next_invocation.fetch_add(1, Ordering::Relaxed),
-                    transport,
-                    method,
-                    owner: audit.owner(transport, owner),
-                    request_id,
-                },
-                duration: Duration::ZERO,
-                phase: AuditPhase::Admitted,
-            },
-            started: Instant::now(),
+            invocation,
             completed: false,
             admitted: false,
         }
@@ -190,10 +245,8 @@ impl<'a> RpcAuditGuard<'a> {
     }
 
     pub(crate) fn record(&mut self, phase: AuditPhase) {
-        self.record.duration = self.started.elapsed();
         self.completed = !matches!(phase, AuditPhase::Admitted);
-        self.record.phase = phase;
-        self.sink.record(&self.record);
+        self.invocation.record(phase);
     }
 }
 
@@ -205,10 +258,16 @@ impl Drop for RpcAuditGuard<'_> {
             } else {
                 RpcAuditOutcome::NotObserved
             };
+            let unobserved = outcome == RpcAuditOutcome::NotObserved;
             self.record(AuditPhase::Finished {
                 outcome,
                 completion: CompletionSummary::NotReported,
             });
+            if unobserved {
+                self.invocation.record(AuditPhase::ObservationEnded {
+                    reason: ObservationEnd::FutureDropped,
+                });
+            }
         }
     }
 }
@@ -218,11 +277,51 @@ pub struct TracingRpcAuditSink;
 
 impl RpcAuditSink for TracingRpcAuditSink {
     fn record(&self, record: &RpcAuditRecord) {
+        let reason = match record.phase {
+            AuditPhase::ObservationEnded {
+                reason: ObservationEnd::FutureDropped,
+            } => Some("future_dropped"),
+            _ => None,
+        };
         let (phase, outcome, kind, code, completion) = match &record.phase {
             AuditPhase::Rejected { kind, code } => {
                 ("rejected", None, Some(*kind), code.as_deref(), None)
             }
             AuditPhase::Admitted => ("admitted", None, None, None, None),
+            AuditPhase::Delivery { outcome } => (
+                "delivery",
+                Some(match outcome {
+                    DeliveryOutcome::WriteCompleted => "write_completed",
+                    DeliveryOutcome::WriteFailed => "write_failed",
+                    DeliveryOutcome::NotAttempted => "not_attempted",
+                    DeliveryOutcome::Interrupted => "interrupted",
+                    DeliveryOutcome::ResponsePrepared => "response_prepared",
+                }),
+                None,
+                None,
+                None,
+            ),
+            AuditPhase::ObservationEnded {
+                reason: ObservationEnd::FutureDropped,
+            } => (
+                "observation_ended",
+                Some("outcome_unobserved"),
+                None,
+                None,
+                None,
+            ),
+            AuditPhase::Subscription { outcome } => (
+                "subscription",
+                Some(match outcome {
+                    SubscriptionOutcome::Established => "established",
+                    SubscriptionOutcome::Unsubscribed => "unsubscribed",
+                    SubscriptionOutcome::Disconnected => "disconnected",
+                    SubscriptionOutcome::Failed => "failed",
+                }),
+                None,
+                None,
+                None,
+            ),
             AuditPhase::Finished {
                 outcome,
                 completion,
@@ -261,7 +360,7 @@ impl RpcAuditSink for TracingRpcAuditSink {
                     owner = record.header.owner.as_str(),
                     request_id = record.header.request_id.map(|id| serde_json::to_string(&id).expect("request ID serializes")),
                     duration_ns = record.duration.as_nanos() as u64,
-                    phase, outcome, kind, code, completion,
+                    phase, outcome, reason, kind, code, completion,
                     commits = commits.as_deref(), notifications_pending, degradation_count,
                 )
             };

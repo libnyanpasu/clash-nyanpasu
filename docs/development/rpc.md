@@ -147,7 +147,7 @@ not promise cross-process uniqueness. Unknown names record `unknown_method`;
 owner cookies and request values never reach a record. Records include monotonic
 elapsed duration and phases from actual control flow:
 
-- `Rejected { kind, code }` is the only record when target, capability, injected
+- `Rejected { kind, code }` is the only dispatch phase when target, capability, injected
   dependency or argument decoding fails before a prepared handler future exists.
 - `Admitted` precedes polling that future. A handler error is then `Finished`
   with a failure outcome, even when its kind also occurs in admission errors.
@@ -157,10 +157,32 @@ elapsed duration and phases from actual control flow:
   encoding failure. Aliases are not inferred; a test fixes the current reporting
   command set. Other signatures report `NotReported`, which does not mean no side
   effects, no commit or transaction cancellation.
+- `Delivery { outcome }` records adapter facts separately from handler results.
+  Local response/control writes report completed, failed, not attempted, or
+  interrupted using the ordered writer's existing completion point. Completed
+  writes do not prove client processing. HTTP records `ResponsePrepared` after
+  constructing a response, including error responses; creating an archive response
+  does not mean its download completed. There are no new ACK frames or per-frame
+  stream records.
+- `Subscription { outcome }` records establishment, explicit unsubscribe,
+  disconnect cleanup or failure. Termination records follow receiver teardown;
+  local unsubscribe still releases demand and discards queued frames before its
+  acknowledgement. Subscription termination correlates to its establishment
+  invocation; explicit unsubscribe also has its own invocation chain.
 
 A dropped admitted future records `Finished` with `NotObserved` and `NotReported`:
-the dispatch observation ended without a handler result; owner-started work may
-still complete. Unwinding records `Panicked` without catching or converting the
+the dispatch observation ended without a handler result, followed by
+`ObservationEnded { reason: FutureDropped }`; owner-started work may still complete.
+HTTP retains E1 semantics: handlers are polled inline, with no tracked invocation
+executor. A dropped request future reports an unobserved outcome and cannot claim
+business cancellation or a late result. A body dropped after response preparation
+does not produce a download-completion fact. Local accepted tasks continue draining
+after disconnect, and successful late log sessions are still closed.
+
+Delivery observations belong to adapters and may cover multiple invocations;
+records retain each invocation's header. Audit correlation handles own no response,
+invoke handle, handler or business work, and impose no exclusive response-to-invocation
+relationship. Unwinding records `Panicked` without catching or converting the
 panic; abort builds cannot record on Drop. Audit durability is diagnostic tracing
 only, best effort on crashes, with no durable transaction log or delivery guarantee.
 The sink is synchronous and must not panic, queue business work or wait on external
@@ -170,7 +192,7 @@ Native shell dispatch uses the same preparation boundary and audit kernel.
 HTTP and local use INFO and Tauri
 IPC uses DEBUG on `nyanpasu::rpc_audit`, regardless of outcome. Results, polling,
 cancellation and panic propagation are unchanged. Streams have one invocation
-record chain when established, never per frame. Authentication
+record chain for establishment and termination, never per frame. Authentication
 rejections, static assets and envelopes rejected by Tauri before `call_rpc` are
 outside this boundary. E2b moved the kernel and its port with the registry; E3's
 local socket/CLI must enter this same kernel at INFO.

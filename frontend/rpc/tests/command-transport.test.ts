@@ -3,7 +3,8 @@ import {
   createCommandTransport,
   createRpcClient,
   isIpcError,
-  unwrapResult,
+  rpcDomainError,
+  RpcFailure,
 } from '../src'
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
@@ -74,11 +75,16 @@ describe('rpc command facade', () => {
 
     await expect(
       createCommandTransport().invoke('quit_application'),
-    ).rejects.toEqual({
-      kind: 'unsupported',
-      message:
-        'command `quit_application` is unavailable over experimental HTTP',
-    })
+    ).rejects.toThrow(
+      expect.objectContaining({
+        method: 'quit_application',
+        envelope: {
+          kind: 'unsupported',
+          message:
+            'command `quit_application` is unavailable over experimental HTTP',
+        },
+      }),
+    )
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
@@ -101,10 +107,12 @@ describe('rpc command facade', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const rpc = createRpcClient()
-    await expect(rpc.getProfiles()).resolves.toEqual({
-      status: 'error',
-      error: { kind: 'invalid_params', message: 'Bad input' },
-    })
+    await expect(rpc.getProfiles()).rejects.toThrow(
+      expect.objectContaining({
+        method: 'get_profiles',
+        envelope: { kind: 'invalid_params', message: 'Bad input' },
+      }),
+    )
     await expect(rpc.getProfiles()).rejects.toThrow(
       'RPC returned a non-JSON response (HTTP 502)',
     )
@@ -144,21 +152,19 @@ describe('rpc command facade', () => {
         )
       }
       const rpc = createRpcClient()
-      await expect(rpc.restartSidecar()).resolves.toEqual({
-        status: 'error',
-        error: coreError,
-      })
-      await expect(rpc.listLogFiles('app')).resolves.toEqual({
-        status: 'error',
-        error: 'session_expired',
-      })
+      await expect(rpc.restartSidecar()).rejects.toThrow(
+        expect.objectContaining({ envelope: coreError }),
+      )
+      await expect(rpc.listLogFiles('app')).rejects.toThrow(
+        expect.objectContaining({ envelope: logError }),
+      )
       rpc.dispose()
     },
   )
 })
 
 it.each(['desktop', 'http'])(
-  'preserves main domain errors and diagnostic details over %s',
+  '%s failures preserve the RPC envelope and domain diagnostic details',
   async (transport) => {
     vi.stubGlobal(
       'window',
@@ -176,6 +182,9 @@ it.each(['desktop', 'http'])(
     const wire = {
       kind: 'application_error',
       message: domainError.message,
+      code: 'profile_not_found',
+      retryable: false,
+      operation_id: 'operation-2',
       domain_error: domainError,
     }
     if (transport === 'desktop') invoke.mockRejectedValueOnce(wire)
@@ -185,10 +194,52 @@ it.each(['desktop', 'http'])(
         vi.fn().mockResolvedValue({ ok: false, json: async () => wire }),
       )
     const rpc = createRpcClient()
-    const result = await rpc.getProfiles()
-    expect(result).toEqual({ status: 'error', error: domainError })
+    const failure: unknown = await rpc.getProfiles().catch((error) => error)
+    expect(failure).toBeInstanceOf(RpcFailure)
+    expect(failure).toBeInstanceOf(Error)
+    if (!(failure instanceof RpcFailure)) throw new Error('Expected RpcFailure')
+    expect(failure.name).toBe('RpcFailure')
+    expect(failure.method).toBe('get_profiles')
+    expect(failure.message).toBe(domainError.message)
+    expect(failure.envelope).toEqual(wire)
+    expect(failure.envelope).not.toBe(wire)
+    expect(Object.isFrozen(failure.envelope)).toBe(true)
+    expect(Object.isFrozen(domainError)).toBe(false)
+    expect(failure.cause).toBe(domainError)
+    expect(rpcDomainError(failure)).toBe(domainError)
     expect(isIpcError(domainError)).toBe(true)
-    expect(() => unwrapResult(result)).toThrow(domainError.message)
     rpc.dispose()
   },
 )
+
+it('invalid params is not a domain failure', () => {
+  const domain = { kind: 'cursor_expired' }
+  const failure = new RpcFailure('query_core_logs', {
+    kind: 'invalid_params',
+    message: 'Bad input',
+    domain_error: domain,
+  })
+
+  expect(rpcDomainError(failure)).toBeUndefined()
+  expect(rpcDomainError(domain)).toBeUndefined()
+  expect(rpcDomainError(new Error('offline'))).toBeUndefined()
+  expect(failure.envelope.domain_error).toBe(domain)
+})
+
+it('keeps HTTP failures without an envelope as plain errors', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ message: 'proxy unavailable' }),
+    }),
+  )
+
+  const failure: unknown = await createCommandTransport('none', 'browser')
+    .invoke('get_profiles')
+    .catch((error) => error)
+  expect(failure).toBeInstanceOf(Error)
+  expect(failure).not.toBeInstanceOf(RpcFailure)
+  expect(failure).toEqual(new Error('RPC failed with HTTP 503'))
+})

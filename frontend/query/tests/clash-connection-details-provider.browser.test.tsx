@@ -7,7 +7,7 @@ import {
   type TestContext,
 } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { createRpcClient } from '@nyanpasu/rpc'
+import { createRpcClient, RpcFailure } from '@nyanpasu/rpc'
 import type { ClashConnectionDetails_Serialize } from '@nyanpasu/rpc/types'
 import { Channel } from '@tauri-apps/api/core'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
@@ -279,32 +279,40 @@ test('a frozen boundary keeps the frame it had when freezing started', async ({
   await expect.poll(() => renders.at(-1)).toEqual(details(2))
 })
 
-test('a failed subscription reports the error and does not unsubscribe', async ({
-  onTestFinished,
-}) => {
-  const error = new Error('subscription failed')
-  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const states: ReturnType<typeof useClashConnectionDetails>[] = []
-  mockRpcCalls((method, params) => {
-    expect(method).toBe('subscribe_clash_connection_details')
-    expect(Object.keys(params)).toEqual(['onFrame'])
-    expect(params.onFrame).toBeInstanceOf(Channel)
-    throw error
-  })
+test.for(['transport', 'rpc'])(
+  'a failed %s subscription reports the error and does not unsubscribe',
+  async (kind, { onTestFinished }) => {
+    const error =
+      kind === 'transport'
+        ? new Error('subscription failed')
+        : new RpcFailure('subscribe_clash_connection_details', {
+            kind: 'unsupported',
+            message: 'subscription failed',
+          })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const states: ReturnType<typeof useClashConnectionDetails>[] = []
+    mockRpcCalls((method, params) => {
+      expect(method).toBe('subscribe_clash_connection_details')
+      expect(Object.keys(params)).toEqual(['onFrame'])
+      expect(params.onFrame).toBeInstanceOf(Channel)
+      throw error instanceof RpcFailure ? error.envelope : error
+    })
 
-  const { screen, rpc } = await renderWithRpc(
-    <ClashConnectionDetailsProvider connectorState="connected">
-      <Consumer onRender={() => {}} onState={(state) => states.push(state)} />
-    </ClashConnectionDetailsProvider>,
-  )
-  teardown(onTestFinished, screen, rpc)
-  onTestFinished(() => errorSpy.mockRestore())
+    const { screen, rpc } = await renderWithRpc(
+      <ClashConnectionDetailsProvider connectorState="connected">
+        <Consumer onRender={() => {}} onState={(state) => states.push(state)} />
+      </ClashConnectionDetailsProvider>,
+    )
+    teardown(onTestFinished, screen, rpc)
+    onTestFinished(() => errorSpy.mockRestore())
 
-  await expect
-    .poll(() => errorSpy)
-    .toHaveBeenCalledWith('failed to subscribe to connection details:', error)
-  await expect.poll(() => states.at(-1)?.status).toBe('error')
-})
+    await expect
+      .poll(() => errorSpy)
+      .toHaveBeenCalledWith('failed to subscribe to connection details:', error)
+    await expect.poll(() => states.at(-1)?.status).toBe('error')
+    expect(states.at(-1)?.error).toEqual(error)
+  },
+)
 
 test('a late rejected subscription from a replaced owner cannot overwrite a live retry', async ({
   onTestFinished,
@@ -354,38 +362,47 @@ test('a late rejected subscription from a replaced owner cannot overwrite a live
   expect(states.at(-1)?.status).toBe('connected')
 })
 
-test('a rejected unsubscribe is reported without an unhandled rejection', async ({
-  onTestFinished,
-}) => {
-  const error = new Error('unsubscribe failed')
-  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-  let subscribed = false
-  mockRpcCalls((method) => {
-    if (method === 'subscribe_clash_connection_details') {
-      subscribed = true
-      return 0
-    }
-    if (method === 'unsubscribe_clash_connection_details') throw error
-    throw new Error(`Unexpected RPC method: ${method}`)
-  })
+test.for(['transport', 'rpc'])(
+  'a rejected %s unsubscribe is reported without an unhandled rejection',
+  async (kind, { onTestFinished }) => {
+    const error =
+      kind === 'transport'
+        ? new Error('unsubscribe failed')
+        : new RpcFailure('unsubscribe_clash_connection_details', {
+            kind: 'application_error',
+            message: 'unsubscribe failed',
+            domain_error: 'owner stopped',
+          })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let subscribed = false
+    mockRpcCalls((method) => {
+      if (method === 'subscribe_clash_connection_details') {
+        subscribed = true
+        return 0
+      }
+      if (method === 'unsubscribe_clash_connection_details')
+        throw error instanceof RpcFailure ? error.envelope : error
+      throw new Error(`Unexpected RPC method: ${method}`)
+    })
 
-  const { screen, rpc } = await renderWithRpc(
-    <ClashConnectionDetailsProvider connectorState="connected">
-      <Consumer onRender={() => {}} />
-    </ClashConnectionDetailsProvider>,
-  )
-  teardown(onTestFinished, screen, rpc)
-  onTestFinished(() => errorSpy.mockRestore())
-
-  await expect.poll(() => subscribed).toBe(true)
-  await screen.unmount()
-  await expect
-    .poll(() => errorSpy)
-    .toHaveBeenCalledWith(
-      'failed to unsubscribe from connection details:',
-      error,
+    const { screen, rpc } = await renderWithRpc(
+      <ClashConnectionDetailsProvider connectorState="connected">
+        <Consumer onRender={() => {}} />
+      </ClashConnectionDetailsProvider>,
     )
-})
+    teardown(onTestFinished, screen, rpc)
+    onTestFinished(() => errorSpy.mockRestore())
+
+    await expect.poll(() => subscribed).toBe(true)
+    await screen.unmount()
+    await expect
+      .poll(() => errorSpy)
+      .toHaveBeenCalledWith(
+        'failed to unsubscribe from connection details:',
+        error,
+      )
+  },
+)
 
 test('late frames from an unmounted provider do not reach a remounted provider', async ({
   onTestFinished,

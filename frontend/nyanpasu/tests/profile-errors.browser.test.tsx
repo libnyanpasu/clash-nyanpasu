@@ -7,6 +7,7 @@ import { formatError } from '@/utils'
 import { ipcErrorMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel } from '@/utils/profile-label'
+import { RpcFailure } from '@nyanpasu/rpc'
 import type { IpcError, ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 
@@ -58,7 +59,7 @@ vi.mock('@nyanpasu/query', async (importOriginal) => ({
   useProfile: () => ({ query: { data: { items } } }),
 }))
 
-const error: IpcError = {
+const domainError: IpcError = {
   kind: {
     domain: 'profiles',
     error: {
@@ -118,6 +119,14 @@ const error: IpcError = {
   message: 'runtime refused',
   detail: 'original diagnostic detail',
 }
+const error = new RpcFailure('activate_profile', {
+  kind: 'application_error',
+  message: domainError.message,
+  code: 'runtime_refused',
+  retryable: false,
+  operation_id: 'operation-1',
+  domain_error: domainError,
+})
 
 afterEach(() => {
   clearMocks()
@@ -126,7 +135,9 @@ afterEach(() => {
 
 test('a rejected profile returns console output and transform reports with names', () => {
   const lookup = new Map(items.map((item) => [item.uid, item]))
-  const text = ipcErrorMessage(error, (id) => profileDialogLabel(lookup, id))
+  const text = ipcErrorMessage(domainError, (id) =>
+    profileDialogLabel(lookup, id),
+  )
   expect(text).toContain('Fix rules（t1）')
   expect(text).toContain('My subscription（p1）')
   expect(text).toContain('[log] before failure')
@@ -176,7 +187,7 @@ test('a failed name lookup still shows the original failure and logs', async () 
 
 test('profile parse failures keep the diagnostic and resolve the profile name', () => {
   const failure: IpcError = {
-    ...error,
+    ...domainError,
     kind: {
       domain: 'runtime',
       error: {
@@ -222,4 +233,60 @@ test('WebUI uses the chain profile tags and preserves multiline diagnostics', as
   )
   expect(tags).toContain('Fix rules')
   expect(tags).toContain('My subscription')
+})
+
+test.for(['desktop', 'browser'])(
+  '%s diagnostic copy includes method and envelope',
+  async (transport, { onTestFinished }) => {
+    vi.stubGlobal('isTauri', transport === 'desktop')
+    const copied = vi.fn()
+    if (transport === 'desktop') {
+      mockIPC((_command, args) => {
+        const { method, params } = args as {
+          method: string
+          params: Record<string, unknown>
+        }
+        if (method === 'get_profiles')
+          return { items, current: 'p1', global_transforms: [] }
+        if (method === 'show_native_message_dialog')
+          return m.common_copy_error_details()
+        expect(method).toBe('write_clipboard_text')
+        copied(params.text)
+        return null
+      })
+    } else {
+      const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      const write = vi
+        .spyOn(navigator.clipboard, 'writeText')
+        .mockImplementation(async (text) => {
+          copied(text)
+        })
+      onTestFinished(() => {
+        alert.mockRestore()
+        confirm.mockRestore()
+        write.mockRestore()
+      })
+    }
+
+    await message(formatError(error), { kind: 'error', error })
+
+    expect(copied).toHaveBeenCalledOnce()
+    expect(JSON.parse(copied.mock.calls[0][0])).toEqual({
+      method: error.method,
+      envelope: error.envelope,
+    })
+    expect(copied.mock.calls[0][0]).toContain(domainError.detail)
+  },
+)
+
+test('invalid params keeps its message instead of localizing the domain payload', () => {
+  const invalid = new RpcFailure('activate_profile', {
+    kind: 'invalid_params',
+    message: 'Invalid profile parameter',
+    domain_error: domainError,
+  })
+
+  expect(formatError(invalid)).toBe('Invalid profile parameter')
+  expect(formatError(new Error('offline'))).toBe('offline')
 })

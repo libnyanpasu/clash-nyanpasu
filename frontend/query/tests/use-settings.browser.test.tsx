@@ -1,5 +1,6 @@
 import { expect, test, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
+import { RpcFailure } from '@nyanpasu/rpc'
 import type {
   ClashConfig,
   MutationOutcome,
@@ -105,6 +106,38 @@ test('useSettings passes the mutation outcome through', async ({
   expect(invoke).toHaveBeenCalledWith('patch_app_config', {
     patch: { theme_mode: 'light' },
   })
+})
+
+test('a refused settings mutation preserves RpcFailure and never reports success', async ({
+  onTestFinished,
+}) => {
+  const { hook, settled, invoke } = await setup(
+    () => useSettings(),
+    onTestFinished,
+  )
+  await expect
+    .poll(() => hook.result.current.query.data?.theme_mode)
+    .toBe('dark')
+  const failure = new RpcFailure('patch_app_config', {
+    kind: 'application_error',
+    message: 'Refused',
+    domain_error: {
+      kind: { domain: 'config', error: { kind: 'shutting_down' } },
+      message: 'Refused',
+      detail: 'Owner is shutting down',
+    },
+  })
+  invoke.mockRejectedValueOnce(failure)
+
+  await hook.act(async () => {
+    await expect(
+      hook.result.current.upsert.mutateAsync({ theme_mode: 'light' }),
+    ).rejects.toBe(failure)
+  })
+
+  expect(hook.result.current.upsert.error).toBe(failure)
+  expect(hook.result.current.query.data?.theme_mode).toBe('dark')
+  expect(settled).toEqual([])
 })
 
 test('useClashSetting sends only the changed sub-field', async ({

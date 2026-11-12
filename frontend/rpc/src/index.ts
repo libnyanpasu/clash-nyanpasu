@@ -3,6 +3,7 @@ export * from './event-transport'
 export * from './result'
 export type { Result } from './result'
 export { createRpcClient } from './rpc-bindings'
+export * from './rpc-failure'
 export * from './transport'
 export type * from './types'
 

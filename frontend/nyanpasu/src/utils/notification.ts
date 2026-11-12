@@ -6,12 +6,13 @@ import {
   detectRuntime,
   showWebNotification,
 } from '@nyanpasu/platform'
-import { isIpcError, unwrapResult } from '@nyanpasu/rpc'
-import type {
-  IpcError,
-  NativeDialogButtons,
-  NativeDialogKind,
-} from '@nyanpasu/rpc/types'
+import {
+  isIpcError,
+  rpcDomainError,
+  RpcFailure,
+  unwrapResult,
+} from '@nyanpasu/rpc'
+import type { NativeDialogButtons, NativeDialogKind } from '@nyanpasu/rpc/types'
 import { formatError } from './index'
 import { profileDialogLabel, profileMessageParts } from './profile-label'
 
@@ -132,7 +133,19 @@ export const message = async (
 ) => {
   const dialog = typeof options === 'object' ? options : undefined
   const error = dialog?.error
-  if (isIpcError(error)) {
+  const domain = error instanceof RpcFailure ? rpcDomainError(error) : error
+  const details =
+    error instanceof RpcFailure
+      ? JSON.stringify(
+          { method: error.method, envelope: error.envelope },
+          null,
+          2,
+        )
+      : isIpcError(error)
+        ? error.detail
+        : undefined
+
+  if (isIpcError(domain)) {
     const parts = profileMessageParts((label) => formatError(error, label))
     if (parts.some((part) => typeof part !== 'string')) {
       try {
@@ -154,10 +167,10 @@ export const message = async (
     const browser = createBrowserAdapter()
     browser?.alert(value)
     if (
-      isIpcError(error) &&
+      details !== undefined &&
       browser?.confirm(`${m.common_copy_error_details()}?`)
     ) {
-      await writeClipboardText(error.detail)
+      await writeClipboardText(details)
     }
     return
   }
@@ -170,8 +183,8 @@ export const message = async (
     dialog?.okLabel,
     m.common_close(),
   )
-  if (isIpcError(error)) {
-    return showErrorMessage(value, dialog, copyLabel, error)
+  if (details !== undefined) {
+    return showErrorMessage(value, dialog, copyLabel, details)
   }
 
   const title =
@@ -194,7 +207,7 @@ const showErrorMessage = async (
   value: string,
   dialog: MessageOptions | undefined,
   copyLabel: string,
-  error: IpcError,
+  details: string,
 ) => {
   const title = dialog?.title
     ? `Clash Nyanpasu - ${dialog.title}`
@@ -212,5 +225,5 @@ const showErrorMessage = async (
       buttons,
     ),
   )
-  if (result === copyLabel) await writeClipboardText(error.detail)
+  if (result === copyLabel) await writeClipboardText(details)
 }

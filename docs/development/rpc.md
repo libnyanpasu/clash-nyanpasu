@@ -159,6 +159,31 @@ local socket/CLI must enter this same kernel at INFO.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
 
+## Frontend error handling
+
+Both HTTP and Tauri command transports reject reported RPC error envelopes with
+`RpcFailure` from `@nyanpasu/rpc`. It extends `Error`, uses the envelope's message,
+and retains `method` and a shallow-frozen copy of the complete `envelope`:
+`kind`, `message`, `code`, `retryable`, `operation_id` and `domain_error`.
+Its `cause` is the original domain payload. The error module is below the
+transport; it does not depend on transport adapters or generated clients.
+
+Use `rpcDomainError(error)` to extract the payload only from an
+`application_error` RpcFailure, then narrow that unknown value to the domain type
+the consumer handles. For example, `isIpcError` narrows the main application
+error for localized messages. `invalid_params` and other protocol rejections
+keep their envelope message and must not be coerced to a domain error. Diagnostic
+copy actions explicitly serialize `{ method, envelope }`; do not rely on
+`JSON.stringify(Error)` or copy only the domain detail.
+
+Generated clients rethrow Error instances, so remote failures now reject rather
+than resolve as a domain-error Result. Mutation wrappers must propagate
+`RpcFailure` unchanged: a reported refusal is not an unconfirmed operation.
+Success Results and MutationOutcome values remain unchanged. Network failures,
+non-JSON responses and HTTP failures without an RPC envelope remain plain Errors.
+Preserve log cursor/session recovery and subscription cleanup on rejection,
+including releasing subscriptions whose successful replies arrive after unmount.
+
 ## Local frame and session contract
 
 E3b implements `nyanpasu-rpc-protocol::frame` and `session` without exposing a

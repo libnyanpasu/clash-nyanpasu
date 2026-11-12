@@ -1,5 +1,6 @@
 import { expect, test, vi, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
+import { RpcFailure } from '@nyanpasu/rpc'
 import type { Filter, LogPage, LogRow } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { useFileLogs } from '../src/ipc/use-file-logs'
@@ -133,3 +134,41 @@ test('a tail poll appends new rows after the cached ones', async ({
     .poll(() => hook.result.current.rows.map((r) => r.id), { timeout: 5_000 })
     .toEqual(['generation:1', 'generation:2', 'generation:3'])
 })
+
+test.for(['cursor_reset', 'session_expired'])(
+  'file logs recover from an RPC %s and release the live session',
+  async (kind, { onTestFinished }) => {
+    const open = vi.fn(async () => ({ id: 'session', lease_ms: 60_000 }))
+    const close = vi.fn(async () => null)
+    const query = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new RpcFailure('query_logs', {
+          kind: 'application_error',
+          message: kind,
+          domain_error: kind,
+        }),
+      )
+      .mockResolvedValue(page([row(3)], 3))
+    const { hook } = await mountLogsHook(
+      {
+        list_log_files: async () => [
+          { id: 'app.log', name: 'app.log', bytes: '100' },
+        ],
+        open_log_session: open,
+        close_log_session: close,
+        query_logs: query,
+      },
+      onTestFinished,
+    )
+
+    await expect
+      .poll(() => hook.result.current.rows.map((row) => row.id))
+      .toEqual(['generation:3'])
+    expect(hook.result.current.error).toBeNull()
+    expect(open).toHaveBeenCalledTimes(kind === 'session_expired' ? 2 : 1)
+    await hook.unmount()
+    await expect.poll(() => close).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledWith({ source: 'app', session: 'session' })
+  },
+)

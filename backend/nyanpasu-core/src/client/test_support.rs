@@ -886,20 +886,24 @@ impl hotkey::ports::AcceleratorValidator for AnyAccelerator {
     }
 }
 
-struct DisabledDebugHttp;
+struct DisabledHttpServer;
 
 #[async_trait::async_trait]
-impl super::debug_http::DebugHttpControl for DisabledDebugHttp {
-    async fn status(&self) -> anyhow::Result<super::debug_http::DebugHttpStatus> {
-        Ok(super::debug_http::DebugHttpStatus::default())
+impl super::http_server::HttpServerControl for DisabledHttpServer {
+    async fn status(&self) -> anyhow::Result<super::http_server::HttpServerStatus> {
+        Ok(super::http_server::HttpServerStatus::default())
     }
 
-    async fn set_enabled(
+    async fn configure(
         &self,
-        enabled: bool,
-    ) -> anyhow::Result<super::debug_http::DebugHttpStatus> {
-        anyhow::ensure!(!enabled, "HTTP routes are unavailable");
+        config: &nyanpasu_config::application::HttpAccessConfig,
+    ) -> anyhow::Result<super::http_server::HttpServerStatus> {
+        anyhow::ensure!(!config.enabled, "HTTP routes are unavailable");
         self.status().await
+    }
+
+    async fn launch_url(&self) -> anyhow::Result<Option<String>> {
+        Ok(None)
     }
 
     async fn shutdown(&self) -> anyhow::Result<()> {
@@ -923,9 +927,9 @@ pub fn test_adapters(
     ClientHostAdapters {
         icon_fetcher: Arc::new(MockIconFetcher::new()),
         network_diagnostics: Arc::new(MockNetworkDiagnostics::new()),
-        debug_http: Some(Arc::new(|| {
+        http_server: Some(Arc::new(|| {
             Box::pin(async {
-                Ok(Arc::new(DisabledDebugHttp) as Arc<dyn super::debug_http::DebugHttpControl>)
+                Ok(Arc::new(DisabledHttpServer) as Arc<dyn super::http_server::HttpServerControl>)
             })
         })),
         changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),

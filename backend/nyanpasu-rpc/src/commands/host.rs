@@ -2,7 +2,7 @@
 
 use crate::error::Result;
 
-use nyanpasu_config::application::NyanpasuAppConfigPatch;
+use nyanpasu_config::application::{NyanpasuAppConfigPatch, RemoteAccessConfig};
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_runtime_values::runtime::MutationOutcome;
@@ -33,7 +33,7 @@ pub async fn get_service_install_prompt(
     prompt.service_install_prompt(paths).await
 }
 
-// See commands/runtime.rs::AppPreferencesPatch for the command-scope and domain-split rule.
+// See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
 #[nyanpasu_macro::rpc(optional_capabilities(elevation, os_integration, presentation))]
 #[specta::specta]
 pub async fn set_service_mode(
@@ -46,6 +46,17 @@ pub async fn set_service_mode(
             ..Default::default()
         })
         .await?)
+}
+
+/// Remote access widens who can reach the application, so it has its own desktop-only command;
+/// `patch_app_config` rejects the section.
+#[nyanpasu_macro::rpc(capabilities(http_server))]
+#[specta::specta]
+pub async fn set_remote_access(
+    client: RpcState<'_, NyanpasuClient>,
+    config: RemoteAccessConfig,
+) -> Result<MutationOutcome<()>> {
+    Ok(client.set_remote_access(config).await?)
 }
 
 #[nyanpasu_macro::rpc(http, capabilities(accent_color))]

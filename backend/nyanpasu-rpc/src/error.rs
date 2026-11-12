@@ -2,7 +2,7 @@
 
 use nyanpasu_contracts::{system_dns::SystemDnsError, system_proxy::OsProxyError};
 use nyanpasu_core::{
-    client::{ClientError, debug_http::DebugHttpControlError},
+    client::{ClientError, SetRemoteAccessError, http_server::HttpServerControlError},
     state::config_error::ConfigError,
     storage::StorageOperationError,
 };
@@ -44,12 +44,22 @@ pub enum IpcErrorKind {
     SystemDns(Box<SystemDnsError>),
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
-    DebugHttp(Box<DebugHttpControlError>),
+    HttpServer(Box<HttpServerControlError>),
 }
 
-impl From<DebugHttpControlError> for IpcErrorKind {
-    fn from(error: DebugHttpControlError) -> Self {
-        Self::DebugHttp(Box::new(error))
+impl From<HttpServerControlError> for IpcErrorKind {
+    fn from(error: HttpServerControlError) -> Self {
+        Self::HttpServer(Box::new(error))
+    }
+}
+
+impl From<SetRemoteAccessError> for IpcErrorKind {
+    fn from(error: SetRemoteAccessError) -> Self {
+        match error {
+            SetRemoteAccessError::Server { source } => source.into(),
+            SetRemoteAccessError::Client { source } => (*source).into(),
+            SetRemoteAccessError::OwnerStopped => Self::Unknown,
+        }
     }
 }
 

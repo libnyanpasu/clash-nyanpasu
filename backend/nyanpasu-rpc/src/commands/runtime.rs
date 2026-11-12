@@ -3,7 +3,9 @@
 use crate::error::Result;
 
 use nyanpasu_config::{
-    application::{ClashCore, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::{
+        ApplicationPreferencesPatch, ClashCore, IpLookupProviderInfo, NyanpasuAppConfig,
+    },
     clash::{
         config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
         features::ConfigFeatures,
@@ -122,73 +124,15 @@ pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<Nyan
     Ok(client.get_app_config().await?)
 }
 
-/// A patch of ordinary application preferences.
-///
-/// Settings whose privilege class differs from ordinary preferences get a
-/// dedicated command and are rejected here on every RPC transport.
-/// This list is limited to hotkeys and service mode. Before adding another
-/// such field, or a group that needs its own transport policy, split the
-/// domain instead of extending this list:
-/// - move the config type and its struct-patch derive in nyanpasu-config;
-/// - move the persisted document and add a nyanpasu-migration module;
-/// - update state/application.rs and state/mutation/impact.rs, and move
-///   the corresponding requested_owners inputs;
-/// - move the RPC command and its declaration, and the frontend hook.
-///
-/// Start that split from this newtype: it becomes the derived patch of the
-/// split-out ordinary application preferences domain.
-/// The core facade still accepts domain patches; this limits only the
-/// public patch_app_config command.
-#[derive(Debug, serde::Deserialize)]
-#[serde(try_from = "NyanpasuAppConfigPatch")]
-pub struct AppPreferencesPatch(NyanpasuAppConfigPatch);
-
-/// Errors while validating runtime command inputs.
-#[derive(Debug, snafu::Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "patch_app_config cannot write {fields:?}; \
-         use set_hotkeys for hotkeys and set_service_mode for enable_service_mode"
-    ))]
-    CheckPatchFields { fields: Vec<&'static str> },
-}
-
-impl TryFrom<NyanpasuAppConfigPatch> for AppPreferencesPatch {
-    type Error = Error;
-
-    fn try_from(patch: NyanpasuAppConfigPatch) -> std::result::Result<Self, Self::Error> {
-        let mut fields = Vec::new();
-
-        if patch.hotkeys.is_some() {
-            fields.push("hotkeys");
-        }
-
-        if patch.enable_service_mode.is_some() {
-            fields.push("enable_service_mode");
-        }
-
-        if !fields.is_empty() {
-            return Err(Error::CheckPatchFields { fields });
-        }
-
-        Ok(Self(patch))
-    }
-}
-
-impl specta::Type for AppPreferencesPatch {
-    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        <NyanpasuAppConfigPatch as specta::Type>::definition(types)
-    }
-}
-
 #[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation))]
 #[specta::specta]
 pub async fn patch_app_config(
     client: RpcState<'_, NyanpasuClient>,
-    patch: AppPreferencesPatch,
+    patch: ApplicationPreferencesPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // AppPreferencesPatch establishes the command's input scope during decoding.
-    Ok(client.patch_app_config(patch.0).await?)
+    // The request type holds only ordinary preferences: privileged fields are refused while
+    // decoding, before this handler is admitted. Each has its own command.
+    Ok(client.patch_app_config(patch.into()).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -298,49 +242,4 @@ pub async fn get_sys_proxy(client: RpcState<'_, NyanpasuClient>) -> Result<GetSy
         bypass: current.bypass,
         server,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use nyanpasu_config::application::NyanpasuAppConfigPatch;
-    use serde_json::json;
-
-    use super::AppPreferencesPatch;
-
-    #[test]
-    fn app_preferences_decode_error_preserves_the_scope_message() {
-        for (patch, fields) in [
-            (json!({"hotkeys": []}), vec!["hotkeys"]),
-            (
-                json!({"enable_service_mode": false}),
-                vec!["enable_service_mode"],
-            ),
-            (
-                json!({"enable_service_mode": true, "hotkeys": []}),
-                vec!["hotkeys", "enable_service_mode"],
-            ),
-        ] {
-            let error = serde_json::from_value::<AppPreferencesPatch>(patch).unwrap_err();
-            assert_eq!(
-                error.to_string(),
-                format!(
-                    "patch_app_config cannot write {fields:?}; use set_hotkeys for hotkeys and set_service_mode for enable_service_mode"
-                )
-            );
-        }
-    }
-
-    #[test]
-    fn app_preferences_patch_exports_the_existing_patch_type() {
-        let mut original = specta::Types::default();
-        let expected = <NyanpasuAppConfigPatch as specta::Type>::definition(&mut original);
-        let mut scoped = specta::Types::default();
-        let actual = <AppPreferencesPatch as specta::Type>::definition(&mut scoped);
-        assert_eq!(actual, expected);
-        assert_eq!(scoped.len(), original.len());
-        assert_eq!(
-            scoped.into_sorted_iter().collect::<Vec<_>>(),
-            original.into_sorted_iter().collect::<Vec<_>>()
-        );
-    }
 }

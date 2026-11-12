@@ -895,7 +895,7 @@ mod tests {
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_contracts::system_dns::SystemDnsError;
     use nyanpasu_core::{
-        client::{ClientError, debug_http::DebugHttpControlError},
+        client::{ClientError, http_server::HttpServerControlError},
         state::config_error::ConfigError,
     };
     use nyanpasu_runtime_values::profiles::ProfilesError;
@@ -1026,17 +1026,17 @@ mod tests {
         );
         for (error, kind) in [
             (
-                DebugHttpControlError::ReadStatusUnsupported,
+                HttpServerControlError::ReadStatusUnsupported,
                 "read_status_unsupported",
             ),
             (
-                DebugHttpControlError::ChangeEnabledUnsupported,
-                "change_enabled_unsupported",
+                HttpServerControlError::ChangeUnsupported,
+                "change_unsupported",
             ),
         ] {
             assert_eq!(
                 serde_json::to_value(IpcError::from(error)).unwrap()["kind"],
-                json!({ "domain": "debug_http", "error": { "kind": kind } })
+                json!({ "domain": "http_server", "error": { "kind": kind } })
             );
         }
         assert_eq!(
@@ -1051,24 +1051,16 @@ mod tests {
 
     #[test]
     fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
-        for (error, kind) in [
-            (
-                DebugHttpControlError::ReadStatus {
-                    source: anyhow::anyhow!("read cause"),
-                },
-                "read_status",
-            ),
-            (
-                DebugHttpControlError::ChangeEnabled {
-                    source: anyhow::anyhow!("change cause"),
-                },
-                "change_enabled",
-            ),
-        ] {
+        for (error, kind) in [(
+            HttpServerControlError::ReadStatus {
+                source: anyhow::anyhow!("read cause"),
+            },
+            "read_status",
+        )] {
             let wire = serde_json::to_value(IpcError::from(error)).unwrap();
             assert_eq!(
                 wire["kind"],
-                json!({ "domain": "debug_http", "error": { "kind": kind } })
+                json!({ "domain": "http_server", "error": { "kind": kind } })
             );
             assert!(wire["detail"].as_str().unwrap().contains("cause"));
         }
@@ -1356,16 +1348,6 @@ mod tests {
             tasks.wait().await;
         }
     }
-}
-
-#[nyanpasu_macro::rpc(capabilities(debug_http))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_debug_http_enabled(
-    client: State<'_, NyanpasuClient>,
-    enabled: bool,
-) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
-    Ok(client.set_debug_http_enabled(enabled).await?)
 }
 
 #[nyanpasu_macro::rpc]

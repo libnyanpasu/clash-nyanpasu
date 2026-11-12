@@ -999,6 +999,7 @@ for (const root of [
   'backend/nyanpasu-core/src/',
   'backend/nyanpasu-state-engine/src/',
   'backend/nyanpasu-runtime-values/src/',
+  'backend/nyanpasu-rpc-protocol/src/',
   'backend/nyanpasu-migration/src/',
   'backend/nyanpasu-owner-support/src/',
   'backend/nyanpasu-observers/src/',

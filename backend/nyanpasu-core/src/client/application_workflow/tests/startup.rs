@@ -41,11 +41,7 @@ use tokio::{sync::Notify, time::Instant};
 use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, Command, adapters,
-        mutation::{
-            DEFERRED_RETRY_BUDGET, DeferredTarget, MutationOutcomeKind, ReestablishCause,
-            TargetOrigin,
-        },
-        policy::CommandClass,
+        mutation::{DEFERRED_RETRY_BUDGET, DeferredTarget, ReestablishCause, TargetOrigin},
         startup::{ServiceEvidence, StartupOutcome, StartupReport},
     },
     Progress, RecordingNotifications,
@@ -71,6 +67,7 @@ use crate::{
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
+    state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };

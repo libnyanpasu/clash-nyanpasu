@@ -34,6 +34,7 @@ use crate::{
         service_actor::ServicePhase,
     },
     client::runtime_recovery::{ObservedRuntime, verify_recovery_target},
+    state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -178,7 +179,7 @@ pub(in crate::client) enum RuntimeSubmission {
         product: Arc<runtime::RuntimeSnapshot>,
         report: ReconcileReport,
         /// The recovery baseline this apply established.
-        receipt: Arc<runtime::RuntimeApplyReceipt>,
+        receipt: Arc<RuntimeApplyReceipt>,
     },
     RolledBack(RolledBackReport),
     Unknown(UncertainReconcile),
@@ -628,14 +629,14 @@ impl CoreLifecycleWorkflow {
         // restores and the only thing that may promote a candidate port
         // binding, and it advances here rather than below: the effective-config
         // inspection is diagnostic and may never arrive (C3).
-        let receipt = Arc::new(runtime::RuntimeApplyReceipt {
+        let receipt = Arc::new(RuntimeApplyReceipt {
             revision: snapshot.revision,
             config_text: intent.config_text.clone(),
             config_digest: intent.digest.clone(),
             target_core: snapshot.target_core,
             core_spec: spec,
             host: report.applied.host,
-            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: intent.local_ipc,
             binding: report.applied.clone(),
             ports,

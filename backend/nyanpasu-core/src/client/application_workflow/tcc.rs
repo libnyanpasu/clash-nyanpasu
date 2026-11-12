@@ -23,16 +23,14 @@ use snafu::{IntoError, ResultExt};
 
 use super::{
     attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
-    impact,
     mutation::{
-        AppliedCandidate, ApplyFailure, CheckRecord, DEFERRED_RETRY_BUDGET, DeferredTarget,
-        DomainChange, EvidenceGap, KnownRuntimeState, MutationConclusion, MutationReceipt,
-        MutationRequest, MutationStage, RefusalCause, RetryableCause, RuntimePrepareOutcome,
-        TargetOrigin,
+        AppliedCandidate, ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, DomainChange,
+        EvidenceGap, KnownRuntimeState, MutationRequest, MutationStage, RefusalCause,
+        RetryableCause, RuntimePrepareOutcome, TargetOrigin,
     },
     policy::{
-        BaselineAvailability, CommandPolicy, CoreRunIntent, FailureDisposition, TryCauseKind,
-        TryFailureFacts, disposition, policy_for,
+        BaselineAvailability, CommandPolicy, FailureDisposition, TryCauseKind, TryFailureFacts,
+        disposition, policy_for,
     },
     ports::{RuntimeCheckOutcome, RuntimeCheckRequest, RuntimeCheckUnavailable},
     workflow::ApplicationWorkflow,
@@ -56,6 +54,12 @@ use crate::{
             SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
         },
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
+    },
+    state::mutation::{
+        impact,
+        intent::CoreRunIntent,
+        runtime_apply::RuntimeApplyReceipt,
+        value::{CheckRecord, MutationConclusion, MutationReceipt},
     },
 };
 
@@ -1459,7 +1463,7 @@ impl ApplicationWorkflow {
                         // same reason, so the application reports the runtime
                         // that is running rather than the instance it replaced.
                         let report = confirmed.expect("verified restore has a confirmed binding");
-                        let restored = Arc::new(crate::client::runtime::RuntimeApplyReceipt {
+                        let restored = Arc::new(RuntimeApplyReceipt {
                             binding: report.applied.clone(),
                             ..receipt.as_ref().clone()
                         });

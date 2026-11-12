@@ -27,16 +27,14 @@ use nyanpasu_state_engine::{
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
-use crate::{
-    client::application_workflow::{
-        impact,
-        impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
-            StagedResourceToken, TouchedContent,
-        },
-        policy::CommandClass,
+use crate::state::mutation::{
+    CommitAborted, MutationCoordinator, impact,
+    impact::{
+        ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+        StagedResourceToken, TouchedContent,
     },
-    state::mutation::{CommitAborted, MutationCoordinator},
+    intent::CommandClass,
+    value::MutationReceipt,
 };
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
@@ -79,7 +77,7 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<Profiles>,
     pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
     pub fetcher: Arc<dyn SubscriptionFetcher>,
@@ -91,7 +89,7 @@ pub struct ProfilesActorArgs {
 }
 
 pub struct ProfilesActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<Profiles>,
     manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
@@ -536,7 +534,7 @@ impl ProfilesActor {
     /// manager's own `Conflict` result.
     fn commit_failure(
         error: ReplaceIfVersionError,
-        settlement: Option<&crate::client::application_workflow::mutation::MutationReceipt>,
+        settlement: Option<&MutationReceipt>,
         (uid, path): CommitSubject,
         cleanup_failures: Vec<ProfilesError>,
     ) -> ProfilesError {
@@ -2614,7 +2612,7 @@ mod tests {
     /// profile, whatever produced it.
     #[test]
     fn profiles_operations_reach_the_runtime_by_request_and_diff() {
-        use crate::client::application_workflow::impact::{RuntimeImpact, runtime_impact};
+        use crate::state::mutation::impact::{RuntimeImpact, runtime_impact};
         use nyanpasu_profile_transform::test_support::{file_config, metadata, overlay};
 
         // current -> `sel` with its scoped transform `scoped`; `global` is a

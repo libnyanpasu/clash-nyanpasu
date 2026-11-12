@@ -19,7 +19,10 @@ use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
-use crate::{actor_v2::api::ApiError, state::profiles::ProfilesError};
+use crate::{
+    actor_v2::api::ApiError,
+    state::{mutation::runtime_apply::RuntimeApplyReceipt, profiles::ProfilesError},
+};
 use nyanpasu_contracts::profiles::error::ErrorPath;
 use nyanpasu_profile_transform::PostProcessingOutput;
 
@@ -117,42 +120,6 @@ impl RuntimeSnapshot {
             && self.target_core == other.target_core
             && self.product_sha256 == other.product_sha256
     }
-}
-
-/// What the core actually accepted, recorded the moment it confirms an apply
-/// and never derived from a file or an inspection (v2 §5.3/§5.4, C3).
-///
-/// It is deliberately decoupled from [`RuntimeSnapshot`]: `promoted` tracks a
-/// derived product file and `applied` waits for an effective-config
-/// inspection that may arrive late or not at all, so neither can serve as the
-/// baseline a recovery has to restore. This can.
-#[derive(Debug, Clone)]
-pub(in crate::client) struct RuntimeApplyReceipt {
-    /// Which build produced these bytes. Diagnostic: a restore targets the
-    /// document, not the revision that happened to carry it.
-    #[allow(dead_code)]
-    pub revision: RuntimeRevision,
-    /// The exact document the core accepted — the same bytes the validator
-    /// checked, never a re-serialization of the snapshot.
-    pub config_text: Arc<str>,
-    /// `nyanpasu_core_manager::payload_digest` of `config_text`: the change
-    /// identity the core verified on receipt.
-    pub config_digest: String,
-    pub target_core: ClashCore,
-    pub core_spec: nyanpasu_core_manager::CoreSpec,
-    pub host: crate::actor_v2::endpoint::ExecutionHost,
-    /// Whether the app wants this runtime running at all. A core the user
-    /// stopped is a target too, and a recovery must not start it.
-    pub run_intent: super::application_workflow::policy::CoreRunIntent,
-    pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
-    /// The binding this apply produced. A recovery may legitimately land on a
-    /// newer instance generation, so only its content identity is a target.
-    pub binding: crate::actor_v2::facade::AppliedConfigBinding,
-    /// The ports this apply bound. Confirming them is gated on this receipt.
-    pub ports: super::ports::CandidatePortBindings,
-    /// The committed target these bytes were built from, when the build had
-    /// one: what tells a running receipt from a newer target still owed.
-    pub target: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1070,7 +1037,7 @@ pub(crate) mod tests {
                 features: Vec::new(),
             },
             host: crate::actor_v2::endpoint::ExecutionHost::Local,
-            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
                 keep_http_controller: true,

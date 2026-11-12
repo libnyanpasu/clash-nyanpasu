@@ -1,7 +1,7 @@
 pub mod clash_info;
 pub mod convergence;
 
-use crate::client::clash_info::ClashInfo;
+use crate::{client::clash_info::ClashInfo, state::mutation::MutationCoordinator};
 use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
     net::{
@@ -46,7 +46,7 @@ pub mod jobs;
 pub mod logs;
 #[cfg(test)]
 mod network_tests;
-mod ports;
+pub(crate) mod ports;
 pub mod profiles;
 pub mod runtime;
 pub mod runtime_build;
@@ -197,15 +197,40 @@ pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
 }
 
+struct MutationCoordinators {
+    application: MutationCoordinator<NyanpasuAppConfig>,
+    clash: MutationCoordinator<ClashConfig>,
+    profiles: MutationCoordinator<Profiles>,
+}
+
+impl MutationCoordinators {
+    fn pending() -> Self {
+        Self {
+            application: MutationCoordinator::pending(),
+            clash: MutationCoordinator::pending(),
+            profiles: MutationCoordinator::pending(),
+        }
+    }
+
+    #[cfg(test)]
+    fn isolated() -> Self {
+        Self {
+            application: MutationCoordinator::isolated(),
+            clash: MutationCoordinator::isolated(),
+            profiles: MutationCoordinator::isolated(),
+        }
+    }
+}
+
 async fn new_typed_config_clients(
-    mutations: crate::state::mutation::MutationCoordinator,
+    mutations: &MutationCoordinators,
     build_channel: ReleaseChannel,
     paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
 ) -> std::result::Result<(ApplicationClient, SessionStateClient, ClashConfigClient), SetupError> {
     let application = ApplicationClient::new(
-        mutations.clone(),
+        mutations.application.clone(),
         build_channel,
         paths.application_config_path(),
         shutdown.child_token(),
@@ -220,7 +245,7 @@ async fn new_typed_config_clients(
             .context(LoadSessionStateSnafu)?;
 
     let clash_config = ClashConfigClient::new(
-        mutations.clone(),
+        mutations.clash.clone(),
         paths.clash_config_path(),
         shutdown.child_token(),
         tasks,
@@ -325,13 +350,13 @@ impl NyanpasuClient {
         } = args;
         let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
         let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
-        let mutations = crate::state::mutation::MutationCoordinator::pending();
+        let mutations = MutationCoordinators::pending();
         runtime_paths
             .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
             .await
             .context(CleanupCandidatesSnafu)?;
         let (application, session_state, clash_config) = new_typed_config_clients(
-            mutations.clone(),
+            &mutations,
             bundle_metadata.release_channel,
             paths.clone(),
             &shutdown,
@@ -345,7 +370,7 @@ impl NyanpasuClient {
         let ports = Arc::new(SessionPortResolver::default());
         let file_ports = (host_adapters.profile_files)(ports.clone());
         let profiles = profiles::ProfilesClient::new_with_jobs(
-            mutations.clone(),
+            mutations.profiles.clone(),
             paths.profiles_path(),
             jobs.clone(),
             file_ports.fs.clone(),
@@ -397,7 +422,7 @@ impl NyanpasuClient {
 
     #[allow(clippy::too_many_arguments)]
     async fn with_parts(
-        mutations: Option<crate::state::mutation::MutationCoordinator>,
+        mutations: Option<MutationCoordinators>,
         bundle_metadata: BundleMetadata,
         logging: logs::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
@@ -527,7 +552,14 @@ impl NyanpasuClient {
         .await
         .context(StartWorkflowSnafu)?;
         if let Some(mutations) = mutations {
-            mutations.connect(application_workflow.clone(), notifications);
+            let factory = Arc::new(application_workflow.clone());
+            mutations
+                .application
+                .connect(factory.clone(), notifications.clone());
+            mutations
+                .clash
+                .connect(factory.clone(), notifications.clone());
+            mutations.profiles.connect(factory, notifications);
         }
         let updater = nyanpasu_updater::UpdaterClient::spawn(
             updater_backend_factory(ports.clone()).map_err(|error| match error {
@@ -2594,7 +2626,7 @@ pub(crate) mod tests {
 
             let paths = test_paths(dir.path(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
-                crate::state::mutation::MutationCoordinator::isolated(),
+                &crate::client::MutationCoordinators::isolated(),
                 ReleaseChannel::Stable,
                 paths,
                 &tokio_util::sync::CancellationToken::new(),
@@ -3855,7 +3887,7 @@ mod setup_error_tests {
         let shutdown = tokio_util::sync::CancellationToken::new();
         let tasks = tokio_util::task::TaskTracker::new();
         let result = new_typed_config_clients(
-            crate::state::mutation::MutationCoordinator::isolated(),
+            &crate::client::MutationCoordinators::isolated(),
             nyanpasu_config::application::ReleaseChannel::Stable,
             paths,
             &shutdown,

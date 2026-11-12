@@ -51,7 +51,7 @@ async fn session_state_recovers_in_each_migration_and_client_startup() {
         let shutdown = CancellationToken::new();
         let tasks = TaskTracker::new();
         let (_application, state, _clash) = new_typed_config_clients(
-            crate::state::mutation::MutationCoordinator::isolated(),
+            &crate::client::MutationCoordinators::isolated(),
             nyanpasu_config::application::ReleaseChannel::Stable,
             paths.clone(),
             &shutdown,

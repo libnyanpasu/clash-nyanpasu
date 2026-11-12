@@ -13,6 +13,7 @@ use crate::{
         },
         test_support::TestControlEndpoint,
     },
+    state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 
 /// The audited scenario: the app was running A, applied B, then asked to be
@@ -160,11 +161,14 @@ use super::{
         parked_local_write, plain, refused, scripted_fixture, settled, simple_mutate,
     },
 };
-use crate::client::application_workflow::{
-    ApplicationWorkflowClient, Command,
-    attempt::RecoveryView,
-    mutation::{DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind},
-    policy::CommandClass,
+use crate::{
+    client::application_workflow::{
+        ApplicationWorkflowClient, Command, attempt::RecoveryView, mutation::DEFERRED_RETRY_BUDGET,
+    },
+    state::mutation::{
+        intent::CommandClass,
+        value::{MutationConclusion, MutationOutcomeKind},
+    },
 };
 
 fn recovery(client: &ApplicationWorkflowClient) -> RecoveryView {
@@ -203,7 +207,7 @@ fn pending_submission(scripted: &ScriptedWaitEndpoint) -> OperationId {
 }
 
 /// A baseline the next mutation's Cancel can put back, applied for real.
-async fn prime(f: &mut Fixture) -> Arc<runtime::RuntimeApplyReceipt> {
+async fn prime(f: &mut Fixture) -> Arc<RuntimeApplyReceipt> {
     let (id, primed) = simple_mutate(
         &mut f.clash,
         &f.client,

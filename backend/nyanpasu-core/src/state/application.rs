@@ -1,15 +1,12 @@
-use crate::{
-    client::application_workflow::{
-        impact,
-        impact::{MutationHints, RequestedRuntimeFields},
-        mutation::ConfigDomain,
-        policy::CommandClass,
+use crate::state::{
+    config_error::{
+        ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
     },
-    state::{
-        config_error::{
-            ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
-        },
-        mutation::MutationCoordinator,
+    mutation::{
+        MutationCoordinator, impact,
+        impact::{MutationHints, RequestedRuntimeFields},
+        intent::CommandClass,
+        value::ConfigDomain,
     },
 };
 use nyanpasu_core_manager::OperationId;
@@ -50,7 +47,7 @@ impl ApplicationSnapshot {
 }
 
 pub struct ApplicationActorArgs {
-    pub(crate) mutations: MutationCoordinator,
+    pub(crate) mutations: MutationCoordinator<NyanpasuAppConfig>,
     pub manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     /// The channel of the installed build; only a nightly build is held to it.
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
@@ -60,7 +57,7 @@ pub struct ApplicationActorArgs {
 }
 
 pub struct ApplicationActorState {
-    mutations: MutationCoordinator,
+    mutations: MutationCoordinator<NyanpasuAppConfig>,
     manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,

@@ -26,11 +26,10 @@ use super::{
     Output,
     attempt::{AttemptOrigin, AttemptStage, LiveAttempt},
     mutation::{
-        ApplyFailure, CheckRecord, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
-        MutationStage, ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome,
-        TargetOrigin,
+        ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState, MutationStage,
+        ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome, TargetOrigin,
     },
-    policy::{CommandPolicy, CoreRunIntent, TryCauseKind},
+    policy::{CommandPolicy, TryCauseKind},
     tcc::{AttemptCharge, RestorableBaseline},
     workflow::ApplicationWorkflow,
 };
@@ -48,6 +47,7 @@ use crate::{
         runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
+    state::mutation::{intent::CoreRunIntent, value::CheckRecord},
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).

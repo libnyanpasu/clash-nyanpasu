@@ -13,11 +13,11 @@ use serde::Serialize;
 use snafu::{IntoError, Snafu};
 
 use crate::{
-    client::{
-        application_workflow::mutation::{ConfigDomain, MutationReceipt},
-        hotkey::ports::HotkeyParseError,
+    client::hotkey::ports::HotkeyParseError,
+    state::mutation::{
+        CommitAborted, NotReady,
+        value::{ConfigDomain, MutationReceipt},
     },
-    state::mutation::{CommitAborted, NotReady},
 };
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]

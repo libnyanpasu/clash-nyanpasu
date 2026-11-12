@@ -18,7 +18,7 @@ use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
 #[cfg(test)]
-use super::runtime::RuntimeApplyReceipt;
+use crate::state::mutation::runtime_apply::RuntimeApplyReceipt;
 use nyanpasu_contracts::net::SelfProxyPortSource;
 
 /// The port a resolution was picking for.
@@ -374,7 +374,7 @@ mod tests {
                 features: Vec::new(),
             },
             host: crate::actor_v2::endpoint::ExecutionHost::Local,
-            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
                 keep_http_controller: true,

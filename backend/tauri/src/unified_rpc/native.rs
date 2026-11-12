@@ -11,7 +11,8 @@ use nyanpasu_rpc::{
     registry::{RpcFuture, SetupError, UnifiedRpc},
 };
 
-pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
+pub type TauriRpcHandler =
+    fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> Result<RpcFuture, RpcError>;
 
 pub struct TauriCommandEntry {
     pub name: &'static str,

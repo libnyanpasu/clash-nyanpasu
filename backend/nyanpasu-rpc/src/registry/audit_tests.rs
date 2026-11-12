@@ -11,6 +11,11 @@ use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::{
     COMMAND_CATALOG, CommandKind, RpcError, RpcOwner, RpcTarget, RpcValue, ShellCapability,
 };
+use nyanpasu_runtime_values::runtime::{
+    CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
+    RuntimeCommitStatus,
+};
+use serde::Serialize;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 use tracing::instrument::WithSubscriber as _;
@@ -18,8 +23,8 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 use crate::{
     audit::{
-        RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord, RpcAuditSink, RpcTransport,
-        TracingRpcAuditSink,
+        AuditHeader, AuditPhase, CompletionSummary, RpcAuditOutcome, RpcAuditOwner, RpcAuditRecord,
+        RpcAuditSink, RpcTransport, TracingRpcAuditSink,
     },
     events::EventBus,
     registry::{RpcCaller, RpcDependencies, RpcFuture, RpcState},
@@ -29,6 +34,310 @@ use crate::{
 #[nyanpasu_macro::rpc(http)]
 async fn audit_panic() -> String {
     std::panic::panic_any(SECRET);
+}
+
+struct AuditValue {
+    value: String,
+    fail_encoding: bool,
+}
+
+impl Serialize for AuditValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.fail_encoding {
+            Err(serde::ser::Error::custom(SECRET))
+        } else {
+            serializer.serialize_str(&self.value)
+        }
+    }
+}
+
+fn receipt() -> CommitReceipt {
+    CommitReceipt {
+        operation_id: Some("audit-operation".into()),
+        domain: "profiles".into(),
+        source_version: 7,
+        runtime: RuntimeCommitStatus::Deferred,
+    }
+}
+
+#[nyanpasu_macro::rpc(http)]
+fn audit_mutation(
+    value: String,
+    degraded: bool,
+    fail_encoding: bool,
+) -> MutationOutcome<AuditValue> {
+    let value = AuditValue {
+        value,
+        fail_encoding,
+    };
+    let commits = vec![receipt()];
+    if degraded {
+        MutationOutcome::CommittedDegraded {
+            value,
+            commits,
+            notifications_pending: true,
+            degradations: vec![Degradation {
+                phase: DegradationPhase::UiEffect,
+                reason: DegradationReason::ProxyCacheRefreshFailed,
+                message: SECRET.into(),
+                retryable: true,
+            }],
+        }
+    } else {
+        MutationOutcome::Committed {
+            value,
+            commits,
+            notifications_pending: false,
+        }
+    }
+}
+
+#[tokio::test]
+async fn audit_distinguishes_rejection_from_handler_failure() {
+    fn fail(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+        Ok(Box::pin(super::unreported(async {
+            Err(RpcError::invalid_params(SECRET))
+        })))
+    }
+    let mut fixture = Fixture::new(false).await;
+    for expected in [1, 2] {
+        if expected == 2 {
+            Arc::make_mut(&mut fixture.rpc.commands)
+                .get_mut("audit_echo")
+                .unwrap()
+                .handler = Some(fail);
+        }
+        let (status, error) = fixture.call("audit_echo", json!({})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error["kind"], "invalid_params");
+        let mut records = fixture.sink.records.lock();
+        assert_eq!(records.len(), expected);
+        if expected == 1 {
+            assert_eq!(
+                records[0].phase,
+                AuditPhase::Rejected {
+                    kind: "invalid_params",
+                    code: None
+                }
+            );
+        } else {
+            assert_eq!(records[0].phase, AuditPhase::Admitted);
+            assert_eq!(
+                finished(&records[1]),
+                RpcAuditOutcome::Failure {
+                    kind: "invalid_params",
+                    code: None
+                }
+            );
+            assert_eq!(
+                records[0].header.invocation_id,
+                records[1].header.invocation_id
+            );
+        }
+        records.clear();
+    }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn app_preferences_decode_rejection_is_recorded_before_admission() {
+    let fixture = Fixture::new(false).await;
+    for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
+        let error = fixture.rpc.call(transport, "patch_app_config", RpcOwner::desktop("settings"),
+            json!({"patch": {"proxy_layout_column": 97, "hotkeys": [], "enable_service_mode": false}})).await.unwrap_err();
+        assert_eq!(error.kind, "invalid_params");
+        let mut records = fixture.sink.records.lock();
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].phase,
+            AuditPhase::Rejected {
+                kind: "invalid_params",
+                code: None
+            }
+        );
+        records.clear();
+        assert!(
+            fixture
+                .rpc
+                .dependencies
+                .client
+                .configuration_status()
+                .recent_operations
+                .is_empty()
+        );
+    }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn audit_preserves_committed_degraded_summary() {
+    let fixture = Fixture::new(false).await;
+    for degraded in [false, true] {
+        let (status, value) = fixture
+            .call(
+                "audit_mutation",
+                json!({"value": SECRET, "degraded": degraded, "failEncoding": false}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["value"], SECRET);
+        let mut records = fixture.sink.records.lock();
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            records[1].phase,
+            AuditPhase::Finished {
+                outcome: RpcAuditOutcome::Success,
+                completion: CompletionSummary::Mutation {
+                    commits: vec![receipt()],
+                    notifications_pending: degraded,
+                    degradation_count: usize::from(degraded)
+                },
+            }
+        );
+        assert!(!format!("{records:?}").contains(SECRET));
+        records.clear();
+    }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn audit_keeps_receipts_when_response_encoding_fails() {
+    let fixture = Fixture::new(false).await;
+    let (status, error) = fixture
+        .call(
+            "audit_mutation",
+            json!({"value": SECRET, "degraded": true, "failEncoding": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(error["kind"], "application_error");
+    assert_eq!(
+        fixture.sink.records.lock()[1].phase,
+        AuditPhase::Finished {
+            outcome: RpcAuditOutcome::Failure {
+                kind: "application_error",
+                code: None
+            },
+            completion: CompletionSummary::Mutation {
+                commits: vec![receipt()],
+                notifications_pending: true,
+                degradation_count: 1
+            },
+        }
+    );
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn audit_never_records_request_values_or_owner_cookies() {
+    let fixture = Fixture::new(true).await;
+    let capture = Capture::default();
+    async {
+        for fail in [false, true] {
+            crate::test_support::rpc_for_test_call(
+                &fixture.rpc.clone().router(),
+                "audit_mutation",
+                json!({"value": SECRET, "degraded": true, "failEncoding": fail}),
+                Some("nyanpasu_http_session=99999999-8888-4777-8666-555555555555"),
+            )
+            .await;
+        }
+    }
+    .with_subscriber(tracing_subscriber::registry().with(capture.clone()))
+    .await;
+    assert_eq!(capture.0.lock().len(), 4);
+    for secret in [SECRET, "99999999-8888-4777-8666-555555555555"] {
+        assert!(!format!("{:?}", fixture.sink.records.lock()).contains(secret));
+        assert!(!format!("{:?}", capture.0.lock()).contains(secret));
+    }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn audit_invocation_headers_follow_calls_and_keep_local_request_ids() {
+    let fixture = Fixture::new(false).await;
+    let id = nyanpasu_rpc_protocol::frame::RequestId::new(1).unwrap();
+    for _ in 0..2 {
+        fixture
+            .rpc
+            .call_with_admission(
+                RpcTransport::Local,
+                "get_profiles",
+                RpcOwner::new(SECRET.into()),
+                json!({}),
+                Some(id),
+                Ok(()),
+            )
+            .await
+            .unwrap();
+    }
+    {
+        let records = fixture.sink.records.lock();
+        assert_eq!(records.len(), 4);
+        assert_ne!(
+            records[0].header.invocation_id,
+            records[2].header.invocation_id
+        );
+        for pair in records.as_chunks::<2>().0 {
+            assert_eq!(pair[0].header.invocation_id, pair[1].header.invocation_id);
+            assert_eq!(pair[0].header.request_id, Some(id));
+            assert_eq!(pair[1].header.request_id, Some(id));
+            assert!(pair[0].header.owner.as_str().starts_with("local:"));
+            assert_eq!(
+                pair[1].phase,
+                AuditPhase::Finished {
+                    outcome: RpcAuditOutcome::Success,
+                    completion: CompletionSummary::NotReported
+                }
+            );
+        }
+    }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn audit_drop_does_not_claim_transaction_cancellation() {
+    let fixture = Fixture::new(false).await;
+    let (release, wait) = tokio::sync::oneshot::channel::<()>();
+    let (owner_task, task) = tokio::sync::oneshot::channel();
+    let (finished_work, work_result) = tokio::sync::oneshot::channel::<()>();
+    let mut call = Box::pin(super::dispatch_audited(
+        &fixture.rpc.dependencies.audit,
+        RpcTransport::Http,
+        RpcOwner::new(SECRET.into()),
+        || "owner_work",
+        None,
+        || {
+            Ok(super::unreported(async {
+                owner_task
+                    .send(tokio::spawn(async move {
+                        wait.await.unwrap();
+                        let _ = finished_work.send(());
+                        receipt()
+                    }))
+                    .unwrap();
+                work_result.await.unwrap();
+                Ok(())
+            }))
+        },
+    ));
+    assert!(matches!(futures::poll!(&mut call), Poll::Pending));
+    let owner = task.await.unwrap();
+    drop(call);
+    assert_eq!(
+        fixture.sink.records.lock()[1].phase,
+        AuditPhase::Finished {
+            outcome: RpcAuditOutcome::NotObserved,
+            completion: CompletionSummary::NotReported
+        }
+    );
+    release.send(()).unwrap();
+    assert_eq!(
+        owner.await.unwrap(),
+        receipt(),
+        "owner commits after the waiter leaves"
+    );
+    fixture.shutdown().await;
 }
 
 #[nyanpasu_macro::rpc(local, owner, optional_capabilities(elevation))]
@@ -66,7 +375,9 @@ async fn local_optional_elevation_expands_and_registers() {
         RpcOwner::new("injected-caller".to_owned()),
         json!({"pageSize": 7, "caller": "untrusted", "unknownField": true}),
     )
+    .unwrap()
     .await
+    .result
     .unwrap();
     assert_eq!(output, "injected-caller:7");
     // Production profile mutations retain their reachable optional effects and
@@ -86,8 +397,8 @@ async fn local_optional_elevation_expands_and_registers() {
             RpcOwner::local_connection("test", 1),
             json!({}),
         )
-        .await
-        .unwrap_err();
+        .err()
+        .unwrap();
         assert_eq!(
             error.kind, "invalid_params",
             "{name} passes capability admission"
@@ -116,10 +427,10 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
         assert_eq!(error["kind"], "unsupported");
         let records = fixture.sink.records.lock();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].command, "requires_clipboard");
+        assert_eq!(records[0].header.method, "requires_clipboard");
         assert_eq!(
-            records[0].outcome,
-            RpcAuditOutcome::Failure {
+            records[0].phase,
+            AuditPhase::Rejected {
                 kind: "unsupported",
                 code: None,
             }
@@ -163,10 +474,10 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
         assert_eq!(error["kind"], "unsupported", "{method}");
         let records = fixture.sink.records.lock();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].command, method);
+        assert_eq!(records[0].header.method, method);
         assert!(matches!(
-            records[0].outcome,
-            RpcAuditOutcome::Failure {
+            records[0].phase,
+            AuditPhase::Rejected {
                 kind: "unsupported",
                 ..
             }
@@ -183,7 +494,10 @@ async fn unknown_command_remains_unknown_method() {
     let (status, error) = fixture.call("no_such_command", json!({})).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(error["kind"], "unknown_method");
-    assert_eq!(fixture.sink.records.lock()[0].command, "unknown_method");
+    assert_eq!(
+        fixture.sink.records.lock()[0].header.method,
+        "unknown_method"
+    );
     fixture.shutdown().await;
 }
 
@@ -214,7 +528,7 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
         4
     );
     assert_eq!(
-        fixture.sink.records.lock()[0].outcome,
+        finished(fixture.sink.records.lock().last().unwrap()),
         RpcAuditOutcome::Success
     );
     // Optional effects never imply local exposure, even for a compatible signature.
@@ -255,7 +569,7 @@ async fn headless_registry_knows_unlinked_native_commands() {
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert_eq!(error["kind"], "unsupported");
     assert_eq!(
-        fixture.sink.records.lock()[0].command,
+        fixture.sink.records.lock()[0].header.method,
         "get_system_accent_color"
     );
     let unlinked =
@@ -281,12 +595,16 @@ async fn http_dispatch_records_one_audit_event() {
     assert_eq!(result, "response");
     {
         let records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].transport, RpcTransport::Http);
-        assert_eq!(records[0].command, "audit_echo");
-        assert_eq!(records[0].outcome, RpcAuditOutcome::Success);
-        assert!(records[0].owner.as_str().starts_with("http:"));
-        assert_eq!(*fixture.sink.sequence.lock(), ["record", "returned"]);
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].header.transport, RpcTransport::Http);
+        assert_eq!(records[0].header.method, "audit_echo");
+        assert_eq!(records[0].phase, AuditPhase::Admitted);
+        assert_eq!(finished(&records[1]), RpcAuditOutcome::Success);
+        assert!(records[0].header.owner.as_str().starts_with("http:"));
+        assert_eq!(
+            *fixture.sink.sequence.lock(),
+            ["record", "record", "returned"]
+        );
     }
     fixture.shutdown().await;
 }
@@ -315,12 +633,16 @@ async fn direct_http_routes_use_the_same_audit_seam() {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{path}");
         let record = fixture.sink.records.lock().pop().unwrap();
-        assert_eq!(record.command, command);
-        assert!(record.owner.as_str().starts_with("http:"));
-        assert!(!record.owner.as_str().contains(&session.to_string()));
-        owners.push(record.owner.clone());
-        assert_eq!(record.transport, RpcTransport::Http);
-        assert_eq!(record.outcome, RpcAuditOutcome::Success);
+        assert_eq!(
+            fixture.sink.records.lock().pop().unwrap().phase,
+            AuditPhase::Admitted
+        );
+        assert_eq!(record.header.method, command);
+        assert!(record.header.owner.as_str().starts_with("http:"));
+        assert!(!record.header.owner.as_str().contains(&session.to_string()));
+        owners.push(record.header.owner.clone());
+        assert_eq!(record.header.transport, RpcTransport::Http);
+        assert_eq!(finished(&record), RpcAuditOutcome::Success);
         assert!(fixture.sink.records.lock().is_empty());
         drop(response);
         assert!(
@@ -364,11 +686,8 @@ async fn audit_records_rejected_dispatches() {
         assert_eq!(fixture.call(method, params).await.0, status);
         let records = fixture.sink.records.lock();
         let record = records.last().unwrap();
-        assert_eq!(record.command, command);
-        assert_eq!(
-            record.outcome,
-            RpcAuditOutcome::Failure { kind, code: None }
-        );
+        assert_eq!(record.header.method, command);
+        assert_eq!(record.phase, AuditPhase::Rejected { kind, code: None });
     }
     let router = fixture.rpc.clone().router();
     let response = router
@@ -410,12 +729,12 @@ async fn audit_records_rejected_dispatches() {
     {
         let records = fixture.sink.records.lock();
         assert_eq!(records.len(), 5);
-        assert_eq!(records[3].command, "invalid_envelope");
-        assert_eq!(records[4].command, "events_subscribe");
+        assert_eq!(records[3].header.method, "invalid_envelope");
+        assert_eq!(records[4].header.method, "events_subscribe");
         for record in &records[3..] {
             assert_eq!(
-                record.outcome,
-                RpcAuditOutcome::Failure {
+                record.phase,
+                AuditPhase::Rejected {
                     kind: "invalid_params",
                     code: None
                 }
@@ -458,8 +777,8 @@ async fn audit_never_records_payloads_or_error_details() {
         assert!(!format!("{:?}", fixture.sink.records.lock()).contains(&secret));
         assert!(!format!("{:?}", capture.0.lock()).contains(&secret));
     }
-    assert_eq!(fixture.sink.records.lock().len(), 4);
-    assert_eq!(capture.0.lock().len(), 4);
+    assert_eq!(fixture.sink.records.lock().len(), 7);
+    assert_eq!(capture.0.lock().len(), 7);
     fixture.shutdown().await;
 }
 
@@ -476,8 +795,10 @@ fn original_error() -> RpcError {
 
 #[tokio::test]
 async fn audited_failure_preserves_the_original_rpc_error() {
-    fn fail(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
-        Box::pin(async { Err(original_error()) })
+    fn fail(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+        Ok(Box::pin(crate::registry::unreported(async {
+            Err(original_error())
+        })))
     }
     let mut fixture = Fixture::new(true).await;
     Arc::make_mut(&mut fixture.rpc.commands)
@@ -492,14 +813,14 @@ async fn audited_failure_preserves_the_original_rpc_error() {
     // The structured domain error carries a secret too; only kind and code are audited.
     assert!(!format!("{:?}", fixture.sink.records.lock()).contains(SECRET));
     assert!(!format!("{:?}", capture.0.lock()).contains(SECRET));
-    assert_eq!(capture.0.lock().len(), 1);
+    assert_eq!(capture.0.lock().len(), 2);
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(error, serde_json::to_value(original_error()).unwrap());
     {
         let records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 1);
+        assert_eq!(records.len(), 2);
         assert_eq!(
-            records[0].outcome,
+            finished(&records[1]),
             RpcAuditOutcome::Failure {
                 kind: "application_error",
                 code: Some("original_code".to_owned())
@@ -538,15 +859,22 @@ async fn audit_level_follows_transport_not_outcome() {
                     kind: "application_error",
                     code: None,
                 },
-                RpcAuditOutcome::Cancelled,
+                RpcAuditOutcome::NotObserved,
                 RpcAuditOutcome::Panicked,
             ] {
                 TracingRpcAuditSink.record(&RpcAuditRecord {
-                    transport,
-                    command: "audit_echo",
-                    owner: RpcAuditOwner("audit-owner".to_owned()),
+                    header: AuditHeader {
+                        invocation_id: 1,
+                        transport,
+                        method: "audit_echo",
+                        owner: RpcAuditOwner("audit-owner".to_owned()),
+                        request_id: None,
+                    },
                     duration: std::time::Duration::ZERO,
-                    outcome,
+                    phase: AuditPhase::Finished {
+                        outcome,
+                        completion: CompletionSummary::NotReported,
+                    },
                 });
             }
         }
@@ -555,19 +883,25 @@ async fn audit_level_follows_transport_not_outcome() {
     .await;
     {
         let events = capture.0.lock();
-        assert_eq!(events.len(), 14, "captured audit events: {events:?}");
-        assert!(events[..10].iter().all(|e| e.level == tracing::Level::INFO));
+        assert_eq!(events.len(), 16, "captured audit events: {events:?}");
+        assert!(events[..12].iter().all(|e| e.level == tracing::Level::INFO));
         assert!(
-            events[10..]
+            events[12..]
                 .iter()
                 .all(|e| e.level == tracing::Level::DEBUG)
         );
-        assert!(
-            events
-                .iter()
-                .all(|e| e.fields.keys().map(String::as_str).collect::<Vec<_>>()
-                    == ["command", "duration_ns", "outcome", "owner", "transport"])
-        );
+        assert!(events.iter().all(|e| {
+            [
+                "command",
+                "duration_ns",
+                "invocation_id",
+                "owner",
+                "phase",
+                "transport",
+            ]
+            .iter()
+            .all(|field| e.fields.contains_key(*field))
+        }));
     }
     fixture.shutdown().await;
 }
@@ -578,7 +912,7 @@ async fn dropping_audited_call_preserves_cancellation() {
     // fixture's event bus. No task, global fixture or timing assumption is needed.
     struct PendingCall(EventBus);
     impl Future for PendingCall {
-        type Output = Result<Value, RpcError>;
+        type Output = crate::registry::RpcCompletion<Value>;
         fn poll(
             self: std::pin::Pin<&mut Self>,
             _: &mut std::task::Context<'_>,
@@ -592,8 +926,12 @@ async fn dropping_audited_call_preserves_cancellation() {
             self.0.publish("dropped", Value::Null);
         }
     }
-    fn pending(dependencies: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
-        Box::pin(PendingCall(dependencies.events.clone()))
+    fn pending(
+        dependencies: Arc<RpcDependencies>,
+        _: RpcOwner,
+        _: Value,
+    ) -> Result<RpcFuture, RpcError> {
+        Ok(Box::pin(PendingCall(dependencies.events.clone())))
     }
     let mut fixture = Fixture::new(false).await;
     Arc::make_mut(&mut fixture.rpc.commands)
@@ -608,7 +946,7 @@ async fn dropping_audited_call_preserves_cancellation() {
         "polled",
         "the caller polls the command inline"
     );
-    assert!(fixture.sink.records.lock().is_empty());
+    assert_eq!(fixture.sink.records.lock()[0].phase, AuditPhase::Admitted);
     drop(call);
     assert_eq!(
         sequence.try_recv().unwrap().0,
@@ -616,10 +954,10 @@ async fn dropping_audited_call_preserves_cancellation() {
         "dropping the request drops its command before returning"
     );
     assert!(sequence.try_recv().is_err());
-    assert_eq!(fixture.sink.records.lock().len(), 1);
+    assert_eq!(fixture.sink.records.lock().len(), 2);
     assert_eq!(
-        fixture.sink.records.lock()[0].outcome,
-        RpcAuditOutcome::Cancelled
+        finished(fixture.sink.records.lock().last().unwrap()),
+        RpcAuditOutcome::NotObserved
     );
     fixture.shutdown().await;
 }
@@ -637,10 +975,17 @@ async fn audited_command_panic_keeps_its_payload() {
         *error.into_panic().downcast::<&'static str>().unwrap(),
         SECRET
     );
-    assert_eq!(fixture.sink.records.lock().len(), 1);
+    assert_eq!(fixture.sink.records.lock().len(), 2);
     assert_eq!(
-        fixture.sink.records.lock()[0].outcome,
+        finished(fixture.sink.records.lock().last().unwrap()),
         RpcAuditOutcome::Panicked
     );
     fixture.shutdown().await;
+}
+
+fn finished(record: &RpcAuditRecord) -> RpcAuditOutcome {
+    match &record.phase {
+        AuditPhase::Finished { outcome, .. } => outcome.clone(),
+        phase => panic!("expected Finished, got {phase:?}"),
+    }
 }

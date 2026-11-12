@@ -10,7 +10,9 @@ use serde_json::Value;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 use crate::{
-    audit::{RpcAudit, RpcAuditGuard, RpcAuditOutcome, RpcTransport},
+    audit::{
+        AuditPhase, CompletionSummary, RpcAudit, RpcAuditGuard, RpcAuditOutcome, RpcTransport,
+    },
     events::EventBus,
 };
 
@@ -63,31 +65,74 @@ impl specta::function::FunctionArg for RpcCaller {
 }
 
 /// Observe dispatch without changing its result, polling, cancellation or unwind.
-/// The name resolver runs under the guard and returns only registry or fixed names.
+/// The name resolver returns only registry or fixed names. Preparation errors are
+/// rejected before admission; prepared futures return their own completion metadata.
 /// Aborting the process cannot produce a Drop record.
-pub async fn dispatch_audited<T>(
+pub async fn dispatch_audited<T, F>(
     audit: &RpcAudit,
     transport: RpcTransport,
     owner: RpcOwner,
     command: impl FnOnce() -> &'static str,
-    call: impl Future<Output = Result<T, RpcError>>,
-) -> Result<T, RpcError> {
-    let mut guard = RpcAuditGuard::new(audit, transport, &owner);
-    guard.set_command(command());
-    let result = call.await;
-    guard.record(match &result {
+    request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
+    prepare: impl FnOnce() -> Result<F, RpcError>,
+) -> Result<T, RpcError>
+where
+    F: Future<Output = RpcCompletion<T>>,
+{
+    let mut guard = RpcAuditGuard::new(audit, transport, &owner, command(), request_id);
+    let call = match prepare() {
+        Ok(call) => call,
+        Err(error) => {
+            guard.record(AuditPhase::Rejected {
+                kind: error.kind,
+                code: error.code.clone(),
+            });
+            return Err(error);
+        }
+    };
+    guard.admit();
+    let RpcCompletion { result, completion } = call.await;
+    let outcome = match &result {
         Ok(_) => RpcAuditOutcome::Success,
         Err(error) => RpcAuditOutcome::Failure {
             kind: error.kind,
             code: error.code.clone(),
         },
+    };
+    guard.record(AuditPhase::Finished {
+        outcome,
+        completion,
     });
     result
 }
 
-pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
+/// A handler result with metadata extracted before response encoding, even on encode failure.
+pub struct RpcCompletion<T> {
+    pub result: Result<T, RpcError>,
+    pub completion: CompletionSummary,
+}
 
-pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
+impl<T> RpcCompletion<T> {
+    /// Wrap a result whose declaration does not explicitly report mutation receipts.
+    #[must_use]
+    pub fn unreported(result: Result<T, RpcError>) -> Self {
+        Self {
+            result,
+            completion: CompletionSummary::NotReported,
+        }
+    }
+}
+
+/// Adapt a direct route without reporting completion metadata or changing its polling.
+pub async fn unreported<T>(call: impl Future<Output = Result<T, RpcError>>) -> RpcCompletion<T> {
+    RpcCompletion::unreported(call.await)
+}
+
+/// A prepared handler, polled inline without cancelling owner-started work on drop.
+pub type RpcFuture = Pin<Box<dyn Future<Output = RpcCompletion<Value>> + Send + 'static>>;
+
+/// Decode and bind inputs before returning the future that executes the handler.
+pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> Result<RpcFuture, RpcError>;
 /// One declaration registers one neutral handler, including operation-bound commands.
 /// The macro checks public requests, success types and method names before JSON erasure.
 ///
@@ -281,7 +326,7 @@ impl UnifiedRpc {
         owner: RpcOwner,
         params: Value,
     ) -> Result<Value, RpcError> {
-        self.call_with_admission(transport, method, owner, params, Ok(()))
+        self.call_with_admission(transport, method, owner, params, None, Ok(()))
             .await
     }
 
@@ -291,6 +336,7 @@ impl UnifiedRpc {
         method: &str,
         owner: RpcOwner,
         params: Value,
+        request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
         admission: Result<(), RpcError>,
     ) -> Result<Value, RpcError> {
         let target = match transport {
@@ -303,14 +349,15 @@ impl UnifiedRpc {
             transport,
             owner.clone(),
             || self.audit_command_name(method),
-            async {
+            request_id,
+            || {
                 let handler = self
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method(method))?;
                 let handler = handler.neutral_handler(target)?;
                 admission?;
-                handler(self.dependencies.clone(), owner, params).await
+                handler(self.dependencies.clone(), owner, params)
             },
         )
         .await
@@ -323,14 +370,15 @@ impl UnifiedRpc {
         &self,
         method: &str,
         owner: RpcOwner,
-        call: impl FnOnce() -> RpcFuture,
+        call: impl FnOnce() -> Result<RpcFuture, RpcError>,
     ) -> Result<Value, RpcError> {
         dispatch_audited(
             &self.dependencies.audit,
             RpcTransport::TauriIpc,
             owner,
             || self.audit_command_name(method),
-            async {
+            None,
+            || {
                 let command = self
                     .commands
                     .get(method)
@@ -341,7 +389,7 @@ impl UnifiedRpc {
                 {
                     return Err(command.unavailable(RpcTarget::Desktop));
                 }
-                call().await
+                call()
             },
         )
         .await

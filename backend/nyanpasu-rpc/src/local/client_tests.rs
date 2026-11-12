@@ -199,7 +199,7 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
                 "local_subscribe",
                 "local_unsubscribe"
             ]
-            .contains(&record.command)),
+            .contains(&record.header.method)),
             "no query recovery"
         );
         peer.finish().await;
@@ -385,7 +385,8 @@ async fn typed_operations_round_trip_through_the_local_server() {
             assert_eq!(
                 records
                     .iter()
-                    .filter(|record| record.command == *name)
+                    .filter(|record| record.header.method == *name
+                        && matches!(record.phase, crate::audit::AuditPhase::Finished { .. }))
                     .count(),
                 1,
                 "one dispatch for {name}"

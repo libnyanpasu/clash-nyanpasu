@@ -19,7 +19,7 @@ use nyanpasu_logging::{
     Direction, Filter, FsLogFiles, LogError, LogsClient, MonotonicClock, OpenLogs, QueryLogs,
 };
 use nyanpasu_rpc_protocol::{
-    RpcOwner,
+    RpcError, RpcOwner,
     frame::{Frame, Reply},
 };
 use parking_lot::Mutex;
@@ -214,16 +214,23 @@ async fn fixture(service: Option<Arc<IpcServiceLogs>>) -> Fixture {
     fixture
 }
 
-fn delayed_open(deps: Arc<RpcDependencies>, owner: RpcOwner, params: Value) -> RpcFuture {
-    Box::pin(async move {
+fn delayed_open(
+    deps: Arc<RpcDependencies>,
+    owner: RpcOwner,
+    params: Value,
+) -> Result<RpcFuture, RpcError> {
+    Ok(Box::pin(async move {
         let original = inventory::iter::<CommandEntry>
             .into_iter()
             .find(|entry| entry.metadata.name == "open_log_session")
             .unwrap()
             .handler;
         let mut release = deps.events.subscribe();
-        let result = original(deps.clone(), owner.clone(), params.clone()).await;
+        let result = original(deps.clone(), owner.clone(), params.clone())
+            .unwrap()
+            .await;
         let value = result
+            .result
             .as_ref()
             .expect("real log open succeeds before completion barrier");
         deps.events.publish(
@@ -232,7 +239,7 @@ fn delayed_open(deps: Arc<RpcDependencies>, owner: RpcOwner, params: Value) -> R
         );
         while release.recv().await.unwrap().0 != "release" {}
         result
-    })
+    }))
 }
 
 fn query(session: &str) -> QueryLogs {
@@ -543,23 +550,27 @@ async fn local_owners_cannot_use_each_others_resources() {
     service.finish().await;
 }
 
-fn delayed_close(deps: Arc<RpcDependencies>, owner: RpcOwner, params: Value) -> RpcFuture {
-    Box::pin(async move {
+fn delayed_close(
+    deps: Arc<RpcDependencies>,
+    owner: RpcOwner,
+    params: Value,
+) -> Result<RpcFuture, RpcError> {
+    Ok(Box::pin(async move {
         let original = inventory::iter::<CommandEntry>
             .into_iter()
             .find(|entry| entry.metadata.name == "close_log_session")
             .unwrap()
             .handler;
         let mut release = deps.events.subscribe();
-        let result = original(deps.clone(), owner, params).await;
+        let result = original(deps.clone(), owner, params).unwrap().await;
         assert!(
-            result.is_ok(),
+            result.result.is_ok(),
             "explicit close succeeds before its completion barrier"
         );
         deps.events.publish("closed", Value::Null);
         while release.recv().await.unwrap().0 != "release" {}
         result
-    })
+    }))
 }
 
 #[tokio::test]

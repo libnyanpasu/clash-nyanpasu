@@ -4,18 +4,20 @@ use std::sync::Arc;
 
 use nyanpasu_core::client::effects::ports::LogRotation;
 use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
-use nyanpasu_rpc_protocol::{CommandKind, CommandMetadata, RpcOwner, RpcTarget};
+use nyanpasu_rpc_protocol::{CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget};
 use serde_json::Value;
 
 const PANIC_PAYLOAD: &str = "e4b-fatal-original-payload-53fd73";
 
-fn panic_handler(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
-    Box::pin(async { panic!("{PANIC_PAYLOAD}") })
+fn panic_handler(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+    Ok(Box::pin(nyanpasu_rpc::registry::unreported(async {
+        panic!("{PANIC_PAYLOAD}")
+    })))
 }
 
-fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
+fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
     use struct_patch::Patch as _;
-    Box::pin(async move {
+    Ok(Box::pin(nyanpasu_rpc::registry::unreported(async move {
         let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
         patch.max_log_file_size = Some(9);
         deps.client
@@ -23,7 +25,7 @@ fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
             .await
             .map_err(nyanpasu_rpc::error::application_error)?;
         Ok(Value::Null)
-    })
+    })))
 }
 
 // This is called by the real effect owner, after the triggering mutation commits.

@@ -387,7 +387,7 @@ async fn local_details_requires_negotiated_feature() {
         }
     ));
     assert_eq!(source.details.receiver_count(), 0);
-    assert_eq!(fixture.sink.records.lock().len(), 1);
+    assert_eq!(terminal_record_count(&fixture), 1);
     peer.finish().await;
     fixture.shutdown().await;
 }
@@ -506,8 +506,8 @@ async fn local_subscriptions_reject_unknown_stream_and_resource_limit() {
     ));
     assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
     assert!(matches!(
-        fixture.sink.records.lock()[0].outcome,
-        crate::audit::RpcAuditOutcome::Failure {
+        fixture.sink.records.lock()[0].phase,
+        crate::audit::AuditPhase::Rejected {
             kind: "unsupported",
             ..
         }
@@ -542,7 +542,7 @@ async fn local_non_full_value_streams_are_rejected() {
         );
     }
     assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
-    assert_eq!(fixture.sink.records.lock().len(), 6);
+    assert_eq!(terminal_record_count(&fixture), 6);
     peer.finish().await;
     fixture.shutdown().await;
 }
@@ -673,8 +673,9 @@ async fn local_dispatch_records_one_info_audit_event() {
         assert!(matches!(peer.read().await, Frame::Response { reply: Reply::Error(error), .. } if error["kind"] == "invalid_params"));
         peer.finish().await;
     }.with_subscriber(tracing_subscriber::registry().with(capture.clone())).await;
-    assert_eq!(fixture.sink.records.lock().len(), 5);
-    assert_eq!(capture.0.lock().len(), 5);
+    assert_eq!(terminal_record_count(&fixture), 5);
+    assert_eq!(fixture.sink.records.lock().len(), 7);
+    assert_eq!(capture.0.lock().len(), 7);
     assert!(
         capture
             .0
@@ -689,20 +690,25 @@ async fn local_dispatch_records_one_info_audit_event() {
             .records
             .lock()
             .iter()
-            .all(|record| record.transport == RpcTransport::Local
-                && record.owner.as_str().starts_with("local:"))
+            .all(|record| record.header.transport == RpcTransport::Local
+                && record.header.request_id.is_some()
+                && record.header.owner.as_str().starts_with("local:"))
     );
     fixture.shutdown().await;
 }
 
-fn delayed_mutation(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
-    Box::pin(async move {
+fn delayed_mutation(
+    deps: Arc<RpcDependencies>,
+    _: RpcOwner,
+    _: Value,
+) -> Result<RpcFuture, RpcError> {
+    Ok(Box::pin(crate::registry::unreported(async move {
         let mut release = deps.events.subscribe();
         deps.events.publish("mutation_entered", Value::Null);
         while release.recv().await.unwrap().0 != "release" {}
         deps.events.publish("mutation_finished", Value::Null);
         Ok(Value::Null)
-    })
+    })))
 }
 
 async fn coalesced_requests(count: usize) {
@@ -847,7 +853,7 @@ async fn one_over_in_flight_closes_connection_and_drains_accepted_work() {
     for _ in 0..limits.in_flight {
         assert_eq!(sequence.recv().await.unwrap().0, "mutation_finished");
     }
-    assert_eq!(fixture.sink.records.lock().len(), limits.in_flight);
+    assert_eq!(terminal_record_count(&fixture), limits.in_flight);
     fixture.shutdown().await;
 }
 
@@ -912,7 +918,7 @@ async fn saturated_calls_release_details_on_disconnect_before_calls_finish() {
             .publish("release", Value::Null);
         peer.finish().await;
         assert_eq!(
-            fixture.sink.records.lock().len(),
+            terminal_record_count(&fixture),
             3,
             "only the subscription and two accepted calls run"
         );
@@ -964,8 +970,14 @@ async fn disconnect_reclaims_late_subscriptions_without_cancelling_mutations() {
 
 #[tokio::test]
 async fn local_handler_panic_reaches_fatal_supervision() {
-    fn panic_handler(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> RpcFuture {
-        Box::pin(async { std::panic::panic_any(SECRET) })
+    fn panic_handler(
+        _: Arc<RpcDependencies>,
+        _: RpcOwner,
+        _: Value,
+    ) -> Result<RpcFuture, RpcError> {
+        Ok(Box::pin(crate::registry::unreported(async {
+            std::panic::panic_any(SECRET)
+        })))
     }
     let mut fixture = Fixture::new(false).await;
     fixture
@@ -1041,7 +1053,7 @@ async fn slow_local_peer_has_bounded_buffers() {
         )
         .await;
         tokio::time::timeout(Duration::from_secs(10), async {
-            while fixture.sink.records.lock().len() < expected {
+            while terminal_record_count(&fixture) < expected {
                 tokio::task::yield_now().await;
             }
         })
@@ -1089,16 +1101,22 @@ async fn slow_local_peer_has_bounded_buffers() {
     assert!(matches!(reconnect.read().await, Frame::Response { .. }));
     {
         let records = fixture.sink.records.lock();
-        let slow_owner = records[0].owner.as_str();
+        let slow_owner = records[0].header.owner.as_str();
         let slow_calls = records
             .iter()
-            .filter(|record| record.owner.as_str() == slow_owner)
+            .filter(|record| {
+                record.header.owner.as_str() == slow_owner
+                    && !matches!(record.phase, crate::audit::AuditPhase::Admitted)
+            })
             .count();
         assert!(
             slow_calls <= 4 + limits.in_flight,
             "after one subscription and three completed calls, only the outstanding budget can drain"
         );
-        let owners: HashSet<_> = records.iter().map(|record| record.owner.as_str()).collect();
+        let owners: HashSet<_> = records
+            .iter()
+            .map(|record| record.header.owner.as_str())
+            .collect();
         assert_eq!(
             owners.len(),
             3,
@@ -1188,10 +1206,20 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
                 .records
                 .lock()
                 .iter()
-                .all(|record| record.command == "local_subscribe"),
+                .all(|record| record.header.method == "local_subscribe"),
             "no recovery query or per-frame audit"
         );
         peer.finish().await;
     }
     fixture.shutdown().await;
+}
+
+fn terminal_record_count(fixture: &Fixture) -> usize {
+    fixture
+        .sink
+        .records
+        .lock()
+        .iter()
+        .filter(|record| !matches!(record.phase, crate::audit::AuditPhase::Admitted))
+        .count()
 }

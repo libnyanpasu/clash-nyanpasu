@@ -21,7 +21,10 @@ use tokio::sync::broadcast;
 use crate::{
     audit::RpcTransport,
     error::application_error,
-    registry::{CommandHandlers, RpcDependencies, SetupError, UnifiedRpc, dispatch_audited},
+    registry::{
+        CommandHandlers, RpcDependencies, RpcFuture, SetupError, UnifiedRpc, dispatch_audited,
+        unreported,
+    },
 };
 
 fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
@@ -91,35 +94,38 @@ async fn http_logs_archive(
         RpcTransport::Http,
         http_owner_or_anonymous(&headers),
         || "logs_archive",
-        async {
-            let paths = rpc.dependencies.paths.clone();
-            let archive =
-                crate::commands::archive::logs_archive(paths, rpc.dependencies.client.clone())
+        None,
+        || {
+            Ok(unreported(async {
+                let paths = rpc.dependencies.paths.clone();
+                let archive =
+                    crate::commands::archive::logs_archive(paths, rpc.dependencies.client.clone())
+                        .await
+                        .map_err(|error| RpcError::new("application_error", error.to_string()))?;
+                let file = tokio::fs::File::open(&archive)
                     .await
-                    .map_err(|error| RpcError::new("application_error", error.to_string()))?;
-            let file = tokio::fs::File::open(&archive)
-                .await
-                .map_err(application_error)?;
-            let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
-                use tokio::io::AsyncReadExt;
+                    .map_err(application_error)?;
+                let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
+                    use tokio::io::AsyncReadExt;
 
-                let mut bytes = vec![0; 64 * 1024];
-                let count = file.read(&mut bytes).await?;
-                if count == 0 {
-                    return Ok::<_, std::io::Error>(None);
-                }
-                bytes.truncate(count);
-                Ok(Some((bytes, (file, _archive))))
-            });
-            let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
-            Response::builder()
-                .header("content-type", "application/zip")
-                .header(
-                    "content-disposition",
-                    format!("attachment; filename=\"{file_name}\""),
-                )
-                .body(Body::from_stream(body))
-                .map_err(application_error)
+                    let mut bytes = vec![0; 64 * 1024];
+                    let count = file.read(&mut bytes).await?;
+                    if count == 0 {
+                        return Ok::<_, std::io::Error>(None);
+                    }
+                    bytes.truncate(count);
+                    Ok(Some((bytes, (file, _archive))))
+                });
+                let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+                Response::builder()
+                    .header("content-type", "application/zip")
+                    .header(
+                        "content-disposition",
+                        format!("attachment; filename=\"{file_name}\""),
+                    )
+                    .body(Body::from_stream(body))
+                    .map_err(application_error)
+            }))
         },
     )
     .await
@@ -150,15 +156,18 @@ async fn http_connection_details(
         RpcTransport::Http,
         http_owner_or_anonymous(&headers),
         || "connection_details_subscribe",
-        async {
-            let receiver = rpc
-                .dependencies
-                .client
-                .subscribe_clash_connection_details()
-                .await
-                .map_err(application_error)?;
-            Ok(Sse::new(connection_detail_events(receiver))
-                .keep_alive(axum::response::sse::KeepAlive::default()))
+        None,
+        || {
+            Ok(unreported(async {
+                let receiver = rpc
+                    .dependencies
+                    .client
+                    .subscribe_clash_connection_details()
+                    .await
+                    .map_err(application_error)?;
+                Ok(Sse::new(connection_detail_events(receiver))
+                    .keep_alive(axum::response::sse::KeepAlive::default()))
+            }))
         },
     )
     .await
@@ -206,7 +215,8 @@ async fn http_events(
                 RpcTransport::Http,
                 owner,
                 || "events_subscribe",
-                async { Err::<(), _>(RpcError::invalid_params(error.to_string())) },
+                None,
+                || Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string())),
             )
             .await;
             return error.into_response();
@@ -217,7 +227,8 @@ async fn http_events(
         RpcTransport::Http,
         owner,
         || "events_subscribe",
-        async {
+        None,
+        || {
             if request
                 .name
                 .as_ref()
@@ -225,41 +236,44 @@ async fn http_events(
             {
                 return Err(RpcError::unknown_method(request.name.as_deref().unwrap()));
             }
-            let receiver = rpc.dependencies.events.subscribe();
-            let name = request.name;
-            let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
-                loop {
-                    match receiver.recv().await {
-                        Ok((event_name, payload))
-                            if name.as_ref().is_none_or(|name| event_name == name) =>
-                        {
-                            let payload = if name.is_some() {
-                                payload
-                            } else {
-                                serde_json::json!({"name": event_name, "payload": payload})
-                            };
-                            let data = serde_json::to_string(&payload).ok()?;
-                            return Some((
-                                Ok::<Event, Infallible>(Event::default().data(data)),
-                                (receiver, name),
-                            ));
+            Ok(unreported(async {
+                let receiver = rpc.dependencies.events.subscribe();
+                let name = request.name;
+                let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
+                    loop {
+                        match receiver.recv().await {
+                            Ok((event_name, payload))
+                                if name.as_ref().is_none_or(|name| event_name == name) =>
+                            {
+                                let payload = if name.is_some() {
+                                    payload
+                                } else {
+                                    serde_json::json!({"name": event_name, "payload": payload})
+                                };
+                                let data = serde_json::to_string(&payload).ok()?;
+                                return Some((
+                                    Ok::<Event, Infallible>(Event::default().data(data)),
+                                    (receiver, name),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => {
+                                return Some((
+                                    Ok(Event::default().event("resync").data("{}")),
+                                    (receiver, name),
+                                ));
+                            }
+                            Err(broadcast::error::RecvError::Closed) => return None,
                         }
-                        Ok(_) => continue,
-                        Err(broadcast::error::RecvError::Lagged(_)) => {
-                            return Some((
-                                Ok(Event::default().event("resync").data("{}")),
-                                (receiver, name),
-                            ));
-                        }
-                        Err(broadcast::error::RecvError::Closed) => return None,
                     }
-                }
-            });
-            let ready =
-                stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
-            Ok(Sse::new(ready.chain(events))
-                .keep_alive(axum::response::sse::KeepAlive::default())
-                .into_response())
+                });
+                let ready = stream::once(async {
+                    Ok::<Event, Infallible>(Event::default().comment("ready"))
+                });
+                Ok(Sse::new(ready.chain(events))
+                    .keep_alive(axum::response::sse::KeepAlive::default())
+                    .into_response())
+            }))
         },
     )
     .await
@@ -280,9 +294,11 @@ async fn http_call(
                 RpcTransport::Http,
                 owner,
                 || "invalid_envelope",
-                async { Err(RpcError::invalid_params(error.to_string())) },
+                None,
+                || Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string())),
             )
             .await
+            .map(Json)
             .map_err(http_rpc_error);
         }
     };

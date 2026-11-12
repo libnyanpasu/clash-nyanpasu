@@ -90,6 +90,10 @@ impl RpcAudit {
                 "http:{:016x}",
                 self.owner_key.hash_one(owner.label())
             )),
+            RpcTransport::Local => RpcAuditOwner(format!(
+                "local:{:016x}",
+                self.owner_key.hash_one(owner.label())
+            )),
         }
     }
 }
@@ -113,6 +117,7 @@ pub trait RpcAuditSink: Send + Sync + 'static {
 pub enum RpcTransport {
     TauriIpc,
     Http,
+    Local,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -318,6 +323,24 @@ impl UnifiedRpc {
         names
     }
 
+    #[cfg(feature = "local-server")]
+    pub(crate) fn command_capabilities_available(&self, name: &str) -> bool {
+        self.commands
+            .get(name)
+            .is_some_and(|command| command.capabilities_available)
+    }
+
+    #[cfg(all(test, feature = "local-server"))]
+    pub(crate) fn enable_local_test_command(&mut self, name: &str, handler: Option<RpcHandler>) {
+        let command = Arc::make_mut(&mut self.commands)
+            .get_mut(name)
+            .expect("registered test command");
+        command.metadata.targets = &[RpcTarget::Desktop, RpcTarget::Http, RpcTarget::Local];
+        if let Some(handler) = handler {
+            command.handler = Some(handler);
+        }
+    }
+
     /// Dispatch a shared command, including desktop fallback for unlinked native names.
     pub async fn call(
         &self,
@@ -326,9 +349,22 @@ impl UnifiedRpc {
         owner: RpcOwner,
         params: Value,
     ) -> Result<Value, RpcError> {
+        self.call_with_admission(transport, method, owner, params, Ok(()))
+            .await
+    }
+
+    pub(crate) async fn call_with_admission(
+        &self,
+        transport: RpcTransport,
+        method: &str,
+        owner: RpcOwner,
+        params: Value,
+        admission: Result<(), RpcError>,
+    ) -> Result<Value, RpcError> {
         let target = match transport {
             RpcTransport::TauriIpc => RpcTarget::Desktop,
             RpcTransport::Http => RpcTarget::Http,
+            RpcTransport::Local => RpcTarget::Local,
         };
         dispatch_audited(
             &self.dependencies.audit,
@@ -340,7 +376,9 @@ impl UnifiedRpc {
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method(method))?;
-                (handler.neutral_handler(target)?)(self.dependencies.clone(), owner, params).await
+                let handler = handler.neutral_handler(target)?;
+                admission?;
+                handler(self.dependencies.clone(), owner, params).await
             },
         )
         .await

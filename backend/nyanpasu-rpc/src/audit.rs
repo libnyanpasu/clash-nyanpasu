@@ -19,7 +19,7 @@ impl RpcAuditSink for TracingRpcAuditSink {
             };
         }
         match record.transport {
-            RpcTransport::Http => emit!(tracing::Level::INFO),
+            RpcTransport::Http | RpcTransport::Local => emit!(tracing::Level::INFO),
             RpcTransport::TauriIpc => emit!(tracing::Level::DEBUG),
         }
     }

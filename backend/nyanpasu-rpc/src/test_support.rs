@@ -67,6 +67,15 @@ impl Fixture {
             nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
         )
         .await;
+        Self::with_setup(tracing, provided, directory, args).await
+    }
+
+    pub(crate) async fn with_setup(
+        tracing: bool,
+        provided: &[ShellCapability],
+        directory: tempfile::TempDir,
+        args: nyanpasu_core::client::ClientSetupArgs,
+    ) -> Self {
         let paths = args.paths.clone();
         std::fs::create_dir_all(paths.app_logs_dir()).unwrap();
         std::fs::write(paths.app_logs_dir().join("audit.app.log"), "test log\n").unwrap();

@@ -82,7 +82,7 @@ dirs = '7'
 futures = { version = '0.3', optional = true }
 indexmap = { version = '2.2.3', features = ['serde'] }
 inventory = '0.3'
-interprocess = { version = '2.4.5', features = ['tokio'], optional = true }
+interprocess = { workspace = true, features = ['tokio'], optional = true }
 sha2 = { version = '0.11', optional = true }
 serde = { version = '1', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }

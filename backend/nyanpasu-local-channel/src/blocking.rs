@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use interprocess::local_socket::{RecvHalf, SendHalf, Stream, prelude::*};
+use interprocess::local_socket::{Stream, prelude::*};
 use serde::{Serialize, de::DeserializeOwned};
 use snafu::ResultExt as _;
 
@@ -41,16 +41,26 @@ where
     let stream = name::socket_name(name)
         .and_then(Stream::connect)
         .context(connect_error::ConnectSnafu { name })?;
-    let (recv, mut send) = stream.split();
-    let mut reader = BufReader::new(recv);
+    let stream = Arc::new(stream);
+    let mut reader = BufReader::new(SharedStream(Arc::clone(&stream)));
     let hello = ClientHello::new(*bootstrap.token(), wire::fingerprint::<R, S>());
-    handshake(&mut reader, &mut send, &hello).context(connect_error::HandshakeSnafu)?;
-    Ok((Sender::new(send, options), Receiver::new(reader, options)))
+    handshake(&mut reader, &stream, &hello).context(connect_error::HandshakeSnafu)?;
+    Ok((Sender::new(stream, options), Receiver::new(reader, options)))
+}
+
+/// The receiving side of a connection whose [`Sender`] writes to the same
+/// stream; the connection stays open until both sides are dropped.
+struct SharedStream(Arc<Stream>);
+
+impl Read for SharedStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        (&*self.0).read(buf)
+    }
 }
 
 fn handshake(
     reader: &mut impl Read,
-    send: &mut SendHalf,
+    mut send: &Stream,
     hello: &ClientHello,
 ) -> Result<(), HandshakeError> {
     let frame = wire::encode_frame(hello, HANDSHAKE_MAX_FRAME_LEN)
@@ -107,7 +117,7 @@ pub struct Sender<T> {
 }
 
 struct Writer {
-    half: SendHalf,
+    stream: Arc<Stream>,
     /// A write failed part-way, so the peer can no longer find frame boundaries.
     broken: bool,
 }
@@ -123,10 +133,10 @@ impl<T> Clone for Sender<T> {
 }
 
 impl<T: Serialize> Sender<T> {
-    fn new(half: SendHalf, options: Options) -> Self {
+    fn new(stream: Arc<Stream>, options: Options) -> Self {
         Self {
             writer: Arc::new(Mutex::new(Writer {
-                half,
+                stream,
                 broken: false,
             })),
             max_frame_len: options.max_frame_len(),
@@ -142,7 +152,7 @@ impl<T: Serialize> Sender<T> {
         if writer.broken {
             return Err(SendError::Disconnected);
         }
-        writer.half.write_all(&frame).map_err(|error| {
+        (&*writer.stream).write_all(&frame).map_err(|error| {
             writer.broken = true;
             if wire::is_disconnect(&error) {
                 SendError::Disconnected
@@ -159,13 +169,13 @@ impl<T: Serialize> Sender<T> {
 /// ends; other errors are yielded before it ends.
 pub struct Receiver<T> {
     /// `None` once the channel has ended.
-    reader: Option<BufReader<RecvHalf>>,
+    reader: Option<BufReader<SharedStream>>,
     max_frame_len: u32,
     _message: PhantomData<fn() -> T>,
 }
 
 impl<T: DeserializeOwned> Receiver<T> {
-    fn new(reader: BufReader<RecvHalf>, options: Options) -> Self {
+    fn new(reader: BufReader<SharedStream>, options: Options) -> Self {
         Self {
             reader: Some(reader),
             max_frame_len: options.max_frame_len(),

@@ -93,6 +93,7 @@ include_url_macro = { git = 'https://github.com/libnyanpasu/include_url_macro', 
 # --- registry ---
 thiserror = '2'
 snafu = '0.9'
+interprocess = '2.4.8'
 tracing = '0.1'
 boa_engine = { version = '0.22', features = ['annex-b'] }
 reqwest = { version = '0.13', default-features = false, features = [

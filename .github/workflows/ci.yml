@@ -103,7 +103,7 @@ jobs:
           submodules: recursive
 
       - name: Rust
-        if: env.BACKEND == 'true'
+        if: env.BACKEND == 'true' || (startsWith(matrix.targets.os, 'ubuntu-') && env.SCRIPTS == 'true')
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           rustup default nightly
@@ -132,16 +132,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.3
         name: Cache Rust dependencies
-        if: env.BACKEND == 'true'
+        if: env.BACKEND == 'true' || (startsWith(matrix.targets.os, 'ubuntu-') && env.SCRIPTS == 'true')
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
       # Git dependencies are cloned from GitHub, which sometimes resets the
       # connection mid-clone; cargo does not retry that, so retry it here
-      # instead of failing the lint.
+      # instead of failing the lint. Backend-boundary checks also run for
+      # scripts-only changes and need these sources for offline metadata.
       - name: Fetch Rust dependencies
-        if: env.BACKEND == 'true'
+        if: env.BACKEND == 'true' || (startsWith(matrix.targets.os, 'ubuntu-') && env.SCRIPTS == 'true')
         shell: bash
         run: |
           for attempt in 1 2 3; do

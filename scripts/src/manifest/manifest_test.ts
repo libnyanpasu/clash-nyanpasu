@@ -1,6 +1,53 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import * as path from 'node:path'
 import { test } from 'node:test'
-import { resolveMeowAlphaRelease, type GitHubRelease } from './manifest.ts'
+import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
+import {
+  createVersionManifest,
+  resolveMeowAlphaRelease,
+  type ArchMapping,
+  type GitHubRelease,
+  type ResolvedCoreVersion,
+  type SupportedCore,
+} from './manifest.ts'
+
+const activeCoreNames = [
+  'mihomo',
+  'mihomo_alpha',
+  'clash_rs',
+  'clash_rs_alpha',
+  'meow',
+  'meow_alpha',
+] as const satisfies readonly SupportedCore[]
+
+const legacyClashPremiumArchMapping: ArchMapping = {
+  'windows-x86_64': 'clash-windows-amd64-n{}.zip',
+  'windows-arm64': 'clash-windows-arm64-n{}.zip',
+  'linux-aarch64': 'clash-linux-arm64-n{}.gz',
+  'linux-amd64': 'clash-linux-amd64-n{}.gz',
+  'darwin-arm64': 'clash-darwin-arm64-n{}.gz',
+  'darwin-x64': 'clash-darwin-amd64-n{}.gz',
+}
+
+function archMapping(name: string): ArchMapping {
+  return {
+    'windows-x86_64': `${name}-windows-x86_64`,
+    'windows-arm64': `${name}-windows-arm64`,
+    'linux-aarch64': `${name}-linux-aarch64`,
+    'linux-amd64': `${name}-linux-amd64`,
+    'darwin-arm64': `${name}-darwin-arm64`,
+    'darwin-x64': `${name}-darwin-x64`,
+  }
+}
+
+function activeVersions(): ResolvedCoreVersion[] {
+  return activeCoreNames.map((name) => ({
+    name,
+    version: `test-${name}`,
+    archMapping: archMapping(name),
+  }))
+}
 
 const alphaRelease: GitHubRelease = {
   tag_name: 'Prerelease-Alpha',
@@ -43,4 +90,26 @@ test('reject incomplete or mixed-commit Meow Alpha release assets', () => {
     'deadbee',
   )
   assert.throws(() => resolveMeowAlphaRelease(mixedRelease))
+})
+
+test('generated manifest keeps the fields required by older clients', () => {
+  const manifest = createVersionManifest(activeVersions())
+
+  assert.strictEqual(manifest.latest.clash_premium, '2023-09-05-gdcc8d87')
+  assert.deepStrictEqual(
+    manifest.arch_template.clash_premium,
+    legacyClashPremiumArchMapping,
+  )
+})
+
+test('checked-in manifest keeps the fields required by older clients', async () => {
+  const manifest = JSON.parse(
+    await readFile(path.join(WORKSPACE_ROOT, 'manifest/version.json'), 'utf8'),
+  )
+
+  assert.strictEqual(manifest.latest.clash_premium, '2023-09-05-gdcc8d87')
+  assert.deepStrictEqual(
+    manifest.arch_template.clash_premium,
+    legacyClashPremiumArchMapping,
+  )
 })

@@ -18,6 +18,20 @@ export function createRpcClient(
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
+    /**  Reads persisted remote audit rows without flushing the diagnostic channel. */
+    queryRpcAudit: (
+      filter: AuditFilter,
+      before: {
+        epoch: number
+        key: number
+        incarnation: number
+        seq: number
+      } | null,
+      limit: number,
+    ) =>
+      typedError<AuditPage, IpcError>(
+        __RPC_INVOKE('query_rpc_audit', { filter, before, limit }),
+      ),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
@@ -829,6 +843,61 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+/**
+ *  Opaque exclusive position for newest-first paging. Consumers pass it back
+ *  unchanged; only the store adapter converts it to/from a tsdb cursor.
+ */
+export type AuditCursor = {
+  epoch: number
+  key: number
+  incarnation: number
+  seq: number
+}
+
+/**  Exact stored transport/outcome matches; absent fields do not restrict a scan. */
+export type AuditFilter = {
+  /**  The stored transport spelling, or all transports. */
+  transport: string | null
+  /**  The stored outcome spelling, or all outcomes. */
+  outcome: string | null
+}
+
+/**  Persisted rows in descending event order and the process-run loss count. */
+export type AuditPage = {
+  /**  At most 500 matching records, newest first. */
+  rows: AuditRow[]
+  /**  Pass back as `before` to continue toward older records. */
+  next: AuditCursor | null
+  /**  Rows not saved during this run, including channel overflow and late rows. */
+  dropped: number
+}
+
+/**  An owned terminal HTTP/local audit record, excluding arguments and results. */
+export type AuditRow = {
+  /**  Milliseconds since the Unix epoch, sampled by the sink. */
+  at: number
+  /**  `http` or `local`. */
+  transport: string
+  /**  The fixed method name from the RPC header. */
+  method: string
+  /**  Instance-keyed caller hash; meaningful only within this process run. */
+  owner: string
+  /**  Invocation identity within this process run. */
+  invocation_id: number
+  /**  The local transport's request identity, when supplied. */
+  request_id: number | null
+  /**  `rejected`, `finished` or `subscription`. */
+  phase: string
+  /**  The tracing sink's outcome spelling, absent for rejections. */
+  outcome: string | null
+  /**  Error classification, when supplied by the audit kernel. */
+  kind: string | null
+  /**  Error code, truncated by the sink to at most 128 UTF-8 bytes. */
+  code: string | null
+  /**  Monotonic elapsed time in nanoseconds. */
+  duration_ns: number
+}
 
 export type BrandVersion = {
   brand: string

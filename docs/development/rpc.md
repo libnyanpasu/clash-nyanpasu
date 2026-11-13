@@ -200,10 +200,11 @@ Delivery observations belong to adapters and may cover multiple invocations;
 records retain each invocation's header. Audit correlation handles own no response,
 invoke handle, handler or business work, and impose no exclusive response-to-invocation
 relationship. Unwinding records `Panicked` without catching or converting the
-panic; abort builds cannot record on Drop. Audit durability is diagnostic tracing
-only, best effort on crashes, with no durable transaction log or delivery guarantee.
-The sink is synchronous and must not panic, queue business work or wait on external
-services. Records exclude business values, full degradations and Debug dumps.
+panic; abort builds cannot record on Drop. Audit is best-effort diagnostics, with
+no durable transaction log or delivery guarantee. The sink is synchronous: it may
+`try_send` to a bounded, drop-on-full diagnostic channel, but must not panic,
+queue business work or wait on external services. Records exclude business values,
+full degradations and Debug dumps.
 Native shell dispatch uses the same preparation boundary and audit kernel.
 
 Every transport records at TRACE on `nyanpasu::rpc_audit`, regardless of outcome. Results, polling,
@@ -212,6 +213,35 @@ record chain for establishment and termination, never per frame. Authentication
 rejections, static assets and envelopes rejected by Tauri before `call_rpc` are
 outside this boundary. E2b moved the kernel and its port with the registry; E3's
 local socket/CLI must enter this same kernel.
+
+Both shell composition roots inject `RecordingRpcAuditSink`, which preserves all
+TRACE observations and persists only HTTP/Local `Rejected`, `Finished` and
+`Subscription` records. Tauri IPC/protocol and intermediate phases remain tracing
+only. Rows contain method names, instance-keyed owner hashes, invocation/request
+IDs, wall-clock timestamps, monotonic durations and error classifications; error
+codes are truncated to 128 UTF-8 bytes. Owner hashes correlate calls only within
+one process run. Queries themselves are audited by the same rules.
+
+The shell opens `<app_data_dir>/audit/rpc-audit.tsdb` during startup, beside the
+traffic store, and injects its unique store and the 4096-row channel into core. The audit owner
+flushes up to 1024 rows every 10 seconds using the tsdb low-end profile. Retention
+reads `rpc_audit` settings on every tick: maximum age (default 7 days, range 1–90)
+and accounted bytes (default 16 MiB, range 4–256 MiB) both apply to whole
+10-minute windows. Shortening retention irreversibly deletes expired windows.
+`query_rpc_audit` is a desktop/HTTP query returning newest-first pages, an opaque
+exclusive cursor and the current run's `dropped` count, with at most 500 rows.
+Queries read persisted rows without flushing the channel.
+
+A full channel drops the offered row and increments `dropped`; a closed channel
+means recording is unavailable and adds nothing. Late rows and failed write
+batches also count as dropped. Ordinary write errors discard that batch without
+replay. Backend failure or an unknown write result closes recording until restart;
+queries then report unavailable. Startup only discards corrupt or incompatible
+datasets; other open failures preserve the file and leave recording disabled for
+that run. Shutdown closes the receiver and drains queued rows. Crashes and records
+arriving after closure can be lost without being counted; the loss count is not
+persisted. If the newest window alone exceeds the byte limit, recording may drop
+rows until the next window, for up to 10 minutes.
 
 - HTTP access is explicit opt-in via `rpc(http)`, not inferred authorization from a compatible signature. Review the operation's effects before enabling it. Desktop OS operations, arbitrary outbound URL diagnostics, and desktop-only server controls stay desktop-only unless deliberately adapted and reviewed.
 - Never inject `AppHandle` into an HTTP-enabled RPC command or add it to `RpcDependencies`; doing so grants the handler every capability reachable from the app. Route shared side effects through `NyanpasuClient` and the existing typed client or actor message that owns them. Do not add a one-off managed Tauri closure when an existing actor path already performs the operation. `EventBus` and `rpc.events` carry notifications from backend to frontend; they are not an inbound command channel.

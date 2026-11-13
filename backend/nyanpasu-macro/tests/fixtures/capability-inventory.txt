@@ -106,6 +106,7 @@ probe_direct_egress | desktop,http | - | -
 probe_profile_url | desktop | - | -
 query_core_logs | desktop,http | - | -
 query_logs | desktop,http,local | - | -
+query_rpc_audit | desktop,http | - | -
 query_traffic_active_connection_ids | desktop,http | - | -
 query_traffic_closed_connections | desktop,http | - | -
 query_traffic_report | desktop,http | - | -

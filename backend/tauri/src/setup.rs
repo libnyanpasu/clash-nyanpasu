@@ -1,6 +1,9 @@
 //! Setup logic for the app
-use nyanpasu_observers::{logs::UnavailableCoreLogStore, traffic::TrafficOwnerFactory};
+use nyanpasu_observers::{
+    audit::AuditDropped, logs::UnavailableCoreLogStore, traffic::TrafficOwnerFactory,
+};
 use nyanpasu_owner_support::shutdown::track_until_shutdown;
+use nyanpasu_rpc::audit::{AUDIT_CHANNEL_ROWS, RecordingRpcAuditSink};
 use nyanpasu_rpc_protocol::ShellCapability;
 use nyanpasu_runtime_values::hotkey::HotkeyAction;
 
@@ -45,7 +48,7 @@ use crate::{
 use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
-        ClientSetupArgs, NyanpasuClient, RuntimePaths, UiEventSink,
+        AuditSetup, ClientSetupArgs, NyanpasuClient, RuntimePaths, UiEventSink,
         debug_http::DebugHttpControl,
         effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
@@ -342,6 +345,21 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     )?;
     drop(span);
     let traffic_store = open_traffic_store(&paths);
+    let (audit_rows, receiver) = tokio::sync::mpsc::channel(AUDIT_CHANNEL_ROWS);
+    let dropped = AuditDropped::default();
+    let audit = match nyanpasu_core::audit::open_audit_store(&paths) {
+        Ok(store) => Some(AuditSetup {
+            store: Box::new(store),
+            rows: receiver,
+            dropped: dropped.clone(),
+        }),
+        Err(error) => {
+            tracing::warn!(%error, "RPC audit recording disabled until restart");
+            drop(receiver);
+            None
+        }
+    };
+    app.manage(Arc::new(RecordingRpcAuditSink::new(audit_rows, dropped)));
     let http_routes = Arc::new(nyanpasu_rpc::http::routes::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
@@ -524,7 +542,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
         accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
-        audit: None,
+        audit,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     }))
@@ -640,9 +658,9 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
         host_environment: nyanpasu_rpc::ports::HostEnvironment {
             is_appimage: *crate::consts::IS_APPIMAGE,
         },
-        audit: nyanpasu_rpc::audit::RpcAudit::new(Arc::new(
-            nyanpasu_rpc::audit::TracingRpcAuditSink,
-        )),
+        audit: nyanpasu_rpc::audit::RpcAudit::new(
+            app.state::<Arc<RecordingRpcAuditSink>>().inner().clone(),
+        ),
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),

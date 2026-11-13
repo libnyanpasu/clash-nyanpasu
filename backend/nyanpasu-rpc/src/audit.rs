@@ -1,4 +1,4 @@
-//! Payload-free RPC audit records, lifecycle guard and production tracing sink.
+//! Payload-free RPC audit records, lifecycle guard and production diagnostic sinks.
 
 use std::{
     hash::{BuildHasher as _, RandomState},
@@ -6,11 +6,13 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use nyanpasu_observers::audit::{AuditDropped, AuditRow};
 use nyanpasu_rpc_protocol::RpcOwner;
 use nyanpasu_runtime_values::runtime::{CommitReceipt, MutationOutcome};
+use tokio::sync::mpsc::{self, error::TrySendError};
 
 /// The injected audit sink, invocation counter and instance key for remote owners.
 pub struct RpcAudit {
@@ -79,7 +81,9 @@ impl RpcAuditOwner {
     }
 }
 
-/// Synchronous observation only: implementations must not panic or queue work.
+/// Synchronous observation only. Implementations may `try_send` into a bounded,
+/// drop-on-full diagnostic channel, but must not panic, queue business work or
+/// wait on external services.
 pub trait RpcAuditSink: Send + Sync + 'static {
     fn record(&self, record: &RpcAuditRecord);
 }
@@ -275,7 +279,7 @@ impl Drop for RpcAuditGuard<'_> {
     }
 }
 
-/// Write payload-free dispatch metadata at the existing transport-specific level.
+/// Write payload-free dispatch metadata at TRACE for every transport.
 pub struct TracingRpcAuditSink;
 
 impl RpcAuditSink for TracingRpcAuditSink {
@@ -286,60 +290,13 @@ impl RpcAuditSink for TracingRpcAuditSink {
             } => Some("future_dropped"),
             _ => None,
         };
-        let (phase, outcome, kind, code, completion) = match &record.phase {
-            AuditPhase::Rejected { kind, code } => {
-                ("rejected", None, Some(*kind), code.as_deref(), None)
-            }
-            AuditPhase::Admitted => ("admitted", None, None, None, None),
-            AuditPhase::Delivery { outcome } => (
-                "delivery",
-                Some(match outcome {
-                    DeliveryOutcome::WriteCompleted => "write_completed",
-                    DeliveryOutcome::WriteFailed => "write_failed",
-                    DeliveryOutcome::NotAttempted => "not_attempted",
-                    DeliveryOutcome::Interrupted => "interrupted",
-                    DeliveryOutcome::ResponsePrepared => "response_prepared",
-                }),
-                None,
-                None,
-                None,
-            ),
-            AuditPhase::ObservationEnded {
-                reason: ObservationEnd::FutureDropped,
-            } => (
-                "observation_ended",
-                Some("outcome_unobserved"),
-                None,
-                None,
-                None,
-            ),
-            AuditPhase::Subscription { outcome } => (
-                "subscription",
-                Some(match outcome {
-                    SubscriptionOutcome::Established => "established",
-                    SubscriptionOutcome::Unsubscribed => "unsubscribed",
-                    SubscriptionOutcome::Disconnected => "disconnected",
-                    SubscriptionOutcome::Failed => "failed",
-                }),
-                None,
-                None,
-                None,
-            ),
-            AuditPhase::Finished {
-                outcome,
-                completion,
-            } => {
-                let (outcome, kind, code) = match outcome {
-                    RpcAuditOutcome::Success => ("success", None, None),
-                    RpcAuditOutcome::Failure { kind, code } => {
-                        ("failure", Some(*kind), code.as_deref())
-                    }
-                    RpcAuditOutcome::NotObserved => ("not_observed", None, None),
-                    RpcAuditOutcome::Panicked => ("panicked", None, None),
-                };
-                ("finished", Some(outcome), kind, code, Some(completion))
-            }
-        };
+        let PhaseFields {
+            phase,
+            outcome,
+            kind,
+            code,
+            completion,
+        } = phase_fields(&record.phase);
         let (completion, commits, notifications_pending, degradation_count) = match completion {
             Some(CompletionSummary::Mutation {
                 commits,
@@ -366,3 +323,148 @@ impl RpcAuditSink for TracingRpcAuditSink {
         );
     }
 }
+
+struct PhaseFields<'a> {
+    phase: &'static str,
+    outcome: Option<&'static str>,
+    kind: Option<&'static str>,
+    code: Option<&'a str>,
+    completion: Option<&'a CompletionSummary>,
+}
+
+fn phase_fields(phase: &AuditPhase) -> PhaseFields<'_> {
+    let (phase, outcome, kind, code, completion) = match phase {
+        AuditPhase::Rejected { kind, code } => {
+            ("rejected", None, Some(*kind), code.as_deref(), None)
+        }
+        AuditPhase::Admitted => ("admitted", None, None, None, None),
+        AuditPhase::Delivery { outcome } => (
+            "delivery",
+            Some(match outcome {
+                DeliveryOutcome::WriteCompleted => "write_completed",
+                DeliveryOutcome::WriteFailed => "write_failed",
+                DeliveryOutcome::NotAttempted => "not_attempted",
+                DeliveryOutcome::Interrupted => "interrupted",
+                DeliveryOutcome::ResponsePrepared => "response_prepared",
+            }),
+            None,
+            None,
+            None,
+        ),
+        AuditPhase::ObservationEnded {
+            reason: ObservationEnd::FutureDropped,
+        } => (
+            "observation_ended",
+            Some("outcome_unobserved"),
+            None,
+            None,
+            None,
+        ),
+        AuditPhase::Subscription { outcome } => (
+            "subscription",
+            Some(match outcome {
+                SubscriptionOutcome::Established => "established",
+                SubscriptionOutcome::Unsubscribed => "unsubscribed",
+                SubscriptionOutcome::Disconnected => "disconnected",
+                SubscriptionOutcome::Failed => "failed",
+            }),
+            None,
+            None,
+            None,
+        ),
+        AuditPhase::Finished {
+            outcome,
+            completion,
+        } => {
+            let (outcome, kind, code) = match outcome {
+                RpcAuditOutcome::Success => ("success", None, None),
+                RpcAuditOutcome::Failure { kind, code } => {
+                    ("failure", Some(*kind), code.as_deref())
+                }
+                RpcAuditOutcome::NotObserved => ("not_observed", None, None),
+                RpcAuditOutcome::Panicked => ("panicked", None, None),
+            };
+            ("finished", Some(outcome), kind, code, Some(completion))
+        }
+    };
+    PhaseFields {
+        phase,
+        outcome,
+        kind,
+        code,
+        completion,
+    }
+}
+
+/// Maximum terminal records buffered between storage ticks.
+pub const AUDIT_CHANNEL_ROWS: usize = 4096;
+
+/// Writes every observation to TRACE and offers remote terminal records to the
+/// bounded storage channel without waiting. A closed receiver disables storage.
+pub struct RecordingRpcAuditSink {
+    rows: mpsc::Sender<AuditRow>,
+    dropped: AuditDropped,
+}
+
+impl RecordingRpcAuditSink {
+    /// Shares only the diagnostic sender and process-run loss count with the owner.
+    pub fn new(rows: mpsc::Sender<AuditRow>, dropped: AuditDropped) -> Self {
+        Self { rows, dropped }
+    }
+}
+
+impl RpcAuditSink for RecordingRpcAuditSink {
+    fn record(&self, record: &RpcAuditRecord) {
+        TracingRpcAuditSink.record(record);
+        if let Some(row) = audit_row(record, SystemTime::now())
+            && let Err(TrySendError::Full(_)) = self.rows.try_send(row)
+        {
+            self.dropped.increment();
+        }
+    }
+}
+
+/// Converts only HTTP/local rejections, completions and subscription lifecycle
+/// observations. Samples the supplied wall clock in milliseconds and bounds the
+/// error code to 128 UTF-8 bytes; arguments and results never enter the row.
+#[must_use]
+pub fn audit_row(record: &RpcAuditRecord, at: SystemTime) -> Option<AuditRow> {
+    let transport = match record.header.transport {
+        RpcTransport::Http => "http",
+        RpcTransport::Local => "local",
+        RpcTransport::TauriIpc | RpcTransport::TauriProtocol => return None,
+    };
+    if !matches!(
+        record.phase,
+        AuditPhase::Rejected { .. } | AuditPhase::Finished { .. } | AuditPhase::Subscription { .. }
+    ) {
+        return None;
+    }
+    let fields = phase_fields(&record.phase);
+    let code = fields.code.map(|code| {
+        let mut end = code.len().min(128);
+        while !code.is_char_boundary(end) {
+            end -= 1;
+        }
+        code[..end].to_owned()
+    });
+    Some(AuditRow {
+        at: match at.duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_millis() as i64,
+            Err(error) => -(error.duration().as_millis() as i64),
+        },
+        transport: transport.to_owned(),
+        method: record.header.method.to_owned(),
+        owner: record.header.owner.as_str().to_owned(),
+        invocation_id: record.header.invocation_id,
+        request_id: record.header.request_id.map(|id| id.get()),
+        phase: fields.phase.to_owned(),
+        outcome: fields.outcome.map(str::to_owned),
+        kind: fields.kind.map(str::to_owned),
+        code,
+        duration_ns: record.duration.as_nanos() as u64,
+    })
+}
+
+#[cfg(test)]
+mod tests;

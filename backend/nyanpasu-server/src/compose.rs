@@ -7,7 +7,7 @@ use nyanpasu_contracts::{bundle_metadata::BundleMetadata, elevation::ElevationCo
 use nyanpasu_core::{
     actor_v2::{CoreClient, endpoint::LocalEndpoint, service_actor::ServiceClient},
     client::{
-        ClientSetupArgs, NyanpasuClient, RuntimePaths,
+        AuditSetup, ClientSetupArgs, NyanpasuClient, RuntimePaths,
         effects::{executor::ApplicationEffectExecutor, ports::LoggerRefresher},
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
         system_proxy::{SystemProxyArgs, SystemProxyClient},
@@ -20,6 +20,7 @@ use nyanpasu_net::{
     net_adapters::ReqwestNetworkAdapter,
     subscription_http::SubscriptionHttpFetcher,
 };
+use nyanpasu_observers::audit::AuditDropped;
 use nyanpasu_os::{
     autostart::{AutoLaunchBackend, AutoLaunchConfig},
     core_install::FsBinaryInstaller,
@@ -32,7 +33,7 @@ use nyanpasu_os::{
 use nyanpasu_paths::PathResolver;
 use nyanpasu_profile_io::{content_source::FsProfileContentSource, fs_service::ProfileFileService};
 use nyanpasu_rpc::{
-    audit::RpcAudit,
+    audit::{AUDIT_CHANNEL_ROWS, RecordingRpcAuditSink, RpcAudit},
     events::EventBus,
     registry::{RpcDependencies, UnifiedRpc},
 };
@@ -283,19 +284,35 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
     let runtime_paths = RuntimePaths::from_resolver(&paths);
     let storage_paths = paths.clone();
     let host_runtime_paths = runtime_paths.clone();
-    let (storage, host_adapters, logging, traffic_store) = tokio::task::spawn_blocking(move || {
-        let storage =
-            Storage::try_new(storage_paths.storage_path().as_std_path()).context("open storage")?;
-        let host = host_adapters(&storage_paths, &host_runtime_paths, bundle_metadata);
-        let logging = logging(&storage_paths, service_ipc);
-        let traffic = open_traffic_store(&storage_paths);
-        Ok::<_, anyhow::Error>((storage, host, logging, traffic))
-    })
-    .await
-    .map_err(|error| match error.try_into_panic() {
-        Ok(payload) => std::panic::resume_unwind(payload),
-        Err(error) => anyhow::Error::from(error),
-    })??;
+    let (audit_rows, receiver) = tokio::sync::mpsc::channel(AUDIT_CHANNEL_ROWS);
+    let dropped = AuditDropped::default();
+    let (storage, host_adapters, logging, traffic_store, audit_store) =
+        tokio::task::spawn_blocking(move || {
+            let storage = Storage::try_new(storage_paths.storage_path().as_std_path())
+                .context("open storage")?;
+            let host = host_adapters(&storage_paths, &host_runtime_paths, bundle_metadata);
+            let logging = logging(&storage_paths, service_ipc);
+            let traffic = open_traffic_store(&storage_paths);
+            let audit = nyanpasu_core::audit::open_audit_store(&storage_paths);
+            Ok::<_, anyhow::Error>((storage, host, logging, traffic, audit))
+        })
+        .await
+        .map_err(|error| match error.try_into_panic() {
+            Ok(payload) => std::panic::resume_unwind(payload),
+            Err(error) => anyhow::Error::from(error),
+        })??;
+    let audit = match audit_store {
+        Ok(store) => Some(AuditSetup {
+            store: Box::new(store),
+            rows: receiver,
+            dropped: dropped.clone(),
+        }),
+        Err(error) => {
+            tracing::warn!(%error, "RPC audit recording disabled until restart");
+            drop(receiver);
+            None
+        }
+    };
     let destination = install_dir.to_owned();
     let updater_paths = paths.clone();
     let client = NyanpasuClient::try_new(ClientSetupArgs {
@@ -334,7 +351,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
         window: None,
         accelerators: None,
         traffic_store,
-        audit: None,
+        audit,
         shutdown: owners.shutdown.clone(),
         tasks: owners.tasks.clone(),
     })
@@ -353,7 +370,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
             storage: storage.clone(),
             paths,
             events: events.clone(),
-            audit: RpcAudit::new(Arc::new(nyanpasu_rpc::audit::TracingRpcAuditSink)),
+            audit: RpcAudit::new(Arc::new(RecordingRpcAuditSink::new(audit_rows, dropped))),
         },
         &[nyanpasu_rpc_protocol::ShellCapability::OsIntegration],
     )

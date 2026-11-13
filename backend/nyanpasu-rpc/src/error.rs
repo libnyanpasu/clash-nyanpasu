@@ -138,6 +138,7 @@ unknown_domain!(
     serde_json::Error,
     anyhow::Error,
     nyanpasu_migration::backup::BackupError,
+    nyanpasu_core::client::audit::Error,
 );
 
 pub type Result<T = ()> = std::result::Result<T, IpcError>;

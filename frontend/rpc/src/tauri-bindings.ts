@@ -22,15 +22,25 @@ export const events = {
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
   ),
+  configurationStatusSummaryChanged:
+    makeEvent<ConfigurationStatusSummaryChanged>(
+      'configuration-status-summary-changed',
+    ),
   coreLogsChanged: makeEvent<CoreLogsChanged>('core-logs-changed'),
   coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
     'core-status-changed-event',
+  ),
+  coreStatusSummaryChangedEvent: makeEvent<CoreStatusSummaryChangedEvent>(
+    'core-status-summary-changed-event',
   ),
   schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
     'scheme-request-received-event',
   ),
   serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent_Deserialize>(
     'service-status-changed-event',
+  ),
+  serviceStatusSummaryChangedEvent: makeEvent<ServiceStatusSummaryChangedEvent>(
+    'service-status-summary-changed-event',
   ),
   stateChangedEvent: makeEvent<StateChangedEvent>('state-changed-event'),
   storageResyncEvent: makeEvent<StorageResyncEvent>('storage-resync-event'),
@@ -176,6 +186,25 @@ export type ConfigurationStatus = {
 }
 
 export type ConfigurationStatusChanged = ConfigurationStatus
+
+/**  The secret-free view of [`ConfigurationStatus`]. */
+export type ConfigurationStatusSummary = {
+  event_seq: number
+  /**  A maintenance operation is running. Its description is diagnostic text. */
+  maintenance_active: boolean
+  source_versions: SourceVersions
+  runtime: RuntimeConvergenceSummary
+  effects: EffectConvergenceSummary[]
+  /**  The latest background-source receipt per profile, without the profile's name. */
+  sources: SourceSummary[]
+  active: string | null
+  recent_operations: OperationSummary[]
+}
+
+export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
+/**  How the core's controller is reached. A socket path or URL is a location, not a status. */
+export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
 
 export type ConvergenceHealth =
   | 'healthy'
@@ -352,6 +381,80 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+/**
+ *  [`CoreStateDetail`] without the stop reason's text or the process id. The encoding stays
+ *  externally tagged so a consumer that tests for the `Running` key keeps working.
+ */
+export type CoreStateSummary =
+  | ({
+      Stopped: {
+        has_reason: boolean
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Starting: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Running: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Restarting: {
+        epoch: number
+        attempt: number
+      }
+    } & {
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Switching: {
+        from: number | null
+        to: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+    })
+  | ({
+      Stopping: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Switching?: never
+    })
+
 export type CoreStatusChangedEvent = CoreStatusInfo
 
 export type CoreStatusInfo = {
@@ -364,6 +467,21 @@ export type CoreStatusInfo = {
   revision: RevisionIdInfo | null
   healthy: boolean | null
 }
+
+/**  The secret-free view of [`CoreStatusInfo`]. */
+export type CoreStatusSummary = {
+  controller: ControllerKind | null
+  host: ExecutionHost
+  connectivity: EndpointConnectivitySummary
+  generation: number
+  state: CoreStateSummary | null
+  state_changed_at: number
+  revision: RevisionSummary | null
+  /**  `None` is unknown, never healthy. */
+  healthy: boolean | null
+}
+
+export type CoreStatusSummaryChangedEvent = CoreStatusSummary
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
@@ -378,6 +496,17 @@ export type EffectConvergence = {
   code: EffectFailureCode | null
   /**  The failure's diagnostic text, as the owner reported it. */
   message: string | null
+}
+
+export type EffectConvergenceSummary = {
+  kind: EffectKind
+  health: ConvergenceHealth
+  desired_revision: number
+  applied_revision: number
+  attempts: number
+  automatic_remaining: number
+  code: EffectFailureCode | null
+  has_diagnostic: boolean
 }
 
 /**
@@ -440,6 +569,13 @@ export type EndpointConnectivity =
    *  router never falls back on its own.
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
+
+export type EndpointConnectivitySummary =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**  Unreachable; the transport error stays with protected callers. */
+  | { kind: 'degraded'; desired: ExecutionHost }
 
 /**
  *  Which controller owns the runtime. The app perceives the difference in
@@ -528,6 +664,15 @@ export type OperationStatus = {
   message: string | null
 }
 
+/**  One settled mutation. `domain`, `outcome` and `conclusion` name variants of closed enums. */
+export type OperationSummary = {
+  operation_id: string
+  domain: string
+  outcome: string
+  conclusion: string
+  has_diagnostic: boolean
+}
+
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
 
@@ -542,6 +687,12 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+/**  The identity of the config revision the core adopted, without its content hash. */
+export type RevisionSummary = {
+  epoch: number
+  generation: number
 }
 
 export type RpcError = {
@@ -565,6 +716,15 @@ export type RuntimeConvergence = {
   attempts: number
   automatic_remaining: number
   message: string | null
+}
+
+export type RuntimeConvergenceSummary = {
+  health: ConvergenceHealth
+  operation_id: string | null
+  attempts: number
+  automatic_remaining: number
+  /**  The owner reported diagnostic text, available to protected callers. */
+  has_diagnostic: boolean
 }
 
 export type RuntimeInfos = {
@@ -604,6 +764,19 @@ export type ServiceCompat =
     }
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
+
+/**  [`ServiceCompat`] with the daemon's version only where it parsed as a version. */
+export type ServiceCompatSummary =
+  | { kind: 'unknown' }
+  | { kind: 'compatible'; server_version: string }
+  | {
+      kind: 'incompatible'
+      server_version: string
+      required_major: number
+      required_min: string
+    }
+  /**  The daemon reported text that is not a version, and the text is not repeated. */
+  | { kind: 'unparsable' }
 
 /**
  *  The watch projection (UI settings page + facade). Daemon state, never a
@@ -672,6 +845,20 @@ export type ServiceStatusChangedEvent_Deserialize =
 
 export type ServiceStatusChangedEvent_Serialize = ServiceHostStatus_Serialize
 
+/**  The secret-free view of [`ServiceHostStatus`]. */
+export type ServiceStatusSummary = {
+  name: string
+  version: string
+  status: ServiceStatus
+  /**  The daemon answered the probe. Its data directories and log locations stay protected. */
+  server_reported: boolean
+  phase: ServicePhase
+  compat: ServiceCompatSummary
+  restart_attempts: number
+}
+
+export type ServiceStatusSummaryChangedEvent = ServiceStatusSummary
+
 export type SourceOrigin =
   'scheduled_refresh' | 'manual_refresh' | 'external_file'
 
@@ -686,11 +873,33 @@ export type SourceOutcome =
    */
   | { kind: 'rejected'; code: string; message: string }
 
+export type SourceOutcomeSummary =
+  | { kind: 'committed'; operation_id: string | null }
+  | { kind: 'superseded' }
+  | { kind: 'failed' }
+  | { kind: 'rejected'; code: SourceRejection }
+
+/**  The refusal reason a source receipt names, from the closed set the source owner raises. */
+export type SourceRejection =
+  | 'subscription_rejected'
+  | 'external_source_rejected'
+  /**  A code this build does not classify; never read as success. */
+  | 'other'
+
 export type SourceStatus = {
   profile: ProfileId
   name: string
   origin: SourceOrigin
   outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
+export type SourceSummary = {
+  profile: ProfileId
+  origin: SourceOrigin
+  outcome: SourceOutcomeSummary
   health: ConvergenceHealth
   /**  Unix milliseconds. */
   at: number

@@ -100,12 +100,25 @@ pub async fn get_postprocessing_output(
         .unwrap_or_default())
 }
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetCoreStatus, query)]
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetCoreStatus, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_core_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_runtime_values::core_status::CoreStatusInfo> {
     Ok(client.core_status().into())
+}
+
+/// Which core is running and in what state, without controller endpoints or failure text.
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn get_core_status_summary(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::observation::CoreStatusSummary> {
+    Ok(
+        nyanpasu_runtime_values::observation::CoreStatusSummary::from(
+            &nyanpasu_runtime_values::core_status::CoreStatusInfo::from(client.core_status()),
+        ),
+    )
 }
 
 #[nyanpasu_macro::rpc(http, scope = settings)]

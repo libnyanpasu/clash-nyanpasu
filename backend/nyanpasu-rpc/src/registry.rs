@@ -459,6 +459,8 @@ mod audit_tests;
 #[cfg(all(test, feature = "http"))]
 mod delivery_tests;
 #[cfg(all(test, feature = "http"))]
+mod observation_tests;
+#[cfg(all(test, feature = "http"))]
 mod settings_tests;
 #[cfg(all(test, feature = "http"))]
 mod tests;

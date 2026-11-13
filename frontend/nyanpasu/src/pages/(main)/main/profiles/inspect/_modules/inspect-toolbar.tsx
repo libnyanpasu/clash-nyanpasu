@@ -12,6 +12,7 @@ import {
 import { m } from '@/paraglide/messages'
 import type { RuntimeInspection } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import type { LinkProps } from '@tanstack/react-router'
 import { RowAction, searchPillClassName } from '../../_modules/compact-controls'
 import PageToolbar from '../../_modules/page-toolbar'
 
@@ -35,6 +36,9 @@ const layoutItemClassName = 'flex-none px-3'
  */
 export default function InspectToolbar({
   snapshot,
+  title,
+  titleHidden,
+  backTo,
   snapshotControls,
   status,
   layout,
@@ -47,6 +51,9 @@ export default function InspectToolbar({
 }: {
   /** Absent while loading and when there is no snapshot. */
   snapshot?: RuntimeInspection | null
+  title?: string
+  titleHidden?: boolean
+  backTo?: LinkProps['to']
   snapshotControls?: ReactNode
   status?: ReactNode
   layout: StepLayout
@@ -61,8 +68,9 @@ export default function InspectToolbar({
 }) {
   return (
     <PageToolbar
-      title={m.inspect_title()}
-      backTo="/main/profiles"
+      title={title ?? m.inspect_title()}
+      titleHidden={titleHidden}
+      backTo={backTo}
       // Narrow: the title row carries the steps and refresh, and the snapshot
       // switch and the search share the row below. Wide: one row.
       contextClassName="contents"

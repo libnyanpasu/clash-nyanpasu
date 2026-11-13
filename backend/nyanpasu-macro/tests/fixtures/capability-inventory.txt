@@ -97,6 +97,7 @@ open_core_dir | desktop | opener | -
 open_log_session | desktop,http,local | - | -
 open_logs_dir | desktop | opener | -
 open_native_file_dialog | desktop | dialog | -
+open_rejected_config_window | desktop | - | -
 open_that | desktop | opener | -
 open_web_url | desktop | opener | -
 patch_app_config | desktop,http | - | os_integration,presentation,elevation

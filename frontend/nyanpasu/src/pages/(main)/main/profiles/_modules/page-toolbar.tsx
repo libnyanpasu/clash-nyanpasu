@@ -12,6 +12,7 @@ import type { LinkProps } from '@tanstack/react-router'
  */
 export default function PageToolbar({
   title,
+  titleHidden,
   backTo,
   context,
   actions,
@@ -21,8 +22,10 @@ export default function PageToolbar({
   ...props
 }: Omit<ComponentProps<'header'>, 'title'> & {
   title: string
+  /** Keeps the title as the page heading for assistive technology only, when the window already shows it. */
+  titleHidden?: boolean
   /** Route the mobile back link navigates to. */
-  backTo: LinkProps['to']
+  backTo?: LinkProps['to']
   /** Page state beside the title, such as what the page applies to. */
   context?: ReactNode
   /** Controls at the end of the toolbar. */
@@ -47,10 +50,13 @@ export default function PageToolbar({
       data-slot="page-toolbar"
       {...props}
     >
-      <BackButton to={backTo} label={m.profile_back()} />
+      {backTo && <BackButton to={backTo} label={m.profile_back()} />}
 
       <h1
-        className="text-on-surface max-w-full min-w-0 truncate py-1 text-base leading-6 font-semibold"
+        className={cn(
+          'text-on-surface max-w-full min-w-0 truncate py-1 text-base leading-6 font-semibold',
+          titleHidden && 'sr-only',
+        )}
         data-slot="page-toolbar-title"
       >
         {title}

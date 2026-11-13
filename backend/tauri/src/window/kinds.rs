@@ -247,6 +247,54 @@ impl AppWindow for EditorWindow {
     }
 }
 
+const REJECTED_BUILD_ID_LENGTH: usize = 21;
+
+/// A session-scoped rejected build, with one viewer per persisted file ID.
+#[derive(Debug, Clone)]
+pub(crate) struct RejectedConfigWindow {
+    label: String,
+}
+
+impl RejectedConfigWindow {
+    pub(crate) fn for_snapshot(snapshot_id: &str) -> Result<(Self, Option<WindowParams>)> {
+        anyhow::ensure!(
+            snapshot_id.len() == REJECTED_BUILD_ID_LENGTH
+                && snapshot_id
+                    .chars()
+                    .all(|ch| nanoid::alphabet::SAFE.contains(&ch)),
+            "invalid rejected snapshot id"
+        );
+        Ok((
+            Self {
+                label: format!("rejected-config-{snapshot_id}"),
+            },
+            WindowParamsBuilder::new().param("id", snapshot_id).build(),
+        ))
+    }
+}
+
+impl AppWindow for RejectedConfigWindow {
+    fn label(&self) -> &str {
+        &self.label
+    }
+    fn title(&self) -> &str {
+        "Clash Nyanpasu - Rejected config"
+    }
+    fn url(&self) -> &str {
+        "/rejected-config"
+    }
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(true)
+            .default_size(1100.0, 720.0)
+            .min_size(400.0, 500.0)
+            .center(true)
+    }
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
+        settings.editor
+    }
+}
+
 const TRAY_MENU_WIDTH: f64 = 240.0;
 const TRAY_MENU_HEIGHT: f64 = if cfg!(target_os = "linux") {
     504.0
@@ -501,6 +549,36 @@ mod tests {
         );
         assert_eq!(css.geometry_key(), profile.geometry_key());
         assert_eq!(TrayMenuWindow { cursor: None }.geometry_key(), None);
+    }
+
+    #[test]
+    fn rejected_window_validates_ids_and_reuses_the_same_label() {
+        use crate::window::table::{Opened, WindowTable};
+        let id = "a_-012345678901234567";
+        let (window, params) = RejectedConfigWindow::for_snapshot(id).unwrap();
+        assert_eq!(window.label(), format!("rejected-config-{id}"));
+        assert_eq!(
+            window.url_with_params(params.as_ref()),
+            format!("/rejected-config?id={id}")
+        );
+        let mut table = WindowTable::default();
+        assert_eq!(
+            table.open(window.label(), window.config().singleton, ()),
+            Opened::Build(window.label().to_owned())
+        );
+        assert_eq!(
+            table.open(window.label(), window.config().singleton, ()),
+            Opened::Existing(window.label().to_owned())
+        );
+        for id in [
+            "",
+            "../escape",
+            "aaaaaaaaaaaaaaaaaaaa/",
+            "aaaaaaaaaaaaaaaaaaaaa?",
+            "aaaaaaaaaaaaaaaaaaaaaa",
+        ] {
+            assert!(RejectedConfigWindow::for_snapshot(id).is_err());
+        }
     }
 
     #[test]

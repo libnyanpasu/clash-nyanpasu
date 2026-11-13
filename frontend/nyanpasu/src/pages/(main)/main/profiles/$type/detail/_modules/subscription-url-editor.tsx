@@ -16,6 +16,7 @@ import {
   type ProfileItem_Serialize,
 } from '@nyanpasu/rpc/types'
 import { subscriptionUrlSchema } from '../../../_modules/subscription-url-schema'
+import { useViewRejectedAction } from '../../../_modules/use-view-rejected-action'
 import AnimatedErrorItem from '../../../../_modules/error-item'
 import ProfileFieldDialog from './profile-field-dialog'
 
@@ -55,6 +56,7 @@ function SubscriptionUrlEditorForm({
   profile: ProfileItem_Serialize
 }) {
   const { replaceDefinition, update } = useProfileMutations()
+  const viewRejectedAction = useViewRejectedAction()
 
   const { setOpen } = useModal()
 
@@ -90,6 +92,7 @@ function SubscriptionUrlEditorForm({
             title: m.profile_error_title(),
             kind: 'error',
             error,
+            action: viewRejectedAction(error),
           })
         }
       },

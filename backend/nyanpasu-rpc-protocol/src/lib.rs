@@ -2,6 +2,7 @@
 
 mod command;
 mod command_catalog;
+mod describe;
 mod error;
 mod event;
 mod owner;
@@ -9,10 +10,11 @@ mod request;
 
 pub use command::{CommandEffect, CommandKind, CommandMetadata, RpcTarget, ShellCapability};
 pub use command_catalog::COMMAND_CATALOG;
+pub use describe::{DescribedCommand, RpcDescribeResponse, ServerInfo, ServerKind};
 pub use error::{RpcError, RpcValue};
 pub use event::EventName;
-/// The canonical scope value, defined by the application config domain.
-pub use nyanpasu_config::application::Scope;
+/// Canonical authentication and scope domain types shared across core and transports.
+pub use nyanpasu_contracts::auth::{AuthContext, Principal, Scope, ScopeSet};
 pub use owner::RpcOwner;
 pub use request::Request;
 

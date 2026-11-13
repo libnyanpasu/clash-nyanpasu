@@ -1,6 +1,10 @@
 //! Stable shared event identities, independent of desktop wrappers.
 
-use crate::Scope;
+use crate::{RpcTarget, Scope, ShellCapability};
+
+const DESKTOP_ONLY: &[RpcTarget] = &[RpcTarget::Desktop];
+const DESKTOP_AND_HTTP: &[RpcTarget] = &[RpcTarget::Desktop, RpcTarget::Http];
+const ALL_TARGETS: &[RpcTarget] = &[RpcTarget::Desktop, RpcTarget::Http, RpcTarget::Local];
 
 /// A shared event a shell publishes to its frontends. The names are the
 /// Tauri event names the generated bindings listen on; the desktop shell
@@ -97,6 +101,54 @@ impl EventName {
             | Self::WindowMessage => Scope::SensitiveRead,
         }
     }
+
+    /// Look up an event identity by its wire event name.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|event| event.as_str() == name)
+    }
+
+    /// Explicit transport exposure for this event identity.
+    ///
+    /// Window messages and deep-link notices belong strictly to the native desktop shell.
+    pub fn targets(self) -> &'static [RpcTarget] {
+        match self {
+            Self::SchemeRequestReceived | Self::WindowMessage => DESKTOP_ONLY,
+            Self::AppUpdateStateChanged
+            | Self::ConfigurationStatusChanged
+            | Self::CoreLogsChanged
+            | Self::CoreStatusChanged
+            | Self::ServiceStatusChanged => ALL_TARGETS,
+            Self::ClashWs
+            | Self::ConfigurationStatusSummaryChanged
+            | Self::CoreLogsSummaryChanged
+            | Self::CoreStatusSummaryChanged
+            | Self::ServiceStatusSummaryChanged
+            | Self::StateChanged
+            | Self::StorageResync
+            | Self::StorageValueChanged => DESKTOP_AND_HTTP,
+        }
+    }
+
+    /// Shell capability required before a non-desktop transport may expose or deliver this event.
+    pub fn capability(self) -> Option<ShellCapability> {
+        match self {
+            Self::AppUpdateStateChanged => Some(ShellCapability::AppUpdate),
+            Self::SchemeRequestReceived => Some(ShellCapability::DeepLink),
+            Self::WindowMessage => Some(ShellCapability::Window),
+            Self::ClashWs
+            | Self::ConfigurationStatusChanged
+            | Self::ConfigurationStatusSummaryChanged
+            | Self::CoreLogsChanged
+            | Self::CoreLogsSummaryChanged
+            | Self::CoreStatusChanged
+            | Self::CoreStatusSummaryChanged
+            | Self::ServiceStatusChanged
+            | Self::ServiceStatusSummaryChanged
+            | Self::StateChanged
+            | Self::StorageResync
+            | Self::StorageValueChanged => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -141,10 +193,42 @@ mod tests {
     }
 
     #[test]
-    fn event_names_are_unique() {
+    fn event_targets_keep_desktop_only_signals_off_remote_transports() {
+        let by_target = |target| {
+            EventName::ALL
+                .into_iter()
+                .filter(|event| event.targets().contains(&target))
+                .map(EventName::as_str)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(by_target(RpcTarget::Desktop).len(), EventName::ALL.len());
+        let http = by_target(RpcTarget::Http);
+        assert!(!http.contains(&"window-message-event"));
+        assert!(!http.contains(&"scheme-request-received-event"));
+        assert_eq!(http.len(), EventName::ALL.len() - 2);
+
+        let local = by_target(RpcTarget::Local);
+        assert_eq!(
+            local,
+            [
+                "app-update-state-changed",
+                "core-logs-changed",
+                "configuration-status-changed",
+                "core-status-changed-event",
+                "service-status-changed-event",
+            ]
+        );
+    }
+
+    #[test]
+    fn event_names_roundtrip_and_are_unique() {
         let mut names: Vec<_> = EventName::ALL.into_iter().map(EventName::as_str).collect();
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), EventName::ALL.len());
+        for event in EventName::ALL {
+            assert_eq!(EventName::from_name(event.as_str()), Some(event));
+        }
+        assert_eq!(EventName::from_name("not-an-event"), None);
     }
 }

@@ -26,9 +26,9 @@ import {
   useClashCoreVersion,
   useClashSetting,
   useCoreStatus,
+  useServiceStatus,
   useSetting,
   useSystemProxy,
-  useSystemService,
 } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
@@ -244,9 +244,7 @@ export function ProxyShortcutsWidget({
 }
 
 const CoreStatusBadge = () => {
-  const {
-    query: { data: serviceStatus },
-  } = useSystemService()
+  const { data: serviceStatus } = useServiceStatus()
 
   const { data: coreStatus } = useCoreStatus()
 
@@ -279,37 +277,13 @@ const CoreStatusBadge = () => {
       serviceMessage = m.dashboard_widget_core_service_not_installed()
     }
 
-    let stopedMessage
-
-    // 先取 service 上报的内核状态；server 为空时整条链短路成 undefined，
-    // 后续访问都走这个局部变量，不再有非对称可选链。
-    const serviceCoreState = serviceStatus.server?.core_infos.state
-
-    // core is stopped, but we don't know why, so we check the core status
-    const coreStopReason =
-      coreStatus.status && typeof coreStatus.status === 'object'
-        ? coreStatus.status.Stopped?.reason
-        : undefined
-
-    if (
-      byService &&
-      serviceStatus.status === 'running' &&
-      serviceCoreState !== undefined &&
-      serviceCoreState !== 'Running'
-    ) {
-      // service 明确报告了内核已停：这一分支优先于本地 core status。
-      stopedMessage = serviceCoreState.Stopped
-        ? m.dashboard_widget_core_stopped_by_service_with_message({
-            message: serviceCoreState.Stopped,
-          })
-        : m.dashboard_widget_core_stopped_by_service_unknown()
-    } else if (coreStopReason) {
-      stopedMessage = m.dashboard_widget_core_stopped_with_message({
-        message: coreStopReason,
-      })
-    } else {
-      stopedMessage = m.dashboard_widget_core_stopped_unknown()
-    }
+    // The stop reason and the daemon's own core state are diagnostic text
+    // that the safe summaries only flag, so the badge states where the core
+    // stopped and leaves the reason to the explicit diagnostic views.
+    const stopedMessage =
+      byService && serviceStatus.status === 'running'
+        ? m.dashboard_widget_core_stopped_by_service_unknown()
+        : m.dashboard_widget_core_stopped_unknown()
 
     return `${stopedMessage} ${serviceMessage}`
   }, [serviceStatus, coreStatus])
@@ -347,9 +321,9 @@ const CurrentCoreCard = ({
   const isRunning = coreStatus?.status === 'Running'
 
   const channel = coreStatus?.controller
-    ? 'Http' in coreStatus.controller
+    ? coreStatus.controller === 'Http'
       ? 'HTTP'
-      : 'NamedPipe' in coreStatus.controller
+      : coreStatus.controller === 'NamedPipe'
         ? 'IPC · Named Pipe'
         : 'IPC · Unix Socket'
     : '—'

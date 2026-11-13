@@ -5,7 +5,10 @@ import {
   type PropsWithChildren,
 } from 'react'
 import { unwrapResult } from '@nyanpasu/rpc'
-import type { ConfigurationStatus, EffectKind } from '@nyanpasu/rpc/types'
+import type {
+  ConfigurationStatusSummary,
+  EffectKind,
+} from '@nyanpasu/rpc/types'
 import {
   useMutation,
   useMutationState,
@@ -21,11 +24,11 @@ import {
 import { useQueryApi } from './rpc-provider'
 
 export const CONFIGURATION_STATUS_QUERY_KEY = [
-  'getConfigurationStatus',
+  'getConfigurationStatusSummary',
 ] as const
 
 type ConfigurationStatusContextValue = {
-  status: ConfigurationStatus | undefined
+  status: ConfigurationStatusSummary | undefined
   isLoading: boolean
   isError: boolean
   error: unknown
@@ -63,7 +66,10 @@ const CONFIGURATION_MUTATIONS = new Set<unknown>([
 const ConfigurationStatusContext =
   createContext<ConfigurationStatusContextValue | null>(null)
 
-/** Shares configuration health polling and events for a mounted dashboard. */
+/**
+ * Shares configuration health polling and events for a mounted dashboard,
+ * from the safe summary: diagnostic text is only a flag here.
+ */
 export function ConfigurationStatusProvider({
   enabled = true,
   children,
@@ -71,13 +77,13 @@ export function ConfigurationStatusProvider({
   const api = useQueryApi()
   const queryClient = useQueryClient()
 
-  const statusOptions = api.queries.getConfigurationStatus()
+  const statusOptions = api.queries.getConfigurationStatusSummary()
   const query = useQuery({
     queryKey: statusOptions.queryKey,
     enabled,
     queryFn: async () =>
       acceptConfigurationStatus(
-        queryClient.getQueryData<ConfigurationStatus>(
+        queryClient.getQueryData<ConfigurationStatusSummary>(
           CONFIGURATION_STATUS_QUERY_KEY,
         ),
         await invokeQuery(statusOptions),
@@ -90,9 +96,9 @@ export function ConfigurationStatusProvider({
 
     let disposed = false
     let unlisten: (() => void) | undefined
-    api.events.configurationStatusChanged
+    api.events.configurationStatusSummaryChanged
       .listen((event) =>
-        queryClient.setQueryData<ConfigurationStatus>(
+        queryClient.setQueryData<ConfigurationStatusSummary>(
           CONFIGURATION_STATUS_QUERY_KEY,
           (previous) => acceptConfigurationStatus(previous, event.payload),
         ),

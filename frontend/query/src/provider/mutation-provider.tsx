@@ -105,8 +105,14 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       api.events.coreStatusChangedEvent.listen(() =>
         refetchQueries([api.queries.getCoreStatus().queryKey]),
       ),
+      api.events.coreStatusSummaryChangedEvent.listen(() =>
+        refetchQueries([api.queries.getCoreStatusSummary().queryKey]),
+      ),
       api.events.serviceStatusChangedEvent.listen(() =>
         refetchQueries([api.queries.statusService().queryKey]),
+      ),
+      api.events.serviceStatusSummaryChangedEvent.listen(() =>
+        refetchQueries([api.queries.getServiceStatusSummary().queryKey]),
       ),
     ]
     return () => {

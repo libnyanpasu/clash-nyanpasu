@@ -10,7 +10,7 @@ aho-corasick = '1'
 bytemuck = { version = '1', features = ['derive'] }
 crc32fast = '1'
 fst = '0.4'
-maxminddb = '0.32'
+maxminddb = '0.33'
 memmap2 = '0.9'
 regex-automata = { version = '0.4', default-features = false, features = [
   'std',

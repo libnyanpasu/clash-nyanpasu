@@ -31,24 +31,13 @@ pub enum MutationConclusion {
 }
 
 /// What the core's own validation contributed to this attempt.
-///
-/// An absent capability and a passing verdict are not the same fact, and the
-/// receipt is where the difference is recorded: a Try that ran without a check
-/// has only the apply as evidence, and whoever reads the operation later needs
-/// to know that (core-manager amendment A2: a check is never a precondition).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckRecord {
     /// No check was owed: nothing critical was going to be applied.
     NotOwed,
     /// The core accepted the document.
     Passed,
-    /// The host owning the runtime has no check capability at all, so the Try
-    /// was the only authority available.
-    Skipped(String),
-    /// The host owns a check and could not serve it. Different from both
-    /// [`CheckRecord::NotOwed`] and [`CheckRecord::Skipped`]: a check was owed,
-    /// it ran, and it produced no verdict — which is why the mutation went no
-    /// further.
+    /// A check was owed but produced no verdict, so the mutation went no further.
     Unserviceable(String),
 }
 

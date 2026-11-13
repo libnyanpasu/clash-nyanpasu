@@ -6,7 +6,7 @@ use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_logging::LogSession;
 use nyanpasu_owner_support::blocking;
 use nyanpasu_rpc_protocol::{
-    RpcError, RpcOwner,
+    AuthContext, RpcError, RpcOwner, RpcTarget, Scope,
     frame::{self, Feature, Frame, Reply, RequestId, SubscriptionErrorCode, SubscriptionTarget},
     session::{RECOVERABLE_EVENTS, Session},
 };
@@ -26,7 +26,7 @@ use super::subscriptions::{
 };
 use crate::{
     audit::{AuditInvocation, AuditPhase, DeliveryOutcome, RpcTransport, SubscriptionOutcome},
-    registry::{RpcFuture, UnifiedRpc, dispatch_with_audit, unreported},
+    registry::{RpcCaller, RpcFuture, UnifiedRpc, dispatch_with_audit, unreported},
 };
 
 /// Bounds are per connection, so a blocked peer cannot consume another's capacity.
@@ -86,6 +86,7 @@ impl LocalServer {
         listener: EndpointListener,
         shutdown: CancellationToken,
     ) -> Result<(), EndpointError> {
+        let auth = AuthContext::local_socket(listener.user());
         let mut connections = JoinSet::new();
         let mut number = 0u64;
         let result = loop {
@@ -96,7 +97,7 @@ impl LocalServer {
                 accepted = listener.accept() => match accepted {
                     Ok(stream) => {
                         number = number.checked_add(1).expect("local connection IDs exhausted");
-                        connections.spawn(serve_stream(stream, RpcOwner::local_connection(&self.instance, number), self.rpc.clone(), self.source.clone(), self.limits, shutdown.child_token()).with_current_subscriber());
+                        connections.spawn(serve_stream(stream, RpcOwner::local_connection(&self.instance, number), auth.clone(), self.rpc.clone(), self.source.clone(), self.limits, shutdown.child_token()).with_current_subscriber());
                     }
                     Err(error) => break Err(error),
                 }
@@ -156,6 +157,7 @@ struct Connection {
     rpc: UnifiedRpc,
     source: Arc<dyn SubscriptionSource>,
     owner: RpcOwner,
+    auth: AuthContext,
     session: Session,
     limits: ConnectionLimits,
     pending_resources: usize,
@@ -245,26 +247,29 @@ impl Connection {
             Frame::Request { id, method, params } => {
                 let opening = method == "open_log_session";
                 let log_call = opening || method == "close_log_session";
+                let command_admitted = self
+                    .rpc
+                    .admit_command(RpcTransport::Local, &method, Some(&self.auth))
+                    .is_ok();
+                let log_call = command_admitted && log_call;
                 if log_call {
                     self.pending_log_calls += 1;
                 }
-                let reserved = opening && self.has_capacity();
+                let reserved = command_admitted && opening && self.has_capacity();
                 if reserved {
                     self.pending_resources += 1;
                 }
-                let admission = if opening && !reserved {
-                    Err(RpcError::new(
-                        "resource_limit",
-                        "connection resource limit reached",
-                    ))
-                } else {
-                    Ok(())
-                };
+                let resource_limit_reached = command_admitted && opening && !reserved;
                 let rpc = self.rpc.clone();
                 let owner = self.owner.clone();
-                let audit =
-                    self.rpc
-                        .audit_invocation(RpcTransport::Local, &method, &owner, Some(id));
+                let caller = RpcCaller::new(self.auth.clone(), owner.clone());
+                let audit = self.rpc.audit_invocation(
+                    RpcTransport::Local,
+                    &method,
+                    &owner,
+                    Some(&self.auth.principal),
+                    Some(id),
+                );
                 self.calls.spawn(
                     async move {
                         let result = rpc
@@ -272,9 +277,18 @@ impl Connection {
                                 &audit,
                                 RpcTransport::Local,
                                 &method,
-                                owner,
+                                Some(caller),
                                 params.clone(),
-                                admission,
+                                move || {
+                                    if resource_limit_reached {
+                                        Err(RpcError::new(
+                                            "resource_limit",
+                                            "connection resource limit reached",
+                                        ))
+                                    } else {
+                                        Ok(())
+                                    }
+                                },
                             )
                             .await;
                         let opened = if opening {
@@ -323,16 +337,64 @@ impl Connection {
                 let audit = self.rpc.dependencies.audit.invocation(
                     RpcTransport::Local,
                     &self.owner,
+                    Some(&self.auth.principal),
                     "local_subscribe",
                     Some(id),
                 );
                 let pending = control.is_none();
-                let rejected = control.or_else(|| {
-                    (!self.has_capacity()).then_some(Frame::SubscriptionError {
-                        target: SubscriptionTarget::Id(id),
+                let is_resource_limit = matches!(
+                    control,
+                    Some(Frame::SubscriptionError {
                         code: SubscriptionErrorCode::ResourceLimit,
+                        ..
                     })
+                );
+                let check_policy = pending || is_resource_limit;
+                let event = (check_policy && stream != "connection-details").then(|| {
+                    RECOVERABLE_EVENTS
+                        .into_iter()
+                        .find(|name| Some(name.as_str()) == event.as_deref())
+                        .expect("session admitted a recoverable identity")
                 });
+                let policy_rejection = if check_policy {
+                    let admission = match event {
+                        Some(event) => crate::policy::admit_event(
+                            event,
+                            &self.rpc.provided,
+                            RpcTarget::Local,
+                            Some(&self.auth),
+                        ),
+                        None => crate::policy::admit_route(Scope::Read, Some(&self.auth)),
+                    };
+                    admission.err().map(|error| match error.kind {
+                        "unsupported" => SubscriptionErrorCode::Unsupported,
+                        _ => SubscriptionErrorCode::Forbidden,
+                    })
+                } else {
+                    None
+                };
+                let rejected = if is_resource_limit {
+                    policy_rejection
+                        .map(|code| Frame::SubscriptionError {
+                            target: SubscriptionTarget::Id(id),
+                            code,
+                        })
+                        .or(control)
+                } else {
+                    control
+                        .or_else(|| {
+                            policy_rejection.map(|code| Frame::SubscriptionError {
+                                target: SubscriptionTarget::Id(id),
+                                code,
+                            })
+                        })
+                        .or_else(|| {
+                            (!self.has_capacity()).then_some(Frame::SubscriptionError {
+                                target: SubscriptionTarget::Id(id),
+                                code: SubscriptionErrorCode::ResourceLimit,
+                            })
+                        })
+                };
                 if let Some(rejection) = rejected {
                     let code = match rejection {
                         Frame::SubscriptionError { code, .. } => code,
@@ -373,22 +435,6 @@ impl Connection {
                     async move {
                         let mut failure = SubscriptionErrorCode::SnapshotUnavailable;
                         let result = dispatch_with_audit(&audit, || {
-                            let event = (stream != "connection-details").then(|| {
-                                RECOVERABLE_EVENTS
-                                    .into_iter()
-                                    .find(|name| Some(name.as_str()) == event.as_deref())
-                                    .expect("session admitted a recoverable identity")
-                            });
-                            if event
-                                == Some(nyanpasu_rpc_protocol::EventName::AppUpdateStateChanged)
-                                && !rpc.command_capabilities_available("get_app_update_state")
-                            {
-                                failure = SubscriptionErrorCode::Unsupported;
-                                return Err(RpcError::new(
-                                    "unsupported",
-                                    "application updates are unavailable in this shell",
-                                ));
-                            }
                             let failure = &mut failure;
                             Ok(unreported(async move {
                                 let Some(event) = event else {
@@ -434,6 +480,7 @@ impl Connection {
                 let audit = self.rpc.dependencies.audit.invocation(
                     RpcTransport::Local,
                     &self.owner,
+                    Some(&self.auth.principal),
                     "local_unsubscribe",
                     Some(id),
                 );
@@ -632,6 +679,7 @@ mod tests;
 fn subscription_error(code: SubscriptionErrorCode) -> RpcError {
     let kind = match code {
         SubscriptionErrorCode::FeatureNotNegotiated => "feature_not_negotiated",
+        SubscriptionErrorCode::Forbidden => "forbidden",
         SubscriptionErrorCode::Unsupported => "unsupported",
         SubscriptionErrorCode::UnknownStream => "unknown_stream",
         SubscriptionErrorCode::ResourceLimit => "resource_limit",
@@ -657,6 +705,7 @@ fn subscription_id(frame: &Frame) -> Option<&str> {
 pub(super) async fn serve_stream<S>(
     mut stream: S,
     owner: RpcOwner,
+    auth: AuthContext,
     rpc: UnifiedRpc,
     source: Arc<dyn SubscriptionSource>,
     limits: ConnectionLimits,
@@ -776,6 +825,7 @@ pub(super) async fn serve_stream<S>(
         rpc,
         source,
         owner,
+        auth,
         session,
         limits,
         pending_resources: 0,

@@ -150,6 +150,7 @@ impl HttpServerState {
             LocalSession {
                 authority,
                 access_token: access_token.clone(),
+                session_id: format!("sess_{}", uuid::Uuid::new_v4().simple()),
                 shutdown: cancellation.clone(),
             },
             local_session,
@@ -354,11 +355,16 @@ impl Drop for HttpServerClientInner {
     }
 }
 
+/// Per-session cancellation token injected by HTTP bootstrap authentication.
+#[derive(Clone)]
+pub(crate) struct HttpSessionRevocation(pub(crate) CancellationToken);
+
 /// Reject foreign origins and DNS rebinding before allowing local RPC access.
 #[derive(Clone)]
 struct LocalSession {
     authority: String,
     access_token: String,
+    session_id: String,
     shutdown: CancellationToken,
 }
 
@@ -431,6 +437,15 @@ async fn local_session(
     if !authenticated {
         return reject(StatusCode::UNAUTHORIZED);
     }
+    let mut request = request;
+    request
+        .extensions_mut()
+        .insert(nyanpasu_rpc_protocol::AuthContext::session(
+            state.session_id.clone(),
+        ));
+    request
+        .extensions_mut()
+        .insert(HttpSessionRevocation(state.shutdown.clone()));
     let mut response = next.run(request).await;
     // Only the icon adapter can mark a successful response for private caching.
     // Other routes and dev-proxy responses retain the listener's no-store policy.

@@ -143,6 +143,7 @@ restart_service | desktop | elevation | presentation | mutation | system
 restart_sidecar | desktop,http | - | elevation,os_integration,presentation | mutation | system
 retry_configuration_effect | desktop,http | - | hotkey,os_integration,presentation | mutation | system
 retry_configuration_runtime | desktop,http | - | elevation,os_integration,presentation | mutation | system
+rpc_describe | desktop,http,local | - | - | query | read
 save_profile_file | desktop,http | - | elevation,os_integration,presentation | mutation | profile
 save_window_size_state | desktop | window | - | mutation | system
 select_proxy | desktop,http | - | presentation | mutation | proxy

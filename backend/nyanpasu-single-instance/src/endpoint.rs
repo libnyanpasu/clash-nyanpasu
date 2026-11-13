@@ -165,6 +165,7 @@ impl Endpoint {
 pub struct EndpointListener {
     // Close the listener before releasing the claim (fields drop in declaration order).
     listener: Listener,
+    user: String,
     #[cfg(unix)]
     _claim: platform::Claim,
 }
@@ -178,6 +179,12 @@ impl EndpointListener {
         let namespace = endpoint.namespace;
         let path = endpoint.path.clone();
         join_blocking(tokio::task::spawn_blocking(move || platform::bind(namespace, &path)).await)
+    }
+
+    /// Validated host user identity enforcing same-user access on this listener (UID decimal on
+    /// Unix, SID on Windows).
+    pub fn user(&self) -> &str {
+        &self.user
     }
 
     /// Accepts the next stream, retaining the listener for further connections.

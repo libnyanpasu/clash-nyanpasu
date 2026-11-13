@@ -57,7 +57,8 @@ pub(super) fn socket_name(path: &Path) -> io::Result<Name<'static>> {
 
 pub(super) fn bind(namespace: Namespace, path: &Path) -> Result<EndpointListener, EndpointError> {
     validate(namespace, path)?;
-    let sddl = U16CString::from_str(format!("D:P(A;;GA;;;{})", current_user()?))
+    let user = current_user()?;
+    let sddl = U16CString::from_str(format!("D:P(A;;GA;;;{user})"))
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
         .context(AccessControlSnafu)?;
     let security_descriptor = SecurityDescriptor::deserialize(&sddl).context(AccessControlSnafu)?;
@@ -79,7 +80,7 @@ pub(super) fn bind(namespace: Namespace, path: &Path) -> Result<EndpointListener
                 source,
             },
         })?;
-    Ok(EndpointListener { listener })
+    Ok(EndpointListener { listener, user })
 }
 
 fn current_user_sid() -> io::Result<String> {

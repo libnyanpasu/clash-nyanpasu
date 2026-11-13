@@ -4,7 +4,7 @@ use std::{
 };
 
 use nyanpasu_rpc_protocol::{
-    COMMAND_CATALOG, EventName, RpcOwner, RpcTarget,
+    AuthContext, COMMAND_CATALOG, EventName, RpcOwner, RpcTarget,
     client::{LocalCallError, LocalClient, LocalSubscription, SubscriptionState},
     frame::{Reply, SubscriptionErrorCode},
     session::RECOVERABLE_EVENTS,
@@ -50,6 +50,7 @@ impl Peer {
         let stop = CancellationToken::new();
         let shutdown = stop.clone();
         let task = tokio::spawn(async move {
+            let auth = AuthContext::local_socket(listener.user());
             let stream = ControlledStream {
                 stream: listener.accept().await.unwrap(),
                 gate: writer,
@@ -57,6 +58,7 @@ impl Peer {
             serve_stream(
                 stream,
                 RpcOwner::local_connection(&server.instance, 1),
+                auth,
                 server.rpc,
                 server.source,
                 server.limits,
@@ -224,6 +226,7 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
         "open_log_session",
         "query_logs",
         "close_log_session",
+        "rpc_describe",
     ];
     expected.sort_unstable();
     let mut actual: Vec<_> = COMMAND_CATALOG

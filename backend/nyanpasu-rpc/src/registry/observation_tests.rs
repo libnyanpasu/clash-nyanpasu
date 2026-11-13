@@ -84,7 +84,10 @@ async fn summary_queries_project_the_full_values() {
 #[tokio::test]
 async fn log_summary_queries_drop_diagnostic_text_and_secrets() {
     let fixture = Fixture::new(false).await;
-    let app = fixture.rpc.clone().router();
+    let app = crate::test_support::with_http_auth(
+        fixture.rpc.clone().router(),
+        crate::test_support::test_http_auth(),
+    );
     let cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
     let app_log = fixture
         .rpc

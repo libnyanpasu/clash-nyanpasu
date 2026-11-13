@@ -2,6 +2,7 @@
 
 pub mod archive;
 pub mod clash;
+pub mod describe;
 pub mod host;
 pub mod icons;
 pub mod logs;

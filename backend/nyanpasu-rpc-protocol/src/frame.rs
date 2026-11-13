@@ -91,6 +91,8 @@ pub enum SubscriptionErrorCode {
     ResourceLimit,
     /// A fresh complete snapshot could not be obtained.
     SnapshotUnavailable,
+    /// The caller lacks the scope required by the stream or event.
+    Forbidden,
 }
 
 /// A failure addresses either an unacknowledged request or an established subscription.

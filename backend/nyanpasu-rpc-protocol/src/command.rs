@@ -266,7 +266,7 @@ mod tests {
                 .iter()
                 .filter(|command| command.targets.contains(&RpcTarget::Local))
                 .count(),
-            13
+            14
         );
         let patch = COMMAND_CATALOG
             .iter()

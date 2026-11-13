@@ -6,7 +6,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use nyanpasu_rpc_protocol::{COMMAND_CATALOG, ShellCapability};
+use nyanpasu_rpc_protocol::{AuthContext, COMMAND_CATALOG, ServerInfo, ShellCapability};
 use parking_lot::Mutex;
 use serde_json::Value;
 use tower::ServiceExt as _;
@@ -101,6 +101,7 @@ impl Fixture {
                 paths,
                 events: EventBus::new(),
             },
+            ServerInfo::desktop("0.0.0-test"),
             provided,
         )
         .unwrap();
@@ -112,7 +113,13 @@ impl Fixture {
     }
 
     pub async fn call(&self, method: &str, params: Value) -> (StatusCode, Value) {
-        rpc_for_test_call(&self.rpc.clone().router(), method, params, None).await
+        rpc_for_test_call(
+            &with_http_auth(self.rpc.clone().router(), test_http_auth()),
+            method,
+            params,
+            None,
+        )
+        .await
     }
 
     pub async fn shutdown(self) {
@@ -168,28 +175,45 @@ pub const CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::HttpServer,
 ];
 
+/// Build an explicit full-scope bootstrap HTTP `Session` caller for router tests.
+pub fn test_http_auth() -> AuthContext {
+    AuthContext::session("test-session")
+}
+
+/// Wrap an HTTP router with a fixed [`AuthContext`] extension for authenticated unit tests.
+pub fn with_http_auth(router: Router, auth: AuthContext) -> Router {
+    router.layer(axum::Extension(auth))
+}
+
 pub async fn rpc_for_test_call(
     app: &Router,
     method: &str,
     params: Value,
     cookie: Option<&str>,
 ) -> (StatusCode, Value) {
+    rpc_for_test_call_with_auth(app, method, params, cookie, None).await
+}
+
+pub async fn rpc_for_test_call_with_auth(
+    app: &Router,
+    method: &str,
+    params: Value,
+    cookie: Option<&str>,
+    auth: Option<AuthContext>,
+) -> (StatusCode, Value) {
     let mut request = Request::post("/bridge/rpc").header("content-type", "application/json");
     if let Some(cookie) = cookie {
         request = request.header("cookie", cookie);
     }
-    let response = app
-        .clone()
-        .oneshot(
-            request
-                .body(Body::from(
-                    serde_json::to_vec(&serde_json::json!({"method":method,"params":params}))
-                        .unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
+    let mut request = request
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({"method":method,"params":params})).unwrap(),
+        ))
         .unwrap();
+    if let Some(auth) = auth {
+        request.extensions_mut().insert(auth);
+    }
+    let response = app.clone().oneshot(request).await.unwrap();
     let status = response.status();
     let value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
@@ -219,8 +243,7 @@ pub fn assert_duplicate_commands_rejected(entry: &'static crate::registry::Comma
 pub async fn event_stream(rpc: UnifiedRpc) -> impl futures::Stream<Item = String> + use<> {
     use futures::StreamExt as _;
 
-    let response = rpc
-        .router()
+    let response = with_http_auth(rpc.router(), test_http_auth())
         .oneshot(Request::get("/bridge/events").body(Body::empty()).unwrap())
         .await
         .unwrap();

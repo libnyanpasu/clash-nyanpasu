@@ -131,6 +131,8 @@ operations! {
     OpenLogSession: "open_log_session", OpenLogSessionRequest => LogSession, LogSession, LogError;
     QueryLogs: "query_logs", QueryLogsRequest => LogPage, LogPage, LogError;
     CloseLogSession: "close_log_session", CloseLogSessionRequest => (), (), LogError;
+    RpcDescribe: "rpc_describe", () =>
+        crate::RpcDescribeResponse, crate::RpcDescribeResponse, NoDomainError;
 }
 
 #[cfg(test)]

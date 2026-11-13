@@ -3,21 +3,31 @@
 use std::sync::Arc;
 
 use nyanpasu_core::client::effects::ports::LogRotation;
-use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
+use nyanpasu_rpc::registry::{CommandEntry, RpcCallMeta, RpcCaller, RpcDependencies, RpcFuture};
 use nyanpasu_rpc_protocol::{
-    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, Scope,
+    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcTarget, Scope,
 };
 use serde_json::Value;
 
 const PANIC_PAYLOAD: &str = "e4b-fatal-original-payload-53fd73";
 
-fn panic_handler(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+fn panic_handler(
+    _: Arc<RpcDependencies>,
+    _: RpcCallMeta,
+    _: RpcCaller,
+    _: Value,
+) -> Result<RpcFuture, RpcError> {
     Ok(Box::pin(nyanpasu_rpc::registry::unreported(async {
         panic!("{PANIC_PAYLOAD}")
     })))
 }
 
-fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+fn owner_work(
+    deps: Arc<RpcDependencies>,
+    _: RpcCallMeta,
+    _: RpcCaller,
+    _: Value,
+) -> Result<RpcFuture, RpcError> {
     use struct_patch::Patch as _;
     Ok(Box::pin(nyanpasu_rpc::registry::unreported(async move {
         let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();

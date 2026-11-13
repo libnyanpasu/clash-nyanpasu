@@ -30,8 +30,8 @@ use nyanpasu_ipc::api::{
 };
 use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
 use nyanpasu_rpc_protocol::{
-    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, Scope,
-    client::LocalClient, frame::Reply,
+    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcTarget, Scope, client::LocalClient,
+    frame::Reply,
 };
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use serde_json::{Value, json};
@@ -416,7 +416,12 @@ async fn server_startup_failure_releases_bound_endpoints() {
     );
 }
 
-fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+fn owner_work(
+    deps: Arc<RpcDependencies>,
+    _: nyanpasu_rpc::registry::RpcCallMeta,
+    _: nyanpasu_rpc::registry::RpcCaller,
+    _: Value,
+) -> Result<RpcFuture, RpcError> {
     use struct_patch::Patch as _;
     Ok(Box::pin(nyanpasu_rpc::registry::unreported(async move {
         let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();

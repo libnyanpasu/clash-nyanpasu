@@ -266,6 +266,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProxies', ...args],
         queryFn: () => commands.getProxies(...args),
       }),
+    getProxyGroupIcons: (
+      ...args: Parameters<typeof commands.getProxyGroupIcons>
+    ) =>
+      queryOptions({
+        queryKey: ['getProxyGroupIcons', ...args],
+        queryFn: () => commands.getProxyGroupIcons(...args),
+      }),
     isTrayIconSet: (...args: Parameters<typeof commands.isTrayIconSet>) =>
       queryOptions({
         queryKey: ['isTrayIconSet', ...args],

@@ -140,6 +140,7 @@ mod tests {
                 "get_profile_sync_runs",
                 "get_profile_sync_status",
                 "get_profiles",
+                "get_proxy_group_icons",
                 "get_runtime_config",
                 "get_runtime_yaml",
                 "get_storage_item",

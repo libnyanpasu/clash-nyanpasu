@@ -88,6 +88,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::status::status_service,
             commands::profiles::is_portable,
             commands::clash::get_proxies,
+            commands::clash::get_proxy_group_icons,
             commands::icons::is_tray_icon_set,
             commands::icons::is_widget_icon_set,
             commands::runtime::get_core_status,

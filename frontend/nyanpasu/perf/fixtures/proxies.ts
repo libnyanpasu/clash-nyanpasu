@@ -61,10 +61,10 @@ export function createProxiesFixture({
         all: names,
         now: names[(g * 37) % nodes],
         fixed: null,
-        testUrl: null,
+        delayKey: '',
         expectedStatus: null,
         hidden: false,
-        icon: null,
+        iconConfigured: false,
         capabilities: { select: true, clearFixed: false },
       }) satisfies ClashProxiesQueryGroupItem,
   )
@@ -81,5 +81,6 @@ export function createProxiesFixture({
     global: groupItems[0],
     groups: groupItems,
     nodes: nodeMap,
+    delayKeys: Object.fromEntries(groupItems.map(({ name }) => [name, ''])),
   }
 }

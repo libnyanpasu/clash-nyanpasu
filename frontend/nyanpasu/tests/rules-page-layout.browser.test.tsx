@@ -24,6 +24,7 @@ const backend = vi.hoisted(() => ({
 vi.mock('@nyanpasu/query', () => ({
   useClashRules: () => ({ data: { rules: backend.rules } }),
   useClashProxies: () => ({ proxies: { data: { groups: [] } } }),
+  useProxyGroupIcons: () => ({}),
   useCurrentProfileUid: () => 'profile',
   useCachedIcon: () => undefined,
   useTrayIcon: () => undefined,

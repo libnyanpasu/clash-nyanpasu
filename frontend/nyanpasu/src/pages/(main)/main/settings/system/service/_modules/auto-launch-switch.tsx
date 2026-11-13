@@ -3,7 +3,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting } from '@nyanpasu/query'
+import { useSystemSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -11,7 +11,7 @@ import {
 } from '../../../../_modules/settings-card'
 
 export default function AutoLaunchSwitch() {
-  const autoLaunch = useSetting('enable_auto_launch')
+  const autoLaunch = useSystemSetting('enable_auto_launch')
 
   const handleAutoLaunch = useLockFn(async () => {
     try {

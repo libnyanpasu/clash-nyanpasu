@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
-import { useClashSetting } from '@nyanpasu/query'
+import { useClashSystemSetting } from '@nyanpasu/query'
 import { type PortStrategyKind } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
@@ -19,7 +19,7 @@ import {
 } from '../../../../_modules/settings-card'
 
 export default function PortStrategySelector() {
-  const { value, upsert } = useClashSetting('external_controller')
+  const { value, upsert } = useClashSystemSetting('external_controller')
 
   const messages = {
     allow_fallback: m.settings_clash_settings_allow_fallback_label(),

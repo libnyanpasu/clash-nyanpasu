@@ -185,7 +185,10 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::{application::NyanpasuAppConfig, request::testing::assert_refused};
+    use crate::{
+        application::{ApplicationPreferencesPatch, NyanpasuAppConfig},
+        request::testing::assert_refused,
+    };
 
     fn decode(value: Value) -> Result<SystemSettingsPatch, String> {
         serde_json::from_value(value).map_err(|error| error.to_string())
@@ -366,5 +369,43 @@ mod tests {
             );
         }
         assert!(rendered.contains("\"enable_system_proxy\"") && rendered.contains("\"pac_url\""));
+    }
+
+    /// Each configured field is written by exactly one request type, or by a dedicated command;
+    /// none is writable through two request types and none is silently unwritable. The sample is
+    /// the serialized default config, so a newly added field takes part automatically.
+    #[test]
+    fn every_config_field_has_exactly_one_request_type() {
+        const DEDICATED: [&str; 4] = ["hotkeys", "enable_service_mode", "remote_access", "core"];
+        let config = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        for (field, value) in config.as_object().unwrap() {
+            // A default `null` (an unset clearable field) is spelled as a write in both requests.
+            let body = json!({ field: value });
+            let writes = |converted: Option<NyanpasuAppConfigPatch>| {
+                converted.is_some_and(|patch| {
+                    serde_json::to_value(patch)
+                        .unwrap()
+                        .as_object()
+                        .unwrap()
+                        .contains_key(field)
+                })
+            };
+            let preferences = writes(
+                serde_json::from_value::<ApplicationPreferencesPatch>(body.clone())
+                    .ok()
+                    .map(Into::into),
+            );
+            let system = writes(
+                serde_json::from_value::<SystemSettingsPatch>(body)
+                    .ok()
+                    .map(Into::into),
+            );
+            let expected = usize::from(!DEDICATED.contains(&field.as_str()));
+            assert_eq!(
+                usize::from(preferences) + usize::from(system),
+                expected,
+                "{field}: preferences={preferences} system={system}"
+            );
+        }
     }
 }

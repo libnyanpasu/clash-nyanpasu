@@ -2,10 +2,12 @@ import { unwrapResult, type Result } from '@nyanpasu/rpc'
 import type {
   ApplicationPreferencesPatch_Serialize,
   ClashConfig,
-  ClashConfigPatch_Deserialize,
+  ClashSettingsPatch_Deserialize,
+  ClashSystemPatch_Deserialize,
   IpcError,
   MutationOutcome,
   NyanpasuAppConfig_Serialize,
+  SystemSettingsPatch_Deserialize,
 } from '@nyanpasu/rpc/types'
 import {
   useMutation,
@@ -109,9 +111,10 @@ const useTypedConfigField = <
 }
 
 /**
- * Ordinary application preferences only. Host-bound hotkeys and privileged
- * service mode use `set_hotkeys` and `set_service_mode`; reads keep the full
- * application config. Keep nested patches optional when they are untouched.
+ * Ordinary application preferences only (`settings` scope). System-affecting
+ * fields use `useSystemSettings`; host-bound hotkeys, service mode and the core
+ * selection use their own commands. Reads keep the full application config.
+ * Keep nested patches optional when they are untouched.
  */
 type AppConfigPatch = Partial<ApplicationPreferencesPatch_Serialize>
 
@@ -148,13 +151,88 @@ export const useSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
 }
 
 /**
+ * The system-affecting application settings (`system` scope): autostart, the
+ * system proxy with its guard and bypass list, and the PAC URL. They read from
+ * the same application config as `useSettings`.
+ *
+ * @example
+ * ```tsx
+ * const { query, upsert } = useSystemSettings()
+ *
+ * upsert.mutate({ enable_system_proxy: true })
+ * ```
+ */
+export const useSystemSettings = () => {
+  const api = useQueryApi()
+  return useTypedConfig<
+    NyanpasuAppConfig_Serialize,
+    SystemSettingsPatch_Deserialize
+  >(api.queries.getAppConfig(), api.mutations.patchSystemSettings)
+}
+
+/**
+ * One system-affecting application setting, addressed by its typed name.
+ * `pac_url` is the clearable one: `null` clears it.
+ *
+ * @example
+ * ```tsx
+ * const { value, upsert } = useSystemSetting('enable_system_proxy')
+ * ```
+ */
+export const useSystemSetting = <
+  K extends keyof NyanpasuAppConfig_Serialize &
+    keyof SystemSettingsPatch_Deserialize,
+>(
+  key: K,
+) => {
+  return useTypedConfigField<
+    NyanpasuAppConfig_Serialize,
+    SystemSettingsPatch_Deserialize,
+    K,
+    'pac_url'
+  >(useSystemSettings(), key)
+}
+
+/**
  * The persistent clash config (`ClashConfig`), not the live core `/configs`.
+ * Writes only the ordinary settings (`settings` scope); the control plane uses
+ * `useClashSystemSettings`.
  */
 export const useClashSettings = () => {
   const api = useQueryApi()
-  return useTypedConfig<ClashConfig, ClashConfigPatch_Deserialize>(
+  return useTypedConfig<ClashConfig, ClashSettingsPatch_Deserialize>(
     api.queries.getClashConfig(),
     api.mutations.patchClashConfig,
+  )
+}
+
+/**
+ * One field of the persistent clash config, addressed by its typed name. Any
+ * field can be read; `upsert` accepts only the ordinary fields, and is typed
+ * `never` for a control-plane field (use `useClashSystemSetting` to write it).
+ *
+ * @example
+ * ```tsx
+ * const { value, upsert } = useClashSetting('expand_include_all')
+ * ```
+ */
+export const useClashSetting = <K extends keyof ClashConfig>(key: K) => {
+  return useTypedConfigField<ClashConfig, ClashSettingsPatch_Deserialize, K>(
+    useClashSettings(),
+    key,
+  )
+}
+
+/**
+ * The persistent clash config, written through the control-plane request
+ * (`system` scope): controller, ports, TUN, transparent capture, web UI
+ * templates and the field filter.
+ */
+export const useClashSystemSettings = () => {
+  const api = useQueryApi()
+  return useTypedConfig<ClashConfig, ClashSystemPatch_Deserialize>(
+    api.queries.getClashConfig(),
+    api.mutations.patchClashSystemConfig,
   )
 }
 
@@ -166,22 +244,23 @@ type ClearableClashField =
   'socks_port' | 'http_port' | 'redir_port' | 'tproxy_port'
 
 /**
- * One field of the persistent clash config, addressed by its typed name.
+ * One control-plane field of the persistent clash config, addressed by its
+ * typed name.
  *
  * @example
  * ```tsx
- * const { value, upsert } = useClashSetting('enable_tun_mode')
+ * const { value, upsert } = useClashSystemSetting('enable_tun_mode')
  * ```
  */
-export const useClashSetting = <
-  K extends keyof ClashConfig & keyof ClashConfigPatch_Deserialize,
+export const useClashSystemSetting = <
+  K extends keyof ClashConfig & keyof ClashSystemPatch_Deserialize,
 >(
   key: K,
 ) => {
   return useTypedConfigField<
     ClashConfig,
-    ClashConfigPatch_Deserialize,
+    ClashSystemPatch_Deserialize,
     K,
     ClearableClashField
-  >(useClashSettings(), key)
+  >(useClashSystemSettings(), key)
 }

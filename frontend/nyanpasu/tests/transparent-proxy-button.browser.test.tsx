@@ -26,8 +26,10 @@ vi.mock('@nyanpasu/platform/react', () => ({
 }))
 vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: string) => ({ value: backend.values[key] }),
+  useSystemSetting: (key: string) => ({ value: backend.values[key] }),
   useClashSetting: (key: string) => ({ value: backend.values[key] }),
-  useClashSettings: () => {
+  useClashSystemSetting: (key: string) => ({ value: backend.values[key] }),
+  useClashSystemSettings: () => {
     const [value, setValue] = useState(backend.values)
     return {
       query: { data: value },

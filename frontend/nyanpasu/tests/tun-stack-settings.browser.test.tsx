@@ -23,7 +23,7 @@ const backend = vi.hoisted(() => ({
 }))
 vi.mock('@nyanpasu/query', () => ({
   useConfigFeatures: () => ({ data: backend.features }),
-  useClashSetting: (key: string) => ({
+  useClashSystemSetting: (key: string) => ({
     value: backend.settings[key],
     upsert: (value: unknown) => backend.upsert(key, value),
   }),

@@ -471,3 +471,255 @@ async fn remote_access_is_not_writable_through_the_general_patch() {
     assert_eq!(error["kind"], "unsupported");
     fixture.shutdown().await;
 }
+
+/// Each privileged-field command: (command, scope, a body of its own class, a field of another class).
+fn scope_boundary_cases() -> Vec<(&'static str, nyanpasu_rpc_protocol::Scope, Value, Value)> {
+    use nyanpasu_rpc_protocol::Scope;
+    vec![
+        (
+            "patch_app_config",
+            Scope::Settings,
+            json!({"patch": {"proxy_layout_column": 7}}),
+            json!({"enable_system_proxy": false}),
+        ),
+        (
+            "patch_system_settings",
+            Scope::System,
+            json!({"patch": {"proxy_guard_interval": 20}}),
+            json!({"proxy_layout_column": 7}),
+        ),
+        (
+            "patch_clash_config",
+            Scope::Settings,
+            json!({"patch": {"expand_include_all": false}}),
+            json!({"enable_tun_mode": false}),
+        ),
+        (
+            "patch_clash_system_config",
+            Scope::System,
+            json!({"patch": {"web_ui_list": ["https://example.test/ui"]}}),
+            json!({"expand_include_all": false}),
+        ),
+        (
+            "patch_runtime_overrides",
+            Scope::Settings,
+            json!({"patch": {"ipv6": true}}),
+            json!({"mode": "global"}),
+        ),
+        (
+            "patch_runtime_access",
+            Scope::System,
+            json!({"patch": {"secret": "a-new-secret"}}),
+            json!({"mode": "global"}),
+        ),
+    ]
+}
+
+/// The catalog scope of a command is the class of the fields its request type can hold.
+#[tokio::test]
+async fn each_request_command_declares_the_scope_of_its_fields() {
+    use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect, Scope};
+    let scope = |name: &str| {
+        let metadata = COMMAND_CATALOG
+            .iter()
+            .find(|command| command.name == name)
+            .unwrap();
+        assert_eq!(metadata.effect, CommandEffect::Mutation, "{name}");
+        metadata.scope
+    };
+    for (name, expected, _, _) in scope_boundary_cases() {
+        assert_eq!(scope(name), expected, "{name}");
+    }
+    assert_eq!(scope("set_proxy_mode"), Scope::Proxy);
+    // The retry re-applies persisted desired state and writes no field, so it stays `system`:
+    // a settings-only caller cannot retry, which fails closed.
+    assert_eq!(scope("retry_configuration_effect"), Scope::System);
+    assert_eq!(scope("retry_configuration_runtime"), Scope::System);
+}
+
+#[tokio::test]
+async fn a_field_of_another_class_is_refused_with_nothing_committed() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    let app_path = fixture.rpc.dependencies.paths.application_config_path();
+    let clash_path = fixture.rpc.dependencies.paths.clash_config_path();
+    for (name, _, own, other) in scope_boundary_cases() {
+        let mut mixed = own["patch"].clone();
+        let other_field = other.as_object().unwrap().iter().next().unwrap();
+        for (field, value) in [other_field] {
+            mixed[field] = value.clone();
+        }
+        let app_before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+        let clash_before = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+        let versions = client.configuration_status().source_versions;
+        let (app_bytes, clash_bytes) = (
+            std::fs::read(&app_path).ok(),
+            std::fs::read(&clash_path).ok(),
+        );
+        for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
+            // The foreign field alone, and mixed with a field the command does accept.
+            for patch in [other.clone(), mixed.clone()] {
+                let error = fixture
+                    .rpc
+                    .call(
+                        transport,
+                        name,
+                        RpcOwner::desktop("settings"),
+                        json!({"patch": patch}),
+                    )
+                    .await
+                    .unwrap_err();
+                assert_eq!(error.kind, "invalid_params", "{name} {patch}");
+                let field = other.as_object().unwrap().keys().next().unwrap();
+                assert!(
+                    error.message.contains("cannot write")
+                        && error.message.contains(field.as_str()),
+                    "{name}: {}",
+                    error.message
+                );
+            }
+        }
+        assert_eq!(
+            serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+            app_before,
+            "{name}"
+        );
+        assert_eq!(
+            serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap(),
+            clash_before,
+            "{name}"
+        );
+        let after = client.configuration_status().source_versions;
+        assert_eq!(
+            (after.application, after.clash),
+            (versions.application, versions.clash)
+        );
+        assert!(
+            client.configuration_status().recent_operations.is_empty(),
+            "{name}"
+        );
+        assert_eq!(std::fs::read(&app_path).ok(), app_bytes, "{name}");
+        assert_eq!(std::fs::read(&clash_path).ok(), clash_bytes, "{name}");
+    }
+    fixture.shutdown().await;
+}
+
+/// The whole override record is in no Clash request: replacing it also writes the proxy mode and
+/// the ordinary overrides. Override refusals name the keys the wire uses.
+#[tokio::test]
+async fn the_whole_override_record_and_kebab_case_keys_are_refused_without_a_commit() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    let record =
+        serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap()["overrides"]
+            .clone();
+    let before = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+    let versions = client.configuration_status().source_versions;
+    for name in ["patch_clash_config", "patch_clash_system_config"] {
+        for patch in [
+            json!({"overrides": record}),
+            json!({"overrides": record, "web_ui_list": []}),
+        ] {
+            let (status, error) = fixture.call(name, json!({"patch": patch})).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{name}: {error}");
+            assert!(
+                error["message"].as_str().unwrap().contains("\"overrides\""),
+                "{name}: {error}"
+            );
+        }
+    }
+    for (name, patch, key) in [
+        (
+            "patch_runtime_overrides",
+            json!({"allow-lan": false}),
+            "allow-lan",
+        ),
+        (
+            "patch_runtime_access",
+            json!({"log-level": "info"}),
+            "log-level",
+        ),
+        (
+            "patch_runtime_access",
+            json!({"ipv6": false, "secret": "x"}),
+            "ipv6",
+        ),
+    ] {
+        let (status, error) = fixture.call(name, json!({"patch": patch})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{name}: {error}");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("{key:?}")),
+            "{name}: {error}"
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        client.configuration_status().source_versions.clash,
+        versions.clash
+    );
+    assert!(client.configuration_status().recent_operations.is_empty());
+    fixture.shutdown().await;
+}
+
+/// A fixture whose runtime baseline is confirmed, as after boot: a Clash config commit waits for
+/// the runtime to accept it.
+async fn booted_fixture() -> Fixture {
+    let directory = tempfile::tempdir().unwrap();
+    let endpoint = nyanpasu_core::client::test_support::TestControlEndpoint::succeeding();
+    let args =
+        crate::test_support::test_client_args_with_endpoint(&directory, endpoint.clone()).await;
+    let fixture =
+        Fixture::with_setup(false, crate::test_support::CAPABILITIES, directory, args).await;
+    endpoint.prime(&fixture.rpc.dependencies.client).await;
+    fixture
+}
+
+#[tokio::test]
+async fn each_request_command_commits_a_field_of_its_own_class() {
+    let fixture = booted_fixture().await;
+    for (name, _, own, _) in scope_boundary_cases() {
+        let (status, result) = fixture.call(name, own).await;
+        assert_eq!(status, StatusCode::OK, "{name}: {result}");
+        assert!(
+            matches!(
+                result["status"].as_str(),
+                Some("committed" | "committed_degraded")
+            ),
+            "{name}: {result}"
+        );
+    }
+    let client = &fixture.rpc.dependencies.client;
+    let app = client.get_app_config().await.unwrap();
+    assert_eq!((app.proxy_layout_column, app.proxy_guard_interval), (7, 20));
+    let clash = client.get_clash_config().await.unwrap();
+    assert!(!clash.expand_include_all);
+    assert_eq!(clash.web_ui_list, ["https://example.test/ui"]);
+    assert!(clash.overrides.secret() == "a-new-secret");
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn set_proxy_mode_writes_only_the_mode() {
+    let fixture = booted_fixture().await;
+    let client = &fixture.rpc.dependencies.client;
+    let before = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+    let (status, result) = fixture
+        .call("set_proxy_mode", json!({"mode": "global"}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let mut after = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+    assert_eq!(after["overrides"]["mode"], "global");
+    after["overrides"]["mode"] = before["overrides"]["mode"].clone();
+    assert_eq!(after, before, "only the mode changed");
+    let (status, error) = fixture
+        .call("set_proxy_mode", json!({"mode": "bogus"}))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+    fixture.shutdown().await;
+}

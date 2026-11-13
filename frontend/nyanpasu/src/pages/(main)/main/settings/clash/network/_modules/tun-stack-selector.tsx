@@ -11,7 +11,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
-  useClashSetting,
+  useClashSystemSetting,
   useConfigFeatures,
   useRuntimeProfile,
 } from '@nyanpasu/query'
@@ -36,9 +36,9 @@ const TUN_STACK_LABELS: Record<TunStack, string> = {
 export default function TunStackSelector() {
   const features = useConfigFeatures()
 
-  const tunStack = useClashSetting('tun_stack')
+  const tunStack = useClashSystemSetting('tun_stack')
 
-  const enableTunMode = useClashSetting('enable_tun_mode')
+  const enableTunMode = useClashSystemSetting('enable_tun_mode')
 
   const runtimeProfile = useRuntimeProfile()
 

@@ -1,6 +1,6 @@
 # Remote access, CLI, agent skill and MCP: design
 
-Status: **in progress**. Layers 01–02 are implemented; the remaining layers are proposed.
+Status: **in progress**. Layers 01–03 are implemented; the remaining layers are proposed.
 The maintainer's decisions are recorded in [§11](#11-decisions) and the delivery
 state in [§12](#12-order).
 
@@ -366,6 +366,11 @@ A new query, `rpc_describe` (working name), exposed on every target, returns:
 }
 ```
 
+Every resolved principal may discover its own permissions and per-target command
+availability without holding `read`. This discovery exception returns metadata only:
+it grants no business-data access, never discloses another principal's information,
+and does not admit an unresolved or invalid credential.
+
 The CLI uses it to check protocol compatibility, hide or reject subcommands the
 principal cannot use with a clear message, and select MCP tools. It reports
 metadata only; payload schemas come from the generated schema file
@@ -639,23 +644,24 @@ script engines), which the boundary gate enforces.
 
 ## 11. Decisions
 
-| #   | Question                      | Decision                                                                                                   |
-| --- | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 1   | How a browser logs in         | Launch link and token login only; no pairing code, no password                                             |
-| 2   | TLS                           | Self-signed certificate; the loopback strategies default to plain HTTP; `lan_authenticated` requires HTTPS |
-| 3   | Port                          | The first start picks a random free port and persists it                                                   |
-| 4   | Scope granularity             | The scopes in §5.2, including a separate `sensitive_read`                                                  |
-| 5   | Binary name                   | `nyanpasu-cli`                                                                                             |
-| 6   | CLI before the typed protocol | Ship v0 first                                                                                              |
-| 7   | MCP schemas                   | Generate them from the start; no handwritten interim                                                       |
-| 8   | Where secrets are stored      | In the backend; encrypted unless the storage is protected                                                  |
-| 9   | Desktop or server first       | Desktop first                                                                                              |
-| 10  | HTTP MCP endpoint             | Not needed for now                                                                                         |
-| —   | Local socket switch           | Separate from HTTP, off by default                                                                         |
-| —   | MCP form                      | `nyanpasu-cli mcp` over stdio                                                                              |
-| —   | The three strategies          | `lan_authenticated`, `local_authenticated`, `local_open`                                                   |
-| —   | CLI target selection          | Select one target before its transport; no fallback to another context or instance                         |
-| —   | Resource ownership            | Separate principal attribution from per-connection or per-session resource lifetimes                       |
+| #   | Question                      | Decision                                                                                                                 |
+| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 1   | How a browser logs in         | Launch link and token login only; no pairing code, no password                                                           |
+| 2   | TLS                           | Self-signed certificate; the loopback strategies default to plain HTTP; `lan_authenticated` requires HTTPS               |
+| 3   | Port                          | The first start picks a random free port and persists it                                                                 |
+| 4   | Scope granularity             | The scopes in §5.2, including a separate `sensitive_read`                                                                |
+| 5   | Binary name                   | `nyanpasu-cli`                                                                                                           |
+| 6   | CLI before the typed protocol | Ship v0 first                                                                                                            |
+| 7   | MCP schemas                   | Generate them from the start; no handwritten interim                                                                     |
+| 8   | Where secrets are stored      | In the backend; encrypted unless the storage is protected                                                                |
+| 9   | Desktop or server first       | Desktop first                                                                                                            |
+| 10  | HTTP MCP endpoint             | Not needed for now                                                                                                       |
+| —   | Local socket switch           | Separate from HTTP, off by default                                                                                       |
+| —   | MCP form                      | `nyanpasu-cli mcp` over stdio                                                                                            |
+| —   | The three strategies          | `lan_authenticated`, `local_authenticated`, `local_open`                                                                 |
+| —   | CLI target selection          | Select one target before its transport; no fallback to another context or instance                                       |
+| —   | Resource ownership            | Separate principal attribution from per-connection or per-session resource lifetimes                                     |
+| —   | Discovery permission          | Every resolved principal may inspect its own permission metadata without `read`; business-data scopes remain independent |
 
 ## 12. Order
 
@@ -670,14 +676,15 @@ authorization are complete.
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | 01    | R1: `remote_access` settings and persisted switch and port, one serial owner, degraded results, credential-free status, desktop-only launch URL, the debug HTTP wire rename, this design | **implemented** |
 | 02    | Canonical `Scope`, query/mutation effect and mandatory mutation scopes generated with the catalog; initial sensitive-read classification                                                 | **implemented** |
-| 03    | Privilege-separated application, Clash and runtime request contracts, retry-helper review, secret-free summaries                                                                         | proposed        |
-| 04    | Shared authorization over commands, direct routes (including icons) and events; `rpc_describe`; generated JSON Schema                                                                    | proposed        |
-| 05    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | proposed        |
-| 06    | TLS, `lan_authenticated`, `local_open` and the remote access UI                                                                                                                          | proposed        |
-| 07    | Persisted local-socket switch and the reviewed CLI local allowlist                                                                                                                       | proposed        |
-| 08    | `nyanpasu-cli`: target resolution, contexts, transports, curated commands                                                                                                                | proposed        |
-| 09    | CLI packaging, PATH integration and completions                                                                                                                                          | proposed        |
-| 10    | Agent skill and `nyanpasu-cli mcp`                                                                                                                                                       | proposed        |
+| 03    | Privilege-separated application, Clash and runtime request contracts, matching frontend callers and retry-helper review                                                                  | **implemented** |
+| 04    | Secret-free query/event/reset projections and read-only frontend bootstrap                                                                                                               | proposed        |
+| 05    | Shared authorization over commands, direct routes (including icons) and events; `rpc_describe`; generated JSON Schema                                                                    | proposed        |
+| 06    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | proposed        |
+| 07    | TLS, `lan_authenticated`, `local_open` and the remote access UI                                                                                                                          | proposed        |
+| 08    | Persisted local-socket switch and the reviewed CLI local allowlist                                                                                                                       | proposed        |
+| 09    | `nyanpasu-cli`: target resolution, contexts, transports, curated commands                                                                                                                | proposed        |
+| 10    | CLI packaging, PATH integration and completions                                                                                                                                          | proposed        |
+| 11    | Agent skill and `nyanpasu-cli mcp`                                                                                                                                                       | proposed        |
 
 Layer 01 corrections to the original sketch: the strategy enum has one variant so
 unimplemented strategies are unrepresentable rather than rejected late; the HTTP status

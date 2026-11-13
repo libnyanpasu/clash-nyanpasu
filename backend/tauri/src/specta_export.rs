@@ -145,8 +145,12 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_core_dir,
             commands::runtime::restart_sidecar,
             commands::runtime::patch_app_config,
+            commands::runtime::patch_system_settings,
             commands::runtime::patch_clash_config,
+            commands::runtime::patch_clash_system_config,
             commands::runtime::patch_runtime_overrides,
+            commands::runtime::patch_runtime_access,
+            commands::runtime::set_proxy_mode,
             commands::runtime::change_clash_core,
             commands::clash::clash_api_delete_connections,
             commands::clash::clash_api_update_providers_rules,
@@ -772,9 +776,12 @@ mod tests {
             "DegradationReason",
             "NyanpasuAppConfig",
             "ApplicationPreferencesPatch",
+            "SystemSettingsPatch",
             "ClashConfig",
-            "ClashConfigPatch",
-            "ClashGuardOverridesPatch",
+            "ClashSettingsPatch",
+            "ClashSystemPatch",
+            "ClashOverridesSettingsPatch",
+            "ClashAccessPatch",
             "ClashApiConfig",
         ] {
             assert!(
@@ -784,32 +791,102 @@ mod tests {
             );
         }
 
-        // The general preferences contract advertises only ordinary preferences: the privileged
-        // settings have their own commands and the full internal patch is not exported at all.
-        assert!(!generated.contains("NyanpasuAppConfigPatch"));
-        for declaration in [
-            exported_type(&generated, "ApplicationPreferencesPatch_Serialize"),
-            exported_type(&generated, "ApplicationPreferencesPatch_Deserialize"),
+        // Each request contract advertises only the fields of its privilege class. The unrestricted
+        // patches stay internal and are not exported at all.
+        for internal in [
+            "NyanpasuAppConfigPatch",
+            "ClashConfigPatch",
+            "ClashGuardOverridesPatch",
         ] {
-            for forbidden in ["hotkeys", "enable_service_mode", "remote_access"] {
-                assert!(
-                    !declaration.contains(forbidden),
-                    "preferences advertise {forbidden}:\n{declaration}"
-                );
-            }
-            assert_contains_all(
-                declaration,
-                "ApplicationPreferencesPatch",
-                &[
-                    "proxy_layout_column",
-                    // Ordinary null is a no-op and the field is optional, so both are in the contract.
-                    "theme_color?: string | null",
-                    // The clearable preferences accept an explicit null.
-                    "release_channel?: ReleaseChannel | null",
-                    "pac_url?: string | null",
-                ],
-            );
+            assert!(!generated.contains(internal), "{internal} is exported");
         }
+        let advertised = |name: &str, required: &[&str], forbidden: &[&str]| {
+            for suffix in ["Serialize", "Deserialize"] {
+                let declaration = exported_type(&generated, &format!("{name}_{suffix}"));
+                // A property key, not a word in a doc comment: `field?:`, `field:` or `'field'`.
+                for field in forbidden {
+                    for key in [
+                        format!("{field}?:"),
+                        format!("{field}:"),
+                        format!("'{field}'"),
+                    ] {
+                        assert!(
+                            !declaration.contains(&key),
+                            "{name} advertises {field}:\n{declaration}"
+                        );
+                    }
+                }
+                assert_contains_all(declaration, name, required);
+            }
+        };
+        advertised(
+            "ApplicationPreferencesPatch",
+            &[
+                "proxy_layout_column",
+                // Ordinary null is a no-op and the field is optional, so both are in the contract.
+                "theme_color?: string | null",
+                // The clearable preference accepts an explicit null.
+                "release_channel?: ReleaseChannel | null",
+            ],
+            &[
+                "hotkeys",
+                "enable_service_mode",
+                "remote_access",
+                "enable_auto_launch",
+                "enable_system_proxy",
+                "enable_proxy_guard",
+                "system_proxy_bypass",
+                "proxy_guard_interval",
+                "pac_url",
+            ],
+        );
+        advertised(
+            "SystemSettingsPatch",
+            &[
+                "enable_auto_launch",
+                "enable_system_proxy",
+                "enable_proxy_guard",
+                "system_proxy_bypass",
+                "proxy_guard_interval",
+                "pac_url?: string | null",
+            ],
+            &[
+                "hotkeys",
+                "remote_access",
+                "proxy_layout_column",
+                "release_channel",
+            ],
+        );
+        advertised(
+            "ClashSettingsPatch",
+            &["expand_include_all", "break_connection"],
+            &[
+                "enable_tun_mode",
+                "external_controller",
+                "mixed_port",
+                "overrides",
+            ],
+        );
+        advertised(
+            "ClashSystemPatch",
+            &[
+                "enable_tun_mode",
+                "external_controller",
+                "mixed_port",
+                "web_ui_list",
+            ],
+            &["expand_include_all", "break_connection", "overrides"],
+        );
+        advertised(
+            "ClashOverridesSettingsPatch",
+            &["'log-level'", "ipv6"],
+            &["mode", "allow-lan", "secret"],
+        );
+        advertised(
+            "ClashAccessPatch",
+            &["'allow-lan'", "secret"],
+            &["mode", "log-level", "ipv6"],
+        );
 
         assert!(
             !generated.contains("export type RebuildOutcome")
@@ -823,7 +900,7 @@ mod tests {
         );
         assert!(
             !generated.contains("export type PatchRuntimeConfig"),
-            "the whitelisted overrides DTO is replaced by ClashGuardOverridesPatch"
+            "the whitelisted overrides DTO is replaced by the per-class override patches"
         );
         assert!(
             !generated.contains("export type IVerge") && !generated.contains("export type Legacy"),
@@ -840,16 +917,21 @@ mod tests {
         );
         // The composite clash fields take nested patches, so edits of sibling
         // sub-fields merge in the actor instead of replacing each other.
-        let clash_patch = exported_type(&generated, "ClashConfigPatch_Deserialize");
-        assert_contains_all(
-            clash_patch,
-            "ClashConfigPatch_Deserialize",
-            &[
-                "mixed_port?: PortStrategyPatch_Deserialize",
-                "external_controller?: ExternalControllerStrategyPatch_Deserialize",
-                "break_connection?: BreakConnectionStrategyPatch_Deserialize",
-            ],
-        );
+        for (name, nested) in [
+            (
+                "ClashSystemPatch_Deserialize",
+                &[
+                    "mixed_port?: PortStrategyPatch_Deserialize",
+                    "external_controller?: ExternalControllerStrategyPatch_Deserialize",
+                ][..],
+            ),
+            (
+                "ClashSettingsPatch_Deserialize",
+                &["break_connection?: BreakConnectionStrategyPatch_Deserialize"][..],
+            ),
+        ] {
+            assert_contains_all(exported_type(&generated, name), name, nested);
+        }
 
         for phase in ["Deserialize", "Serialize"] {
             let name = format!("ConfigDefinition_{phase}");

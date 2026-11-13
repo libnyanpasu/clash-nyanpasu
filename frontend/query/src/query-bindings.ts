@@ -568,15 +568,35 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.patchAppConfig>) =>
         commands.patchAppConfig(...input),
     }),
+    patchSystemSettings: mutationOptions({
+      mutationKey: ['patchSystemSettings'],
+      mutationFn: (input: Parameters<typeof commands.patchSystemSettings>) =>
+        commands.patchSystemSettings(...input),
+    }),
     patchClashConfig: mutationOptions({
       mutationKey: ['patchClashConfig'],
       mutationFn: (input: Parameters<typeof commands.patchClashConfig>) =>
         commands.patchClashConfig(...input),
     }),
+    patchClashSystemConfig: mutationOptions({
+      mutationKey: ['patchClashSystemConfig'],
+      mutationFn: (input: Parameters<typeof commands.patchClashSystemConfig>) =>
+        commands.patchClashSystemConfig(...input),
+    }),
     patchRuntimeOverrides: mutationOptions({
       mutationKey: ['patchRuntimeOverrides'],
       mutationFn: (input: Parameters<typeof commands.patchRuntimeOverrides>) =>
         commands.patchRuntimeOverrides(...input),
+    }),
+    patchRuntimeAccess: mutationOptions({
+      mutationKey: ['patchRuntimeAccess'],
+      mutationFn: (input: Parameters<typeof commands.patchRuntimeAccess>) =>
+        commands.patchRuntimeAccess(...input),
+    }),
+    setProxyMode: mutationOptions({
+      mutationKey: ['setProxyMode'],
+      mutationFn: (input: Parameters<typeof commands.setProxyMode>) =>
+        commands.setProxyMode(...input),
     }),
     changeClashCore: mutationOptions({
       mutationKey: ['changeClashCore'],

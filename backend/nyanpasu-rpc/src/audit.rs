@@ -354,23 +354,15 @@ impl RpcAuditSink for TracingRpcAuditSink {
             Some(CompletionSummary::NotReported) => (Some("not_reported"), None, None, None),
             None => (None, None, None, None),
         };
-        macro_rules! emit {
-            ($level:expr) => {
-                tracing::event!(target: "nyanpasu::rpc_audit", $level,
-                    invocation_id = record.header.invocation_id,
-                    transport = match record.header.transport { RpcTransport::Http => "Http", RpcTransport::Local => "Local", RpcTransport::TauriIpc => "TauriIpc", RpcTransport::TauriProtocol => "TauriProtocol" },
-                    command = record.header.method,
-                    owner = record.header.owner.as_str(),
-                    request_id = record.header.request_id.map(|id| serde_json::to_string(&id).expect("request ID serializes")),
-                    duration_ns = record.duration.as_nanos() as u64,
-                    phase, outcome, reason, kind, code, completion,
-                    commits = commits.as_deref(), notifications_pending, degradation_count,
-                )
-            };
-        }
-        match record.header.transport {
-            RpcTransport::Http | RpcTransport::Local => emit!(tracing::Level::INFO),
-            RpcTransport::TauriIpc | RpcTransport::TauriProtocol => emit!(tracing::Level::DEBUG),
-        }
+        tracing::trace!(target: "nyanpasu::rpc_audit",
+            invocation_id = record.header.invocation_id,
+            transport = match record.header.transport { RpcTransport::Http => "Http", RpcTransport::Local => "Local", RpcTransport::TauriIpc => "TauriIpc", RpcTransport::TauriProtocol => "TauriProtocol" },
+            command = record.header.method,
+            owner = record.header.owner.as_str(),
+            request_id = record.header.request_id.map(|id| serde_json::to_string(&id).expect("request ID serializes")),
+            duration_ns = record.duration.as_nanos() as u64,
+            phase, outcome, reason, kind, code, completion,
+            commits = commits.as_deref(), notifications_pending, degradation_count,
+        );
     }
 }

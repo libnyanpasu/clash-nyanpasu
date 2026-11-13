@@ -165,7 +165,7 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
                     .0
                     .lock()
                     .iter()
-                    .all(|e| e.level == tracing::Level::DEBUG)
+                    .all(|e| e.level == tracing::Level::TRACE)
             );
             assert!(!format!("{records:?}").contains(SECRET));
             assert!(!format!("{:?}", capture.0.lock()).contains(SECRET));

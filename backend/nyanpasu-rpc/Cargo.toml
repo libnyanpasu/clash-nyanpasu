@@ -6,12 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default = ['default-meta', 'nesting']
-default-meta = [
-  'nyanpasu-core/default-meta',
-  'nyanpasu-config/default-meta',
-  'nyanpasu-rpc-protocol/default-meta'
-]
+default = ['nesting']
 nesting = [
   'nyanpasu-core/nesting',
   'nyanpasu-config/nesting',

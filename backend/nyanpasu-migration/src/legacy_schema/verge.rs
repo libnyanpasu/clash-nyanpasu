@@ -1,12 +1,13 @@
 use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium,
     #[serde(rename = "clash-rs")]
     ClashRs,
+    #[default]
     #[serde(rename = "mihomo", alias = "clash-meta")]
     Mihomo,
     #[serde(rename = "mihomo-alpha")]
@@ -17,15 +18,6 @@ pub enum ClashCore {
     Meow,
     #[serde(rename = "meow-alpha")]
     MeowAlpha,
-}
-
-impl Default for ClashCore {
-    fn default() -> Self {
-        match cfg!(feature = "default-meta") {
-            false => Self::ClashPremium,
-            true => Self::Mihomo,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]

@@ -182,7 +182,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
         run: |
-          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
+          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '' }}
           # Nightly and prerelease package versions differ from the app version.
           pnpm run sign-nightly-updater
 

@@ -20,9 +20,7 @@ impl IClashTemp {
             "secret".into(),
             uuid::Uuid::new_v4().to_string().to_lowercase().into(), // generate a uuid v4 as default secret to secure the communication between clash and the client
         );
-        #[cfg(feature = "default-meta")]
         map.insert("unified-delay".into(), true.into());
-        #[cfg(feature = "default-meta")]
         map.insert("tcp-concurrent".into(), true.into());
         map.insert("ipv6".into(), false.into());
 

@@ -127,7 +127,7 @@ jobs:
       - name: Build Clash Nyanpasu (Stable)
         if: ${{ inputs.nightly == false }}
         run: |
-          pnpm tauri build --verbose -f default-meta ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
+          pnpm tauri build --verbose ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NYANPASU_SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}

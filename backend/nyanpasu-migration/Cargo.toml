@@ -7,8 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default = ['default-meta']
-default-meta = ['nyanpasu-config/default-meta']
+default = []
 test-support = []
 
 [dependencies]

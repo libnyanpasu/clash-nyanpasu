@@ -75,9 +75,7 @@ pub struct ClashGuardOverrides {
     allow_lan: bool,
     mode: Mode,
     secret: String,
-    #[cfg(feature = "default-meta")]
     unified_delay: ManageableField<bool>,
-    #[cfg(feature = "default-meta")]
     tcp_concurrent: ManageableField<bool>,
     ipv6: bool,
 }
@@ -89,9 +87,7 @@ impl Default for ClashGuardOverrides {
             allow_lan: false,
             mode: Mode::Rule,
             secret: uuid::Uuid::new_v4().to_string().to_lowercase(),
-            #[cfg(feature = "default-meta")]
             unified_delay: ManageableField::Managed(true),
-            #[cfg(feature = "default-meta")]
             tcp_concurrent: ManageableField::Managed(true),
             ipv6: false,
         }
@@ -157,7 +153,6 @@ mod patch_tests {
         assert_eq!(owned, keys);
     }
 
-    #[cfg(feature = "default-meta")]
     #[test]
     fn unmanaged_fields_are_left_to_the_profiles() {
         use crate::runtime::{post_process::Ownership, value::ConfigValue};

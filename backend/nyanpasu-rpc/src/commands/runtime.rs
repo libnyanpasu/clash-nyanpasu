@@ -222,7 +222,6 @@ pub async fn patch_runtime_overrides(
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     // Explicit-field whitelist so future patch fields never auto-leak into
     // logs; the secret is reported by presence only.
-    #[cfg(feature = "default-meta")]
     tracing::debug!(
         log_level = ?patch.log_level,
         allow_lan = ?patch.allow_lan,
@@ -230,16 +229,6 @@ pub async fn patch_runtime_overrides(
         secret = patch.secret.is_some(),
         unified_delay = ?patch.unified_delay,
         tcp_concurrent = ?patch.tcp_concurrent,
-        ipv6 = ?patch.ipv6,
-        "patch_runtime_overrides"
-    );
-    // `unified_delay` and `tcp_concurrent` exist only with `default-meta`.
-    #[cfg(not(feature = "default-meta"))]
-    tracing::debug!(
-        log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
         ipv6 = ?patch.ipv6,
         "patch_runtime_overrides"
     );

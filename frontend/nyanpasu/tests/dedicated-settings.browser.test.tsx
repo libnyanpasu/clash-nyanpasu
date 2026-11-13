@@ -82,7 +82,7 @@ async function setup(
   const invoke = vi.fn(
     async (method: string, params?: Record<string, unknown>) => {
       switch (method) {
-        case 'get_app_config':
+        case 'get_app_settings':
           return { enable_service_mode: enabled }
         case 'status_service':
           return {

@@ -26,7 +26,7 @@ test('service mode mutation keeps the full outcome', async ({
   let enabled = false
   const settled: unknown[] = []
   const testRpc = createTestRpc({
-    get_app_config: () => ({ enable_service_mode: enabled }),
+    get_app_settings: () => ({ enable_service_mode: enabled }),
     set_service_mode: (params) => {
       enabled = params?.enabled as boolean
       return degraded
@@ -82,7 +82,7 @@ test('service mode mutation waits for config readback', async ({
     releaseReadback = resolve
   })
   const testRpc = createTestRpc({
-    get_app_config: async () => {
+    get_app_settings: async () => {
       if (reads++ > 0) await readback
       return { enable_service_mode: enabled }
     },

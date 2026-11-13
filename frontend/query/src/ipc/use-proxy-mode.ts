@@ -34,6 +34,9 @@ export const useProxyMode = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
+        queryKey: api.queries.clashApiGetSettings().queryKey,
+      })
+      queryClient.invalidateQueries({
         queryKey: api.queries.clashApiGetConfigs().queryKey,
       })
     },

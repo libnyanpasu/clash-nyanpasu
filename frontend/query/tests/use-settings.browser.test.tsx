@@ -2,7 +2,9 @@ import { expect, test, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
 import { RpcFailure } from '@nyanpasu/rpc'
 import type {
+  ApplicationSettings_Serialize,
   ClashConfig,
+  ClashSettings,
   MutationOutcome,
   NyanpasuAppConfig_Serialize,
 } from '@nyanpasu/rpc/types'
@@ -12,6 +14,7 @@ import {
   useClashSettings,
   useClashSystemSetting,
   useClashSystemSettings,
+  useFullSetting,
   useSetting,
   useSettings,
   useSystemSetting,
@@ -19,14 +22,29 @@ import {
 } from '../src/ipc/use-settings'
 import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
-const appConfig = {
+const PRIVATE_URL = 'https://probe.example/private-token/generate_204'
+
+// What the safe query returns: the URLs are reduced to flags.
+const appSettings = {
   theme_mode: 'dark',
   core: 'mihomo',
   enable_system_proxy: false,
-  pac_url: 'https://example.com/proxy.pac',
+  pac_configured: true,
+  latency_test_configured: true,
   enable_service_mode: false,
   hotkeys: ['toggle_tun_mode,Control+Q'],
-} satisfies Partial<NyanpasuAppConfig_Serialize>
+} satisfies Partial<ApplicationSettings_Serialize>
+
+// The full config the sensitive editors read.
+const appConfig = {
+  ...appSettings,
+  pac_url: 'https://example.com/proxy.pac',
+  default_latency_test: PRIVATE_URL,
+} satisfies Partial<NyanpasuAppConfig_Serialize> & Record<string, unknown>
+
+const clashSettings = {
+  enable_tun_mode: false,
+} satisfies Partial<ClashSettings>
 
 const clashConfig = {
   enable_tun_mode: false,
@@ -48,7 +66,9 @@ async function setup<T>(
 ) {
   const settled: unknown[] = []
   const testRpc = createTestRpc({
+    get_app_settings: async () => appSettings,
     get_app_config: async () => appConfig,
+    get_clash_settings: async () => clashSettings,
     get_clash_config: async () => clashConfig,
     patch_app_config: async () => degraded,
     patch_system_settings: async () => degraded,
@@ -202,9 +222,6 @@ test('upsert takes null only for a field null clears', () => {
   type ClearableValue = Parameters<
     ReturnType<typeof useClashSystemSetting<'socks_port'>>['upsert']
   >[0]
-  type SystemClearableValue = Parameters<
-    ReturnType<typeof useSystemSetting<'pac_url'>>['upsert']
-  >[0]
 
   // Any other field reads JSON null as "not set": the call would commit
   // nothing and still succeed.
@@ -213,9 +230,8 @@ test('upsert takes null only for a field null clears', () => {
   // @ts-expect-error null is not a value of a required clash field
   const clash: ClashValue = null
   const cleared: ClearableValue = null
-  const pacCleared: SystemClearableValue = null
 
-  expect([app, clash, cleared, pacCleared]).toEqual([null, null, null, null])
+  expect([app, clash, cleared]).toEqual([null, null, null])
 })
 
 test('ordinary settings writes exclude dedicated fields', () => {
@@ -279,7 +295,7 @@ test('dedicated settings remain readable', async ({ onTestFinished }) => {
   )
 
   await expect.poll(() => hook.result.current.service).toBe(false)
-  expect(hook.result.current.hotkeys).toEqual(appConfig.hotkeys)
+  expect(hook.result.current.hotkeys).toEqual(appSettings.hotkeys)
 })
 
 test('useClashSettings passes the mutation outcome through', async ({
@@ -350,24 +366,33 @@ test('useSystemSetting patches a system field through its own command', async ({
   expect(settled).toEqual([degraded])
 })
 
-test('useSystemSetting clears the PAC URL with an explicit null', async ({
+test('the PAC URL is cleared through the system patch, not read back', async ({
   onTestFinished,
 }) => {
   const { hook, invoke } = await setup(
-    () => useSystemSetting('pac_url'),
+    () => useSystemSettings(),
     onTestFinished,
   )
   await expect
-    .poll(() => hook.result.current.value)
-    .toBe('https://example.com/proxy.pac')
+    .poll(() => hook.result.current.query.data?.pac_configured)
+    .toBe(true)
+  // The safe view carries the flag, never the URL.
+  expect(hook.result.current.query.data).not.toHaveProperty('pac_url')
 
   await hook.act(async () => {
-    await hook.result.current.upsert(null)
+    await hook.result.current.upsert.mutateAsync({ pac_url: null })
   })
 
   expect(invoke).toHaveBeenCalledWith('patch_system_settings', {
     patch: { pac_url: null },
   })
+})
+
+test('a system field the safe view omits cannot be read by key', () => {
+  // @ts-expect-error pac_url is only in the full config
+  type PacValue = ReturnType<typeof useSystemSetting<'pac_url'>>['value']
+  const reads: PacValue[] = []
+  expect(reads).toEqual([])
 })
 
 test('useSystemSettings passes the mutation outcome through', async ({
@@ -391,14 +416,14 @@ test('useSystemSettings passes the mutation outcome through', async ({
 test('a patch resolves only after the config is read back', async ({
   onTestFinished,
 }) => {
-  let saved: Partial<NyanpasuAppConfig_Serialize> = appConfig
+  let saved: Partial<ApplicationSettings_Serialize> = appSettings
   let reads = 0
   let releaseReadBack = () => {}
   const readBack = new Promise<void>((resolve) => {
     releaseReadBack = resolve
   })
   const testRpc = createTestRpc({
-    get_app_config: async () => {
+    get_app_settings: async () => {
       // The read after the patch is held until the test lets it finish.
       if (reads++ > 0) await readBack
       return saved
@@ -436,4 +461,73 @@ test('a patch resolves only after the config is read back', async ({
 
   // A second edit builds on this value, so it must already be the saved one.
   expect(hook.result.current.value).toBe('light')
+})
+
+const SENSITIVE_READS = [
+  'get_app_config',
+  'get_clash_config',
+  'clash_api_get_configs',
+]
+
+test('ordinary readers use the safe queries and never the sensitive ones', async ({
+  onTestFinished,
+}) => {
+  const { hook, invoke } = await setup(
+    () => ({
+      theme: useSetting('theme_mode').value,
+      settings: useSettings().query.data,
+      system: useSystemSetting('enable_system_proxy').value,
+      tun: useClashSetting('enable_tun_mode').value,
+      clash: useClashSettings().query.data,
+    }),
+    onTestFinished,
+  )
+
+  await expect.poll(() => hook.result.current.theme).toBe('dark')
+  await expect.poll(() => hook.result.current.tun).toBe(false)
+  expect(hook.result.current.system).toBe(false)
+
+  const called = invoke.mock.calls.map(([method]) => method)
+  expect(called).toContain('get_app_settings')
+  expect(called).toContain('get_clash_settings')
+  for (const sensitive of SENSITIVE_READS) {
+    expect(called).not.toContain(sensitive)
+  }
+  // The safe view holds the flag and no URL.
+  expect(JSON.stringify(hook.result.current.settings)).not.toContain(
+    PRIVATE_URL,
+  )
+})
+
+test('a patch refreshes the safe view and the full config', async ({
+  onTestFinished,
+}) => {
+  const { hook, invoke } = await setup(
+    () => ({ safe: useSetting('theme_mode'), full: useFullSetting('core') }),
+    onTestFinished,
+  )
+  await expect.poll(() => hook.result.current.safe.value).toBe('dark')
+  await expect.poll(() => hook.result.current.full.value).toBe('mihomo')
+  const reads = (method: string) =>
+    invoke.mock.calls.filter(([called]) => called === method).length
+  expect([reads('get_app_settings'), reads('get_app_config')]).toEqual([1, 1])
+
+  await hook.act(async () => {
+    await hook.result.current.safe.upsert('light')
+  })
+
+  await expect.poll(() => reads('get_app_settings')).toBe(2)
+  await expect.poll(() => reads('get_app_config')).toBe(2)
+})
+
+test('an editor reads the full value of a field the safe view reduces to a flag', async ({
+  onTestFinished,
+}) => {
+  const { hook, invoke } = await setup(
+    () => useFullSetting('default_latency_test'),
+    onTestFinished,
+  )
+
+  await expect.poll(() => hook.result.current.value).toBe(PRIVATE_URL)
+  expect(invoke).toHaveBeenCalledWith('get_app_config', undefined)
 })

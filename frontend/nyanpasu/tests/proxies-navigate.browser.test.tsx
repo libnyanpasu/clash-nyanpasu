@@ -140,7 +140,7 @@ const renderAt = async (
 
         return { Bravo: PICTURE }
       }
-      if (method === 'get_app_config') {
+      if (method === 'get_app_settings') {
         return { default_latency_test: 'https://www.gstatic.com/generate_204' }
       }
       if (method === 'get_storage_item') {

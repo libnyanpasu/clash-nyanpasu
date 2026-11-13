@@ -3,7 +3,8 @@
 //! the wire); they reach the user only through the copied detail.
 
 use nyanpasu_config::{
-    application::ReleaseChannel, clash::config::TransparentProxyValidationError,
+    application::{ReleaseChannel, RemoteAccessError},
+    clash::config::TransparentProxyValidationError,
 };
 use nyanpasu_runtime_values::{
     hotkey::HotkeyParseError,
@@ -39,6 +40,8 @@ pub enum ConfigError {
     TransparentProxyRequiresServiceMode,
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
+    #[snafu(display("the remote access settings are invalid: {reason}"))]
+    InvalidRemoteAccess { reason: RemoteAccessError },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(display("editing hotkeys is not supported"))]

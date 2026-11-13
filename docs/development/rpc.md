@@ -18,9 +18,9 @@ Allowed shape:
 #[nyanpasu_macro::rpc(http)]
 pub async fn patch_app_config(
     client: nyanpasu_rpc::registry::RpcState<'_, NyanpasuClient>,
-    patch: AppPreferencesPatch,
+    patch: ApplicationPreferencesPatch,
 ) -> Result<MutationOutcome<()>> {
-    Ok(client.patch_app_config(patch.0).await?)
+    Ok(client.patch_app_config(patch.into()).await?)
 }
 ```
 
@@ -40,15 +40,35 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. General `patch_*` commands accept ordinary preferences only; reject out-of-scope fields while decoding their request types, and split the domain when another such field or a policy group would grow the exception list.
 
+`patch_app_config` accepts `ApplicationPreferencesPatch` (`nyanpasu-config`), a concrete
+patch struct that holds only the permitted preference fields; its generated schema is
+derived from those fields and never advertises a privileged one. It is decoded through the
+internal full patch (`NyanpasuAppConfigPatch`), so omitted and `null` fields, aliases and
+unrelated unknown keys keep their meaning, and then projected explicitly. The projection
+destructures the full patch without `..`, so a field added to the config must be classified
+as a preference or a dedicated setting before it compiles; a present `hotkeys`,
+`enable_service_mode` or `remote_access` refuses the whole patch before the DTO exists.
+Converting the DTO back to the full patch sets only preferences. For an ordinary preference
+`null` is a no-op; only `release_channel` and `pac_url` clear on `null`.
+
+`remote_access` is written only by `set_remote_access`, a Desktop-only mutation that
+returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
+them, and a listener that cannot follow is a `http_server_unavailable` degradation,
+never a rollback. A single serial owner (`RemoteAccessClient` in core) runs the whole
+operation, so concurrent edits cannot configure the listener from an older snapshot and
+a caller that leaves does not cancel it. Startup validates the saved settings before
+activating a listener. `get_http_server_status` is HTTP-exposed and
+never carries a credential; the login URL comes from the desktop-only mutation
+`create_http_launch_url`, which is a mutation so that it is not kept in a client cache.
+
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
-`patch_app_config` command accepts `AppPreferencesPatch`: its validating Serde
-conversion rejects `Some` for `hotkeys` or `enable_service_mode` on both Desktop
-and HTTP, before handler admission. Empty arrays, `false` and same-value writes
+`patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
+`enable_service_mode` on both Desktop and HTTP, before handler admission. Empty arrays, `false` and same-value writes
 still count as requests; a mixed patch is rejected as a whole with
 `invalid_params` (HTTP 400, no domain payload). Explicit `null` leaves these two
-ordinary Option fields unchanged. The wrapper delegates its Specta type to the
-domain patch, so it adds no binding type or parameter shape. The core facade
-continues to accept the complete domain patch.
+ordinary Option fields unchanged. These settings are absent from the concrete
+preferences DTO's schema. Their dedicated commands use the internal domain patch;
+`remote_access` is written only through its serial owner.
 
 HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
 conditional elevation follows the injected shell policy. Desktop, including
@@ -142,7 +162,7 @@ pass through `dispatch_audited`, and HTTP keeps its existing 501 mapping and
 
 Use required metadata for clipboard, dialogs/notifications, native webviews and
 channels, windows, lifecycle, openers, tray/widget refresh, deep-link queues,
-application-update operations, and host accent/debug-HTTP facilities. Caller
+application-update operations, and host accent/HTTP-server facilities. Caller
 ownership is `rpc(owner)`, not a native-webview requirement. Icon/file queries,
 release-channel configuration, changelog HTTP reads and service-install prompt
 formatting do not require presentation, installation or elevation facilities.

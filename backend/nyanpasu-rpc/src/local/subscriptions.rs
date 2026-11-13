@@ -6,7 +6,7 @@ use nyanpasu_core::{clash::ws::ClashConnectionDetails, client::NyanpasuClient};
 use nyanpasu_rpc_protocol::{
     EventName, RpcError,
     frame::{Frame, LagReason, SubscriptionErrorCode, SubscriptionTarget},
-    types::CoreLogsChanged,
+    types::{CoreLogsChanged, CoreLogsSummaryChanged},
 };
 use nyanpasu_runtime_values::{
     core_status::CoreStatusInfo,
@@ -113,6 +113,12 @@ impl SubscriptionSource for NyanpasuClient {
                     .await
                     .map_err(error::application_error)?,
             }),
+            EventName::CoreLogsSummaryChanged => serde_json::to_value(CoreLogsSummaryChanged {
+                status: self
+                    .get_core_log_status_summary()
+                    .await
+                    .map_err(|error| error::application_error(error::IpcError::from(error)))?,
+            }),
             EventName::ConfigurationStatusSummaryChanged => serde_json::to_value(
                 ConfigurationStatusSummary::from(&self.configuration_status()),
             ),
@@ -130,7 +136,7 @@ impl SubscriptionSource for NyanpasuClient {
     async fn details(&self) -> Result<Details, RpcError> {
         self.subscribe_clash_connection_details()
             .await
-            .map_err(error::application_error)
+            .map_err(|error| error::application_error(error::IpcError::from(error)))
     }
 }
 

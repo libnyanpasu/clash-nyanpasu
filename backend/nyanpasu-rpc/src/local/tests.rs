@@ -1272,5 +1272,48 @@ async fn safe_status_snapshots_match_their_queries() {
             "{event:?}"
         );
     }
+    assert_eq!(
+        SubscriptionSource::snapshot(client, EventName::CoreLogsSummaryChanged)
+            .await
+            .unwrap()["status"],
+        fixture
+            .call("get_core_log_status_summary", json!({}))
+            .await
+            .1,
+        "CoreLogsSummaryChanged"
+    );
+    assert_eq!(
+        SubscriptionSource::snapshot(client, EventName::CoreLogsChanged)
+            .await
+            .unwrap()["status"],
+        fixture.call("get_core_log_status", json!({})).await.1,
+        "CoreLogsChanged"
+    );
+
+    let client = fixture.rpc.dependencies.client.clone();
     fixture.shutdown().await;
+
+    let summary_error = SubscriptionSource::snapshot(&client, EventName::CoreLogsSummaryChanged)
+        .await
+        .unwrap_err();
+    assert_eq!(summary_error.kind, "application_error");
+    assert_eq!(
+        summary_error.domain_error.as_ref().unwrap().0["kind"],
+        json!({"domain": "core_log_read", "error": {"kind": "unavailable"}})
+    );
+    assert!(
+        !serde_json::to_string(&summary_error)
+            .unwrap()
+            .contains("Core log actor unavailable"),
+        "summary failure must hide internal actor error text: {summary_error:?}"
+    );
+
+    let full_error = SubscriptionSource::snapshot(&client, EventName::CoreLogsChanged)
+        .await
+        .unwrap_err();
+    assert_eq!(full_error.kind, "application_error");
+    assert_eq!(
+        full_error.domain_error.as_ref().unwrap().0["kind"],
+        json!("unavailable")
+    );
 }

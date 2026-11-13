@@ -27,6 +27,9 @@ export const events = {
       'configuration-status-summary-changed',
     ),
   coreLogsChanged: makeEvent<CoreLogsChanged>('core-logs-changed'),
+  coreLogsSummaryChanged: makeEvent<CoreLogsSummaryChanged>(
+    'core-logs-summary-changed',
+  ),
   coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
     'core-status-changed-event',
   ),
@@ -296,8 +299,23 @@ export type CoreLogStatus = {
   discarded: number
 }
 
+/**  Public core-log status without raw storage error messages. */
+export type CoreLogStatusSummary = {
+  generation: string
+  version: number
+  first: CoreLogCursor | null
+  head: CoreLogCursor | null
+  bytes: number
+  has_error: boolean
+  discarded: number
+}
+
 export type CoreLogsChanged = {
   status: CoreLogStatus
+}
+
+export type CoreLogsSummaryChanged = {
+  status: CoreLogStatusSummary
 }
 
 export type CoreState = 'Running' | { Stopped: string | null }

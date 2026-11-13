@@ -1,6 +1,9 @@
 use serde::de::DeserializeOwned;
 
-use super::{CoreLogsChanged, IpcError, IpcErrorKind, MutationOutcome, RpcError, RuntimeError};
+use super::{
+    CoreLogsChanged, CoreLogsSummaryChanged, IpcError, IpcErrorKind, MutationOutcome, RpcError,
+    RuntimeError,
+};
 
 #[test]
 fn fixed_error_formats_preserve_tags_optional_fields_and_defaults() {
@@ -82,5 +85,6 @@ fn protocol_types_build_without_application_crates() {
     owned_snapshot::<nyanpasu_runtime_values::core_status::ServiceHostStatus>();
     owned_snapshot::<nyanpasu_runtime_values::app_update::AppUpdateSnapshot>();
     owned_snapshot::<CoreLogsChanged>();
+    owned_snapshot::<CoreLogsSummaryChanged>();
     owned_snapshot::<super::ClashConnectionDetails>();
 }

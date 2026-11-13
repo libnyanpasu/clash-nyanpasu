@@ -18,7 +18,9 @@ use nyanpasu_contracts::{
     system_proxy::OsProxyError,
 };
 use nyanpasu_core::{
-    client::{ClashReadError, ProfileSyncReadError, http_server::HttpServerControlError},
+    client::{
+        ClashReadError, CoreLogReadError, ProfileSyncReadError, http_server::HttpServerControlError,
+    },
     state::config_error::ConfigError,
     storage::StorageOperationError,
 };
@@ -1090,7 +1092,24 @@ cases!(
     SettingsUnavailable,
     ProxiesUnavailable,
     UnknownGroup,
-    DelayTestFailed
+    DelayTestFailed,
+    VersionUnavailable,
+    RulesUnavailable,
+    RuleProvidersUnavailable,
+    ProxyProvidersUnavailable,
+    StreamsUnavailable,
+);
+
+cases!(
+    core_log_read_error_cases,
+    CoreLogReadError,
+    received::CoreLogReadError,
+    present;
+    InvalidRequest,
+    CursorExpired,
+    RecordGone,
+    TooLarge,
+    Unavailable,
 );
 
 cases!(
@@ -1230,6 +1249,7 @@ fn receiving_types_preserve_all_error_and_mutation_variants() {
         effects_error_cases(present);
         http_server_control_error_cases(present);
         clash_read_error_cases(present);
+        core_log_read_error_cases(present);
         profile_sync_read_error_cases(present);
         ipc_domains_and_envelope(present);
         for error in log_error_cases(present) {
@@ -1300,6 +1320,7 @@ fn ipc_domains_and_envelope(present: bool) {
         Effects => effects_error_cases,
         HttpServer => http_server_control_error_cases,
         ClashRead => clash_read_error_cases,
+        CoreLogRead => core_log_read_error_cases,
         ProfileSyncRead => profile_sync_read_error_cases,
     );
     receive::<received::Degradation>(degradation(present));

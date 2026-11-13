@@ -1,8 +1,11 @@
 //! Shared traffic command adapters.
 
-use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
+use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus, CoreLogStatusSummary};
 use nyanpasu_core::client::NyanpasuClient;
-use nyanpasu_observers::logs::{CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult};
+use nyanpasu_observers::logs::{
+    CoreLogPage, CoreLogPageSummary, CoreLogQuery, CoreLogRecord, CoreLogResult,
+    CoreLogSummaryQuery,
+};
 
 use crate::{error::Result, registry::RpcState};
 
@@ -23,6 +26,16 @@ pub async fn query_core_logs(
     client.query_core_logs(query).await
 }
 
+/// Public core-log page summary without payloads, source labels, raw timestamps, keyword search, or storage error text.
+#[nyanpasu_macro::rpc(http, query, scope = read)]
+#[specta::specta]
+pub async fn query_core_logs_summary(
+    client: RpcState<'_, NyanpasuClient>,
+    query: CoreLogSummaryQuery,
+) -> Result<CoreLogPageSummary> {
+    Ok(client.query_core_logs_summary(query).await?)
+}
+
 #[nyanpasu_macro::rpc(http, result, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_core_log(
@@ -32,12 +45,21 @@ pub async fn get_core_log(
     client.get_core_log(cursor).await
 }
 
-#[nyanpasu_macro::rpc(http, result, query)]
+#[nyanpasu_macro::rpc(http, result, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_core_log_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> CoreLogResult<CoreLogStatus> {
     client.get_core_log_status().await
+}
+
+/// Public core-log status summary without raw storage error messages.
+#[nyanpasu_macro::rpc(http, query, scope = read)]
+#[specta::specta]
+pub async fn get_core_log_status_summary(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<CoreLogStatusSummary> {
+    Ok(client.get_core_log_status_summary().await?)
 }
 
 #[nyanpasu_macro::rpc(http, result, scope = settings)]

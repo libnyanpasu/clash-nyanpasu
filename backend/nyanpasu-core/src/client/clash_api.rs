@@ -84,8 +84,14 @@ impl NyanpasuClient {
             url
         })
     }
-    pub async fn proxy_providers(&self) -> Result<IndexMap<ProviderName, ProxyProviderSummary>> {
-        self.inner.proxies.providers().await
+    pub async fn proxy_providers(
+        &self,
+    ) -> Result<IndexMap<ProviderName, ProxyProviderSummary>, ClashReadError> {
+        self.inner
+            .proxies
+            .providers()
+            .await
+            .map_err(|_| ClashReadError::ProxyProvidersUnavailable)
     }
     pub async fn select_proxy(
         &self,
@@ -139,26 +145,38 @@ impl NyanpasuClient {
         public_settings(self.clash_configs().await)
     }
 
-    pub async fn clash_rule_providers(&self) -> Result<ProvidersRulesRes> {
-        let providers = self
+    pub async fn clash_rule_providers(&self) -> Result<ProvidersRulesRes, ClashReadError> {
+        self.inner
+            .core_api
+            .api_client()
+            .await
+            .map_err(|_| ClashReadError::RuleProvidersUnavailable)?
+            .rule_providers()
+            .await
+            .map_err(|_| ClashReadError::RuleProvidersUnavailable)
+            .and_then(|providers| {
+                providers
+                    .into_iter()
+                    .map(|(name, provider)| {
+                        rule_provider_item(provider)
+                            .map(|item| (name.as_str().to_owned(), item))
+                            .map_err(|_| ClashReadError::RuleProvidersUnavailable)
+                    })
+                    .collect()
+            })
+            .map(|providers| ProvidersRulesRes { providers })
+    }
+
+    pub async fn clash_rules(&self) -> Result<RulesRes, ClashReadError> {
+        let rules = self
             .inner
             .core_api
             .api_client()
-            .await?
-            .rule_providers()
-            .await?;
-        Ok(ProvidersRulesRes {
-            providers: providers
-                .into_iter()
-                .map(|(name, provider)| {
-                    Ok((name.as_str().to_owned(), rule_provider_item(provider)?))
-                })
-                .collect::<Result<_>>()?,
-        })
-    }
-
-    pub async fn clash_rules(&self) -> Result<RulesRes> {
-        let rules = self.inner.core_api.api_client().await?.rules().await?;
+            .await
+            .map_err(|_| ClashReadError::RulesUnavailable)?
+            .rules()
+            .await
+            .map_err(|_| ClashReadError::RulesUnavailable)?;
         Ok(RulesRes {
             rules: rules
                 .into_iter()
@@ -181,8 +199,16 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub async fn clash_version(&self) -> Result<ClashVersion> {
-        let version = self.inner.core_api.api_client().await?.version().await?;
+    pub async fn clash_version(&self) -> Result<ClashVersion, ClashReadError> {
+        let version = self
+            .inner
+            .core_api
+            .api_client()
+            .await
+            .map_err(|_| ClashReadError::VersionUnavailable)?
+            .version()
+            .await
+            .map_err(|_| ClashReadError::VersionUnavailable)?;
         Ok(ClashVersion {
             version: version.version,
             premium: version.premium,

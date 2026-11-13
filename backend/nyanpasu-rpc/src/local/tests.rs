@@ -550,7 +550,10 @@ async fn local_non_full_value_streams_are_rejected() {
         );
     }
     assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
-    assert_eq!(terminal_record_count(&fixture), 6);
+    assert_eq!(
+        terminal_record_count(&fixture),
+        EventName::ALL.len() - nyanpasu_rpc_protocol::session::RECOVERABLE_EVENTS.len()
+    );
     peer.finish().await;
     fixture.shutdown().await;
 }
@@ -1240,4 +1243,34 @@ fn terminal_record_count(fixture: &Fixture) -> usize {
             )
         })
         .count()
+}
+
+/// The facade's snapshot of each safe status event is the projection its query
+/// returns, so an initial snapshot, a reset and a query never disagree once
+/// admission lets a local connection subscribe to them.
+#[tokio::test]
+async fn safe_status_snapshots_match_their_queries() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    for (event, query) in [
+        (
+            EventName::ConfigurationStatusSummaryChanged,
+            "get_configuration_status_summary",
+        ),
+        (
+            EventName::CoreStatusSummaryChanged,
+            "get_core_status_summary",
+        ),
+        (
+            EventName::ServiceStatusSummaryChanged,
+            "get_service_status_summary",
+        ),
+    ] {
+        assert_eq!(
+            SubscriptionSource::snapshot(client, event).await.unwrap(),
+            fixture.call(query, json!({})).await.1,
+            "{event:?}"
+        );
+    }
+    fixture.shutdown().await;
 }

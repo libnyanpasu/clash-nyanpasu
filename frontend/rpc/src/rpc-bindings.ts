@@ -18,6 +18,19 @@ export function createRpcClient(
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
+    /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
+    getConfigurationStatusSummary: () =>
+      __RPC_INVOKE<ConfigurationStatusSummary>(
+        'get_configuration_status_summary',
+      ),
+    /**  The service daemon's version, install state and phase, without its server details. */
+    getServiceStatusSummary: () =>
+      __RPC_INVOKE<ServiceStatusSummary>('get_service_status_summary'),
+    /**  Which core is running and in what state, without controller endpoints or failure text. */
+    getCoreStatusSummary: () =>
+      typedError<CoreStatusSummary, IpcError>(
+        __RPC_INVOKE('get_core_status_summary'),
+      ),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
@@ -806,6 +819,11 @@ export function createRpcClient(
       transport.events,
       'configuration-status-changed',
     ),
+    configurationStatusSummaryChanged:
+      makeEvent<ConfigurationStatusSummaryChanged>(
+        transport.events,
+        'configuration-status-summary-changed',
+      ),
     coreLogsChanged: makeEvent<CoreLogsChanged>(
       transport.events,
       'core-logs-changed',
@@ -813,6 +831,10 @@ export function createRpcClient(
     coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
       transport.events,
       'core-status-changed-event',
+    ),
+    coreStatusSummaryChangedEvent: makeEvent<CoreStatusSummaryChangedEvent>(
+      transport.events,
+      'core-status-summary-changed-event',
     ),
     schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
       transport.events,
@@ -822,6 +844,11 @@ export function createRpcClient(
       transport.events,
       'service-status-changed-event',
     ),
+    serviceStatusSummaryChangedEvent:
+      makeEvent<ServiceStatusSummaryChangedEvent>(
+        transport.events,
+        'service-status-summary-changed-event',
+      ),
     stateChangedEvent: makeEvent<StateChangedEvent>(
       transport.events,
       'state-changed-event',
@@ -1878,6 +1905,22 @@ export type ConfigurationStatus = {
 
 export type ConfigurationStatusChanged = ConfigurationStatus
 
+/**  The secret-free view of [`ConfigurationStatus`]. */
+export type ConfigurationStatusSummary = {
+  event_seq: number
+  /**  A maintenance operation is running. Its description is diagnostic text. */
+  maintenance_active: boolean
+  source_versions: SourceVersions
+  runtime: RuntimeConvergenceSummary
+  effects: EffectConvergenceSummary[]
+  /**  The latest background-source receipt per profile, without the profile's name. */
+  sources: SourceSummary[]
+  active: string | null
+  recent_operations: OperationSummary[]
+}
+
+export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
 export type Connection = Connection_Serialize | Connection_Deserialize
 
 export type ConnectionMetadata =
@@ -2068,6 +2111,9 @@ export type Connection_Serialize = {
    */
   _extra: { [key in string]: JsonValue | null }
 }
+
+/**  How the core's controller is reached. A socket path or URL is a location, not a status. */
+export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
 
 export type ConvergenceHealth =
   | 'healthy'
@@ -2388,6 +2434,80 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+/**
+ *  [`CoreStateDetail`] without the stop reason's text or the process id. The encoding stays
+ *  externally tagged so a consumer that tests for the `Running` key keeps working.
+ */
+export type CoreStateSummary =
+  | ({
+      Stopped: {
+        has_reason: boolean
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Starting: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Running: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Restarting: {
+        epoch: number
+        attempt: number
+      }
+    } & {
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Switching: {
+        from: number | null
+        to: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+    })
+  | ({
+      Stopping: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Switching?: never
+    })
+
 export type CoreStatusChangedEvent = CoreStatusInfo
 
 export type CoreStatusInfo = {
@@ -2400,6 +2520,21 @@ export type CoreStatusInfo = {
   revision: RevisionIdInfo | null
   healthy: boolean | null
 }
+
+/**  The secret-free view of [`CoreStatusInfo`]. */
+export type CoreStatusSummary = {
+  controller: ControllerKind | null
+  host: ExecutionHost
+  connectivity: EndpointConnectivitySummary
+  generation: number
+  state: CoreStateSummary | null
+  state_changed_at: number
+  revision: RevisionSummary | null
+  /**  `None` is unknown, never healthy. */
+  healthy: boolean | null
+}
+
+export type CoreStatusSummaryChangedEvent = CoreStatusSummary
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
@@ -2566,6 +2701,17 @@ export type EffectConvergence = {
   message: string | null
 }
 
+export type EffectConvergenceSummary = {
+  kind: EffectKind
+  health: ConvergenceHealth
+  desired_revision: number
+  applied_revision: number
+  attempts: number
+  automatic_remaining: number
+  code: EffectFailureCode | null
+  has_diagnostic: boolean
+}
+
 /**
  *  Why an effect is not in its desired state, in the terms the UI localizes.
  *
@@ -2658,6 +2804,13 @@ export type EndpointConnectivity =
    *  router never falls back on its own.
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
+
+export type EndpointConnectivitySummary =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**  Unreachable; the transport error stays with protected callers. */
+  | { kind: 'degraded'; desired: ExecutionHost }
 
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
@@ -3698,6 +3851,15 @@ export type OperationStatus = {
   outcome: string
   conclusion: string
   message: string | null
+}
+
+/**  One settled mutation. `domain`, `outcome` and `conclusion` name variants of closed enums. */
+export type OperationSummary = {
+  operation_id: string
+  domain: string
+  outcome: string
+  conclusion: string
+  has_diagnostic: boolean
 }
 
 /**  The pipeline operator that produced a snapshot node. */
@@ -5354,6 +5516,12 @@ export type RevisionIdInfo = {
   effective_hash: string
 }
 
+/**  The identity of the config revision the core adopted, without its content hash. */
+export type RevisionSummary = {
+  epoch: number
+  generation: number
+}
+
 export type RuleKey = {
   kind: string
   payload: string
@@ -5472,6 +5640,15 @@ export type RuntimeConvergence = {
   attempts: number
   automatic_remaining: number
   message: string | null
+}
+
+export type RuntimeConvergenceSummary = {
+  health: ConvergenceHealth
+  operation_id: string | null
+  attempts: number
+  automatic_remaining: number
+  /**  The owner reported diagnostic text, available to protected callers. */
+  has_diagnostic: boolean
 }
 
 /**  A failure of an operation on the running core or the runtime workflow. */
@@ -5706,6 +5883,19 @@ export type ServiceCompat =
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
 
+/**  [`ServiceCompat`] with the daemon's version only where it parsed as a version. */
+export type ServiceCompatSummary =
+  | { kind: 'unknown' }
+  | { kind: 'compatible'; server_version: string }
+  | {
+      kind: 'incompatible'
+      server_version: string
+      required_major: number
+      required_min: string
+    }
+  /**  The daemon reported text that is not a version, and the text is not repeated. */
+  | { kind: 'unparsable' }
+
 /**
  *  The watch projection (UI settings page + facade). Daemon state, never a
  *  second copy of core state.
@@ -5811,6 +6001,20 @@ export type ServiceStatusInfo_Serialize = {
   restart_attempts: number
 }
 
+/**  The secret-free view of [`ServiceHostStatus`]. */
+export type ServiceStatusSummary = {
+  name: string
+  version: string
+  status: ServiceStatus
+  /**  The daemon answered the probe. Its data directories and log locations stay protected. */
+  server_reported: boolean
+  phase: ServicePhase
+  compat: ServiceCompatSummary
+  restart_attempts: number
+}
+
+export type ServiceStatusSummaryChangedEvent = ServiceStatusSummary
+
 export type SnapshotDiffHunk = {
   old_start: number
   old_lines: number
@@ -5834,11 +6038,33 @@ export type SourceOutcome =
    */
   | { kind: 'rejected'; code: string; message: string }
 
+export type SourceOutcomeSummary =
+  | { kind: 'committed'; operation_id: string | null }
+  | { kind: 'superseded' }
+  | { kind: 'failed' }
+  | { kind: 'rejected'; code: SourceRejection }
+
+/**  The refusal reason a source receipt names, from the closed set the source owner raises. */
+export type SourceRejection =
+  | 'subscription_rejected'
+  | 'external_source_rejected'
+  /**  A code this build does not classify; never read as success. */
+  | 'other'
+
 export type SourceStatus = {
   profile: ProfileId
   name: string
   origin: SourceOrigin
   outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
+export type SourceSummary = {
+  profile: ProfileId
+  origin: SourceOrigin
+  outcome: SourceOutcomeSummary
   health: ConvergenceHealth
   /**  Unix milliseconds. */
   at: number

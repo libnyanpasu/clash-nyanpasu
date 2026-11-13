@@ -1,15 +1,17 @@
-import type { ConfigurationStatus, SourceStatus } from '@nyanpasu/rpc/types'
+import type { ConvergenceHealth, SourceStatus } from '@nyanpasu/rpc/types'
 
 /** Event and query replies share a sequence; delayed replies cannot erase newer failures. */
-export function acceptConfigurationStatus(
-  previous: ConfigurationStatus | undefined,
-  next: ConfigurationStatus,
-): ConfigurationStatus {
+export function acceptConfigurationStatus<T extends { event_seq: number }>(
+  previous: T | undefined,
+  next: T,
+): T {
   return !previous || next.event_seq > previous.event_seq ? next : previous
 }
 
 /** Background sources worth a row: a healthy receipt is not news. */
-export function attentionSources(status: ConfigurationStatus): SourceStatus[] {
+export function attentionSources<
+  Source extends { health: ConvergenceHealth },
+>(status: { sources: Source[] }): Source[] {
   return status.sources.filter((source) => source.health !== 'healthy')
 }
 

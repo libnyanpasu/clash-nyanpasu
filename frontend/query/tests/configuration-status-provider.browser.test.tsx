@@ -6,7 +6,7 @@ import {
   type RpcEventCallback,
   type RpcEventTransport,
 } from '@nyanpasu/rpc'
-import type { ConfigurationStatus } from '@nyanpasu/rpc/types'
+import type { ConfigurationStatusSummary } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MutationUnconfirmedError } from '../src/ipc/query-options'
 import {
@@ -17,15 +17,15 @@ import {
 import { RpcProvider } from '../src/provider/rpc-provider'
 import { createQueryBindings } from '../src/query-bindings'
 
-const status = (event_seq: number): ConfigurationStatus => ({
+const status = (event_seq: number): ConfigurationStatusSummary => ({
   event_seq,
-  maintenance: null,
+  maintenance_active: false,
   runtime: {
     health: 'healthy',
     operation_id: null,
     attempts: 0,
     automatic_remaining: 0,
-    message: null,
+    has_diagnostic: false,
   },
   source_versions: { application: 1, clash: 1, session: 1, profiles: 1 },
   effects: [],
@@ -34,15 +34,15 @@ const status = (event_seq: number): ConfigurationStatus => ({
   active: null,
 })
 
-type EventHandler = RpcEventCallback<ConfigurationStatus>
+type EventHandler = RpcEventCallback<ConfigurationStatusSummary>
 
-function mockRpc(initial: ConfigurationStatus) {
+function mockRpc(initial: ConfigurationStatusSummary) {
   let handler: EventHandler | undefined
   let resyncHandler: (() => void) | undefined
   let sequence = initial.event_seq
   const invoke = vi.fn(
     async (method: string, _params?: Record<string, unknown>) => {
-      if (method === 'get_configuration_status') return status(sequence)
+      if (method === 'get_configuration_status_summary') return status(sequence)
       if (method === 'retry_configuration_runtime')
         return { status: 'ok', data: null }
       if (method === 'retry_configuration_effect')
@@ -56,8 +56,8 @@ function mockRpc(initial: ConfigurationStatus) {
   }
   const events: RpcEventTransport = {
     listen: vi.fn(async <T,>(name: string, callback: RpcEventCallback<T>) => {
-      if (name === 'configuration-status-changed') {
-        handler = callback as RpcEventCallback<ConfigurationStatus>
+      if (name === 'configuration-status-summary-changed') {
+        handler = callback as RpcEventCallback<ConfigurationStatusSummary>
       }
       return () => {
         handler = undefined
@@ -80,10 +80,10 @@ function mockRpc(initial: ConfigurationStatus) {
       events,
     }),
     invoke,
-    emit(next: ConfigurationStatus) {
+    emit(next: ConfigurationStatusSummary) {
       sequence = next.event_seq
       handler?.({
-        event: 'configuration-status-changed',
+        event: 'configuration-status-summary-changed',
         id: next.event_seq,
         payload: next,
       })
@@ -147,13 +147,13 @@ test('configuration status query keeps its method and result', async ({
     queryClient.clear()
   })
   const { queries, mutations } = createQueryBindings(mock.rpc)
-  const options = queries.getConfigurationStatus()
+  const options = queries.getConfigurationStatusSummary()
 
   expect(options.queryKey).toEqual(CONFIGURATION_STATUS_QUERY_KEY)
-  expect(mutations).not.toHaveProperty('getConfigurationStatus')
+  expect(mutations).not.toHaveProperty('getConfigurationStatusSummary')
   await expect(queryClient.fetchQuery(options)).resolves.toEqual(status(7))
   expect(mock.invoke).toHaveBeenCalledExactlyOnceWith(
-    'get_configuration_status',
+    'get_configuration_status_summary',
     undefined,
   )
 })
@@ -174,12 +174,19 @@ test('shares one status listener and accepts events without letting older data w
   await expect.poll(() => invoke).toHaveBeenCalledTimes(1)
   await expect.poll(() => listenerCount()).toBe(1)
   expect(eventListen).toHaveBeenCalledTimes(1)
+  // The provider reads the summary only: never the full query or event.
+  expect(invoke.mock.calls.map(([method]) => method)).not.toContain(
+    'get_configuration_status',
+  )
+  expect(vi.mocked(eventListen).mock.calls.map(([name]) => name)).toEqual([
+    'configuration-status-summary-changed',
+  ])
 
   emit(status(3))
   await expect
     .poll(
       () =>
-        queryClient.getQueryData<ConfigurationStatus>(
+        queryClient.getQueryData<ConfigurationStatusSummary>(
           CONFIGURATION_STATUS_QUERY_KEY,
         )?.event_seq,
     )
@@ -192,7 +199,7 @@ test('shares one status listener and accepts events without letting older data w
   await expect
     .poll(
       () =>
-        queryClient.getQueryData<ConfigurationStatus>(
+        queryClient.getQueryData<ConfigurationStatusSummary>(
           CONFIGURATION_STATUS_QUERY_KEY,
         )?.event_seq,
     )

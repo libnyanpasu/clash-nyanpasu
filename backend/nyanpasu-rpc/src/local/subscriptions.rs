@@ -8,7 +8,10 @@ use nyanpasu_rpc_protocol::{
     frame::{Frame, LagReason, SubscriptionErrorCode, SubscriptionTarget},
     types::CoreLogsChanged,
 };
-use nyanpasu_runtime_values::core_status::CoreStatusInfo;
+use nyanpasu_runtime_values::{
+    core_status::CoreStatusInfo,
+    observation::{ConfigurationStatusSummary, CoreStatusSummary, ServiceStatusSummary},
+};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
@@ -110,6 +113,15 @@ impl SubscriptionSource for NyanpasuClient {
                     .await
                     .map_err(error::application_error)?,
             }),
+            EventName::ConfigurationStatusSummaryChanged => serde_json::to_value(
+                ConfigurationStatusSummary::from(&self.configuration_status()),
+            ),
+            EventName::CoreStatusSummaryChanged => serde_json::to_value(CoreStatusSummary::from(
+                &CoreStatusInfo::from(self.core_status()),
+            )),
+            EventName::ServiceStatusSummaryChanged => {
+                serde_json::to_value(ServiceStatusSummary::from(&self.service_status()))
+            }
             _ => unreachable!("local subscription admission only permits full-value events"),
         };
         value.map_err(error::application_error)

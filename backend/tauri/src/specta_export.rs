@@ -25,7 +25,10 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
             events::ServiceStatusChangedEvent,
-            events::StateChangedEvent
+            events::StateChangedEvent,
+            ipc::ConfigurationStatusSummaryChanged,
+            events::CoreStatusSummaryChangedEvent,
+            events::ServiceStatusSummaryChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -45,6 +48,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         schema_commands![
             commands::status::get_http_server_status,
             commands::status::get_configuration_status,
+            commands::status::get_configuration_status_summary,
+            commands::status::get_service_status_summary,
+            commands::runtime::get_core_status_summary,
             // Read-only commands
             ipc::read_clipboard_text,
             commands::traffic::query_core_logs,
@@ -229,7 +235,10 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
         events::ServiceStatusChangedEvent,
-        events::StateChangedEvent
+        events::StateChangedEvent,
+        ipc::ConfigurationStatusSummaryChanged,
+        events::CoreStatusSummaryChangedEvent,
+        events::ServiceStatusSummaryChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the
@@ -538,6 +547,18 @@ mod tests {
             (EventName::StorageResync, events::StorageResyncEvent::NAME),
             (EventName::WindowMessage, window::WindowMessageEvent::NAME),
             (EventName::StateChanged, events::StateChangedEvent::NAME),
+            (
+                EventName::ConfigurationStatusSummaryChanged,
+                ipc::ConfigurationStatusSummaryChanged::NAME,
+            ),
+            (
+                EventName::CoreStatusSummaryChanged,
+                events::CoreStatusSummaryChangedEvent::NAME,
+            ),
+            (
+                EventName::ServiceStatusSummaryChanged,
+                events::ServiceStatusSummaryChangedEvent::NAME,
+            ),
         ];
         assert_eq!(EventName::ALL.len(), desktop_names.len());
         for (event, (expected_event, desktop_name)) in EventName::ALL.into_iter().zip(desktop_names)

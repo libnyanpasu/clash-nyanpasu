@@ -2,7 +2,7 @@ import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { useMemo } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import { useCoreStatus, useSetting, useSystemService } from '@nyanpasu/query'
+import { useCoreStatus, useServiceStatus, useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 /**
@@ -16,9 +16,7 @@ export const useServiceFallbackReason = () => {
 
   const { data: coreStatus } = useCoreStatus()
 
-  const {
-    query: { data: serviceStatus },
-  } = useSystemService()
+  const { data: serviceStatus } = useServiceStatus()
 
   return useMemo(() => {
     if (!serviceMode.value || !coreStatus || !serviceStatus) {

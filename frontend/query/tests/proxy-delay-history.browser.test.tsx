@@ -30,16 +30,16 @@ const node = (name: string): Proxy_Serialize => ({
   provider: null,
 })
 
-const group = (name: string): ProxyGroup => ({
+const group = (name: string, delayKey = ''): ProxyGroup => ({
   name,
   type: 'Selector',
   all: ['tested', 'other'],
   now: 'tested',
   fixed: null,
-  testUrl: null,
+  delayKey,
   expectedStatus: null,
   hidden: false,
-  icon: null,
+  iconConfigured: false,
   capabilities: { select: true, clearFixed: false },
 })
 
@@ -165,6 +165,7 @@ test('single node delay only replaces that node, keeping sibling identity', asyn
   expect(testRpc.invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
     name: 'tested',
     provider: null,
+    group: null,
     url: null,
     expected: null,
   })
@@ -182,7 +183,6 @@ function makePinnedSnapshot(): Proxies_Serialize {
         ...group('group'),
         type: 'URLTest',
         fixed: 'tested',
-        testUrl: null,
         expectedStatus: null,
         capabilities: { select: true, clearFixed: true },
       },
@@ -278,12 +278,14 @@ test('a pinned group tests its members one by one and never the group', async ({
   expect(invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
     name: 'tested',
     provider: null,
+    group: 'group',
     url: null,
     expected: null,
   })
   expect(invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
     name: 'other',
     provider: 'sub',
+    group: 'group',
     url: null,
     expected: null,
   })
@@ -312,6 +314,7 @@ test('a pin newer than the cached snapshot still tests members one by one', asyn
   expect(invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
     name: 'other',
     provider: 'sub',
+    group: 'group',
     url: null,
     expected: null,
   })
@@ -437,13 +440,20 @@ test('a pinned group tests at most eight members at once', async ({
 const sampleDelays = (history: { delay: number }[] | undefined) =>
   history?.map(({ delay }) => delay)
 
-test('a group test passes the group URL and expected status to the core', async ({
+// A group with its own test URL is keyed by its name: the URL itself never
+// reaches the page, and the backend resolves it.
+const ownUrlSnapshot = (): Proxies_Serialize => ({
+  ...makeSnapshot(),
+  groups: [group('group', 'group')],
+})
+
+test('a group test passes only the expected status to the core', async ({
   onTestFinished,
 }) => {
   const { invoke, hook } = await renderGroupTest(
     {
-      cached: makeSnapshot(),
-      fresh: makeSnapshot(),
+      cached: ownUrlSnapshot(),
+      fresh: ownUrlSnapshot(),
       delay: async () => ({ delay: 100 }),
     },
     onTestFinished,
@@ -451,17 +461,17 @@ test('a group test passes the group URL and expected status to the core', async 
   await hook.act(async () => {
     await hook.result.current.updateGroupDelay.mutateAsync([
       'group',
-      { url: 'https://g/', expected: '204' },
+      { expected: '204' },
     ])
   })
   expect(invoke).toHaveBeenCalledWith('clash_api_get_group_delay', {
     group: 'group',
-    url: 'https://g/',
+    url: null,
     expected: '204',
   })
 })
 
-test('a pinned group passes the URL and expected status to every member test', async ({
+test('a pinned group names itself and the expected status for every member test', async ({
   onTestFinished,
 }) => {
   const snapshot = makePinnedSnapshot()
@@ -472,7 +482,7 @@ test('a pinned group passes the URL and expected status to every member test', a
   await hook.act(async () => {
     await hook.result.current.updateGroupDelay.mutateAsync([
       'group',
-      { url: 'https://g/', expected: '204' },
+      { expected: '204' },
     ])
   })
   const calls = invoke.mock.calls.filter(
@@ -480,18 +490,22 @@ test('a pinned group passes the URL and expected status to every member test', a
   )
   expect(calls).toHaveLength(2)
   for (const [, params] of calls) {
-    expect(params).toMatchObject({ url: 'https://g/', expected: '204' })
+    expect(params).toMatchObject({
+      group: 'group',
+      url: null,
+      expected: '204',
+    })
   }
 })
 
-test('a group test appends the sample to history and the tested URL entry', async ({
+test('a group test appends the sample to history and the group source entry', async ({
   onTestFinished,
 }) => {
-  const snapshot = makeSnapshot()
+  const snapshot = ownUrlSnapshot()
   snapshot.nodes.tested = {
     ...snapshot.nodes.tested,
     extra: {
-      'https://g/': {
+      group: {
         alive: true,
         history: [{ time: '2026-09-10T00:00:00Z', delay: 7 }],
       },
@@ -507,24 +521,39 @@ test('a group test appends the sample to history and the tested URL entry', asyn
     onTestFinished,
   )
   await hook.act(async () => {
-    await hook.result.current.updateGroupDelay.mutateAsync([
-      'group',
-      { url: 'https://g/' },
-    ])
+    await hook.result.current.updateGroupDelay.mutateAsync(['group'])
   })
   const tested = data().nodes.tested
   expect(sampleDelays(tested.history)).toEqual([42, 100])
-  expect(tested.extra?.['https://g/']?.alive).toBe(true)
-  expect(sampleDelays(tested.extra?.['https://g/']?.history)).toEqual([7, 100])
+  expect(tested.extra?.group?.alive).toBe(true)
+  expect(sampleDelays(tested.extra?.group?.history)).toEqual([7, 100])
 })
 
-test('a node without extra gains an entry for the tested URL', async ({
+test('a group without its own URL records under the default source', async ({
   onTestFinished,
 }) => {
   const { data, hook } = await renderGroupTest(
     {
       cached: makeSnapshot(),
       fresh: makeSnapshot(),
+      delay: async () => ({ delay: 0 }),
+      groupDelay: { tested: 100 },
+    },
+    onTestFinished,
+  )
+  await hook.act(async () => {
+    await hook.result.current.updateGroupDelay.mutateAsync(['group'])
+  })
+  expect(sampleDelays(data().nodes.tested.extra?.['']?.history)).toEqual([100])
+})
+
+test('a node without extra gains an entry for its group source', async ({
+  onTestFinished,
+}) => {
+  const { data, hook } = await renderGroupTest(
+    {
+      cached: ownUrlSnapshot(),
+      fresh: ownUrlSnapshot(),
       delay: async () => ({ delay: 100 }),
     },
     onTestFinished,
@@ -533,22 +562,22 @@ test('a node without extra gains an entry for the tested URL', async ({
     await hook.result.current.updateProxiesDelay.mutateAsync([
       'tested',
       null,
-      { url: 'https://g/', expected: null },
+      { group: 'group', expected: null },
     ])
   })
-  const entry = data().nodes.tested.extra?.['https://g/']
+  const entry = data().nodes.tested.extra?.group
   expect(entry?.alive).toBe(true)
   expect(sampleDelays(entry?.history)).toEqual([100])
   expect(sampleDelays(data().nodes.tested.history)).toEqual([42, 100])
 })
 
-test('a single node test passes the URL to the core', async ({
+test('a single node test names its group and no URL', async ({
   onTestFinished,
 }) => {
   const { invoke, hook } = await renderGroupTest(
     {
-      cached: makeSnapshot(),
-      fresh: makeSnapshot(),
+      cached: ownUrlSnapshot(),
+      fresh: ownUrlSnapshot(),
       delay: async () => ({ delay: 0 }),
     },
     onTestFinished,
@@ -557,21 +586,51 @@ test('a single node test passes the URL to the core', async ({
     await hook.result.current.updateProxiesDelay.mutateAsync([
       'tested',
       null,
-      { url: 'https://g/', expected: null },
+      { group: 'group', expected: null },
     ])
   })
   expect(invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
     name: 'tested',
     provider: null,
-    url: 'https://g/',
+    group: 'group',
+    url: null,
     expected: null,
   })
 })
 
-test('a group test response lands in both history and the URL entry', async ({
+test('a hidden group keeps its source after the group list drops it', async ({
   onTestFinished,
 }) => {
-  const snapshot = makeSnapshot()
+  const hidden = { ...group('hidden', 'hidden'), hidden: true }
+  const snapshot: Proxies_Serialize = {
+    ...makeSnapshot(),
+    groups: [group('group'), hidden],
+  }
+  const { data, hook } = await renderGroupTest(
+    {
+      cached: snapshot,
+      fresh: snapshot,
+      delay: async () => ({ delay: 100 }),
+    },
+    onTestFinished,
+  )
+  expect(data().groups.map(({ name }) => name)).toEqual(['group'])
+  await hook.act(async () => {
+    await hook.result.current.updateProxiesDelay.mutateAsync([
+      'tested',
+      null,
+      { group: 'hidden', expected: null },
+    ])
+  })
+  expect(sampleDelays(data().nodes.tested.extra?.hidden?.history)).toEqual([
+    100,
+  ])
+})
+
+test('a group test response lands in both history and the source entry', async ({
+  onTestFinished,
+}) => {
+  const snapshot = ownUrlSnapshot()
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity, gcTime: Infinity },
@@ -597,15 +656,12 @@ test('a group test response lands in both history and the URL entry', async ({
   await expect.poll(() => hook.result.current.proxies.isSuccess).toBe(true)
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   await hook.act(async () => {
-    await hook.result.current.updateGroupDelay.mutateAsync([
-      'group',
-      { url: 'https://g/' },
-    ])
+    await hook.result.current.updateGroupDelay.mutateAsync(['group'])
   })
   const queryKey = createQueryBindings(testRpc.rpc).queries.getProxies()
     .queryKey
   const tested = client.getQueryData<ClashProxiesQuery>(queryKey)!.nodes.tested
   expect(sampleDelays(tested.history)).toEqual([42, 0])
-  expect(tested.extra?.['https://g/']?.alive).toBe(false)
-  expect(sampleDelays(tested.extra?.['https://g/']?.history)).toEqual([0])
+  expect(tested.extra?.group?.alive).toBe(false)
+  expect(sampleDelays(tested.extra?.group?.history)).toEqual([0])
 })

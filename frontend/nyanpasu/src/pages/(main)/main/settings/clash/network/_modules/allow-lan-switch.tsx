@@ -4,7 +4,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashAccess } from '@nyanpasu/query'
+import { useClashAccess, useClashConfig } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -12,7 +12,8 @@ import {
 } from '../../../../_modules/settings-card'
 
 export default function AllowLanSwitch() {
-  const { query, upsert } = useClashAccess()
+  const { query } = useClashConfig()
+  const { upsert } = useClashAccess()
 
   const value = useMemo(() => query.data?.['allow-lan'], [query.data])
 

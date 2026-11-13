@@ -5,25 +5,30 @@ use clash_api::{Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, Proxy
 use nyanpasu_config::application::NyanpasuAppConfig;
 
 use crate::clash::{
-    api::{ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes},
-    proxies::ProxyProviderSummary,
+    api::{
+        ClashApiSettings, ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes,
+        RuleProviderItem, RulesRes,
+    },
+    proxies::{Proxies, ProxyProviderSummary},
 };
 
-use super::NyanpasuClient;
+use super::{ClashReadError, NyanpasuClient};
 
 /// Used only when the app config's default test URL is empty too.
 const FALLBACK_LATENCY_TEST_URL: &str = "http://www.gstatic.com/generate_204";
 
-/// A test's URL is the caller's, else the app's default; its timeout is
-/// always the app's.
+/// A test's URL is the caller's, else the group's own, else the app's default; its timeout is
+/// always the app's. `group_url` is configuration that never leaves the backend.
 fn delay_query(
     url: Option<String>,
+    group_url: Option<String>,
     expected: Option<String>,
     app: &NyanpasuAppConfig,
 ) -> Result<DelayQuery> {
-    let url = url
-        .filter(|url| !url.is_empty())
-        .or_else(|| Some(app.default_latency_test.clone()).filter(|url| !url.is_empty()))
+    let url = [url, group_url, Some(app.default_latency_test.clone())]
+        .into_iter()
+        .flatten()
+        .find(|url| !url.is_empty())
         .unwrap_or_else(|| FALLBACK_LATENCY_TEST_URL.into());
     let query = DelayQuery::new(
         url.parse()?,
@@ -36,13 +41,39 @@ fn delay_query(
 }
 
 impl NyanpasuClient {
-    pub async fn get_proxies(&self) -> Result<crate::clash::proxies::Proxies> {
-        let proxies = self.inner.proxies.get(false).await?;
-        Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
+    /// The proxies a `read` caller may see; see [`Proxies::trim_for_frontend`]. A failure carries a
+    /// fixed message and none of the core's response.
+    pub async fn get_proxies(&self) -> Result<Proxies, ClashReadError> {
+        self.read_proxies(false).await
     }
-    pub async fn refresh_proxies(&self) -> Result<crate::clash::proxies::Proxies> {
-        let proxies = self.inner.proxies.get(true).await?;
-        Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
+    pub async fn refresh_proxies(&self) -> Result<Proxies, ClashReadError> {
+        self.read_proxies(true).await
+    }
+    async fn read_proxies(&self, force: bool) -> Result<Proxies, ClashReadError> {
+        let unavailable = |_| ClashReadError::ProxiesUnavailable;
+        let proxies = self.inner.proxies.get(force).await.map_err(unavailable)?;
+        let default_url = self.default_latency_test_url().await.map_err(unavailable)?;
+        Ok(proxies.trim_for_frontend(&default_url))
+    }
+    /// Each group's icon, by group name. The icons are profile-provided URLs that may hold a
+    /// credential, so this is a `sensitive_read` query.
+    pub async fn proxy_group_icons(&self) -> Result<IndexMap<ProxyName, String>> {
+        Ok(self.inner.proxies.get(false).await?.group_icons())
+    }
+    /// The test URL of `group`, when it has one of its own. No group names none; a group the
+    /// snapshot does not know is refused, so a stale name never tests another endpoint.
+    async fn group_test_url(&self, group: Option<&str>) -> Result<Option<String>, ClashReadError> {
+        let Some(group) = group else { return Ok(None) };
+        let proxies = self
+            .inner
+            .proxies
+            .get(false)
+            .await
+            .map_err(|_| ClashReadError::ProxiesUnavailable)?;
+        proxies
+            .group_own_test_url(group)
+            .map(|url| url.map(str::to_owned))
+            .ok_or(ClashReadError::UnknownGroup)
     }
     /// The URL a test without an explicit one uses, as in `delay_query`.
     async fn default_latency_test_url(&self) -> Result<String> {
@@ -100,6 +131,14 @@ impl NyanpasuClient {
         config_item(self.inner.core_api.api_client().await?.configs().await?)
     }
 
+    /// The live core configuration without the controller secret.
+    ///
+    /// A failure carries a fixed message and none of the transport error: the core's response and
+    /// the request it failed on are not for a caller that only holds `read`.
+    pub async fn clash_api_settings(&self) -> Result<ClashApiSettings, ClashReadError> {
+        public_settings(self.clash_configs().await)
+    }
+
     pub async fn clash_rule_providers(&self) -> Result<ProvidersRulesRes> {
         let providers = self
             .inner
@@ -151,14 +190,31 @@ impl NyanpasuClient {
         })
     }
 
+    /// Tests one node. The URL is the caller's, else `group`'s own, else the app's default; none of
+    /// them is reported, and a failure carries a fixed message and none of the core's response.
     pub async fn proxy_delay(
         &self,
         name: String,
         provider: Option<String>,
+        group: Option<String>,
+        url: Option<String>,
+        expected: Option<String>,
+    ) -> Result<Delay, ClashReadError> {
+        let group_url = self.group_test_url(group.as_deref()).await?;
+        self.probe_proxy(name, provider, group_url, url, expected)
+            .await
+            .map_err(|_| ClashReadError::DelayTestFailed)
+    }
+
+    async fn probe_proxy(
+        &self,
+        name: String,
+        provider: Option<String>,
+        group_url: Option<String>,
         url: Option<String>,
         expected: Option<String>,
     ) -> Result<Delay> {
-        let query = delay_query(url, expected, &self.get_app_config().await?)?;
+        let query = delay_query(url, group_url, expected, &self.get_app_config().await?)?;
         let provider = provider.map(ProviderName::new);
         let delay = self
             .inner
@@ -173,13 +229,27 @@ impl NyanpasuClient {
         Ok(delay?)
     }
 
+    /// Tests every member of `group`; see [`Self::proxy_delay`].
     pub async fn group_delay(
         &self,
         group: String,
         url: Option<String>,
         expected: Option<String>,
+    ) -> Result<IndexMap<ProxyName, u16>, ClashReadError> {
+        let group_url = self.group_test_url(Some(&group)).await?;
+        self.probe_group(group, group_url, url, expected)
+            .await
+            .map_err(|_| ClashReadError::DelayTestFailed)
+    }
+
+    async fn probe_group(
+        &self,
+        group: String,
+        group_url: Option<String>,
+        url: Option<String>,
+        expected: Option<String>,
     ) -> Result<IndexMap<ProxyName, u16>> {
-        let query = delay_query(url, expected, &self.get_app_config().await?)?;
+        let query = delay_query(url, group_url, expected, &self.get_app_config().await?)?;
         let delays = self
             .inner
             .core_api
@@ -216,6 +286,12 @@ fn rule_provider_item(provider: clash_api::RuleProvider) -> Result<RuleProviderI
     })
 }
 
+fn public_settings(configs: Result<ClashConfig>) -> Result<ClashApiSettings, ClashReadError> {
+    configs
+        .map(Into::into)
+        .map_err(|_| ClashReadError::SettingsUnavailable)
+}
+
 fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
     Ok(ClashConfig {
         port: config.port.map(u16::try_from).transpose()?,
@@ -235,7 +311,21 @@ fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
 
 #[cfg(test)]
 mod tests {
-    use super::rule_provider_item;
+    use super::{ClashReadError, rule_provider_item};
+
+    #[test]
+    fn a_failed_live_settings_read_carries_neither_the_source_nor_its_context() {
+        let failure = anyhow::anyhow!("GET https://user:error-sentinel@127.0.0.1:9090/configs")
+            .context("body: {\"secret\":\"error-sentinel\"}");
+
+        let error = super::public_settings(Err(failure)).unwrap_err();
+
+        assert_eq!(error, ClashReadError::SettingsUnavailable);
+        for rendered in [error.to_string(), format!("{error:?}")] {
+            assert!(!rendered.contains("sentinel"), "{rendered}");
+        }
+        assert!(std::error::Error::source(&error).is_none());
+    }
 
     #[test]
     fn a_delay_query_falls_back_to_the_app_default_then_gstatic() {
@@ -246,31 +336,52 @@ mod tests {
             ..Default::default()
         };
 
-        let query = super::delay_query(Some("https://example.com/".into()), None, &app).unwrap();
+        let query =
+            super::delay_query(Some("https://example.com/".into()), None, None, &app).unwrap();
         assert_eq!(query.url.as_str(), "https://example.com/");
         assert_eq!(query.timeout, std::time::Duration::from_millis(3000));
         assert!(query.expected.is_none());
 
-        let query = super::delay_query(Some(String::new()), None, &app).unwrap();
+        let query = super::delay_query(Some(String::new()), None, None, &app).unwrap();
         assert_eq!(query.url.as_str(), "https://cp.cloudflare.com/generate_204");
 
         app.default_latency_test.clear();
-        let query = super::delay_query(None, None, &app).unwrap();
+        let query = super::delay_query(None, None, None, &app).unwrap();
         assert_eq!(query.url.as_str(), "http://www.gstatic.com/generate_204");
+    }
+
+    /// A group's own URL beats the app default, and the caller's URL beats the group's.
+    #[test]
+    fn a_delay_query_prefers_the_caller_then_the_group_then_the_app() {
+        let app = nyanpasu_config::application::NyanpasuAppConfig {
+            default_latency_test: "https://app.example/".into(),
+            ..Default::default()
+        };
+        let group = || Some("https://group.example/".to_owned());
+
+        let query = super::delay_query(None, group(), None, &app).unwrap();
+        assert_eq!(query.url.as_str(), "https://group.example/");
+        let query = super::delay_query(Some(String::new()), group(), None, &app).unwrap();
+        assert_eq!(query.url.as_str(), "https://group.example/");
+        let query = super::delay_query(Some("https://caller.example/".into()), group(), None, &app)
+            .unwrap();
+        assert_eq!(query.url.as_str(), "https://caller.example/");
+        let query = super::delay_query(None, Some(String::new()), None, &app).unwrap();
+        assert_eq!(query.url.as_str(), "https://app.example/");
     }
 
     #[test]
     fn a_delay_query_validates_the_expected_status() {
         let app = nyanpasu_config::application::NyanpasuAppConfig::default();
-        let query = super::delay_query(None, Some("200-299".into()), &app).unwrap();
+        let query = super::delay_query(None, None, Some("200-299".into()), &app).unwrap();
         assert_eq!(query.expected.unwrap().as_str(), "200-299");
         assert!(
-            super::delay_query(None, Some(String::new()), &app)
+            super::delay_query(None, None, Some(String::new()), &app)
                 .unwrap()
                 .expected
                 .is_none()
         );
-        assert!(super::delay_query(None, Some("not a status".into()), &app).is_err());
+        assert!(super::delay_query(None, None, Some("not a status".into()), &app).is_err());
     }
 
     #[test]

@@ -20,7 +20,7 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { DEFAULT_LATENCY_TEST_URL } from '@nyanpasu/constants'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting } from '@nyanpasu/query'
+import { useFullSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -182,8 +182,8 @@ export default function LatencyTestConfig() {
 function LatencyTestConfigForm() {
   const { setOpen } = useModal()
 
-  const latencyUrl = useSetting('default_latency_test')
-  const latencyTimeoutMs = useSetting('default_latency_timeout_ms')
+  const latencyUrl = useFullSetting('default_latency_test')
+  const latencyTimeoutMs = useFullSetting('default_latency_timeout_ms')
 
   const savedUrl = latencyUrl.value ?? ''
   const savedTimeoutMs = latencyTimeoutMs.value ?? 0

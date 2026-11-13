@@ -18,7 +18,8 @@ use nyanpasu_contracts::{
     system_proxy::OsProxyError,
 };
 use nyanpasu_core::{
-    client::http_server::HttpServerControlError, state::config_error::ConfigError,
+    client::{ClashReadError, http_server::HttpServerControlError},
+    state::config_error::ConfigError,
     storage::StorageOperationError,
 };
 use nyanpasu_logging::LogError;
@@ -1081,6 +1082,17 @@ cases!(
     },
 );
 
+cases!(
+    clash_read_error_cases,
+    ClashReadError,
+    received::ClashReadError,
+    present;
+    SettingsUnavailable,
+    ProxiesUnavailable,
+    UnknownGroup,
+    DelayTestFailed
+);
+
 fn degradation(present: bool) -> Degradation {
     let _ = present;
     Degradation {
@@ -1206,6 +1218,7 @@ fn receiving_types_preserve_all_error_and_mutation_variants() {
         hotkey_parse_error_cases(present);
         effects_error_cases(present);
         http_server_control_error_cases(present);
+        clash_read_error_cases(present);
         ipc_domains_and_envelope(present);
         for error in log_error_cases(present) {
             let expected = serde_json::to_value(&error).unwrap();
@@ -1274,6 +1287,7 @@ fn ipc_domains_and_envelope(present: bool) {
         SystemProxy => os_proxy_error_cases,
         Effects => effects_error_cases,
         HttpServer => http_server_control_error_cases,
+        ClashRead => clash_read_error_cases,
     );
     receive::<received::Degradation>(degradation(present));
     receive::<received::RpcError>(nyanpasu_rpc_protocol::RpcError {

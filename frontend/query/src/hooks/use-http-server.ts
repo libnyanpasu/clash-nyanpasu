@@ -42,6 +42,9 @@ export function useHttpServer() {
       Promise.all([
         queryClient.invalidateQueries({ queryKey: statusOptions.queryKey }),
         queryClient.invalidateQueries({
+          queryKey: api.queries.getAppSettings().queryKey,
+        }),
+        queryClient.invalidateQueries({
           queryKey: api.queries.getAppConfig().queryKey,
         }),
       ]),

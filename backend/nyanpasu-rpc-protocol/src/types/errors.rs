@@ -820,6 +820,16 @@ pub enum HttpServerControlError {
     ReadStatus {},
 }
 
+/// Why a Clash read a caller without `sensitive_read` made has no result.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ClashReadError {
+    SettingsUnavailable,
+    ProxiesUnavailable,
+    UnknownGroup,
+    DelayTestFailed,
+}
+
 /// A failed command as the frontend receives it.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct IpcError {
@@ -845,4 +855,5 @@ pub enum IpcErrorKind {
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
     HttpServer(Box<HttpServerControlError>),
+    ClashRead(Box<ClashReadError>),
 }

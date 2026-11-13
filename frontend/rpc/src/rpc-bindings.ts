@@ -100,6 +100,7 @@ export function createRpcClient(
     clashApiGetProxyDelay: (
       name: string,
       provider: string | null,
+      group: string | null,
       url: string | null,
       expected: string | null,
     ) =>
@@ -107,9 +108,18 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_proxy_delay', {
           name,
           provider,
+          group,
           url,
           expected,
         }),
+      ),
+    /**
+     *  The live Clash configuration without the controller secret. The full one is
+     *  [`clash_api_get_configs`].
+     */
+    clashApiGetSettings: () =>
+      typedError<ClashApiSettings, IpcError>(
+        __RPC_INVOKE('clash_api_get_settings'),
       ),
     clashApiGetConfigs: () =>
       typedError<ClashApiConfig, IpcError>(
@@ -148,10 +158,24 @@ export function createRpcClient(
       typedError<string, IpcError>(
         __RPC_INVOKE('get_core_version', { coreType }),
       ),
+    /**
+     *  The application settings without the URLs that can carry credentials. The full config is
+     *  [`get_app_config`].
+     */
+    getAppSettings: () =>
+      typedError<ApplicationSettings_Serialize, IpcError>(
+        __RPC_INVOKE('get_app_settings'),
+      ),
     getAppConfig: () =>
       typedError<NyanpasuAppConfig_Serialize, IpcError>(
         __RPC_INVOKE('get_app_config'),
       ),
+    /**
+     *  The persistent Clash settings without the controller secret and the web UI URL templates. The
+     *  full config is [`get_clash_config`].
+     */
+    getClashSettings: () =>
+      typedError<ClashSettings, IpcError>(__RPC_INVOKE('get_clash_settings')),
     getClashConfig: () =>
       typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
     getConfigFeatures: () =>
@@ -211,6 +235,14 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
+    /**
+     *  Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
+     *  credential, so `get_proxies` only reports whether a group has one.
+     */
+    getProxyGroupIcons: () =>
+      typedError<{ [key in ProxyName]: string }, IpcError>(
+        __RPC_INVOKE('get_proxy_group_icons'),
+      ),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
     isWidgetIconSet: (mode: TrayIcon) =>
@@ -980,6 +1012,129 @@ export type ApplicationPreferencesPatch_Serialize = {
   use_legacy_ui?: boolean | null
 }
 
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings =
+  ApplicationSettings_Serialize | ApplicationSettings_Deserialize
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings_Deserialize = {
+  app_singleton_port: number
+  app_log_level: LoggingLevel_Deserialize
+  core_logs: CoreLogSettings
+  language: I18nLanguage_Deserialize
+  theme_mode: ThemeMode
+  traffic_graph: boolean
+  enable_memory_usage: boolean
+  lighten_animation_effects: boolean
+  enable_service_mode: boolean
+  enable_auto_launch: boolean
+  enable_silent_start: boolean
+  enable_system_proxy: boolean
+  enable_proxy_guard: boolean
+  system_proxy_bypass: string
+  proxy_guard_interval: number
+  theme_color: string
+  core: ClashCore_Deserialize
+  hotkeys: string[]
+  /**
+   *  Whether a default latency test URL is set. The URL itself is only in the full config; a
+   *  probe that omits its URL uses it on the backend.
+   */
+  latency_test_configured: boolean
+  default_latency_timeout_ms: number
+  enable_builtin_enhanced: boolean
+  proxy_layout_column: number
+  max_log_files: number
+  max_log_file_size: number
+  enable_auto_check_update: boolean
+  enable_auto_download_update: boolean
+  release_channel: ReleaseChannel | null
+  update_sources: UpdateSource[]
+  tray_selector_mode: ProxiesSelectorMode
+  always_on_top: boolean
+  tray_menu_mode: TrayMenuMode
+  window_close: WindowCloseSettings
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
+  traffic_retention: TrafficRetention
+  remote_access: RemoteAccessConfig
+  enable_local_ip_probe: boolean
+  stun_servers: StunServer[]
+  ip_lookup_providers: IpLookupProvider[]
+  /**  Whether a PAC URL is set. The URL itself is only in the full config. */
+  pac_configured: boolean
+  enable_tray_text: boolean
+  enable_tray_traffic: boolean
+  use_legacy_ui: boolean
+}
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings_Serialize = {
+  app_singleton_port: number
+  app_log_level: LoggingLevel_Serialize
+  core_logs: CoreLogSettings
+  language: I18nLanguage_Serialize
+  theme_mode: ThemeMode
+  traffic_graph: boolean
+  enable_memory_usage: boolean
+  lighten_animation_effects: boolean
+  enable_service_mode: boolean
+  enable_auto_launch: boolean
+  enable_silent_start: boolean
+  enable_system_proxy: boolean
+  enable_proxy_guard: boolean
+  system_proxy_bypass: string
+  proxy_guard_interval: number
+  theme_color: string
+  core: ClashCore_Serialize
+  hotkeys: string[]
+  /**
+   *  Whether a default latency test URL is set. The URL itself is only in the full config; a
+   *  probe that omits its URL uses it on the backend.
+   */
+  latency_test_configured: boolean
+  default_latency_timeout_ms: number
+  enable_builtin_enhanced: boolean
+  proxy_layout_column: number
+  max_log_files: number
+  max_log_file_size: number
+  enable_auto_check_update: boolean
+  enable_auto_download_update: boolean
+  release_channel: ReleaseChannel | null
+  update_sources: UpdateSource[]
+  tray_selector_mode: ProxiesSelectorMode
+  always_on_top: boolean
+  tray_menu_mode: TrayMenuMode
+  window_close: WindowCloseSettings
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
+  traffic_retention: TrafficRetention
+  remote_access: RemoteAccessConfig
+  enable_local_ip_probe: boolean
+  stun_servers: StunServer[]
+  ip_lookup_providers: IpLookupProvider[]
+  /**  Whether a PAC URL is set. The URL itself is only in the full config. */
+  pac_configured: boolean
+  enable_tray_text: boolean
+  enable_tray_traffic: boolean
+  use_legacy_ui: boolean
+}
+
 export type BrandVersion = {
   brand: string
   version: string
@@ -1073,6 +1228,28 @@ export type ClashApiConfig = {
   'tproxy-port': number | null
   'external-controller': string | null
   secret: string | null
+}
+
+/**
+ *  The live core configuration without the controller secret, for callers that only hold `read`.
+ *
+ *  `external_controller` is a validated socket address, or absent. The core reports it as free
+ *  text, which can be shaped like a URL with credentials in its userinfo, path, query or host, so
+ *  text that is not exactly an `ip:port` is not forwarded. The conversion destructures
+ *  [`ClashConfig`] without `..`, so a new field must be classified.
+ */
+export type ClashApiSettings = {
+  port: number | null
+  mode: string | null
+  ipv6: boolean | null
+  'socket-port': number | null
+  'allow-lan': boolean | null
+  'log-level': string | null
+  'mixed-port': number | null
+  'redir-port': number | null
+  'socks-port': number | null
+  'tproxy-port': number | null
+  'external-controller': string | null
 }
 
 /**  Clash Related Config */
@@ -1247,6 +1424,20 @@ export type ClashInfo = {
 }
 
 /**
+ *  The overrides a `read` caller may see: everything except the controller secret.
+ *
+ *  The conversion destructures the overrides without `..`, so a new field must be classified.
+ */
+export type ClashOverridesSettings = {
+  'log-level': LogLevel
+  'allow-lan': boolean
+  mode: Mode
+  'unified-delay': ManageableField<boolean>
+  'tcp-concurrent': ManageableField<boolean>
+  ipv6: boolean
+}
+
+/**
  *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
  *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
  */
@@ -1276,10 +1467,48 @@ export type ClashOverridesSettingsPatch_Serialize = {
   'tcp-concurrent'?: ManageableField<boolean> | null
 }
 
+/**
+ *  Why a Clash read or probe a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: the core's response, the request it failed on and
+ *  the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
+ *  protected full queries.
+ */
+export type ClashReadError =
+  | { kind: 'settings_unavailable' }
+  | { kind: 'proxies_unavailable' }
+  | { kind: 'unknown_group' }
+  | { kind: 'delay_test_failed' }
+
 export type ClashRule = {
   type: string
   payload: string
   proxy: string
+}
+
+/**
+ *  The secret-free view of [`ClashConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a new field must be classified.
+ */
+export type ClashSettings = {
+  overrides: ClashOverridesSettings
+  enable_tun_mode: boolean
+  tun: TunOverrides
+  enable_clash_fields: boolean
+  expand_include_all: boolean
+  external_controller: ExternalControllerStrategy
+  clash_control_channel: ClashControlChannel
+  clash_ipc_disable_http_controller: boolean
+  mixed_port: PortStrategy
+  socks_port: PortStrategy | null
+  http_port: PortStrategy | null
+  redir_port: PortStrategy | null
+  tproxy_port: PortStrategy | null
+  transparent_proxy: TransparentProxyConfig
+  break_connection: BreakConnectionStrategy
+  tun_stack: TunStack
+  tun_mips: MipsConfig
 }
 
 /**
@@ -2836,6 +3065,7 @@ export type IpcErrorKind =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'clash_read'; error: ClashReadError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -4860,12 +5090,21 @@ export type ProxyGroup = {
   now: ProxyName | null
   /**  The member a user pinned; `None` while the core selects on its own. */
   fixed: ProxyName | null
-  /**  The URL the core tests this group's members with; `None` when unset. */
-  testUrl: string | null
+  /**
+   *  Which of a node's delay records this group's members are shown with: [`DEFAULT_TEST_URL_KEY`]
+   *  when the group tests with the app's default URL, else the group's own name. A test URL is
+   *  configuration that may hold a credential, so the key names the source and never the URL;
+   *  the backend resolves the URL itself.
+   */
+  delayKey: string
   /**  The status codes a test must return, in the core's range syntax. */
   expectedStatus: string | null
   hidden: boolean
-  icon: string | null
+  /**
+   *  Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
+   *  credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+   */
+  iconConfigured: boolean
   capabilities: ProxyGroupCapabilities
 }
 

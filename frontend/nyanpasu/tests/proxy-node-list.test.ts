@@ -34,10 +34,10 @@ const group = (now: string | null, all: string[]): ProxyGroup => ({
   all,
   now,
   fixed: null,
-  testUrl: null,
+  delayKey: '',
   expectedStatus: null,
   hidden: false,
-  icon: null,
+  iconConfigured: false,
   capabilities: { select: true, clearFixed: false },
 })
 const snapshot = (names: string[]): Proxies_Serialize => ({

@@ -69,10 +69,10 @@ const group = (
   all: now ? [now] : [],
   now,
   fixed,
-  testUrl: null,
+  delayKey: '',
   expectedStatus: null,
   hidden: false,
-  icon: null,
+  iconConfigured: false,
   capabilities: { select: true, clearFixed: true },
 })
 
@@ -81,7 +81,7 @@ const PICTURE = 'data:image/gif;base64,R0lGODlhAQABAAAAACw='
 // The core reports these four, in this order.
 const groups = [
   group('Alpha', 'Selector', 'hk-1', 'hk-1'),
-  { ...group('Bravo', 'URLTest', 'jp-1'), icon: PICTURE },
+  { ...group('Bravo', 'URLTest', 'jp-1'), iconConfigured: true },
   group('Charlie', 'Fallback', null),
   group('Delta', 'LoadBalance', 'us-1'),
 ]
@@ -111,6 +111,7 @@ const renderAt = async (
     stored?: ProxyGroupLayout
     collapsed?: Record<string, true>
     failLayout?: boolean
+    refuseIcons?: boolean
   } = {},
 ) => {
   let stored = options.stored
@@ -134,7 +135,12 @@ const renderAt = async (
         }
       }
       if (method === 'get_proxies') return proxies
-      if (method === 'get_app_config') {
+      if (method === 'get_proxy_group_icons') {
+        if (options.refuseIcons) throw new Error('requires sensitive_read')
+
+        return { Bravo: PICTURE }
+      }
+      if (method === 'get_app_settings') {
         return { default_latency_test: 'https://www.gstatic.com/generate_204' }
       }
       if (method === 'get_storage_item') {
@@ -303,6 +309,20 @@ test('a group picture is shown as it is and its placeholder stays round', async 
   expect(
     groupLink('Alpha').element().querySelector('[data-slot="material-shape"]'),
   ).not.toBeNull()
+})
+
+test('a group whose picture is protected keeps its glyph when the picture is refused', async () => {
+  await renderAt('/main/proxies/group/Alpha', {
+    stored: arranged,
+    refuseIcons: true,
+  })
+
+  const icon = groupLink('Bravo')
+    .element()
+    .querySelector('[data-slot="navigation-list-item-icon"]')
+
+  expect(icon?.querySelector('img')).toBeNull()
+  expect(icon?.querySelector('[data-slot="material-shape"]')).not.toBeNull()
 })
 
 test('a folder heading opens and closes the folder and remembers it', async () => {

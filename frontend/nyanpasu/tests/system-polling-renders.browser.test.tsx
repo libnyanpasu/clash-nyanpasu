@@ -23,7 +23,7 @@ test('polling an unchanged system proxy and accent color does not re-render', as
       case 'get_system_accent_color':
         polls.accent += 1
         return '#1867c0'
-      case 'get_app_config':
+      case 'get_app_settings':
         return { enable_system_proxy: true }
       default:
         throw new Error(`Unexpected command: ${method}`)

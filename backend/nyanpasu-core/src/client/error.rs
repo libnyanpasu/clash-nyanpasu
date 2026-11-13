@@ -28,6 +28,24 @@ pub enum ClientError {
     Custom(String),
 }
 
+/// Why a Clash read or probe a caller without `sensitive_read` made has no result.
+///
+/// The messages are fixed and carry no source: the core's response, the request it failed on and
+/// the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
+/// protected full queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error, serde::Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ClashReadError {
+    #[error("the Clash core settings are unavailable")]
+    SettingsUnavailable,
+    #[error("the proxies are unavailable")]
+    ProxiesUnavailable,
+    #[error("the proxy group does not exist")]
+    UnknownGroup,
+    #[error("the delay test could not be completed")]
+    DelayTestFailed,
+}
+
 impl From<String> for ClientError {
     fn from(value: String) -> Self {
         Self::Custom(value)

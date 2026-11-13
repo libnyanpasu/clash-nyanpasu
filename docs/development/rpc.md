@@ -194,6 +194,14 @@ Specta query/mutation groups that become the frontend bindings are checked again
   echo request URLs) is `sensitive_read`; if a read-only client needs the useful part, add a
   separate secret-free query instead of labelling the full response `read`. A shell, OS or
   elevation facility needs `system`.
+- A secret-free companion query reduces fields, it does not redact them. Destructure the
+  source type exhaustively (no `..`) so a new field is a compile error, replace a reduced field
+  with an explicit flag (`pac_configured`) or omit it, and never return a placeholder, a
+  syntax-filtered URL or a reconstructed value that a form could write back. A URL is not safe
+  because it has no userinfo or query: its path or host can carry the credential. Callers that
+  need the original value use the `sensitive_read` query. The failures of a non-sensitive scope
+  are part of its contract: use a small typed error with fixed messages, carried as its own
+  domain so the discriminant survives RPC (`ClashReadError`), and never forward a source error.
 - Scope is independent of target. `scope = system` never makes a command HTTP- or
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
   capability admission still apply. `remote_admin` commands are Desktop-only.

@@ -6,6 +6,7 @@ import {
   ipcErrorMessage,
 } from '@/utils/ipc-error'
 import type {
+  ClashReadError,
   ConfigError,
   EffectsError,
   HttpServerControlError,
@@ -662,6 +663,24 @@ test.each([
         kind: { domain: 'http_server', error: { kind } },
         message: 'the backend text',
         detail: 'the backend text: caused by',
+      }),
+    ).toBe(message())
+  },
+)
+
+test.each([
+  ['settings_unavailable', m.error_clash_read_settings_unavailable],
+  ['proxies_unavailable', m.error_clash_read_proxies_unavailable],
+  ['unknown_group', m.error_clash_read_unknown_group],
+  ['delay_test_failed', m.error_clash_read_delay_test_failed],
+] satisfies [ClashReadError['kind'], () => string][])(
+  'clash_read_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'clash_read', error: { kind } },
+        message: 'the backend text',
+        detail: 'SettingsUnavailable',
       }),
     ).toBe(message())
   },

@@ -1,7 +1,9 @@
 import { unwrapResult, type Result } from '@nyanpasu/rpc'
 import type {
   ApplicationPreferencesPatch_Serialize,
+  ApplicationSettings_Serialize,
   ClashConfig,
+  ClashSettings,
   ClashSettingsPatch_Deserialize,
   ClashSystemPatch_Deserialize,
   IpcError,
@@ -34,9 +36,28 @@ type ConfigMutation<TPatch> = {
   ) => Promise<Result<MutationOutcome<null>, IpcError>>
 }
 
+type QueryApi = ReturnType<typeof useQueryApi>
+
+/** The safe and the full application config queries, which a patch refreshes. */
+const appSettingsKeys = (api: QueryApi) => [
+  api.queries.getAppSettings().queryKey,
+  api.queries.getAppConfig().queryKey,
+]
+
+/** The safe and the full persistent clash config queries. */
+const clashSettingsKeys = (api: QueryApi) => [
+  api.queries.getClashSettings().queryKey,
+  api.queries.getClashConfig().queryKey,
+]
+
+/**
+ * `refreshKeys` are every query that reads the patched config: the safe view
+ * and the full one are cached separately, so a patch must refresh both.
+ */
 const useTypedConfig = <TConfig, TPatch>(
   configQuery: ConfigQuery<TConfig>,
   patchConfig: ConfigMutation<TPatch>,
+  refreshKeys: readonly QueryKey[],
 ) => {
   const queryClient = useQueryClient()
 
@@ -54,9 +75,11 @@ const useTypedConfig = <TConfig, TPatch>(
     // Returning the refetch keeps the patch pending until the config is read
     // back, so the next patch is built from saved values, not stale ones.
     onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: configQuery.queryKey,
-      }),
+      Promise.all(
+        refreshKeys.map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
   })
 
   return {
@@ -113,13 +136,17 @@ const useTypedConfigField = <
 /**
  * Ordinary application preferences only (`settings` scope). System-affecting
  * fields use `useSystemSettings`; host-bound hotkeys, service mode and the core
- * selection use their own commands. Reads keep the full application config.
- * Keep nested patches optional when they are untouched.
+ * selection use their own commands. Keep nested patches optional when they are
+ * untouched.
  */
 type AppConfigPatch = Partial<ApplicationPreferencesPatch_Serialize>
 
 /**
- * The application config (`NyanpasuAppConfig`).
+ * The application settings the interface reads (`ApplicationSettings`): the
+ * secret-free view, so ordinary readers need only `read`. The PAC URL and the
+ * default latency test URL are reduced to `pac_configured` and
+ * `latency_test_configured`; an editor that needs the URL itself uses
+ * `useFullSettings`. A patch refreshes both views.
  *
  * @example
  * ```tsx
@@ -130,30 +157,60 @@ type AppConfigPatch = Partial<ApplicationPreferencesPatch_Serialize>
  */
 export const useSettings = () => {
   const api = useQueryApi()
-  return useTypedConfig<NyanpasuAppConfig_Serialize, AppConfigPatch>(
-    api.queries.getAppConfig(),
+  return useTypedConfig<ApplicationSettings_Serialize, AppConfigPatch>(
+    api.queries.getAppSettings(),
     api.mutations.patchAppConfig,
+    appSettingsKeys(api),
   )
 }
 
 /**
- * One field of the application config, addressed by its typed name.
+ * One field of the application settings, addressed by its typed name.
  *
  * @example
  * ```tsx
  * const { value, upsert } = useSetting('theme_mode')
  * ```
  */
-export const useSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
+export const useSetting = <K extends keyof ApplicationSettings_Serialize>(
   key: K,
 ) => {
   return useTypedConfigField(useSettings(), key)
 }
 
 /**
+ * The full application config (`NyanpasuAppConfig`, `sensitive_read`), for the
+ * editors of a field the safe view reduces to a flag: the default latency test
+ * URL and the PAC URL. Ordinary readers must use `useSettings`.
+ */
+export const useFullSettings = () => {
+  const api = useQueryApi()
+  return useTypedConfig<NyanpasuAppConfig_Serialize, AppConfigPatch>(
+    api.queries.getAppConfig(),
+    api.mutations.patchAppConfig,
+    appSettingsKeys(api),
+  )
+}
+
+/**
+ * One field of the full application config, for an editor of a field the safe
+ * view omits.
+ *
+ * @example
+ * ```tsx
+ * const { value, upsert } = useFullSetting('default_latency_test')
+ * ```
+ */
+export const useFullSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
+  key: K,
+) => {
+  return useTypedConfigField(useFullSettings(), key)
+}
+
+/**
  * The system-affecting application settings (`system` scope): autostart, the
- * system proxy with its guard and bypass list, and the PAC URL. They read from
- * the same application config as `useSettings`.
+ * system proxy with its guard and bypass list, and the PAC URL. It reads the
+ * safe view like `useSettings`, so the PAC URL is only written through it.
  *
  * @example
  * ```tsx
@@ -165,14 +222,18 @@ export const useSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
 export const useSystemSettings = () => {
   const api = useQueryApi()
   return useTypedConfig<
-    NyanpasuAppConfig_Serialize,
+    ApplicationSettings_Serialize,
     SystemSettingsPatch_Deserialize
-  >(api.queries.getAppConfig(), api.mutations.patchSystemSettings)
+  >(
+    api.queries.getAppSettings(),
+    api.mutations.patchSystemSettings,
+    appSettingsKeys(api),
+  )
 }
 
 /**
- * One system-affecting application setting, addressed by its typed name.
- * `pac_url` is the clearable one: `null` clears it.
+ * One system-affecting application setting that the safe view carries,
+ * addressed by its typed name.
  *
  * @example
  * ```tsx
@@ -180,34 +241,34 @@ export const useSystemSettings = () => {
  * ```
  */
 export const useSystemSetting = <
-  K extends keyof NyanpasuAppConfig_Serialize &
+  K extends keyof ApplicationSettings_Serialize &
     keyof SystemSettingsPatch_Deserialize,
 >(
   key: K,
 ) => {
   return useTypedConfigField<
-    NyanpasuAppConfig_Serialize,
+    ApplicationSettings_Serialize,
     SystemSettingsPatch_Deserialize,
-    K,
-    'pac_url'
+    K
   >(useSystemSettings(), key)
 }
 
 /**
- * The persistent clash config (`ClashConfig`), not the live core `/configs`.
- * Writes only the ordinary settings (`settings` scope); the control plane uses
- * `useClashSystemSettings`.
+ * The persistent clash settings the interface reads (`ClashSettings`): the
+ * secret-free view, without the web UI templates. Writes only the ordinary
+ * settings (`settings` scope); the control plane uses `useClashSystemSettings`.
  */
 export const useClashSettings = () => {
   const api = useQueryApi()
-  return useTypedConfig<ClashConfig, ClashSettingsPatch_Deserialize>(
-    api.queries.getClashConfig(),
+  return useTypedConfig<ClashSettings, ClashSettingsPatch_Deserialize>(
+    api.queries.getClashSettings(),
     api.mutations.patchClashConfig,
+    clashSettingsKeys(api),
   )
 }
 
 /**
- * One field of the persistent clash config, addressed by its typed name. Any
+ * One field of the persistent clash settings, addressed by its typed name. Any
  * field can be read; `upsert` accepts only the ordinary fields, and is typed
  * `never` for a control-plane field (use `useClashSystemSetting` to write it).
  *
@@ -216,23 +277,25 @@ export const useClashSettings = () => {
  * const { value, upsert } = useClashSetting('expand_include_all')
  * ```
  */
-export const useClashSetting = <K extends keyof ClashConfig>(key: K) => {
-  return useTypedConfigField<ClashConfig, ClashSettingsPatch_Deserialize, K>(
+export const useClashSetting = <K extends keyof ClashSettings>(key: K) => {
+  return useTypedConfigField<ClashSettings, ClashSettingsPatch_Deserialize, K>(
     useClashSettings(),
     key,
   )
 }
 
 /**
- * The persistent clash config, written through the control-plane request
- * (`system` scope): controller, ports, TUN, transparent capture, web UI
- * templates and the field filter.
+ * The full persistent clash config (`ClashConfig`, `sensitive_read`), written
+ * through the control-plane request (`system` scope): controller, ports, TUN,
+ * transparent capture, web UI templates and the field filter. It is the editor
+ * of the control plane, so it keeps the web UI templates the safe view omits.
  */
 export const useClashSystemSettings = () => {
   const api = useQueryApi()
   return useTypedConfig<ClashConfig, ClashSystemPatch_Deserialize>(
     api.queries.getClashConfig(),
     api.mutations.patchClashSystemConfig,
+    clashSettingsKeys(api),
   )
 }
 
@@ -244,8 +307,8 @@ type ClearableClashField =
   'socks_port' | 'http_port' | 'redir_port' | 'tproxy_port'
 
 /**
- * One control-plane field of the persistent clash config, addressed by its
- * typed name.
+ * One control-plane field of the full persistent clash config, addressed by
+ * its typed name.
  *
  * @example
  * ```tsx

@@ -1,5 +1,6 @@
 import { m } from '@/paraglide/messages'
 import type {
+  ClashReadError,
   CommitAborted,
   ConfigError,
   CoreErrorKind,
@@ -53,6 +54,8 @@ export function ipcErrorMessage(
       return storageErrorMessage(error.kind.error)
     case 'http_server':
       return httpServerErrorMessage(error.kind.error)
+    case 'clash_read':
+      return clashReadErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -368,6 +371,19 @@ function httpServerErrorMessage(error: HttpServerControlError): string {
       return m.error_http_server_change_unsupported()
     case 'read_status':
       return m.error_http_server_read_status()
+  }
+}
+
+function clashReadErrorMessage(error: ClashReadError): string {
+  switch (error.kind) {
+    case 'settings_unavailable':
+      return m.error_clash_read_settings_unavailable()
+    case 'proxies_unavailable':
+      return m.error_clash_read_proxies_unavailable()
+    case 'unknown_group':
+      return m.error_clash_read_unknown_group()
+    case 'delay_test_failed':
+      return m.error_clash_read_delay_test_failed()
   }
 }
 

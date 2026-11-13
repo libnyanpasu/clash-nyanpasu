@@ -677,7 +677,7 @@ authorization are complete.
 | 01    | R1: `remote_access` settings and persisted switch and port, one serial owner, degraded results, credential-free status, desktop-only launch URL, the debug HTTP wire rename, this design | **implemented** |
 | 02    | Canonical `Scope`, query/mutation effect and mandatory mutation scopes generated with the catalog; initial sensitive-read classification                                                 | **implemented** |
 | 03    | Privilege-separated application, Clash and runtime request contracts, matching frontend callers and retry-helper review                                                                  | **implemented** |
-| 04    | Secret-free query/event/reset projections and read-only frontend bootstrap                                                                                                               | proposed        |
+| 04    | Secret-free query/event/reset projections and read-only frontend bootstrap                                                                                                               | **partial**     |
 | 05    | Shared authorization over commands, direct routes (including icons) and events; `rpc_describe`; generated JSON Schema                                                                    | proposed        |
 | 06    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | proposed        |
 | 07    | TLS, `lan_authenticated`, `local_open` and the remote access UI                                                                                                                          | proposed        |
@@ -685,6 +685,21 @@ authorization are complete.
 | 09    | `nyanpasu-cli`: target resolution, contexts, transports, curated commands                                                                                                                | proposed        |
 | 10    | CLI packaging, PATH integration and completions                                                                                                                                          | proposed        |
 | 11    | Agent skill and `nyanpasu-cli mcp`                                                                                                                                                       | proposed        |
+
+Layer 04 is partial. Delivered: secret-free `get_app_settings`, `get_clash_settings` and
+`clash_api_get_settings` (reduced fields become flags such as `pac_configured` and
+`latency_test_configured`, the controller address is a validated socket address, nothing is a
+placeholder a form could write back); `get_proxies` and the delay tests no longer return test
+URLs, icons or raw errors (delay history is keyed by opaque source keys, one copy per distinct
+URL, and the backend resolves the actual URL); typed `ClashReadError` reasons that survive RPC;
+and ordinary theme, language, core and proxy-mode readers that use only these safe queries
+while the sensitive editors keep the full contracts. Still open, and each remains a gate before
+any new principal is admitted: the profile listing and sync records, the status, event and
+reset projections (`configuration_status`, `core_status`, `service_status`, the `clash_ws` Log
+variant, `StorageValueChanged` against `StorageResync`), logs, the error paths of the other
+safe queries, `MutationOutcome::CommittedDegraded` and `application_error_ref`. Role-aware
+optional UI, such as custom CSS from protected storage, depends on layer 05. No scoped
+end-to-end login exists yet.
 
 Layer 01 corrections to the original sketch: the strategy enum has one variant so
 unimplemented strategies are unrepresentable rather than rejected late; the HTTP status

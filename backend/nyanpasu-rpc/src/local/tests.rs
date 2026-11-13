@@ -12,7 +12,7 @@ use std::{
 use interprocess::local_socket::tokio::Stream;
 use nyanpasu_core::clash::{connection_rates::ConnectionDetails, ws::ClashConnectionDetails};
 use nyanpasu_rpc_protocol::{
-    EventName, RpcError, RpcOwner,
+    AuthContext, EventName, RpcError, RpcOwner,
     frame::{Frame, Reply, RequestId, SubscriptionErrorCode},
 };
 use parking_lot::Mutex;
@@ -203,6 +203,7 @@ impl Peer {
             serve_stream(
                 accepted,
                 RpcOwner::local_connection(&server.instance, 1),
+                AuthContext::local_socket(listener.user()),
                 server.rpc,
                 server.source,
                 server.limits,
@@ -710,7 +711,8 @@ async fn local_dispatch_records_one_info_audit_event() {
 
 fn delayed_mutation(
     deps: Arc<RpcDependencies>,
-    _: RpcOwner,
+    _: crate::registry::RpcCallMeta,
+    _: crate::registry::RpcCaller,
     _: Value,
 ) -> Result<RpcFuture, RpcError> {
     Ok(Box::pin(crate::registry::unreported(async move {
@@ -983,7 +985,8 @@ async fn disconnect_reclaims_late_subscriptions_without_cancelling_mutations() {
 async fn local_handler_panic_reaches_fatal_supervision() {
     fn panic_handler(
         _: Arc<RpcDependencies>,
-        _: RpcOwner,
+        _: crate::registry::RpcCallMeta,
+        _: crate::registry::RpcCaller,
         _: Value,
     ) -> Result<RpcFuture, RpcError> {
         Ok(Box::pin(crate::registry::unreported(async {
@@ -1316,4 +1319,266 @@ async fn safe_status_snapshots_match_their_queries() {
         full_error.domain_error.as_ref().unwrap().0["kind"],
         json!("unavailable")
     );
+}
+
+#[tokio::test]
+async fn local_server_assigns_socket_user_principal_and_allows_14_commands_via_rpc_describe() {
+    let fixture = Fixture::new(false).await;
+    let directory = tempfile::tempdir().unwrap();
+    let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
+    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+    let expected_user = listener.user().to_owned();
+    assert!(!expected_user.is_empty());
+
+    let stop = CancellationToken::new();
+    let server_stop = stop.clone();
+    let task = tokio::spawn(
+        LocalServer::new(fixture.rpc.clone(), ConnectionLimits::default())
+            .serve(listener, server_stop),
+    );
+
+    let client = nyanpasu_rpc_protocol::client::LocalClient::connect(
+        endpoint.path(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    let Reply::Result(response) = client.call("rpc_describe", json!({})).await.unwrap() else {
+        panic!("expected rpc_describe result");
+    };
+    let described: nyanpasu_rpc_protocol::RpcDescribeResponse =
+        serde_json::from_value(response).unwrap();
+    assert_eq!(described.transport, nyanpasu_rpc_protocol::RpcTarget::Local);
+    assert_eq!(
+        described.principal,
+        nyanpasu_rpc_protocol::Principal::LocalSocket {
+            user: expected_user.clone(),
+        }
+    );
+    let production_local: Vec<_> = described
+        .commands
+        .iter()
+        .filter(|command| {
+            nyanpasu_rpc_protocol::COMMAND_CATALOG
+                .iter()
+                .any(|meta| meta.name == command.name)
+        })
+        .collect();
+    assert_eq!(production_local.len(), 14);
+    assert!(production_local.iter().all(|command| command.allowed));
+
+    {
+        let records = fixture.sink.records.lock();
+        let describe_record = records
+            .iter()
+            .find(|record| record.header.method == "rpc_describe")
+            .unwrap();
+        assert_eq!(
+            describe_record.header.principal.as_deref(),
+            Some(format!("local_socket:{expected_user}").as_str())
+        );
+        assert!(describe_record.header.owner.as_str().starts_with("local:"));
+        assert!(
+            !describe_record
+                .header
+                .owner
+                .as_str()
+                .contains(&expected_user)
+        );
+    }
+
+    client.close().await;
+    stop.cancel();
+    task.await.unwrap().unwrap();
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_allocation() {
+    let fixture = Fixture::new(false).await;
+    let source = Source::new();
+    let directory = tempfile::tempdir().unwrap();
+    let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
+    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+    let (stream, accepted) = tokio::join!(endpoint.connect(), listener.accept());
+    let stop = CancellationToken::new();
+    let limited_auth = AuthContext::new(
+        nyanpasu_rpc_protocol::Principal::Token {
+            id: "tok_local_limited".to_owned(),
+            name: "limited".to_owned(),
+        },
+        [nyanpasu_rpc_protocol::Scope::Proxy].into(),
+    );
+    let task = tokio::spawn(
+        serve_stream(
+            accepted.unwrap(),
+            RpcOwner::local_connection("test-local", 1),
+            limited_auth,
+            fixture.rpc.clone(),
+            source.clone(),
+            ConnectionLimits::default(),
+            stop.clone(),
+        )
+        .with_current_subscriber(),
+    );
+    let mut peer = Peer {
+        stream: Some(stream.unwrap()),
+        stop,
+        task: Some(task),
+        _directory: Some(directory),
+        next: 0,
+        writer: Arc::new(WriterGate::default()),
+    };
+    peer.send(Frame::Hello {
+        versions: vec![1],
+        required_features: vec!["rpc".into()],
+        optional_features: vec!["events".into(), "connection-details".into()],
+    })
+    .await;
+    assert!(matches!(peer.read().await, Frame::Accept { .. }));
+
+    // `rpc_describe` succeeds without `Scope::Read` and shows `allowed: false` for `get_profiles`.
+    peer.request("rpc_describe", json!({})).await;
+    let Frame::Response {
+        reply: Reply::Result(described),
+        ..
+    } = peer.read().await
+    else {
+        panic!("expected rpc_describe result");
+    };
+    let described: nyanpasu_rpc_protocol::RpcDescribeResponse =
+        serde_json::from_value(described).unwrap();
+    assert!(
+        described
+            .commands
+            .iter()
+            .find(|cmd| cmd.name == "rpc_describe")
+            .unwrap()
+            .allowed
+    );
+    assert!(
+        !described
+            .commands
+            .iter()
+            .find(|cmd| cmd.name == "get_profiles")
+            .unwrap()
+            .allowed
+    );
+
+    // Command outside granted scopes fails with `forbidden`.
+    peer.request("get_profiles", json!({})).await;
+    let Frame::Response {
+        reply: Reply::Error(error),
+        ..
+    } = peer.read().await
+    else {
+        panic!("expected forbidden RPC error");
+    };
+    assert_eq!(error["kind"], "forbidden");
+
+    // Subscriptions lacking required scopes fail with `SubscriptionErrorCode::Forbidden`
+    // before subscribing to `events` or touching snapshot sources.
+    peer.subscribe("connection-details", None).await;
+    assert!(matches!(
+        peer.read().await,
+        Frame::SubscriptionError {
+            code: SubscriptionErrorCode::Forbidden,
+            ..
+        }
+    ));
+    peer.subscribe("events", Some(EventName::CoreLogsChanged))
+        .await;
+    assert!(matches!(
+        peer.read().await,
+        Frame::SubscriptionError {
+            code: SubscriptionErrorCode::Forbidden,
+            ..
+        }
+    ));
+    assert_eq!(fixture.rpc.dependencies.events.subscriber_count(), 0);
+    assert_eq!(source.details.receiver_count(), 0);
+    assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
+
+    peer.finish().await;
+
+    // With exhausted resource capacity, policy denial (Forbidden / Unsupported) still takes
+    // precedence over ResourceLimit and leaves receivers/demand counters at zero.
+    let (stream2, accepted2) = tokio::join!(endpoint.connect(), listener.accept());
+    let stop2 = CancellationToken::new();
+    let limited_auth2 = AuthContext::new(
+        nyanpasu_rpc_protocol::Principal::Token {
+            id: "tok_local_exhausted".to_owned(),
+            name: "exhausted".to_owned(),
+        },
+        [nyanpasu_rpc_protocol::Scope::Proxy].into(),
+    );
+    let exhausted_limits = ConnectionLimits {
+        resources: 0,
+        ..ConnectionLimits::default()
+    };
+    let task2 = tokio::spawn(
+        serve_stream(
+            accepted2.unwrap(),
+            RpcOwner::local_connection("test-local-exhausted", 2),
+            limited_auth2,
+            fixture.rpc.clone(),
+            source.clone(),
+            exhausted_limits,
+            stop2.clone(),
+        )
+        .with_current_subscriber(),
+    );
+    let mut peer2 = Peer {
+        stream: Some(stream2.unwrap()),
+        stop: stop2,
+        task: Some(task2),
+        _directory: None,
+        next: 0,
+        writer: Arc::new(WriterGate::default()),
+    };
+    peer2
+        .send(Frame::Hello {
+            versions: vec![1],
+            required_features: vec!["rpc".into()],
+            optional_features: vec!["events".into(), "connection-details".into()],
+        })
+        .await;
+    assert!(matches!(peer2.read().await, Frame::Accept { .. }));
+
+    peer2
+        .request("open_log_session", json!({ "source": "app" }))
+        .await;
+    let Frame::Response {
+        reply: Reply::Error(error),
+        ..
+    } = peer2.read().await
+    else {
+        panic!("expected forbidden RPC error before resource limit");
+    };
+    assert_eq!(error["kind"], "forbidden");
+
+    peer2.subscribe("connection-details", None).await;
+    assert!(matches!(
+        peer2.read().await,
+        Frame::SubscriptionError {
+            code: SubscriptionErrorCode::Forbidden,
+            ..
+        }
+    ));
+    peer2
+        .subscribe("events", Some(EventName::CoreLogsChanged))
+        .await;
+    assert!(matches!(
+        peer2.read().await,
+        Frame::SubscriptionError {
+            code: SubscriptionErrorCode::Forbidden,
+            ..
+        }
+    ));
+    assert_eq!(fixture.rpc.dependencies.events.subscriber_count(), 0);
+    assert_eq!(source.details.receiver_count(), 0);
+    assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
+
+    peer2.finish().await;
+    fixture.shutdown().await;
 }

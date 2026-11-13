@@ -63,6 +63,12 @@ impl Default for EventBus {
 }
 
 impl EventBus {
+    /// Current stream subscriber count, used in tests to confirm rejection before subscribe.
+    #[cfg(test)]
+    pub(crate) fn subscriber_count(&self) -> usize {
+        self.stream.receiver_count()
+    }
+
     /// Construct a headless bus without native delivery.
     pub fn new() -> Self {
         let (stream, _) = broadcast::channel(STREAM_CAPACITY);

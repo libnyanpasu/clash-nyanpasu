@@ -211,7 +211,7 @@ async fn shared_delivery_observation_keeps_invocation_records_separate() {
         .map(|_| {
             fixture
                 .rpc
-                .audit_invocation(RpcTransport::Local, "get_profiles", &owner, None)
+                .audit_invocation(RpcTransport::Local, "get_profiles", &owner, None, None)
         })
         .collect();
     for audit in &invocations {

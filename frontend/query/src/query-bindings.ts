@@ -6,6 +6,11 @@ export function createQueryBindings(rpc: RpcClient) {
   const commands = rpc
 
   const queries = {
+    rpcDescribe: (...args: Parameters<typeof commands.rpcDescribe>) =>
+      queryOptions({
+        queryKey: ['rpcDescribe', ...args],
+        queryFn: () => commands.rpcDescribe(...args),
+      }),
     getHttpServerStatus: (
       ...args: Parameters<typeof commands.getHttpServerStatus>
     ) =>

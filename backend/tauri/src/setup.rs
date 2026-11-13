@@ -647,8 +647,13 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<nyanpasu_rpc::events::EventBus>()).clone(),
     };
-    let rpc = nyanpasu_rpc::registry::UnifiedRpc::new(dependencies, DESKTOP_RPC_CAPABILITIES)
-        .context(BuildRpcSnafu)?;
+    let mut rpc = nyanpasu_rpc::registry::UnifiedRpc::new(
+        dependencies,
+        nyanpasu_rpc_protocol::ServerInfo::desktop(env!("CARGO_PKG_VERSION")),
+        DESKTOP_RPC_CAPABILITIES,
+    )
+    .context(BuildRpcSnafu)?;
+    rpc.mark_native_linked(crate::unified_rpc::native::linked_command_names());
     app.state::<Arc<nyanpasu_rpc::http::routes::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;

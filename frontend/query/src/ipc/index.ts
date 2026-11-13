@@ -45,6 +45,8 @@ export {
   MutationUnconfirmedError,
   invokeMutation,
   invokeQuery,
+  isNonRetryableRpcFailure,
+  shouldRetryRpcQuery,
   unwrapQueryOptions,
 } from './query-options'
 export type {

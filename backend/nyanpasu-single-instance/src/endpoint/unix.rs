@@ -296,6 +296,7 @@ impl Drop for Claim {
 }
 
 pub(super) fn bind(_namespace: Namespace, path: &Path) -> Result<EndpointListener, EndpointError> {
+    let user = current_user()?;
     let mut claim = Claim::acquire(path)?;
     claim.reclaim_stale(probe)?;
     let listener = ListenerOptions::new()
@@ -311,6 +312,7 @@ pub(super) fn bind(_namespace: Namespace, path: &Path) -> Result<EndpointListene
     socket_metadata(path)?;
     Ok(EndpointListener {
         listener,
+        user,
         _claim: claim,
     })
 }

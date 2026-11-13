@@ -95,7 +95,8 @@ conditional elevation follows the injected shell policy. Desktop, including
 embedded HTTP/local, uses interactive OS consent. The standalone server injects
 `RefuseElevation`; command metadata does not replace that execution policy.
 `patch_app_config` has no Local target, and neither dedicated command expands
-the thirteen-operation Local allowlist. `get_configuration_status` is a query;
+the fourteen-operation Local allowlist (the thirteen pre-authorization commands
+plus `rpc_describe`). `get_configuration_status` is a query;
 the two dedicated setters are mutations in the hand-maintained Specta metadata.
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
@@ -108,13 +109,21 @@ the two dedicated setters are mutations in the hand-maintained Specta metadata.
 `rpc` generates a neutral handler and declaration metadata. An accompanying
 `#[tauri::command]` additionally generates and registers the native wrapper that
 extracts State, AppHandle, Window, Webview and Channel inputs. Shared declarations
-live in `backend/nyanpasu-rpc/src/commands/` and have no native wrapper: they declare `RpcState<'_, NyanpasuClient>` (or `Storage`
-or `PathResolver`) from the explicit `RpcDependencies` slots and use `rpc(owner)`
-with `RpcCaller` for the transport-supplied caller. These neutral declaration
-types live in `nyanpasu-rpc::registry` and are omitted from Specta's schema. The handler
-passes borrowed dependencies and `RpcOwner` to the implementation; neither is
-decoded from request JSON. Both paths preserve camelCase inputs, unknown-field
-compatibility, Result aliases and empty-object/null handling for zero inputs.
+live in `backend/nyanpasu-rpc/src/commands/` and have no native wrapper: they
+declare `RpcState<'_, NyanpasuClient>` (or `Storage` or `PathResolver`) from the
+explicit `RpcDependencies` slots, `rpc(owner)` with `RpcCaller` as the annotated
+source marker (which the macro rewrites to `RpcOwner` on the generated
+underlying implementation function, so command bodies receive only `RpcOwner`
+rather than full caller scopes or metadata), and (for `rpc_describe`)
+`RpcDescribeContext` built from `RpcCallMeta` and `RpcCaller`. These neutral
+declaration types live in `nyanpasu-rpc::registry` and are omitted from Specta's
+schema. At dispatch, the generated neutral handler receives borrowed
+dependencies, `RpcCallMeta`, and `RpcCaller`, extracts `RpcOwner` (for
+`rpc(owner)`) or `RpcDescribeContext` (for `rpc_describe`), and passes only those
+narrower bindings to the implementation.
+None of these injected bindings are decoded from request JSON. Both paths
+preserve camelCase inputs, unknown-field compatibility, Result aliases and empty-object/null
+handling for zero inputs.
 
 `rpc(http)` and `rpc(local)` declare independent targets; desktop remains the
 complete surface. Both declarations require a transport-neutral signature and
@@ -129,8 +138,35 @@ effects. Reachability includes indirect tray refreshes after profile commits,
 lifecycle completion and proxy-cache notifications, even for reads that refresh
 that cache. These presentation effects remain optional. Native admission errors
 name the unavailable shell command; HTTP retains its existing rejection message.
-The composition root explicitly supplies available capabilities; metadata
-describes availability, not authorization or elevation consent. E3e enables the thirteen reviewed production local commands listed below.
+The composition root explicitly supplies `ServerInfo` and available capabilities;
+metadata describes availability, not authorization or elevation consent. The shared
+authorization slice (part of design Layer 05) adds `rpc_describe` as the
+fourteenth reviewed production local command (and on Desktop/HTTP) and enforces
+fail-closed admission in `nyanpasu-rpc::policy`: authentication resolution (and
+missing HTTP auth context rejecting with `401 unauthorized`) precedes method and
+event availability lookup; resolved callers are then checked in order for known
+name (`unknown_method`), target/capability/native-linkage availability
+(`unsupported`), caller scope (`403 forbidden`), resource admission, and
+parameter decoding/execution. The same target/capability/scope policy applies
+across direct HTTP routes (`/bridge/logs/archive` at `sensitive_read`;
+`/bridge/connection-details` and `/bridge/icons/{*path}` at `read`), named and
+unnamed `/bridge/events` SSE (filtering by target/capability/scope plus `resync`
+and session revocation cancellation), and `LocalServer` `Subscribe` (refusing
+`Forbidden`/`Unsupported` before snapshot or event-stream allocation).
+`rpc_describe` is callable by any resolved caller even without `Scope::Read`
+(including a future explicitly permitted anonymous context via the user-approved
+`own-only` self-inspection exception; unresolved/unauthenticated callers still
+receive `401 unauthorized`), and `allowed` reflects target, capabilities, native
+linkage, and caller scopes without disclosing other principals or credentials.
+`LocalSocket` attributes the peer OS user (`UID`/`SID` in
+`nyanpasu-single-instance`); HTTP bootstrap assigns a non-secret `Principal::Session`
+(`sess_...`) distinct from `access_token` and the `nyanpasu_http_session` cookie; and
+audit headers log only non-secret public principal identifiers (`desktop:<window>`,
+`local_socket:<user>`, `session:<id>`, `token:<id>`). The following
+response-privacy slice (global principal-aware response/error/degraded
+sanitization covering `MutationOutcome::CommittedDegraded`, `application_error_ref`,
+and remaining non-read error paths) remains a mandatory security gate before
+admitting scoped tokens, anonymous access, or LAN exposure.
 The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
@@ -210,13 +246,16 @@ Specta query/mutation groups that become the frontend bindings are checked again
 
 ### Declare capabilities and preserve transport semantics
 
-The registry first recognizes the command name, then checks the requested target
-and every required capability, and only then parses arguments and runs the handler.
-Missing required capabilities or an unlinked native wrapper return structured
-`unsupported`; only an unknown name returns `unknown_method`. All duplicate
-handler names fail registration before availability is considered. Rejections
-pass through `dispatch_audited`, and HTTP keeps its existing 501 mapping and
-`update_core` rejection before updater job admission.
+Authentication resolution precedes command availability lookup: missing HTTP
+auth context rejects with `401 unauthorized` before recognizing a method name or
+checking capabilities. For a resolved caller, the registry first recognizes the
+command name (`unknown_method`), then checks the requested target and every
+required capability (`unsupported`), then checks caller scope (`403 forbidden`,
+with `rpc_describe` exempt from `Scope::Read`), and only then parses arguments
+and runs the handler. All duplicate handler names fail registration before
+availability is considered. Rejections pass through `dispatch_audited`, and HTTP
+keeps its existing 501 mapping and `update_core` rejection before updater job
+admission.
 
 Use required metadata for clipboard, dialogs/notifications, native webviews and
 channels, windows, lifecycle, openers, tray/widget refresh, deep-link queues,
@@ -603,6 +642,7 @@ The local command allowlist is exactly:
 - `get_configuration_status`, `get_core_status`
 - `get_storage_item`, `set_storage_item`, `remove_storage_item`
 - `list_log_files`, `open_log_session`, `query_logs`, `close_log_session`
+- `rpc_describe`
 
 These declarations reuse shared handlers and retain the existing HTTP exposure.
 Profile mutations retain optional runtime/service/elevation effects. Known commands
@@ -621,12 +661,13 @@ retry or replay occurs. A fresh connection has fresh correlation state.
 
 ### Typed local operation contracts
 
-`nyanpasu_rpc_protocol::operation::RpcOperation` binds `NAME`, `Request`,
-`Response`, `ReceivedResponse` and `DomainError`. The thirteen contracts live in
-`operations`; they use canonical foundation values and `types` receiving values
-where sending mutations/errors cannot be deserialized faithfully. These contracts
-do not grant target admission or duplicate capability metadata. Commands outside
-the local allowlist have no protocol operation contract.
+The `operations` module binds `NAME`, `Request`, `Response`, `ReceivedResponse` and
+`DomainError` across the fourteen reviewed Local operations (the thirteen original
+typed contracts plus `RpcDescribe` at `rpc_describe`); they use canonical foundation
+values and `types` receiving values where sending mutations/errors cannot be
+deserialized faithfully. These contracts do not grant target admission or duplicate
+capability metadata. Commands outside the local allowlist have no protocol
+operation contract.
 
 Prefer the operation API for reviewed local commands:
 
@@ -673,16 +714,21 @@ To bind a local command after its exposure has been separately reviewed:
    refactor must leave those files byte-identical.
 
 Contract fixtures follow D2: retain the current and previous contract releases,
-without an old implementation shim. The first baseline is
-`backend/nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json`.
-`current_contract_accepts_the_supported_previous_fixtures` decodes every
-operation's requests, successes and failures using current receiving types and
-checks request encoding. The operation unit tests and RPC failure-encoding test
-also compare current sending values with the baseline. The next contract release
-adds its own fixture set and keeps this one as previous; later releases remove
-the oldest set beyond that pair. A fixture proves JSON compatibility, while
-macro compile tests prove Request/Response/name binding and real local round
-trips prove dispatch and owner behavior.
+without an old implementation shim. The retained previous baseline is
+`backend/nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json`
+(13 operations, preserved byte-for-byte without modification) and the current
+release fixture is
+`backend/nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json`
+(adding `rpc_describe` as the 14th reviewed local operation while keeping all 13
+previous operations intact). `current_contract_accepts_the_supported_previous_fixtures`
+decodes every supported operation's requests, successes and failures using
+current receiving types and checks request encoding across both fixture sets.
+The operation unit tests and RPC failure-encoding test also compare current
+sending values with `2026-11-14.json`. Later contract releases will add a new
+fixture set and drop the oldest baseline beyond the current/previous pair. A
+fixture proves JSON compatibility, while macro compile tests prove
+Request/Response/name binding and real local round trips prove dispatch and
+owner behavior.
 
 `command_scope_is_identical_across_rpc_transports` exercises preparation for
 every catalog command with multiple targets, including dedicated-field patches

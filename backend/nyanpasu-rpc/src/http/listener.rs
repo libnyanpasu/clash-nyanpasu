@@ -78,6 +78,7 @@ impl LoopbackListener {
             LocalSession {
                 authority,
                 access_token,
+                session_id: format!("sess_{}", uuid::Uuid::new_v4().simple()),
                 shutdown: shutdown.clone(),
             },
             local_session,

@@ -19,6 +19,7 @@ fn operation_methods_match_the_local_catalog() {
         operations::OpenLogSession::NAME,
         operations::QueryLogs::NAME,
         operations::CloseLogSession::NAME,
+        operations::RpcDescribe::NAME,
     ];
     let mut catalog: Vec<_> = COMMAND_CATALOG
         .iter()
@@ -36,7 +37,7 @@ fn sample<T: DeserializeOwned>(value: Value) -> T {
 
 fn request<O: RpcOperation>(expected: Value) {
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/contracts/2026-11-12.json"
+        "../../tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     assert_eq!(expected, fixtures[O::NAME]["request"], "{}", O::NAME);
@@ -54,6 +55,7 @@ fn operation_requests_keep_existing_json_shapes() {
     request::<operations::GetProfiles>(Value::Null);
     request::<operations::GetConfigurationStatus>(Value::Null);
     request::<operations::GetCoreStatus>(Value::Null);
+    request::<operations::RpcDescribe>(Value::Null);
     request::<operations::CreateProfile>(json!({
         "request": {"metadata": {"name": "profile"},
             "definition": {"type": "config", "config": {"type": "composition"}},
@@ -89,7 +91,7 @@ where
 {
     let expected = serde_json::to_value(&response).unwrap();
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/contracts/2026-11-12.json"
+        "../../tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     assert!(
@@ -164,4 +166,14 @@ fn operation_receivers_decode_existing_success_values() {
         "malformed": "0", "truncated": "0", "indexed_bytes": "0", "file_bytes": "0"
     })));
     receive::<operations::CloseLogSession>(());
+    receive::<operations::RpcDescribe>(sample(json!({
+        "protocol": 1,
+        "server": {"kind": "headless", "version": "2.0.0"},
+        "transport": "local",
+        "principal": {"kind": "local_socket", "user": "1000"},
+        "scopes": ["read"],
+        "commands": [
+            {"name": "rpc_describe", "effect": "query", "scope": "read", "allowed": true}
+        ]
+    })));
 }

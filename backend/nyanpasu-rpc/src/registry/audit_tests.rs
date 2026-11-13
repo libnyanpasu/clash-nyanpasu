@@ -6,6 +6,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
+use nyanpasu_contracts::auth::AuthContext;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::{
@@ -28,8 +29,8 @@ use crate::{
         SubscriptionOutcome, TracingRpcAuditSink,
     },
     events::EventBus,
-    registry::{RpcCaller, RpcDependencies, RpcFuture, RpcState},
-    test_support::{Capture, Fixture, SECRET},
+    registry::{RpcCallMeta, RpcCaller, RpcDependencies, RpcFuture, RpcState},
+    test_support::{Capture, Fixture, SECRET, test_http_auth, with_http_auth},
 };
 
 #[nyanpasu_macro::rpc(http, scope = settings)]
@@ -95,7 +96,12 @@ fn audit_mutation(
 
 #[tokio::test]
 async fn audit_distinguishes_rejection_from_handler_failure() {
-    fn fail(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+    fn fail(
+        _: Arc<RpcDependencies>,
+        _: RpcCallMeta,
+        _: RpcCaller,
+        _: Value,
+    ) -> Result<RpcFuture, RpcError> {
         Ok(Box::pin(super::unreported(async {
             Err(RpcError::invalid_params(SECRET))
         })))
@@ -144,7 +150,7 @@ async fn audit_distinguishes_rejection_from_handler_failure() {
 async fn app_preferences_decode_rejection_is_recorded_before_admission() {
     let fixture = Fixture::new(false).await;
     for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
-        let error = fixture.rpc.call(transport, "patch_app_config", RpcOwner::desktop("settings"),
+        let error = fixture.rpc.call(transport, "patch_app_config", RpcCaller::desktop("settings"),
             json!({"patch": {"proxy_layout_column": 97, "hotkeys": [], "enable_service_mode": false}})).await.unwrap_err();
         assert_eq!(error.kind, "invalid_params");
         let mut records = fixture.sink.records.lock();
@@ -236,7 +242,7 @@ async fn audit_never_records_request_values_or_owner_cookies() {
     async {
         for fail in [false, true] {
             crate::test_support::rpc_for_test_call(
-                &fixture.rpc.clone().router(),
+                &with_http_auth(fixture.rpc.clone().router(), test_http_auth()),
                 "audit_mutation",
                 json!({"value": SECRET, "degraded": true, "failEncoding": fail}),
                 Some("nyanpasu_http_session=99999999-8888-4777-8666-555555555555"),
@@ -260,19 +266,23 @@ async fn audit_invocation_headers_follow_calls_and_keep_local_request_ids() {
     let id = nyanpasu_rpc_protocol::frame::RequestId::new(1).unwrap();
     for _ in 0..2 {
         let owner = RpcOwner::new(SECRET.into());
-        let audit =
-            fixture
-                .rpc
-                .audit_invocation(RpcTransport::Local, "get_profiles", &owner, Some(id));
+        let auth = nyanpasu_rpc_protocol::AuthContext::local_socket("1000");
+        let audit = fixture.rpc.audit_invocation(
+            RpcTransport::Local,
+            "get_profiles",
+            &owner,
+            Some(&auth.principal),
+            Some(id),
+        );
         fixture
             .rpc
             .call_with_admission(
                 &audit,
                 RpcTransport::Local,
                 "get_profiles",
-                owner,
+                Some(RpcCaller::new(auth, owner)),
                 json!({}),
-                Ok(()),
+                || Ok(()),
             )
             .await
             .unwrap();
@@ -311,6 +321,7 @@ async fn audit_drop_does_not_claim_transaction_cancellation() {
         &fixture.rpc.dependencies.audit,
         RpcTransport::Http,
         RpcOwner::new(SECRET.into()),
+        None,
         || "owner_work",
         None,
         || {
@@ -378,7 +389,11 @@ async fn local_optional_elevation_expands_and_registers() {
     let handler = command.neutral_handler(RpcTarget::Local).unwrap();
     let output = handler(
         fixture.rpc.dependencies.clone(),
-        RpcOwner::new("injected-caller".to_owned()),
+        fixture.rpc.call_meta(RpcTarget::Local),
+        RpcCaller::new(
+            AuthContext::local_socket("test"),
+            RpcOwner::new("injected-caller".to_owned()),
+        ),
         json!({"pageSize": 7, "caller": "untrusted", "unknownField": true}),
     )
     .unwrap()
@@ -400,7 +415,11 @@ async fn local_optional_elevation_expands_and_registers() {
         let handler = production.neutral_handler(RpcTarget::Local).unwrap();
         let error = handler(
             fixture.rpc.dependencies.clone(),
-            RpcOwner::local_connection("test", 1),
+            fixture.rpc.call_meta(RpcTarget::Local),
+            RpcCaller::new(
+                AuthContext::local_socket("test"),
+                RpcOwner::local_connection("test", 1),
+            ),
             json!({}),
         )
         .err()
@@ -456,7 +475,7 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
             .rpc
             .call_native(
                 "read_clipboard_text",
-                RpcOwner::desktop("audit-window"),
+                RpcCaller::desktop("audit-window"),
                 || panic!("unavailable native handler must not run")
             )
             .await
@@ -628,7 +647,7 @@ async fn http_dispatch_records_one_audit_event() {
 #[tokio::test]
 async fn direct_http_routes_use_the_same_audit_seam() {
     let fixture = Fixture::new(false).await;
-    let router = fixture.rpc.clone().router();
+    let router = with_http_auth(fixture.rpc.clone().router(), test_http_auth());
     let session = uuid::Uuid::new_v4();
     let mut owners = Vec::new();
     for (path, command) in [
@@ -736,7 +755,7 @@ async fn audit_records_rejected_dispatches() {
         assert_eq!(record.header.method, command);
         assert_eq!(record.phase, AuditPhase::Rejected { kind, code: None });
     }
-    let router = fixture.rpc.clone().router();
+    let router = with_http_auth(fixture.rpc.clone().router(), test_http_auth());
     let response = router
         .clone()
         .oneshot(
@@ -814,7 +833,7 @@ async fn audit_never_records_payloads_or_error_details() {
         fixture.call(SECRET, json!({})).await;
         // The session cookie authorizes log sessions, so it must not be logged either.
         let (status, _) = crate::test_support::rpc_for_test_call(
-            &fixture.rpc.clone().router(),
+            &with_http_auth(fixture.rpc.clone().router(), test_http_auth()),
             "audit_echo",
             json!({"value": "ok", "fail": false}),
             Some(&format!("nyanpasu_http_session={session}")),
@@ -846,7 +865,12 @@ fn original_error() -> RpcError {
 
 #[tokio::test]
 async fn audited_failure_preserves_the_original_rpc_error() {
-    fn fail(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+    fn fail(
+        _: Arc<RpcDependencies>,
+        _: RpcCallMeta,
+        _: RpcCaller,
+        _: Value,
+    ) -> Result<RpcFuture, RpcError> {
         Ok(Box::pin(crate::registry::unreported(async {
             Err(original_error())
         })))
@@ -919,6 +943,7 @@ async fn audit_level_follows_transport_not_outcome() {
                         transport,
                         method: "audit_echo",
                         owner: RpcAuditOwner("audit-owner".to_owned()),
+                        principal: Some("session:audit".to_owned()),
                         request_id: None,
                     },
                     duration: std::time::Duration::ZERO,
@@ -979,7 +1004,8 @@ async fn dropping_audited_call_preserves_cancellation() {
     }
     fn pending(
         dependencies: Arc<RpcDependencies>,
-        _: RpcOwner,
+        _: RpcCallMeta,
+        _: RpcCaller,
         _: Value,
     ) -> Result<RpcFuture, RpcError> {
         Ok(Box::pin(PendingCall(dependencies.events.clone())))
@@ -1022,7 +1048,7 @@ async fn dropping_audited_call_preserves_cancellation() {
 #[tokio::test]
 async fn audited_command_panic_keeps_its_payload() {
     let fixture = Fixture::new(false).await;
-    let router = fixture.rpc.clone().router();
+    let router = with_http_auth(fixture.rpc.clone().router(), test_http_auth());
     let error = tokio::spawn(async move {
         crate::test_support::rpc_for_test_call(&router, "audit_panic", json!({}), None).await
     })

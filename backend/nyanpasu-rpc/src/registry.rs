@@ -3,7 +3,8 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use nyanpasu_rpc_protocol::{
-    COMMAND_CATALOG, CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget, ShellCapability,
+    AuthContext, COMMAND_CATALOG, CommandKind, CommandMetadata, Principal, RpcDescribeResponse,
+    RpcError, RpcOwner, RpcTarget, ServerInfo, ShellCapability,
 };
 use serde_json::Value;
 
@@ -49,19 +50,99 @@ impl<T: ?Sized> specta::function::FunctionArg for RpcState<'_, T> {
     }
 }
 
-/// A transport-supplied caller in an owner declaration, omitted from its wire schema.
-pub struct RpcCaller(RpcOwner);
+/// Transport-resolved caller identity, scopes, and owner label omitted from wire schemas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpcCaller {
+    auth: AuthContext,
+    owner: RpcOwner,
+}
 
 impl RpcCaller {
+    /// Construct a caller combining resolved authentication context and owner label.
+    #[must_use]
+    pub fn new(auth: AuthContext, owner: RpcOwner) -> Self {
+        Self { auth, owner }
+    }
+
+    /// Construct a full-scope desktop window caller for in-process GUI dispatches.
+    #[must_use]
+    pub fn desktop(window: impl Into<String>) -> Self {
+        let window = window.into();
+        let owner = RpcOwner::desktop(&window);
+        Self {
+            auth: AuthContext::desktop(window),
+            owner,
+        }
+    }
+
+    /// Resolved principal and granted scopes for policy admission and `rpc_describe`.
+    #[must_use]
+    pub fn auth(&self) -> &AuthContext {
+        &self.auth
+    }
+
+    /// Keyed resource owner label for log/session ownership correlation.
+    #[must_use]
+    pub fn owner(&self) -> &RpcOwner {
+        &self.owner
+    }
+
     /// Preserve the caller label supplied by the transport without reconstructing it.
+    #[must_use]
     pub fn into_owner(self) -> RpcOwner {
-        self.0
+        self.owner
     }
 }
 
 impl specta::function::FunctionArg for RpcCaller {
     fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
         None
+    }
+}
+
+const RPC_DESCRIBE_PROTOCOL_VERSION: u32 = nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION;
+
+/// Host and caller snapshot injected into [`crate::commands::describe::rpc_describe`].
+pub struct RpcDescribeContext {
+    response: RpcDescribeResponse,
+}
+
+impl RpcDescribeContext {
+    /// Consume the injected snapshot to return the canonical `rpc_describe` response.
+    #[must_use]
+    pub fn into_response(self) -> RpcDescribeResponse {
+        self.response
+    }
+}
+
+impl specta::function::FunctionArg for RpcDescribeContext {
+    fn to_datatype(_: &mut specta::Types) -> Option<specta::datatype::DataType> {
+        None
+    }
+}
+
+/// Dispatch metadata injected into neutral command wrappers.
+#[derive(Clone)]
+pub struct RpcCallMeta {
+    server: ServerInfo,
+    target: RpcTarget,
+    commands: CommandHandlers,
+}
+
+impl RpcCallMeta {
+    /// Build a caller-scoped self-description snapshot for `rpc_describe`.
+    #[must_use]
+    pub fn describe_context(&self, auth: &AuthContext) -> RpcDescribeContext {
+        RpcDescribeContext {
+            response: RpcDescribeResponse {
+                protocol: RPC_DESCRIBE_PROTOCOL_VERSION,
+                server: self.server.clone(),
+                transport: self.target,
+                principal: auth.principal.clone(),
+                scopes: auth.scopes.clone(),
+                commands: crate::policy::describe_commands(&self.commands, self.target, auth),
+            },
+        }
     }
 }
 
@@ -73,6 +154,7 @@ pub async fn dispatch_audited<T, F>(
     audit: &RpcAudit,
     transport: RpcTransport,
     owner: RpcOwner,
+    principal: Option<&Principal>,
     command: impl FnOnce() -> &'static str,
     request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
     prepare: impl FnOnce() -> Result<F, RpcError>,
@@ -80,7 +162,7 @@ pub async fn dispatch_audited<T, F>(
 where
     F: Future<Output = RpcCompletion<T>>,
 {
-    let invocation = audit.invocation(transport, &owner, command(), request_id);
+    let invocation = audit.invocation(transport, &owner, principal, command(), request_id);
     dispatch_with_audit(&invocation, prepare).await
 }
 
@@ -145,7 +227,8 @@ pub async fn unreported<T>(call: impl Future<Output = Result<T, RpcError>>) -> R
 pub type RpcFuture = Pin<Box<dyn Future<Output = RpcCompletion<Value>> + Send + 'static>>;
 
 /// Decode and bind inputs before returning the future that executes the handler.
-pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> Result<RpcFuture, RpcError>;
+pub type RpcHandler =
+    fn(Arc<RpcDependencies>, RpcCallMeta, RpcCaller, Value) -> Result<RpcFuture, RpcError>;
 /// One declaration registers one neutral handler, including operation-bound commands.
 /// The macro checks public requests, success types and method names before JSON erasure.
 ///
@@ -223,10 +306,27 @@ inventory::collect!(CommandEntry);
 pub(crate) struct RegisteredCommand {
     metadata: CommandMetadata,
     capabilities_available: bool,
+    native_linked: bool,
     handler: Option<RpcHandler>,
 }
 
 impl RegisteredCommand {
+    pub(crate) fn metadata(&self) -> &CommandMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn capabilities_available(&self) -> bool {
+        self.capabilities_available
+    }
+
+    pub(crate) fn has_neutral_handler(&self) -> bool {
+        self.handler.is_some()
+    }
+
+    pub(crate) fn native_linked(&self) -> bool {
+        self.native_linked
+    }
+
     fn unavailable(&self, target: RpcTarget) -> RpcError {
         if target == RpcTarget::Http {
             RpcError::unsupported(self.metadata.name)
@@ -242,7 +342,13 @@ impl RegisteredCommand {
     }
 
     fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
-        if !self.metadata.targets.contains(&target) || !self.capabilities_available {
+        if !crate::policy::is_command_runnable(
+            &self.metadata,
+            self.capabilities_available,
+            self.handler.is_some(),
+            self.native_linked,
+            target,
+        ) {
             return Err(self.unavailable(target));
         }
         if target == RpcTarget::Desktop && self.metadata.kind == CommandKind::Native {
@@ -267,6 +373,7 @@ pub(crate) fn register_commands(
                 RegisteredCommand {
                     metadata: *metadata,
                     capabilities_available: false,
+                    native_linked: false,
                     handler: None,
                 },
             )
@@ -283,6 +390,7 @@ pub(crate) fn register_commands(
             .or_insert(RegisteredCommand {
                 metadata: entry.metadata,
                 capabilities_available: false,
+                native_linked: false,
                 handler: None,
             });
         if command.handler.replace(entry.handler).is_some() {
@@ -307,6 +415,8 @@ pub(crate) fn register_commands(
 #[derive(Clone)]
 pub struct UnifiedRpc {
     pub(crate) dependencies: Arc<RpcDependencies>,
+    pub(crate) server: ServerInfo,
+    pub(crate) provided: Vec<ShellCapability>,
     pub(crate) commands: CommandHandlers,
 }
 
@@ -318,27 +428,36 @@ impl UnifiedRpc {
 
     pub fn new(
         dependencies: RpcDependencies,
+        server: ServerInfo,
         provided: &[ShellCapability],
     ) -> Result<Self, SetupError> {
         let commands =
             register_commands(COMMAND_CATALOG, inventory::iter::<CommandEntry>, provided)?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
+            server,
+            provided: provided.to_vec(),
             commands,
         })
+    }
+
+    /// Record native Tauri wrappers linked by the desktop shell so `rpc_describe`
+    /// accurately reports desktop availability without introducing a GUI dependency.
+    pub fn mark_native_linked(&mut self, names: impl IntoIterator<Item = &'static str>) {
+        let commands = Arc::make_mut(&mut self.commands);
+        for name in names {
+            if let Some(command) = commands.get_mut(name)
+                && command.metadata.kind == CommandKind::Native
+            {
+                command.native_linked = true;
+            }
+        }
     }
 
     pub fn command_names(&self) -> Vec<&'static str> {
         let mut names = self.commands.keys().copied().collect::<Vec<_>>();
         names.sort_unstable();
         names
-    }
-
-    #[cfg(feature = "local-server")]
-    pub(crate) fn command_capabilities_available(&self, name: &str) -> bool {
-        self.commands
-            .get(name)
-            .is_some_and(|command| command.capabilities_available)
     }
 
     #[cfg(all(test, feature = "local-server"))]
@@ -352,17 +471,69 @@ impl UnifiedRpc {
         }
     }
 
-    /// Dispatch a shared command, including desktop fallback for unlinked native names.
+    /// Return the canonical discovery snapshot for `target` and resolved `auth`.
+    #[must_use]
+    pub fn describe(&self, target: RpcTarget, auth: &AuthContext) -> RpcDescribeResponse {
+        RpcDescribeResponse {
+            protocol: RPC_DESCRIBE_PROTOCOL_VERSION,
+            server: self.server.clone(),
+            transport: target,
+            principal: auth.principal.clone(),
+            scopes: auth.scopes.clone(),
+            commands: crate::policy::describe_commands(&self.commands, target, auth),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn call_meta(&self, target: RpcTarget) -> RpcCallMeta {
+        RpcCallMeta {
+            server: self.server.clone(),
+            target,
+            commands: Arc::clone(&self.commands),
+        }
+    }
+
+    /// Dispatch a shared command with an already-resolved caller context.
     pub async fn call(
         &self,
         transport: RpcTransport,
         method: &str,
-        owner: RpcOwner,
+        caller: RpcCaller,
         params: Value,
     ) -> Result<Value, RpcError> {
-        let invocation = self.audit_invocation(transport, method, &owner, None);
-        self.call_with_admission(&invocation, transport, method, owner, params, Ok(()))
-            .await
+        let invocation = self.audit_invocation(
+            transport,
+            method,
+            caller.owner(),
+            Some(&caller.auth().principal),
+            None,
+        );
+        self.call_with_admission(&invocation, transport, method, Some(caller), params, || {
+            Ok(())
+        })
+        .await
+    }
+
+    pub(crate) fn admit_command(
+        &self,
+        transport: RpcTransport,
+        method: &str,
+        auth: Option<&AuthContext>,
+    ) -> Result<(), RpcError> {
+        let target = match transport {
+            RpcTransport::TauriIpc | RpcTransport::TauriProtocol => RpcTarget::Desktop,
+            RpcTransport::Http => RpcTarget::Http,
+            RpcTransport::Local => RpcTarget::Local,
+        };
+        if auth.is_none() {
+            return Err(RpcError::unauthorized("authentication required"));
+        }
+        let command = self
+            .commands
+            .get(method)
+            .ok_or_else(|| RpcError::unknown_method(method))?;
+        command.neutral_handler(target)?;
+        crate::policy::admit_resolved_command(&command.metadata, auth)
     }
 
     pub(crate) async fn call_with_admission(
@@ -370,9 +541,9 @@ impl UnifiedRpc {
         invocation: &AuditInvocation,
         transport: RpcTransport,
         method: &str,
-        owner: RpcOwner,
+        caller: Option<RpcCaller>,
         params: Value,
-        admission: Result<(), RpcError>,
+        admit_resource: impl FnOnce() -> Result<(), RpcError>,
     ) -> Result<Value, RpcError> {
         let target = match transport {
             RpcTransport::TauriIpc | RpcTransport::TauriProtocol => RpcTarget::Desktop,
@@ -380,13 +551,20 @@ impl UnifiedRpc {
             RpcTransport::Local => RpcTarget::Local,
         };
         dispatch_with_audit(invocation, || {
-            let handler = self
+            let caller = caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
+            let command = self
                 .commands
                 .get(method)
                 .ok_or_else(|| RpcError::unknown_method(method))?;
-            let handler = handler.neutral_handler(target)?;
-            admission?;
-            handler(self.dependencies.clone(), owner, params)
+            let handler = command.neutral_handler(target)?;
+            crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
+            admit_resource()?;
+            let meta = RpcCallMeta {
+                server: self.server.clone(),
+                target,
+                commands: self.commands.clone(),
+            };
+            handler(self.dependencies.clone(), meta, caller, params)
         })
         .await
     }
@@ -397,13 +575,14 @@ impl UnifiedRpc {
     pub async fn call_native(
         &self,
         method: &str,
-        owner: RpcOwner,
+        caller: RpcCaller,
         call: impl FnOnce() -> Result<RpcFuture, RpcError>,
     ) -> Result<Value, RpcError> {
         dispatch_audited(
             &self.dependencies.audit,
             RpcTransport::TauriIpc,
-            owner,
+            caller.owner().clone(),
+            Some(&caller.auth().principal),
             || self.audit_command_name(method),
             None,
             || {
@@ -417,6 +596,7 @@ impl UnifiedRpc {
                 {
                     return Err(command.unavailable(RpcTarget::Desktop));
                 }
+                crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
                 call()
             },
         )
@@ -434,11 +614,13 @@ impl UnifiedRpc {
         transport: RpcTransport,
         method: &str,
         owner: &RpcOwner,
+        principal: Option<&Principal>,
         request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
     ) -> AuditInvocation {
         self.dependencies.audit.invocation(
             transport,
             owner,
+            principal,
             self.audit_command_name(method),
             request_id,
         )
@@ -456,6 +638,8 @@ pub enum SetupError {
 
 #[cfg(all(test, feature = "http"))]
 mod audit_tests;
+#[cfg(all(test, feature = "http"))]
+mod authorization_tests;
 #[cfg(all(test, feature = "http"))]
 mod delivery_tests;
 #[cfg(all(test, feature = "http"))]

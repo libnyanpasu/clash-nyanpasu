@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use nyanpasu_rpc_protocol::RpcOwner;
+use nyanpasu_rpc_protocol::{Principal, RpcOwner};
 use nyanpasu_runtime_values::runtime::{CommitReceipt, MutationOutcome};
 
 /// The injected audit sink, invocation counter and instance key for remote owners.
@@ -33,6 +33,7 @@ impl RpcAudit {
         &self,
         transport: RpcTransport,
         owner: &RpcOwner,
+        principal: Option<&Principal>,
         method: &'static str,
         request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
     ) -> AuditInvocation {
@@ -42,6 +43,7 @@ impl RpcAudit {
                 invocation_id: self.next_invocation.fetch_add(1, Ordering::Relaxed),
                 transport,
                 method,
+                principal: principal.map(Principal::audit_label),
                 owner: self.owner(transport, owner),
                 request_id,
             },
@@ -110,6 +112,7 @@ pub struct AuditHeader {
     pub invocation_id: u64,
     pub transport: RpcTransport,
     pub method: &'static str,
+    pub principal: Option<String>,
     pub owner: RpcAuditOwner,
     pub request_id: Option<nyanpasu_rpc_protocol::frame::RequestId>,
 }
@@ -360,6 +363,7 @@ impl RpcAuditSink for TracingRpcAuditSink {
                     invocation_id = record.header.invocation_id,
                     transport = match record.header.transport { RpcTransport::Http => "Http", RpcTransport::Local => "Local", RpcTransport::TauriIpc => "TauriIpc", RpcTransport::TauriProtocol => "TauriProtocol" },
                     command = record.header.method,
+                    principal = record.header.principal.as_deref(),
                     owner = record.header.owner.as_str(),
                     request_id = record.header.request_id.map(|id| serde_json::to_string(&id).expect("request ID serializes")),
                     duration_ns = record.duration.as_nanos() as u64,

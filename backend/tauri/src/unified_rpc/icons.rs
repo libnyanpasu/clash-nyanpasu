@@ -96,10 +96,14 @@ async fn response(
     dev_origin: Option<&str>,
 ) -> Response<Vec<u8>> {
     let mut origin = None;
+    let principal = nyanpasu_rpc_protocol::Principal::Desktop {
+        window: owner.label().to_owned(),
+    };
     let result = dispatch_audited(
         &dependencies.audit,
         RpcTransport::TauriProtocol,
         owner,
+        Some(&principal),
         || "icon_fetch",
         None,
         || {

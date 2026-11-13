@@ -140,6 +140,7 @@ impl Server {
                 events: events.clone(),
                 audit: RpcAudit::new(Arc::new(nyanpasu_rpc::audit::TracingRpcAuditSink)),
             },
+            nyanpasu_rpc_protocol::ServerInfo::headless(env!("CARGO_PKG_VERSION")),
             &[],
         )
         .unwrap();
@@ -354,6 +355,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
             events: events.clone(),
             audit: RpcAudit::new(Arc::new(nyanpasu_rpc::audit::TracingRpcAuditSink)),
         },
+        nyanpasu_rpc_protocol::ServerInfo::headless(env!("CARGO_PKG_VERSION")),
         &[nyanpasu_rpc_protocol::ShellCapability::OsIntegration],
     )
     .context("build RPC registry")?;

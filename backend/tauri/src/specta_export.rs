@@ -47,6 +47,7 @@ macro_rules! schema_commands {
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
         schema_commands![
+            commands::describe::rpc_describe,
             commands::status::get_http_server_status,
             commands::status::get_configuration_status,
             commands::status::get_configuration_status_summary,
@@ -627,7 +628,13 @@ mod tests {
         for name in ["getProfiles", "openLogSession", "isTrayIconSet"] {
             assert!(generated.contains(name), "missing external schema: {name}");
         }
-        for dependency in ["RpcState", "RpcCaller", "HostIconFiles", "PathResolver"] {
+        for dependency in [
+            "RpcState",
+            "RpcCaller",
+            "RpcDescribeContext",
+            "HostIconFiles",
+            "PathResolver",
+        ] {
             assert!(
                 !generated.contains(dependency),
                 "injected dependency leaked: {dependency}"

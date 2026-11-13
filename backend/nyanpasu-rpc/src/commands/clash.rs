@@ -17,6 +17,16 @@ pub async fn clash_api_get_proxy_delay(
     Ok(client.proxy_delay(name, provider, url, expected).await?)
 }
 
+/// The live Clash configuration without the controller secret. The full one is
+/// [`clash_api_get_configs`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn clash_api_get_settings(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<nyanpasu_core::clash::api::ClashApiSettings> {
+    Ok(client.clash_api_settings().await?)
+}
+
 #[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn clash_api_get_configs(

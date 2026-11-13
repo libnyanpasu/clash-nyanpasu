@@ -111,6 +111,43 @@ impl ClashGuardOverrides {
     }
 }
 
+/// The overrides a `read` caller may see: everything except the controller secret.
+///
+/// The conversion destructures the overrides without `..`, so a new field must be classified.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub struct ClashOverridesSettings {
+    pub log_level: LogLevel,
+    pub allow_lan: bool,
+    pub mode: Mode,
+    pub unified_delay: ManageableField<bool>,
+    pub tcp_concurrent: ManageableField<bool>,
+    pub ipv6: bool,
+}
+
+impl From<&ClashGuardOverrides> for ClashOverridesSettings {
+    fn from(overrides: &ClashGuardOverrides) -> Self {
+        let ClashGuardOverrides {
+            log_level,
+            allow_lan,
+            mode,
+            // The controller secret is only in the full config.
+            secret: _,
+            unified_delay,
+            tcp_concurrent,
+            ipv6,
+        } = overrides;
+        Self {
+            log_level: *log_level,
+            allow_lan: *allow_lan,
+            mode: *mode,
+            unified_delay: *unified_delay,
+            tcp_concurrent: *tcp_concurrent,
+            ipv6: *ipv6,
+        }
+    }
+}
+
 #[cfg(test)]
 mod patch_tests {
     use super::*;

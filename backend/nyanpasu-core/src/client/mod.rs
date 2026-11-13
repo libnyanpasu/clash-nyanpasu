@@ -86,11 +86,11 @@ use crate::{
 };
 use nyanpasu_config::{
     application::{
-        IpLookupProvider, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch,
-        ReleaseChannel, RemoteAccessConfig,
+        ApplicationSettings, IpLookupProvider, IpLookupProviderInfo, NyanpasuAppConfig,
+        NyanpasuAppConfigPatch, ReleaseChannel, RemoteAccessConfig,
     },
     clash::{
-        config::{ClashConfig, ClashConfigPatch},
+        config::{ClashConfig, ClashConfigPatch, ClashSettings},
         features::ConfigFeatures,
     },
     profile::{
@@ -117,7 +117,7 @@ use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub use error::{ClientError, Result};
+pub use error::{ClashReadError, ClientError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
 use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
@@ -921,6 +921,12 @@ impl NyanpasuClient {
         Ok(self.inner.application.snapshot().state)
     }
 
+    /// The committed application settings without PAC and latency URLs that may carry a
+    /// credential.
+    pub async fn get_app_settings(&self) -> Result<ApplicationSettings> {
+        Ok((&self.inner.application.snapshot().state).into())
+    }
+
     /// The committed application config, for boundary code that runs
     /// synchronously (window creation, window event handlers) and cannot await.
     pub fn app_config_snapshot(&self) -> NyanpasuAppConfig {
@@ -1186,6 +1192,11 @@ impl NyanpasuClient {
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
         Ok(self.inner.clash_config.snapshot().state)
+    }
+
+    /// The committed Clash settings without the controller secret and the web UI templates.
+    pub async fn get_clash_settings(&self) -> Result<ClashSettings> {
+        Ok((&self.inner.clash_config.snapshot().state).into())
     }
 
     /// The config keys and values the selected core reads, for the settings

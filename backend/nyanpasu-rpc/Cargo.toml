@@ -123,6 +123,7 @@ tower = { version = '0.5', features = ['util'], optional = true }
 whoami = '2.0.0'
 atomicwrites = '0.4'
 redb = '4.0.0'
+jiff = '0.2'
 nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 

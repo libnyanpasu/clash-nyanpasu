@@ -77,7 +77,7 @@ const mount = async (
   mockIPC((command, args) => {
     const wire = args as { method: string; params: { layout: ProfileLayout } }
     const method = command === 'call_rpc' ? wire.method : command
-    if (method === 'get_profiles')
+    if (method === 'get_profiles' || method === 'get_profiles_listing')
       return {
         current,
         items: [profile],

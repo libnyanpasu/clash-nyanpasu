@@ -85,9 +85,12 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::runtime::get_ip_lookup_providers,
             commands::runtime::get_hotkey_functions,
             commands::profiles::get_profiles,
+            commands::profiles::get_profiles_listing,
             ipc::probe_profile_url,
             commands::profiles::get_profile_sync_status,
             commands::profiles::get_profile_sync_runs,
+            commands::profiles::get_profile_sync_status_summary,
+            commands::profiles::get_profile_sync_runs_summary,
             commands::profiles::get_profile_sync_logs,
             commands::profiles::read_profile_file,
             ipc::get_custom_app_dir,
@@ -1119,6 +1122,75 @@ mod tests {
                 "chains: string[]",
                 "metadata: ConnectionMetadata_Serialize",
                 "_extra:",
+            ],
+        );
+
+        // Safe profile listing and sync summaries keep flat discriminated shapes
+        // and public scheduler ordering fields without leaking raw URLs or text.
+        for suffix in ["Serialize", "Deserialize"] {
+            let listing_config_name = format!("ProfileListingConfig_{suffix}");
+            let listing_config = exported_type(&generated, &listing_config_name);
+            let expected_source = format!("source: ProfileListingSource_{suffix}");
+            assert_contains_all(
+                listing_config,
+                &listing_config_name,
+                &[
+                    "type: 'file'",
+                    &expected_source,
+                    "type: 'composition'",
+                    "transforms",
+                ],
+            );
+            for wrapper in ["file:", "file?:", "composition:", "composition?:"] {
+                assert!(
+                    !listing_config.contains(wrapper),
+                    "{listing_config_name} must serialize flat, not wrapped under {wrapper}:\n{listing_config}"
+                );
+            }
+            let profiles_listing_name = format!("ProfilesListing_{suffix}");
+            let profiles_listing = exported_type(&generated, &profiles_listing_name);
+            let expected_items = format!("items: ProfileListingItem_{suffix}[]");
+            assert_contains_all(
+                profiles_listing,
+                &profiles_listing_name,
+                &[
+                    "current: ProfileId | null",
+                    "proxy_group_layouts:",
+                    &expected_items,
+                ],
+            );
+        }
+        assert_contains_all(
+            exported_type(&generated, "ProfileSyncSummary"),
+            "ProfileSyncSummary",
+            &[
+                "scheduled: boolean",
+                "active: SyncRunSummary[]",
+                "has_registration_error: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "SyncRunSummary"),
+            "SyncRunSummary",
+            &[
+                "id: string",
+                "admission_sequence: string",
+                "state: SyncRunStateSummary",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "SyncRunPageSummary"),
+            "SyncRunPageSummary",
+            &["items: SyncRunSummary[]", "next: RunCursorDto | null"],
+        );
+        assert_contains_all(
+            exported_type(&generated, "ProfileSyncReadError"),
+            "ProfileSyncReadError",
+            &[
+                "kind: 'unknown_profile'",
+                "kind: 'not_remote'",
+                "kind: 'invalid_cursor'",
+                "kind: 'unavailable'",
             ],
         );
     }

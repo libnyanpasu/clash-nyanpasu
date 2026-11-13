@@ -3,6 +3,7 @@ import type {
   ConfigExecutionRole,
   OperatorTag,
   ProfileItem_Serialize,
+  ProfileListingItem_Serialize,
 } from '@nyanpasu/rpc/types'
 
 export type ProfileLabel = (id: string) => string
@@ -10,7 +11,10 @@ export type ProfileLabel = (id: string) => string
 /** A step label: plain text runs and references to profiles by id. */
 export type LabelPart = string | { profileId: string }
 
-export type ProfileLookup = Map<string, ProfileItem_Serialize>
+export type ProfileLookup = ReadonlyMap<
+  string,
+  ProfileItem_Serialize | ProfileListingItem_Serialize
+>
 
 /** Preserve structured references through localized string interpolation. */
 export function profileMessageParts(

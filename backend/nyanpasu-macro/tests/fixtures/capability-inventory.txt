@@ -67,8 +67,11 @@ get_ipsb_asn | desktop | - | - | query | read
 get_postprocessing_output | desktop,http | - | - | query | sensitive_read
 get_profile_sync_logs | desktop,http | - | - | query | sensitive_read
 get_profile_sync_runs | desktop,http | - | - | query | sensitive_read
+get_profile_sync_runs_summary | desktop,http | - | - | query | read
 get_profile_sync_status | desktop,http | - | - | query | sensitive_read
+get_profile_sync_status_summary | desktop,http | - | - | query | read
 get_profiles | desktop,http,local | - | - | query | sensitive_read
+get_profiles_listing | desktop,http | - | - | query | read
 get_proxies | desktop,http | - | presentation | query | read
 get_proxy_group_icons | desktop,http | - | presentation | query | sensitive_read
 get_release_channel | desktop | - | - | query | read

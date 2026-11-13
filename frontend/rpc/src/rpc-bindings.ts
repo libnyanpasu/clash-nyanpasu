@@ -203,6 +203,12 @@ export function createRpcClient(
         __RPC_INVOKE('get_profiles'),
       ),
     /**
+     *  The profile structure without subscription URLs, request headers, external paths or
+     *  descriptions. The full document is [`get_profiles`].
+     */
+    getProfilesListing: () =>
+      __RPC_INVOKE<ProfilesListing_Serialize>('get_profiles_listing'),
+    /**
      *  Downloads a profile URL and suggests how to import it, for the user to
      *  confirm. Desktop-only: it sends a request to any URL the caller names.
      */
@@ -231,6 +237,28 @@ export function createRpcClient(
     ) =>
       typedError<RunPageDto, IpcError>(
         __RPC_INVOKE('get_profile_sync_runs', { uid, after }),
+      ),
+    /**
+     *  The sync schedule and active runs without the registration error text. The full status is
+     *  [`get_profile_sync_status`].
+     */
+    getProfileSyncStatusSummary: (uid: ProfileId) =>
+      typedError<ProfileSyncSummary, IpcError>(
+        __RPC_INVOKE('get_profile_sync_status_summary', { uid }),
+      ),
+    /**
+     *  One page of sync runs with each outcome reduced to its kind. The full page is
+     *  [`get_profile_sync_runs`].
+     */
+    getProfileSyncRunsSummary: (
+      uid: ProfileId,
+      after: {
+        sequence: string
+        id: string
+      } | null,
+    ) =>
+      typedError<SyncRunPageSummary, IpcError>(
+        __RPC_INVOKE('get_profile_sync_runs_summary', { uid, after }),
       ),
     getProfileSyncLogs: (uid: ProfileId, run: string, after: string | null) =>
       typedError<LogPageDto, IpcError>(
@@ -3219,6 +3247,7 @@ export type IpcErrorKind =
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
   | { domain: 'clash_read'; error: ClashReadError }
+  | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -4166,6 +4195,149 @@ export type ProfileLayout = {
   ungrouped: ProfileId[]
 }
 
+export type ProfileListingBinding =
+  ProfileListingBinding_Serialize | ProfileListingBinding_Deserialize
+
+export type ProfileListingBinding_Deserialize =
+  | ({ type: 'managed'; updated_at?: number | null } & { mode?: never })
+  /**  The target path is the user's file system layout: only its mode is listed. */
+  | { type: 'external'; updated_at?: number | null; mode: ExternalMode }
+
+export type ProfileListingBinding_Serialize =
+  | ({ type: 'managed'; updated_at?: number | null } & { mode?: never })
+  /**  The target path is the user's file system layout: only its mode is listed. */
+  | { type: 'external'; updated_at?: number | null; mode: ExternalMode }
+
+export type ProfileListingConfig =
+  ProfileListingConfig_Serialize | ProfileListingConfig_Deserialize
+
+export type ProfileListingConfig_Deserialize =
+  | ({
+      type: 'file'
+      source: ProfileListingSource_Deserialize
+      transforms: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
+  /**  Ids only: it holds no source. */
+  | ({
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
+
+export type ProfileListingConfig_Serialize =
+  | ({
+      type: 'file'
+      source: ProfileListingSource_Serialize
+      transforms: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
+  /**  Ids only: it holds no source. */
+  | ({
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
+
+export type ProfileListingDefinition =
+  ProfileListingDefinition_Serialize | ProfileListingDefinition_Deserialize
+
+export type ProfileListingDefinition_Deserialize =
+  | ({ type: 'config'; config: ProfileListingConfig_Deserialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: ProfileListingTransform_Deserialize } & {
+      config?: never
+    })
+
+export type ProfileListingDefinition_Serialize =
+  | ({ type: 'config'; config: ProfileListingConfig_Serialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: ProfileListingTransform_Serialize } & {
+      config?: never
+    })
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem =
+  ProfileListingItem_Serialize | ProfileListingItem_Deserialize
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem_Deserialize = {
+  uid: ProfileId
+} & ProfileListingMetadata &
+  ProfileListingDefinition_Deserialize
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem_Serialize = {
+  uid: ProfileId
+} & ProfileListingMetadata &
+  ProfileListingDefinition_Serialize
+
+/**  The name stays; the description is free text a user may paste a link into, so it is a flag. */
+export type ProfileListingMetadata = {
+  name: string
+  custom_name: boolean
+  has_desc: boolean
+}
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource =
+  ProfileListingSource_Serialize | ProfileListingSource_Deserialize
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource_Deserialize =
+  | ({ type: 'local'; binding: ProfileListingBinding_Deserialize } & {
+      option?: never
+      subscription?: never
+      updated_at?: never
+    })
+  | ({
+      type: 'remote'
+      updated_at?: number | null
+      option: RemoteListingOptions
+      /**  Byte counts and an expiry: numbers cannot carry a credential. */
+      subscription: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource_Serialize =
+  | ({ type: 'local'; binding: ProfileListingBinding_Serialize } & {
+      option?: never
+      subscription?: never
+      updated_at?: never
+    })
+  | ({
+      type: 'remote'
+      updated_at?: number | null
+      option: RemoteListingOptions
+      /**  Byte counts and an expiry: numbers cannot carry a credential. */
+      subscription?: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+export type ProfileListingTransform =
+  ProfileListingTransform_Serialize | ProfileListingTransform_Deserialize
+
+export type ProfileListingTransform_Deserialize =
+  | ({ type: 'overlay'; source: ProfileListingSource_Deserialize } & {
+      runtime?: never
+    })
+  | {
+      type: 'script'
+      source: ProfileListingSource_Deserialize
+      runtime: ScriptRuntime
+    }
+
+export type ProfileListingTransform_Serialize =
+  | ({ type: 'overlay'; source: ProfileListingSource_Serialize } & {
+      runtime?: never
+    })
+  | {
+      type: 'script'
+      source: ProfileListingSource_Serialize
+      runtime: ScriptRuntime
+    }
+
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
   ProfileMetadata_Serialize | ProfileMetadata_Deserialize
@@ -4289,12 +4461,37 @@ export type ProfileSubscriptionInfo = {
   expire?: number | null
 }
 
+/**
+ *  Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: the journal, the scheduler and the adapters stay
+ *  out of the error, and their diagnostics stay on the protected full queries.
+ */
+export type ProfileSyncReadError =
+  | { kind: 'unknown_profile' }
+  | { kind: 'not_remote' }
+  | { kind: 'invalid_cursor' }
+  | { kind: 'unavailable' }
+
 export type ProfileSyncStatus = {
   scheduled: boolean
   next_run_at: string | null
   active: RunDto[]
   journal_degraded: boolean
   registration_error: string | null
+  history_limit: number
+}
+
+/**
+ *  The secret-free view of [`ProfileSyncStatus`]. The registration error is owner text that can
+ *  carry the failing request's URL, so it is a flag.
+ */
+export type ProfileSyncSummary = {
+  scheduled: boolean
+  next_run_at: string | null
+  active: SyncRunSummary[]
+  journal_degraded: boolean
+  has_registration_error: boolean
   history_limit: number
 }
 
@@ -5192,6 +5389,36 @@ export type ProfilesError =
   | { kind: 'blocking_task_cancelled' }
   | { kind: 'shutting_down' }
 
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing =
+  ProfilesListing_Serialize | ProfilesListing_Deserialize
+
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing_Deserialize = {
+  current: ProfileId | null
+  global_transforms: ProfileId[]
+  folders: ProfileFolder[]
+  /**
+   *  The sidebar arrangement of each profile's proxy groups. The names are the groups
+   *  `get_proxies` already returns, and the folder names are the user's own labels.
+   */
+  proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
+  items: ProfileListingItem_Deserialize[]
+}
+
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing_Serialize = {
+  current: ProfileId | null
+  global_transforms: ProfileId[]
+  folders: ProfileFolder[]
+  /**
+   *  The sidebar arrangement of each profile's proxy groups. The names are the groups
+   *  `get_proxies` already returns, and the folder names are the user's own labels.
+   */
+  proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
+  items: ProfileListingItem_Serialize[]
+}
+
 export type ProviderName = string
 
 export type ProviderType = 'Proxy' | 'Rule' | string
@@ -5453,6 +5680,14 @@ export type RemoteAccessError =
    *  general application patch.
    */
   | { kind: 'use_dedicated_command' }
+
+/**  The sync policy; the user agent is a request header value, so it is a flag. */
+export type RemoteListingOptions = {
+  has_user_agent: boolean
+  with_proxy: boolean
+  self_proxy: boolean
+  update_interval_minutes: RemoteSyncInterval
+}
 
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
@@ -6294,6 +6529,33 @@ export type SubscriptionInfo_Serialize = {
   Download: number
   Total: number
   Expire: number
+}
+
+/**  A failed run is only `Failed`: its code and message are owner text. */
+export type SyncOutcomeKind =
+  'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'skipped'
+
+export type SyncRunPageSummary = {
+  items: SyncRunSummary[]
+  next: RunCursorDto | null
+}
+
+export type SyncRunStateSummary =
+  | { kind: 'admitted' }
+  | { kind: 'running' }
+  | { kind: 'cancelling' }
+  | { kind: 'finalizing' }
+  | { kind: 'finished'; outcome: SyncOutcomeKind; journal_degraded: boolean }
+
+/**  One sync run without its job key, completion output, failure code and message. */
+export type SyncRunSummary = {
+  id: string
+  admission_sequence: string
+  trigger: string
+  scheduled_at: string | null
+  admitted_at: string
+  finished_at: string | null
+  state: SyncRunStateSummary
 }
 
 /**

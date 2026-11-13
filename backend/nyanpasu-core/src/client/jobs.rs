@@ -190,33 +190,175 @@ pub struct ProfileSyncStatus {
     pub history_limit: usize,
 }
 
+/// The secret-free view of [`ProfileSyncStatus`]. The registration error is owner text that can
+/// carry the failing request's URL, so it is a flag.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub struct ProfileSyncSummary {
+    pub scheduled: bool,
+    pub next_run_at: Option<String>,
+    pub active: Vec<SyncRunSummary>,
+    pub journal_degraded: bool,
+    pub has_registration_error: bool,
+    pub history_limit: usize,
+}
+
+impl From<&ProfileSyncStatus> for ProfileSyncSummary {
+    fn from(status: &ProfileSyncStatus) -> Self {
+        let ProfileSyncStatus {
+            scheduled,
+            next_run_at,
+            active,
+            journal_degraded,
+            registration_error,
+            history_limit,
+        } = status;
+        Self {
+            scheduled: *scheduled,
+            next_run_at: next_run_at.clone(),
+            active: active.iter().map(Into::into).collect(),
+            journal_degraded: *journal_degraded,
+            has_registration_error: registration_error.is_some(),
+            history_limit: *history_limit,
+        }
+    }
+}
+
+/// One sync run without its job key, completion output, failure code and message.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
+pub struct SyncRunSummary {
+    pub id: String,
+    pub admission_sequence: String,
+    pub trigger: String,
+    pub scheduled_at: Option<String>,
+    pub admitted_at: String,
+    pub finished_at: Option<String>,
+    pub state: SyncRunStateSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SyncRunStateSummary {
+    Admitted,
+    Running,
+    Cancelling,
+    Finalizing,
+    Finished {
+        outcome: SyncOutcomeKind,
+        journal_degraded: bool,
+    },
+}
+
+/// A failed run is only `Failed`: its code and message are owner text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncOutcomeKind {
+    Succeeded,
+    Failed,
+    Cancelled,
+    Interrupted,
+    Skipped,
+}
+
+impl From<&nyanpasu_jobs::dto::RunDto> for SyncRunSummary {
+    fn from(run: &nyanpasu_jobs::dto::RunDto) -> Self {
+        use nyanpasu_jobs::dto::{JournalDto, OutcomeDto, RunDto, RunStateDto};
+
+        let RunDto {
+            id,
+            // The job key embeds the profile uid; the caller already knows it.
+            job: _,
+            definition_version: _,
+            admission_sequence,
+            // A fixed identifier of the scheduler, not free text.
+            trigger,
+            scheduled_at,
+            admitted_at,
+            finished_at,
+            state,
+            last_log_sequence: _,
+            dropped_log_count: _,
+        } = run;
+        let state = match state {
+            RunStateDto::Admitted => SyncRunStateSummary::Admitted,
+            RunStateDto::Running => SyncRunStateSummary::Running,
+            RunStateDto::Cancelling => SyncRunStateSummary::Cancelling,
+            RunStateDto::Finalizing => SyncRunStateSummary::Finalizing,
+            RunStateDto::Finished { completion } => SyncRunStateSummary::Finished {
+                outcome: match completion.outcome {
+                    OutcomeDto::Succeeded => SyncOutcomeKind::Succeeded,
+                    OutcomeDto::Failed { .. } => SyncOutcomeKind::Failed,
+                    OutcomeDto::Cancelled => SyncOutcomeKind::Cancelled,
+                    OutcomeDto::Interrupted => SyncOutcomeKind::Interrupted,
+                    OutcomeDto::Skipped => SyncOutcomeKind::Skipped,
+                },
+                journal_degraded: matches!(completion.journal, JournalDto::Degraded { .. }),
+            },
+        };
+        Self {
+            id: id.clone(),
+            admission_sequence: admission_sequence.clone(),
+            trigger: trigger.clone(),
+            scheduled_at: scheduled_at.clone(),
+            admitted_at: admitted_at.clone(),
+            finished_at: finished_at.clone(),
+            state,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct SyncRunPageSummary {
+    pub items: Vec<SyncRunSummary>,
+    pub next: Option<nyanpasu_jobs::dto::RunCursorDto>,
+}
+
+impl From<&nyanpasu_jobs::dto::RunPageDto> for SyncRunPageSummary {
+    fn from(page: &nyanpasu_jobs::dto::RunPageDto) -> Self {
+        let nyanpasu_jobs::dto::RunPageDto { items, next } = page;
+        Self {
+            items: items.iter().map(Into::into).collect(),
+            next: next.clone(),
+        }
+    }
+}
+
 impl super::NyanpasuClient {
-    fn profile_sync_key(&self, uid: &nyanpasu_config::profile::ProfileId) -> super::Result<String> {
+    fn profile_sync_target(
+        &self,
+        uid: &nyanpasu_config::profile::ProfileId,
+    ) -> Result<String, super::ProfileSyncReadError> {
         let snapshot = self.inner.profiles.snapshot();
-        let item = snapshot.items.get(uid).ok_or_else(|| {
-            super::ClientError::Profiles(
-                nyanpasu_runtime_values::profiles::ProfileNotFoundSnafu { uid: uid.clone() }
-                    .build(),
-            )
-        })?;
+        let item = snapshot
+            .items
+            .get(uid)
+            .ok_or(super::ProfileSyncReadError::UnknownProfile)?;
         if !matches!(
             item.definition.source(),
             Some(nyanpasu_config::profile::ProfileSource::Remote { .. })
         ) {
-            return Err(nyanpasu_runtime_values::profiles::NotARemoteProfileSnafu {
-                uid: uid.clone(),
-            }
-            .build()
-            .into());
+            return Err(super::ProfileSyncReadError::NotRemote);
         }
         Ok(crate::state::profiles::jobs::sync_key(uid))
     }
 
-    pub async fn profile_sync_status(
+    fn profile_sync_key(&self, uid: &nyanpasu_config::profile::ProfileId) -> super::Result<String> {
+        self.profile_sync_target(uid).map_err(|error| match error {
+            super::ProfileSyncReadError::NotRemote => {
+                nyanpasu_runtime_values::profiles::NotARemoteProfileSnafu { uid: uid.clone() }
+                    .build()
+                    .into()
+            }
+            _ => super::ClientError::Profiles(
+                nyanpasu_runtime_values::profiles::ProfileNotFoundSnafu { uid: uid.clone() }
+                    .build(),
+            ),
+        })
+    }
+
+    async fn profile_sync_status_of(
         &self,
-        uid: nyanpasu_config::profile::ProfileId,
-    ) -> super::Result<ProfileSyncStatus> {
-        let key = self.profile_sync_key(&uid)?;
+        key: String,
+    ) -> Result<ProfileSyncStatus, nyanpasu_jobs::Error> {
         let view = self.inner.jobs.inspect().await?;
         let definition = view.jobs.iter().find(|job| job.definition.key == key);
         Ok(ProfileSyncStatus {
@@ -239,6 +381,14 @@ impl super::NyanpasuClient {
         })
     }
 
+    pub async fn profile_sync_status(
+        &self,
+        uid: nyanpasu_config::profile::ProfileId,
+    ) -> super::Result<ProfileSyncStatus> {
+        let key = self.profile_sync_key(&uid)?;
+        Ok(self.profile_sync_status_of(key).await?)
+    }
+
     pub async fn profile_sync_runs(
         &self,
         uid: nyanpasu_config::profile::ProfileId,
@@ -251,6 +401,38 @@ impl super::NyanpasuClient {
             .runs(key, after.map(TryInto::try_into).transpose()?, 10)
             .await?
             .into())
+    }
+
+    pub async fn profile_sync_status_summary(
+        &self,
+        uid: nyanpasu_config::profile::ProfileId,
+    ) -> Result<ProfileSyncSummary, super::ProfileSyncReadError> {
+        let key = self.profile_sync_target(&uid)?;
+        let status = self
+            .profile_sync_status_of(key)
+            .await
+            .map_err(|_| super::ProfileSyncReadError::Unavailable)?;
+        Ok((&status).into())
+    }
+
+    pub async fn profile_sync_runs_summary(
+        &self,
+        uid: nyanpasu_config::profile::ProfileId,
+        after: Option<nyanpasu_jobs::dto::RunCursorDto>,
+    ) -> Result<SyncRunPageSummary, super::ProfileSyncReadError> {
+        let key = self.profile_sync_target(&uid)?;
+        let after = after
+            .map(TryInto::try_into)
+            .transpose()
+            .map_err(|_: nyanpasu_jobs::Error| super::ProfileSyncReadError::InvalidCursor)?;
+        let page: nyanpasu_jobs::dto::RunPageDto = self
+            .inner
+            .jobs
+            .runs(key, after, 10)
+            .await
+            .map_err(|_| super::ProfileSyncReadError::Unavailable)?
+            .into();
+        Ok((&page).into())
     }
 
     pub async fn profile_sync_logs(
@@ -301,5 +483,199 @@ pub(crate) async fn settled(client: &JobsClient) {
     while !client.inspect().await.unwrap().active.is_empty() {
         assert!(std::time::Instant::now() < deadline, "jobs did not settle");
         tokio::task::yield_now().await;
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    /// The read error is a fixed enum: nothing a journal or adapter reports can reach its text.
+    #[test]
+    fn the_sync_read_error_is_fixed_text() {
+        use crate::client::ProfileSyncReadError as Reason;
+        for (reason, tag, text) in [
+            (
+                Reason::UnknownProfile,
+                "unknown_profile",
+                "the profile does not exist",
+            ),
+            (
+                Reason::NotRemote,
+                "not_remote",
+                "the profile has no remote source to sync",
+            ),
+            (
+                Reason::InvalidCursor,
+                "invalid_cursor",
+                "the run history cursor is invalid",
+            ),
+            (
+                Reason::Unavailable,
+                "unavailable",
+                "the sync status is unavailable",
+            ),
+        ] {
+            assert_eq!(reason.to_string(), text);
+            assert_eq!(
+                serde_json::to_value(reason).unwrap(),
+                serde_json::json!({"kind": tag})
+            );
+        }
+    }
+
+    use nyanpasu_jobs::dto::{
+        CompletionDto, JournalDto, OutcomeDto, OutputDto, RunCursorDto, RunDto, RunPageDto,
+        RunStateDto,
+    };
+
+    use super::*;
+
+    const URL_SECRET: &str = "https://alice:hunter2@sub-7f3a91c2.example-panel.invalid/tok_7f3a91c2d4e85b06/sub?token=query-secret-31337";
+
+    fn run(state: RunStateDto) -> RunDto {
+        RunDto {
+            id: "7".into(),
+            job: "profile-sync:job-key-sentinel".into(),
+            definition_version: "3".into(),
+            admission_sequence: "9".into(),
+            trigger: "interval".into(),
+            scheduled_at: Some("2026-11-13T00:00:00Z".into()),
+            admitted_at: "2026-11-13T00:00:01Z".into(),
+            finished_at: Some("2026-11-13T00:00:02Z".into()),
+            state,
+            last_log_sequence: "12".into(),
+            dropped_log_count: "0".into(),
+        }
+    }
+
+    fn finished(outcome: OutcomeDto, journal: JournalDto) -> RunDto {
+        run(RunStateDto::Finished {
+            completion: CompletionDto {
+                outcome,
+                output: OutputDto::JsonText {
+                    value: format!("{{\"url\":\"{URL_SECRET}\"}}"),
+                },
+                journal,
+            },
+        })
+    }
+
+    #[test]
+    fn a_failed_run_keeps_its_kind_and_loses_the_code_message_and_output() {
+        let failed = finished(
+            OutcomeDto::Failed {
+                code: "code-sentinel".into(),
+                message: format!("GET {URL_SECRET} failed"),
+            },
+            JournalDto::Degraded {
+                code: "journal-code-sentinel".into(),
+            },
+        );
+        let summary = SyncRunSummary::from(&failed);
+        assert_eq!(
+            summary.state,
+            SyncRunStateSummary::Finished {
+                outcome: SyncOutcomeKind::Failed,
+                journal_degraded: true,
+            }
+        );
+        let wire = serde_json::to_string(&summary).unwrap();
+        for sentinel in [
+            "alice",
+            "hunter2",
+            "tok_7f3a91c2d4e85b06",
+            "sub-7f3a91c2",
+            "query-secret-31337",
+            "code-sentinel",
+            "job-key-sentinel",
+        ] {
+            assert!(!wire.contains(sentinel), "{sentinel} leaked: {wire}");
+        }
+        assert_eq!(
+            serde_json::to_value(&summary).unwrap(),
+            serde_json::json!({
+                "id": "7",
+                "admission_sequence": "9",
+                "trigger": "interval",
+                "scheduled_at": "2026-11-13T00:00:00Z",
+                "admitted_at": "2026-11-13T00:00:01Z",
+                "finished_at": "2026-11-13T00:00:02Z",
+                "state": {
+                    "kind": "finished",
+                    "outcome": "failed",
+                    "journal_degraded": true
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn every_outcome_and_live_state_maps_to_its_own_kind() {
+        let kinds = [
+            (OutcomeDto::Succeeded, SyncOutcomeKind::Succeeded),
+            (OutcomeDto::Cancelled, SyncOutcomeKind::Cancelled),
+            (OutcomeDto::Interrupted, SyncOutcomeKind::Interrupted),
+            (OutcomeDto::Skipped, SyncOutcomeKind::Skipped),
+        ];
+        for (outcome, expected) in kinds {
+            assert_eq!(
+                SyncRunSummary::from(&finished(outcome, JournalDto::Durable)).state,
+                SyncRunStateSummary::Finished {
+                    outcome: expected,
+                    journal_degraded: false,
+                }
+            );
+        }
+        for (state, expected) in [
+            (RunStateDto::Admitted, SyncRunStateSummary::Admitted),
+            (RunStateDto::Running, SyncRunStateSummary::Running),
+            (RunStateDto::Cancelling, SyncRunStateSummary::Cancelling),
+            (RunStateDto::Finalizing, SyncRunStateSummary::Finalizing),
+        ] {
+            assert_eq!(SyncRunSummary::from(&run(state)).state, expected);
+        }
+    }
+
+    #[test]
+    fn the_status_summary_flags_the_registration_error_and_keeps_the_counts() {
+        let status = ProfileSyncStatus {
+            scheduled: true,
+            next_run_at: Some("2026-11-13T01:00:00Z".into()),
+            active: vec![run(RunStateDto::Running)],
+            journal_degraded: true,
+            registration_error: Some(format!("cannot register {URL_SECRET}")),
+            history_limit: 10,
+        };
+        let summary = ProfileSyncSummary::from(&status);
+        assert!(summary.has_registration_error);
+        assert!(summary.scheduled && summary.journal_degraded);
+        assert_eq!(summary.active.len(), 1);
+        assert_eq!(summary.history_limit, 10);
+        let wire = serde_json::to_string(&summary).unwrap();
+        assert!(
+            !wire.contains("hunter2") && !wire.contains("cannot register"),
+            "{wire}"
+        );
+        assert!(!wire.contains("registration_error\":\""), "{wire}");
+
+        let healthy = ProfileSyncStatus {
+            registration_error: None,
+            ..status
+        };
+        assert!(!ProfileSyncSummary::from(&healthy).has_registration_error);
+    }
+
+    #[test]
+    fn the_page_summary_keeps_the_cursor() {
+        let page = RunPageDto {
+            items: vec![run(RunStateDto::Admitted)],
+            next: Some(RunCursorDto {
+                sequence: "5".into(),
+                id: "4".into(),
+            }),
+        };
+        let summary = SyncRunPageSummary::from(&page);
+        assert_eq!(summary.items.len(), 1);
+        let next = summary.next.expect("cursor kept");
+        assert_eq!((next.sequence.as_str(), next.id.as_str()), ("5", "4"));
     }
 }

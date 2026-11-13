@@ -13,6 +13,7 @@ import type {
   IpcError,
   OsProxyError,
   ProfilesError,
+  ProfileSyncReadError,
   RemoteAccessError,
   RuntimeError,
   ScriptOperation,
@@ -681,6 +682,24 @@ test.each([
         kind: { domain: 'clash_read', error: { kind } },
         message: 'the backend text',
         detail: 'SettingsUnavailable',
+      }),
+    ).toBe(message())
+  },
+)
+
+test.each([
+  ['unknown_profile', m.error_profile_sync_read_unknown_profile],
+  ['not_remote', m.error_profile_sync_read_not_remote],
+  ['invalid_cursor', m.error_profile_sync_read_invalid_cursor],
+  ['unavailable', m.error_profile_sync_read_unavailable],
+] satisfies [ProfileSyncReadError['kind'], () => string][])(
+  'profile_sync_read_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'profile_sync_read', error: { kind } },
+        message: 'the backend text',
+        detail: 'Unavailable',
       }),
     ).toBe(message())
   },

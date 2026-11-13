@@ -56,7 +56,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
 }))
 vi.mock('@nyanpasu/query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@nyanpasu/query')>()),
-  useProfile: () => ({ query: { data: { items } } }),
+  useProfileListing: () => ({ data: { items } }),
 }))
 
 const domainError: IpcError = {
@@ -154,7 +154,7 @@ test('native error dialogs resolve names without losing the caller title or logs
   mockIPC((command, args) => {
     expect(command).toBe('call_rpc')
     const { method, params } = args as { method: string; params: unknown }
-    if (method === 'get_profiles') {
+    if (method === 'get_profiles_listing') {
       return { items, current: 'p1', global_transforms: [] }
     }
     expect(method).toBe('show_native_message_dialog')
@@ -175,7 +175,8 @@ test('a failed name lookup still shows the original failure and logs', async () 
   mockIPC((command, args) => {
     expect(command).toBe('call_rpc')
     const { method, params } = args as { method: string; params: unknown }
-    if (method === 'get_profiles') throw new Error('profiles unavailable')
+    if (method === 'get_profiles_listing')
+      throw new Error('profiles unavailable')
     expect(method).toBe('show_native_message_dialog')
     dialog((params as { message: string }).message)
     return 'Close'
@@ -246,7 +247,7 @@ test.for(['desktop', 'browser'])(
           method: string
           params: Record<string, unknown>
         }
-        if (method === 'get_profiles')
+        if (method === 'get_profiles_listing')
           return { items, current: 'p1', global_transforms: [] }
         if (method === 'show_native_message_dialog')
           return m.common_copy_error_details()

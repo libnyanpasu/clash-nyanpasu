@@ -13,7 +13,7 @@ import {
   isConfigItem,
   useClashProxiesProvider,
   useClashRulesProvider,
-  useProfile,
+  useProfileListing,
 } from '@nyanpasu/query'
 import type { ProviderReference, SubscriptionTarget } from './widget-config'
 import { ConfigRow } from './widget-config-row'
@@ -74,7 +74,7 @@ function ProfileSelect({
   disabled: boolean
   onChange: (value: string | null) => void
 }) {
-  const { query } = useProfile()
+  const query = useProfileListing()
   const items = (query.data?.items ?? []).filter(
     (item) => isConfigItem(item) && (!remoteOnly || getRemoteSource(item)),
   )

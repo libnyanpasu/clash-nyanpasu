@@ -30,7 +30,10 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
         api.queries.clashApiGetSettings().queryKey,
         api.queries.clashApiGetConfigs().queryKey,
       ],
-      profiles: [api.queries.getProfiles().queryKey],
+      profiles: [
+        api.queries.getProfiles().queryKey,
+        api.queries.getProfilesListing().queryKey,
+      ],
       proxies: [
         api.queries.getProxies().queryKey,
         api.queries.clashApiGetProvidersProxies().queryKey,
@@ -51,6 +54,7 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       api.queries.getClashConfig().queryKey,
       api.queries.clashApiGetVersion().queryKey,
       api.queries.getProfiles().queryKey,
+      api.queries.getProfilesListing().queryKey,
       api.queries.getProxies().queryKey,
     ],
     [api.queries],

@@ -23,6 +23,7 @@ import type {
   ProfileContentError,
   ProfileFileError,
   ProfilesError,
+  ProfileSyncReadError,
   RemoteAccessError,
   RuntimeAftermath,
   RuntimeBuildError,
@@ -56,6 +57,8 @@ export function ipcErrorMessage(
       return httpServerErrorMessage(error.kind.error)
     case 'clash_read':
       return clashReadErrorMessage(error.kind.error)
+    case 'profile_sync_read':
+      return profileSyncReadErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -384,6 +387,19 @@ function clashReadErrorMessage(error: ClashReadError): string {
       return m.error_clash_read_unknown_group()
     case 'delay_test_failed':
       return m.error_clash_read_delay_test_failed()
+  }
+}
+
+function profileSyncReadErrorMessage(error: ProfileSyncReadError): string {
+  switch (error.kind) {
+    case 'unknown_profile':
+      return m.error_profile_sync_read_unknown_profile()
+    case 'not_remote':
+      return m.error_profile_sync_read_not_remote()
+    case 'invalid_cursor':
+      return m.error_profile_sync_read_invalid_cursor()
+    case 'unavailable':
+      return m.error_profile_sync_read_unavailable()
   }
 }
 

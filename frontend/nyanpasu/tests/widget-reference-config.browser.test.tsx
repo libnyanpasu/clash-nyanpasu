@@ -75,8 +75,8 @@ function createRpc() {
           backend.writes.push(value)
           return backend.writes.length as T
         }
-        case 'get_profiles':
-          return { items: backend.profiles, valid: [], current: null } as T
+        case 'get_profiles_listing':
+          return { items: backend.profiles, current: null } as T
         case 'clash_api_get_providers_proxies':
           return {
             SharedName: {

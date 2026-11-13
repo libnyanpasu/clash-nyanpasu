@@ -11,7 +11,7 @@ use nyanpasu_tsdb::{
 };
 use snafu::ResultExt as _;
 
-use super::schema::{self, AUDIT, OUTCOME, TRANSPORT};
+use super::schema::{self, AUDIT, OUTCOME, PHASE, TRANSPORT};
 
 /// Unique synchronous storage adapter, moved into and out of blocking tasks by
 /// the audit owner. Opening always uses `Profile::low_end()`.
@@ -143,21 +143,20 @@ impl<S: Storage> AuditStore for TsdbAuditStore<S> {
                 kind: source.kind(),
                 source: Box::new(source),
             })?;
-        let transport = filter.transport.as_deref().map(str::as_bytes);
-        let outcome = filter.outcome.as_deref().map(str::as_bytes);
-        let mut filters = Vec::new();
-        if let Some(ref value) = transport {
-            filters.push(EventFilter {
-                column: TRANSPORT,
+        let columns = [
+            (TRANSPORT, filter.transport.as_deref()),
+            (PHASE, filter.phase.as_deref()),
+            (OUTCOME, filter.outcome.as_deref()),
+        ]
+        .map(|(column, value)| value.map(|value| (column, value.as_bytes())));
+        let filters: Vec<_> = columns
+            .iter()
+            .flatten()
+            .map(|(column, value)| EventFilter {
+                column: *column,
                 condition: EventCondition::BytesIn(std::slice::from_ref(value)),
-            });
-        }
-        if let Some(ref value) = outcome {
-            filters.push(EventFilter {
-                column: OUTCOME,
-                condition: EventCondition::BytesIn(std::slice::from_ref(value)),
-            });
-        }
+            })
+            .collect();
         let page = snapshot
             .scan_events(&EventQuery {
                 stream: AUDIT,

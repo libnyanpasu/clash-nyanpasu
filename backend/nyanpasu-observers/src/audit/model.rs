@@ -38,11 +38,14 @@ pub struct AuditRow {
     pub duration_ns: u64,
 }
 
-/// Exact stored transport/outcome matches; absent fields do not restrict a scan.
+/// Exact stored transport/phase/outcome matches; absent fields do not restrict a scan.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct AuditFilter {
     /// The stored transport spelling, or all transports.
     pub transport: Option<String>,
+    /// The stored phase spelling, or all phases. Rejections have no outcome,
+    /// so they are selected by phase.
+    pub phase: Option<String>,
     /// The stored outcome spelling, or all outcomes.
     pub outcome: Option<String>,
 }

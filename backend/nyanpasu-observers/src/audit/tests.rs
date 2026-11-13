@@ -336,6 +336,7 @@ async fn query_passes_filter_and_cursor_caps_limit_and_does_not_flush() {
     h.send(0..1);
     let filter = AuditFilter {
         transport: Some("local".into()),
+        phase: Some("finished".into()),
         outcome: Some("failure".into()),
     };
     let before = Some(cursor());

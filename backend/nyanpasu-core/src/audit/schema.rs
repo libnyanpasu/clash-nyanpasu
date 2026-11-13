@@ -7,6 +7,7 @@ use nyanpasu_tsdb::{
 pub(super) const AUDIT: StreamId = StreamId(0);
 pub(super) const AUDIT_WINDOW: Duration = Duration::from_secs(10 * 60);
 pub(super) const TRANSPORT: usize = 0;
+pub(super) const PHASE: usize = 5;
 pub(super) const OUTCOME: usize = 6;
 
 pub(super) fn schema() -> Schema {

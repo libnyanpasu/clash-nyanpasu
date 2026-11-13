@@ -855,10 +855,15 @@ export type AuditCursor = {
   seq: number
 }
 
-/**  Exact stored transport/outcome matches; absent fields do not restrict a scan. */
+/**  Exact stored transport/phase/outcome matches; absent fields do not restrict a scan. */
 export type AuditFilter = {
   /**  The stored transport spelling, or all transports. */
   transport: string | null
+  /**
+   *  The stored phase spelling, or all phases. Rejections have no outcome,
+   *  so they are selected by phase.
+   */
+  phase: string | null
   /**  The stored outcome spelling, or all outcomes. */
   outcome: string | null
 }

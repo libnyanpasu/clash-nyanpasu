@@ -68,6 +68,7 @@ fn audit_pages_round_trip_nullable_fields_and_filter_exactly() {
         (
             AuditFilter {
                 transport: Some("http".into()),
+                phase: None,
                 outcome: None,
             },
             vec![row(999, 3)],
@@ -75,13 +76,15 @@ fn audit_pages_round_trip_nullable_fields_and_filter_exactly() {
         (
             AuditFilter {
                 transport: Some("local".into()),
+                phase: None,
                 outcome: None,
             },
-            vec![failed.clone(), rejected],
+            vec![failed.clone(), rejected.clone()],
         ),
         (
             AuditFilter {
                 transport: None,
+                phase: None,
                 outcome: Some("failure".into()),
             },
             vec![failed],
@@ -89,9 +92,17 @@ fn audit_pages_round_trip_nullable_fields_and_filter_exactly() {
         (
             AuditFilter {
                 transport: Some("http".into()),
+                phase: None,
                 outcome: Some("failure".into()),
             },
             vec![],
+        ),
+        (
+            AuditFilter {
+                phase: Some("rejected".into()),
+                ..AuditFilter::default()
+            },
+            vec![rejected],
         ),
     ] {
         assert_eq!(db.query(filter, None, 500).unwrap().rows, expected);

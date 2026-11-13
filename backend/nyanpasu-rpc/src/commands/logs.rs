@@ -42,6 +42,20 @@ pub async fn query_logs(
         .await
 }
 
+/// Public app and service log page summary without message text, raw lines, target strings, or text filters.
+#[nyanpasu_macro::rpc(http, result, owner, scope = read)]
+#[specta::specta]
+pub async fn query_logs_summary(
+    window: RpcCaller,
+    client: RpcState<'_, NyanpasuClient>,
+    source: nyanpasu_contracts::logs::LogSource,
+    request: nyanpasu_core::client::logs::QueryLogSummary,
+) -> nyanpasu_logging::LogResult<nyanpasu_core::client::logs::LogPageSummary> {
+    client
+        .query_logs_summary(source, window.label().to_string(), request)
+        .await
+}
+
 #[nyanpasu_macro::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::CloseLogSession, scope = read)]
 #[specta::specta]
 pub async fn close_log_session(

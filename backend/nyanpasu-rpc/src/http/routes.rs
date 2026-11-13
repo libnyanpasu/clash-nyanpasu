@@ -197,6 +197,11 @@ async fn http_icon(
     response_prepared(&audit, response)
 }
 
+/// Exports the diagnostic log archive for HTTP callers.
+///
+/// The text redactor in `nyanpasu_config::redact` leaves opaque URL host/path tokens intact, so
+/// shared authorization must gate this route on `Scope::SensitiveRead` until a token-safe archive
+/// view exists.
 async fn http_logs_archive(State(rpc): State<UnifiedRpc>, headers: HeaderMap) -> Response {
     let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
@@ -270,7 +275,7 @@ async fn http_connection_details(State(rpc): State<UnifiedRpc>, headers: HeaderM
                 .client
                 .subscribe_clash_connection_details()
                 .await
-                .map_err(application_error)?;
+                .map_err(|error| application_error(crate::error::IpcError::from(error)))?;
             Ok(Sse::new(AuditedSubscription::new(
                 connection_detail_events(receiver),
                 &audit,

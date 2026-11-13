@@ -9,13 +9,17 @@
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
+use nyanpasu_contracts::logs::CoreLogStatusSummary;
 use nyanpasu_core::{
     clash::ws::{ClashWsPacket, ClashWsUpdate},
     client::{NyanpasuClient, StateChanged, UiEventSink},
     storage,
     storage::{Storage, StorageNotification},
 };
-use nyanpasu_rpc_protocol::{EventName, types::CoreLogsChanged};
+use nyanpasu_rpc_protocol::{
+    EventName,
+    types::{CoreLogsChanged, CoreLogsSummaryChanged},
+};
 use nyanpasu_runtime_values::{
     core_status::CoreStatusInfo,
     observation::{ConfigurationStatusSummary, CoreStatusSummary, ServiceStatusSummary},
@@ -162,7 +166,16 @@ fn core_logs(client: &NyanpasuClient, events: EventBus) -> impl Future<Output = 
             publish(
                 &events,
                 EventName::CoreLogsChanged,
-                &CoreLogsChanged { status },
+                &CoreLogsChanged {
+                    status: status.clone(),
+                },
+            );
+            publish(
+                &events,
+                EventName::CoreLogsSummaryChanged,
+                &CoreLogsSummaryChanged {
+                    status: CoreLogStatusSummary::from(&status),
+                },
             );
         }
     }
@@ -364,9 +377,20 @@ mod tests {
             next(&mut service_status, EventName::ServiceStatusSummaryChanged).await["phase"]
                 .is_string()
         );
+        let expected_logs_summary = serde_json::to_value(CoreLogStatusSummary::from(
+            &serde_json::from_value::<nyanpasu_contracts::logs::CoreLogStatus>(
+                expected_logs.clone(),
+            )
+            .unwrap(),
+        ))
+        .unwrap();
         assert_eq!(
             next(&mut logs, EventName::CoreLogsChanged).await["status"],
             expected_logs
+        );
+        assert_eq!(
+            next(&mut logs, EventName::CoreLogsSummaryChanged).await["status"],
+            expected_logs_summary
         );
         loop {
             let packet = next(&mut ws, EventName::ClashWs).await;

@@ -117,7 +117,7 @@ use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub use error::{ClashReadError, ClientError, ProfileSyncReadError, Result};
+pub use error::{ClashReadError, ClientError, CoreLogReadError, ProfileSyncReadError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
 use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;

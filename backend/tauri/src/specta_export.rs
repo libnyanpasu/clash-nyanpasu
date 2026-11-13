@@ -17,6 +17,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .events(collect_events![
             events::AppUpdateStateChanged,
             events::CoreLogsChangedEvent,
+            events::CoreLogsSummaryChangedEvent,
             events::ClashWsEvent,
             window::WindowMessageEvent,
             events::StorageValueChangedEvent,
@@ -54,8 +55,10 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             // Read-only commands
             ipc::read_clipboard_text,
             commands::traffic::query_core_logs,
+            commands::traffic::query_core_logs_summary,
             commands::traffic::get_core_log,
             commands::traffic::get_core_log_status,
+            commands::traffic::get_core_log_status_summary,
             commands::logs::list_log_files,
             commands::runtime::get_sys_proxy,
             commands::runtime::get_clash_info,
@@ -146,6 +149,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::traffic::clear_core_logs,
             commands::logs::open_log_session,
             commands::logs::query_logs,
+            commands::logs::query_logs_summary,
             commands::logs::close_log_session,
             commands::logs::report_frontend_events,
             ipc::flush_system_dns_cache,
@@ -241,7 +245,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         events::StateChangedEvent,
         ipc::ConfigurationStatusSummaryChanged,
         events::CoreStatusSummaryChangedEvent,
-        events::ServiceStatusSummaryChangedEvent
+        events::ServiceStatusSummaryChangedEvent,
+        events::CoreLogsSummaryChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the
@@ -561,6 +566,10 @@ mod tests {
             (
                 EventName::ServiceStatusSummaryChanged,
                 events::ServiceStatusSummaryChangedEvent::NAME,
+            ),
+            (
+                EventName::CoreLogsSummaryChanged,
+                events::CoreLogsSummaryChangedEvent::NAME,
             ),
         ];
         assert_eq!(EventName::ALL.len(), desktop_names.len());
@@ -1191,6 +1200,70 @@ mod tests {
                 "kind: 'not_remote'",
                 "kind: 'invalid_cursor'",
                 "kind: 'unavailable'",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogStatusSummary"),
+            "CoreLogStatusSummary",
+            &[
+                "generation: string",
+                "version: number",
+                "has_error: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogRowSummary"),
+            "CoreLogRowSummary",
+            &[
+                "id: CoreLogCursor",
+                "received_at: number",
+                "level: CoreLogLevel",
+                "has_payload: boolean",
+                "truncated: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogPageSummary"),
+            "CoreLogPageSummary",
+            &["rows: CoreLogRowSummary[]", "status: CoreLogStatusSummary"],
+        );
+        assert_contains_all(
+            exported_type(&generated, "LogRowSummary"),
+            "LogRowSummary",
+            &[
+                "id: string",
+                "level: Level",
+                "has_target: boolean",
+                "unparsed: boolean",
+                "truncated: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "LogPageSummary"),
+            "LogPageSummary",
+            &["rows: LogRowSummary[]", "file: string", "building: boolean"],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogReadError"),
+            "CoreLogReadError",
+            &[
+                "kind: 'invalid_request'",
+                "kind: 'cursor_expired'",
+                "kind: 'record_gone'",
+                "kind: 'too_large'",
+                "kind: 'unavailable'",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "ClashReadError"),
+            "ClashReadError",
+            &[
+                "kind: 'settings_unavailable'",
+                "kind: 'version_unavailable'",
+                "kind: 'rules_unavailable'",
+                "kind: 'rule_providers_unavailable'",
+                "kind: 'proxy_providers_unavailable'",
+                "kind: 'streams_unavailable'",
             ],
         );
     }

@@ -1419,7 +1419,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 174, "{platform} command inventory");
+            assert_eq!(rows.len(), 177, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)
@@ -1604,6 +1604,7 @@ mod tests {
         for name in [
             "open_log_session",
             "query_logs",
+            "query_logs_summary",
             "close_log_session",
             "report_frontend_events",
         ] {
@@ -1613,6 +1614,25 @@ mod tests {
                 options.capabilities.is_empty(),
                 "{name} does not need a native webview"
             );
+        }
+        for name in [
+            "open_log_session",
+            "query_logs",
+            "query_logs_summary",
+            "close_log_session",
+        ] {
+            let options = metadata(name);
+            assert!(
+                !options.query,
+                "{name} allocates or refreshes a leased server log session"
+            );
+            let scope = options.scope.as_ref().map(std::string::ToString::to_string);
+            let expected_scope = if name == "query_logs" {
+                "sensitive_read"
+            } else {
+                "read"
+            };
+            assert_eq!(scope.as_deref(), Some(expected_scope), "{name}");
         }
         for name in [
             "is_tray_icon_set",

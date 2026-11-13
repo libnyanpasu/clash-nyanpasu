@@ -45,6 +45,18 @@ impl Type for CoreLogsChangedEvent {
     }
 }
 
+/// Attaches Tauri event registration to the summary-only core-log status payload.
+#[derive(Debug, Clone, Serialize, Deserialize, tauri_specta::Event)]
+#[serde(transparent)]
+#[tauri_specta(event_name = "core-logs-summary-changed")]
+pub struct CoreLogsSummaryChangedEvent(pub nyanpasu_rpc_protocol::types::CoreLogsSummaryChanged);
+
+impl Type for CoreLogsSummaryChangedEvent {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        nyanpasu_rpc_protocol::types::CoreLogsSummaryChanged::definition(types)
+    }
+}
+
 #[derive(Debug, Clone, Type, Serialize, Deserialize, Event)]
 pub struct ClashWsEvent {
     pub sequence: u64,

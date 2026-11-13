@@ -15,5 +15,10 @@ pub struct CoreLogsChanged {
     pub status: nyanpasu_contracts::logs::CoreLogStatus,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct CoreLogsSummaryChanged {
+    pub status: nyanpasu_contracts::logs::CoreLogStatusSummary,
+}
+
 #[cfg(test)]
 mod tests;

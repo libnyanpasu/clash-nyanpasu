@@ -22,7 +22,7 @@
 | 事实                                                                                                         | 位置                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | 按内核分支散落在配置生成里：`derive_tun_flavor` 判断内核名，内置脚本按 `MIHOMO_FAMILY`、`CLASH_RS_ONLY` 分组 | `backend/nyanpasu-core/src/enhance/runtime_builder.rs:63,70,109`                                              |
-| 前端自己写死了选项和内核判断（只对 Premium 去掉 mixed）                                                      | `frontend/nyanpasu/src/pages/(main)/main/settings/clash/network/_modules/tun-stack-selector.tsx:33,43`        |
+| 前端自己写死了选项和内核判断                                                                                 | `frontend/nyanpasu/src/pages/(main)/main/settings/clash/network/_modules/tun-stack-selector.tsx:33,43`        |
 | 不读某个键的内核表现不同：clash-rs 的 `TunConfig` 静默忽略未知键；meow 能解析 `stack` 但只打 warn 后忽略     | `Watfaq/clash-rs` `clash-lib/src/config/def.rs:51`；`meow-rs/meow-rs` `crates/meow-config/src/raw.rs:339-383` |
 | mihomo 反序列化整份配置时就解析 `tun.stack`（类型 `C.TUNStack`），未知值使整份配置失败，与 `tun.enable` 无关 | `MetaCubeX/mihomo@v1.19.33` `config/config.go:273-276,462,618`；`constant/tun.go`                             |
 | 带数据的枚举在切换变体时丢弃旧变体的数据；struct-patch 修改时整体替换枚举值                                  | 验证 crate `enum_yaml_and_atomic_replacement`（§5.3）                                                         |
@@ -78,8 +78,6 @@ fn reads_stack(core: ClashCore, stack: TunStack) -> bool {
     use {ClashCore::*, TunStack::*};
     match (core, stack) {
         (Mihomo | MihomoAlpha, System | Gvisor | Mixed | Mips) => true,
-        (ClashPremium, System | Gvisor) => true,
-        (ClashPremium, Mixed | Mips) => false,
         (ClashRs | ClashRsAlpha | Meow | MeowAlpha, System | Gvisor | Mixed | Mips) => false,
     }
 }

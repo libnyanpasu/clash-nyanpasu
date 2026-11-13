@@ -28,7 +28,6 @@ export interface VersionManifest {
     mihomo: string
     mihomo_alpha: string
     clash_rs: string
-    clash_premium: string
     clash_rs_alpha: string
     meow: string
     meow_alpha: string
@@ -37,7 +36,6 @@ export interface VersionManifest {
     mihomo: ArchMapping
     mihomo_alpha: ArchMapping
     clash_rs: ArchMapping
-    clash_premium: ArchMapping
     clash_rs_alpha: ArchMapping
     meow: ArchMapping
     meow_alpha: ArchMapping
@@ -47,8 +45,6 @@ export interface VersionManifest {
 
 export interface ClashManifest {
   URL_PREFIX: string
-  BACKUP_URL_PREFIX?: string
-  BACKUP_LATEST_DATE?: string
   VERSION?: string
   VERSION_URL?: string
   ARCH_MAPPING: ArchMapping

@@ -48,13 +48,6 @@ bundles = ['sidecar/meow', 'sidecar/meow-alpha']
 notes = 'License at commit daafe055421b.'
 
 [[component]]
-name = 'Clash Premium'
-kind = 'sidecar'
-homepage = 'https://github.com/zhongfly/Clash-premium-backup'
-bundles = ['sidecar/clash']
-notes = 'Closed-source; the upstream publishes no license.'
-
-[[component]]
 name = 'nyanpasu-service'
 kind = 'sidecar'
 homepage = 'https://github.com/libnyanpasu/nyanpasu-runtime'

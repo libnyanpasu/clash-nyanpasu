@@ -12,12 +12,6 @@ const parseVersion = (raw?: string) => {
   return valid(normalized) ? (parse(normalized) ?? undefined) : undefined
 }
 
-const parsePremiumVersion = (raw?: string) => {
-  if (!raw || raw === 'N/A') return undefined
-  const match = /^(?:n)?(\d{4}-\d{2}-\d{2})(?:-g([\da-f]{7,40}))?$/i.exec(raw)
-  return match ? { date: match[1], hash: match[2]?.toLowerCase() } : undefined
-}
-
 const rollingHash = (raw: string, build: readonly string[] = []) => {
   const hash =
     /^sha\.([\da-f]{7,40})$/i.exec(build.join('.'))?.[1] ??
@@ -33,14 +27,6 @@ export function hasNewerCoreVersion(
 ): boolean {
   if (!core || !currentVersion || !latestVersion || currentVersion === 'N/A') {
     return false
-  }
-
-  if (core === 'clash') {
-    const current = parsePremiumVersion(currentVersion)
-    const latest = parsePremiumVersion(latestVersion)
-    if (!current || !latest) return false
-    if (latest.date !== current.date) return latest.date > current.date
-    return Boolean(current.hash && latest.hash && current.hash !== latest.hash)
   }
 
   const current = parseVersion(currentVersion)
@@ -76,7 +62,6 @@ export function canUpdateCoreVersion(
   if (!versionReadError || !core || !latestVersion || latestVersion === 'N/A') {
     return false
   }
-  if (core === 'clash') return parsePremiumVersion(latestVersion) !== undefined
   if (rollingCoreNames.has(core)) {
     return (
       parseVersion(latestVersion) !== undefined ||

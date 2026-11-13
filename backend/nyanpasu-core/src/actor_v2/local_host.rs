@@ -4,7 +4,7 @@ use camino::Utf8PathBuf;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
     ControlOptions, CoreControl, CoreKind, CoreManager, CoreSpec, LocalIpcPolicy, ManagerOptions,
-    native_store::{FsNativeStore, StoreOwner, legacy_kind},
+    native_store::{FsNativeStore, StoreOwner},
 };
 use snafu::{ResultExt, Snafu};
 
@@ -15,16 +15,6 @@ use nyanpasu_runtime_values::core_spec::{CoreSpecError, FindCoreBinarySnafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("failed to inspect {}", path.display()))]
-    InspectConfig {
-        path: std::path::PathBuf,
-        source: std::io::Error,
-    },
-    #[snafu(display("failed to read core kind from {}", path.display()))]
-    ReadCoreKind {
-        path: std::path::PathBuf,
-        source: nyanpasu_core_manager::native_store::StoreError,
-    },
     #[snafu(display("failed to build core manager"))]
     BuildManager {
         source: nyanpasu_core_manager::Error,
@@ -34,7 +24,7 @@ pub enum Error {
 /// Builds the local core host with the stop strategy shared by its process supervisors.
 ///
 /// # Errors
-/// Returns an error if configuration inspection or core manager construction fails.
+/// Returns an error if core manager construction fails.
 pub async fn build(
     paths: &PathResolver,
     shutdown_helper: &std::path::Path,
@@ -48,20 +38,9 @@ pub async fn build(
         ..ManagerOptions::default()
     };
     let working_dir = paths.app_data_dir().to_owned();
-    let config_path = paths.application_config_path();
-    let config_path = if config_path.try_exists().context(InspectConfigSnafu {
-        path: config_path.as_std_path(),
-    })? {
-        config_path
-    } else {
-        paths.nyanpasu_config_path()
-    };
     let native_store = Arc::new(FsNativeStore::new(
         working_dir.clone(),
         StoreOwner::current(),
-        legacy_kind(config_path.as_std_path()).context(ReadCoreKindSnafu {
-            path: config_path.as_std_path(),
-        })?,
     ));
     let manager = CoreManager::builder(options)
         .native_store(native_store)
@@ -98,7 +77,6 @@ fn core_spec_with(
 ) -> Result<CoreSpec, CoreSpecError> {
     let core_type = core.into();
     let kind = match core {
-        ClashCore::ClashPremium => CoreKind::ClashPremium,
         ClashCore::ClashRs | ClashCore::ClashRsAlpha => CoreKind::ClashRust,
         ClashCore::Mihomo | ClashCore::MihomoAlpha => CoreKind::Mihomo,
         ClashCore::Meow | ClashCore::MeowAlpha => CoreKind::Meow,
@@ -138,39 +116,10 @@ mod tests {
         assert!(!control.executor_is_closed());
     }
 
-    #[tokio::test]
-    async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
-        let root = tempfile::TempDir::new().unwrap();
-        let paths = crate::utils::test_support::test_paths(root.path(), root.path().join("data"));
-        std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
-        std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
-
-        let control = build(
-            &paths,
-            &root.path().join("helper.exe"),
-            Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
-        )
-        .await
-        .unwrap();
-        assert!(!control.executor_is_closed());
-
-        std::fs::remove_file(paths.application_config_path()).unwrap();
-        assert!(
-            build(
-                &paths,
-                &root.path().join("helper.exe"),
-                Arc::new(AtomicStopStrategy::new(StopStrategy::default())),
-            )
-            .await
-            .is_err()
-        );
-    }
-
     #[test]
     fn core_spec_maps_every_clash_core_variant() {
         let root = tempfile::TempDir::new().unwrap();
         let variants = [
-            (ClashCore::ClashPremium, CoreKind::ClashPremium),
             (ClashCore::ClashRs, CoreKind::ClashRust),
             (ClashCore::Mihomo, CoreKind::Mihomo),
             (ClashCore::MihomoAlpha, CoreKind::Mihomo),

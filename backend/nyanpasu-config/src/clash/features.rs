@@ -177,8 +177,7 @@ impl ClashCore {
 
 /// mihomo parses `tun.stack` case-insensitively into gVisor, System, Mixed and
 /// Mips (`constant/tun.go`; Mips since v1.19.31, commit `ab405bad`) and fails
-/// the whole config on anything else. Clash Premium is closed source; it never
-/// offered Mixed, which the legacy derivation downgraded, and predates Mips.
+/// the whole config on anything else.
 /// clash-rs has no `stack` key and ignores unknown keys
 /// (`clash-lib/src/config/def.rs`, `TunConfig`); meow-rs runs lwIP only and
 /// warns about `stack` before ignoring it (`meow-config/src/raw.rs`, `RawTun`).
@@ -187,8 +186,6 @@ fn reads_tun_stack(core: ClashCore, stack: TunStack) -> bool {
     use TunStack::*;
     match (core, stack) {
         (Mihomo | MihomoAlpha, System | Gvisor | Mixed | Mips) => true,
-        (ClashPremium, System | Gvisor) => true,
-        (ClashPremium, Mixed | Mips) => false,
         (ClashRs | ClashRsAlpha | Meow | MeowAlpha, System | Gvisor | Mixed | Mips) => false,
     }
 }
@@ -203,9 +200,7 @@ fn reads_tun_congestion_controller(core: ClashCore, controller: TunCongestionCon
     use TunCongestionController::*;
     match (core, controller) {
         (Mihomo | MihomoAlpha, Cubic | Reno | Bbr | Bbr3) => true,
-        (ClashPremium | ClashRs | ClashRsAlpha | Meow | MeowAlpha, Cubic | Reno | Bbr | Bbr3) => {
-            false
-        }
+        (ClashRs | ClashRsAlpha | Meow | MeowAlpha, Cubic | Reno | Bbr | Bbr3) => false,
     }
 }
 
@@ -234,13 +229,6 @@ mod tests {
         let cases = [
             (ClashCore::Mihomo, mihomo.clone()),
             (ClashCore::MihomoAlpha, mihomo),
-            (
-                ClashCore::ClashPremium,
-                TunFeatures {
-                    stack: FieldSupport::Values(vec![System, Gvisor]),
-                    congestion_controller: FieldSupport::Ignored,
-                },
-            ),
             (ClashCore::ClashRs, ignored.clone()),
             (ClashCore::ClashRsAlpha, ignored.clone()),
             (ClashCore::Meow, ignored.clone()),
@@ -254,7 +242,6 @@ mod tests {
     #[test]
     fn the_fallback_stack_is_supported_wherever_the_stack_is_read() {
         for core in [
-            ClashCore::ClashPremium,
             ClashCore::ClashRs,
             ClashCore::Mihomo,
             ClashCore::MihomoAlpha,
@@ -271,7 +258,12 @@ mod tests {
 
     #[test]
     fn a_known_unsupported_stack_is_reported() {
-        let features = ClashCore::ClashPremium.config_features();
+        let features = ConfigFeatures {
+            tun: TunFeatures {
+                stack: FieldSupport::Values(vec![TunStack::System, TunStack::Gvisor]),
+                congestion_controller: FieldSupport::Ignored,
+            },
+        };
         assert_eq!(
             features.unsupported_values(&config(json!({ "tun": { "stack": "Mixed" } }))),
             vec![UnsupportedConfigValue {
@@ -284,12 +276,12 @@ mod tests {
 
     #[test]
     fn supported_unknown_and_ignored_stacks_pass() {
-        let premium = ClashCore::ClashPremium.config_features();
+        let features = ClashCore::Mihomo.config_features();
         for stack in [json!("gVisor"), json!("system"), json!("future"), json!(1)] {
             let config = config(json!({ "tun": { "enable": false, "stack": stack } }));
-            assert!(premium.unsupported_values(&config).is_empty(), "{stack}");
+            assert!(features.unsupported_values(&config).is_empty(), "{stack}");
         }
-        assert!(premium.unsupported_values(&config(json!({}))).is_empty());
+        assert!(features.unsupported_values(&config(json!({}))).is_empty());
 
         let config = config(json!({ "tun": { "stack": "mixed" } }));
         assert!(
@@ -329,10 +321,10 @@ mod tests {
     #[test]
     fn support_serializes_adjacently_tagged() {
         assert_eq!(
-            serde_json::to_value(ClashCore::ClashPremium.config_features()).unwrap(),
+            serde_json::to_value(ClashCore::Mihomo.config_features()).unwrap(),
             json!({ "tun": {
-                "stack": { "kind": "values", "value": ["system", "gvisor"] },
-                "congestion_controller": { "kind": "ignored" },
+                "stack": { "kind": "values", "value": ["system", "gvisor", "mixed", "mips"] },
+                "congestion_controller": { "kind": "values", "value": ["cubic", "reno", "bbr", "bbr3"] },
             } })
         );
     }

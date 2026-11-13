@@ -5,14 +5,12 @@ import { isObject } from 'es-toolkit/compat'
 import { motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Snackbar } from '@nyanpasu/ui/snackbar'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import {
   useBlockTask,
   useBlockTaskContext,
 } from '@/components/providers/block-task-provider'
-import DeprecatedCoreBadge from '@/components/settings/deprecated-core-badge'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -24,7 +22,6 @@ import {
   ClashCores,
   ClashCoresDetail,
   hasNewerCoreVersion,
-  isDeprecatedClashCore,
   useClashCores,
   useDeleteClashConnections,
   useSetting,
@@ -254,7 +251,6 @@ const CoreItem = ({
       <div className="relative flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-2">
           <TextMarquee className="min-w-0">{item.name}</TextMarquee>
-          <DeprecatedCoreBadge core={core} />
         </div>
 
         <TextMarquee className="text-sm">
@@ -330,8 +326,6 @@ export default function CoreManagerCard() {
 
   const currentCore = currentCoreKey && clashCores.data?.[currentCoreKey]
 
-  const [deprecationNoticeOpen, setDeprecationNoticeOpen] = useState(false)
-
   const switchCoreTask = useBlockTask(
     'core-manager-switch',
     async (core: ClashCore) => {
@@ -344,8 +338,6 @@ export default function CoreManagerCard() {
           kind: 'info',
           title: 'Successful',
         })
-
-        setDeprecationNoticeOpen(isDeprecatedClashCore(core))
       } catch (e) {
         console.error(e)
         message(
@@ -454,7 +446,6 @@ export default function CoreManagerCard() {
           <div className="relative flex-1">
             <p className="flex items-center gap-2 font-medium">
               {currentCoreKey && ClashCores[currentCoreKey]}
-              <DeprecatedCoreBadge core={currentCoreKey} />
             </p>
 
             <p className="flex items-center gap-1 text-sm">
@@ -561,13 +552,6 @@ export default function CoreManagerCard() {
           {m.settings_clash_core_manager_card_fetch_remote()}
         </Button>
       </SettingsCardFooter>
-
-      <Snackbar
-        open={deprecationNoticeOpen}
-        onOpenChange={setDeprecationNoticeOpen}
-      >
-        {m.settings_clash_core_manager_card_deprecation_notice()}
-      </Snackbar>
     </SettingsCard>
   )
 }

@@ -387,7 +387,11 @@ fn validate_existing_typed_files(ctx: &Ctx) -> Result<(), MigrationCheckError> {
 }
 
 fn validate_existing_application_and_session(ctx: &Ctx) -> Result<(), MigrationCheckError> {
-    read_yaml::<nyanpasu_config::application::NyanpasuAppConfig>(&ctx.application_config_path())?;
+    let path = ctx.application_config_path();
+    let mut payload: Mapping = read_yaml(&path)?;
+    super::application::normalize_premium_core(&mut payload);
+    serde_yaml_ng::from_value::<NyanpasuAppConfig>(Value::Mapping(payload))
+        .map_err(|source| MigrationCheckError::Parse { path, source })?;
     read_session_state(ctx)?;
     Ok(())
 }

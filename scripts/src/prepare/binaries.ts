@@ -29,15 +29,6 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
     options
   const debugLog = options.debugLog ?? (() => {})
 
-  const clashManifest: ClashManifest = {
-    URL_PREFIX: 'https://github.com/Dreamacro/clash/releases/download/premium/',
-    BACKUP_URL_PREFIX:
-      'https://github.com/zhongfly/Clash-premium-backup/releases/download/',
-    BACKUP_LATEST_DATE: versionManifest.latest.clash_premium,
-    VERSION: versionManifest.latest.clash_premium,
-    ARCH_MAPPING: versionManifest.arch_template.clash_premium,
-  }
-
   const clashMetaManifest: ClashManifest = {
     URL_PREFIX: `https://github.com/MetaCubeX/mihomo/releases/download/${versionManifest.latest.mihomo}`,
     VERSION: versionManifest.latest.mihomo,
@@ -86,27 +77,12 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
     version?: string
     assetName: string
   } {
-    const version = manifest.VERSION ?? manifest.BACKUP_LATEST_DATE
+    const version = manifest.VERSION
     const assetName = manifest.ARCH_MAPPING[mapArch(platform, arch)].replace(
       '{}',
       version!,
     )
     return { version, assetName }
-  }
-
-  function getClashBackupInfo(): BinInfo {
-    const { BACKUP_LATEST_DATE, BACKUP_URL_PREFIX } = clashManifest
-    const { assetName } = withMappedAsset(clashManifest)
-    const isWin = platform === 'win32'
-    const name = assetName
-    return {
-      name: 'clash',
-      version: BACKUP_LATEST_DATE,
-      targetFile: targetName('clash'),
-      exeFile: `${name}${isWin ? '.exe' : ''}`,
-      tmpFile: name,
-      downloadURL: `${BACKUP_URL_PREFIX}${BACKUP_LATEST_DATE}/${name}`,
-    }
   }
 
   function getClashMetaInfo(): BinInfo {
@@ -260,7 +236,6 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
   }
 
   return {
-    clash: getClashBackupInfo,
     mihomo: getClashMetaInfo,
     mihomoAlpha: getClashMetaAlphaInfo,
     clashRs: getClashRustInfo,

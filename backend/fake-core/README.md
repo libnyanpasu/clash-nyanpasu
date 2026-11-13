@@ -18,7 +18,7 @@ Production packaging, real Clash API surface, TUN/service modes, and OS proxy ar
 
 ## Features
 
-- **Real argv compatibility**: check and start shapes match mihomo / clash-rs / premium invocation.
+- **Real argv compatibility**: check and start shapes match mihomo / clash-rs invocation.
 - **Strict env failure**: unset may default; set-but-invalid numeric/UTF-8 values fail with exit `2` and a stable `invalid configuration` message before long-running work.
 - **Barrier ordering**: long-running start requires `FAKE_CORE_READY_ADDR`; no barrier and no `START_EXIT` → fail-fast exit `2` (no infinite park, no sleep ordering).
 - **Dynamic ports**: `HOLD_PORT` / `HTTP_PORT` of `0` bind ephemeral ports; the READY frame announces the actual bound values.
@@ -33,7 +33,6 @@ Production packaging, real Clash API surface, TUN/service modes, and OS proxy ar
 | check            | `fake-core -t -d <app_dir> -f <config>` |
 | start (mihomo)   | `fake-core -m -d <app_dir> -f <config>` |
 | start (clash-rs) | `fake-core -d <app_dir> -c <config>`    |
-| start (premium)  | `fake-core -d <app_dir> -f <config>`    |
 
 Unknown flags, missing `-d`, or missing `-f`/`-c` → stderr + exit `2`.
 
@@ -171,20 +170,20 @@ Immediate check/start failure injection uses `FakeCoreCommand::check` / `start_*
 
 ## Public surface (library)
 
-| Item                                         | Role                                                                                                   |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `FakeCoreCommand`                            | Builder for check / mihomo / clash-rs / premium argv + env/stdio + `spawn` / `spawn_scoped` / `output` |
-| `ScopedChild`                                | RAII kill+wait on drop; `wait_with_timeout`, `into_inner`                                              |
-| `ReadyBarrier`                               | Parent control listener: `bind_local`, `accept_ready`, `release`                                       |
-| `ReadyConnection`                            | Accepted control stream + `ReadyAnnouncement`                                                          |
-| `ReadyAnnouncement`                          | Parsed/serialized READY fields (`hold_port`, `http_port`)                                              |
-| `Mode` / `parse_args`                        | Argv → Check/Start                                                                                     |
-| `env_keys::*`                                | Stable behaviour key constants                                                                         |
-| `PATH_ENV` / `BIN_NAME` / `PREBUILD_COMMAND` | Discovery constants                                                                                    |
-| `resolve_bin_path` / `require_bin_path`      | Cross-crate binary lookup                                                                              |
-| `PathEnvLock` / `PathEnvGuard`               | Test-only serialization of `NYANPASU_FAKE_CORE` mutations                                              |
-| `signal_ready_and_wait_release`              | Child-side barrier (used by the binary)                                                                |
-| `wait_with_timeout`                          | Test utility (deadlock safety net; also on `ScopedChild`)                                              |
+| Item                                         | Role                                                                                         |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `FakeCoreCommand`                            | Builder for check / mihomo / clash-rs argv + env/stdio + `spawn` / `spawn_scoped` / `output` |
+| `ScopedChild`                                | RAII kill+wait on drop; `wait_with_timeout`, `into_inner`                                    |
+| `ReadyBarrier`                               | Parent control listener: `bind_local`, `accept_ready`, `release`                             |
+| `ReadyConnection`                            | Accepted control stream + `ReadyAnnouncement`                                                |
+| `ReadyAnnouncement`                          | Parsed/serialized READY fields (`hold_port`, `http_port`)                                    |
+| `Mode` / `parse_args`                        | Argv → Check/Start                                                                           |
+| `env_keys::*`                                | Stable behaviour key constants                                                               |
+| `PATH_ENV` / `BIN_NAME` / `PREBUILD_COMMAND` | Discovery constants                                                                          |
+| `resolve_bin_path` / `require_bin_path`      | Cross-crate binary lookup                                                                    |
+| `PathEnvLock` / `PathEnvGuard`               | Test-only serialization of `NYANPASU_FAKE_CORE` mutations                                    |
+| `signal_ready_and_wait_release`              | Child-side barrier (used by the binary)                                                      |
+| `wait_with_timeout`                          | Test utility (deadlock safety net; also on `ScopedChild`)                                    |
 
 There is no production service API and no `Object::new()`-style facade.
 

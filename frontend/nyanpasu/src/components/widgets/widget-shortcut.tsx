@@ -9,7 +9,6 @@ import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { ShapeToggle } from '@nyanpasu/ui/shape-toggle'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
-import DeprecatedCoreBadge from '@/components/settings/deprecated-core-badge'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import {
   SystemProxyButton,
@@ -394,7 +393,6 @@ const CurrentCoreCard = ({
               <TextMarquee className="min-w-0">
                 {currentCoreName || '—'}
               </TextMarquee>
-              <DeprecatedCoreBadge core={currentCoreKey} />
             </div>
             {config.showVersion && (
               <div

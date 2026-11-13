@@ -87,7 +87,6 @@ function versionManifest(): VersionManifest {
       mihomo: 'mihomo-v1',
       mihomo_alpha: 'alpha-v1',
       clash_rs: 'clash-rs-v1',
-      clash_premium: '2026-10-01',
       clash_rs_alpha: 'clash-rs-alpha-v1',
       meow: 'v0.22.0',
       meow_alpha: 'alpha-v1',
@@ -96,7 +95,6 @@ function versionManifest(): VersionManifest {
       mihomo: mapping('mihomo'),
       mihomo_alpha: mapping('mihomo-alpha'),
       clash_rs: mapping('clash-rs'),
-      clash_premium: mapping('clash'),
       clash_rs_alpha: mapping('clash-rs-alpha'),
       meow: meowMapping(),
       meow_alpha: meowMapping(),
@@ -115,18 +113,6 @@ test('stable binary resolvers map assets for all supported platforms', () => {
       arch,
       workspaceRoot: '/workspace',
     })
-    const clash = binary.clash()
-    assert.deepStrictEqual(clash.targetFile, `clash-${host}${executableSuffix}`)
-    assert.deepStrictEqual(
-      clash.exeFile,
-      `clash-${label}-2026-10-01${executableSuffix}`,
-    )
-    assert.deepStrictEqual(
-      clash.downloadURL,
-      'https://github.com/zhongfly/Clash-premium-backup/releases/download/2026-10-01/clash-' +
-        `${label}-2026-10-01`,
-    )
-
     const mihomo = binary.mihomo()
     assert.deepStrictEqual(
       mihomo.targetFile,

@@ -1714,17 +1714,17 @@ schema_revision: {revision}
         let mut runner = case.runner();
         // No file yet, so the module starts at head: no step may run on a file
         // that `typed_config` is about to create at head.
-        assert_eq!(application_state(&runner), at_revision(3, false));
+        assert_eq!(application_state(&runner), at_revision(4, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(
             runner.store.task_state("application/window_close"),
             None,
             "nothing to convert in a file created at head"
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(3, true));
+        assert_eq!(state.module_state("application"), at_revision(4, true));
         assert_application_loads(&case);
     }
 
@@ -1734,9 +1734,9 @@ schema_revision: {revision}
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(3, true));
+        assert_eq!(state.module_state("application"), at_revision(4, true));
         assert_application_loads(&case);
     }
 
@@ -1778,7 +1778,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         let payload = application_config_payload(&case);
         assert!(!payload.contains_key("tray_menu_close_behavior"));
         assert_eq!(payload["window_close"]["tray_menu"], "hide");
@@ -1792,7 +1792,7 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("application"),
             ModuleState {
-                applied_revision: 3,
+                applied_revision: 4,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -1813,7 +1813,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, true));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(
             application_config_payload(&case)["window_close"]["tray_menu"],
             "destroy"
@@ -1825,14 +1825,14 @@ tray_menu_close_behavior: hide
         let case = LegacyCase::empty();
         seed_typed_files(
             &case,
-            Some(3),
+            Some(4),
             "language: en
 ",
         );
         let before = std::fs::read_to_string(case.ctx.application_config_path()).unwrap();
 
         let mut runner = case.runner();
-        assert_eq!(application_state(&runner), at_revision(3, true));
+        assert_eq!(application_state(&runner), at_revision(4, true));
         runner.run_pending().unwrap();
 
         assert_eq!(
@@ -2061,6 +2061,50 @@ tray_menu_close_behavior: hide
     }
 
     #[test]
+    fn legacy_premium_selections_are_normalized_before_typed_creation() {
+        for core in ["clash", "clash-premium"] {
+            let case = LegacyCase::empty();
+            std::fs::write(
+                case.ctx.nyanpasu_config_path(),
+                format!("clash_core: {core}\n"),
+            )
+            .unwrap();
+
+            case.runner().run_pending().unwrap();
+
+            assert_eq!(application_config_payload(&case)["core"], "mihomo");
+            assert_eq!(application_stamp(&case), Some(4));
+            assert_application_loads(&case);
+            case.runner().run_pending().unwrap();
+            assert_eq!(application_config_payload(&case)["core"], "mihomo");
+        }
+    }
+
+    #[test]
+    fn typed_premium_selections_at_old_revisions_are_migrated() {
+        for core in ["clash", "clash-premium"] {
+            let case = LegacyCase::empty();
+            seed_typed_files(&case, Some(3), &format!("core: {core}\nlanguage: en\n"));
+
+            let mut runner = case.runner();
+            assert_eq!(application_state(&runner), at_revision(3, true));
+            runner.run_pending().unwrap();
+
+            let payload = application_config_payload(&case);
+            assert_eq!(payload["core"], "mihomo");
+            assert_eq!(payload["language"], "en");
+            assert_eq!(application_stamp(&case), Some(4));
+            assert_eq!(
+                runner.store.task_state("application/premium_core"),
+                Some(MigrationState::Completed)
+            );
+            assert_application_loads(&case);
+            case.runner().run_pending().unwrap();
+            assert_eq!(application_config_payload(&case), payload);
+        }
+    }
+
+    #[test]
     fn legacy_script_mode_and_hotkeys_are_normalized_before_typed_creation() {
         let case = LegacyCase::empty();
         std::fs::write(
@@ -2077,7 +2121,7 @@ tray_menu_close_behavior: hide
             application_config_payload(&case)["hotkeys"],
             serde_yaml_ng::to_value(vec!["clash_mode_rule,Ctrl+R"]).unwrap()
         );
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(clash_config_stamp(&case), Some(4));
         assert_application_loads(&case);
         assert_clash_config_loads(&case);
@@ -2107,7 +2151,7 @@ tray_menu_close_behavior: hide
             serde_yaml_ng::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
         );
         assert_eq!(storage.read().unwrap(), None);
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_application_loads(&case);
         case.runner().run_pending().unwrap();
         assert_eq!(
@@ -2152,7 +2196,7 @@ tray_menu_close_behavior: hide
             application_config_payload(&case)["hotkeys"],
             serde_yaml_ng::to_value(vec!["clash_mode_global,Ctrl+G"]).unwrap()
         );
-        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(clash_config_stamp(&case), Some(4));
         for step in ["application/script_hotkeys", "clash_config/script_mode"] {
             assert_eq!(

@@ -275,7 +275,7 @@ fn start_holds_fixed_port_and_conflicts() {
     // READY_ADDR is present so config validation passes; bind fails on the held port.
     let (app_dir2, config2) = scratch_paths();
     let output = FakeCoreCommand::new(bin())
-        .start_premium(&app_dir2, &config2)
+        .start_mihomo(&app_dir2, &config2)
         .env(env_keys::HOLD_PORT, port.to_string())
         .env(env_keys::READY_ADDR, "127.0.0.1:1")
         .output()

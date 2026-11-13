@@ -146,7 +146,6 @@ impl NyanpasuClient {
         let version = self.inner.core_api.api_client().await?.version().await?;
         Ok(ClashVersion {
             version: version.version,
-            premium: version.premium,
             meta: Some(version.meta),
         })
     }

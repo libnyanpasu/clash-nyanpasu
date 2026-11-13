@@ -3,7 +3,6 @@ import * as path from 'node:path'
 import { colorize, consola } from '../shared/logger.ts'
 import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 import {
-  resolveClashPremium,
   resolveClashRs,
   resolveClashRsAlpha,
   resolveMeow,
@@ -26,7 +25,6 @@ type SupportedCore =
   | 'mihomo_alpha'
   | 'clash_rs'
   | 'clash_rs_alpha'
-  | 'clash_premium'
   | 'meow'
   | 'meow_alpha'
 
@@ -43,7 +41,6 @@ const resolvers = [
   resolveMihomo,
   resolveMihomoAlpha,
   resolveClashRs,
-  resolveClashPremium,
   resolveClashRsAlpha,
   resolveMeow,
   resolveMeowAlpha,

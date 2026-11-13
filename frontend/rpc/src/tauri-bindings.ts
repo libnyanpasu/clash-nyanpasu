@@ -99,7 +99,6 @@ export type ClashCoreType =
   | 'mihomo-alpha'
   | 'clash-rs'
   | 'clash-rs-alpha'
-  | 'clash'
   | 'meow'
   | 'meow-alpha'
 

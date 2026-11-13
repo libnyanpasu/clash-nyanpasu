@@ -70,21 +70,15 @@ impl StartupFailure {
                     _ => None,
                 },
             ),
-            Error::BuildCoreHost { source } => match source {
-                nyanpasu_core::actor_v2::local_host::Error::InspectConfig { path, .. }
-                | nyanpasu_core::actor_v2::local_host::Error::ReadCoreKind { path, .. } => {
-                    (FailureKind::UserConfig, Some(path.clone()))
-                }
-                _ => (
-                    FailureKind::CoreRuntimeDirectory,
-                    Some(
-                        paths
-                            .app_config_dir()
-                            .join("runtime/control")
-                            .into_std_path_buf(),
-                    ),
+            Error::BuildCoreHost { .. } => (
+                FailureKind::CoreRuntimeDirectory,
+                Some(
+                    paths
+                        .app_config_dir()
+                        .join("runtime/control")
+                        .into_std_path_buf(),
                 ),
-            },
+            ),
             Error::StartJobs { .. } => (
                 FailureKind::JobsDatabase,
                 Some(paths.jobs_path().into_std_path_buf()),

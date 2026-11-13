@@ -1073,13 +1073,10 @@ export type ClashCoreType =
   | 'mihomo-alpha'
   | 'clash-rs'
   | 'clash-rs-alpha'
-  | 'clash'
   | 'meow'
   | 'meow-alpha'
 
 export type ClashCore_Deserialize =
-  | 'clash'
-  | 'clash-premium'
   | 'clash-rs'
   | 'mihomo'
   | 'clash-meta'
@@ -1089,7 +1086,6 @@ export type ClashCore_Deserialize =
   | 'meow-alpha'
 
 export type ClashCore_Serialize =
-  | 'clash'
   | 'clash-rs'
   | 'mihomo'
   | 'mihomo-alpha'
@@ -1147,7 +1143,6 @@ export type ClashRule = {
 
 export type ClashVersion = {
   version: string
-  premium: boolean | null
   meta: boolean | null
 }
 
@@ -2796,7 +2791,6 @@ export type ManifestVersionLatest = {
   mihomo_alpha: string
   clash_rs: string
   clash_rs_alpha: string
-  clash_premium: string
   meow: string
   meow_alpha?: string
 }

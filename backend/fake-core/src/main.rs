@@ -4,7 +4,6 @@
 //! - check: `-t -d <app_dir> -f <config>`
 //! - start (mihomo): `-m -d <app_dir> -f <config>`
 //! - start (clash-rs): `-d <app_dir> -c <config>`
-//! - start (premium): `-d <app_dir> -f <config>`
 //!
 //! Behaviour is controlled by `FAKE_CORE_*` environment variables (see
 //! `fake_core::env_keys`). Synchronization with the parent uses a TCP

@@ -538,9 +538,7 @@ fn extract_core(
             let matches = expected_archive_binary.map_or_else(
                 || {
                     name.ends_with(".exe")
-                        && ["mihomo", "clash", "meow"]
-                            .iter()
-                            .any(|core| name.contains(core))
+                        && ["mihomo", "meow"].iter().any(|core| name.contains(core))
                 },
                 |expected| name.rsplit('/').next() == Some(expected),
             );

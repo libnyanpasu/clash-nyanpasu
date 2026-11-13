@@ -24,6 +24,7 @@ fn listener(fixture: &Fixture) -> Router {
             LocalSession {
                 authority: "127.0.0.1:1234".into(),
                 access_token: "test-access".into(),
+                session_id: "sess_test_icon".into(),
                 shutdown: CancellationToken::new(),
             },
             local_session,

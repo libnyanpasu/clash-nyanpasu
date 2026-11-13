@@ -45,6 +45,16 @@ impl RpcError {
         )
     }
 
+    /// Report a caller who failed transport authentication.
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::new("unauthorized", message)
+    }
+
+    /// Report an authenticated caller lacking the required scope.
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new("forbidden", message)
+    }
+
     /// Report a name absent from the command registry.
     pub fn unknown_method(name: &str) -> Self {
         Self::new("unknown_method", format!("unknown command `{name}`"))

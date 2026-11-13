@@ -1,4 +1,4 @@
-import { createQueryBindings } from '@nyanpasu/query'
+import { createQueryBindings, shouldRetryRpcQuery } from '@nyanpasu/query'
 import { createRpcClient } from '@nyanpasu/rpc'
 import { QueryClient } from '@tanstack/react-query'
 
@@ -7,7 +7,13 @@ export const rpc = createRpcClient()
 export const { queries, mutations } = createQueryBindings(rpc)
 export const commands = rpc
 export const events = rpc.events
-export const queryClient = new QueryClient()
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: shouldRetryRpcQuery,
+    },
+  },
+})
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

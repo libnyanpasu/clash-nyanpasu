@@ -23,6 +23,31 @@ export function invokeQuery<T>(options: {
   return options.queryFn!(undefined as never)
 }
 
+const NON_RETRYABLE_RPC_KINDS = new Set([
+  'unauthorized',
+  'forbidden',
+  'unsupported',
+  'unknown_method',
+  'invalid_params',
+])
+
+export function isNonRetryableRpcFailure(error: unknown): boolean {
+  return (
+    error instanceof RpcFailure &&
+    NON_RETRYABLE_RPC_KINDS.has(error.envelope.kind)
+  )
+}
+
+export function shouldRetryRpcQuery(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (isNonRetryableRpcFailure(error)) {
+    return false
+  }
+  return failureCount < 3
+}
+
 /** The request lost its reply; this does not establish whether the source committed. */
 export class MutationUnconfirmedError extends Error {
   constructor(cause: unknown) {

@@ -241,6 +241,7 @@ mod tests {
                 events: bus.clone(),
                 audit: RpcAudit::new(Arc::new(AuditSink::default())),
             },
+            nyanpasu_rpc_protocol::ServerInfo::desktop("0.0.0-test"),
             &[],
         )
         .unwrap();

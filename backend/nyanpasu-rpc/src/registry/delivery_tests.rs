@@ -8,19 +8,24 @@ use axum::{
 };
 use futures::StreamExt as _;
 use nyanpasu_core::storage::WebStorage as _;
-use nyanpasu_rpc_protocol::{RpcError, RpcOwner};
+use nyanpasu_rpc_protocol::RpcError;
 use serde_json::Value;
 use tower::ServiceExt as _;
 
 use crate::{
     audit::{AuditPhase, CompletionSummary, DeliveryOutcome, ObservationEnd, RpcAuditOutcome},
-    registry::{RpcDependencies, RpcFuture},
-    test_support::Fixture,
+    registry::{RpcCallMeta, RpcCaller, RpcDependencies, RpcFuture},
+    test_support::{Fixture, test_http_auth, with_http_auth},
 };
 
 #[tokio::test]
 async fn http_departure_reports_unobserved_outcome_under_e1() {
-    fn pending(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+    fn pending(
+        deps: Arc<RpcDependencies>,
+        _: RpcCallMeta,
+        _: RpcCaller,
+        _: Value,
+    ) -> Result<RpcFuture, RpcError> {
         Ok(Box::pin(crate::registry::unreported(async move {
             // The business owner starts work before this waiter goes away.
             let mut release = deps.events.subscribe();
@@ -96,10 +101,7 @@ async fn http_departure_reports_unobserved_outcome_under_e1() {
 #[tokio::test]
 async fn archive_response_creation_is_not_download_completion() {
     let fixture = Fixture::new(false).await;
-    let response = fixture
-        .rpc
-        .clone()
-        .router()
+    let response = with_http_auth(fixture.rpc.clone().router(), test_http_auth())
         .oneshot(
             Request::builder()
                 .uri("/bridge/logs/archive")

@@ -1,15 +1,14 @@
 //! Dedicated settings command scope through the production dispatch paths.
 
 use axum::http::StatusCode;
-use nyanpasu_rpc_protocol::RpcOwner;
 use serde_json::{Value, json};
 
-use crate::{audit::RpcTransport, test_support::Fixture};
+use crate::{audit::RpcTransport, registry::RpcCaller, test_support::Fixture};
 
 #[tokio::test]
 async fn current_failure_encoding_matches_the_contract_baseline() {
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json"
+        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     let fixture = Fixture::new(false).await;
@@ -26,13 +25,13 @@ async fn current_failure_encoding_matches_the_contract_baseline() {
             .call(
                 RpcTransport::Local,
                 command.name,
-                RpcOwner::desktop("fixtures"),
+                RpcCaller::desktop("fixtures"),
                 json!(false),
             )
             .await
             .unwrap_err();
         let mut errors = vec![serde_json::to_value(error).unwrap()];
-        if command.name != "get_configuration_status" {
+        if !matches!(command.name, "get_configuration_status" | "rpc_describe") {
             let error = if matches!(
                 command.name,
                 "list_log_files" | "open_log_session" | "query_logs" | "close_log_session"
@@ -105,7 +104,8 @@ async fn command_scope_is_identical_across_rpc_transports() {
                         .and_then(|handler| {
                             handler(
                                 fixture.rpc.dependencies.clone(),
-                                RpcOwner::desktop("scope"),
+                                fixture.rpc.call_meta(*target),
+                                RpcCaller::desktop("scope"),
                                 request.clone(),
                             )
                         })
@@ -150,7 +150,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
             .call(
                 transport,
                 "get_storage_item",
-                RpcOwner::desktop("scope"),
+                RpcCaller::desktop("scope"),
                 json!({"key": "scope-key"}),
             )
             .await
@@ -161,7 +161,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
             .call(
                 transport,
                 "get_storage_item",
-                RpcOwner::desktop("scope"),
+                RpcCaller::desktop("scope"),
                 json!({"key": false}),
             )
             .await
@@ -183,7 +183,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
         .call(
             RpcTransport::Local,
             "patch_app_config",
-            RpcOwner::desktop("scope"),
+            RpcCaller::desktop("scope"),
             json!({"patch": {"proxy_layout_column": 7}}),
         )
         .await
@@ -232,7 +232,7 @@ async fn mixed_app_patch_does_not_commit_any_field() {
         let error = fixture.rpc.call(
             transport,
             "patch_app_config",
-            RpcOwner::desktop("settings"),
+            RpcCaller::desktop("settings"),
             json!({"patch": {"proxy_layout_column": 97, "hotkeys": [], "enable_service_mode": false}}),
         ).await.unwrap_err();
         assert_eq!(error.kind, "invalid_params");
@@ -330,7 +330,7 @@ async fn set_service_mode_uses_the_domain_facade() {
         .call(
             RpcTransport::TauriIpc,
             "set_service_mode",
-            RpcOwner::desktop("settings"),
+            RpcCaller::desktop("settings"),
             json!({"enabled": false}),
         )
         .await
@@ -360,7 +360,7 @@ async fn set_service_mode_uses_the_domain_facade() {
         .call(
             RpcTransport::TauriIpc,
             "set_service_mode",
-            RpcOwner::desktop("settings"),
+            RpcCaller::desktop("settings"),
             json!({"enabled": true}),
         )
         .await
@@ -564,7 +564,7 @@ async fn a_field_of_another_class_is_refused_with_nothing_committed() {
                     .call(
                         transport,
                         name,
-                        RpcOwner::desktop("settings"),
+                        RpcCaller::desktop("settings"),
                         json!({"patch": patch}),
                     )
                     .await

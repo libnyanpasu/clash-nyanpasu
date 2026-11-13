@@ -11,7 +11,7 @@ use axum::{
 };
 use futures::StreamExt;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
-use nyanpasu_rpc_protocol::EventName;
+use nyanpasu_rpc_protocol::{EventName, ServerInfo};
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -21,7 +21,7 @@ use crate::{
     error::application_error,
     events::EventBus,
     http::routes::{RpcHttpRoutes, connection_detail_events},
-    test_support::{AuditSink, rpc_for_test_call},
+    test_support::{AuditSink, rpc_for_test_call, test_http_auth, with_http_auth},
 };
 
 #[test]
@@ -102,23 +102,27 @@ fn http_update_core_is_unsupported_before_job_admission() {
         // Prime a valid update so an opted-in handler would admit a job.
         client.fetch_latest_core_versions().await.unwrap();
         assert!(client.inspect_updater(1).await.is_err());
-        let app = UnifiedRpc::new(
-            RpcDependencies {
-                icon_files: None,
-                core_directory: None,
-                service_prompt: None,
-                accent_color: None,
-                host_environment: crate::ports::HostEnvironment { is_appimage: false },
-                audit: RpcAudit::new(Arc::new(AuditSink::default())),
-                client: client.clone(),
-                storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-                paths,
-                events: EventBus::new(),
-            },
-            crate::test_support::CAPABILITIES,
-        )
-        .unwrap()
-        .router();
+        let app = with_http_auth(
+            UnifiedRpc::new(
+                RpcDependencies {
+                    icon_files: None,
+                    core_directory: None,
+                    service_prompt: None,
+                    accent_color: None,
+                    host_environment: crate::ports::HostEnvironment { is_appimage: false },
+                    audit: RpcAudit::new(Arc::new(AuditSink::default())),
+                    client: client.clone(),
+                    storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+                    paths,
+                    events: EventBus::new(),
+                },
+                ServerInfo::desktop("0.0.0-test"),
+                crate::test_support::CAPABILITIES,
+            )
+            .unwrap()
+            .router(),
+            test_http_auth(),
+        );
 
         let (status, result) = rpc_for_test_call(
             &app,
@@ -171,6 +175,7 @@ fn shared_profile_command_over_experimental_http() {
             paths,
             events: events.clone(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
@@ -185,7 +190,7 @@ fn shared_profile_command_over_experimental_http() {
         rpc.command_names()
             .contains(&"unsubscribe_clash_connection_details")
     );
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
     runtime.block_on(async move {
             for method in [
                 "report_issue",
@@ -547,10 +552,11 @@ fn direct_egress_http_requires_permission_and_runs_only_when_requested() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
     runtime.block_on(async {
         let (status, result) =
             rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
@@ -645,10 +651,11 @@ fn provider_query_returns_summaries_over_http() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         let expected = json!({
@@ -746,10 +753,11 @@ items:
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         let (status, listing) =
@@ -939,10 +947,11 @@ items:
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         // The full query is the diagnostic path: it keeps the journal's own text.
@@ -1024,10 +1033,11 @@ fn a_failed_core_read_serializes_a_fixed_error() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         for command in ["clash_api_get_settings"] {
@@ -1106,10 +1116,11 @@ fn proxies_query_serializes_no_test_url_or_icon_over_http() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         let (status, result) = rpc_for_test_call(&app, "get_proxies", json!({}), None).await;
@@ -1213,10 +1224,11 @@ fn failing_probes_report_no_private_url_and_unknown_groups_start_none() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         let mut patch = nyanpasu_config::application::NyanpasuAppConfigPatch::default();
@@ -1331,10 +1343,11 @@ fn a_failed_proxies_read_serializes_a_fixed_error() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    let app = rpc.router();
+    let app = with_http_auth(rpc.router(), test_http_auth());
 
     runtime.block_on(async {
         for (command, reason) in [
@@ -1456,6 +1469,7 @@ fn enabled_http_server_joins_application_shutdown() {
             paths,
             events: EventBus::new(),
         },
+        ServerInfo::desktop("0.0.0-test"),
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
@@ -1767,7 +1781,7 @@ fn clash_read_error_envelopes_hide_controller_urls_and_secrets_on_all_safe_reads
             assert!(!wire.contains("127.0.0.1"), "{method}: {wire}");
         }
 
-        let app = fixture.rpc.clone().router();
+        let app = with_http_auth(fixture.rpc.clone().router(), test_http_auth());
         fixture.rpc.dependencies.client.request_shutdown();
         fixture.rpc.dependencies.client.wait_shutdown().await;
 

@@ -407,6 +407,7 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "restart_sidecar",
         "retry_configuration_effect",
         "retry_configuration_runtime",
+        "rpc_describe",
         "save_profile_file",
         "select_proxy",
         "set_clash_ws_recording",

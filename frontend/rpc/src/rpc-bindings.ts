@@ -12,6 +12,16 @@ export function createRpcClient(
 ) {
   const __RPC_INVOKE = transport.commands.invoke.bind(transport.commands)
   const commands = {
+    /**
+     *  Returns protocol, server, transport, own principal/scopes, and per-target
+     *  command availability for the resolved caller.
+     *
+     *  Any resolved caller may invoke `rpc_describe` without holding `Scope::Read`
+     *  (enforced by [`crate::policy::admit_resolved_command`]); it returns own
+     *  discovery metadata only and never discloses another principal or grants
+     *  business data access.
+     */
+    rpcDescribe: () => __RPC_INVOKE<RpcDescribeResponse>('rpc_describe'),
     getHttpServerStatus: () =>
       typedError<HttpServerStatus, IpcError>(
         __RPC_INVOKE('get_http_server_status'),
@@ -1748,6 +1758,20 @@ export type ClosedPage = {
 }
 
 /**
+ *  What a command does, independent of how a transport dispatches it.
+ *
+ *  Queries observe application or network state; refreshing a read model or measuring latency
+ *  does not change application configuration. Mutations perform application operations, including
+ *  allocating caller-owned resources. Scope independently controls who may request either effect.
+ *  The declaration is the source of truth; the generated frontend's split is checked against it.
+ */
+export type CommandEffect =
+  /**  Returns data and changes nothing. */
+  | 'query'
+  /**  Everything else. */
+  | 'mutation'
+
+/**
  *  Why a source transaction did not commit, classified once from the
  *  persistence error and, when the Runtime took part, the receipt it settled
  *  (U7). A source wraps it in its own domain error.
@@ -2713,6 +2737,14 @@ export type Delay = {
 export type DelayHistory = {
   time: string
   delay: number
+}
+
+/**  One known command on the active transport and whether this caller may invoke it. */
+export type DescribedCommand = {
+  name: string
+  effect: CommandEffect
+  scope: Scope
+  allowed: boolean
 }
 
 /**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
@@ -4157,6 +4189,43 @@ export type PostProcessingOutput = {
   /**  根据配置进行的分析建议 */
   advice: [LogSpan, string][]
 }
+
+/**
+ *  Public identity of the resolved caller attached at transport admission.
+ *
+ *  Contains only non-secret identity labels and identifiers suitable for audit
+ *  attribution and self-inspection. Never carries raw secrets, bearer tokens,
+ *  session cookies, or unhashed credentials.
+ */
+export type Principal =
+  /**  Native Tauri desktop shell webview window. */
+  | {
+      kind: 'desktop'
+      /**  Non-secret desktop window label. */
+      window: string
+    }
+  /**  Authenticated caller via the same-user local IPC socket or named pipe. */
+  | {
+      kind: 'local_socket'
+      /**  Opaque host user security identity (Unix UID decimal string or Windows SID). */
+      user: string
+    }
+  /**  Authenticated browser or bootstrap HTTP session. */
+  | {
+      kind: 'session'
+      /**  Public non-secret session correlation identifier (never a cookie or access token). */
+      id: string
+    }
+  /**  Scoped bearer token identified by its public ID and user-assigned label. */
+  | {
+      kind: 'token'
+      /**  Public non-secret token identifier. */
+      id: string
+      /**  User-assigned token label. */
+      name: string
+    }
+  /**  Unauthenticated remote caller allowed under an explicit anonymous policy. */
+  | { kind: 'anonymous' }
 
 /**  Downloaded or read content that is not a valid profile document. */
 export type ProfileContentError =
@@ -5880,6 +5949,25 @@ export type RevisionSummary = {
   generation: number
 }
 
+/**  Canonical caller-scoped discovery document returned by `rpc_describe`. */
+export type RpcDescribeResponse = {
+  protocol: number
+  server: ServerInfo
+  transport: RpcTarget
+  principal: Principal
+  scopes: ScopeSet
+  commands: DescribedCommand[]
+}
+
+/**  A command's explicitly enabled transport. */
+export type RpcTarget =
+  /**  The complete desktop command surface. */
+  | 'desktop'
+  /**  Browser access, explicitly opted into by the declaration. */
+  | 'http'
+  /**  Local socket access, independently opted into by the declaration. */
+  | 'local'
+
 export type RuleKey = {
   kind: string
   payload: string
@@ -6158,6 +6246,36 @@ export type RuntimePipelineError =
  */
 export type SchemeRequestReceivedEvent = null
 
+/**
+ *  What a command needs, and what a principal holds.
+ *
+ *  A command declares exactly one scope. Scopes are independent: holding `proxy` grants no `read`.
+ */
+export type Scope =
+  /**  Queries without secrets: status, listings, logs, traffic and connection views. */
+  | 'read'
+  /**
+   *  Queries that return secrets: the Clash secret, subscription URLs, profile and runtime
+   *  contents, and generic storage.
+   */
+  | 'sensitive_read'
+  /**  Select a proxy, latency tests, switch the proxy mode, close connections. */
+  | 'proxy'
+  /**  Profile and subscription changes, transforms, provider updates. */
+  | 'profile'
+  /**  Ordinary application and Clash preferences. */
+  | 'settings'
+  /**
+   *  Core lifecycle, system proxy, TUN, transparent proxy, service, the Clash control plane,
+   *  listening exposure and every shell or OS operation.
+   */
+  | 'system'
+  /**  Remote access settings, tokens and sessions. */
+  | 'remote_admin'
+
+/**  Canonical deduplicated set of independent permission scopes held by a caller. */
+export type ScopeSet = Scope[]
+
 /**  A missing engine rejects the entire build, even when transforms are lenient. */
 export type ScriptExecutionError = {
   kind: 'start_engine'
@@ -6182,6 +6300,19 @@ export type ScriptTransform_Serialize = {
   source: ProfileSource_Serialize
   runtime: ScriptRuntime
 }
+
+/**  Non-secret host metadata disclosed to resolved callers via `rpc_describe`. */
+export type ServerInfo = {
+  kind: ServerKind
+  version: string
+}
+
+/**  Which runtime hosts the RPC endpoint. */
+export type ServerKind =
+  /**  Native Tauri desktop application. */
+  | 'desktop'
+  /**  Headless service daemon (`nyanpasu-server`). */
+  | 'headless'
 
 /**  The elevated operations `nyanpasu-service` is asked to perform. */
 export type ServiceCommand =

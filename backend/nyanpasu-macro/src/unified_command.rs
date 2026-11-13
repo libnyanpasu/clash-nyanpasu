@@ -250,6 +250,9 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let mut tauri_field_names = Vec::new();
     let mut neutral_supported = neutral_compatible && (options.http || options.local || !native);
     let mut tauri_supported = true;
+    let mut uses_dependencies = false;
+    let mut uses_meta = false;
+    let mut uses_caller = false;
 
     for argument in implementation.sig.inputs.iter_mut() {
         let FnArg::Typed(argument) = argument else {
@@ -271,14 +274,19 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             argument.ty = Box::new(syn::parse_quote!(&#state_type));
             wrapper_args.push(quote!(&*#ident));
             if state_name.as_deref() == Some("NyanpasuClient") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.client));
             } else if state_name.as_deref() == Some("Storage") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.storage));
             } else if state_name.as_deref() == Some("PathResolver") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.paths));
             } else if state_name.as_deref() == Some("HostEnvironment") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.host_environment));
             } else if let Some(slot) = host_port_slot(state_name.as_deref()) {
+                uses_dependencies = true;
                 let slot = format_ident!("{slot}");
                 dependency_bindings.push(quote! {
                     let #ident = dependencies.#slot.clone().ok_or_else(||
@@ -289,15 +297,24 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 neutral_supported = false;
             }
         } else if options.owner && is_context_type(&argument.ty, "RpcCaller") {
+            uses_caller = true;
             *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
             wrapper_args.push(quote!(#ident.into_owner()));
+            dependency_bindings.push(quote!(let owner = caller.owner().clone();));
             neutral_args.push(quote!(owner.clone()));
+        } else if is_context_type(&argument.ty, "RpcDescribeContext") {
+            uses_meta = true;
+            uses_caller = true;
+            wrapper_args.push(quote!(#ident));
+            neutral_args.push(quote!(meta.describe_context(caller.auth())));
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
             neutral_supported = false;
         } else if options.owner && is_context_type(&argument.ty, "Window") {
+            uses_caller = true;
             *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
             wrapper_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(#ident.label())));
+            dependency_bindings.push(quote!(let owner = caller.owner().clone();));
             neutral_args.push(quote!(owner.clone()));
         } else if is_context_type(&argument.ty, "Window")
             || is_context_type(&argument.ty, "Webview")
@@ -359,9 +376,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         original.asyncness.is_some(),
         None,
     );
-    let neutral_handler_body = if neutral_supported
-        && !matches!(original.output, ReturnType::Default)
-    {
+    let neutral_enabled = neutral_supported && !matches!(original.output, ReturnType::Default);
+    let neutral_handler_body = if neutral_enabled {
         let output = output_value(&neutral_call, &original.output, options.result);
         let response_type =
             operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
@@ -492,6 +508,27 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         }
     });
 
+    let deps_param = if neutral_enabled && uses_dependencies {
+        format_ident!("dependencies")
+    } else {
+        format_ident!("_dependencies")
+    };
+    let meta_param = if neutral_enabled && uses_meta {
+        format_ident!("meta")
+    } else {
+        format_ident!("_meta")
+    };
+    let caller_param = if neutral_enabled && uses_caller {
+        format_ident!("caller")
+    } else {
+        format_ident!("_caller")
+    };
+    let params_param = if neutral_enabled {
+        format_ident!("params")
+    } else {
+        format_ident!("_params")
+    };
+
     Ok(quote! {
         #implementation
         #wrapper
@@ -500,9 +537,10 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
         #(#cfg_attrs)*
         fn #neutral_handler(
-            dependencies: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
-            owner: ::nyanpasu_rpc_protocol::RpcOwner,
-            params: ::serde_json::Value,
+            #deps_param: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
+            #meta_param: ::nyanpasu_rpc::registry::RpcCallMeta,
+            #caller_param: ::nyanpasu_rpc::registry::RpcCaller,
+            #params_param: ::serde_json::Value,
         ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
             #neutral_handler_body
         }
@@ -647,11 +685,10 @@ fn can_share_with_neutral(signature: &syn::Signature, owner: bool) -> bool {
             {
                 return false;
             }
-        } else if owner && is_context_type(&argument.ty, "RpcCaller") {
-            continue;
-        } else if is_context_type(&argument.ty, "AppHandle") {
-            return false;
-        } else if owner && is_context_type(&argument.ty, "Window") {
+        } else if (owner && is_context_type(&argument.ty, "RpcCaller"))
+            || is_context_type(&argument.ty, "RpcDescribeContext")
+            || (owner && is_context_type(&argument.ty, "Window"))
+        {
             continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
             return false;
@@ -1419,7 +1456,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 177, "{platform} command inventory");
+            assert_eq!(rows.len(), 178, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

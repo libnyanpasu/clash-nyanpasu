@@ -1142,7 +1142,7 @@
   "dashboard_widget_subscription_schedule_skipped": "Skipped",
   "dashboard_widget_subscription_schedule_next_run": "Next update {time}",
   "dashboard_widget_subscription_schedule_manual_only": "Manual updates only",
-  "dashboard_widget_subscription_schedule_registration_error": "Schedule error: {error}",
+  "dashboard_widget_subscription_schedule_registration_failed": "Schedule registration failed",
   "dashboard_widget_subscription_schedule_journal_degraded": "Run history is temporarily unavailable",
   "dashboard_widget_subscription_schedule_recent": "Recent results",
   "dashboard_widget_subscription_schedule_history_unavailable": "Run history unavailable",

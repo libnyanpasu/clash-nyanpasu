@@ -27,14 +27,17 @@ import { formatDate } from '@/utils/date'
 import { DndContext } from '@dnd-kit/core'
 import { MutationUnconfirmedError } from '@nyanpasu/query'
 import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
-import type { ProfileItem_Serialize, RunDto } from '@nyanpasu/rpc/types'
+import type {
+  ProfileListingItem_Serialize,
+  SyncRunSummary,
+} from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const hooks = vi.hoisted(() => ({
-  useProfile: vi.fn(),
+  useProfileListing: vi.fn(),
   useProfileMutations: vi.fn(),
-  useProfileSyncStatus: vi.fn(),
-  useProfileSyncRuns: vi.fn(),
+  useProfileSyncStatusSummary: vi.fn(),
+  useProfileSyncRunsSummary: vi.fn(),
   useProxyMode: vi.fn(),
   useCoreStatus: vi.fn(),
 }))
@@ -59,10 +62,10 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
   const original = await importOriginal<typeof import('@nyanpasu/query')>()
   return {
     ...original,
-    useProfile: hooks.useProfile,
+    useProfileListing: hooks.useProfileListing,
     useProfileMutations: hooks.useProfileMutations,
-    useProfileSyncStatus: hooks.useProfileSyncStatus,
-    useProfileSyncRuns: hooks.useProfileSyncRuns,
+    useProfileSyncStatusSummary: hooks.useProfileSyncStatusSummary,
+    useProfileSyncRunsSummary: hooks.useProfileSyncRunsSummary,
     useProxyMode: hooks.useProxyMode,
     useCoreStatus: hooks.useCoreStatus,
   }
@@ -116,16 +119,22 @@ const profile = (
     type: 'file',
     source: { type: 'local', binding: { type: 'managed' } },
   },
-): ProfileItem_Serialize =>
-  ({ uid, name, type: 'config', config: definition }) as ProfileItem_Serialize
+): ProfileListingItem_Serialize =>
+  ({
+    uid,
+    name,
+    custom_name: true,
+    has_desc: false,
+    type: 'config',
+    config: definition,
+  }) as ProfileListingItem_Serialize
 
 const remoteProfile = profile('remote', 'Remote plan', {
   type: 'file',
   source: {
     type: 'remote',
-    url: 'https://example.test/profile.yaml',
-    file: 'profiles/remote.yaml',
     option: {
+      has_user_agent: false,
       with_proxy: false,
       self_proxy: false,
       update_interval_minutes: 60,
@@ -138,12 +147,11 @@ const remoteProfile = profile('remote', 'Remote plan', {
       expire: 1_900_000_000,
     },
   },
+  transforms: [],
 })
 
-const finishedRun = {
+const finishedRun: SyncRunSummary = {
   id: 'run-1',
-  job: 'profile-sync',
-  definition_version: '1',
   admission_sequence: '1',
   trigger: 'manual',
   scheduled_at: null,
@@ -151,15 +159,10 @@ const finishedRun = {
   finished_at: '2026-01-01T00:01:00Z',
   state: {
     kind: 'finished',
-    completion: {
-      outcome: { kind: 'succeeded' },
-      output: { kind: 'none' },
-      journal: { kind: 'durable' },
-    },
+    outcome: 'succeeded',
+    journal_degraded: false,
   },
-  last_log_sequence: '0',
-  dropped_log_count: '0',
-} as RunDto
+}
 
 const profileQuery = {
   data: { current: 'remote', items: [remoteProfile] },
@@ -172,17 +175,7 @@ const profileQuery = {
 }
 
 function setupHooks() {
-  hooks.useProfile.mockReturnValue({
-    query: profileQuery,
-    update: {
-      isPending: false,
-      mutateAsync: vi.fn(async () => ({ status: 'committed' })),
-    },
-    activate: {
-      isPending: false,
-      mutateAsync: vi.fn(async () => ({ status: 'committed' })),
-    },
-  })
+  hooks.useProfileListing.mockReturnValue(profileQuery)
   hooks.useProfileMutations.mockReturnValue({
     update: {
       isPending: false,
@@ -193,20 +186,20 @@ function setupHooks() {
       mutateAsync: vi.fn(async () => ({ status: 'committed' })),
     },
   })
-  hooks.useProfileSyncStatus.mockReturnValue({
+  hooks.useProfileSyncStatusSummary.mockReturnValue({
     data: {
       scheduled: true,
       next_run_at: '2026-01-01T02:00:00Z',
       active: [],
       journal_degraded: false,
-      registration_error: null,
+      has_registration_error: false,
       history_limit: 100,
     },
     isPending: false,
     isError: false,
     refetch: vi.fn(async () => ({})),
   })
-  hooks.useProfileSyncRuns.mockReturnValue({
+  hooks.useProfileSyncRunsSummary.mockReturnValue({
     data: { pages: [{ items: [finishedRun], next: null }] },
     isPending: false,
     isError: false,
@@ -330,10 +323,10 @@ test('picker previews never mount profile, sync, or mode business hooks', async 
   for (const [Widget, title] of cases) {
     const cleanup = mount(onTestFinished, Widget, { sourceOnly: true })
     await expect.element(page.getByText(title).last()).toBeVisible()
-    expect(hooks.useProfile).not.toHaveBeenCalled()
+    expect(hooks.useProfileListing).not.toHaveBeenCalled()
     expect(hooks.useProfileMutations).not.toHaveBeenCalled()
-    expect(hooks.useProfileSyncStatus).not.toHaveBeenCalled()
-    expect(hooks.useProfileSyncRuns).not.toHaveBeenCalled()
+    expect(hooks.useProfileSyncStatusSummary).not.toHaveBeenCalled()
+    expect(hooks.useProfileSyncRunsSummary).not.toHaveBeenCalled()
     expect(hooks.useProxyMode).not.toHaveBeenCalled()
     expect(hooks.useCoreStatus).not.toHaveBeenCalled()
     cleanup()
@@ -411,21 +404,19 @@ for (const { upload, download, percent } of [
   test(`quota renders the boundary water level ${percent} without a running wave`, async ({
     onTestFinished,
   }) => {
-    hooks.useProfile.mockReturnValue({
-      query: {
-        ...profileQuery,
-        data: {
-          current: 'remote',
-          items: [
-            profile('remote', 'Boundary plan', {
-              type: 'file',
-              source: {
-                type: 'remote',
-                subscription: { upload, download, total: 10_000_000 },
-              },
-            }),
-          ],
-        },
+    hooks.useProfileListing.mockReturnValue({
+      ...profileQuery,
+      data: {
+        current: 'remote',
+        items: [
+          profile('remote', 'Boundary plan', {
+            type: 'file',
+            source: {
+              type: 'remote',
+              subscription: { upload, download, total: 10_000_000 },
+            },
+          }),
+        ],
       },
     })
     mount(onTestFinished, SubscriptionQuotaWidget)
@@ -595,7 +586,7 @@ test('quota checks an unconfirmed refresh from its header before allowing anothe
     .fn()
     .mockRejectedValueOnce(new MutationUnconfirmedError(new Error('timeout')))
     .mockResolvedValueOnce({ status: 'committed' })
-  hooks.useProfile.mockReturnValue({ query: { ...profileQuery, refetch } })
+  hooks.useProfileListing.mockReturnValue({ ...profileQuery, refetch })
   hooks.useProfileMutations.mockReturnValue({
     update: { isPending: false, mutateAsync: update },
   })
@@ -659,10 +650,10 @@ test('schedule reads a real next run and polls latest history at a low rate', as
   await expect
     .element(page.getByText(m.dashboard_widget_subscription_schedule_recent()))
     .toBeVisible()
-  expect(hooks.useProfileSyncRuns).toHaveBeenCalledWith('remote', {
+  expect(hooks.useProfileSyncRunsSummary).toHaveBeenCalledWith('remote', {
     refetchInterval: 60_000,
   })
-  expect(hooks.useProfileSyncStatus).toHaveBeenCalledWith('remote')
+  expect(hooks.useProfileSyncStatusSummary).toHaveBeenCalledWith('remote')
   expect(document.querySelector('a[aria-disabled="true"]')).not.toBeNull()
 })
 
@@ -690,7 +681,7 @@ test('schedule keeps the next update readable at its minimum height without scro
 test('schedule centers the profile and active state while syncing', async ({
   onTestFinished,
 }) => {
-  hooks.useProfileSyncStatus.mockReturnValue({
+  hooks.useProfileSyncStatusSummary.mockReturnValue({
     data: { active: [{ ...finishedRun, state: { kind: 'running' } }] },
     isPending: false,
     isError: false,
@@ -725,21 +716,19 @@ test('schedule centers the profile and active state while syncing', async ({
 test('schedule swaps an error into the summary instead of stacking it below the profile', async ({
   onTestFinished,
 }) => {
-  const current = hooks.useProfileSyncStatus.getMockImplementation()!()
-  hooks.useProfileSyncStatus.mockReturnValue({
+  const current = hooks.useProfileSyncStatusSummary.getMockImplementation()!()
+  hooks.useProfileSyncStatusSummary.mockReturnValue({
     ...current,
     data: {
       ...current.data,
-      registration_error: 'Unable to register the update schedule',
+      has_registration_error: true,
     },
   })
   mount(onTestFinished, SubscriptionScheduleWidget, {
     height: 2,
     pixelHeight: 160,
   })
-  const error = m.dashboard_widget_subscription_schedule_registration_error({
-    error: 'Unable to register the update schedule',
-  })
+  const error = m.dashboard_widget_subscription_schedule_registration_failed()
   await expect.element(page.getByRole('alert', { name: error })).toBeVisible()
   const content = document.querySelector<HTMLElement>(
     '[data-slot="subscription-schedule-content"]',

@@ -1124,7 +1124,7 @@
   "dashboard_widget_subscription_schedule_skipped": "已略過",
   "dashboard_widget_subscription_schedule_next_run": "下次更新 {time}",
   "dashboard_widget_subscription_schedule_manual_only": "僅手動更新",
-  "dashboard_widget_subscription_schedule_registration_error": "排程註冊失敗：{error}",
+  "dashboard_widget_subscription_schedule_registration_failed": "排程註冊失敗",
   "dashboard_widget_subscription_schedule_journal_degraded": "執行記錄暫時無法使用",
   "dashboard_widget_subscription_schedule_recent": "最近結果",
   "dashboard_widget_subscription_schedule_history_unavailable": "執行記錄無法使用",

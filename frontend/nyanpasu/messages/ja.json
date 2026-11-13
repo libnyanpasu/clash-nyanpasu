@@ -1124,7 +1124,7 @@
   "dashboard_widget_subscription_schedule_skipped": "スキップ",
   "dashboard_widget_subscription_schedule_next_run": "次回の更新 {time}",
   "dashboard_widget_subscription_schedule_manual_only": "手動更新のみ",
-  "dashboard_widget_subscription_schedule_registration_error": "スケジュールのエラー: {error}",
+  "dashboard_widget_subscription_schedule_registration_failed": "スケジュールの登録に失敗しました",
   "dashboard_widget_subscription_schedule_journal_degraded": "実行履歴は一時的に利用できません",
   "dashboard_widget_subscription_schedule_recent": "最近の結果",
   "dashboard_widget_subscription_schedule_history_unavailable": "実行履歴を利用できません",

@@ -149,7 +149,7 @@ export const message = async (
     const parts = profileMessageParts((label) => formatError(error, label))
     if (parts.some((part) => typeof part !== 'string')) {
       try {
-        const profiles = unwrapResult(await commands.getProfiles())
+        const profiles = await commands.getProfilesListing()
         const lookup = new Map(
           profiles.items.map((profile) => [profile.uid, profile]),
         )

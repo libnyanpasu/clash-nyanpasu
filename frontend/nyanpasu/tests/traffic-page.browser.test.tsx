@@ -89,6 +89,9 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     useProfile: () => ({
       query: { data: { items: [{ uid: 'main', name: 'Main profile' }] } },
     }),
+    useProfileListing: () => ({
+      data: { items: [{ uid: 'main', name: 'Main profile' }] },
+    }),
   }
 })
 

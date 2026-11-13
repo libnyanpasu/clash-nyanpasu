@@ -1116,7 +1116,7 @@
   "dashboard_widget_subscription_schedule_skipped": "Пропущено",
   "dashboard_widget_subscription_schedule_next_run": "Следующее обновление: {time}",
   "dashboard_widget_subscription_schedule_manual_only": "Только вручную",
-  "dashboard_widget_subscription_schedule_registration_error": "Ошибка расписания: {error}",
+  "dashboard_widget_subscription_schedule_registration_failed": "Ошибка регистрации расписания",
   "dashboard_widget_subscription_schedule_journal_degraded": "Журнал запусков временно недоступен",
   "dashboard_widget_subscription_schedule_recent": "Последние результаты",
   "dashboard_widget_subscription_schedule_history_unavailable": "Журнал запусков недоступен",

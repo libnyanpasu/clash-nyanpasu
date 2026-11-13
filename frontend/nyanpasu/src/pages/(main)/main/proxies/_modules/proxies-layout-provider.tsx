@@ -14,7 +14,8 @@ import {
   resolveProxyGroupLayout,
   storedProxyGroupLayoutOf,
   useClashProxies,
-  useProfile,
+  useProfileListing,
+  useProfileMutations,
 } from '@nyanpasu/query'
 import type { FolderId, ProxyGroupLayout } from '@nyanpasu/rpc/types'
 import FolderNameDialog from '../../_modules/folder-name-dialog'
@@ -61,7 +62,8 @@ export default function ProxiesLayoutProvider({ children }: PropsWithChildren) {
 function ProxiesLayoutContent({ children }: PropsWithChildren) {
   const { open, setOpen } = useModal()
 
-  const { query, setProxyGroupLayout, createProxyGroupFolder } = useProfile()
+  const query = useProfileListing()
+  const { setProxyGroupLayout, createProxyGroupFolder } = useProfileMutations()
   const {
     proxies: { data: proxies },
   } = useClashProxies()

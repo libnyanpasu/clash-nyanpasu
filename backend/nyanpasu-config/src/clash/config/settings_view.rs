@@ -3,15 +3,18 @@
 //! [`ClashConfig`] holds the controller secret and the web UI templates, which are free-form URLs a
 //! user may write a credential into. [`ClashSettings`] keeps every other field, so the dashboard
 //! can show the TUN state, the ports and the break-connection policy from a query that is not
-//! marked sensitive.
+//! marked sensitive. The `dns` table is left out too: a DoH or DoT nameserver URL may carry a
+//! private resolver token.
 //! A form that edits the secret or the web UI list reads the full config.
 
+use indexmap::IndexMap;
 use serde::Serialize;
 use specta::Type;
 
 use super::{
     ClashConfig, ClashControlChannel, TransparentProxyConfig,
     clash_strategy::{BreakConnectionStrategy, ExternalControllerStrategy, PortStrategy},
+    dns::{ControlSource, OneOrMany},
     overrides::{ClashOverridesSettings, TunOverrides},
     tun_stack::{MipsConfig, TunStack},
 };
@@ -39,6 +42,9 @@ pub struct ClashSettings {
     pub break_connection: BreakConnectionStrategy,
     pub tun_stack: TunStack,
     pub tun_mips: MipsConfig,
+    pub dns_control: ControlSource,
+    pub hosts_control: ControlSource,
+    pub hosts: IndexMap<String, OneOrMany>,
 }
 
 impl From<&ClashConfig> for ClashSettings {
@@ -63,6 +69,11 @@ impl From<&ClashConfig> for ClashSettings {
             break_connection,
             tun_stack,
             tun_mips,
+            dns_control,
+            // Nameserver URLs a private resolver token may be part of: full config only.
+            dns: _,
+            hosts_control,
+            hosts,
         } = config;
 
         Self {
@@ -83,6 +94,9 @@ impl From<&ClashConfig> for ClashSettings {
             break_connection: break_connection.clone(),
             tun_stack: *tun_stack,
             tun_mips: *tun_mips,
+            dns_control: *dns_control,
+            hosts_control: *hosts_control,
+            hosts: hosts.clone(),
         }
     }
 }

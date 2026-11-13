@@ -2,12 +2,13 @@
 
 use std::collections::HashSet;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use nyanpasu_config::{
     application::NyanpasuAppConfig,
     clash::config::{
         ClashConfig, ClashControlChannel,
         clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
+        dns::{DnsSettings, OneOrMany},
         overrides::{ClashGuardOverrides, TunOverrides},
         tun_stack::SelectedTunStack,
     },
@@ -111,6 +112,8 @@ struct ClashRuntimeInputs<'a> {
     external_controller: &'a ExternalControllerStrategy,
     control_channel: ClashControlChannel,
     disable_http_controller: bool,
+    dns: Option<&'a DnsSettings>,
+    hosts: Option<&'a IndexMap<String, OneOrMany>>,
 }
 
 /// The fields of `clash` the runtime reads, and nothing else.
@@ -131,6 +134,8 @@ fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
         external_controller: &clash.external_controller,
         control_channel: clash.clash_control_channel,
         disable_http_controller: clash.clash_ipc_disable_http_controller,
+        dns: clash.managed_dns(),
+        hosts: clash.managed_hosts(),
     }
 }
 
@@ -232,6 +237,7 @@ mod tests {
                     PortStrategyPatch,
                 },
             },
+            dns::ControlSource,
             overrides::{ClashGuardOverridesPatch, LogLevel, ManageableField, Mode},
             tun_stack::{MipsConfig, TunCongestionController, TunStack},
         },
@@ -796,6 +802,42 @@ mod tests {
             },
             impact: true,
         },
+        ClashCase {
+            field: "dns_control",
+            candidate: || ClashConfig {
+                dns_control: ControlSource::Nyanpasu,
+                ..base_clash()
+            },
+            impact: true,
+        },
+        ClashCase {
+            field: "hosts_control",
+            candidate: || ClashConfig {
+                hosts_control: ControlSource::Nyanpasu,
+                ..base_clash()
+            },
+            impact: true,
+        },
+        // Settings kept while the profiles control the table are not built.
+        ClashCase {
+            field: "dns",
+            candidate: || ClashConfig {
+                dns: DnsSettings {
+                    enable: false,
+                    ..DnsSettings::default()
+                },
+                ..base_clash()
+            },
+            impact: false,
+        },
+        ClashCase {
+            field: "hosts",
+            candidate: || ClashConfig {
+                hosts: IndexMap::from([("a.lan".to_owned(), OneOrMany::One("10.0.0.1".into()))]),
+                ..base_clash()
+            },
+            impact: false,
+        },
         // The options of a stack that is not selected are not built.
         ClashCase {
             field: "tun_mips",
@@ -942,6 +984,29 @@ mod tests {
                 "{} runtime verdict",
                 case.field
             );
+        }
+    }
+
+    #[test]
+    fn dns_settings_are_built_while_nyanpasu_controls_them() {
+        let previous = ClashConfig {
+            dns_control: ControlSource::Nyanpasu,
+            hosts_control: ControlSource::Nyanpasu,
+            ..base_clash()
+        };
+        let dns = ClashConfig {
+            dns: DnsSettings {
+                enable: false,
+                ..DnsSettings::default()
+            },
+            ..previous.clone()
+        };
+        let hosts = ClashConfig {
+            hosts: IndexMap::from([("a.lan".to_owned(), OneOrMany::One("10.0.0.1".into()))]),
+            ..previous.clone()
+        };
+        for candidate in [dns, hosts] {
+            assert!(reaches_runtime(&previous, &candidate, &[]));
         }
     }
 

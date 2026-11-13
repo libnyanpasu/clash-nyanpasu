@@ -1,5 +1,6 @@
 use std::{
     fs::{File, FileTimes},
+    io::{Read as _, Seek as _, SeekFrom},
     rc::Rc,
     sync::{
         Arc, Mutex,
@@ -21,6 +22,7 @@ use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::TcpListener,
     runtime::Runtime,
+    sync::oneshot,
     task::JoinHandle,
 };
 use url::Url;
@@ -39,6 +41,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::new_with_fetch_gate(None)
+    }
+
+    fn new_with_fetch_gate(gate: Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>) -> Self {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -49,6 +55,7 @@ impl Fixture {
         let requests = Arc::new(AtomicUsize::new(0));
         let count = requests.clone();
         let server = runtime.spawn(async move {
+            let mut gate = gate;
             loop {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let mut request = Vec::new();
@@ -62,6 +69,10 @@ impl Fixture {
                 let request = String::from_utf8(request).unwrap();
                 let path = request.split_whitespace().nth(1).unwrap();
                 let ordinal = count.fetch_add(1, Ordering::SeqCst) + 1;
+                if let Some((requested, release)) = gate.take() {
+                    requested.send(()).unwrap();
+                    release.await.unwrap();
+                }
                 let (status, headers, body) = if !request.to_ascii_lowercase().contains("x-script-fixture: injected") {
                     ("200 OK", String::new(), "missing injected client".to_string())
                 } else if let Some(hops) = path.strip_prefix("/redirect/") {
@@ -182,7 +193,7 @@ fn module_cache_expiry_uses_the_injected_clock() {
 }
 
 #[test]
-fn cache_hit_preserves_existing_refresh_behavior() {
+fn cache_hit_preserves_the_entry_timestamp() {
     let fixture = Fixture::new();
     fixture.load("module");
     let path = fixture
@@ -197,7 +208,77 @@ fn cache_hit_preserves_existing_refresh_behavior() {
         .unwrap();
     *fixture.clock.lock().unwrap() = old + Duration::from_secs(59);
     assert_eq!(fixture.load("module").content, "injected response 1");
-    assert!(std::fs::metadata(path).unwrap().modified().unwrap() > old);
+    assert_eq!(std::fs::metadata(path).unwrap().modified().unwrap(), old);
+    assert_eq!(fixture.requests.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn corrupt_cache_entry_is_fetched_again() {
+    let fixture = Fixture::new();
+    fixture.load("module");
+    let path = fixture
+        .source
+        .mapping_cache_dir(&fixture.base.join("module").unwrap());
+    std::fs::write(&path, [0xff]).unwrap();
+
+    assert_eq!(fixture.load("module").content, "injected response 2");
+    let cached: CachedItem = postcard::from_bytes(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(cached.content, "injected response 2");
+    assert_eq!(fixture.requests.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn concurrent_loads_publish_complete_cache_entries() {
+    let (requested, fetched) = oneshot::channel();
+    let (release, released) = oneshot::channel();
+    let fixture = Fixture::new_with_fetch_gate(Some((requested, released)));
+    let url = fixture.base.join("module").unwrap();
+    let path = fixture.source.mapping_cache_dir(&url);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let old = CachedItem {
+        mime: "text/plain".to_owned(),
+        content: "cached module".repeat(128),
+    };
+    let bytes = postcard::to_stdvec(&old).unwrap();
+    std::fs::write(&path, &bytes).unwrap();
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    *fixture.clock.lock().unwrap() = modified + Duration::from_secs(61);
+
+    fixture.runtime.block_on(async {
+        let refresh = fixture.source.load(&url);
+        tokio::pin!(refresh);
+        tokio::select! {
+            result = &mut refresh => panic!("fetch must wait for release: {result:?}"),
+            result = fetched => result.unwrap(),
+        }
+
+        // Retain the entry's identity without an open handle blocking replacement on Windows.
+        let retained_path = path.with_extension("reader");
+        std::fs::hard_link(&path, &retained_path).unwrap();
+        let mut reader = File::open(&retained_path).unwrap();
+        let mut observed = vec![0; bytes.len() / 2];
+        reader.read_exact(&mut observed).unwrap();
+        drop(reader);
+        *fixture.clock.lock().unwrap() = modified + Duration::from_secs(59);
+        let cached = fixture.source.load(&url).await.unwrap();
+        assert_eq!(cached.mime, old.mime);
+        assert_eq!(cached.content, old.content);
+
+        release.send(()).unwrap();
+        let fetched = refresh.await.unwrap();
+        assert_eq!(fetched.mime, "text/plain");
+        assert_eq!(fetched.content, "injected response 1");
+        let mut reader = File::open(&retained_path).unwrap();
+        reader.seek(SeekFrom::Start(observed.len() as u64)).unwrap();
+        reader.read_to_end(&mut observed).unwrap();
+        let retained: CachedItem = postcard::from_bytes(&observed).unwrap();
+        assert_eq!(retained.mime, old.mime);
+        assert_eq!(retained.content, old.content);
+        drop(reader);
+        let published: CachedItem = postcard::from_bytes(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(published.mime, fetched.mime);
+        assert_eq!(published.content, fetched.content);
+    });
     assert_eq!(fixture.requests.load(Ordering::SeqCst), 1);
 }
 

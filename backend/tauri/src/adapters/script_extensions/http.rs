@@ -100,16 +100,20 @@ impl HttpModuleSource for CachedHttpModuleSource {
             _ => false,
         };
 
-        let item: anyhow::Result<CachedItem> = if should_use_cached_content {
-            async {
-                log::debug!("fetching `{url}` from cache...");
-                let item = async_fs::read(&cache_path).await?;
-                let item = postcard::from_bytes(&item)?;
+        if should_use_cached_content {
+            log::debug!("fetching `{url}` from cache...");
+            let bytes = async_fs::read(&cache_path).await.map_err(|source| {
+                HttpModuleError::LoadModule {
+                    source: source.into(),
+                }
+            })?;
+            if let Ok(item) = postcard::from_bytes(&bytes) {
                 log::debug!("finished fetching `{url}` from cache");
-                Ok(item)
+                return Ok(item);
             }
-            .await
-        } else {
+        }
+
+        let item: anyhow::Result<CachedItem> = {
             log::debug!("fetching `{url}`...");
             let (tx, rx) = oneshot_channel();
             let fetcher_url = url.clone();
@@ -141,11 +145,13 @@ impl HttpModuleSource for CachedHttpModuleSource {
         if let Ok(item) = &item {
             match postcard::to_stdvec(&item) {
                 Ok(item) => {
-                    if let Err(err) = async_fs::write(&cache_path, &item).await {
-                        log::error!(
-                            "failed to write cache for `{url}`; path: `{}`. error: `{}`",
-                            cache_path.display(),
-                            err
+                    let write = self.runtime.spawn_blocking(move || {
+                        nyanpasu_persistence::write::atomic_write(&cache_path, &item)
+                    });
+                    if let Err(error) = nyanpasu_owner_support::blocking::join(write.await) {
+                        tracing::error!(
+                            error = %snafu::Report::from_error(&error),
+                            "script module cache write failed"
                         );
                     }
                 }

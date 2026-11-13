@@ -7441,6 +7441,7 @@ dependencies = [
  "nyanpasu-owner-support",
  "nyanpasu-panics",
  "nyanpasu-paths",
+ "nyanpasu-persistence",
  "nyanpasu-profile-io",
  "nyanpasu-rpc",
  "nyanpasu-rpc-protocol",

@@ -8,7 +8,7 @@ cancel_app_update_download | desktop | app_update | - | mutation | system
 change_clash_core | desktop,http | - | elevation,os_integration,presentation | mutation | system
 check_app_update | desktop | app_update | - | mutation | system
 clash_api_delete_connections | desktop,http | - | - | mutation | proxy
-clash_api_get_configs | desktop,http | - | - | query | read
+clash_api_get_configs | desktop,http | - | - | query | sensitive_read
 clash_api_get_group_delay | desktop,http | - | presentation | query | proxy
 clash_api_get_providers_proxies | desktop,http | - | presentation | query | read
 clash_api_get_providers_rules | desktop,http | - | - | query | read
@@ -98,11 +98,14 @@ open_logs_dir | desktop | opener | - | mutation | system
 open_native_file_dialog | desktop | dialog | - | mutation | system
 open_that | desktop | opener | - | mutation | system
 open_web_url | desktop | opener | - | mutation | system
-patch_app_config | desktop,http | - | os_integration,presentation,elevation | mutation | system
-patch_clash_config | desktop,http | - | elevation,os_integration,presentation | mutation | system
+patch_app_config | desktop,http | - | os_integration,presentation,elevation | mutation | settings
+patch_clash_config | desktop,http | - | elevation,os_integration,presentation | mutation | settings
+patch_clash_system_config | desktop,http | - | elevation,os_integration,presentation | mutation | system
 patch_profile_metadata | desktop,http | - | presentation | mutation | profile
 patch_remote_profile_options | desktop,http | - | elevation,os_integration,presentation | mutation | profile
-patch_runtime_overrides | desktop,http | - | elevation,os_integration,presentation | mutation | system
+patch_runtime_access | desktop,http | - | elevation,os_integration,presentation | mutation | system
+patch_runtime_overrides | desktop,http | - | elevation,os_integration,presentation | mutation | settings
+patch_system_settings | desktop,http | - | os_integration,presentation,elevation | mutation | system
 probe_direct_egress | desktop,http | - | - | mutation | settings
 probe_profile_url | desktop | - | - | query | sensitive_read
 query_core_logs | desktop,http | - | - | query | sensitive_read
@@ -137,6 +140,7 @@ set_hotkeys | desktop | - | hotkey | mutation | system
 set_profile_layout | desktop,http | - | presentation | mutation | profile
 set_profile_valid_fields | desktop,http | - | elevation,os_integration,presentation | mutation | profile
 set_proxy_group_layout | desktop,http | - | presentation | mutation | profile
+set_proxy_mode | desktop,http | - | elevation,os_integration,presentation | mutation | proxy
 set_release_channel | desktop | - | - | mutation | settings
 set_remote_access | desktop | http_server | - | mutation | remote_admin
 set_service_mode | desktop | - | elevation,os_integration,presentation | mutation | system

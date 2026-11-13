@@ -24,7 +24,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashConfig, useClashSetting } from '@nyanpasu/query'
+import { useClashConfig, useClashSystemSetting } from '@nyanpasu/query'
 import {
   type ClashApiConfig,
   type PortStrategy,
@@ -260,7 +260,7 @@ const ROW_BUTTON_CLASS =
   'text-on-surface! h-auto w-full rounded-none px-5 text-left text-base'
 
 export function MixedPortConfig() {
-  const mixedPort = useClashSetting('mixed_port')
+  const mixedPort = useClashSystemSetting('mixed_port')
 
   const clashConfig = useClashConfig()
 
@@ -320,7 +320,7 @@ export function OptionalPortConfig({
   field: keyof typeof OPTIONAL_PORTS
   onApplied?: () => Promise<unknown> | unknown
 }) {
-  const setting = useClashSetting(field)
+  const setting = useClashSystemSetting(field)
 
   const clashConfig = useClashConfig()
 

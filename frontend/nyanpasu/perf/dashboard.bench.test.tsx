@@ -145,7 +145,9 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
   return {
     ...(await importOriginal<object>()),
     useSetting: (key: string) => settings[key],
+    useSystemSetting: (key: string) => settings[key],
     useClashSetting: (key: string) => settings[key],
+    useClashSystemSetting: (key: string) => settings[key],
     useSystemProxy: () => systemProxy,
     useClashConfig: () => clashConfig,
     useCoreStatus: () => coreStatus,

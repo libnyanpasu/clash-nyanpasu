@@ -862,9 +862,12 @@ mod tests {
                 "import_profile",
                 "patch_app_config",
                 "patch_clash_config",
+                "patch_clash_system_config",
                 "patch_profile_metadata",
                 "patch_remote_profile_options",
+                "patch_runtime_access",
                 "patch_runtime_overrides",
+                "patch_system_settings",
                 "reorder_profile",
                 "reorder_profiles_by_list",
                 "replace_profile_definition",
@@ -875,6 +878,7 @@ mod tests {
                 "set_profile_layout",
                 "set_profile_valid_fields",
                 "set_proxy_group_layout",
+                "set_proxy_mode",
                 "set_release_channel",
                 "set_remote_access",
                 "set_service_mode",
@@ -1415,7 +1419,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 160, "{platform} command inventory");
+            assert_eq!(rows.len(), 164, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)
@@ -1559,8 +1563,12 @@ mod tests {
         }
         for name in [
             "patch_app_config",
+            "patch_system_settings",
             "patch_clash_config",
+            "patch_clash_system_config",
             "patch_runtime_overrides",
+            "patch_runtime_access",
+            "set_proxy_mode",
             "retry_configuration_runtime",
             "change_clash_core",
             "restart_sidecar",

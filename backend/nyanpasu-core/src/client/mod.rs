@@ -1216,6 +1216,15 @@ impl NyanpasuClient {
         Ok(outcome)
     }
 
+    /// Switches the proxy mode and refreshes what shows it. Nothing else of the overrides is
+    /// written, so a caller holding only the proxy permission cannot reach another override.
+    pub async fn set_proxy_mode(
+        &self,
+        mode: nyanpasu_config::clash::config::overrides::Mode,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        self.patch_runtime_overrides(mode.into()).await
+    }
+
     pub async fn patch_clash_config(
         &self,
         patch: ClashConfigPatch,

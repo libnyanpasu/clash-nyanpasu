@@ -449,18 +449,46 @@ export function createRpcClient(
     /**  restart the sidecar */
     restartSidecar: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
+    /**  Patch the ordinary application preferences. */
     patchAppConfig: (patch: ApplicationPreferencesPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_app_config', { patch }),
       ),
-    patchClashConfig: (patch: ClashConfigPatch_Deserialize) =>
+    /**
+     *  Patch the application settings that change how the host behaves: autostart, the system proxy
+     *  and its guard, the bypass list and the PAC URL.
+     */
+    patchSystemSettings: (patch: SystemSettingsPatch_Deserialize) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('patch_system_settings', { patch }),
+      ),
+    /**  Patch the ordinary Clash settings: profile expansion and connection breaking. */
+    patchClashConfig: (patch: ClashSettingsPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_clash_config', { patch }),
       ),
-    /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
-    patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
+    /**
+     *  Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
+     *  the web UI templates and the field filter.
+     */
+    patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('patch_clash_system_config', { patch }),
+      ),
+    /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
+    patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_runtime_overrides', { patch }),
+      ),
+    /**  Patch the controller exposure: LAN access and the controller secret. */
+    patchRuntimeAccess: (patch: ClashAccessPatch_Deserialize) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('patch_runtime_access', { patch }),
+      ),
+    /**  Switch the proxy mode (rule, global, direct, script). */
+    setProxyMode: (mode: Mode) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_proxy_mode', { mode }),
       ),
     changeClashCore: (clashCore: ClashCore_Deserialize) =>
       typedError<null, IpcError>(
@@ -847,10 +875,9 @@ export type AppUpdateStateChanged = AppUpdateSnapshot
  *  A patch of the ordinary preferences.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
- *  preference `null` is a no-op, not a clear. Only the two clearable preferences,
- *  `release_channel` and `pac_url`, treat an explicit `null` as "clear the value"
- *  (a double option), and `window_close` is a nested patch that names only the window kinds it
- *  changes.
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
  *
  *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
  *  as before and a privileged field is refused instead of silently dropped.
@@ -863,10 +890,9 @@ export type ApplicationPreferencesPatch =
  *  A patch of the ordinary preferences.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
- *  preference `null` is a no-op, not a clear. Only the two clearable preferences,
- *  `release_channel` and `pac_url`, treat an explicit `null` as "clear the value"
- *  (a double option), and `window_close` is a nested patch that names only the window kinds it
- *  changes.
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
  *
  *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
  *  as before and a privileged field is refused instead of silently dropped.
@@ -880,14 +906,8 @@ export type ApplicationPreferencesPatch_Deserialize = {
   traffic_graph?: boolean | null
   enable_memory_usage?: boolean | null
   lighten_animation_effects?: boolean | null
-  enable_auto_launch?: boolean | null
   enable_silent_start?: boolean | null
-  enable_system_proxy?: boolean | null
-  enable_proxy_guard?: boolean | null
-  system_proxy_bypass?: string | null
-  proxy_guard_interval?: number | null
   theme_color?: string | null
-  core?: ClashCore_Deserialize | null
   default_latency_test?: string | null
   default_latency_timeout_ms?: number | null
   enable_builtin_enhanced?: boolean | null
@@ -908,7 +928,6 @@ export type ApplicationPreferencesPatch_Deserialize = {
   enable_local_ip_probe?: boolean | null
   stun_servers?: StunServer[] | null
   ip_lookup_providers?: IpLookupProvider[] | null
-  pac_url?: string | null
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
@@ -918,10 +937,9 @@ export type ApplicationPreferencesPatch_Deserialize = {
  *  A patch of the ordinary preferences.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
- *  preference `null` is a no-op, not a clear. Only the two clearable preferences,
- *  `release_channel` and `pac_url`, treat an explicit `null` as "clear the value"
- *  (a double option), and `window_close` is a nested patch that names only the window kinds it
- *  changes.
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
  *
  *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
  *  as before and a privileged field is refused instead of silently dropped.
@@ -935,14 +953,8 @@ export type ApplicationPreferencesPatch_Serialize = {
   traffic_graph?: boolean | null
   enable_memory_usage?: boolean | null
   lighten_animation_effects?: boolean | null
-  enable_auto_launch?: boolean | null
   enable_silent_start?: boolean | null
-  enable_system_proxy?: boolean | null
-  enable_proxy_guard?: boolean | null
-  system_proxy_bypass?: string | null
-  proxy_guard_interval?: number | null
   theme_color?: string | null
-  core?: ClashCore_Serialize | null
   default_latency_test?: string | null
   default_latency_timeout_ms?: number | null
   enable_builtin_enhanced?: boolean | null
@@ -963,7 +975,6 @@ export type ApplicationPreferencesPatch_Serialize = {
   enable_local_ip_probe?: boolean | null
   stun_servers?: StunServer[] | null
   ip_lookup_providers?: IpLookupProvider[] | null
-  pac_url?: string | null
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
@@ -1024,6 +1035,31 @@ export type Bytes = {
   download: number
 }
 
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch =
+  ClashAccessPatch_Serialize | ClashAccessPatch_Deserialize
+
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch_Deserialize = {
+  'allow-lan'?: boolean | null
+  secret?: string | null
+}
+
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch_Serialize = {
+  'allow-lan'?: boolean | null
+  secret?: string | null
+}
+
 export type ClashApiConfig = {
   port: number | null
   mode: string | null
@@ -1077,51 +1113,6 @@ export type ClashConfig = {
   tun_stack: TunStack
   /**  The options of the mips stack, kept while another stack is selected. */
   tun_mips?: MipsConfig
-}
-
-export type ClashConfigPatch =
-  ClashConfigPatch_Serialize | ClashConfigPatch_Deserialize
-
-export type ClashConfigPatch_Deserialize = {
-  overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
-  tun?: TunOverridesPatch_Deserialize
-  web_ui_list?: string[] | null
-  enable_clash_fields?: boolean | null
-  expand_include_all?: boolean | null
-  external_controller?: ExternalControllerStrategyPatch_Deserialize
-  clash_control_channel?: ClashControlChannel | null
-  clash_ipc_disable_http_controller?: boolean | null
-  mixed_port?: PortStrategyPatch_Deserialize
-  socks_port?: PortStrategy | null
-  http_port?: PortStrategy | null
-  redir_port?: PortStrategy | null
-  tproxy_port?: PortStrategy | null
-  transparent_proxy?: TransparentProxyConfigPatch
-  break_connection?: BreakConnectionStrategyPatch_Deserialize
-  tun_stack?: TunStack | null
-  tun_mips?: MipsConfigPatch_Deserialize
-}
-
-export type ClashConfigPatch_Serialize = {
-  overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
-  tun: TunOverridesPatch_Serialize
-  web_ui_list?: string[] | null
-  enable_clash_fields?: boolean | null
-  expand_include_all?: boolean | null
-  external_controller: ExternalControllerStrategyPatch_Serialize
-  clash_control_channel?: ClashControlChannel | null
-  clash_ipc_disable_http_controller?: boolean | null
-  mixed_port: PortStrategyPatch_Serialize
-  socks_port?: PortStrategy | null
-  http_port?: PortStrategy | null
-  redir_port?: PortStrategy | null
-  tproxy_port?: PortStrategy | null
-  transparent_proxy: TransparentProxyConfigPatch
-  break_connection: BreakConnectionStrategyPatch_Serialize
-  tun_stack?: TunStack | null
-  tun_mips: MipsConfigPatch_Serialize
 }
 
 /**
@@ -1246,29 +1237,6 @@ export type ClashGuardOverrides = {
   ipv6: boolean
 }
 
-export type ClashGuardOverridesPatch =
-  ClashGuardOverridesPatch_Serialize | ClashGuardOverridesPatch_Deserialize
-
-export type ClashGuardOverridesPatch_Deserialize = {
-  'log-level'?: LogLevel | null
-  'allow-lan'?: boolean | null
-  mode?: Mode | null
-  secret?: string | null
-  'unified-delay'?: ManageableField<boolean> | null
-  'tcp-concurrent'?: ManageableField<boolean> | null
-  ipv6?: boolean | null
-}
-
-export type ClashGuardOverridesPatch_Serialize = {
-  'log-level'?: LogLevel | null
-  'allow-lan'?: boolean | null
-  mode?: Mode | null
-  secret?: string | null
-  'unified-delay'?: ManageableField<boolean> | null
-  'tcp-concurrent'?: ManageableField<boolean> | null
-  ipv6?: boolean | null
-}
-
 export type ClashInfo = {
   /**  clash core port */
   port: number
@@ -1278,10 +1246,128 @@ export type ClashInfo = {
   secret: string | null
 }
 
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch =
+  | ClashOverridesSettingsPatch_Serialize
+  | ClashOverridesSettingsPatch_Deserialize
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch_Deserialize = {
+  'log-level'?: LogLevel | null
+  ipv6?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
+}
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch_Serialize = {
+  'log-level'?: LogLevel | null
+  ipv6?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
+}
+
 export type ClashRule = {
   type: string
   payload: string
   proxy: string
+}
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch =
+  ClashSettingsPatch_Serialize | ClashSettingsPatch_Deserialize
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch_Deserialize = {
+  expand_include_all?: boolean | null
+  break_connection?: BreakConnectionStrategyPatch_Deserialize
+}
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch_Serialize = {
+  expand_include_all?: boolean | null
+  break_connection: BreakConnectionStrategyPatch_Serialize
+}
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch =
+  ClashSystemPatch_Serialize | ClashSystemPatch_Deserialize
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch_Deserialize = {
+  enable_tun_mode?: boolean | null
+  tun?: TunOverridesPatch_Deserialize
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  external_controller?: ExternalControllerStrategyPatch_Deserialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port?: PortStrategyPatch_Deserialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy?: TransparentProxyConfigPatch
+  tun_stack?: TunStack | null
+  tun_mips?: MipsConfigPatch_Deserialize
+}
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch_Serialize = {
+  enable_tun_mode?: boolean | null
+  tun: TunOverridesPatch_Serialize
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  external_controller: ExternalControllerStrategyPatch_Serialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port: PortStrategyPatch_Serialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy: TransparentProxyConfigPatch
+  tun_stack?: TunStack | null
+  tun_mips: MipsConfigPatch_Serialize
 }
 
 export type ClashVersion = {
@@ -5762,6 +5848,51 @@ export type SystemDnsError =
    */
   | { kind: 'flush_rejected'; command: string; code: number | null }
   | { kind: 'unsupported' }
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch =
+  SystemSettingsPatch_Serialize | SystemSettingsPatch_Deserialize
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch_Deserialize = {
+  enable_auto_launch?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  pac_url?: string | null
+}
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch_Serialize = {
+  enable_auto_launch?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  pac_url?: string | null
+}
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 

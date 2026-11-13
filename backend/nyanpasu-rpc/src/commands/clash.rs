@@ -17,7 +17,7 @@ pub async fn clash_api_get_proxy_delay(
     Ok(client.proxy_delay(name, provider, url, expected).await?)
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn clash_api_get_configs(
     client: RpcState<'_, NyanpasuClient>,

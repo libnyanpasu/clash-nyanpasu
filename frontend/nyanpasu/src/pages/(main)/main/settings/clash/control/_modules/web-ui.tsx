@@ -24,7 +24,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashInfo, useClashSetting } from '@nyanpasu/query'
+import { useClashInfo, useClashSystemSetting } from '@nyanpasu/query'
 import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 import {
   SettingsList,
@@ -121,7 +121,7 @@ const EditItemForm = ({
 }: PropsWithChildren<{ defaultUrl?: string }>) => {
   const { setOpen } = useModal()
 
-  const { value, upsert } = useClashSetting('web_ui_list')
+  const { value, upsert } = useClashSystemSetting('web_ui_list')
 
   const labels = useUrlLabels()
 
@@ -246,7 +246,7 @@ const WebUIItem = ({ url }: { url: string }) => {
     await commands.openWebUrl(formattedUrl)
   })
 
-  const { value, upsert } = useClashSetting('web_ui_list')
+  const { value, upsert } = useClashSystemSetting('web_ui_list')
 
   const handleDelete = useLockFn(async () => {
     await upsert(value?.filter((item) => item !== url) || [])
@@ -281,7 +281,7 @@ const WebUIItem = ({ url }: { url: string }) => {
 }
 
 export default function WebUI() {
-  const { value } = useClashSetting('web_ui_list')
+  const { value } = useClashSystemSetting('web_ui_list')
 
   return (
     <SettingsList data-slot="web-ui-card">

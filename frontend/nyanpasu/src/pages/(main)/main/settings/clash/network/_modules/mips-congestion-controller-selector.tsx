@@ -11,7 +11,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
-  useClashSetting,
+  useClashSystemSetting,
   useConfigFeatures,
   useRuntimeProfile,
 } from '@nyanpasu/query'
@@ -36,9 +36,9 @@ const CONGESTION_CONTROLLER_LABELS: Record<TunCongestionController, string> = {
 export default function MipsCongestionControllerSelector() {
   const features = useConfigFeatures()
 
-  const tunStack = useClashSetting('tun_stack')
+  const tunStack = useClashSystemSetting('tun_stack')
 
-  const tunMips = useClashSetting('tun_mips')
+  const tunMips = useClashSystemSetting('tun_mips')
 
   const runtimeProfile = useRuntimeProfile()
 

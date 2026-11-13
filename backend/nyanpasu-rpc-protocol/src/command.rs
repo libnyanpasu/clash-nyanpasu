@@ -129,6 +129,7 @@ mod tests {
         assert_eq!(
             names(|command| command.scope == Scope::SensitiveRead),
             [
+                "clash_api_get_configs",
                 "get_all_storage_items",
                 "get_app_config",
                 "get_clash_config",
@@ -197,9 +198,9 @@ mod tests {
                 && command.targets.contains(&RpcTarget::Http)),
             [
                 "change_clash_core",
-                "patch_app_config",
-                "patch_clash_config",
-                "patch_runtime_overrides",
+                "patch_clash_system_config",
+                "patch_runtime_access",
+                "patch_system_settings",
                 "restart_sidecar",
                 "retry_configuration_effect",
                 "retry_configuration_runtime",

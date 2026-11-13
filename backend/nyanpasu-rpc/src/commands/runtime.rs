@@ -5,9 +5,13 @@ use crate::error::Result;
 use nyanpasu_config::{
     application::{
         ApplicationPreferencesPatch, ClashCore, IpLookupProviderInfo, NyanpasuAppConfig,
+        SystemSettingsPatch,
     },
     clash::{
-        config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+        config::{
+            ClashConfig, ClashSettingsPatch, ClashSystemPatch,
+            overrides::{ClashAccessPatch, ClashOverridesSettingsPatch, Mode},
+        },
         features::ConfigFeatures,
     },
 };
@@ -124,14 +128,26 @@ pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<Nyan
     Ok(client.get_app_config().await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = system)]
+/// Patch the ordinary application preferences.
+#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
 #[specta::specta]
 pub async fn patch_app_config(
     client: RpcState<'_, NyanpasuClient>,
     patch: ApplicationPreferencesPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // The request type holds only ordinary preferences: privileged fields are refused while
-    // decoding, before this handler is admitted. Each has its own command.
+    // The request type holds only ordinary preferences: fields of another class are refused while
+    // decoding, before this handler is admitted. Each class has its own command.
+    Ok(client.patch_app_config(patch.into()).await?)
+}
+
+/// Patch the application settings that change how the host behaves: autostart, the system proxy
+/// and its guard, the bypass list and the PAC URL.
+#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = system)]
+#[specta::specta]
+pub async fn patch_system_settings(
+    client: RpcState<'_, NyanpasuClient>,
+    patch: SystemSettingsPatch,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.patch_app_config(patch.into()).await?)
 }
 
@@ -147,31 +163,39 @@ pub async fn get_config_features(client: RpcState<'_, NyanpasuClient>) -> Result
     Ok(client.config_features())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+/// Patch the ordinary Clash settings: profile expansion and connection breaking.
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
 #[specta::specta]
 pub async fn patch_clash_config(
     client: RpcState<'_, NyanpasuClient>,
-    patch: ClashConfigPatch,
+    patch: ClashSettingsPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_clash_config(patch).await?)
+    Ok(client.patch_clash_config(patch.into()).await?)
 }
 
-/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
+/// Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
+/// the web UI templates and the field filter.
 #[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[specta::specta]
+pub async fn patch_clash_system_config(
+    client: RpcState<'_, NyanpasuClient>,
+    patch: ClashSystemPatch,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    Ok(client.patch_clash_config(patch.into()).await?)
+}
+
+/// Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency).
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
 pub async fn patch_runtime_overrides(
     client: RpcState<'_, NyanpasuClient>,
-    patch: ClashGuardOverridesPatch,
+    patch: ClashOverridesSettingsPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future patch fields never auto-leak into
-    // logs; the secret is reported by presence only.
+    // Explicit-field whitelist so future patch fields never auto-leak into logs.
     #[cfg(feature = "default-meta")]
     tracing::debug!(
         log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
         unified_delay = ?patch.unified_delay,
         tcp_concurrent = ?patch.tcp_concurrent,
         ipv6 = ?patch.ipv6,
@@ -181,13 +205,37 @@ pub async fn patch_runtime_overrides(
     #[cfg(not(feature = "default-meta"))]
     tracing::debug!(
         log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
         ipv6 = ?patch.ipv6,
         "patch_runtime_overrides"
     );
-    Ok(client.patch_runtime_overrides(patch).await?)
+    Ok(client.patch_runtime_overrides(patch.into()).await?)
+}
+
+/// Patch the controller exposure: LAN access and the controller secret.
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[specta::specta]
+#[tracing_attributes::instrument(skip_all)]
+pub async fn patch_runtime_access(
+    client: RpcState<'_, NyanpasuClient>,
+    patch: ClashAccessPatch,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    // The secret is reported by presence only.
+    tracing::debug!(
+        allow_lan = ?patch.allow_lan,
+        secret = patch.secret.is_some(),
+        "patch_runtime_access"
+    );
+    Ok(client.patch_runtime_overrides(patch.into()).await?)
+}
+
+/// Switch the proxy mode (rule, global, direct, script).
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = proxy)]
+#[specta::specta]
+pub async fn set_proxy_mode(
+    client: RpcState<'_, NyanpasuClient>,
+    mode: Mode,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    Ok(client.set_proxy_mode(mode).await?)
 }
 
 #[nyanpasu_macro::rpc(http, query)]

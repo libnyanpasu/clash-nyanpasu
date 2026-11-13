@@ -30,7 +30,7 @@ import { pointerIntersection } from '@dnd-kit/collision'
 import { useSortable } from '@dnd-kit/react/sortable'
 import {
   memberDelay,
-  useSetting,
+  useProxyGroupIcons,
   type ClashProxiesQuery,
   type ClashProxiesQueryGroupItem,
 } from '@nyanpasu/query'
@@ -64,11 +64,7 @@ function GroupDelay({
   group: ClashProxiesQueryGroupItem
   proxies: ClashProxiesQuery
 }) {
-  const { value: defaultUrl } = useSetting('default_latency_test')
-
-  const delay = group.now
-    ? memberDelay(group.now, group, proxies, defaultUrl ?? '')
-    : undefined
+  const delay = group.now ? memberDelay(group.now, group, proxies) : undefined
 
   if (delay === undefined) {
     return null
@@ -113,6 +109,7 @@ const GroupNavItem = memo(function GroupNavItem({
   const place = layout ? locateGroup(layout, group.name) : undefined
 
   const glyph = GLYPHS[group.type] ?? FALLBACK_GLYPH
+  const icon = useProxyGroupIcons()[group.name]
 
   // The whole item is the drag source; a click still opens the group, so a
   // mouse drag starts only after the pointer moved.
@@ -144,10 +141,10 @@ const GroupNavItem = memo(function GroupNavItem({
               params={{ name: group.name }}
               search={(previous) => ({ q: previous.q })}
             >
-              {group.icon ? (
+              {group.iconConfigured && icon ? (
                 <NavigationListItemIcon image>
                   <CacheImage
-                    icon={group.icon}
+                    icon={icon}
                     className="size-full"
                     // The picture is never clipped, but its placeholder stays round.
                     loadingClassName="rounded-full"

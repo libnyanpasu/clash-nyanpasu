@@ -100,6 +100,7 @@ export function createRpcClient(
     clashApiGetProxyDelay: (
       name: string,
       provider: string | null,
+      group: string | null,
       url: string | null,
       expected: string | null,
     ) =>
@@ -107,6 +108,7 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_proxy_delay', {
           name,
           provider,
+          group,
           url,
           expected,
         }),
@@ -233,6 +235,14 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
+    /**
+     *  Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
+     *  credential, so `get_proxies` only reports whether a group has one.
+     */
+    getProxyGroupIcons: () =>
+      typedError<{ [key in ProxyName]: string }, IpcError>(
+        __RPC_INVOKE('get_proxy_group_icons'),
+      ),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
     isWidgetIconSet: (mode: TrayIcon) =>
@@ -1458,12 +1468,17 @@ export type ClashOverridesSettingsPatch_Serialize = {
 }
 
 /**
- *  Why a Clash read a caller without `sensitive_read` made has no result.
+ *  Why a Clash read or probe a caller without `sensitive_read` made has no result.
  *
- *  The messages are fixed and carry no source: the core's response and the request it failed on
- *  stay out of the error, and the raw diagnostics stay on the protected full queries.
+ *  The messages are fixed and carry no source: the core's response, the request it failed on and
+ *  the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
+ *  protected full queries.
  */
-export type ClashReadError = { kind: 'settings_unavailable' }
+export type ClashReadError =
+  | { kind: 'settings_unavailable' }
+  | { kind: 'proxies_unavailable' }
+  | { kind: 'unknown_group' }
+  | { kind: 'delay_test_failed' }
 
 export type ClashRule = {
   type: string
@@ -5075,12 +5090,21 @@ export type ProxyGroup = {
   now: ProxyName | null
   /**  The member a user pinned; `None` while the core selects on its own. */
   fixed: ProxyName | null
-  /**  The URL the core tests this group's members with; `None` when unset. */
-  testUrl: string | null
+  /**
+   *  Which of a node's delay records this group's members are shown with: [`DEFAULT_TEST_URL_KEY`]
+   *  when the group tests with the app's default URL, else the group's own name. A test URL is
+   *  configuration that may hold a credential, so the key names the source and never the URL;
+   *  the backend resolves the URL itself.
+   */
+  delayKey: string
   /**  The status codes a test must return, in the core's range syntax. */
   expectedStatus: string | null
   hidden: boolean
-  icon: string | null
+  /**
+   *  Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
+   *  credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+   */
+  iconConfigured: boolean
   capabilities: ProxyGroupCapabilities
 }
 

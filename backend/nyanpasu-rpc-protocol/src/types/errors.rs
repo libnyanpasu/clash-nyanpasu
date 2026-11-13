@@ -825,6 +825,9 @@ pub enum HttpServerControlError {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ClashReadError {
     SettingsUnavailable,
+    ProxiesUnavailable,
+    UnknownGroup,
+    DelayTestFailed,
 }
 
 /// A failed command as the frontend receives it.

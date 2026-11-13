@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { CacheImage } from '@/components/ui/image'
-import { useClashProxies } from '@nyanpasu/query'
+import { useClashProxies, useProxyGroupIcons } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 export default function ProxyIcon({ groupName }: { groupName: string }) {
@@ -8,11 +8,13 @@ export default function ProxyIcon({ groupName }: { groupName: string }) {
     proxies: { data: proxies },
   } = useClashProxies()
 
+  const icons = useProxyGroupIcons()
+
   const icon = useMemo(() => {
     const proxyInfo = proxies?.groups.find((p) => p.name === groupName)
 
-    return proxyInfo?.icon
-  }, [groupName, proxies])
+    return proxyInfo?.iconConfigured ? icons[groupName] : undefined
+  }, [groupName, icons, proxies])
 
   return icon ? (
     <CacheImage

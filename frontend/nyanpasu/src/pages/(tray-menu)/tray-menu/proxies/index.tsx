@@ -8,6 +8,7 @@ import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
   useClashProxies,
+  useProxyGroupIcons,
 } from '@nyanpasu/query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ActionButton } from '../_modules/action-button'
@@ -24,6 +25,8 @@ const ProxyButton = ({
   proxy: ClashProxiesQueryGroupItem
   nodes: Record<string, ClashProxiesQueryProxyItem>
 }) => {
+  const icon = useProxyGroupIcons()[proxy.name]
+
   const currentDelay = useMemo(() => {
     const history = nodes[proxy.name]?.history ?? []
 
@@ -50,9 +53,9 @@ const ProxyButton = ({
           name: proxy.name,
         }}
       >
-        {proxy.icon && (
+        {proxy.iconConfigured && icon && (
           <CacheImage
-            icon={proxy.icon}
+            icon={icon}
             className="size-4.5"
             loadingClassName="rounded-full"
           />

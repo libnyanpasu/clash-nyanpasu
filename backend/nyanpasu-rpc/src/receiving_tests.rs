@@ -1087,7 +1087,10 @@ cases!(
     ClashReadError,
     received::ClashReadError,
     present;
-    SettingsUnavailable
+    SettingsUnavailable,
+    ProxiesUnavailable,
+    UnknownGroup,
+    DelayTestFailed
 );
 
 fn degradation(present: bool) -> Degradation {

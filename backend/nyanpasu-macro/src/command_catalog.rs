@@ -352,6 +352,7 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "get_profile_sync_status",
         "get_profiles",
         "get_proxies",
+        "get_proxy_group_icons",
         "get_runtime_config",
         "get_runtime_exists",
         "get_runtime_yaml",

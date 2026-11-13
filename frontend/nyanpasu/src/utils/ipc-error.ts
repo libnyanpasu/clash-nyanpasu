@@ -378,6 +378,12 @@ function clashReadErrorMessage(error: ClashReadError): string {
   switch (error.kind) {
     case 'settings_unavailable':
       return m.error_clash_read_settings_unavailable()
+    case 'proxies_unavailable':
+      return m.error_clash_read_proxies_unavailable()
+    case 'unknown_group':
+      return m.error_clash_read_unknown_group()
+    case 'delay_test_failed':
+      return m.error_clash_read_delay_test_failed()
   }
 }
 

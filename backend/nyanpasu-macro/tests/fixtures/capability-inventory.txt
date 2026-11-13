@@ -68,6 +68,7 @@ get_profile_sync_runs | desktop,http | - | - | query | sensitive_read
 get_profile_sync_status | desktop,http | - | - | query | sensitive_read
 get_profiles | desktop,http,local | - | - | query | sensitive_read
 get_proxies | desktop,http | - | presentation | query | read
+get_proxy_group_icons | desktop,http | - | presentation | query | sensitive_read
 get_release_channel | desktop | - | - | query | read
 get_runtime_config | desktop,http | - | - | query | sensitive_read
 get_runtime_exists | desktop,http | - | - | query | read

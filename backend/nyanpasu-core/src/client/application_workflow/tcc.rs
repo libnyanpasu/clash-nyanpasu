@@ -776,13 +776,7 @@ impl ApplicationWorkflow {
             }
         };
 
-        // The core's own verdict on the exact bytes the reconcile would submit.
-        // Advisory by contract: it never enters the mutating queue and is never
-        // a precondition for a change (core-manager amendment A2). So an absent
-        // capability is not a verdict in either direction — it is skipped and
-        // recorded, and the Try becomes the only authority. A host that *has*
-        // the capability and could not serve it is the §2.4 row that defaults
-        // to a refusal, deferrable only where the command policy allows it.
+        // Validate the exact bytes the reconcile will submit through the local endpoint.
         match self
             .validator
             .check(RuntimeCheckRequest {
@@ -809,16 +803,6 @@ impl ApplicationWorkflow {
                         .build(),
                     },
                 );
-            }
-            RuntimeCheckOutcome::Unavailable(
-                reason @ (RuntimeCheckUnavailable::NoEndpoint { .. }
-                | RuntimeCheckUnavailable::HostUnsupported { .. }),
-            ) => {
-                tracing::debug!(
-                    ?reason,
-                    "no config check capability; the apply is the authority"
-                );
-                *check = CheckRecord::Skipped(describe_unavailable_check(&reason));
             }
             RuntimeCheckOutcome::Unavailable(reason) => {
                 *check = CheckRecord::Unserviceable(describe_unavailable_check(&reason));
@@ -1609,11 +1593,6 @@ fn leaves_service_mode(change: &DomainChange) -> bool {
         if impact::leaves_service_mode(previous, candidate))
 }
 
-/// Why no check ran, typed for the deferral decision.
-///
-/// The retryability read here is the check adapter's own conclusion about what
-/// it observed, not a caller's guess: T4 sets it to `true` exactly when the
-/// host accepted the request and never answered.
 /// The recorded reason a check did not run, as prose rather than a `Debug`
 /// rendering: the receipt's other text fields are read by people.
 fn describe_unavailable_check(reason: &RuntimeCheckUnavailable) -> String {
@@ -1633,6 +1612,7 @@ fn describe_unavailable_check(reason: &RuntimeCheckUnavailable) -> String {
     }
 }
 
+/// Classifies an unavailable check using the adapter's retryability conclusion.
 fn check_cause(reason: &RuntimeCheckUnavailable) -> TryCauseKind {
     match reason {
         RuntimeCheckUnavailable::Backend {
@@ -1640,8 +1620,6 @@ fn check_cause(reason: &RuntimeCheckUnavailable) -> TryCauseKind {
         }
         | RuntimeCheckUnavailable::CandidateUnavailable { .. } => TryCauseKind::Transient,
         RuntimeCheckUnavailable::Backend { .. } => TryCauseKind::Permanent,
-        // Handled before this function: an absent capability is skipped, not
-        // classified as a failure of one.
         RuntimeCheckUnavailable::NoEndpoint { .. }
         | RuntimeCheckUnavailable::HostUnsupported { .. } => TryCauseKind::Permanent,
     }

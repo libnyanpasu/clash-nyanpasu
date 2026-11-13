@@ -16,7 +16,9 @@ use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
 use crate::{
-    actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
+    actor_v2::endpoint::{
+        CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
+    },
     client::{
         NyanpasuClient,
         test_support::{
@@ -64,6 +66,9 @@ impl Endpoint {
 impl ControlEndpoint for Endpoint {
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Local
+    }
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        self.delegate.check_config(submission).await
     }
     async fn api_connection(&self) -> Result<Option<CoreApiConnection>, CoreError> {
         self.api_queries.fetch_add(1, Ordering::SeqCst);

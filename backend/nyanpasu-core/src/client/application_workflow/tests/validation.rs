@@ -30,9 +30,6 @@ struct Graph {
     core: CoreClient,
     preparation: RuntimePreparation,
     validator: CoreCheckValidator,
-    /// Same core and paths, bounded short enough that a host which never
-    /// answers is observable without waiting out the production budget.
-    impatient: CoreCheckValidator,
 }
 
 async fn graph(dir: &tempfile::TempDir) -> Graph {
@@ -62,19 +59,16 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         profiles.snapshot_handle(),
         Arc::new(TestRuntimeBuildPort::from_directory(
             dir.path().join("profiles"),
-            paths.clone(),
+            paths,
         )),
         Arc::new(SessionPortResolver::default()),
     );
-    let validator = CoreCheckValidator::new(core.clone(), paths.clone());
-    let impatient =
-        CoreCheckValidator::with_budget(core.clone(), paths, std::time::Duration::from_millis(50));
+    let validator = CoreCheckValidator::new(&core);
     Graph {
         endpoint,
         core,
         preparation,
         validator,
-        impatient,
     }
 }
 
@@ -131,36 +125,33 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
     );
 }
 
-/// V02 family: a host that cannot run a check says so. "We could not check" is
-/// never reported as "the core accepted it".
 #[tokio::test]
-async fn a_host_without_a_check_reports_unavailable_rather_than_passing() {
-    let dir = tempfile::tempdir().unwrap();
-    let graph = graph(&dir).await;
-    graph
-        .endpoint
-        .set_check_answer(TestCheckAnswer::Unsupported);
-    let prepared = graph.preparation.prepare_latest().await.unwrap();
-    let spec = graph
-        .preparation
-        .core_spec(&prepared.snapshot.target_core)
-        .unwrap();
+async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
+    use super::startup::{DaemonState, Setup};
+    use crate::client::application_workflow::startup::StartupOutcome;
 
-    let outcome = graph
-        .validator
-        .check(RuntimeCheckRequest {
-            core_spec: spec,
-            intent: &prepared.intent,
-        })
-        .await;
+    let graph = super::startup::graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        residual: true,
+        owner_on_service: true,
+        ..Setup::default()
+    })
+    .await;
+    let checked_before = graph.local.delegate.checked().len();
 
-    let RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::HostUnsupported { host, reason }) =
-        outcome
-    else {
-        panic!("expected an explicitly unavailable check, got {outcome:?}");
-    };
-    assert_eq!(host, ExecutionHost::Local);
-    assert!(reason.contains("no config check"));
+    let report = graph.start().await;
+
+    assert_eq!(report.outcome, StartupOutcome::Ready, "{report:?}");
+    assert_eq!(graph.core.status().host, ExecutionHost::Service);
+    let checked = graph.local.delegate.checked();
+    assert_eq!(checked.len(), checked_before + 1);
+    assert!(graph.service_host.delegate.checked().is_empty());
+    assert!(checked[checked_before].staged_config.is_none());
+    assert_eq!(
+        checked[checked_before].config_bytes,
+        graph.service_host.delegate.reconciled_bytes()[0]
+    );
 }
 
 /// A check service that is momentarily unreachable is also not a pass, and it
@@ -281,38 +272,4 @@ async fn the_runtimes_own_check_timeout_is_unavailable_not_a_rejection() {
         "a wedged check binary is retryable; calling it permanent destroys the deferral"
     );
     assert!(message.contains("timed out"));
-}
-
-/// The app's own bound on the call, for a host that accepts the request and
-/// then never answers at all. Same answer: unavailable and retryable, never a
-/// verdict and never a pass.
-#[tokio::test]
-async fn a_host_that_never_answers_elapses_into_unavailable() {
-    let dir = tempfile::tempdir().unwrap();
-    let graph = graph(&dir).await;
-    graph.endpoint.set_check_answer(TestCheckAnswer::Hang);
-    let prepared = graph.preparation.prepare_latest().await.unwrap();
-    let spec = graph
-        .preparation
-        .core_spec(&prepared.snapshot.target_core)
-        .unwrap();
-
-    let outcome = graph
-        .impatient
-        .check(RuntimeCheckRequest {
-            core_spec: spec,
-            intent: &prepared.intent,
-        })
-        .await;
-
-    let RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::Backend {
-        retryable,
-        message,
-        ..
-    }) = outcome
-    else {
-        panic!("a host that never answered has not checked anything, got {outcome:?}");
-    };
-    assert!(retryable);
-    assert!(message.contains("did not answer within"));
 }

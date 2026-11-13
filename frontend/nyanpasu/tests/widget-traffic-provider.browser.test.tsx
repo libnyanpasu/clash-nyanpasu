@@ -84,9 +84,15 @@ function createRpc(storage: string, retention: string | null = '7d') {
       if (retention === null) throw new Error('settings unavailable')
       return { traffic_retention: retention } as T
     }
-    if (method === 'get_profiles') {
+    if (method === 'get_profiles_listing') {
       reports.metadataReads.push(method)
-      return { items: [], valid: [], current: null } as T
+      return {
+        items: [],
+        global_transforms: [],
+        folders: [],
+        proxy_group_layouts: {},
+        current: null,
+      } as T
     }
     if (method === 'query_traffic_report') {
       const request = (params as { request: ReportRequest }).request

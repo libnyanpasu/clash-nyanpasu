@@ -125,9 +125,13 @@ const renderAt = async (
       const method = command === 'call_rpc' ? wire.method : command
 
       if (method === 'get_profiles') {
+        throw new Error(
+          'Proxies sidebar must use get_profiles_listing, not get_profiles',
+        )
+      }
+      if (method === 'get_profiles_listing') {
         return {
           current: 'p',
-          valid: [],
           global_transforms: [],
           items: [],
           folders: [],

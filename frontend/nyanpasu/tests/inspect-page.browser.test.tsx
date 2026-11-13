@@ -325,11 +325,13 @@ async function open({
       if (command !== 'call_rpc')
         throw new Error(`Unexpected command ${command}`)
 
-      if (method === 'get_profiles') {
+      if (method === 'get_profiles' || method === 'get_profiles_listing') {
         return {
           current: 'cfg',
           valid: [],
           global_transforms: ['self'],
+          folders: [],
+          proxy_group_layouts: {},
           items: PROFILES,
         }
       }

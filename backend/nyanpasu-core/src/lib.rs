@@ -29,6 +29,7 @@ mod gxhash_smoke {
     }
 }
 pub mod actor_v2;
+pub mod audit;
 pub mod clash;
 pub mod client;
 pub mod connections;

@@ -524,6 +524,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
         accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
+        audit: None,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     }))

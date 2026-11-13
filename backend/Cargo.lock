@@ -7274,6 +7274,7 @@ dependencies = [
  "indexmap 2.14.2",
  "interprocess",
  "inventory",
+ "jiff",
  "mockall",
  "nyanpasu-config",
  "nyanpasu-contracts",

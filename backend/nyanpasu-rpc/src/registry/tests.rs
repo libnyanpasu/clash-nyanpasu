@@ -683,6 +683,305 @@ fn provider_query_returns_summaries_over_http() {
 }
 
 /// A failure to read the live core settings reports neither the core's response nor the request.
+/// A subscription URL, a custom user agent, a description and an external path never reach the
+/// profile listing or the sync summary, while the full reads keep the original document.
+#[test]
+fn profile_listing_and_sync_summary_serialize_no_source_secret() {
+    use serde_json::json;
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    let profiles_path = args.paths.profiles_path();
+    std::fs::create_dir_all(profiles_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &profiles_path,
+        r#"_nyanpasu:
+  document: profiles
+  schema_revision: 4
+current: remote
+items:
+  - uid: remote
+    name: Remote
+    desc: "see https://notes.invalid/?key=desc-sentinel"
+    type: config
+    config:
+      type: file
+      source:
+        type: remote
+        file: remote.yaml
+        url: "https://alice:userinfo-sentinel@sub-host-sentinel.invalid/path-sentinel/sub?token=query-sentinel"
+        option:
+          user_agent: "Bearer agent-sentinel"
+  - uid: external
+    name: External
+    type: config
+    config:
+      type: file
+      source:
+        type: local
+        binding:
+          type: external
+          file: external.yaml
+          target: /home/alice/external-path-sentinel/config.yaml
+          mode: symlink
+"#,
+    )
+    .unwrap();
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        let (status, listing) =
+            rpc_for_test_call(&app, "get_profiles_listing", json!({}), None).await;
+        assert_eq!(status, StatusCode::OK, "{listing}");
+        let rendered = listing.to_string();
+        assert!(!rendered.contains("sentinel"), "{rendered}");
+        assert_eq!(listing["current"], "remote");
+        assert_eq!(listing["items"][0]["name"], "Remote");
+        assert_eq!(listing["items"][0]["has_desc"], true);
+        assert_eq!(
+            listing["items"][0]["config"]["source"]["option"]["has_user_agent"],
+            true
+        );
+        assert_eq!(
+            listing["items"][1]["config"]["source"]["binding"],
+            json!({"type": "external", "mode": "symlink"})
+        );
+
+        // The full read is a separate, unchanged contract.
+        let (status, full) = rpc_for_test_call(&app, "get_profiles", json!({}), None).await;
+        assert_eq!(status, StatusCode::OK, "{full}");
+        let rendered = full.to_string();
+        assert!(rendered.contains("path-sentinel"), "{rendered}");
+        assert!(rendered.contains("agent-sentinel"), "{rendered}");
+
+        // Each stable reason survives as a typed domain error; the whole envelope is fixed text.
+        for (command, params, reason) in [
+            (
+                "get_profile_sync_status_summary",
+                json!({"uid": "external"}),
+                "not_remote",
+            ),
+            (
+                "get_profile_sync_status_summary",
+                json!({"uid": "ghost-sentinel"}),
+                "unknown_profile",
+            ),
+            (
+                "get_profile_sync_runs_summary",
+                json!({"uid": "ghost-sentinel", "after": null}),
+                "unknown_profile",
+            ),
+            (
+                "get_profile_sync_runs_summary",
+                json!({"uid": "remote", "after": {"sequence": "cursor-sentinel", "id": "x"}}),
+                "invalid_cursor",
+            ),
+        ] {
+            let (status, body) = rpc_for_test_call(&app, command, params, None).await;
+            assert_ne!(status, StatusCode::OK, "{command}: {body}");
+            let rendered = body.to_string();
+            assert!(!rendered.contains("sentinel"), "{command}: {rendered}");
+            assert!(!rendered.contains("alice"), "{command}: {rendered}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "profile_sync_read", "error": {"kind": reason}}),
+                "{command}: {rendered}"
+            );
+        }
+
+        let (status, summary) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_status_summary",
+            json!({"uid": "remote"}),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{summary}");
+        let rendered = summary.to_string();
+        assert!(!rendered.contains("sentinel"), "{rendered}");
+        assert!(summary.get("registration_error").is_none(), "{rendered}");
+        assert!(summary["has_registration_error"].is_boolean(), "{rendered}");
+        assert_eq!(summary["active"], json!([]));
+
+        let (status, runs) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_runs_summary",
+            json!({"uid": "remote", "after": null}),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{runs}");
+        assert_eq!(runs["items"], json!([]));
+    });
+}
+
+/// A run history the journal cannot read. The legacy full query reports the journal's own text,
+/// and the summary keeps the stable reason and none of it.
+#[test]
+fn a_failing_journal_serializes_a_fixed_summary_error() {
+    use nyanpasu_jobs::{
+        Error as JobsError, JobStore, JobsService, Limits, Page, Retention, RunCursor, RunId,
+        RunLog, RunRecord,
+    };
+    use serde_json::json;
+
+    const JOURNAL_SECRET: &str = "/home/alice/journal-sentinel/jobs.redb?token=journal-token";
+
+    /// A journal that holds nothing and cannot list a job's runs.
+    struct UnreadableRuns;
+    impl JobStore for UnreadableRuns {
+        fn recover(&mut self, _: jiff::Timestamp) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn admit(&mut self, record: RunRecord) -> Result<RunRecord, JobsError> {
+            Ok(record)
+        }
+        fn append(&mut self, _: RunId, _: &[RunLog]) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn finish(&mut self, _: &RunRecord, _: &[RunLog]) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn get(&mut self, _: RunId) -> Result<Option<RunRecord>, JobsError> {
+            Ok(None)
+        }
+        fn runs(
+            &mut self,
+            _: &str,
+            _: Option<RunCursor>,
+            _: usize,
+        ) -> Result<Page<RunRecord, RunCursor>, JobsError> {
+            Err(JobsError::Journal(JOURNAL_SECRET.into()))
+        }
+        fn logs(&mut self, _: RunId, _: u64, _: usize) -> Result<Page<RunLog, u64>, JobsError> {
+            Ok(Page {
+                items: vec![],
+                next: None,
+            })
+        }
+        fn prune(&mut self, _: jiff::Timestamp, _: &Retention) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn health(&mut self) -> Result<(), JobsError> {
+            Ok(())
+        }
+    }
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let mut args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    let profiles_path = args.paths.profiles_path();
+    std::fs::create_dir_all(profiles_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &profiles_path,
+        r#"_nyanpasu:
+  document: profiles
+  schema_revision: 4
+current: remote
+items:
+  - uid: remote
+    name: Remote
+    type: config
+    config:
+      type: file
+      source:
+        type: remote
+        file: remote.yaml
+        url: "https://alice:userinfo-sentinel@sub-host-sentinel.invalid/path-sentinel/sub"
+"#,
+    )
+    .unwrap();
+    let mut service = runtime
+        .block_on(JobsService::start(
+            Box::new(UnreadableRuns),
+            nyanpasu_core::client::jobs::capture(),
+            Limits::default(),
+        ))
+        .unwrap();
+    args.jobs = service.client();
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        // The full query is the diagnostic path: it keeps the journal's own text.
+        let (status, full) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_runs",
+            json!({"uid": "remote", "after": null}),
+            None,
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK, "{full}");
+        assert!(full.to_string().contains("journal-sentinel"), "{full}");
+
+        let (status, summary) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_runs_summary",
+            json!({"uid": "remote", "after": null}),
+            None,
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK, "{summary}");
+        let rendered = summary.to_string();
+        for private in ["journal-sentinel", "journal-token", "alice", "jobs.redb"] {
+            assert!(!rendered.contains(private), "{private}: {rendered}");
+        }
+        assert_eq!(
+            summary["domain_error"]["kind"],
+            json!({"domain": "profile_sync_read", "error": {"kind": "unavailable"}}),
+            "{rendered}"
+        );
+    });
+
+    // The owner outlives every caller and drains normally.
+    drop(app);
+    runtime.block_on(async {
+        assert!(service.shutdown().await.unwrap().closed);
+    });
+}
+
 #[test]
 fn a_failed_core_read_serializes_a_fixed_error() {
     use nyanpasu_core::actor_v2::test_support::{endpoint, server};

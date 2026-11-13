@@ -117,7 +117,7 @@ use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub use error::{ClashReadError, ClientError, Result};
+pub use error::{ClashReadError, ClientError, ProfileSyncReadError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
 use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
@@ -1260,6 +1260,12 @@ impl NyanpasuClient {
 
     pub async fn get_profiles(&self) -> Result<Arc<Profiles>> {
         Ok(self.inner.profiles.snapshot())
+    }
+
+    /// The profile structure without subscription URLs, request headers, external paths or
+    /// descriptions. The full document is [`Self::get_profiles`].
+    pub fn get_profiles_listing(&self) -> nyanpasu_config::profile::ProfilesListing {
+        (&*self.inner.profiles.snapshot()).into()
     }
 
     async fn collect_post_commit_degradations(

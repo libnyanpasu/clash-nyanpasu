@@ -830,6 +830,16 @@ pub enum ClashReadError {
     DelayTestFailed,
 }
 
+/// Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProfileSyncReadError {
+    UnknownProfile,
+    NotRemote,
+    InvalidCursor,
+    Unavailable,
+}
+
 /// A failed command as the frontend receives it.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct IpcError {
@@ -856,4 +866,5 @@ pub enum IpcErrorKind {
     Effects(Box<EffectsError>),
     HttpServer(Box<HttpServerControlError>),
     ClashRead(Box<ClashReadError>),
+    ProfileSyncRead(Box<ProfileSyncReadError>),
 }

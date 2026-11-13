@@ -46,6 +46,23 @@ pub enum ClashReadError {
     DelayTestFailed,
 }
 
+/// Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+///
+/// The messages are fixed and carry no source: the journal, the scheduler and the adapters stay
+/// out of the error, and their diagnostics stay on the protected full queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error, serde::Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProfileSyncReadError {
+    #[error("the profile does not exist")]
+    UnknownProfile,
+    #[error("the profile has no remote source to sync")]
+    NotRemote,
+    #[error("the run history cursor is invalid")]
+    InvalidCursor,
+    #[error("the sync status is unavailable")]
+    Unavailable,
+}
+
 impl From<String> for ClientError {
     fn from(value: String) -> Self {
         Self::Custom(value)

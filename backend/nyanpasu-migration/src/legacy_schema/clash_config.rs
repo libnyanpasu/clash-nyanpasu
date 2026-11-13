@@ -8,8 +8,8 @@ use nyanpasu_config::clash::config::{
         BreakConnectionStrategy, PortStrategy, PortStrategyKind, ProxyChangeBreakMode,
     },
 };
-use serde_yaml_ng::{Mapping, Value};
 use std::net::SocketAddr;
+use yaml_serde::{Mapping, Value};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {

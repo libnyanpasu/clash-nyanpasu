@@ -762,7 +762,7 @@ mod tests {
             "{raw}"
         );
         let revision = inspected.into_payload().get("revision").cloned();
-        assert_eq!(revision, Some(serde_yaml_ng::Value::from(1)), "{raw}");
+        assert_eq!(revision, Some(yaml_serde::Value::from(1)), "{raw}");
 
         let reloaded = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -4294,7 +4294,7 @@ mod tests {
                 uid: ProfileId("r1".into()),
                 token: RefreshAttemptToken::nth(1),
                 url: url::Url::parse("https://example.com/sub").unwrap(),
-                definition_fingerprint: serde_yaml_ng::to_string(&definition).unwrap(),
+                definition_fingerprint: yaml_serde::to_string(&definition).unwrap(),
                 outcome: RefreshOutcome::Succeeded {
                     subscription: SubscriptionInfo::default(),
                     suggested_update_interval_minutes: None,
@@ -4444,7 +4444,7 @@ mod tests {
                 uid: ProfileId("r1".into()),
                 token: RefreshAttemptToken::nth(2),
                 url: url::Url::parse("https://example.com/sub").unwrap(),
-                definition_fingerprint: serde_yaml_ng::to_string(&definition).unwrap(),
+                definition_fingerprint: yaml_serde::to_string(&definition).unwrap(),
                 outcome: RefreshOutcome::Succeeded {
                     subscription: SubscriptionInfo {
                         upload: Some(42),

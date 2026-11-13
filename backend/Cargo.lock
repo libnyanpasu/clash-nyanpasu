@@ -1879,7 +1879,6 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "smol-cancellation-token",
  "snafu 0.9.2",
  "specta",
@@ -1931,6 +1930,7 @@ dependencies = [
  "windows-registry 0.6.1",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
+ "yaml_serde",
  "zip 9.5.1",
  "zip-extensions",
 ]
@@ -5897,6 +5897,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libyaml-rs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e126dda6f34391ab7b444f9922055facc83c07a910da3eb16f1e4d9c45dc777"
+
+[[package]]
 name = "linebender_resource_handle"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6736,7 +6742,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "similar",
  "slab",
  "snafu 0.9.2",
@@ -6749,6 +6754,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "yaml_serde",
  "zstd",
 ]
 
@@ -6829,7 +6835,6 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "sha2 0.11.1",
  "snafu 0.9.2",
  "specta",
@@ -6845,6 +6850,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "yaml_serde",
  "zstd",
 ]
 
@@ -6864,7 +6870,7 @@ dependencies = [
  "schemars 1.2.2",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_yaml_ng",
  "specta",
  "tempfile",
  "thiserror 2.0.21",
@@ -7064,13 +7070,13 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "tempfile",
  "thiserror 2.0.21",
  "time",
  "tracing",
  "uuid",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -7204,12 +7210,12 @@ dependencies = [
  "nix 0.31.3",
  "nyanpasu-utils",
  "serde",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "tempfile",
  "thiserror 2.0.21",
  "time",
  "tracing",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -7225,10 +7231,10 @@ dependencies = [
  "nyanpasu-persistence",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "sha2 0.11.1",
  "snafu 0.9.2",
  "tempfile",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -7244,11 +7250,11 @@ dependencies = [
  "nyanpasu-scripts",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "specta",
  "tempfile",
  "url",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -7297,7 +7303,6 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "specta",
  "specta-typescript",
@@ -7312,6 +7317,7 @@ dependencies = [
  "url",
  "uuid",
  "whoami",
+ "yaml_serde",
  "zip 9.5.1",
 ]
 
@@ -7350,11 +7356,11 @@ dependencies = [
  "nyanpasu-profile-transform",
  "serde",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu 0.9.2",
  "specta",
  "tokio",
  "url",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -7378,13 +7384,13 @@ dependencies = [
  "oxc_span",
  "oxc_syntax",
  "serde_json",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "tempfile",
  "test-log",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -7491,11 +7497,11 @@ dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-persistence",
  "serde",
- "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -10614,19 +10620,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
-name = "serde_yaml_ng"
-version = "0.10.0"
-source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
-dependencies = [
- "indexmap 2.14.2",
- "itoa",
- "ryu",
- "serde",
- "specta",
  "unsafe-libyaml",
 ]
 
@@ -14900,6 +14893,19 @@ name = "y4m"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5a4b21e1a62b67a2970e6831bc091d7b87e119e7f9791aef9702e3bef04448"
+
+[[package]]
+name = "yaml_serde"
+version = "0.10.7"
+source = "git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa#17f2267d811a6371bd316e4bb46ccb7a9b39f4fa"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "libyaml-rs",
+ "ryu",
+ "serde",
+ "specta",
+]
 
 [[package]]
 name = "yansi"

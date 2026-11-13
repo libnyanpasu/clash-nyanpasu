@@ -34,7 +34,7 @@ const BASE_CONFIG: &str = "mode: direct\nproxies: []\nextra-key: keep\ncustom-fi
 /// 固定 secret 的 guard overrides(Default 的 secret 是随机 uuid,
 /// nyanpasu-config overrides/mod.rs:75;先例 executor tests/builtin.rs:19-24)。
 fn fixed_overrides() -> ClashGuardOverrides {
-    serde_yaml_ng::from_str(
+    yaml_serde::from_str(
         "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: false\n",
     )
     .unwrap()
@@ -60,19 +60,19 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
     input
 }
 
-fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml_ng::Value {
+fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> yaml_serde::Value {
     let content = FixtureContentSource::new(dir.to_path_buf());
     let dirs = ScriptDirs::under(dir);
     let scripts =
         EnhanceScriptRunner::new(dirs, Arc::new(super::test_extensions::TestExtensions)).unwrap();
     let artifact = RuntimeBuilder::build(input, &content, &scripts).expect("golden build");
-    serde_yaml_ng::to_value(&*artifact.final_config).unwrap()
+    yaml_serde::to_value(&*artifact.final_config).unwrap()
 }
 
-fn assert_matches_fixture(actual: &serde_yaml_ng::Value, name: &str) {
+fn assert_matches_fixture(actual: &yaml_serde::Value, name: &str) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/runtime_builder/fixtures/golden");
     let path = dir.join(name);
-    let rendered = serde_yaml_ng::to_string(actual).unwrap();
+    let rendered = yaml_serde::to_string(actual).unwrap();
     if std::env::var_os("GOLDEN_BLESS").is_some() {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&path, &rendered).unwrap();
@@ -80,7 +80,7 @@ fn assert_matches_fixture(actual: &serde_yaml_ng::Value, name: &str) {
     let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
         panic!("missing golden fixture {name}; run with GOLDEN_BLESS=1 to create it")
     });
-    let expected: serde_yaml_ng::Value = serde_yaml_ng::from_str(&expected).unwrap();
+    let expected: yaml_serde::Value = yaml_serde::from_str(&expected).unwrap();
     assert_eq!(
         actual, &expected,
         "golden drift for {name}; re-bless with GOLDEN_BLESS=1 only if the change is intentional"
@@ -167,7 +167,7 @@ fn golden_clash_rs_builtin_keeps_key_order() {
     input.app.core = ClashCore::ClashRs;
     let mut render = |enable_builtin_enhanced| {
         input.app.enable_builtin_enhanced = enable_builtin_enhanced;
-        serde_yaml_ng::to_string(&build_to_yaml(&input, temp.path())).unwrap()
+        yaml_serde::to_string(&build_to_yaml(&input, temp.path())).unwrap()
     };
 
     let without_builtin = render(false);
@@ -229,7 +229,7 @@ fn issue_5791_meow_auto_route_global_is_inherited_when_unmanaged() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("issue.yaml"), ISSUE_PROFILE).unwrap();
 
-    let global = serde_yaml_ng::Value::from("global");
+    let global = yaml_serde::Value::from("global");
     let cases = [
         // (field filter, fields the filter allows, auto-route setting, expected)
         (
@@ -249,7 +249,7 @@ fn issue_5791_meow_auto_route_global_is_inherited_when_unmanaged() {
             false,
             vec![],
             ManageableField::Managed(true),
-            Some(serde_yaml_ng::Value::from(true)),
+            Some(yaml_serde::Value::from(true)),
         ),
     ];
     for (enable_clash_fields, valid, auto_route, expected) in cases {
@@ -270,12 +270,12 @@ fn issue_5791_meow_auto_route_global_is_inherited_when_unmanaged() {
         assert_eq!(yaml["tun"].get("auto-route"), expected.as_ref(), "{case}");
         assert_eq!(
             yaml["tun"]["enable"],
-            serde_yaml_ng::Value::from(true),
+            yaml_serde::Value::from(true),
             "{case}"
         );
         assert_eq!(
             yaml["tun"]["dns-hijack"],
-            serde_yaml_ng::from_str::<serde_yaml_ng::Value>("[any:53]").unwrap(),
+            yaml_serde::from_str::<yaml_serde::Value>("[any:53]").unwrap(),
             "{case}"
         );
     }

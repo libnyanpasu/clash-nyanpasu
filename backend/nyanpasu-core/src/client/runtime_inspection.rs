@@ -260,8 +260,8 @@ impl RuntimeSnapshot {
                 (&node.tag, config, parent)
             }
         };
-        let yaml = serde_yaml_ng::to_string(&redact_config(config))
-            .context(SerializeRuntimeConfigSnafu)?;
+        let yaml =
+            yaml_serde::to_string(&redact_config(config)).context(SerializeRuntimeConfigSnafu)?;
         let key = tag.node_key();
         Ok(RuntimeInspectionContent {
             diff: parent
@@ -290,8 +290,8 @@ impl RuntimeSnapshot {
 
 /// The core's YAML document as the JSON nodes are compared in.
 fn document_json(config: &str) -> Result<serde_json::Value, RuntimeError> {
-    let value: serde_yaml_ng::Value =
-        serde_yaml_ng::from_str(config).context(SerializeRuntimeConfigSnafu)?;
+    let value: yaml_serde::Value =
+        yaml_serde::from_str(config).context(SerializeRuntimeConfigSnafu)?;
     serde_json::to_value(value).context(ConvertRuntimeConfigSnafu)
 }
 
@@ -688,7 +688,7 @@ pub(crate) mod tests {
             .inspection_content(&summary.snapshot_id, 0)
             .unwrap();
         assert_eq!(
-            serde_yaml_ng::from_str::<serde_json::Value>(&content.yaml).unwrap(),
+            yaml_serde::from_str::<serde_json::Value>(&content.yaml).unwrap(),
             serde_json::json!({"mode": "rule"})
         );
         assert_eq!(content.logs[0].message, "built");
@@ -746,7 +746,7 @@ pub(crate) mod tests {
             let content = snapshot
                 .inspection_content(&summary.snapshot_id, *child)
                 .unwrap();
-            let config: serde_json::Value = serde_yaml_ng::from_str(&content.yaml).unwrap();
+            let config: serde_json::Value = yaml_serde::from_str(&content.yaml).unwrap();
             assert!(content.logs.is_empty());
             assert!(!node.has_logs);
             assert_eq!(node.max_log_level, None);

@@ -44,7 +44,7 @@ async fn session_state_recovers_in_each_migration_and_client_startup() {
                         "migration must recover before clients"
                     );
                     let _: nyanpasu_config::state::PersistentState =
-                        serde_yaml_ng::from_slice(&fs::read(&path).unwrap()).unwrap();
+                        yaml_serde::from_slice(&fs::read(&path).unwrap()).unwrap();
                 }
             }
         }
@@ -75,7 +75,7 @@ async fn session_state_recovers_in_each_migration_and_client_startup() {
             .await
             .unwrap();
         let saved: nyanpasu_config::state::PersistentState =
-            serde_yaml_ng::from_slice(&fs::read(&path).unwrap()).unwrap();
+            yaml_serde::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(saved.window_state.len(), 1);
         let preserved = evidence(path.as_std_path());
         assert_eq!(preserved.len(), 1);
@@ -104,7 +104,7 @@ fn session_evidence_is_preserved_before_partial_config_rejection() {
     ));
     assert_eq!(evidence(path.as_std_path()).len(), 1);
     let _: nyanpasu_config::state::PersistentState =
-        serde_yaml_ng::from_slice(&fs::read(path).unwrap()).unwrap();
+        yaml_serde::from_slice(&fs::read(path).unwrap()).unwrap();
     assert!(
         !paths.application_config_path().exists(),
         "recovery must not invent user configuration"
@@ -246,7 +246,7 @@ fn pending_legacy_hotkey_migration_rebuilds_database_at_its_write_open() {
     assert_eq!(preserved.len(), 1);
     assert_eq!(fs::read(&preserved[0]).unwrap(), b"not a database");
     let application: nyanpasu_config::application::NyanpasuAppConfig =
-        serde_yaml_ng::from_slice(&fs::read(paths.application_config_path()).unwrap()).unwrap();
+        yaml_serde::from_slice(&fs::read(paths.application_config_path()).unwrap()).unwrap();
     assert_eq!(
         application.hotkeys,
         vec!["toggle_tun_mode,Control+T".to_owned()]

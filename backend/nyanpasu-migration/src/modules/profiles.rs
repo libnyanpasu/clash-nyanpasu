@@ -10,11 +10,11 @@ use nyanpasu_persistence::{
 };
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml_ng::{
+use snafu::{OptionExt as _, ResultExt as _};
+use yaml_serde::{
     Mapping, Value,
     value::{Tag, TaggedValue},
 };
-use snafu::{OptionExt as _, ResultExt as _};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -24,9 +24,9 @@ pub enum Error {
         source: std::io::Error,
     },
     #[snafu(display("failed to parse YAML"))]
-    ParseYaml { source: serde_yaml_ng::Error },
+    ParseYaml { source: yaml_serde::Error },
     #[snafu(context(false), display("failed to serialize YAML"))]
-    SerializeYaml { source: serde_yaml_ng::Error },
+    SerializeYaml { source: yaml_serde::Error },
     #[snafu(context(false), display("failed to inspect migration input"))]
     InspectInput {
         source: super::super::MigrationCheckError,
@@ -127,7 +127,7 @@ fn detect_unstamped_revision(ctx: &Ctx) -> Result<u64, Error> {
     let raw = std::fs::read_to_string(&profiles_path).context(ReadFileSnafu {
         path: &profiles_path,
     })?;
-    let profiles: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+    let profiles: Mapping = yaml_serde::from_str(&raw).context(ParseYamlSnafu)?;
     if is_clean_schema(&profiles) {
         return Ok(UNSTAMPED_CEILING);
     }
@@ -170,7 +170,7 @@ impl MigrationStep for MigrateProfilesNullValue {
             profiles.iter_mut().for_each(|(key, value)| {
                 if value.is_null() {
                     println!("detected null value in profiles {key:?} should be migrated");
-                    *value = serde_yaml_ng::Value::Sequence(Vec::new());
+                    *value = yaml_serde::Value::Sequence(Vec::new());
                 }
             });
             write_profiles_atomic(&profiles_path, profiles, None, self.revision())?;
@@ -190,11 +190,11 @@ impl MigrationStep for MigrateProfilesNullValue {
             profiles.iter_mut().for_each(|(key, value)| {
                 if key.is_string() && key.as_str().unwrap() == "chain" && value.is_sequence() {
                     println!("detected sequence value in profiles {key:?} should be migrated");
-                    *value = serde_yaml_ng::Value::Null;
+                    *value = yaml_serde::Value::Null;
                 }
                 if key.is_string() && key.as_str().unwrap() == "current" && value.is_sequence() {
                     println!("detected sequence value in profiles {key:?} should be migrated");
-                    *value = serde_yaml_ng::Value::Null;
+                    *value = yaml_serde::Value::Null;
                 }
             });
             write_profiles_atomic(&profiles_path, profiles, None, self.revision() - 1)?;
@@ -356,7 +356,7 @@ impl MigrationStep for MigrateProfilesRepairSchema {
             }
             let repaired = migrate_clean_schema(payload)?;
             let mut profiles: nyanpasu_config::profile::Profiles =
-                serde_yaml_ng::from_value(Value::Mapping(repaired)).context(ParseYamlSnafu)?;
+                yaml_serde::from_value(Value::Mapping(repaired)).context(ParseYamlSnafu)?;
             let dangling_current = profiles.clear_dangling_current();
             profiles
                 .validate()
@@ -422,7 +422,7 @@ fn run_clean_schema(ctx: &mut Ctx) -> Result<(), Error> {
     // model can load AND validate (design §14.4). Duplicate uids are rejected
     // here by the items deserializer (R13).
     let mut profiles: nyanpasu_config::profile::Profiles =
-        serde_yaml_ng::from_value(Value::Mapping(migrated)).context(ParseYamlSnafu)?;
+        yaml_serde::from_value(Value::Mapping(migrated)).context(ParseYamlSnafu)?;
     let dangling_current = profiles.clear_dangling_current();
     profiles
         .validate()
@@ -1001,7 +1001,7 @@ fn write_profiles_atomic(
 }
 
 fn profiles_mapping(profiles: &nyanpasu_config::profile::Profiles) -> Result<Mapping, Error> {
-    match serde_yaml_ng::to_value(profiles)? {
+    match yaml_serde::to_value(profiles)? {
         Value::Mapping(mapping) => Ok(mapping),
         _ => SerializeMappingSnafu.fail(),
     }
@@ -1048,11 +1048,11 @@ fn migrate_profile_data(mut mapping: Mapping) -> Mapping {
             {
                 item.insert(
                     "type".into(),
-                    serde_yaml_ng::Value::String("script".to_string()),
+                    yaml_serde::Value::String("script".to_string()),
                 );
                 item.insert(
                     "script_type".into(),
-                    serde_yaml_ng::Value::String(script_kind.to_string()),
+                    yaml_serde::Value::String(script_kind.to_string()),
                 );
             }
         }
@@ -1074,7 +1074,7 @@ fn discard_profile_data(mut mapping: Mapping) -> Mapping {
             {
                 item.insert(
                     "type".into(),
-                    serde_yaml_ng::Value::Tagged(Box::new(TaggedValue {
+                    yaml_serde::Value::Tagged(Box::new(TaggedValue {
                         tag: Tag::new("script"),
                         value: script_kind,
                     })),
@@ -1262,9 +1262,9 @@ items:
 
     #[test]
     fn clean_schema_detection() {
-        let clean: Mapping = serde_yaml_ng::from_str(CLEAN_SAMPLE).unwrap();
+        let clean: Mapping = yaml_serde::from_str(CLEAN_SAMPLE).unwrap();
         assert!(is_clean_schema(&clean));
-        let legacy: Mapping = serde_yaml_ng::from_str(MIGRATED_SAMPLE).unwrap();
+        let legacy: Mapping = yaml_serde::from_str(MIGRATED_SAMPLE).unwrap();
         assert!(!is_clean_schema(&legacy));
         assert!(is_clean_schema(&Mapping::new()));
     }
@@ -1327,7 +1327,7 @@ items:
         assert_eq!(state.module_state("profiles").applied_revision, 4);
 
         let raw = std::fs::read_to_string(&path).unwrap();
-        let profiles: nyanpasu_config::profile::Profiles = serde_yaml_ng::from_str(&raw).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = yaml_serde::from_str(&raw).unwrap();
         assert_eq!(profiles.current.unwrap().0, "a");
         assert_eq!(
             std::fs::read_to_string(path.with_extension("yaml.recovery.bak")).unwrap(),
@@ -1336,7 +1336,7 @@ items:
     }
 
     fn item(yaml: &str) -> Mapping {
-        serde_yaml_ng::from_str(yaml).unwrap()
+        yaml_serde::from_str(yaml).unwrap()
     }
 
     fn migrate_item_for_test(item: Mapping) -> Result<Mapping, CleanSchemaError> {
@@ -1357,10 +1357,10 @@ items:
     }
 
     fn yaml_eq(actual: &Mapping, expected: &str) {
-        let expected: Mapping = serde_yaml_ng::from_str(expected).unwrap();
+        let expected: Mapping = yaml_serde::from_str(expected).unwrap();
         pretty_assertions::assert_eq!(
-            serde_yaml_ng::to_value(actual).unwrap(),
-            serde_yaml_ng::to_value(&expected).unwrap()
+            yaml_serde::to_value(actual).unwrap(),
+            yaml_serde::to_value(&expected).unwrap()
         );
     }
 
@@ -1747,7 +1747,7 @@ items:
         // 输出带头注释,且能被新类型加载并通过 validate
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.starts_with("# Profiles Config for Clash Nyanpasu\n\n"));
-        let profiles: nyanpasu_config::profile::Profiles = serde_yaml_ng::from_str(&raw).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = yaml_serde::from_str(&raw).unwrap();
         profiles.validate().unwrap();
         assert_eq!(profiles.items.len(), 7);
         assert!(profiles.current.is_some());
@@ -1780,7 +1780,7 @@ items:
             legacy
         );
         let raw = std::fs::read_to_string(&path).unwrap();
-        let profiles: nyanpasu_config::profile::Profiles = serde_yaml_ng::from_str(&raw).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = yaml_serde::from_str(&raw).unwrap();
         profiles.validate().unwrap();
         assert!(profiles.global_transforms.is_empty());
         assert_eq!(profiles.items.len(), 1);
@@ -1868,17 +1868,17 @@ items:
 
     #[test]
     fn test_migrate_existing_data() {
-        let original_data = serde_yaml_ng::from_str::<Mapping>(ORIGINAL_SAMPLE).unwrap();
+        let original_data = yaml_serde::from_str::<Mapping>(ORIGINAL_SAMPLE).unwrap();
         let migrated_data = migrate_profile_data(original_data);
-        let output_data = serde_yaml_ng::to_string(&migrated_data).unwrap();
+        let output_data = yaml_serde::to_string(&migrated_data).unwrap();
         assert_str_eq!(output_data, MIGRATED_SAMPLE);
     }
 
     #[test]
     fn test_discard_existing_data() {
-        let migrated_data = serde_yaml_ng::from_str::<Mapping>(MIGRATED_SAMPLE).unwrap();
+        let migrated_data = yaml_serde::from_str::<Mapping>(MIGRATED_SAMPLE).unwrap();
         let original_data = discard_profile_data(migrated_data);
-        let output_data = serde_yaml_ng::to_string(&original_data).unwrap();
+        let output_data = yaml_serde::to_string(&original_data).unwrap();
         assert_str_eq!(output_data, ORIGINAL_SAMPLE);
     }
 }

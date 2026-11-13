@@ -14,7 +14,7 @@ use nyanpasu_config::profile::ScriptRuntime;
 use nyanpasu_config::runtime::executor::{ScriptExecutionError, ScriptOperation};
 use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 #[cfg(any(feature = "javascript", feature = "lua"))]
-use serde_yaml::Mapping;
+use yaml_serde::Mapping;
 
 #[cfg(any(feature = "javascript", feature = "lua"))]
 use super::ScriptWrapper;

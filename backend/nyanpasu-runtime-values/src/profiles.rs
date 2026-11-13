@@ -18,12 +18,12 @@ pub enum ProfileContentError {
     #[snafu(display("the document is not a YAML mapping"))]
     NotYamlMapping {
         #[serde(skip)]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[snafu(display("could not reserialize the YAML mapping"))]
     ReserializeYaml {
         #[serde(skip)]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[snafu(display("the subscription contains neither `proxies` nor `proxy-providers`"))]
     MissingProxies,
@@ -110,7 +110,7 @@ pub enum ProfilesError {
     FingerprintDefinition {
         uid: ProfileId,
         #[serde(skip)]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
 
     #[snafu(display("could not read the file of profile {uid}"))]
@@ -230,7 +230,7 @@ mod tests {
                 } },
             })
         );
-        let source = serde_yaml_ng::from_str::<serde_yaml_ng::Value>("[").unwrap_err();
+        let source = yaml_serde::from_str::<yaml_serde::Value>("[").unwrap_err();
         assert_eq!(
             serde_json::to_value(ProfilesError::ProfileContentRejected {
                 source: ProfileContentError::NotYamlMapping { source },

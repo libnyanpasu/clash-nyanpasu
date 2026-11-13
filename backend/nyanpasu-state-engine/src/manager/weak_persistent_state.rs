@@ -247,14 +247,14 @@ mod tests {
         let temp_dir = tempdir()?;
         let config_path = temp_dir.path().join("test_config.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-        let yaml = serde_yaml_ng::to_string(state)?;
+        let yaml = yaml_serde::to_string(state)?;
         fs::write(&config_path, yaml).await?;
         Ok((config_path, temp_dir))
     }
 
     async fn read_yaml<T: DeserializeOwned>(path: &Utf8PathBuf) -> anyhow::Result<T> {
         let content = fs::read_to_string(path).await?;
-        let value = serde_yaml_ng::from_str(&content)?;
+        let value = yaml_serde::from_str(&content)?;
         Ok(value)
     }
 

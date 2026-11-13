@@ -207,7 +207,7 @@ pub enum LoadProfileError {
     #[snafu(display("could not read profile {uid} at {path}"))]
     ReadContent { uid: ProfileId, path: Utf8PathBuf, source: io::Error },
     #[snafu(display("profile {uid} is not valid YAML"))]
-    ParseContent { uid: ProfileId, source: serde_yaml_ng::Error },
+    ParseContent { uid: ProfileId, source: yaml_serde::Error },
 }
 ```
 

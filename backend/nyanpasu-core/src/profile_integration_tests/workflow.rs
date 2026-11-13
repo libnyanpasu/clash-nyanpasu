@@ -68,8 +68,8 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         assert_eq!(versions(&client), before_versions);
         assert_eq!(bytes(), before_bytes);
         assert_eq!(endpoint.submissions(), 1);
-        let submitted: serde_yaml_ng::Value =
-            serde_yaml_ng::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
+        let submitted: yaml_serde::Value =
+            yaml_serde::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
         let picked = submitted["mixed-port"]
             .as_u64()
             .expect("the submitted document carries its mixed port");
@@ -155,7 +155,7 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =
-            serde_yaml_ng::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
+            yaml_serde::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
         assert_eq!(
             serde_json::to_value(persisted.overrides).unwrap()["mode"],
             "direct"

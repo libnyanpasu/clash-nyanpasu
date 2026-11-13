@@ -256,7 +256,7 @@ let Value::Mapping(payload) = value else {
     return Err(StampError::NotAMapping);
 };
 
-let stamp = serde_yaml_ng::from_value(stamp).map_err(StampError::Malformed)?;
+let stamp = yaml_serde::from_value(stamp).map_err(StampError::Malformed)?;
 ```
 
 ### 7.3 Panic recovery

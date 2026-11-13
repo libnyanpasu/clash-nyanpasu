@@ -6,8 +6,8 @@ use std::{
 };
 
 use atomicwrites::{AllowOverwrite, AtomicFile};
-use serde_yaml_ng::Mapping;
 use snafu::{ResultExt as _, ensure};
+use yaml_serde::Mapping;
 
 use crate::format::{DocumentStamp, StampError};
 
@@ -18,7 +18,7 @@ pub enum Error {
     #[snafu(display("failed to serialize {}", path.display()))]
     SerializeDocument {
         path: PathBuf,
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[snafu(display("destination path has no file name: {}", path.display()))]
     ValidateDestination { path: PathBuf },
@@ -48,7 +48,7 @@ pub fn write_document(
         schema_revision,
     };
     let stamped = crate::format::stamp(payload, &stamp).context(StampDocumentSnafu { path })?;
-    let body = serde_yaml_ng::to_string(&stamped).context(SerializeDocumentSnafu { path })?;
+    let body = yaml_serde::to_string(&stamped).context(SerializeDocumentSnafu { path })?;
     let content = match prefix {
         Some(prefix) => format!("{prefix}\n\n{body}"),
         None => body,

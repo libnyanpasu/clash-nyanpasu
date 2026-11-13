@@ -19,7 +19,6 @@ use nyanpasu_config::{
     profile::ScriptRuntime,
     runtime::executor::{ScriptExecutionError, ScriptOperation, StepLogEntry, StepLogLevel},
 };
-use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -28,6 +27,7 @@ use std::{
     time::Duration,
 };
 use utils::wrap_script_if_not_esm;
+use yaml_serde::Mapping;
 
 use std::result::Result as StdResult;
 
@@ -419,10 +419,10 @@ mod test {
             "export { value } from '../value.mjs';",
         )
         .unwrap();
-        let result = runner.process_honey(serde_yaml::Mapping::new(),
+        let result = runner.process_honey(yaml_serde::Mapping::new(),
             "import { value } from './nested/module.mjs'; export default config => { config.value = value; return config; };",
             &mut Vec::new()).await.unwrap();
-        assert_eq!(result["value"], serde_yaml::Value::from(42));
+        assert_eq!(result["value"], yaml_serde::Value::from(42));
     }
 
     #[test]
@@ -443,11 +443,11 @@ mod test {
             export const marker = {};
             export default config => { config.same = marker === imported; return config; };
         "#,
-            serde_yaml::Mapping::new(),
+            yaml_serde::Mapping::new(),
             ConsoleSink::default(),
         )
         .unwrap();
-        assert_eq!(result["same"], serde_yaml::Value::Bool(true));
+        assert_eq!(result["same"], yaml_serde::Value::Bool(true));
         assert!(!dir.path().join("main.mjs").exists());
     }
 
@@ -466,12 +466,12 @@ mod test {
 
         let result = runner
             .process_honey(
-                serde_yaml::from_str("a: 1").unwrap(),
+                yaml_serde::from_str("a: 1").unwrap(),
                 "export default function main(config) { return config; }",
                 &mut Vec::new(),
             )
             .await;
-        let expected: serde_yaml::Mapping = serde_yaml::from_str("a: 1").unwrap();
+        let expected: yaml_serde::Mapping = yaml_serde::from_str("a: 1").unwrap();
         assert_eq!(result.unwrap(), expected);
         assert_eq!(std::fs::read_dir(&dirs.scripts).unwrap().count(), 0);
     }
@@ -487,7 +487,7 @@ mod test {
             Arc::new(crate::test_extensions::TestExtensions),
         )
         .unwrap();
-        let input = serde_yaml::from_str("existing: true").unwrap();
+        let input = yaml_serde::from_str("existing: true").unwrap();
         let script = r#"
             import { yaml } from 'nyan:utils';
             export default function main(config) {
@@ -499,8 +499,8 @@ mod test {
             }
         "#;
         let result = runner.process_honey(input, script, &mut Vec::new()).await;
-        let expected: serde_yaml::Mapping =
-            serde_yaml::from_str("existing: true\na:\n  b: 1\n  c: 2\n").unwrap();
+        let expected: yaml_serde::Mapping =
+            yaml_serde::from_str("existing: true\na:\n  b: 1\n  c: 2\n").unwrap();
         assert_eq!(result.unwrap(), expected);
     }
 
@@ -518,7 +518,7 @@ mod test {
         let mut logs = Vec::new();
         let result = runner
             .process_honey(
-                serde_yaml::Mapping::new(),
+                yaml_serde::Mapping::new(),
                 "export default function main(config) { console.log('before'); throw new Error('boom'); }",
                 &mut logs,
             )
@@ -527,7 +527,7 @@ mod test {
         assert_eq!(logs, vec![StepLogEntry::new(StepLogLevel::Log, "before")]);
     }
 
-    async fn run_js(script: &str, input: &str) -> serde_yaml::Mapping {
+    async fn run_js(script: &str, input: &str) -> yaml_serde::Mapping {
         use super::{super::runner::Runner, JSRunner};
         use crate::ScriptDirs;
 
@@ -539,13 +539,13 @@ mod test {
         .unwrap();
         let mut logs = Vec::new();
         runner
-            .process_honey(serde_yaml::from_str(input).unwrap(), script, &mut logs)
+            .process_honey(yaml_serde::from_str(input).unwrap(), script, &mut logs)
             .await
             .unwrap_or_else(|e| panic!("{e:?}\nlogs: {logs:?}"))
     }
 
-    fn yaml(text: &str) -> serde_yaml::Mapping {
-        serde_yaml::from_str(text).unwrap()
+    fn yaml(text: &str) -> yaml_serde::Mapping {
+        yaml_serde::from_str(text).unwrap()
     }
 
     #[tokio::test]
@@ -620,7 +620,7 @@ mod test {
         )
         .unwrap();
         runner
-            .process_honey(serde_yaml::Mapping::new(), script, &mut Vec::new())
+            .process_honey(yaml_serde::Mapping::new(), script, &mut Vec::new())
             .await
             .unwrap_err()
             .to_string()
@@ -660,7 +660,7 @@ mod test {
         .unwrap();
         let error = runner
             .process_honey(
-                serde_yaml::Mapping::new(),
+                yaml_serde::Mapping::new(),
                 "export default 42;",
                 &mut Vec::new(),
             )
@@ -695,8 +695,8 @@ mod test {
         let (script_a, script_b) = (script("a"), script("b"));
         let (mut logs_a, mut logs_b) = (Vec::new(), Vec::new());
         let (a, b) = tokio::join!(
-            runner.process_honey(serde_yaml::Mapping::new(), &script_a, &mut logs_a),
-            runner.process_honey(serde_yaml::Mapping::new(), &script_b, &mut logs_b),
+            runner.process_honey(yaml_serde::Mapping::new(), &script_a, &mut logs_a),
+            runner.process_honey(yaml_serde::Mapping::new(), &script_b, &mut logs_b),
         );
         for (tag, result, logs) in [("a", a, logs_a), ("b", b, logs_b)] {
             result.unwrap();
@@ -820,7 +820,7 @@ const foreignNameservers = [
             Arc::new(crate::test_extensions::TestExtensions),
         )
         .unwrap();
-        let mapping = serde_yaml::from_str(
+        let mapping = yaml_serde::from_str(
             r#"
         rules:
                 - RULE-SET,custom-reject,REJECT
@@ -856,16 +856,16 @@ const foreignNameservers = [
                 let mapping = res.unwrap();
                 assert_eq!(
                     mapping["rules"],
-                    serde_yaml::Value::Sequence(vec![
-                        serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
-                        serde_yaml::Value::String("MATCH,🚀".to_string())
+                    yaml_serde::Value::Sequence(vec![
+                        yaml_serde::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
+                        yaml_serde::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
+                        yaml_serde::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
+                        yaml_serde::Value::String("MATCH,🚀".to_string())
                     ])
                 );
                 assert_eq!(
                     mapping["proxies"],
-                    serde_yaml::Value::Sequence(vec![serde_yaml::Value::String(
+                    yaml_serde::Value::Sequence(vec![yaml_serde::Value::String(
                         "Test".to_string()
                     ),])
                 );
@@ -890,7 +890,7 @@ const foreignNameservers = [
             Arc::new(crate::test_extensions::TestExtensions),
         )
         .unwrap();
-        let mapping = serde_yaml::from_str(
+        let mapping = yaml_serde::from_str(
             r#"
         rules:
                 - RULE-SET,custom-reject,REJECT
@@ -938,12 +938,12 @@ const foreignNameservers = [
                 let mapping = res.unwrap();
                 assert_eq!(
                     mapping["rules"],
-                    serde_yaml::Value::Sequence(vec![
-                        serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
-                        serde_yaml::Value::String("aGVsbG8=".to_string()),
-                        serde_yaml::Value::String("d29ybGQ=".to_string()),
+                    yaml_serde::Value::Sequence(vec![
+                        yaml_serde::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
+                        yaml_serde::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
+                        yaml_serde::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
+                        yaml_serde::Value::String("aGVsbG8=".to_string()),
+                        yaml_serde::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
                 assert_eq!(logs, vec![]);
@@ -960,7 +960,7 @@ const foreignNameservers = [
             Arc::new(crate::test_extensions::TestExtensions),
         )
         .unwrap();
-        let mapping = serde_yaml::from_str(
+        let mapping = yaml_serde::from_str(
             r#"
         rules:
                 - RULE-SET,custom-reject,REJECT
@@ -1007,12 +1007,12 @@ const foreignNameservers = [
                 let mapping = res.unwrap();
                 assert_eq!(
                     mapping["rules"],
-                    serde_yaml::Value::Sequence(vec![
-                        serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
-                        serde_yaml::Value::String("aGVsbG8=".to_string()),
-                        serde_yaml::Value::String("d29ybGQ=".to_string()),
+                    yaml_serde::Value::Sequence(vec![
+                        yaml_serde::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
+                        yaml_serde::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
+                        yaml_serde::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
+                        yaml_serde::Value::String("aGVsbG8=".to_string()),
+                        yaml_serde::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
                 assert_eq!(logs, vec![]);

@@ -100,7 +100,7 @@ pub fn runtime_snapshot_data_from_artifact(
         ConfigNotMappingSnafu
     );
     let config_text =
-        serde_yaml_ng::to_string(&*artifact.final_config).context(SerializeFinalConfigSnafu)?;
+        yaml_serde::to_string(&*artifact.final_config).context(SerializeFinalConfigSnafu)?;
     let exists_keys: Vec<String> = artifact.applied_fields.iter().cloned().collect();
     let builtin_names: Vec<String> = if builtin_enabled {
         builtin_transforms_for(core)

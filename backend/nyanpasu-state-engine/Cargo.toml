@@ -23,5 +23,5 @@ fs-err = { workspace = true }
 
 [dev-dependencies]
 tempfile = '3'
-serde_yaml_ng = { workspace = true }
+yaml_serde = { workspace = true }
 tokio = { workspace = true, features = ['full', 'test-util'] }

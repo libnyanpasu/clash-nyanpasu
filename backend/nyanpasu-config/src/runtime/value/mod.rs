@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn yaml_rejects_non_string_keys() {
-        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str("1: one").unwrap();
+        let yaml: yaml_serde::Value = yaml_serde::from_str("1: one").unwrap();
         assert_eq!(
             ConfigValue::try_from(yaml),
             Err(ValueConvertError::NonStringYamlKey)
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn yaml_rejects_tags() {
-        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str("!Tagged value").unwrap();
+        let yaml: yaml_serde::Value = yaml_serde::from_str("!Tagged value").unwrap();
         assert_eq!(
             ConfigValue::try_from(yaml),
             Err(ValueConvertError::TaggedYamlValue)

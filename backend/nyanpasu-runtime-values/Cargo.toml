@@ -19,6 +19,6 @@ specta = { version = '^2.0.0-rc.25', features = ['url'] }
 snafu = { workspace = true }
 url = '2'
 serde_json = { version = '1.0', features = ['preserve_order'] }
-serde_yaml_ng = { workspace = true }
+yaml_serde = { workspace = true }
 atomicwrites = '0.4.4'
 tokio = { workspace = true }

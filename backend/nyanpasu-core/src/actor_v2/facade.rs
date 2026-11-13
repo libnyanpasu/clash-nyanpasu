@@ -1143,10 +1143,10 @@ mod tests {
         }
     }
 
-    fn intent(document: &serde_yaml_ng::Mapping) -> super::RuntimeIntent {
+    fn intent(document: &yaml_serde::Mapping) -> super::RuntimeIntent {
         super::super::intent::RuntimeIntentBuilder::build(
             (&ClashCore::Mihomo).into(),
-            serde_yaml_ng::to_string(document)
+            yaml_serde::to_string(document)
                 .expect("the fixture document serializes")
                 .into(),
             nyanpasu_core_manager::LocalIpcSettings {
@@ -1166,7 +1166,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, Some(expected.clone()));
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1216,7 +1216,7 @@ mod tests {
         });
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1251,7 +1251,7 @@ mod tests {
         local.lose_the_result();
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1301,7 +1301,7 @@ mod tests {
         });
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1325,7 +1325,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, Some(zero_epoch));
         let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
             kind: CoreKind::Mihomo,
             binary_path: Utf8PathBuf::from("fake-mihomo"),
@@ -1387,7 +1387,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         local.lose_the_next_result();
         let lost = facade
             .reconcile(&intent(&document), fake_spec(), &facade.core_status())
@@ -1433,7 +1433,7 @@ mod tests {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
-        let document = serde_yaml_ng::from_str("mode: rule\n").unwrap();
+        let document = yaml_serde::from_str("mode: rule\n").unwrap();
         local.lose_the_next_result();
         let lost = facade
             .reconcile(&intent(&document), fake_spec(), &facade.core_status())

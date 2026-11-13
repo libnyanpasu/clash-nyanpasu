@@ -56,7 +56,7 @@ pub enum RuntimeBuildError {
     #[snafu(display("could not serialize the final config"))]
     SerializeFinalConfig {
         #[serde(skip)]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[snafu(display("the final config is not a mapping"))]
     ConfigNotMapping,
@@ -440,8 +440,8 @@ mod tests {
         input.app.enable_builtin_enhanced = false; // EchoRunner 下 builtin 无意义
         let artifact =
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).expect("bare build");
-        let yaml = serde_yaml_ng::to_value(&*artifact.final_config).expect("artifact to yaml");
-        assert_eq!(yaml["mixed-port"], serde_yaml_ng::Value::from(7890));
+        let yaml = yaml_serde::to_value(&*artifact.final_config).expect("artifact to yaml");
+        assert_eq!(yaml["mixed-port"], yaml_serde::Value::from(7890));
     }
 
     #[test]

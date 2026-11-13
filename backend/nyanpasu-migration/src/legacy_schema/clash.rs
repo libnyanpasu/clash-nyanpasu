@@ -1,5 +1,5 @@
-use serde_yaml_ng::{Mapping, Value};
 use std::{net::SocketAddr, str::FromStr};
+use yaml_serde::{Mapping, Value};
 
 #[derive(Default, Debug, Clone)]
 pub struct IClashTemp(pub Mapping);

@@ -13,7 +13,7 @@ fn seed() -> ProfileMetadata {
 #[test]
 fn absent_fields_are_kept() {
     let mut meta = seed();
-    let patch = serde_yaml_ng::from_str("name: Renamed\n").expect("patch deserializes");
+    let patch = yaml_serde::from_str("name: Renamed\n").expect("patch deserializes");
     meta.apply(patch);
     assert_eq!(meta.name, "Renamed");
     assert_eq!(meta.desc.as_deref(), Some("keep me"));
@@ -22,7 +22,7 @@ fn absent_fields_are_kept() {
 #[test]
 fn explicit_null_clears_desc() {
     let mut meta = seed();
-    let patch = serde_yaml_ng::from_str("desc: null\n").expect("patch deserializes");
+    let patch = yaml_serde::from_str("desc: null\n").expect("patch deserializes");
     meta.apply(patch);
     assert_eq!(meta.desc, None);
 }
@@ -30,7 +30,7 @@ fn explicit_null_clears_desc() {
 #[test]
 fn empty_patch_is_noop_and_sparse() {
     let patch = ProfileMetadata::new_empty_patch();
-    let dumped = serde_yaml_ng::to_string(&patch).expect("serialize empty patch");
+    let dumped = yaml_serde::to_string(&patch).expect("serialize empty patch");
     assert_eq!(
         dumped.trim(),
         "{}",

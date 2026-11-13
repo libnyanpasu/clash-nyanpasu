@@ -134,7 +134,7 @@ macro_rules! unknown_domain {
 unknown_domain!(
     String,
     std::io::Error,
-    serde_yaml::Error,
+    yaml_serde::Error,
     serde_json::Error,
     anyhow::Error,
     nyanpasu_migration::backup::BackupError,

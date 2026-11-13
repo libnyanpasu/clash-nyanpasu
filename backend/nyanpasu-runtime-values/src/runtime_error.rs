@@ -196,7 +196,7 @@ pub enum RuntimeError {
     #[snafu(display("could not render the runtime configuration"))]
     SerializeRuntimeConfig {
         #[serde(skip)]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[snafu(display("could not convert the runtime configuration"))]
     ConvertRuntimeConfig {
@@ -429,7 +429,7 @@ mod tests {
             .unwrap(),
             json!({"kind": "check_unavailable", "reason": {"cause": "backend", "kind": "apply_failed", "message": "check failed", "retryable": false}})
         );
-        let source = serde_yaml_ng::from_str::<serde_yaml_ng::Value>("[").unwrap_err();
+        let source = yaml_serde::from_str::<yaml_serde::Value>("[").unwrap_err();
         assert_eq!(
             serde_json::to_value(RuntimeError::SerializeRuntimeConfig { source }).unwrap(),
             json!({"kind": "serialize_runtime_config"})

@@ -375,10 +375,10 @@ async fn managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_o
             runtime
                 .config()
                 .get("proxies")
-                .and_then(serde_yaml_ng::Value::as_sequence)
+                .and_then(yaml_serde::Value::as_sequence)
                 .and_then(|items| items.first())
                 .and_then(|item| item.get("name"))
-                .and_then(serde_yaml_ng::Value::as_str),
+                .and_then(yaml_serde::Value::as_str),
             Some("t6-fresh")
         );
         client.request_shutdown();

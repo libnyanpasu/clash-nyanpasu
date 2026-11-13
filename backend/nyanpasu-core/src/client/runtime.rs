@@ -108,8 +108,8 @@ impl RuntimeSnapshot {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn config(&self) -> serde_yaml_ng::Mapping {
-        serde_yaml_ng::from_str(&self.config_text).unwrap()
+    pub fn config(&self) -> yaml_serde::Mapping {
+        yaml_serde::from_str(&self.config_text).unwrap()
     }
 
     pub fn identity_eq(&self, other: &Self) -> bool {

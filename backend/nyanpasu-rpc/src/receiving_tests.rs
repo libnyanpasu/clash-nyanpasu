@@ -79,8 +79,8 @@ fn io_source() -> io::Error {
 fn json_source() -> serde_json::Error {
     serde_json::from_str::<bool>("invalid").unwrap_err()
 }
-fn yaml_source() -> serde_yaml::Error {
-    serde_yaml::from_str::<bool>("[").unwrap_err()
+fn yaml_source() -> yaml_serde::Error {
+    yaml_serde::from_str::<bool>("[").unwrap_err()
 }
 
 cases!(

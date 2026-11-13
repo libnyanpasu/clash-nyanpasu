@@ -6,7 +6,7 @@ use struct_patch::Patch;
 fn applies_only_present_fields() {
     let mut opts = RemoteProfileOptions::default();
     let original_interval = opts.update_interval_minutes;
-    let patch = serde_yaml_ng::from_str("with_proxy: false\n").expect("patch deserializes");
+    let patch = yaml_serde::from_str("with_proxy: false\n").expect("patch deserializes");
     opts.apply(patch);
     assert!(!opts.with_proxy);
     assert_eq!(opts.update_interval_minutes, original_interval);
@@ -18,7 +18,7 @@ fn null_clears_user_agent() {
         user_agent: Some("clash-nyanpasu".into()),
         ..RemoteProfileOptions::default()
     };
-    let patch = serde_yaml_ng::from_str("user_agent: null\n").expect("patch deserializes");
+    let patch = yaml_serde::from_str("user_agent: null\n").expect("patch deserializes");
     opts.apply(patch);
     assert_eq!(opts.user_agent, None);
 }
@@ -27,14 +27,14 @@ fn null_clears_user_agent() {
 fn legacy_update_interval_alias_is_gone() {
     // The clean model drops the `update_interval` alias; only the canonical name decodes.
     let patch: RemoteProfileOptionsPatch =
-        serde_yaml_ng::from_str("update_interval_minutes: 240\n").expect("canonical decodes");
+        yaml_serde::from_str("update_interval_minutes: 240\n").expect("canonical decodes");
     assert_eq!(
         patch.update_interval_minutes,
         Some(RemoteSyncInterval::from_minutes(240))
     );
 
     let alias: RemoteProfileOptionsPatch =
-        serde_yaml_ng::from_str("update_interval: 240\n").expect("unknown key is ignored");
+        yaml_serde::from_str("update_interval: 240\n").expect("unknown key is ignored");
     assert_eq!(alias.update_interval_minutes, None, "alias must NOT map");
 }
 
@@ -57,7 +57,7 @@ fn diff_surfaces_only_changed_fields() {
 
 #[test]
 fn sync_interval_is_a_plain_minute_count_where_zero_disables_auto_sync() {
-    let opts: RemoteProfileOptions = serde_yaml_ng::from_str(
+    let opts: RemoteProfileOptions = yaml_serde::from_str(
         "update_interval_minutes: 0
 ",
     )
@@ -65,7 +65,7 @@ fn sync_interval_is_a_plain_minute_count_where_zero_disables_auto_sync() {
     assert!(opts.update_interval_minutes.is_auto_sync_disabled());
     assert_eq!(opts.update_interval_minutes.minutes(), None);
     assert_eq!(
-        serde_yaml_ng::to_string(&opts.update_interval_minutes).unwrap(),
+        yaml_serde::to_string(&opts.update_interval_minutes).unwrap(),
         "0
 "
     );

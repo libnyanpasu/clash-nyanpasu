@@ -21,9 +21,9 @@ impl ConfigSnapshot {
     pub fn diff_yaml_to(
         &self,
         current_yaml: &str,
-    ) -> Result<Vec<SnapshotDiffHunk>, serde_yaml_ng::Error> {
+    ) -> Result<Vec<SnapshotDiffHunk>, yaml_serde::Error> {
         Ok(yaml_diff(
-            &serde_yaml_ng::to_string(&self.config)?,
+            &yaml_serde::to_string(&self.config)?,
             current_yaml,
         ))
     }

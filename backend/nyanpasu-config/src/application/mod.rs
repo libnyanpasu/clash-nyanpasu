@@ -517,7 +517,7 @@ mod patch_tests {
     /// partial must still decode onto the generated `NyanpasuAppConfigPatch`.
     #[test]
     fn patch_honours_legacy_aliases() {
-        let patch: NyanpasuAppConfigPatch = serde_yaml_ng::from_str(
+        let patch: NyanpasuAppConfigPatch = yaml_serde::from_str(
             "proxy_guard_duration: 45\nclash_core: mihomo\nclash_tray_selector: hidden\n",
         )
         .expect("aliased patch must deserialize");
@@ -537,7 +537,7 @@ mod patch_tests {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.traffic_graph = Some(false);
 
-        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
         assert!(dumped.contains("traffic_graph: false"), "got:\n{dumped}");
         assert!(
             !dumped.contains("app_singleton_port"),
@@ -550,7 +550,7 @@ mod patch_tests {
     #[test]
     fn tray_menu_settings_wire_format() {
         let patch: NyanpasuAppConfigPatch =
-            serde_yaml_ng::from_str("tray_menu_mode: native\nwindow_close:\n  tray_menu: hide\n")
+            yaml_serde::from_str("tray_menu_mode: native\nwindow_close:\n  tray_menu: hide\n")
                 .expect("tray menu patch must deserialize");
 
         assert_eq!(patch.tray_menu_mode, Some(TrayMenuMode::Native));
@@ -568,7 +568,7 @@ mod patch_tests {
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.tray_menu_mode = Some(TrayMenuMode::Webview);
-        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
         assert!(dumped.contains("tray_menu_mode: webview"), "got:\n{dumped}");
     }
 
@@ -578,11 +578,11 @@ mod patch_tests {
     #[test]
     fn pac_url_double_option_wire_semantics() {
         let keep: NyanpasuAppConfigPatch =
-            serde_yaml_ng::from_str("traffic_graph: true\n").expect("patch must deserialize");
+            yaml_serde::from_str("traffic_graph: true\n").expect("patch must deserialize");
         assert_eq!(keep.pac_url, None, "absent decodes to outer None (keep)");
 
         let clear: NyanpasuAppConfigPatch =
-            serde_yaml_ng::from_str("pac_url: null\n").expect("patch must deserialize");
+            yaml_serde::from_str("pac_url: null\n").expect("patch must deserialize");
         assert_eq!(
             clear.pac_url,
             Some(None),
@@ -591,7 +591,7 @@ mod patch_tests {
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.pac_url = Some(None);
-        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
         assert!(
             dumped.contains("pac_url: null"),
             "Some(None) -> null, got:\n{dumped}"

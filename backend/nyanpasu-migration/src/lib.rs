@@ -201,7 +201,7 @@ pub enum MigrationCheckError {
     Parse {
         path: PathBuf,
         #[source]
-        source: serde_yaml_ng::Error,
+        source: yaml_serde::Error,
     },
     #[error("failed to read the key-value storage at {}", path.display())]
     Storage {

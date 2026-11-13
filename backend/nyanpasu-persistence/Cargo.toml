@@ -12,7 +12,7 @@ anyhow = '1'
 atomicwrites = '0.4.4'
 backon = { version = '1.0.1', features = ['tokio-sleep'] }
 serde = { version = '1.0', features = ['derive'] }
-serde_yaml_ng = { workspace = true }
+yaml_serde = { workspace = true }
 snafu = { workspace = true }
 thiserror.workspace = true
 time = '0.3'

@@ -2365,7 +2365,7 @@ pub(crate) mod tests {
         ) -> std::result::Result<String, nyanpasu_contracts::service::ServiceCommandError> {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
-                .and_then(|bytes| serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes).ok())
+                .and_then(|bytes| yaml_serde::from_slice::<yaml_serde::Value>(&bytes).ok())
                 .and_then(|config| config.get("enable_service_mode")?.as_bool())
                 .unwrap_or(false);
             if persisted {
@@ -2636,7 +2636,7 @@ pub(crate) mod tests {
         (async {
             let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
-            patch.theme_color = Some(serde_yaml_ng::from_str("\"#123456\"").unwrap());
+            patch.theme_color = Some(yaml_serde::from_str("\"#123456\"").unwrap());
             application
                 .patch(patch)
                 .await
@@ -2776,12 +2776,10 @@ pub(crate) mod tests {
             .inspect_runtime_node(&first.snapshot_id, final_node.id)
             .await
             .unwrap();
-        let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(&content.yaml).unwrap();
+        let config: yaml_serde::Mapping = yaml_serde::from_str(&content.yaml).unwrap();
         let mut expected = client.promoted_runtime().await.unwrap().config();
         assert_ne!(
-            expected
-                .get("secret")
-                .and_then(serde_yaml_ng::Value::as_str),
+            expected.get("secret").and_then(yaml_serde::Value::as_str),
             Some("<redacted>")
         );
         expected.insert("secret".into(), "<redacted>".into());

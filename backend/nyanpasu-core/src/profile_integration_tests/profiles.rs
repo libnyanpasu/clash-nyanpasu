@@ -805,7 +805,7 @@ async fn current_not_config_still_fails_without_rewriting_profiles() {
     profiles.current = Some(ProfileId("ovl1".into()));
     std::fs::write(
         paths.profiles_path(),
-        serde_yaml_ng::to_string(&profiles).unwrap(),
+        yaml_serde::to_string(&profiles).unwrap(),
     )
     .unwrap();
     migrate(&paths);
@@ -837,7 +837,7 @@ async fn dangling_current_does_not_sanitize_invalid_global_transforms() {
     profiles.global_transforms = vec![ProfileId("missing-transform".into())];
     std::fs::write(
         paths.profiles_path(),
-        serde_yaml_ng::to_string(&profiles).unwrap(),
+        yaml_serde::to_string(&profiles).unwrap(),
     )
     .unwrap();
     migrate(&paths);
@@ -870,7 +870,7 @@ async fn dangling_current_is_persisted_without_removing_global_transforms() {
     profiles.global_transforms = vec![ProfileId("ovl1".into())];
     std::fs::write(
         paths.profiles_path(),
-        serde_yaml_ng::to_string(&profiles).unwrap(),
+        yaml_serde::to_string(&profiles).unwrap(),
     )
     .unwrap();
     migrate(&paths);
@@ -890,8 +890,8 @@ async fn dangling_current_is_persisted_without_removing_global_transforms() {
     assert_eq!(saved.current, None);
     assert_eq!(saved.global_transforms, profiles.global_transforms);
     assert_eq!(
-        serde_yaml_ng::to_value(&saved.items).unwrap(),
-        serde_yaml_ng::to_value(&profiles.items).unwrap()
+        yaml_serde::to_value(&saved.items).unwrap(),
+        yaml_serde::to_value(&profiles.items).unwrap()
     );
     assert_eq!(saved.revision(), profiles.revision() + 1);
     shutdown.cancel();
@@ -914,7 +914,7 @@ async fn legacy_dangling_current_is_repaired_before_migration_validation() {
                 paths.profiles_path().as_std_path(),
                 "profiles",
                 revision,
-                serde_yaml_ng::from_str(legacy).unwrap(),
+                yaml_serde::from_str(legacy).unwrap(),
                 None,
             )
             .unwrap();

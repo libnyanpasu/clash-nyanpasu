@@ -387,7 +387,7 @@ fn repair_never_reorders_items() {
 
 #[test]
 fn a_document_without_folders_deserializes_to_none_and_omits_the_field() {
-    let profiles: Profiles = serde_yaml_ng::from_str("items: []\n").unwrap();
+    let profiles: Profiles = yaml_serde::from_str("items: []\n").unwrap();
     assert!(profiles.folders.is_empty());
 
     let value = serde_json::to_value(&profiles).unwrap();
@@ -405,7 +405,7 @@ fn folders_round_trip_in_the_documented_wire_shape() {
         serde_json::json!([{ "id": "f1", "name": "Work", "members": ["a", "b"] }])
     );
 
-    let dumped = serde_yaml_ng::to_string(&profiles).unwrap();
-    let reparsed: Profiles = serde_yaml_ng::from_str(&dumped).unwrap();
+    let dumped = yaml_serde::to_string(&profiles).unwrap();
+    let reparsed: Profiles = yaml_serde::from_str(&dumped).unwrap();
     assert_eq!(reparsed.folders, profiles.folders);
 }

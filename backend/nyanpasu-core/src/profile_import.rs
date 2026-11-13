@@ -4,7 +4,7 @@
 
 use nyanpasu_config::profile::{ScriptRuntime, TransformKind};
 use serde::{Deserialize, Serialize};
-use serde_yaml_ng::Mapping;
+use yaml_serde::Mapping;
 
 /// What a downloaded profile can be imported as.
 #[derive(
@@ -139,7 +139,7 @@ pub fn classify(facts: &ImportFacts<'_>) -> ImportClassification {
         add(kind, ImportSignal::ContentType);
     }
 
-    let mapping = serde_yaml_ng::from_str::<Mapping>(facts.content).ok();
+    let mapping = yaml_serde::from_str::<Mapping>(facts.content).ok();
     let has_proxies = mapping.as_ref().is_some_and(|mapping| {
         mapping.contains_key("proxies") || mapping.contains_key("proxy-providers")
     });

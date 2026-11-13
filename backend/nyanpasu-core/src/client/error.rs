@@ -7,7 +7,7 @@ pub enum ClientError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    SerdeYaml(#[from] serde_yaml_ng::Error),
+    SerdeYaml(#[from] yaml_serde::Error),
     #[error(transparent)]
     SerdeJson(#[from] serde_json::Error),
     #[error(transparent)]

@@ -52,7 +52,7 @@ pub(super) async fn manager_at(dir: &TempDir) -> PersistentStateManager<TestStat
 
 pub(super) async fn read_config(path: &Utf8PathBuf) -> TestState {
     let content = tokio::fs::read_to_string(path).await.unwrap();
-    serde_yaml_ng::from_str(&content).unwrap()
+    yaml_serde::from_str(&content).unwrap()
 }
 
 /// A registered subscriber that swaps the store from outside the coordinator

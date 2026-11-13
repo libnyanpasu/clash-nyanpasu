@@ -12,7 +12,7 @@ const EXPECTED_MERGED: &str = include_str!("fixtures/parity_merged_expected.yaml
 const EXPECTED_BARE: &str = include_str!("fixtures/parity_bare_expected.yaml");
 
 fn expected(yaml: &str) -> Value {
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).unwrap();
+    let value: yaml_serde::Value = yaml_serde::from_str(yaml).unwrap();
     normalized(serde_json::to_value(value).unwrap())
 }
 

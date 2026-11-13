@@ -163,7 +163,7 @@ pub async fn wait_for_source(
 }
 
 pub fn yaml(profiles: &Profiles) -> String {
-    serde_yaml_ng::to_string(profiles).unwrap()
+    yaml_serde::to_string(profiles).unwrap()
 }
 
 pub fn cast(client: &ProfilesClient, message: ProfilesActorMessage) {

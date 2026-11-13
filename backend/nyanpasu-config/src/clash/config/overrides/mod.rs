@@ -119,7 +119,7 @@ mod patch_tests {
     #[test]
     fn patch_uses_kebab_case_and_applies() {
         let patch: ClashGuardOverridesPatch =
-            serde_yaml_ng::from_str("allow-lan: true\nlog-level: debug\n")
+            yaml_serde::from_str("allow-lan: true\nlog-level: debug\n")
                 .expect("kebab-case patch must deserialize");
 
         let mut overrides = ClashGuardOverrides::default();
@@ -172,7 +172,7 @@ mod patch_tests {
         let mut patch = ClashGuardOverrides::new_empty_patch();
         patch.allow_lan = Some(true);
 
-        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
         assert!(dumped.contains("allow-lan: true"), "got:\n{dumped}");
         assert!(
             !dumped.contains("log-level"),

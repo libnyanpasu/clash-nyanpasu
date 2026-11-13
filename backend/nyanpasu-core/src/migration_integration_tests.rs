@@ -48,8 +48,8 @@ fn a_live_storage_is_exported_as_a_consistent_copy() {
 fn assert_yaml_shape_eq(path: std::path::PathBuf, expected: &str) {
     let actual_raw = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let actual: serde_yaml_ng::Value = serde_yaml_ng::from_str(&actual_raw).unwrap();
-    let expected: serde_yaml_ng::Value = serde_yaml_ng::from_str(expected).unwrap();
+    let actual: yaml_serde::Value = yaml_serde::from_str(&actual_raw).unwrap();
+    let expected: yaml_serde::Value = yaml_serde::from_str(expected).unwrap();
     assert_eq!(
         actual,
         expected,
@@ -118,7 +118,7 @@ fn real_1_6_1_fixture_migrates_to_2_0_shape() {
     let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap().value;
     assert_eq!(hotkeys, None);
 
-    let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
+    let application: nyanpasu_config::application::NyanpasuAppConfig = yaml_serde::from_str(
         &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
     )
     .unwrap();
@@ -130,11 +130,11 @@ fn real_1_6_1_fixture_migrates_to_2_0_shape() {
         ],
         "the typed application config is the single authority for hotkeys"
     );
-    let _: nyanpasu_config::state::PersistentState = serde_yaml_ng::from_str(
+    let _: nyanpasu_config::state::PersistentState = yaml_serde::from_str(
         &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
     )
     .unwrap();
-    let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml_ng::from_str(
+    let _: nyanpasu_config::clash::config::ClashConfig = yaml_serde::from_str(
         &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
     )
     .unwrap();
@@ -159,9 +159,9 @@ fn full_chain_keeps_the_key_value_hotkeys() {
 
     // Read back out of the fixture rather than spelled out here, so the
     // assertion tracks whatever the legacy file actually carries.
-    let legacy: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(legacy_raw).unwrap();
+    let legacy: yaml_serde::Mapping = yaml_serde::from_str(legacy_raw).unwrap();
     let expected: Vec<String> = legacy
-        .get(serde_yaml_ng::Value::String("hotkeys".into()))
+        .get(yaml_serde::Value::String("hotkeys".into()))
         .and_then(|value| value.as_sequence())
         .map(|values| {
             values
@@ -186,7 +186,7 @@ fn full_chain_keeps_the_key_value_hotkeys() {
     .unwrap();
     runner.run_pending().unwrap();
 
-    let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
+    let application: nyanpasu_config::application::NyanpasuAppConfig = yaml_serde::from_str(
         &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
     )
     .unwrap();

@@ -1,171 +1,171 @@
-# name | targets | required | optional
+# name | targets | required | optional | effect | scope
 # [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.
 
 [baseline]
-activate_profile | desktop,http | - | elevation,os_integration,presentation
-ask_native_dialog | desktop | dialog | -
-cancel_app_update_download | desktop | app_update | -
-change_clash_core | desktop,http | - | elevation,os_integration,presentation
-check_app_update | desktop | app_update | -
-clash_api_delete_connections | desktop,http | - | -
-clash_api_get_configs | desktop,http | - | -
-clash_api_get_group_delay | desktop,http | - | presentation
-clash_api_get_providers_proxies | desktop,http | - | presentation
-clash_api_get_providers_rules | desktop,http | - | -
-clash_api_get_proxy_delay | desktop,http | - | presentation
-clash_api_get_rules | desktop,http | - | -
-clash_api_get_version | desktop,http | - | -
-clash_api_healthcheck_proxy_provider | desktop,http | - | presentation
-clash_api_update_providers_rules | desktop,http | - | -
-clear_clash_ws_history | desktop,http | - | -
-clear_core_logs | desktop,http | - | -
-clear_proxy_fixed | desktop,http | - | presentation
-clear_storage | desktop,http | - | -
-close_log_session | desktop,http,local | - | -
-collect_logs | desktop | dialog | -
-copy_clash_env | desktop | clipboard | -
-create_config_backup | desktop | - | -
-create_debug_tray_menu_window | desktop | window | -
-create_editor_window | desktop | window | -
-create_http_launch_url | desktop | http_server | -
-create_main_window | desktop | window | -
-create_profile | desktop,http,local | - | elevation,os_integration,presentation
-create_profile_folder | desktop,http | - | presentation
-create_proxy_group_folder | desktop,http | - | presentation
-delete_profile | desktop,http,local | - | elevation,os_integration,presentation
-discard_app_update_package | desktop | app_update | -
-download_app_update | desktop | app_update | -
-enhance_profiles | desktop,http | - | elevation,os_integration,presentation
-fetch_latest_core_versions | desktop,http | - | -
-flush_system_dns_cache | desktop | elevation | -
-get_all_storage_items | desktop,http | - | -
-get_app_config | desktop,http | - | -
-get_app_update_changelog | desktop | - | -
-get_app_update_state | desktop | app_update | -
-get_clash_config | desktop,http | - | -
-get_clash_info | desktop,http | - | -
-get_clash_ws_snapshot | desktop,http | - | -
-get_config_features | desktop,http | - | -
-get_configuration_status | desktop,http,local | - | -
-get_core_agent_skills | desktop,http | - | -
-get_core_dir | desktop,http | - | -
-get_core_log | desktop,http | - | -
-get_core_log_status | desktop,http | - | -
-get_core_status | desktop,http,local | - | -
-get_core_version | desktop | - | -
-get_custom_app_dir | desktop | - | -
-get_hotkey_functions | desktop,http | - | -
-get_hotkeys | desktop,http | - | -
-get_http_server_status | desktop,http | http_server | -
-get_ip_lookup_providers | desktop,http | - | -
-get_ipsb_asn | desktop | - | -
-get_postprocessing_output | desktop,http | - | -
-get_profile_sync_logs | desktop,http | - | -
-get_profile_sync_runs | desktop,http | - | -
-get_profile_sync_status | desktop,http | - | -
-get_profiles | desktop,http,local | - | -
-get_proxies | desktop,http | - | presentation
-get_release_channel | desktop | - | -
-get_runtime_config | desktop,http | - | -
-get_runtime_exists | desktop,http | - | -
-get_runtime_yaml | desktop,http | - | -
-get_service_install_prompt | desktop,http | - | -
-get_storage_item | desktop,http,local | - | -
-get_sys_proxy | desktop,http | os_integration | -
-get_system_accent_color | desktop,http | accent_color | -
-get_traffic_summary | desktop,http | - | -
-get_transparent_proxy_status | desktop | - | -
-import_profile | desktop,http | - | elevation,os_integration,presentation
-inspect_applied_runtime | desktop,http | - | -
-inspect_runtime | desktop,http | - | -
-inspect_runtime_node | desktop,http | - | -
-inspect_updater | desktop,http | - | -
-install_app_update | desktop | app_update | -
-install_service | desktop | elevation | presentation
-invoke_uwp_tool | desktop | - | -
-is_appimage | desktop,http | - | -
-is_portable | desktop,http | - | -
-is_tray_icon_set | desktop,http | - | -
-is_widget_icon_set | desktop,http | - | -
-list_log_files | desktop,http,local | - | -
-mutate_proxies | desktop,http | - | presentation
-open_app_config_dir | desktop | opener | -
-open_app_data_dir | desktop | opener | -
-open_backups_dir | desktop | opener | -
-open_core_dir | desktop | opener | -
-open_log_session | desktop,http,local | - | -
-open_logs_dir | desktop | opener | -
-open_native_file_dialog | desktop | dialog | -
-open_that | desktop | opener | -
-open_web_url | desktop | opener | -
-patch_app_config | desktop,http | - | os_integration,presentation,elevation
-patch_clash_config | desktop,http | - | elevation,os_integration,presentation
-patch_profile_metadata | desktop,http | - | presentation
-patch_remote_profile_options | desktop,http | - | elevation,os_integration,presentation
-patch_runtime_overrides | desktop,http | - | elevation,os_integration,presentation
-probe_direct_egress | desktop,http | - | -
-probe_profile_url | desktop | - | -
-query_core_logs | desktop,http | - | -
-query_logs | desktop,http,local | - | -
-query_traffic_active_connection_ids | desktop,http | - | -
-query_traffic_closed_connections | desktop,http | - | -
-query_traffic_report | desktop,http | - | -
-query_traffic_usage | desktop,http | - | -
-query_traffic_usage_by_keys | desktop,http | - | -
-quit_application | desktop | lifecycle | -
-read_clipboard_text | desktop | clipboard | -
-read_profile_file | desktop,http,local | - | -
-remove_storage_item | desktop,http,local | - | -
-reorder_profile | desktop,http | - | presentation
-reorder_profiles_by_list | desktop,http | - | presentation
-replace_profile_definition | desktop,http | - | elevation,os_integration,presentation
-report_frontend_events | desktop,http | - | -
-report_issue | desktop | opener | -
-report_window_ready | desktop | caller_webview | -
-restart_application | desktop | lifecycle | -
-restart_service | desktop | elevation | presentation
-restart_sidecar | desktop,http | - | elevation,os_integration,presentation
-retry_configuration_effect | desktop,http | - | hotkey,os_integration,presentation
-retry_configuration_runtime | desktop,http | - | elevation,os_integration,presentation
-save_profile_file | desktop,http | - | elevation,os_integration,presentation
-save_window_size_state | desktop | window | -
-select_proxy | desktop,http | - | presentation
-set_clash_ws_recording | desktop,http | - | -
-set_custom_app_dir | desktop | - | -
-set_global_transforms | desktop,http | - | elevation,os_integration,presentation
-set_hotkeys | desktop | - | hotkey
-set_profile_layout | desktop,http | - | presentation
-set_profile_valid_fields | desktop,http | - | elevation,os_integration,presentation
-set_proxy_group_layout | desktop,http | - | presentation
-set_release_channel | desktop | - | -
-set_remote_access | desktop | http_server | -
-set_service_mode | desktop | - | elevation,os_integration,presentation
-set_storage_item | desktop,http,local | - | -
-set_tray_icon | desktop | presentation | -
-set_tray_icon_from_bytes | desktop,http | presentation | -
-set_widget_icon | desktop | presentation | -
-set_widget_icon_from_bytes | desktop,http | presentation | -
-show_native_message_dialog | desktop | dialog | -
-show_native_notification | desktop | notification | -
-simulate_crash | desktop | lifecycle | -
-start_service | desktop | elevation | presentation
-status_service | desktop,http | - | -
-stop_service | desktop | elevation | presentation
-subscribe_clash_connection_details | desktop | caller_webview | -
-take_pending_deep_links | desktop | deep_link | -
-test_stun_server | desktop | - | -
-uninstall_service | desktop | elevation | presentation
-unsubscribe_clash_connection_details | desktop | caller_webview | -
-update_core | desktop | - | elevation,presentation
-update_profile | desktop,http | - | elevation,os_integration,presentation
-update_proxy_provider | desktop,http | - | presentation
-url_delay_test | desktop | - | -
-view_profile | desktop | opener | -
-write_clipboard_text | desktop | clipboard | -
+activate_profile | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+ask_native_dialog | desktop | dialog | - | mutation | system
+cancel_app_update_download | desktop | app_update | - | mutation | system
+change_clash_core | desktop,http | - | elevation,os_integration,presentation | mutation | system
+check_app_update | desktop | app_update | - | mutation | system
+clash_api_delete_connections | desktop,http | - | - | mutation | proxy
+clash_api_get_configs | desktop,http | - | - | query | read
+clash_api_get_group_delay | desktop,http | - | presentation | query | proxy
+clash_api_get_providers_proxies | desktop,http | - | presentation | query | read
+clash_api_get_providers_rules | desktop,http | - | - | query | read
+clash_api_get_proxy_delay | desktop,http | - | presentation | query | proxy
+clash_api_get_rules | desktop,http | - | - | query | read
+clash_api_get_version | desktop,http | - | - | query | read
+clash_api_healthcheck_proxy_provider | desktop,http | - | presentation | mutation | proxy
+clash_api_update_providers_rules | desktop,http | - | - | mutation | profile
+clear_clash_ws_history | desktop,http | - | - | mutation | settings
+clear_core_logs | desktop,http | - | - | mutation | settings
+clear_proxy_fixed | desktop,http | - | presentation | mutation | proxy
+clear_storage | desktop,http | - | - | mutation | settings
+close_log_session | desktop,http,local | - | - | mutation | read
+collect_logs | desktop | dialog | - | mutation | system
+copy_clash_env | desktop | clipboard | - | mutation | system
+create_config_backup | desktop | - | - | mutation | settings
+create_debug_tray_menu_window | desktop | window | - | mutation | system
+create_editor_window | desktop | window | - | mutation | system
+create_http_launch_url | desktop | http_server | - | mutation | remote_admin
+create_main_window | desktop | window | - | mutation | system
+create_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile
+create_profile_folder | desktop,http | - | presentation | mutation | profile
+create_proxy_group_folder | desktop,http | - | presentation | mutation | profile
+delete_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile
+discard_app_update_package | desktop | app_update | - | mutation | system
+download_app_update | desktop | app_update | - | mutation | system
+enhance_profiles | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+fetch_latest_core_versions | desktop,http | - | - | query | read
+flush_system_dns_cache | desktop | elevation | - | mutation | system
+get_all_storage_items | desktop,http | - | - | query | sensitive_read
+get_app_config | desktop,http | - | - | query | sensitive_read
+get_app_update_changelog | desktop | - | - | query | read
+get_app_update_state | desktop | app_update | - | query | read
+get_clash_config | desktop,http | - | - | query | sensitive_read
+get_clash_info | desktop,http | - | - | query | sensitive_read
+get_clash_ws_snapshot | desktop,http | - | - | query | read
+get_config_features | desktop,http | - | - | query | read
+get_configuration_status | desktop,http,local | - | - | query | read
+get_core_agent_skills | desktop,http | - | - | query | read
+get_core_dir | desktop,http | - | - | query | read
+get_core_log | desktop,http | - | - | query | sensitive_read
+get_core_log_status | desktop,http | - | - | query | read
+get_core_status | desktop,http,local | - | - | query | read
+get_core_version | desktop | - | - | query | read
+get_custom_app_dir | desktop | - | - | query | read
+get_hotkey_functions | desktop,http | - | - | query | read
+get_hotkeys | desktop,http | - | - | query | read
+get_http_server_status | desktop,http | http_server | - | query | read
+get_ip_lookup_providers | desktop,http | - | - | query | read
+get_ipsb_asn | desktop | - | - | query | read
+get_postprocessing_output | desktop,http | - | - | query | sensitive_read
+get_profile_sync_logs | desktop,http | - | - | query | sensitive_read
+get_profile_sync_runs | desktop,http | - | - | query | sensitive_read
+get_profile_sync_status | desktop,http | - | - | query | sensitive_read
+get_profiles | desktop,http,local | - | - | query | sensitive_read
+get_proxies | desktop,http | - | presentation | query | read
+get_release_channel | desktop | - | - | query | read
+get_runtime_config | desktop,http | - | - | query | sensitive_read
+get_runtime_exists | desktop,http | - | - | query | read
+get_runtime_yaml | desktop,http | - | - | query | sensitive_read
+get_service_install_prompt | desktop,http | - | - | query | read
+get_storage_item | desktop,http,local | - | - | query | sensitive_read
+get_sys_proxy | desktop,http | os_integration | - | query | read
+get_system_accent_color | desktop,http | accent_color | - | query | read
+get_traffic_summary | desktop,http | - | - | query | read
+get_transparent_proxy_status | desktop | - | - | query | read
+import_profile | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+inspect_applied_runtime | desktop,http | - | - | query | sensitive_read
+inspect_runtime | desktop,http | - | - | query | sensitive_read
+inspect_runtime_node | desktop,http | - | - | query | sensitive_read
+inspect_updater | desktop,http | - | - | query | read
+install_app_update | desktop | app_update | - | mutation | system
+install_service | desktop | elevation | presentation | mutation | system
+invoke_uwp_tool | desktop | - | - | mutation | system
+is_appimage | desktop,http | - | - | query | read
+is_portable | desktop,http | - | - | query | read
+is_tray_icon_set | desktop,http | - | - | query | read
+is_widget_icon_set | desktop,http | - | - | query | read
+list_log_files | desktop,http,local | - | - | query | read
+mutate_proxies | desktop,http | - | presentation | mutation | proxy
+open_app_config_dir | desktop | opener | - | mutation | system
+open_app_data_dir | desktop | opener | - | mutation | system
+open_backups_dir | desktop | opener | - | mutation | system
+open_core_dir | desktop | opener | - | mutation | system
+open_log_session | desktop,http,local | - | - | mutation | read
+open_logs_dir | desktop | opener | - | mutation | system
+open_native_file_dialog | desktop | dialog | - | mutation | system
+open_that | desktop | opener | - | mutation | system
+open_web_url | desktop | opener | - | mutation | system
+patch_app_config | desktop,http | - | os_integration,presentation,elevation | mutation | system
+patch_clash_config | desktop,http | - | elevation,os_integration,presentation | mutation | system
+patch_profile_metadata | desktop,http | - | presentation | mutation | profile
+patch_remote_profile_options | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+patch_runtime_overrides | desktop,http | - | elevation,os_integration,presentation | mutation | system
+probe_direct_egress | desktop,http | - | - | mutation | settings
+probe_profile_url | desktop | - | - | query | sensitive_read
+query_core_logs | desktop,http | - | - | query | sensitive_read
+query_logs | desktop,http,local | - | - | mutation | sensitive_read
+query_traffic_active_connection_ids | desktop,http | - | - | query | read
+query_traffic_closed_connections | desktop,http | - | - | query | read
+query_traffic_report | desktop,http | - | - | query | read
+query_traffic_usage | desktop,http | - | - | query | read
+query_traffic_usage_by_keys | desktop,http | - | - | query | read
+quit_application | desktop | lifecycle | - | mutation | system
+read_clipboard_text | desktop | clipboard | - | query | sensitive_read
+read_profile_file | desktop,http,local | - | - | query | sensitive_read
+remove_storage_item | desktop,http,local | - | - | mutation | settings
+reorder_profile | desktop,http | - | presentation | mutation | profile
+reorder_profiles_by_list | desktop,http | - | presentation | mutation | profile
+replace_profile_definition | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+report_frontend_events | desktop,http | - | - | mutation | settings
+report_issue | desktop | opener | - | mutation | system
+report_window_ready | desktop | caller_webview | - | mutation | system
+restart_application | desktop | lifecycle | - | mutation | system
+restart_service | desktop | elevation | presentation | mutation | system
+restart_sidecar | desktop,http | - | elevation,os_integration,presentation | mutation | system
+retry_configuration_effect | desktop,http | - | hotkey,os_integration,presentation | mutation | system
+retry_configuration_runtime | desktop,http | - | elevation,os_integration,presentation | mutation | system
+save_profile_file | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+save_window_size_state | desktop | window | - | mutation | system
+select_proxy | desktop,http | - | presentation | mutation | proxy
+set_clash_ws_recording | desktop,http | - | - | mutation | settings
+set_custom_app_dir | desktop | - | - | mutation | system
+set_global_transforms | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+set_hotkeys | desktop | - | hotkey | mutation | system
+set_profile_layout | desktop,http | - | presentation | mutation | profile
+set_profile_valid_fields | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+set_proxy_group_layout | desktop,http | - | presentation | mutation | profile
+set_release_channel | desktop | - | - | mutation | settings
+set_remote_access | desktop | http_server | - | mutation | remote_admin
+set_service_mode | desktop | - | elevation,os_integration,presentation | mutation | system
+set_storage_item | desktop,http,local | - | - | mutation | settings
+set_tray_icon | desktop | presentation | - | mutation | system
+set_tray_icon_from_bytes | desktop,http | presentation | - | mutation | system
+set_widget_icon | desktop | presentation | - | mutation | system
+set_widget_icon_from_bytes | desktop,http | presentation | - | mutation | system
+show_native_message_dialog | desktop | dialog | - | mutation | system
+show_native_notification | desktop | notification | - | mutation | system
+simulate_crash | desktop | lifecycle | - | mutation | system
+start_service | desktop | elevation | presentation | mutation | system
+status_service | desktop,http | - | - | query | read
+stop_service | desktop | elevation | presentation | mutation | system
+subscribe_clash_connection_details | desktop | caller_webview | - | mutation | read
+take_pending_deep_links | desktop | deep_link | - | mutation | system
+test_stun_server | desktop | - | - | mutation | settings
+uninstall_service | desktop | elevation | presentation | mutation | system
+unsubscribe_clash_connection_details | desktop | caller_webview | - | mutation | read
+update_core | desktop | - | elevation,presentation | mutation | system
+update_profile | desktop,http | - | elevation,os_integration,presentation | mutation | profile
+update_proxy_provider | desktop,http | - | presentation | mutation | profile
+url_delay_test | desktop | - | - | query | proxy
+view_profile | desktop | opener | - | mutation | system
+write_clipboard_text | desktop | clipboard | - | mutation | system
 
 [windows]
-+ invoke_uwp_tool | desktop | elevation | -
-+ set_custom_app_dir | desktop | dialog,lifecycle,elevation | -
++ invoke_uwp_tool | desktop | elevation | - | mutation | system
++ set_custom_app_dir | desktop | dialog,lifecycle,elevation | - | mutation | system
 
 [linux]
 

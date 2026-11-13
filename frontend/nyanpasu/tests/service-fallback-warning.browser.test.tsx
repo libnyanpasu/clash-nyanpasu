@@ -18,7 +18,7 @@ const coreStatus = (host: 'local' | 'service') => ({
   host,
   connectivity: { kind: 'connected' },
   generation: 1,
-  state: { Running: { epoch: 1, pid: 7 } },
+  state: { Running: { epoch: 1 } },
   state_changed_at: 0,
   revision: null,
   healthy: true,
@@ -26,6 +26,8 @@ const coreStatus = (host: 'local' | 'service') => ({
 
 // #5443: service mode on while the core runs locally is flagged next to the
 // switch, and the core status event alone clears it once the service runs it.
+// The flag reads only the safe summaries; the full status queries carry the
+// daemon's data directories and the core's diagnostic text.
 test('the warning follows the host the core runs on', async ({
   onTestFinished,
 }) => {
@@ -37,18 +39,21 @@ test('the warning follows the host the core runs on', async ({
       switch (method) {
         case 'get_app_settings':
           return { enable_service_mode: true }
-        case 'get_core_status':
+        case 'get_core_status_summary':
           return coreStatus(host)
-        case 'status_service':
+        case 'get_service_status_summary':
           return {
             name: 'nyanpasu-service',
             version: '',
             status: 'not_installed',
-            server: null,
+            server_reported: false,
             compat: { kind: 'unknown' },
             phase: 'not_installed',
             restart_attempts: 0,
           }
+        case 'get_core_status':
+        case 'status_service':
+          throw new Error(`Protected query read by an ordinary view: ${method}`)
         default:
           return null
       }
@@ -86,6 +91,6 @@ test('the warning follows the host the core runs on', async ({
   expect(warning()?.getAttribute('aria-label')).toContain('not installed')
 
   host = 'service'
-  await emit('core-status-changed-event', coreStatus(host))
+  await emit('core-status-summary-changed-event', coreStatus(host))
   await expect.poll(warning).toBeNull()
 })

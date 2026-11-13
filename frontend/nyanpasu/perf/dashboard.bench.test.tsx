@@ -127,12 +127,12 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
   const coreStatus = query({
     status: 'Running',
     type: 'normal',
-    controller: { Http: '127.0.0.1:9090' },
+    controller: 'Http',
   })
-  const systemService = {
-    query: query({ status: 'not_installed', server: null }),
-    upsert: { mutateAsync: noop },
-  }
+  const serviceStatus = query({
+    status: 'not_installed',
+    compat: { kind: 'unknown' },
+  })
   const coreVersion = query('v1.19.0')
   const useHistory = <K extends 'traffic' | 'memory' | 'connections'>(
     kind: K,
@@ -151,7 +151,7 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     useSystemProxy: () => systemProxy,
     useClashConfig: () => clashConfig,
     useCoreStatus: () => coreStatus,
-    useSystemService: () => systemService,
+    useServiceStatus: () => serviceStatus,
     useClashCoreVersion: () => coreVersion,
     useClashTraffic: () => useHistory('traffic'),
     useClashMemory: () => useHistory('memory'),

@@ -822,6 +822,40 @@ fn diagnostic_export_stops_at_the_three_day_boundary() {
 }
 
 #[test]
+fn summary_query_shows_custom_raw_levels_as_unknown_and_rejects_unknown_filter() {
+    use nyanpasu_contracts::logs::CoreLogLevel;
+    use nyanpasu_observers::logs::{CoreLogError, CoreLogPageSummary, CoreLogSummaryQuery};
+
+    let directory = TempDir::new().unwrap();
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    let mut custom = record(1, 32);
+    custom.log_type = "CUSTOM".into();
+    store
+        .append(&[PreparedCoreLog::new(&custom).unwrap()])
+        .unwrap();
+
+    let unfiltered = CoreLogQuery::try_from(CoreLogSummaryQuery {
+        direction: CoreLogDirection::Latest,
+        cursor: None,
+        level: None,
+        limit: 10,
+    })
+    .unwrap();
+    let page = CoreLogPageSummary::from(&store.query(unfiltered).unwrap());
+    assert_eq!(page.rows.len(), 1);
+    assert_eq!(page.rows[0].level, CoreLogLevel::Unknown);
+
+    let err = CoreLogQuery::try_from(CoreLogSummaryQuery {
+        direction: CoreLogDirection::Latest,
+        cursor: None,
+        level: Some(CoreLogLevel::Unknown),
+        limit: 10,
+    })
+    .unwrap_err();
+    assert_eq!(err, CoreLogError::InvalidRequest);
+}
+
+#[test]
 #[ignore = "large-store diagnostic export measurement; run alone with --nocapture"]
 fn diagnostic_export_large_store_measurement() {
     use std::time::Instant;

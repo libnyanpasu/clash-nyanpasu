@@ -37,6 +37,11 @@ export function createRpcClient(
       typedError<CoreLogPage, CoreLogError>(
         __RPC_INVOKE('query_core_logs', { query }),
       ),
+    /**  Public core-log page summary without payloads, source labels, raw timestamps, keyword search, or storage error text. */
+    queryCoreLogsSummary: (query: CoreLogSummaryQuery) =>
+      typedError<CoreLogPageSummary, IpcError>(
+        __RPC_INVOKE('query_core_logs_summary', { query }),
+      ),
     getCoreLog: (cursor: CoreLogCursor) =>
       typedError<CoreLogRecord, CoreLogError>(
         __RPC_INVOKE('get_core_log', { cursor }),
@@ -44,6 +49,11 @@ export function createRpcClient(
     getCoreLogStatus: () =>
       typedError<CoreLogStatus, CoreLogError>(
         __RPC_INVOKE('get_core_log_status'),
+      ),
+    /**  Public core-log status summary without raw storage error messages. */
+    getCoreLogStatusSummary: () =>
+      typedError<CoreLogStatusSummary, IpcError>(
+        __RPC_INVOKE('get_core_log_status_summary'),
       ),
     listLogFiles: (source: LogSource) =>
       typedError<LogFileInfo[], LogError>(
@@ -493,6 +503,11 @@ export function createRpcClient(
       typedError<LogPage, LogError>(
         __RPC_INVOKE('query_logs', { source, request }),
       ),
+    /**  Public app and service log page summary without message text, raw lines, target strings, or text filters. */
+    queryLogsSummary: (source: LogSource, request: QueryLogSummary) =>
+      typedError<LogPageSummary, LogError>(
+        __RPC_INVOKE('query_logs_summary', { source, request }),
+      ),
     closeLogSession: (source: LogSource, session: string) =>
       typedError<null, LogError>(
         __RPC_INVOKE('close_log_session', { source, session }),
@@ -855,6 +870,10 @@ export function createRpcClient(
     coreLogsChanged: makeEvent<CoreLogsChanged>(
       transport.events,
       'core-logs-changed',
+    ),
+    coreLogsSummaryChanged: makeEvent<CoreLogsSummaryChanged>(
+      transport.events,
+      'core-logs-summary-changed',
     ),
     coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
       transport.events,
@@ -1534,6 +1553,11 @@ export type ClashReadError =
   | { kind: 'proxies_unavailable' }
   | { kind: 'unknown_group' }
   | { kind: 'delay_test_failed' }
+  | { kind: 'version_unavailable' }
+  | { kind: 'rules_unavailable' }
+  | { kind: 'rule_providers_unavailable' }
+  | { kind: 'proxy_providers_unavailable' }
+  | { kind: 'streams_unavailable' }
 
 export type ClashRule = {
   type: string
@@ -2315,6 +2339,9 @@ export type CoreLogError =
   | { kind: 'too_large' }
   | { kind: 'unavailable'; message: string }
 
+export type CoreLogLevel =
+  'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'unknown'
+
 export type CoreLogPage = {
   rows: CoreLogRow[]
   /**
@@ -2326,6 +2353,14 @@ export type CoreLogPage = {
   status: CoreLogStatus
 }
 
+/**  Public core-log page summary without raw payloads, source labels, or storage error text. */
+export type CoreLogPageSummary = {
+  rows: CoreLogRowSummary[]
+  cursor: CoreLogCursor | null
+  more: boolean
+  status: CoreLogStatusSummary
+}
+
 export type CoreLogQuery = {
   direction: CoreLogDirection
   cursor: CoreLogCursor | null
@@ -2333,6 +2368,19 @@ export type CoreLogQuery = {
   keyword: string
   limit: number
 }
+
+/**
+ *  Why a core log query a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: backend store paths and storage errors stay out of
+ *  the error, and their diagnostics stay on the protected full queries.
+ */
+export type CoreLogReadError =
+  | { kind: 'invalid_request' }
+  | { kind: 'cursor_expired' }
+  | { kind: 'record_gone' }
+  | { kind: 'too_large' }
+  | { kind: 'unavailable' }
 
 export type CoreLogRecord = {
   source: CoreLogSource
@@ -2345,6 +2393,15 @@ export type CoreLogRecord = {
 export type CoreLogRow = {
   id: CoreLogCursor
   record: CoreLogRecord
+  truncated: boolean
+}
+
+/**  Public core-log entry summary without payload text, raw time string, or source strings. */
+export type CoreLogRowSummary = {
+  id: CoreLogCursor
+  received_at: number
+  level: CoreLogLevel
+  has_payload: boolean
   truncated: boolean
 }
 
@@ -2374,8 +2431,31 @@ export type CoreLogStatus = {
   discarded: number
 }
 
+/**  Public core-log status without raw storage error messages. */
+export type CoreLogStatusSummary = {
+  generation: string
+  version: number
+  first: CoreLogCursor | null
+  head: CoreLogCursor | null
+  bytes: number
+  has_error: boolean
+  discarded: number
+}
+
+/**  Public core-log page query without arbitrary keyword filtering over payload text. */
+export type CoreLogSummaryQuery = {
+  direction: CoreLogDirection
+  cursor: CoreLogCursor | null
+  level: CoreLogLevel | null
+  limit: number
+}
+
 export type CoreLogsChanged = {
   status: CoreLogStatus
+}
+
+export type CoreLogsSummaryChanged = {
+  status: CoreLogStatusSummary
 }
 
 /**  A failure of locating the binary a core is started from. */
@@ -3247,6 +3327,7 @@ export type IpcErrorKind =
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
   | { domain: 'clash_read'; error: ClashReadError }
+  | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
 
 export type JournalDto =
@@ -3328,6 +3409,13 @@ export type LogFileInfo = {
   bytes: string
 }
 
+/**  Public filter for app/service log summaries without text or target substring search. */
+export type LogFilterSummary = {
+  levels: Level[]
+  from_ms: number | null
+  to_ms: number | null
+}
+
 export type LogLevel = 'silent' | 'error' | 'warning' | 'info' | 'debug'
 
 export type LogPage = {
@@ -3348,6 +3436,22 @@ export type LogPage = {
 export type LogPageDto = {
   items: LogDto[]
   next: string | null
+}
+
+/**  Public app/service log page without raw line text, log messages, or target names. */
+export type LogPageSummary = {
+  rows: LogRowSummary[]
+  cursor: LogCursor
+  head: LogCursor
+  start: string
+  file: string
+  building: boolean
+  more: boolean
+  partial: boolean
+  malformed: string
+  truncated: string
+  indexed_bytes: string
+  file_bytes: string
 }
 
 /**
@@ -3429,6 +3533,16 @@ export type LogRow = {
   target: string
   message: string
   raw: string
+  unparsed: boolean
+  truncated: boolean
+}
+
+/**  Public app/service log row without message text, raw line text, or target string. */
+export type LogRowSummary = {
+  id: string
+  timestamp: string | null
+  level: Level
+  has_target: boolean
   unparsed: boolean
   truncated: boolean
 }
@@ -5629,6 +5743,15 @@ export type Proxy_Serialize = {
 export type PublishRuntimeError =
   | { kind: 'create_runtime_directory'; path: ErrorPath }
   | { kind: 'write_runtime_config'; path: ErrorPath }
+
+/**  Public query parameters for [`NyanpasuClient::query_logs_summary`]. */
+export type QueryLogSummary = {
+  session: string
+  filter: LogFilterSummary
+  direction: Direction
+  cursor: LogCursor | null
+  limit: number
+}
 
 export type QueryLogs = {
   session: string

@@ -12,6 +12,7 @@ pub enum EventName {
     ConfigurationStatusChanged,
     ConfigurationStatusSummaryChanged,
     CoreLogsChanged,
+    CoreLogsSummaryChanged,
     CoreStatusChanged,
     CoreStatusSummaryChanged,
     SchemeRequestReceived,
@@ -25,7 +26,7 @@ pub enum EventName {
 
 impl EventName {
     /// All shared identities in desktop bridge registration order.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::AppUpdateStateChanged,
         Self::ClashWs,
         Self::CoreLogsChanged,
@@ -40,6 +41,7 @@ impl EventName {
         Self::ConfigurationStatusSummaryChanged,
         Self::CoreStatusSummaryChanged,
         Self::ServiceStatusSummaryChanged,
+        Self::CoreLogsSummaryChanged,
     ];
 
     /// The existing event name used on every frontend transport.
@@ -50,6 +52,7 @@ impl EventName {
             Self::ConfigurationStatusChanged => "configuration-status-changed",
             Self::ConfigurationStatusSummaryChanged => "configuration-status-summary-changed",
             Self::CoreLogsChanged => "core-logs-changed",
+            Self::CoreLogsSummaryChanged => "core-logs-summary-changed",
             Self::CoreStatusChanged => "core-status-changed-event",
             Self::CoreStatusSummaryChanged => "core-status-summary-changed-event",
             Self::SchemeRequestReceived => "scheme-request-received-event",
@@ -74,6 +77,7 @@ impl EventName {
             // question of event exposure, decided with admission.
             Self::ClashWs
             | Self::ConfigurationStatusSummaryChanged
+            | Self::CoreLogsSummaryChanged
             | Self::CoreStatusSummaryChanged
             | Self::ServiceStatusSummaryChanged
             | Self::SchemeRequestReceived
@@ -118,6 +122,7 @@ mod tests {
                 "configuration-status-summary-changed",
                 "core-status-summary-changed-event",
                 "service-status-summary-changed-event",
+                "core-logs-summary-changed",
             ]
         );
         assert_eq!(

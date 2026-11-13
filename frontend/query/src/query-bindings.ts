@@ -53,6 +53,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryCoreLogs', ...args],
         queryFn: () => commands.queryCoreLogs(...args),
       }),
+    queryCoreLogsSummary: (
+      ...args: Parameters<typeof commands.queryCoreLogsSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['queryCoreLogsSummary', ...args],
+        queryFn: () => commands.queryCoreLogsSummary(...args),
+      }),
     getCoreLog: (...args: Parameters<typeof commands.getCoreLog>) =>
       queryOptions({
         queryKey: ['getCoreLog', ...args],
@@ -62,6 +69,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getCoreLogStatus', ...args],
         queryFn: () => commands.getCoreLogStatus(...args),
+      }),
+    getCoreLogStatusSummary: (
+      ...args: Parameters<typeof commands.getCoreLogStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getCoreLogStatusSummary', ...args],
+        queryFn: () => commands.getCoreLogStatusSummary(...args),
       }),
     listLogFiles: (...args: Parameters<typeof commands.listLogFiles>) =>
       queryOptions({
@@ -573,6 +587,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['queryLogs'],
       mutationFn: (input: Parameters<typeof commands.queryLogs>) =>
         commands.queryLogs(...input),
+    }),
+    queryLogsSummary: mutationOptions({
+      mutationKey: ['queryLogsSummary'],
+      mutationFn: (input: Parameters<typeof commands.queryLogsSummary>) =>
+        commands.queryLogsSummary(...input),
     }),
     closeLogSession: mutationOptions({
       mutationKey: ['closeLogSession'],

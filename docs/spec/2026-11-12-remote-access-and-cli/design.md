@@ -382,13 +382,13 @@ Command metadata alone does not protect routes outside `/bridge/rpc`. The HTTP
 adapter uses the same authorization policy and audit kernel before executing a
 direct handler, generating an archive or acquiring a stream receiver:
 
-| Entry                                      | Required scope and admission                                                                                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/bridge/logs/archive`                     | `read` for the existing redacted archive; an unredacted export requires a separate `sensitive_read` entry                                               |
-| `/bridge/connection-details`               | `read` before subscribing                                                                                                                               |
-| `/bridge/events?name=…`                    | Explicit per-event exposure and scope metadata; events without reviewed metadata are unavailable                                                        |
-| `/bridge/events` without a name            | Deliver only events exposed to HTTP whose required scope the principal holds                                                                            |
-| `POST` / `DELETE /bridge/resource-session` | Resolve the principal under the listener strategy and enforce principal binding on release; neither operation grants scopes or returns application data |
+| Entry                                      | Required scope and admission                                                                                                                                                 |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/bridge/logs/archive`                     | `sensitive_read` for the diagnostic archive (the redactor leaves opaque URL host/path tokens intact, so unprivileged `read` is excluded unless a token-safe export is added) |
+| `/bridge/connection-details`               | `read` before subscribing                                                                                                                                                    |
+| `/bridge/events?name=…`                    | Explicit per-event exposure and scope metadata; events without reviewed metadata are unavailable                                                                             |
+| `/bridge/events` without a name            | Deliver only events exposed to HTTP whose required scope the principal holds                                                                                                 |
+| `POST` / `DELETE /bridge/resource-session` | Resolve the principal under the listener strategy and enforce principal binding on release; neither operation grants scopes or returns application data                      |
 
 The event review covers payloads and reset/resync delivery, including generic
 storage values, rather than inheriting `read` for every event. A rejected named
@@ -686,20 +686,34 @@ authorization are complete.
 | 10    | CLI packaging, PATH integration and completions                                                                                                                                          | proposed        |
 | 11    | Agent skill and `nyanpasu-cli mcp`                                                                                                                                                       | proposed        |
 
-Layer 04 is partial. Delivered: secret-free `get_app_settings`, `get_clash_settings` and
-`clash_api_get_settings` (reduced fields become flags such as `pac_configured` and
-`latency_test_configured`, the controller address is a validated socket address, nothing is a
-placeholder a form could write back); `get_proxies` and the delay tests no longer return test
-URLs, icons or raw errors (delay history is keyed by opaque source keys, one copy per distinct
-URL, and the backend resolves the actual URL); typed `ClashReadError` reasons that survive RPC;
-and ordinary theme, language, core and proxy-mode readers that use only these safe queries
-while the sensitive editors keep the full contracts. Still open, and each remains a gate before
-any new principal is admitted: the profile listing and sync records, the status, event and
-reset projections (`configuration_status`, `core_status`, `service_status`, the `clash_ws` Log
-variant, `StorageValueChanged` against `StorageResync`), logs, the error paths of the other
-safe queries, `MutationOutcome::CommittedDegraded` and `application_error_ref`. Role-aware
-optional UI, such as custom CSS from protected storage, depends on layer 05. No scoped
-end-to-end login exists yet.
+Layer 04 is partial (spanning the stacked observation slices through log summaries). Delivered:
+secret-free `get_app_settings`, `get_clash_settings` and `clash_api_get_settings` (reduced fields
+become flags such as `pac_configured` and `latency_test_configured`, the controller address is a
+validated socket address, nothing is a placeholder a form could write back); `get_proxies` and
+delay tests without test URLs, icons or raw errors; typed `ClashReadError` reasons across
+settings, proxies, delay tests, version, rules, rule/proxy providers, stream snapshots, and
+connection-detail stream setup; safe status views and events (`get_configuration_status_summary`,
+`get_core_status_summary`, `get_service_status_summary` and their `*SummaryChanged` events,
+alongside `clash_ws` which carries no `Log` variant and `StorageResync` at `Scope::Read` vs
+`StorageValueChanged` / `WindowMessage` at `Scope::SensitiveRead`), with ordinary status/shortcut
+consumers migrated; safe profile listing and sync summaries (`get_profiles_listing`,
+`get_profile_sync_status_summary`, `get_profile_sync_runs_summary`, `ProfileSyncReadError`), with
+ordinary profile, layout, usage-label and subscription widgets migrated; and structured log summary
+queries and status events (`get_core_log_status_summary`, `query_core_logs_summary`,
+`query_logs_summary` at `Scope::Read` mutation effect matching leased session state,
+`CoreLogsSummaryChanged`, `CoreLogReadError`) with `get_core_log_status`
+marked `sensitive_read`, keyword/text/target summary oracle filters excluded/rejected,
+`CoreLogLevel::Unknown` restricted to output projection (`InvalidRequest` on summary query filter), and app row
+timestamps canonicalized as validated numeric strings.
+
+Still open, and each remains a gate before any new principal is admitted: shared command,
+direct-route (including `/bridge/logs/archive` at `sensitive_read`, `/bridge/connection-details`,
+and `/bridge/icons/{*path}`) and per-target/per-scope event authorization enforcement plus
+`rpc_describe` (layer 05); global principal-aware sanitization across remaining non-read error paths,
+`MutationOutcome::CommittedDegraded` and `application_error_ref`; and role-aware WebUI conditional
+features (such as custom CSS from protected storage and splitting editable profile/config/log
+routes whose full viewers stay on `sensitive_read`). No scoped end-to-end login exists yet, and
+the `LocalSocket` allowlist remains at the existing thirteen operations.
 
 Layer 01 corrections to the original sketch: the strategy enum has one variant so
 unimplemented strategies are unrepresentable rather than rejected late; the HTTP status

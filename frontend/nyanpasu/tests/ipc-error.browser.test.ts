@@ -8,6 +8,7 @@ import {
 import type {
   ClashReadError,
   ConfigError,
+  CoreLogReadError,
   EffectsError,
   HttpServerControlError,
   IpcError,
@@ -674,6 +675,14 @@ test.each([
   ['proxies_unavailable', m.error_clash_read_proxies_unavailable],
   ['unknown_group', m.error_clash_read_unknown_group],
   ['delay_test_failed', m.error_clash_read_delay_test_failed],
+  ['version_unavailable', m.error_clash_read_version_unavailable],
+  ['rules_unavailable', m.error_clash_read_rules_unavailable],
+  ['rule_providers_unavailable', m.error_clash_read_rule_providers_unavailable],
+  [
+    'proxy_providers_unavailable',
+    m.error_clash_read_proxy_providers_unavailable,
+  ],
+  ['streams_unavailable', m.error_clash_read_streams_unavailable],
 ] satisfies [ClashReadError['kind'], () => string][])(
   'clash_read_errors_use_their_messages: %s',
   (kind, message) => {
@@ -682,6 +691,25 @@ test.each([
         kind: { domain: 'clash_read', error: { kind } },
         message: 'the backend text',
         detail: 'SettingsUnavailable',
+      }),
+    ).toBe(message())
+  },
+)
+
+test.each([
+  ['invalid_request', m.error_core_log_read_invalid_request],
+  ['cursor_expired', m.error_core_log_read_cursor_expired],
+  ['record_gone', m.error_core_log_read_record_gone],
+  ['too_large', m.error_core_log_read_too_large],
+  ['unavailable', m.error_core_log_read_unavailable],
+] satisfies [CoreLogReadError['kind'], () => string][])(
+  'core_log_read_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'core_log_read', error: { kind } },
+        message: 'the backend text',
+        detail: 'Unavailable',
       }),
     ).toBe(message())
   },

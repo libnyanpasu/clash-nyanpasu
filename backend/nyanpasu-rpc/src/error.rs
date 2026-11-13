@@ -3,7 +3,7 @@
 use nyanpasu_contracts::{system_dns::SystemDnsError, system_proxy::OsProxyError};
 use nyanpasu_core::{
     client::{
-        ClashReadError, ClientError, ProfileSyncReadError, SetRemoteAccessError,
+        ClashReadError, ClientError, CoreLogReadError, ProfileSyncReadError, SetRemoteAccessError,
         http_server::HttpServerControlError,
     },
     state::config_error::ConfigError,
@@ -49,6 +49,7 @@ pub enum IpcErrorKind {
     Effects(Box<EffectsError>),
     HttpServer(Box<HttpServerControlError>),
     ClashRead(Box<ClashReadError>),
+    CoreLogRead(Box<CoreLogReadError>),
     ProfileSyncRead(Box<ProfileSyncReadError>),
 }
 
@@ -61,6 +62,12 @@ impl From<HttpServerControlError> for IpcErrorKind {
 impl From<ClashReadError> for IpcErrorKind {
     fn from(error: ClashReadError) -> Self {
         Self::ClashRead(Box::new(error))
+    }
+}
+
+impl From<CoreLogReadError> for IpcErrorKind {
+    fn from(error: CoreLogReadError) -> Self {
+        Self::CoreLogRead(Box::new(error))
     }
 }
 

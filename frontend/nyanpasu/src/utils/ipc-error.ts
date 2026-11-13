@@ -5,6 +5,7 @@ import type {
   ConfigError,
   CoreErrorKind,
   CoreFailure,
+  CoreLogReadError,
   DegradationReason,
   EffectFailureCode,
   EffectsError,
@@ -57,6 +58,8 @@ export function ipcErrorMessage(
       return httpServerErrorMessage(error.kind.error)
     case 'clash_read':
       return clashReadErrorMessage(error.kind.error)
+    case 'core_log_read':
+      return coreLogReadErrorMessage(error.kind.error)
     case 'profile_sync_read':
       return profileSyncReadErrorMessage(error.kind.error)
     case 'system_dns':
@@ -387,6 +390,31 @@ function clashReadErrorMessage(error: ClashReadError): string {
       return m.error_clash_read_unknown_group()
     case 'delay_test_failed':
       return m.error_clash_read_delay_test_failed()
+    case 'version_unavailable':
+      return m.error_clash_read_version_unavailable()
+    case 'rules_unavailable':
+      return m.error_clash_read_rules_unavailable()
+    case 'rule_providers_unavailable':
+      return m.error_clash_read_rule_providers_unavailable()
+    case 'proxy_providers_unavailable':
+      return m.error_clash_read_proxy_providers_unavailable()
+    case 'streams_unavailable':
+      return m.error_clash_read_streams_unavailable()
+  }
+}
+
+function coreLogReadErrorMessage(error: CoreLogReadError): string {
+  switch (error.kind) {
+    case 'invalid_request':
+      return m.error_core_log_read_invalid_request()
+    case 'cursor_expired':
+      return m.error_core_log_read_cursor_expired()
+    case 'record_gone':
+      return m.error_core_log_read_record_gone()
+    case 'too_large':
+      return m.error_core_log_read_too_large()
+    case 'unavailable':
+      return m.error_core_log_read_unavailable()
   }
 }
 

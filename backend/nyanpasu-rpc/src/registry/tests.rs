@@ -1505,3 +1505,302 @@ fn enabled_http_server_joins_application_shutdown() {
         assert!(crate::http::HttpRoutes::build(&*routes).is_err());
     });
 }
+
+#[test]
+fn failing_core_log_store_summary_errors_hide_backend_paths_and_status_drops_error_text() {
+    use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
+    use nyanpasu_observers::logs::{
+        CoreLogError, CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult,
+        CoreLogRow, CoreLogSource, CoreLogStore, PreparedCoreLog,
+    };
+    use serde_json::json;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct InjectedCoreLogStore {
+        fail: Arc<AtomicBool>,
+    }
+
+    impl CoreLogStore for InjectedCoreLogStore {
+        fn configure(
+            &mut self,
+            _settings: nyanpasu_config::application::CoreLogSettings,
+        ) -> CoreLogResult<()> {
+            Ok(())
+        }
+        fn append(&mut self, _records: &[PreparedCoreLog]) -> CoreLogResult<()> {
+            Ok(())
+        }
+        fn query(&mut self, _request: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(CoreLogError::Unavailable(
+                    "/private/core-logs.redb: store-error-sentinel".into(),
+                ));
+            }
+            Ok(CoreLogPage {
+                rows: vec![CoreLogRow {
+                    id: CoreLogCursor {
+                        generation: "gen-injected".into(),
+                        sequence: 11,
+                    },
+                    record: CoreLogRecord {
+                        source: CoreLogSource {
+                            capture: "capture-sentinel".into(),
+                            instance_id: "instance-sentinel".into(),
+                            core_kind: Some("kind-sentinel".into()),
+                        },
+                        received_at: 1_700_000_000_000,
+                        time: Some("time-sentinel".into()),
+                        log_type: "WARNING".into(),
+                        payload: "payload-secret-sentinel".into(),
+                    },
+                    truncated: false,
+                }],
+                cursor: Some(CoreLogCursor {
+                    generation: "gen-injected".into(),
+                    sequence: 11,
+                }),
+                more: false,
+                status: self.status()?,
+            })
+        }
+        fn detail(&mut self, _cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord> {
+            Err(CoreLogError::RecordGone)
+        }
+        fn export(&mut self, _home: Option<String>) -> CoreLogResult<CoreLogExport> {
+            Ok(CoreLogExport::default())
+        }
+        fn clear(&mut self) -> CoreLogResult<()> {
+            Ok(())
+        }
+        fn status(&mut self) -> CoreLogResult<CoreLogStatus> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(CoreLogError::Unavailable(
+                    "/private/core-logs.redb: store-error-sentinel".into(),
+                ));
+            }
+            Ok(CoreLogStatus {
+                generation: "gen-injected".into(),
+                version: 5,
+                first: None,
+                head: None,
+                bytes: 256,
+                error: Some("status-error-sentinel".into()),
+                discarded: 1,
+            })
+        }
+    }
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let fail = Arc::new(AtomicBool::new(false));
+    let mut args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    args.logging.core = Box::new(InjectedCoreLogStore { fail: fail.clone() });
+    let fixture = runtime.block_on(crate::test_support::Fixture::with_setup(
+        false,
+        crate::test_support::CAPABILITIES,
+        directory,
+        args,
+    ));
+
+    runtime.block_on(async {
+        let (status, body) = fixture.call("get_core_log_status_summary", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["has_error"], true);
+        assert!(!body.to_string().contains("status-error-sentinel"));
+
+        let (status, body) = fixture
+            .call(
+                "query_core_logs_summary",
+                json!({"query":{"direction":"latest","cursor":null,"level":null,"limit":10}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["rows"][0]["level"], "warn");
+        assert_eq!(body["rows"][0]["has_payload"], true);
+        let wire = body.to_string();
+        for forbidden in [
+            "capture-sentinel",
+            "instance-sentinel",
+            "kind-sentinel",
+            "time-sentinel",
+            "payload-secret-sentinel",
+            "status-error-sentinel",
+        ] {
+            assert!(!wire.contains(forbidden), "{wire}");
+        }
+
+        let (status, body) = fixture
+            .call(
+                "query_core_logs_summary",
+                json!({"query":{"direction":"latest","cursor":null,"level":"unknown","limit":10}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+        assert_eq!(body["kind"], "application_error", "{body}");
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "core_log_read", "error": {"kind": "invalid_request"}}),
+            "{body}"
+        );
+
+        fail.store(true, Ordering::SeqCst);
+        let (status, body) = fixture
+            .call(
+                "query_core_logs_summary",
+                json!({"query":{"direction":"latest","cursor":null,"level":null,"limit":10}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+        assert_eq!(body["kind"], "application_error", "{body}");
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "core_log_read", "error": {"kind": "unavailable"}}),
+            "{body}"
+        );
+        let serialized = body.to_string();
+        assert!(!serialized.contains("sentinel"), "{serialized}");
+        assert!(!serialized.contains("core-logs.redb"), "{serialized}");
+    });
+
+    runtime.block_on(fixture.shutdown());
+
+    // Also verify when store.status() itself fails at actor startup: full status carries the
+    // backend error text, whereas the summary sets `has_error: true` and drops the text.
+    let failing_dir = tempfile::tempdir().unwrap();
+    let mut failing_args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &failing_dir,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    failing_args.logging.core = Box::new(InjectedCoreLogStore {
+        fail: Arc::new(AtomicBool::new(true)),
+    });
+    let failing_fixture = runtime.block_on(crate::test_support::Fixture::with_setup(
+        false,
+        crate::test_support::CAPABILITIES,
+        failing_dir,
+        failing_args,
+    ));
+    runtime.block_on(async {
+        let (status, full_body) = failing_fixture.call("get_core_log_status", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "{full_body}");
+        assert!(
+            full_body["error"]
+                .as_str()
+                .unwrap()
+                .contains("store-error-sentinel")
+        );
+
+        let (status, summary_body) = failing_fixture
+            .call("get_core_log_status_summary", json!({}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{summary_body}");
+        assert_eq!(summary_body["has_error"], true);
+        assert!(!summary_body.to_string().contains("store-error-sentinel"));
+        assert!(!summary_body.to_string().contains("core-logs.redb"));
+    });
+    runtime.block_on(failing_fixture.shutdown());
+}
+
+#[test]
+fn clash_read_error_envelopes_hide_controller_urls_and_secrets_on_all_safe_reads() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    let fail_route = || {
+        get(|| async {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "clash-controller-body-secret-sentinel",
+            )
+        })
+    };
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route("/version", fail_route())
+            .route("/rules", fail_route())
+            .route("/providers/rules", fail_route())
+            .route("/providers/proxies", fail_route()),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let fixture = runtime.block_on(crate::test_support::Fixture::with_setup(
+        false,
+        crate::test_support::CAPABILITIES,
+        directory,
+        args,
+    ));
+
+    runtime.block_on(async {
+        for (method, expected_kind) in [
+            ("clash_api_get_version", "version_unavailable"),
+            ("clash_api_get_rules", "rules_unavailable"),
+            (
+                "clash_api_get_providers_rules",
+                "rule_providers_unavailable",
+            ),
+            (
+                "clash_api_get_providers_proxies",
+                "proxy_providers_unavailable",
+            ),
+        ] {
+            let (status, body) = fixture.call(method, json!({})).await;
+            assert_eq!(
+                status,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "{method}: {body}"
+            );
+            assert_eq!(body["kind"], "application_error", "{method}: {body}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": expected_kind}}),
+                "{method}: {body}"
+            );
+            let wire = body.to_string();
+            assert!(!wire.contains("sentinel"), "{method}: {wire}");
+            assert!(!wire.contains("127.0.0.1"), "{method}: {wire}");
+        }
+
+        let app = fixture.rpc.clone().router();
+        fixture.rpc.dependencies.client.request_shutdown();
+        fixture.rpc.dependencies.client.wait_shutdown().await;
+
+        let (status, body) =
+            rpc_for_test_call(&app, "get_clash_ws_snapshot", json!({}), None).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "clash_read", "error": {"kind": "streams_unavailable"}}),
+            "{body}"
+        );
+
+        let response = app
+            .oneshot(
+                Request::get("/bridge/connection-details")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "clash_read", "error": {"kind": "streams_unavailable"}}),
+            "{body}"
+        );
+    });
+
+    core_server.abort();
+}

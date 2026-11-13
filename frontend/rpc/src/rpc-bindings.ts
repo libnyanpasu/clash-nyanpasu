@@ -1338,6 +1338,7 @@ export type ConfigError =
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'invalid_core_logs'; reason: string }
+  | { kind: 'invalid_rpc_audit'; reason: string }
   | { kind: 'invalid_public_ip_probe_sources'; reason: string }
   | {
       kind: 'invalid_transparent_proxy'
@@ -2937,6 +2938,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       app_singleton_port?: number | null
       app_log_level?: LoggingLevel_Deserialize | null
       core_logs?: CoreLogSettings | null
+      rpc_audit?: RpcAuditSettings | null
       language?: I18nLanguage_Deserialize | null
       theme_mode?: ThemeMode | null
       traffic_graph?: boolean | null
@@ -2994,6 +2996,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   app_singleton_port?: number | null
   app_log_level?: LoggingLevel_Serialize | null
   core_logs?: CoreLogSettings | null
+  rpc_audit?: RpcAuditSettings | null
   language?: I18nLanguage_Serialize | null
   theme_mode?: ThemeMode | null
   traffic_graph?: boolean | null
@@ -3046,6 +3049,8 @@ export type NyanpasuAppConfig_Deserialize = {
   app_log_level: LoggingLevel_Deserialize
   /**  Core log disk settings, applied as soon as they are committed. */
   core_logs?: CoreLogSettings
+  /**  Retention limits for persisted RPC audit records. */
+  rpc_audit?: RpcAuditSettings
   language: I18nLanguage_Deserialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -3168,6 +3173,8 @@ export type NyanpasuAppConfig_Serialize = {
   app_log_level: LoggingLevel_Serialize
   /**  Core log disk settings, applied as soon as they are committed. */
   core_logs: CoreLogSettings
+  /**  Retention limits for persisted RPC audit records. */
+  rpc_audit: RpcAuditSettings
   language: I18nLanguage_Serialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -4920,6 +4927,14 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+/**  Retention limits for persisted HTTP and local RPC audit records. */
+export type RpcAuditSettings = {
+  /**  Maximum age in days, from 1 through 90; defaults to 7. */
+  max_age_days?: number
+  /**  Maximum storage size in MiB, from 4 through 256; defaults to 16. */
+  max_size_mib?: number
 }
 
 export type RuleKey = {

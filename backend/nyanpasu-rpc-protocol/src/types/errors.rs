@@ -719,6 +719,9 @@ pub enum ConfigError {
     InvalidCoreLogs {
         reason: String,
     },
+    InvalidRpcAudit {
+        reason: String,
+    },
     InvalidPublicIpProbeSources {
         reason: String,
     },

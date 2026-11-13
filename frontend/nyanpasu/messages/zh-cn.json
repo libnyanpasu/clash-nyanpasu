@@ -1527,6 +1527,7 @@
   "error_config_owner_stopped": "设置服务未运行",
   "error_config_invalid_update_sources": "更新来源必须至少包含一个来源且不能重复：{reason}",
   "error_config_invalid_core_logs": "内核日志设置无效：{reason}",
+  "error_config_invalid_rpc_audit": "RPC 审计设置无效：{reason}",
   "error_config_invalid_public_ip_probe_sources": "公网 IP 检测来源设置无效：{reason}",
   "error_config_invalid_latency_timeout": "延迟测试超时设置无效：{reason}",
   "error_config_version_conflict": "设置在此期间已发生变化，请重试",

@@ -1473,6 +1473,7 @@
   "error_config_owner_stopped": "Служба настроек не запущена",
   "error_config_invalid_update_sources": "Нужно указать хотя бы один источник обновлений без повторов: {reason}",
   "error_config_invalid_core_logs": "Неверные настройки журнала ядра: {reason}",
+  "error_config_invalid_rpc_audit": "Неверные настройки аудита RPC: {reason}",
   "error_config_invalid_public_ip_probe_sources": "Неверные источники определения публичного IP: {reason}",
   "error_config_invalid_latency_timeout": "Неверный тайм-аут проверки задержки: {reason}",
   "error_config_version_conflict": "Настройки изменились, попробуйте ещё раз",

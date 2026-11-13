@@ -1527,6 +1527,7 @@
   "error_config_owner_stopped": "設定サービスが実行されていません",
   "error_config_invalid_update_sources": "更新元には、重複のない少なくとも 1 つの更新元を含める必要があります: {reason}",
   "error_config_invalid_core_logs": "コアログの設定が無効です: {reason}",
+  "error_config_invalid_rpc_audit": "RPC 監査の設定が無効です: {reason}",
   "error_config_invalid_public_ip_probe_sources": "パブリック IP 検出のソース設定が無効です: {reason}",
   "error_config_invalid_latency_timeout": "遅延テストのタイムアウト設定が無効です: {reason}",
   "error_config_version_conflict": "その間に設定が変更されました。もう一度お試しください",

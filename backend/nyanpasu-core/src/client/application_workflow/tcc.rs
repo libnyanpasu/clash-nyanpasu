@@ -791,8 +791,15 @@ impl ApplicationWorkflow {
             })
             .await
         {
-            RuntimeCheckOutcome::Passed => *check = CheckRecord::Passed,
+            RuntimeCheckOutcome::Passed => {
+                self.rejected_builds
+                    .clear_source(prepared.snapshot.clone())
+                    .await;
+                *check = CheckRecord::Passed;
+            }
             RuntimeCheckOutcome::Rejected { kind, message } => {
+                let rejected_snapshot_id =
+                    self.rejected_builds.save(prepared.snapshot.clone()).await;
                 return self.dispose(
                     policy,
                     baseline,
@@ -805,6 +812,7 @@ impl ApplicationWorkflow {
                         error: CoreRejectedConfigSnafu {
                             core_kind: kind,
                             message,
+                            rejected_snapshot_id,
                         }
                         .build(),
                     },

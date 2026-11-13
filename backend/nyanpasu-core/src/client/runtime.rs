@@ -89,7 +89,7 @@ impl RuntimeSnapshot {
             .finalize()
             .into();
         Self {
-            inspection_id: nanoid::nanoid!(),
+            inspection_id: nanoid::nanoid!(21, &nanoid::alphabet::SAFE),
             applied_binding: None,
             effective: None,
             revision,
@@ -509,7 +509,7 @@ pub enum Error {
     },
 }
 
-async fn prepare_private_dir(path: &Utf8Path) -> Result<(), Error> {
+pub(super) async fn prepare_private_dir(path: &Utf8Path) -> Result<(), Error> {
     prepare_private_dir_with(path, || tokio::fs::create_dir_all(path)).await
 }
 
@@ -564,19 +564,19 @@ where
 }
 
 #[cfg(unix)]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(super) fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
 #[cfg(windows)]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(super) fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 #[cfg(not(any(unix, windows)))]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(super) fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 

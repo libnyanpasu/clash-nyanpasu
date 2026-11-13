@@ -2,9 +2,14 @@ use super::super::runtime;
 use nyanpasu_runtime_values::check::RuntimeCheckUnavailable;
 
 use async_trait::async_trait;
-use nyanpasu_config::runtime::executor::{PortError, ScriptRunner};
+use nyanpasu_config::runtime::{
+    executor::{PortError, ScriptRunner},
+    snapshot::persistence::RejectedBuildArchive,
+};
 use nyanpasu_profile_transform::RuntimeBuildError;
-use nyanpasu_runtime_values::{core_spec::CoreSpecError, publish::PublishRuntimeError};
+use nyanpasu_runtime_values::{
+    core_spec::CoreSpecError, publish::PublishRuntimeError, runtime_error::RuntimeError,
+};
 use std::sync::Arc;
 
 /// Builds a script runner on the blocking thread that will use and drop it.
@@ -59,4 +64,14 @@ pub(in crate::client) enum RuntimeCheckOutcome {
 #[async_trait]
 pub(in crate::client) trait RuntimeValidatorPort: Send + Sync + 'static {
     async fn check(&self, request: RuntimeCheckRequest<'_>) -> RuntimeCheckOutcome;
+}
+
+/// Session-scoped files owned by the workflow; reads retain no decoded build.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub(in crate::client) trait RejectedBuildStore: Send + Sync + 'static {
+    async fn save(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Option<String>;
+    async fn clear_source(&self, snapshot: Arc<runtime::RuntimeSnapshot>);
+    async fn clear(&self);
+    fn load(&self, id: &str) -> Result<RejectedBuildArchive, RuntimeError>;
 }

@@ -53,7 +53,6 @@ pub enum Mode {
     Rule,
     Global,
     Direct,
-    Script,
 }
 
 #[derive(

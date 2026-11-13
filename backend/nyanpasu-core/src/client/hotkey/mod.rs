@@ -53,7 +53,6 @@ impl NyanpasuClient {
             HotkeyAction::ClashModeRule => self.set_clash_mode(Mode::Rule).await,
             HotkeyAction::ClashModeGlobal => self.set_clash_mode(Mode::Global).await,
             HotkeyAction::ClashModeDirect => self.set_clash_mode(Mode::Direct).await,
-            HotkeyAction::ClashModeScript => self.set_clash_mode(Mode::Script).await,
             HotkeyAction::ToggleSystemProxy => {
                 let enabled = self.get_app_config().await?.enable_system_proxy;
                 self.set_system_proxy(!enabled).await

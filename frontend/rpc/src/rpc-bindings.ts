@@ -2403,7 +2403,6 @@ export type HotkeyAction =
   | 'clash_mode_rule'
   | 'clash_mode_global'
   | 'clash_mode_direct'
-  | 'clash_mode_script'
   | 'toggle_system_proxy'
   | 'enable_system_proxy'
   | 'disable_system_proxy'
@@ -2855,7 +2854,7 @@ export type MipsConfigPatch_Serialize = {
   congestion_controller?: TunCongestionController | null
 }
 
-export type Mode = 'rule' | 'global' | 'direct' | 'script'
+export type Mode = 'rule' | 'global' | 'direct'
 
 export type MutationOutcome<T> =
   | {

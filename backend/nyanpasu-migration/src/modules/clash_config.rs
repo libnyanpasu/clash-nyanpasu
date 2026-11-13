@@ -35,7 +35,13 @@ static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwra
 static MANAGEABLE_GUARD_FIELDS: MigrateManageableGuardFields = MigrateManageableGuardFields;
 static TUN_OVERRIDES: MigrateTunOverrides = MigrateTunOverrides;
 static TUN_MIPS: MigrateTunMips = MigrateTunMips;
-static STEPS: [&dyn MigrationStep; 3] = [&MANAGEABLE_GUARD_FIELDS, &TUN_OVERRIDES, &TUN_MIPS];
+static SCRIPT_MODE: MigrateScriptMode = MigrateScriptMode;
+static STEPS: [&dyn MigrationStep; 4] = [
+    &MANAGEABLE_GUARD_FIELDS,
+    &TUN_OVERRIDES,
+    &TUN_MIPS,
+    &SCRIPT_MODE,
+];
 
 /// Revisions up to here were written without a stamp. Frozen: nothing before
 /// this module changed the file's schema, so there is no shape to probe.
@@ -46,7 +52,7 @@ pub struct ClashConfigDocument;
 
 impl StampedDocument for ClashConfigDocument {
     const DOCUMENT: &'static str = "clash_config";
-    const SCHEMA_REVISION: u64 = 3;
+    const SCHEMA_REVISION: u64 = 4;
 }
 
 /// How the running app reads and writes `clash-config.yaml`.
@@ -111,6 +117,9 @@ pub(crate) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError
     }
     if revision < TUN_MIPS.revision() {
         add_tun_mips(&mut payload);
+    }
+    if revision < SCRIPT_MODE.revision() {
+        normalize_script_mode(&mut payload);
     }
     serde_yaml_ng::from_value(Value::Mapping(payload)).map_err(|source| {
         MigrationCheckError::Parse {
@@ -333,9 +342,120 @@ fn add_tun_mips(payload: &mut Mapping) {
     }
 }
 
+/// Replaces the removed Script proxy mode with rule mode.
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateScriptMode;
+
+impl MigrationStep for MigrateScriptMode {
+    fn id(&self) -> &'static str {
+        "clash_config/script_mode"
+    }
+
+    fn module(&self) -> &'static str {
+        "clash_config"
+    }
+
+    fn revision(&self) -> u64 {
+        4
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateScriptMode"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.clash_config_path();
+            let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            normalize_script_mode(&mut payload);
+            write::write_document(
+                &path,
+                ClashConfigDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
+    }
+}
+
+fn normalize_script_mode(payload: &mut Mapping) {
+    if let Some(overrides) = payload
+        .get_mut(OVERRIDES_KEY)
+        .and_then(Value::as_mapping_mut)
+    {
+        normalize_override_mode(overrides);
+    }
+}
+
+/// Normalizes the removed mode before typed or legacy overrides are decoded.
+pub(crate) fn normalize_override_mode(overrides: &mut Mapping) {
+    if let Some(mode) = overrides.get_mut("mode")
+        && mode.as_str() == Some("script")
+    {
+        *mode = "rule".into();
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use crate::fake_hotkey_store::FakeHotkeyStoreOpener;
+
     use super::*;
+
+    #[test]
+    fn script_mode_step_converts_and_stamps_even_without_the_old_mode() {
+        for (source, expected) in [
+            (
+                "overrides: {mode: script, ipv6: true}\n",
+                "overrides: {mode: rule, ipv6: true}\n",
+            ),
+            ("overrides: {mode: global}\n", "overrides: {mode: global}\n"),
+            ("overrides: {}\n", "overrides: {}\n"),
+            ("tun_mips: {}\n", "tun_mips: {}\n"),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let mut ctx = Ctx::new(
+                root.path().into(),
+                root.path().into(),
+                Arc::new(FakeHotkeyStoreOpener::default()),
+            );
+            write::write_document(
+                &ctx.clash_config_path(),
+                ClashConfigDocument::DOCUMENT,
+                3,
+                payload(source),
+                None,
+            )
+            .unwrap();
+
+            SCRIPT_MODE.run(&mut ctx).unwrap();
+
+            let file = read_document(&ctx.clash_config_path(), ClashConfigDocument::DOCUMENT)
+                .unwrap()
+                .unwrap();
+            assert_eq!(file.schema_revision, Some(4));
+            assert_eq!(file.payload, payload(expected));
+            SCRIPT_MODE.run(&mut ctx).unwrap();
+            assert_eq!(
+                read_document(&ctx.clash_config_path(), ClashConfigDocument::DOCUMENT)
+                    .unwrap()
+                    .unwrap()
+                    .payload,
+                payload(expected)
+            );
+        }
+    }
 
     #[test]
     fn reading_legacy_clash_overrides_keeps_the_conversion_source() {

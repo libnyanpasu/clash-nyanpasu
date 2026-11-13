@@ -261,7 +261,7 @@ pub struct WidgetLogoDesired {
 pub struct TrayMenuDesired {
     pub menu_mode: TrayMenuMode,
     pub selector_mode: ProxiesSelectorMode,
-    /// Only a Premium core offers the script mode item.
+    /// The core determines whether the transparent-proxy item is available.
     pub core: ClashCore,
 }
 
@@ -1074,7 +1074,7 @@ mod tests {
             ..ClashConfig::default()
         };
         clash.overrides.apply(ClashGuardOverridesPatch {
-            mode: Some(Mode::Script),
+            mode: Some(Mode::Global),
             ..ClashGuardOverridesPatch::default()
         });
 
@@ -1089,7 +1089,7 @@ mod tests {
                     core: ClashCore::ClashPremium,
                 },
                 part: TrayPartDesired {
-                    mode: Mode::Script,
+                    mode: Mode::Global,
                     system_proxy: true,
                     tun: true,
                     transparent_proxy: false,

@@ -1714,17 +1714,17 @@ schema_revision: {revision}
         let mut runner = case.runner();
         // No file yet, so the module starts at head: no step may run on a file
         // that `typed_config` is about to create at head.
-        assert_eq!(application_state(&runner), at_revision(2, false));
+        assert_eq!(application_state(&runner), at_revision(3, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(3));
         assert_eq!(
             runner.store.task_state("application/window_close"),
             None,
             "nothing to convert in a file created at head"
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(2, true));
+        assert_eq!(state.module_state("application"), at_revision(3, true));
         assert_application_loads(&case);
     }
 
@@ -1734,9 +1734,9 @@ schema_revision: {revision}
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(3));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application"), at_revision(2, true));
+        assert_eq!(state.module_state("application"), at_revision(3, true));
         assert_application_loads(&case);
     }
 
@@ -1778,7 +1778,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(3));
         let payload = application_config_payload(&case);
         assert!(!payload.contains_key("tray_menu_close_behavior"));
         assert_eq!(payload["window_close"]["tray_menu"], "hide");
@@ -1792,7 +1792,7 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("application"),
             ModuleState {
-                applied_revision: 2,
+                applied_revision: 3,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -1813,7 +1813,7 @@ tray_menu_close_behavior: hide
         assert_eq!(application_state(&runner), at_revision(0, true));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(2));
+        assert_eq!(application_stamp(&case), Some(3));
         assert_eq!(
             application_config_payload(&case)["window_close"]["tray_menu"],
             "destroy"
@@ -1825,14 +1825,14 @@ tray_menu_close_behavior: hide
         let case = LegacyCase::empty();
         seed_typed_files(
             &case,
-            Some(2),
+            Some(3),
             "language: en
 ",
         );
         let before = std::fs::read_to_string(case.ctx.application_config_path()).unwrap();
 
         let mut runner = case.runner();
-        assert_eq!(application_state(&runner), at_revision(2, true));
+        assert_eq!(application_state(&runner), at_revision(3, true));
         runner.run_pending().unwrap();
 
         assert_eq!(
@@ -1897,7 +1897,7 @@ tray_menu_close_behavior: hide
             .expect("a stamped revision 2 is behind this build, not lost");
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         let mut expected = payload;
         expected.insert("tun_mips".into(), serde_yaml_ng::Mapping::new().into());
         assert_eq!(clash_config_file(&case).into_payload(), expected);
@@ -1913,7 +1913,7 @@ tray_menu_close_behavior: hide
         ] {
             assert_eq!(state.task_state(step), None, "{step} is already applied");
         }
-        assert_eq!(state.module_state("clash_config").applied_revision, 3);
+        assert_eq!(state.module_state("clash_config").applied_revision, 4);
     }
 
     fn clash_config_file(case: &LegacyCase) -> nyanpasu_persistence::format::Inspected {
@@ -1959,11 +1959,11 @@ tray_menu_close_behavior: hide
         // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(3, false)
+            at_revision(4, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         for step in [
             "clash_config/manageable_guard_fields",
             "clash_config/tun_overrides",
@@ -1976,7 +1976,7 @@ tray_menu_close_behavior: hide
             );
         }
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(3, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(4, true));
         assert_clash_config_loads(&case);
     }
 
@@ -1986,14 +1986,14 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
         assert_eq!(
             clash_config_file(&case).into_payload()["tun"],
             managed_auto_route()
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config").applied_revision, 3);
+        assert_eq!(state.module_state("clash_config").applied_revision, 4);
         assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
@@ -2021,7 +2021,7 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
@@ -2035,7 +2035,7 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("clash_config"),
             ModuleState {
-                applied_revision: 3,
+                applied_revision: 4,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -2058,6 +2058,112 @@ tray_menu_close_behavior: hide
         );
 
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
+    }
+
+    #[test]
+    fn legacy_script_mode_and_hotkeys_are_normalized_before_typed_creation() {
+        let case = LegacyCase::empty();
+        std::fs::write(
+            case.ctx.nyanpasu_config_path(),
+            "hotkeys: ['clash_mode_script,Ctrl+S', 'clash_mode_rule,Ctrl+R']\n",
+        )
+        .unwrap();
+        std::fs::write(case.ctx.clash_guard_overrides_path(), "mode: script\n").unwrap();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            serde_yaml_ng::to_value(vec!["clash_mode_rule,Ctrl+R"]).unwrap()
+        );
+        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
+        assert_application_loads(&case);
+        assert_clash_config_loads(&case);
+        case.runner().run_pending().unwrap();
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
+    }
+
+    #[test]
+    fn kv_script_hotkeys_are_dropped_when_typed_files_are_created_at_head() {
+        let case = LegacyCase::empty();
+        let storage = case
+            .ctx
+            .hotkey_store_opener
+            .open(&case.ctx.storage_path())
+            .unwrap();
+        storage
+            .write(&[
+                "clash_mode_script,Ctrl+S".into(),
+                "clash_mode_direct,Ctrl+D".into(),
+            ])
+            .unwrap();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            serde_yaml_ng::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
+        );
+        assert_eq!(storage.read().unwrap(), None);
+        assert_eq!(application_stamp(&case), Some(3));
+        assert_application_loads(&case);
+        case.runner().run_pending().unwrap();
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            serde_yaml_ng::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn typed_script_mode_and_hotkeys_at_old_revisions_are_migrated() {
+        let case = LegacyCase::empty();
+        seed_typed_files(
+            &case,
+            Some(2),
+            "hotkeys: ['clash_mode_script,Ctrl+S', 'clash_mode_global,Ctrl+G']\n",
+        );
+        let mut config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            &serde_yaml_ng::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+                .unwrap(),
+        )
+        .unwrap();
+        config
+            .get_mut("overrides")
+            .unwrap()
+            .as_mapping_mut()
+            .unwrap()
+            .insert("mode".into(), "script".into());
+        write::write_document(
+            &case.ctx.clash_config_path(),
+            "clash_config",
+            3,
+            config,
+            None,
+        )
+        .unwrap();
+
+        let mut runner = case.runner();
+        runner.run_pending().unwrap();
+
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
+        assert_eq!(
+            application_config_payload(&case)["hotkeys"],
+            serde_yaml_ng::to_value(vec!["clash_mode_global,Ctrl+G"]).unwrap()
+        );
+        assert_eq!(application_stamp(&case), Some(3));
+        assert_eq!(clash_config_stamp(&case), Some(4));
+        for step in ["application/script_hotkeys", "clash_config/script_mode"] {
+            assert_eq!(
+                runner.store.task_state(step),
+                Some(MigrationState::Completed)
+            );
+        }
+        assert_application_loads(&case);
+        assert_clash_config_loads(&case);
+        case.runner().run_pending().unwrap();
+        assert_eq!(clash_guard_field(&case, "mode"), "rule");
     }
 
     /// A config dir holding a real 1.6.1 install, which every module still has

@@ -85,18 +85,12 @@ const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];
 /// `config_fixer`: the managed settings already write `log-level` as a
 /// string. Order is execution order.
 pub fn builtin_transforms_for(core: ClashCore) -> Vec<BuiltinTransform> {
-    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 3] = [
+    let table: [(&[ClashCore], &str, ScriptRuntime, &str); 2] = [
         (
             MIHOMO_FAMILY,
             "verge_hy_alpn",
             ScriptRuntime::JavaScript,
             include_str!("./builtin/meta_hy_alpn.js"),
-        ),
-        (
-            MIHOMO_FAMILY,
-            "verge_meta_guard",
-            ScriptRuntime::JavaScript,
-            include_str!("./builtin/meta_guard.js"),
         ),
         (
             CLASH_RS_ONLY,
@@ -302,19 +296,13 @@ mod tests {
                 .map(|b| b.name)
                 .collect()
         };
-        assert_eq!(
-            names(ClashCore::Mihomo),
-            vec!["verge_hy_alpn", "verge_meta_guard"]
-        );
+        assert_eq!(names(ClashCore::Mihomo), vec!["verge_hy_alpn"]);
         assert_eq!(names(ClashCore::ClashRs), vec!["clash_rs_comp"]);
         // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
         assert!(names(ClashCore::ClashRsAlpha).is_empty());
         assert!(names(ClashCore::ClashPremium).is_empty());
         // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
-        assert_eq!(
-            names(ClashCore::Meow),
-            vec!["verge_hy_alpn", "verge_meta_guard"]
-        );
+        assert_eq!(names(ClashCore::Meow), vec!["verge_hy_alpn"]);
     }
 
     /// Serves one profile file whatever path is asked for.

@@ -70,7 +70,11 @@ pub(super) fn application_from_legacy(legacy: &IVerge) -> Result<NyanpasuAppConf
         next.core = value;
     }
     if let Some(value) = &legacy.hotkeys {
-        next.hotkeys = value.clone();
+        next.hotkeys = value
+            .iter()
+            .filter(|hotkey| !crate::modules::application::is_script_hotkey(hotkey))
+            .cloned()
+            .collect();
     }
     if let Some(value) = &legacy.default_latency_test {
         next.default_latency_test = value.clone();

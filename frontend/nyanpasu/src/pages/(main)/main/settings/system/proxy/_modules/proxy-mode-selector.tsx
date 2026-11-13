@@ -10,7 +10,6 @@ export default function ProxyModeSelector() {
     global: m.settings_system_proxy_global_mode_label(),
     direct: m.settings_system_proxy_direct_mode_label(),
     rule: m.settings_system_proxy_rule_mode_label(),
-    script: m.settings_system_proxy_script_mode_label(),
   } satisfies Record<ProxyMode, string>
 
   const handleModeChange = useLockFn(async (mode: ProxyMode) => {

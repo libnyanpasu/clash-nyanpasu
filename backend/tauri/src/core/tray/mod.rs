@@ -258,9 +258,6 @@ impl Tray {
             .check("rule_mode", t!("tray.rule_mode"))
             .check("global_mode", t!("tray.global_mode"))
             .check("direct_mode", t!("tray.direct_mode"));
-        if view.menu.core == ClashCore::ClashPremium {
-            menu = menu.check("script_mode", t!("tray.script_mode"));
-        }
         menu = menu
             .separator()
             .check("system_proxy", t!("tray.system_proxy"))
@@ -459,9 +456,6 @@ impl Tray {
         let mut whole = check("rule_mode", mode == Mode::Rule)
             & check("global_mode", mode == Mode::Global)
             & check("direct_mode", mode == Mode::Direct);
-        if view.menu.core == ClashCore::ClashPremium {
-            whole &= check("script_mode", mode == Mode::Script);
-        }
         whole &= check("system_proxy", system_proxy) & check("tun_mode", tun_mode);
         whole &= menu
             .get("tun_mode")
@@ -554,7 +548,6 @@ impl Tray {
             "rule_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeRule),
             "global_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeGlobal),
             "direct_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeDirect),
-            "script_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeScript),
 
             "open_window" => {
                 // Not on the main thread: building a window from a main-thread

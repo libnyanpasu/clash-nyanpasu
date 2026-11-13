@@ -100,7 +100,6 @@ const ProxyMode = () => {
     global: m.tray_menu_proxy_mode_global(),
     direct: m.tray_menu_proxy_mode_direct(),
     rule: m.tray_menu_proxy_mode_rule(),
-    script: m.tray_menu_proxy_mode_script(),
   } satisfies Record<ProxyModeType, string>
 
   const handleModeChange = useTrayClickHandler(async (mode: ProxyModeType) => {

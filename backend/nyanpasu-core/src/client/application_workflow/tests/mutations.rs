@@ -3143,7 +3143,7 @@ async fn a_restore_re_inspects_the_build_its_receipt_names() {
     let (operation_id, result) = simple_mutate(
         &mut clash,
         &client,
-        overrides(serde_json::json!({"mode": "script"})),
+        overrides(serde_json::json!({"mode": "global"})),
         CommandClass::Save,
     )
     .await;

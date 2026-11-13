@@ -30,7 +30,6 @@
     },
     "quit": "終了",
     "rule_mode": "ルールモード",
-    "script_mode": "スクリプトモード",
     "system_proxy": "システムプロキシ",
     "tun_mode": "TUN モード",
     "transparent_proxy": "透過プロキシ"

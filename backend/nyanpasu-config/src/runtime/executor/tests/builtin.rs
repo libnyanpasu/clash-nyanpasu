@@ -68,8 +68,9 @@ fn tun_off() -> TunParams {
 }
 
 #[test]
-fn known_fields_are_exactly_45() {
-    assert_eq!(known_fields().count(), 45);
+fn known_fields_are_exactly_44() {
+    assert_eq!(known_fields().count(), 44);
+    assert!(!known_fields().any(|field| field == "script"));
     assert!(known_fields().any(|f| f == "proxies"));
     assert!(known_fields().any(|f| f == "external-controller"));
     assert!(known_fields().any(|f| f == "global-client-fingerprint"));

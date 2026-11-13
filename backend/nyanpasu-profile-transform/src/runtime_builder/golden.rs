@@ -116,7 +116,7 @@ fn golden_clean_seed_composition_with_global_chain() {
     assert_matches_fixture(&yaml, "composition_global_chain.yaml");
 }
 
-/// builtin 门控 golden(Mihomo:hy_alpn + meta_guard,真 boa)。
+/// builtin 门控 golden(Mihomo:hy_alpn,真 boa)。
 #[test]
 fn golden_builtin_gating_mihomo() {
     let temp = tempfile::tempdir().unwrap();

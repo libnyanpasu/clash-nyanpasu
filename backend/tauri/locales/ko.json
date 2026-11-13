@@ -30,7 +30,6 @@
     },
     "quit": "종료",
     "rule_mode": "규칙 모드",
-    "script_mode": "스크립트 모드",
     "system_proxy": "시스템 프록시",
     "tun_mode": "TUN 모드",
     "transparent_proxy": "투명 프록시"

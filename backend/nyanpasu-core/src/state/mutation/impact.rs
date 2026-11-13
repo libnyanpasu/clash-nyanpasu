@@ -695,7 +695,7 @@ mod tests {
                 field: "core",
                 mutate: |app| app.core = ClashCore::ClashRs,
                 impact: RuntimeImpact::CoreSwap,
-                // Only a Premium core offers the tray's script mode item.
+                // The core determines whether the transparent-proxy item is available.
                 owners: &[EffectKind::Tray],
             },
             AppCase {

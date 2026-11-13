@@ -103,7 +103,7 @@ fn to_tray_proxies(
     proxies: &Proxies,
     layout: Option<&ProxyGroupLayout>,
 ) -> TrayProxies {
-    if !matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
+    if !matches!(mode, Mode::Global | Mode::Rule) {
         return TrayProxies::new();
     }
     // GLOBAL stays in Global mode even when hidden, as on the page.
@@ -617,13 +617,11 @@ mod tests {
         assert!(global_mode.contains_key("GroupA"));
         assert_eq!(global_mode["GLOBAL"].all, vec!["GroupA".to_owned()]);
 
-        for mode in [Mode::Rule, Mode::Script] {
-            let tray = to_tray_proxies(mode, &proxies, None);
-            assert!(!tray.contains_key("GLOBAL"), "{mode:?}");
-            assert!(!tray.contains_key("global"), "{mode:?}");
-            assert!(tray.contains_key("GroupA"), "{mode:?}");
-            assert_eq!(tray["GroupA"].all, vec!["node-a".to_owned()]);
-        }
+        let tray = to_tray_proxies(Mode::Rule, &proxies, None);
+        assert!(!tray.contains_key("GLOBAL"));
+        assert!(!tray.contains_key("global"));
+        assert!(tray.contains_key("GroupA"));
+        assert_eq!(tray["GroupA"].all, vec!["node-a".to_owned()]);
     }
 
     /// The core looks a group up by its exact, case-sensitive name, so the
@@ -655,7 +653,7 @@ mod tests {
         let mut hidden = group("Hidden", &["node-a"], "node-a");
         hidden.hidden = true;
         proxies.groups.push(hidden);
-        for mode in [Mode::Global, Mode::Rule, Mode::Script] {
+        for mode in [Mode::Global, Mode::Rule] {
             assert!(!to_tray_proxies(mode, &proxies, None).contains_key("Hidden"));
         }
         assert!(to_tray_proxies(Mode::Global, &proxies, None).contains_key("GLOBAL"));

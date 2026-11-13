@@ -197,11 +197,16 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     'NET_STAT_WIDGET_FLATTEN',
     'LANGUAGE_CASE',
   ]),
-  ...migrationModuleStatics('application', ['WINDOW_CLOSE', 'DNSPOD_CONSENT']),
+  ...migrationModuleStatics('application', [
+    'WINDOW_CLOSE',
+    'DNSPOD_CONSENT',
+    'SCRIPT_HOTKEYS',
+  ]),
   ...migrationModuleStatics('clash_config', [
     'MANAGEABLE_GUARD_FIELDS',
     'TUN_OVERRIDES',
     'TUN_MIPS',
+    'SCRIPT_MODE',
   ]),
   ...migrationModuleStatics('profiles', [
     'NULL_VALUE',

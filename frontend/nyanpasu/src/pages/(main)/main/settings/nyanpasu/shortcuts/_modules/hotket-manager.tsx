@@ -208,7 +208,6 @@ export default function HotkeyManager() {
     clash_mode_rule: m.settings_nyanpasu_hotkey_clash_mode_rule(),
     clash_mode_global: m.settings_nyanpasu_hotkey_clash_mode_global(),
     clash_mode_direct: m.settings_nyanpasu_hotkey_clash_mode_direct(),
-    clash_mode_script: m.settings_nyanpasu_hotkey_clash_mode_script(),
     toggle_system_proxy: m.settings_nyanpasu_hotkey_toggle_system_proxy(),
     enable_system_proxy: m.settings_nyanpasu_hotkey_enable_system_proxy(),
     disable_system_proxy: m.settings_nyanpasu_hotkey_disable_system_proxy(),

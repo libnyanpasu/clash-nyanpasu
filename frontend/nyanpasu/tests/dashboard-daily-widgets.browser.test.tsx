@@ -219,11 +219,6 @@ function setupHooks() {
       isError: false,
       refetch: vi.fn(async () => ({ data: { mode: 'global' } })),
     },
-    settingsQuery: {
-      data: { core: 'mihomo' },
-      isPending: false,
-      isError: false,
-    },
     isPending: false,
     upsert: vi.fn(async () => ({ status: 'committed' })),
   })
@@ -781,11 +776,6 @@ test('proxy mode does not pretend an unknown runtime value is Rule', async ({
       isError: false,
       refetch: vi.fn(async () => ({ data: { mode: 'unexpected' } })),
     },
-    settingsQuery: {
-      data: { core: 'mihomo' },
-      isPending: false,
-      isError: false,
-    },
     isPending: false,
     upsert: vi.fn(async () => ({ status: 'committed' })),
   })
@@ -810,11 +800,6 @@ test('proxy mode applies a selected runtime mode', async ({
       isPending: false,
       isError: false,
       refetch: vi.fn(async () => ({ data: { mode: 'global' } })),
-    },
-    settingsQuery: {
-      data: { core: 'mihomo' },
-      isPending: false,
-      isError: false,
     },
     isPending: false,
     upsert,
@@ -847,11 +832,6 @@ test('an unconfirmed mode remains blocked until a successful explicit read', asy
       isError: false,
       refetch,
     },
-    settingsQuery: {
-      data: { core: 'mihomo' },
-      isPending: false,
-      isError: false,
-    },
     isPending: false,
     upsert,
   })
@@ -883,7 +863,7 @@ test('an unconfirmed mode remains blocked until a successful explicit read', asy
   expect(upsert).toHaveBeenCalledTimes(2)
 })
 
-test('proxy mode selection follows the confirmed runtime value and premium exposes Script', async ({
+test('proxy mode selection follows the confirmed runtime value with the three supported modes', async ({
   onTestFinished,
 }) => {
   const upsert = vi.fn()
@@ -901,11 +881,6 @@ test('proxy mode selection follows the confirmed runtime value and premium expos
         isError: false,
         refetch: vi.fn(),
       },
-      settingsQuery: {
-        data: { core: 'clash' },
-        isPending: false,
-        isError: false,
-      },
       isPending: false,
       upsert,
     }
@@ -914,16 +889,19 @@ test('proxy mode selection follows the confirmed runtime value and premium expos
   const rule = page.getByRole('button', {
     name: m.dashboard_widget_proxy_mode_rule(),
   })
-  const script = page.getByRole('button', {
-    name: m.dashboard_widget_proxy_mode_script(),
+  const global = page.getByRole('button', {
+    name: m.dashboard_widget_proxy_mode_global(),
   })
 
   await expect.element(rule).toHaveAttribute('aria-pressed', 'true')
-  await expect.element(script).toBeEnabled()
-  await userEvent.click(script)
-  await expect.element(script).toHaveAttribute('aria-pressed', 'true')
+  await expect.element(global).toBeEnabled()
+  await userEvent.click(global)
+  await expect.element(global).toHaveAttribute('aria-pressed', 'true')
   await expect.element(rule).toHaveAttribute('aria-pressed', 'false')
-  expect(upsert).toHaveBeenCalledWith('script')
+  expect(upsert).toHaveBeenCalledWith('global')
+  expect(
+    document.querySelectorAll('[data-slot="expressive-choice"] button'),
+  ).toHaveLength(3)
   expect(
     document.querySelectorAll(
       '[data-slot="expressive-choice"][data-layout="flex"]',

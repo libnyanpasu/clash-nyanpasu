@@ -29,12 +29,11 @@ pub(super) const DEFAULT_FIELDS: [&str; 5] = [
     "rule-providers",
 ];
 
-pub(super) const OTHERS_FIELDS: [&str; 31] = [
+pub(super) const OTHERS_FIELDS: [&str; 30] = [
     "dns",
     "tun",
     "ebpf",
     "hosts",
-    "script",
     "profile",
     "payload",
     "tunnels",
@@ -63,7 +62,7 @@ pub(super) const OTHERS_FIELDS: [&str; 31] = [
     "global-client-fingerprint",
 ];
 
-/// 45-key full whitelist, DEFAULT ++ HANDLE ++ OTHERS (field.rs:58-65 order).
+/// 44-key full whitelist, DEFAULT ++ HANDLE ++ OTHERS (field.rs:58-65 order).
 pub fn known_fields() -> impl Iterator<Item = &'static str> {
     DEFAULT_FIELDS
         .into_iter()

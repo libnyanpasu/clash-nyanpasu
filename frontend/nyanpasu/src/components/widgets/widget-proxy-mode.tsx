@@ -1,4 +1,3 @@
-import CodeRounded from '~icons/material-symbols/code-rounded'
 import NorthEastRounded from '~icons/material-symbols/north-east-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
@@ -22,12 +21,11 @@ import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
 import { WidgetHeader, WidgetTitle } from './widget-ui'
 
-const MODE_KEYS: ProxyMode[] = ['rule', 'global', 'direct', 'script']
+const MODE_KEYS: ProxyMode[] = ['rule', 'global', 'direct']
 const MODE_ICONS = {
   rule: RouteRounded,
   global: PublicRounded,
   direct: NorthEastRounded,
-  script: CodeRounded,
 }
 
 function modeLabel(mode: ProxyMode): string {
@@ -38,8 +36,6 @@ function modeLabel(mode: ProxyMode): string {
       return m.dashboard_widget_proxy_mode_global()
     case 'direct':
       return m.dashboard_widget_proxy_mode_direct()
-    case 'script':
-      return m.dashboard_widget_proxy_mode_script()
   }
 }
 
@@ -51,8 +47,6 @@ function modeDescription(mode: ProxyMode): string {
       return m.dashboard_widget_proxy_mode_global_description()
     case 'direct':
       return m.dashboard_widget_proxy_mode_direct_description()
-    case 'script':
-      return m.dashboard_widget_proxy_mode_script_description()
   }
 }
 
@@ -104,7 +98,7 @@ function ProxyModePreview({ id }: { id: string }) {
         </WidgetHeader>
         <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
           <ProxyModeOptions
-            modes={MODE_KEYS.slice(0, 3)}
+            modes={MODE_KEYS}
             currentMode="rule"
             disabled
             layout={config.layout}
@@ -133,23 +127,14 @@ function ProxyModeLive({
   const [checkFailed, setCheckFailed] = useState(false)
   const configData = proxyMode.query.data
   const layout = config.layout
-  const core = proxyMode.settingsQuery.data?.core
   const rawMode = configData?.mode?.toLowerCase()
-  const supportedModes = core === 'clash' ? MODE_KEYS : MODE_KEYS.slice(0, 3)
-  const currentMode = supportedModes.find((mode) => mode === rawMode) ?? null
-  const waiting =
-    proxyMode.query.isPending ||
-    proxyMode.settingsQuery.isPending ||
-    coreStatus.isPending
+  const currentMode = MODE_KEYS.find((mode) => mode === rawMode) ?? null
+  const waiting = proxyMode.query.isPending || coreStatus.isPending
   const isOffline =
     coreStatus.data !== undefined &&
     coreStatus.data !== null &&
     coreStatus.data.status !== 'Running'
-  const loadFailed =
-    (proxyMode.query.isError ||
-      proxyMode.settingsQuery.isError ||
-      coreStatus.isError) &&
-    !waiting
+  const loadFailed = (proxyMode.query.isError || coreStatus.isError) && !waiting
   const actionable =
     !disabled &&
     (actionState !== 'unconfirmed' || checkedAfterUnconfirmed) &&
@@ -158,17 +143,10 @@ function ProxyModeLive({
     !loadFailed &&
     !isOffline &&
     configData !== undefined &&
-    proxyMode.settingsQuery.data !== undefined &&
     coreStatus.data?.status === 'Running'
 
   const changeMode = async (mode: ProxyMode) => {
-    if (
-      !actionable ||
-      proxyMode.isPending ||
-      mode === currentMode ||
-      !supportedModes.includes(mode)
-    )
-      return
+    if (!actionable || proxyMode.isPending || mode === currentMode) return
     setActionState('idle')
     setCheckedAfterUnconfirmed(false)
     setCheckFailed(false)
@@ -276,7 +254,7 @@ function ProxyModeLive({
 
         <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
           <ProxyModeOptions
-            modes={supportedModes}
+            modes={MODE_KEYS}
             currentMode={currentMode}
             layout={layout}
             disabled={!actionable || proxyMode.isPending}

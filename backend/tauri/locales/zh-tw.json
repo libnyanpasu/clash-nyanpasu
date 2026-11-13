@@ -30,7 +30,6 @@
     },
     "quit": "結束",
     "rule_mode": "規則模式",
-    "script_mode": "指令碼模式",
     "system_proxy": "系統 Proxy",
     "tun_mode": "TUN 模式",
     "transparent_proxy": "透明代理"

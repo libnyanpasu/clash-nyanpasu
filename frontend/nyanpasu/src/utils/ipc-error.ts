@@ -286,8 +286,6 @@ function hotkeyActionName(action: HotkeyAction): string {
       return m.settings_nyanpasu_hotkey_clash_mode_global()
     case 'clash_mode_direct':
       return m.settings_nyanpasu_hotkey_clash_mode_direct()
-    case 'clash_mode_script':
-      return m.settings_nyanpasu_hotkey_clash_mode_script()
     case 'toggle_system_proxy':
       return m.settings_nyanpasu_hotkey_toggle_system_proxy()
     case 'enable_system_proxy':

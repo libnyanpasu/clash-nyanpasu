@@ -1017,7 +1017,6 @@ cases!(
     ClashModeRule,
     ClashModeGlobal,
     ClashModeDirect,
-    ClashModeScript,
     ToggleSystemProxy,
     EnableSystemProxy,
     DisableSystemProxy,

@@ -251,7 +251,8 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
 
     fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
         (|| -> Result<(), Error> {
-            let hotkeys = read_kv_hotkeys(ctx)?.context(FindHotkeysSnafu)?;
+            let mut hotkeys = read_kv_hotkeys(ctx)?.context(FindHotkeysSnafu)?;
+            hotkeys.retain(|hotkey| !super::application::is_script_hotkey(hotkey));
 
             let application_path = ctx.application_config_path();
             let raw = std::fs::read_to_string(&application_path).context(ReadFileSnafu {

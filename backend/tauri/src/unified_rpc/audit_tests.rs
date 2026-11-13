@@ -53,25 +53,27 @@ fn native_tauri_dispatch_records_one_audit_event() {
     assert_tauri_dispatch_records_one_audit_event("audit_native_echo");
 }
 
-fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
+fn tauri_fixture(directory: &tempfile::TempDir, label: &str) -> (tauri::App, tauri::WebviewWindow) {
     // Wry's concrete handles are required by the production generated dispatcher.
     // Keep the native fixture invisible and use no application plugins or setup.
-    let directory = tempfile::tempdir().unwrap();
     let builder = tauri::Builder::default().manage(AtomicUsize::new(0));
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.any_thread();
     let app = builder
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .unwrap();
-    let window = tauri::WebviewWindowBuilder::new(
-        &app,
-        "audit-window",
-        tauri::WebviewUrl::App("index.html".into()),
-    )
-    .visible(false)
-    .data_directory(directory.path().join("webview"))
-    .build()
-    .unwrap();
+    let window =
+        tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App("index.html".into()))
+            .visible(false)
+            .data_directory(directory.path().join("webview"))
+            .build()
+            .unwrap();
+    (app, window)
+}
+
+fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
+    let directory = tempfile::tempdir().unwrap();
+    let (app, window) = tauri_fixture(&directory, "audit-window");
     tauri::async_runtime::block_on(async {
         let fixture = Fixture::new(true).await;
         let capture = Capture::default();
@@ -165,7 +167,7 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
                     .0
                     .lock()
                     .iter()
-                    .all(|e| e.level == tracing::Level::DEBUG)
+                    .all(|e| e.level == tracing::Level::TRACE)
             );
             assert!(!format!("{records:?}").contains(SECRET));
             assert!(!format!("{:?}", capture.0.lock()).contains(SECRET));
@@ -253,4 +255,145 @@ fn finished(record: &RpcAuditRecord) -> RpcAuditOutcome {
         AuditPhase::Finished { outcome, .. } => outcome.clone(),
         phase => panic!("expected Finished, got {phase:?}"),
     }
+}
+
+#[test]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "linux"),
+    ignore = "a native Wry window needs the main thread on macOS and a display on Linux"
+)]
+fn query_rpc_audit_matches_http_results_and_errors() {
+    use nyanpasu_core::client::AuditSetup;
+    use nyanpasu_observers::audit::{AuditDropped, AuditRow, AuditStore as _};
+    use reqwest::StatusCode;
+
+    let directory = tempfile::tempdir().unwrap();
+    let (app, window) = tauri_fixture(&directory, "audit-query-window");
+    tauri::async_runtime::block_on(async {
+        for enabled in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let mut args = nyanpasu_rpc::test_support::test_client_args_with_endpoint(
+                &directory,
+                nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+            )
+            .await;
+            let (sender, rows) = tokio::sync::mpsc::channel(1);
+            let dropped = AuditDropped::default();
+            dropped.increment();
+            let expected = AuditRow {
+                at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as i64,
+                transport: "http".into(),
+                method: "get_profiles".into(),
+                owner: "http:0123456789abcdef".into(),
+                invocation_id: 23,
+                request_id: None,
+                phase: "finished".into(),
+                outcome: Some("success".into()),
+                kind: None,
+                code: None,
+                duration_ns: 123,
+            };
+            if enabled {
+                let paths = args.paths.clone();
+                let row = expected.clone();
+                let store = tokio::task::spawn_blocking(move || {
+                    let mut store = nyanpasu_core::audit::open_audit_store(&paths).unwrap();
+                    store.append(&[row]).unwrap();
+                    store
+                })
+                .await
+                .unwrap();
+                args.audit = Some(AuditSetup {
+                    store: Box::new(store),
+                    rows,
+                    dropped,
+                });
+            }
+            let fixture = Fixture::with_setup(false, &[], directory, args).await;
+            let desktop = super::native::DesktopRpc::new(
+                fixture.rpc.clone(),
+                tokio_util::task::TaskTracker::new(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap();
+            for params in [
+                json!({"filter": {}, "before": null, "limit": 10}),
+                json!({"filter": {"transport": "local", "outcome": "failure"}, "before": null, "limit": 500}),
+                json!({}),
+            ] {
+                let native = desktop
+                    .call(
+                        app.handle().clone(),
+                        window.as_ref().window(),
+                        window.as_ref().clone(),
+                        "query_rpc_audit",
+                        params.clone(),
+                    )
+                    .await;
+                let (status, http) = fixture.call("query_rpc_audit", params.clone()).await;
+                match native {
+                    Ok(page) => {
+                        assert_eq!(status, StatusCode::OK);
+                        assert_eq!(http, page);
+                        assert_eq!(page["dropped"], 1);
+                        assert_eq!(page["next"], serde_json::Value::Null);
+                        let expected_rows = if params["filter"] == json!({}) {
+                            json!([expected])
+                        } else {
+                            json!([])
+                        };
+                        assert_eq!(page["rows"], expected_rows);
+                    }
+                    Err(error) => {
+                        assert_eq!(http, serde_json::to_value(&error).unwrap());
+                        if params == json!({}) {
+                            assert_eq!(status, StatusCode::BAD_REQUEST);
+                            assert_eq!(error.kind, "invalid_params");
+                        } else {
+                            assert!(!enabled);
+                            assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+                            assert_eq!(error.kind, "application_error");
+                            assert_eq!(error.message, "audit recording is unavailable");
+                            assert_eq!(http["domain_error"]["kind"]["domain"], "unknown");
+                        }
+                    }
+                }
+            }
+            if enabled {
+                let params = json!({"filter": {}, "before": null, "limit": 1});
+                let first = desktop
+                    .call(
+                        app.handle().clone(),
+                        window.as_ref().window(),
+                        window.as_ref().clone(),
+                        "query_rpc_audit",
+                        params.clone(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(fixture.call("query_rpc_audit", params).await.1, first);
+                assert!(first["next"].is_object());
+                let params = json!({"filter": {}, "before": first["next"], "limit": 1});
+                let next = desktop
+                    .call(
+                        app.handle().clone(),
+                        window.as_ref().window(),
+                        window.as_ref().clone(),
+                        "query_rpc_audit",
+                        params.clone(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(fixture.call("query_rpc_audit", params).await.1, next);
+                assert_eq!(next["rows"], json!([]));
+                assert!(next["next"].is_null());
+            }
+            fixture.shutdown().await;
+            drop(sender);
+        }
+    });
+    window.destroy().unwrap();
 }

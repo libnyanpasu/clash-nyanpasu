@@ -1,6 +1,7 @@
 //! Transport-neutral shared command declarations.
 
 pub mod archive;
+pub mod audit;
 pub mod clash;
 pub mod host;
 pub mod icons;

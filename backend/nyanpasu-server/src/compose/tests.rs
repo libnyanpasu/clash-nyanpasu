@@ -406,13 +406,17 @@ async fn server_refuses_dns_elevation_without_launching_commands() {
 
 #[tokio::test]
 async fn server_composes_without_presentation_capabilities() {
+    use nyanpasu_observers::audit::{AuditFilter, AuditStore as _};
+    use nyanpasu_rpc::audit::RpcTransport;
+    use nyanpasu_rpc_protocol::RpcOwner;
+
     let dir = tempfile::tempdir().unwrap();
     let paths = nyanpasu_paths::PathResolver::with_base_dirs(
         dir.path().join("config").to_str().unwrap().into(),
         dir.path().join("data").to_str().unwrap().into(),
     );
     let server = Server::try_new(ServerSetupArgs {
-        paths,
+        paths: paths.clone(),
         bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
         executable: std::env::current_exe().unwrap(),
         logger: Arc::new(MockLoggerRefresher::new()),
@@ -455,7 +459,36 @@ async fn server_composes_without_presentation_capabilities() {
             .unwrap()
             .enable_service_mode
     );
+    server
+        .client()
+        .query_rpc_audit(AuditFilter::default(), None, 10)
+        .await
+        .unwrap();
+    server
+        .rpc()
+        .call(
+            RpcTransport::Http,
+            "get_profiles",
+            RpcOwner::new("server-test-owner".into()),
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
     server.shutdown().await;
+    let page = tokio::task::spawn_blocking(move || {
+        nyanpasu_core::audit::open_audit_store(&paths)
+            .unwrap()
+            .query(AuditFilter::default(), None, 10)
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(page.rows.len(), 1);
+    assert_eq!(page.rows[0].transport, "http");
+    assert_eq!(page.rows[0].method, "get_profiles");
+    assert_eq!(page.rows[0].phase, "finished");
+    assert_eq!(page.rows[0].outcome.as_deref(), Some("success"));
+    assert!(!page.rows[0].owner.contains("server-test-owner"));
 }
 
 #[test]

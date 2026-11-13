@@ -916,6 +916,9 @@ cases!(
     InvalidCoreLogs {
         reason: "field-55/路徑\\file.yaml".to_owned(),
     },
+    InvalidRpcAudit {
+        reason: "RPC audit retention must be between 1 and 90 days".to_owned(),
+    },
     InvalidPublicIpProbeSources {
         reason: "field-56/路徑\\file.yaml".to_owned(),
     },

@@ -935,12 +935,7 @@ async fn audit_level_follows_transport_not_outcome() {
     {
         let events = capture.0.lock();
         assert_eq!(events.len(), 18, "captured audit events: {events:?}");
-        assert!(events[..14].iter().all(|e| e.level == tracing::Level::INFO));
-        assert!(
-            events[14..]
-                .iter()
-                .all(|e| e.level == tracing::Level::DEBUG)
-        );
+        assert!(events.iter().all(|e| e.level == tracing::Level::TRACE));
         assert!(events.iter().all(|e| {
             [
                 "command",

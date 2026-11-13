@@ -17,6 +17,7 @@ use nyanpasu_migration::{
     },
 };
 use nyanpasu_observers::{
+    audit::{AuditArgs, AuditClient},
     logs::CoreLogsClient,
     traffic::{TrafficClient, TrafficFeed, TrafficOwnerFactory, TrafficStartArgs},
 };
@@ -27,6 +28,7 @@ pub mod app_update;
 pub mod application;
 pub mod application_workflow;
 pub mod artifact_snapshot;
+pub mod audit;
 mod clash_api;
 mod clash_config;
 mod clash_streams;
@@ -114,6 +116,7 @@ use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
+pub use audit::AuditSetup;
 pub use error::{ClientError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
 use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
@@ -149,6 +152,8 @@ pub struct ClientSetupArgs {
     pub accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+    /// `None` disables audit persistence when its store could not be opened.
+    pub audit: Option<AuditSetup>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -301,6 +306,7 @@ struct NyanpasuClientInner {
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
     traffic: Option<TrafficClient>,
+    audit: Option<AuditClient>,
     updater: nyanpasu_updater::UpdaterClient,
     core_versions: Arc<dyn nyanpasu_contracts::core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
@@ -351,6 +357,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            audit,
             shutdown,
             tasks,
         } = args;
@@ -420,6 +427,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            audit,
             shutdown,
             tasks,
         )
@@ -460,6 +468,7 @@ impl NyanpasuClient {
         window: Option<Arc<dyn hotkey::ports::WindowControl>>,
         accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
         traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+        audit: Option<AuditSetup>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
@@ -694,6 +703,29 @@ impl NyanpasuClient {
             }
             None => None,
         };
+        let audit = match audit {
+            Some(setup) => match AuditClient::spawn(
+                AuditArgs {
+                    store: setup.store,
+                    rows: setup.rows,
+                    dropped: setup.dropped,
+                    retention: Arc::new(audit::SettingsAuditRetention::new(
+                        application.snapshot_handle(),
+                    )),
+                },
+                shutdown.child_token(),
+                &tasks,
+            )
+            .await
+            {
+                Ok(client) => Some(client),
+                Err(error) => {
+                    tracing::warn!(%error, "audit recording is disabled");
+                    None
+                }
+            },
+            None => None,
+        };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 debug_http,
@@ -717,6 +749,7 @@ impl NyanpasuClient {
                 proxies,
                 streams,
                 traffic,
+                audit,
                 updater,
                 core_versions,
                 app_updater,
@@ -2707,6 +2740,7 @@ pub(crate) mod tests {
             // parse should fail here, exactly as the app would.
             accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
             traffic_store: None,
+            audit: None,
             shutdown,
             tasks,
         })

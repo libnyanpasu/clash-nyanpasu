@@ -40,6 +40,8 @@ pub enum Error {
     ValidateUpdateSources { reason: &'static str },
     #[snafu(display("invalid core log settings: {reason}"))]
     ValidateCoreLogs { reason: &'static str },
+    #[snafu(display("invalid RPC audit settings: {reason}"))]
+    ValidateRpcAudit { reason: &'static str },
 }
 
 #[derive(Clone)]
@@ -119,6 +121,13 @@ impl ApplicationClient {
             .core_logs
             .validate()
             .map_err(|reason| Error::ValidateCoreLogs { reason })?;
+        manager
+            .snapshot_handle()
+            .load()
+            .state
+            .rpc_audit
+            .validate()
+            .map_err(|reason| Error::ValidateRpcAudit { reason })?;
         let snapshot = manager.snapshot_handle();
         let (settings_tx, settings_changes) =
             tokio::sync::watch::channel(snapshot.load().state.clone());
@@ -307,6 +316,114 @@ mod tests {
             Err(ConfigError::InvalidPublicIpProbeSources { .. })
         ));
         assert_eq!(client.snapshot().version, committed_version);
+    }
+
+    #[tokio::test]
+    async fn rpc_audit_rejects_invalid_settings_at_startup() {
+        use nyanpasu_config::application::RpcAuditSettings;
+
+        for settings in [
+            RpcAuditSettings {
+                max_age_days: 0,
+                ..RpcAuditSettings::default()
+            },
+            RpcAuditSettings {
+                max_size_mib: 257,
+                ..RpcAuditSettings::default()
+            },
+        ] {
+            let dir = tempdir().unwrap();
+            let path = temp_config_path(&dir);
+            let config = NyanpasuAppConfig {
+                rpc_audit: settings,
+                ..NyanpasuAppConfig::default()
+            };
+            let mut manager =
+                PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
+                    .config_path(path.clone())
+                    .assemble()
+                    .from_state(NyanpasuAppConfig::default())
+                    .await
+                    .unwrap();
+            manager.upsert(config).await.unwrap();
+            drop(manager);
+
+            let result = ApplicationClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
+                ReleaseChannel::Stable,
+                path,
+                CancellationToken::new(),
+                &TaskTracker::new(),
+            )
+            .await;
+            let error = result
+                .err()
+                .expect("invalid RPC audit settings must prevent startup");
+            assert!(
+                matches!(&error, Error::ValidateRpcAudit { reason } if Some(*reason) == settings.validate().err()),
+                "unexpected startup error: {error:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn rpc_audit_settings_persist_and_invalid_writes_are_not_committed() {
+        use nyanpasu_config::application::RpcAuditSettings;
+
+        let (client, dir) = test_client().await;
+        let selected = RpcAuditSettings {
+            max_age_days: 30,
+            max_size_mib: 64,
+        };
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.rpc_audit = Some(selected);
+        assert_eq!(client.patch(patch).await.unwrap().state.rpc_audit, selected);
+        let committed_version = client.snapshot().version;
+
+        for invalid in [
+            RpcAuditSettings {
+                max_age_days: 0,
+                ..selected
+            },
+            RpcAuditSettings {
+                max_age_days: 91,
+                ..selected
+            },
+            RpcAuditSettings {
+                max_size_mib: 3,
+                ..selected
+            },
+            RpcAuditSettings {
+                max_size_mib: 257,
+                ..selected
+            },
+        ] {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.rpc_audit = Some(invalid);
+            assert!(
+                matches!(client.patch(patch).await, Err(ConfigError::InvalidRpcAudit { reason }) if Some(reason.as_str()) == invalid.validate().err())
+            );
+            let mut replacement = client.snapshot().state;
+            replacement.rpc_audit = invalid;
+            assert!(matches!(
+                client.replace(replacement).await,
+                Err(ConfigError::InvalidRpcAudit { .. })
+            ));
+            assert_eq!(client.snapshot().version, committed_version);
+            assert_eq!(client.snapshot().state.rpc_audit, selected);
+        }
+
+        drop(client);
+        let reloaded = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            ReleaseChannel::Stable,
+            temp_config_path(&dir),
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(reloaded.snapshot().state.rpc_audit, selected);
     }
 
     #[tokio::test]

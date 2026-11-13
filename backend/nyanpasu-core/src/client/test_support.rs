@@ -795,6 +795,7 @@ pub async fn test_client_args_with_endpoint(
         window: Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         traffic_store: None,
+        audit: None,
         shutdown,
         tasks,
     }

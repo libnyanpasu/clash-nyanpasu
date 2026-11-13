@@ -70,7 +70,8 @@ impl Fixture {
         Self::with_setup(tracing, provided, directory, args).await
     }
 
-    pub(crate) async fn with_setup(
+    /// Reuses the HTTP/native fixture with explicitly supplied application owners.
+    pub async fn with_setup(
         tracing: bool,
         provided: &[ShellCapability],
         directory: tempfile::TempDir,

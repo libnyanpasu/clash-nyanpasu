@@ -101,7 +101,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     .unwrap();
     assert!(built.is_ok());
     let captured = f.builder.capture_content(&profiles).await;
-    let mut revisions = runtime::RuntimeRevisionAllocator::new();
+    let revisions = runtime::RuntimeRevisionAllocator::new();
     let build = |revision, strict| {
         f.builder.build(
             revision,

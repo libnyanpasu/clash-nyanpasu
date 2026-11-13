@@ -11,7 +11,10 @@ use std::{
     fs::OpenOptions,
     io::Write,
     path::Path,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime},
 };
 
@@ -36,20 +39,22 @@ impl RuntimeRevision {
     }
 }
 
-#[derive(Default)]
-pub struct RuntimeRevisionAllocator(u64);
+#[derive(Clone, Default)]
+pub struct RuntimeRevisionAllocator(Arc<AtomicU64>);
 
 impl RuntimeRevisionAllocator {
     pub fn new() -> Self {
-        Self(0)
+        Self::default()
     }
 
-    pub fn allocate(&mut self) -> RuntimeRevision {
-        self.0 = self
+    pub fn allocate(&self) -> RuntimeRevision {
+        let previous = self
             .0
-            .checked_add(1)
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_add(1)
+            })
             .expect("a session cannot exhaust the u64 runtime revision space");
-        RuntimeRevision(self.0)
+        RuntimeRevision(previous + 1)
     }
 }
 
@@ -592,13 +597,28 @@ pub(crate) mod tests {
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
-        let mut allocator = RuntimeRevisionAllocator::new();
+        let allocator = RuntimeRevisionAllocator::new();
         let first = allocator.allocate();
         let second = allocator.allocate();
 
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
         assert!(second > first);
+    }
+
+    #[test]
+    fn runtime_revision_allocator_clones_share_monotonic_revisions() {
+        let allocator = RuntimeRevisionAllocator::new();
+        let cloned = allocator.clone();
+        let revisions = [
+            allocator.allocate(),
+            cloned.allocate(),
+            allocator.allocate(),
+            cloned.allocate(),
+        ];
+
+        assert_eq!(revisions.map(RuntimeRevision::get), [1, 2, 3, 4]);
+        assert!(revisions.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[tokio::test]

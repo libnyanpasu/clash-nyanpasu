@@ -998,7 +998,7 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         newer.clash_ipc_disable_http_controller = Some(true);
         f.client.patch_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
-        let mut preparation = super::RuntimePreparation::new(
+        let preparation = super::RuntimePreparation::new(
             f.client.inner.application.snapshot_handle(),
             f.client.inner.clash_config.snapshot_handle(),
             f.client.inner.profiles.snapshot_handle(),

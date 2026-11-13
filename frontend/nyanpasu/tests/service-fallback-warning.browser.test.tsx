@@ -35,7 +35,7 @@ test('the warning follows the host the core runs on', async ({
       expect(wireCommand).toBe('call_rpc')
       const { method } = args as { method: string }
       switch (method) {
-        case 'get_app_config':
+        case 'get_app_settings':
           return { enable_service_mode: true }
         case 'get_core_status':
           return coreStatus(host)

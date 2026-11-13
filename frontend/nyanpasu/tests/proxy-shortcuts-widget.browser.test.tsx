@@ -78,13 +78,13 @@ test('the proxy status header settles instead of flickering in a narrow widget',
 }) => {
   const invoke = async (method: string) => {
     switch (method) {
-      case 'get_app_config':
+      case 'get_app_settings':
         return { enable_system_proxy: false }
-      case 'get_clash_config':
+      case 'get_clash_settings':
         return { enable_tun_mode: false }
       case 'get_sys_proxy':
         return { enable: false, server: ':0', bypass: '' }
-      case 'clash_api_get_configs':
+      case 'clash_api_get_settings':
         return { 'mixed-port': 7890 }
       default:
         return null

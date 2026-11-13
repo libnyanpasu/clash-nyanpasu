@@ -91,9 +91,9 @@ function createRpcHarness({
         } as T
       case 'set_storage_item':
         return 1 as T
-      case 'get_app_config':
+      case 'get_app_settings':
         return { enable_local_ip_probe: allowed } as T
-      case 'get_clash_config':
+      case 'get_clash_settings':
         return {
           enable_tun_mode: tun,
           transparent_proxy: {

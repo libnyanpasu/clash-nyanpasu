@@ -79,7 +79,7 @@ function createRpc(storage: string, retention: string | null = '7d') {
         revision: 0,
       } as T
     }
-    if (method === 'get_app_config') {
+    if (method === 'get_app_settings') {
       reports.metadataReads.push(method)
       if (retention === null) throw new Error('settings unavailable')
       return { traffic_retention: retention } as T

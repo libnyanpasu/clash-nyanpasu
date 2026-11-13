@@ -10,7 +10,7 @@ const backend = vi.hoisted(() => ({
 }))
 vi.mock('@nyanpasu/query', async (importActual) => ({
   ...(await importActual<typeof import('@nyanpasu/query')>()),
-  useSetting: (key: string) => {
+  useFullSetting: (key: string) => {
     const [value, setValue] = useState(backend.values[key])
     return {
       value,

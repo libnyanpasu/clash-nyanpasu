@@ -15,7 +15,7 @@ test('a setting consumer does not re-render when a refetch finds nothing new', a
   mockIPC((wireCommand, args) => {
     expect(wireCommand).toBe('call_rpc')
     const { method } = args as { method: string }
-    expect(method).toBe('get_app_config')
+    expect(method).toBe('get_app_settings')
     return { theme_mode: 'dark', always_on_top: false }
   })
   const queries = new QueryClient({

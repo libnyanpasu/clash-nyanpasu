@@ -35,7 +35,7 @@ async function setup(
   const savedRemoteAccess = vi.fn()
   const testRpc = createTestRpc({
     get_http_server_status: () => state.status,
-    get_app_config: () => ({
+    get_app_settings: () => ({
       remote_access: { http: { enabled: state.status.enabled, port: null } },
     }),
     set_remote_access: (params) => {
@@ -131,7 +131,7 @@ test('a taken port is reported while the saved setting stays on and can be turne
 }) => {
   const { view, toggle, savedRemoteAccess } = await setup(onTestFinished, {
     get_http_server_status: () => ({ ...off, fault: 'port_in_use' }),
-    get_app_config: () => ({
+    get_app_settings: () => ({
       remote_access: { http: { enabled: true, port: 8765 } },
     }),
   })

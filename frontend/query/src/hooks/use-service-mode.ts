@@ -18,9 +18,14 @@ export function useServiceMode() {
       unwrapResult(await invokeMutation(command, [enabled])),
     // Wait for saved values before allowing the next toggle.
     onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: api.queries.getAppConfig().queryKey,
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: api.queries.getAppSettings().queryKey,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: api.queries.getAppConfig().queryKey,
+        }),
+      ]),
   })
 
   return {

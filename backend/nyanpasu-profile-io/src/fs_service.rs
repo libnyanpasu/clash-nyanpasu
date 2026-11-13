@@ -551,7 +551,7 @@ impl ProfileFileService {
     }
 
     fn write_journal_new(path: &Path, journal: &MaterializationJournal) -> Result<()> {
-        let content = serde_yaml::to_string(journal)
+        let content = yaml_serde::to_string(journal)
             .map_err(BoxedCause::from)
             .context(SerializeJournalSnafu)?;
         AtomicFile::new(path, OverwriteBehavior::DisallowOverwrite)
@@ -572,7 +572,7 @@ impl ProfileFileService {
             }
         );
         let content = std::fs::read_to_string(path).context(ReadFileSnafu { path })?;
-        let journal: MaterializationJournal = serde_yaml::from_str(&content)
+        let journal: MaterializationJournal = yaml_serde::from_str(&content)
             .map_err(BoxedCause::from)
             .context(ParseJournalSnafu { path })?;
         ensure!(
@@ -3036,7 +3036,7 @@ mod tests {
                 .revision,
             12
         );
-        let value: serde_yaml::Value = serde_yaml::from_str(&content).unwrap();
+        let value: yaml_serde::Value = yaml_serde::from_str(&content).unwrap();
         let mut keys = value
             .as_mapping()
             .unwrap()

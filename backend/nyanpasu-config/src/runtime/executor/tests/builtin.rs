@@ -36,7 +36,7 @@ fn apply_tun_and_cache(config: &ConfigValue, tun: &TunParams) -> ConfigValue {
 
 /// Fixed-secret guard input; the default constructor generates a fresh uuid.
 pub fn fixed_overrides() -> ClashGuardOverrides {
-    serde_yaml_ng::from_str(
+    yaml_serde::from_str(
         "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: false\n",
     )
     .unwrap()
@@ -45,7 +45,7 @@ pub fn fixed_overrides() -> ClashGuardOverrides {
 /// [`fixed_overrides`] with `unified-delay` and `tcp-concurrent` left to the
 /// profiles.
 pub fn unmanaged_overrides() -> ClashGuardOverrides {
-    serde_yaml_ng::from_str(
+    yaml_serde::from_str(
         "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: unmanaged}\ntcp-concurrent: {kind: unmanaged}\nipv6: false\n",
     )
     .unwrap()
@@ -627,7 +627,7 @@ fn filtering_large_config_does_not_create_spurious_block_moves() {
         )
         .unwrap();
     let graph = builder.build().unwrap();
-    let after = serde_yaml_ng::to_string(&graph.nodes[1].snapshot.config).unwrap();
+    let after = yaml_serde::to_string(&graph.nodes[1].snapshot.config).unwrap();
     let hunks = graph.nodes[0].snapshot.diff_yaml_to(&after).unwrap();
     let changes: Vec<_> = hunks
         .iter()

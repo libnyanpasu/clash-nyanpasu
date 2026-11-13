@@ -339,7 +339,7 @@ mod tests {
         let lua = create_lua_context(&TestExtensions.lua().unwrap()).unwrap();
         let sink = ConsoleSink::default();
         ConsoleSink::register_lua(&lua, &sink).unwrap();
-        let config: serde_yaml::Value = serde_yaml::from_str(config).unwrap();
+        let config: yaml_serde::Value = yaml_serde::from_str(config).unwrap();
         lua.globals()
             .set("config", ordered_map::to_lua(&lua, &config).unwrap())
             .unwrap();

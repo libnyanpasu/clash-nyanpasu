@@ -743,7 +743,7 @@ impl ProfilesActor {
                         mode: ExternalMode::Mirror,
                     },
                 }) if *target == expected_target && materialized.file == expected_path
-            ) && serde_yaml_ng::to_string(&current.definition)
+            ) && yaml_serde::to_string(&current.definition)
                 .is_ok_and(|fingerprint| fingerprint == expected_fingerprint)
         });
         if !still_current {
@@ -959,8 +959,7 @@ impl ProfilesActor {
         uid: &ProfileId,
         definition: &ProfileDefinition,
     ) -> Result<String, ProfilesError> {
-        serde_yaml_ng::to_string(definition)
-            .context(FingerprintDefinitionSnafu { uid: uid.clone() })
+        yaml_serde::to_string(definition).context(FingerprintDefinitionSnafu { uid: uid.clone() })
     }
 
     async fn resource_for_definition(
@@ -1545,7 +1544,7 @@ impl ProfilesActor {
             }
         };
         if needs_yaml {
-            let mapping = serde_yaml_ng::from_str::<serde_yaml_ng::Mapping>(content)
+            let mapping = yaml_serde::from_str::<yaml_serde::Mapping>(content)
                 .context(NotYamlMappingSnafu)?;
             // Legacy subscription semantics (remote.rs BC): a Config
             // subscription must actually carry proxies, otherwise arbitrary

@@ -5,9 +5,9 @@ use nyanpasu_contracts::BoxedCause;
 use nyanpasu_persistence::write;
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml_ng::Mapping;
 use snafu::{OptionExt as _, ResultExt as _};
 use std::path::Path;
+use yaml_serde::Mapping;
 
 /// Opens a hotkey store on the thread that will use and drop its handle.
 pub trait HotkeyStoreOpener: Send + Sync + std::fmt::Debug {
@@ -45,9 +45,9 @@ pub enum Error {
         source: std::io::Error,
     },
     #[snafu(display("failed to parse YAML"))]
-    ParseYaml { source: serde_yaml_ng::Error },
+    ParseYaml { source: yaml_serde::Error },
     #[snafu(context(false), display("failed to serialize YAML"))]
-    SerializeYaml { source: serde_yaml_ng::Error },
+    SerializeYaml { source: yaml_serde::Error },
     #[snafu(context(false), display("failed to inspect migration input"))]
     InspectInput {
         source: super::super::MigrationCheckError,
@@ -93,7 +93,7 @@ impl ModuleMigrator for StorageMigrator {
             if config_path.exists() {
                 let raw = std::fs::read_to_string(&config_path)
                     .context(ReadFileSnafu { path: &config_path })?;
-                let config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+                let config: Mapping = yaml_serde::from_str(&raw).context(ParseYamlSnafu)?;
                 if config
                     .get(HOTKEYS_KEY)
                     .is_some_and(|value| value.as_sequence().is_some())
@@ -155,12 +155,12 @@ impl MigrationStep for MigrateHotkeysToKv {
             let config_path = ctx.nyanpasu_config_path();
             let raw = std::fs::read_to_string(&config_path)
                 .context(ReadFileSnafu { path: &config_path })?;
-            let mut config: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+            let mut config: Mapping = yaml_serde::from_str(&raw).context(ParseYamlSnafu)?;
 
-            let hotkeys_key = serde_yaml_ng::Value::String(HOTKEYS_KEY.to_string());
+            let hotkeys_key = yaml_serde::Value::String(HOTKEYS_KEY.to_string());
             let hotkeys = config
                 .get(&hotkeys_key)
-                .and_then(serde_yaml_ng::Value::as_sequence)
+                .and_then(yaml_serde::Value::as_sequence)
                 .context(ReadHotkeyListSnafu)?;
 
             let hotkey_strings: Vec<String> = hotkeys
@@ -189,7 +189,7 @@ impl MigrationStep for MigrateHotkeysToKv {
             }
 
             config.remove(&hotkeys_key);
-            let new_config = serde_yaml_ng::to_string(&config)?;
+            let new_config = yaml_serde::to_string(&config)?;
             write::atomic_write(&config_path, new_config.as_bytes())?;
 
             Ok(())
@@ -258,22 +258,22 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
             let raw = std::fs::read_to_string(&application_path).context(ReadFileSnafu {
                 path: &application_path,
             })?;
-            let mut application: Mapping = serde_yaml_ng::from_str(&raw).context(ParseYamlSnafu)?;
+            let mut application: Mapping = yaml_serde::from_str(&raw).context(ParseYamlSnafu)?;
             // While this key exists the key-value store is the authority: it was
             // the only place the hotkey editor wrote to and the only place startup
             // read from, so whatever the typed config holds was never the user's
             // choice. That includes an empty list, which means every binding was
             // cleared on purpose and must not be resurrected.
             application.insert(
-                serde_yaml_ng::Value::String(HOTKEYS_KEY.to_string()),
-                serde_yaml_ng::Value::Sequence(
+                yaml_serde::Value::String(HOTKEYS_KEY.to_string()),
+                yaml_serde::Value::Sequence(
                     hotkeys
                         .iter()
-                        .map(|hotkey| serde_yaml_ng::Value::String(hotkey.clone()))
+                        .map(|hotkey| yaml_serde::Value::String(hotkey.clone()))
                         .collect(),
                 ),
             );
-            let serialized = serde_yaml_ng::to_string(&application)?;
+            let serialized = yaml_serde::to_string(&application)?;
             write::atomic_write(&application_path, serialized.as_bytes())?;
             tracing::info!(
                 "moved {} hotkeys from KV storage into the typed application config",
@@ -370,9 +370,9 @@ mod tests {
 
         fn typed_hotkeys(&self) -> Vec<String> {
             let raw = std::fs::read_to_string(self.ctx.application_config_path()).unwrap();
-            let config: Mapping = serde_yaml_ng::from_str(&raw).unwrap();
+            let config: Mapping = yaml_serde::from_str(&raw).unwrap();
             config
-                .get(serde_yaml_ng::Value::String(HOTKEYS_KEY.to_string()))
+                .get(yaml_serde::Value::String(HOTKEYS_KEY.to_string()))
                 .and_then(|value| value.as_sequence())
                 .map(|values| {
                     values
@@ -406,10 +406,10 @@ mod tests {
         );
         assert_eq!(fixture.kv_hotkeys(), None);
         let raw = std::fs::read_to_string(fixture.ctx.application_config_path()).unwrap();
-        let config: Mapping = serde_yaml_ng::from_str(&raw).unwrap();
+        let config: Mapping = yaml_serde::from_str(&raw).unwrap();
         assert_eq!(
             config
-                .get(serde_yaml_ng::Value::String("language".into()))
+                .get(yaml_serde::Value::String("language".into()))
                 .and_then(|value| value.as_str()),
             Some("en"),
             "the rest of the application config must survive untouched"

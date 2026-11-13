@@ -7,8 +7,8 @@ use nyanpasu_persistence::{
 };
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml_ng::{Mapping, Value};
 use snafu::OptionExt as _;
+use yaml_serde::{Mapping, Value};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -437,7 +437,7 @@ mod tests {
     }
 
     fn payload(src: &str) -> Mapping {
-        serde_yaml_ng::from_str(src).unwrap()
+        yaml_serde::from_str(src).unwrap()
     }
 
     #[test]

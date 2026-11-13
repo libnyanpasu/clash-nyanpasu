@@ -67,11 +67,11 @@ pub(crate) fn from_json_value(value: Value) -> ConfigValue {
     }
 }
 
-impl TryFrom<serde_yaml_ng::Value> for ConfigValue {
+impl TryFrom<yaml_serde::Value> for ConfigValue {
     type Error = ValueConvertError;
 
-    fn try_from(value: serde_yaml_ng::Value) -> Result<Self, Self::Error> {
-        use serde_yaml_ng::Value as YamlValue;
+    fn try_from(value: yaml_serde::Value) -> Result<Self, Self::Error> {
+        use yaml_serde::Value as YamlValue;
 
         match value {
             YamlValue::Null => Ok(Self::Null),
@@ -98,7 +98,7 @@ impl TryFrom<serde_yaml_ng::Value> for ConfigValue {
     }
 }
 
-fn yaml_number_to_json(value: serde_yaml_ng::Number) -> Result<Number, ValueConvertError> {
+fn yaml_number_to_json(value: yaml_serde::Number) -> Result<Number, ValueConvertError> {
     if let Some(value) = value.as_i64() {
         Ok(Number::from(value))
     } else if let Some(value) = value.as_u64() {

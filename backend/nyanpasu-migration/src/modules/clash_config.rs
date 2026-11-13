@@ -9,9 +9,9 @@ use nyanpasu_persistence::{
 };
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml_ng::{Mapping, Value};
 use snafu::OptionExt as _;
 use std::path::Path;
+use yaml_serde::{Mapping, Value};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -121,11 +121,9 @@ pub(crate) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError
     if revision < SCRIPT_MODE.revision() {
         normalize_script_mode(&mut payload);
     }
-    serde_yaml_ng::from_value(Value::Mapping(payload)).map_err(|source| {
-        MigrationCheckError::Parse {
-            path: path.to_path_buf(),
-            source,
-        }
+    yaml_serde::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
+        path: path.to_path_buf(),
+        source,
     })
 }
 
@@ -469,7 +467,7 @@ mod tests {
     }
 
     fn payload(src: &str) -> Mapping {
-        serde_yaml_ng::from_str(src).unwrap()
+        yaml_serde::from_str(src).unwrap()
     }
 
     #[test]
@@ -527,7 +525,7 @@ mod tests {
         add_tun_mips(&mut config);
         assert_eq!(config, payload("tun_stack: gvisor\ntun_mips: {}\n"));
         let options: nyanpasu_config::clash::config::tun_stack::MipsConfig =
-            serde_yaml_ng::from_value(config["tun_mips"].clone()).unwrap();
+            yaml_serde::from_value(config["tun_mips"].clone()).unwrap();
         assert_eq!(options.congestion_controller, None);
 
         let src = "tun_mips: {congestion_controller: bbr}\n";

@@ -3,8 +3,8 @@
 use super::MigrationCheckError;
 use nyanpasu_persistence::format::{self, Inspected, StampError};
 use serde::de::DeserializeOwned;
-use serde_yaml_ng::Mapping;
 use std::path::Path;
+use yaml_serde::Mapping;
 
 /// Whether `path` exists, reporting an inaccessible parent as an error
 /// instead of the `false` that [`Path::exists`] would return.
@@ -36,7 +36,7 @@ fn read_yaml_if_exists_with<T: DeserializeOwned>(
             });
         }
     };
-    serde_yaml_ng::from_str(&raw)
+    yaml_serde::from_str(&raw)
         .map(Some)
         .map_err(|source| MigrationCheckError::Parse {
             path: path.to_path_buf(),

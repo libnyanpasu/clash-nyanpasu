@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_yaml_ng::{Mapping, Value};
 use std::{
     io::{Read, Write},
     marker::PhantomData,
 };
+use yaml_serde::{Mapping, Value};
 
 pub trait Format {
     fn serialize<W: Write, T: Serialize>(
@@ -28,12 +28,12 @@ impl Format for YamlFormat {
         if let Some(prefix) = prefix {
             writeln!(writer, "{}", prefix)?;
         }
-        serde_yaml_ng::to_writer(writer, value)?;
+        yaml_serde::to_writer(writer, value)?;
         Ok(())
     }
 
     fn deserialize<R: Read, T: DeserializeOwned>(&self, reader: R) -> anyhow::Result<T> {
-        let value = serde_yaml_ng::from_reader(reader)?;
+        let value = yaml_serde::from_reader(reader)?;
         Ok(value)
     }
 }
@@ -54,11 +54,11 @@ pub struct DocumentStamp {
 #[derive(Debug, thiserror::Error)]
 pub enum StampError {
     #[error("failed to parse the document")]
-    Parse(#[source] serde_yaml_ng::Error),
+    Parse(#[source] yaml_serde::Error),
     #[error("the document is not a mapping")]
     NotAMapping,
     #[error("the `_nyanpasu` stamp is malformed")]
-    Malformed(#[source] serde_yaml_ng::Error),
+    Malformed(#[source] yaml_serde::Error),
     #[error("the document already has a `_nyanpasu` key of its own")]
     ReservedKey,
     #[error("the document is stamped as `{found}`, expected `{expected}`")]
@@ -97,14 +97,14 @@ impl Inspected {
 /// Parses `raw` and takes the stamp out of it. A stamp key that does not hold
 /// a well-formed stamp is an error rather than an unstamped document.
 pub fn inspect(raw: &str) -> Result<Inspected, StampError> {
-    let value: Value = serde_yaml_ng::from_str(raw).map_err(StampError::Parse)?;
+    let value: Value = yaml_serde::from_str(raw).map_err(StampError::Parse)?;
     let Value::Mapping(mut payload) = value else {
         return Err(StampError::NotAMapping);
     };
     match payload.shift_remove(STAMP_KEY) {
         None => Ok(Inspected::Unstamped(payload)),
         Some(stamp) => {
-            let stamp = serde_yaml_ng::from_value(stamp).map_err(StampError::Malformed)?;
+            let stamp = yaml_serde::from_value(stamp).map_err(StampError::Malformed)?;
             Ok(Inspected::Stamped { stamp, payload })
         }
     }
@@ -115,7 +115,7 @@ pub fn stamp(payload: Mapping, stamp: &DocumentStamp) -> Result<Mapping, StampEr
     if payload.contains_key(STAMP_KEY) {
         return Err(StampError::ReservedKey);
     }
-    let stamp = serde_yaml_ng::to_value(stamp).map_err(StampError::Malformed)?;
+    let stamp = yaml_serde::to_value(stamp).map_err(StampError::Malformed)?;
     let mut stamped = Mapping::with_capacity(payload.len() + 1);
     stamped.insert(STAMP_KEY.into(), stamp);
     stamped.extend(payload);
@@ -172,7 +172,7 @@ impl<D: StampedDocument> Format for StampedYamlFormat<D> {
         value: &T,
         prefix: Option<&str>,
     ) -> anyhow::Result<()> {
-        let Value::Mapping(payload) = serde_yaml_ng::to_value(value)? else {
+        let Value::Mapping(payload) = yaml_serde::to_value(value)? else {
             return Err(StampError::NotAMapping.into());
         };
         let stamped = stamp(payload, &Self::document_stamp())?;
@@ -200,7 +200,7 @@ impl<D: StampedDocument> Format for StampedYamlFormat<D> {
             }
             .into());
         }
-        Ok(serde_yaml_ng::from_value(Value::Mapping(payload))?)
+        Ok(yaml_serde::from_value(Value::Mapping(payload))?)
     }
 }
 

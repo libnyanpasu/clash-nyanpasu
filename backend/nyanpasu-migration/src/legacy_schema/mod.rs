@@ -31,7 +31,7 @@ pub enum Error {
 
 pub fn typed_config_from_legacy_parts(
     legacy: &IVerge,
-    legacy_clash: &serde_yaml_ng::Mapping,
+    legacy_clash: &yaml_serde::Mapping,
 ) -> Result<(NyanpasuAppConfig, PersistentState, ClashConfig), Error> {
     Ok((
         application::application_from_legacy(legacy)?,
@@ -43,9 +43,9 @@ pub fn typed_config_from_legacy_parts(
 #[derive(Debug, snafu::Snafu)]
 pub enum ConversionError {
     #[snafu(display("failed to serialize legacy value"))]
-    SerializeValue { source: serde_yaml_ng::Error },
+    SerializeValue { source: yaml_serde::Error },
     #[snafu(display("failed to deserialize legacy value"))]
-    DeserializeValue { source: serde_yaml_ng::Error },
+    DeserializeValue { source: yaml_serde::Error },
 }
 
 fn yaml_convert<T, U>(value: T) -> Result<U, ConversionError>
@@ -54,8 +54,8 @@ where
     U: DeserializeOwned,
 {
     use snafu::ResultExt as _;
-    let value = serde_yaml_ng::to_value(value).context(SerializeValueSnafu)?;
-    serde_yaml_ng::from_value(value).context(DeserializeValueSnafu)
+    let value = yaml_serde::to_value(value).context(SerializeValueSnafu)?;
+    yaml_serde::from_value(value).context(DeserializeValueSnafu)
 }
 
 #[cfg(test)]
@@ -141,19 +141,15 @@ mod tests {
     }
 
     /// The application, session and clash documents one field converts to.
-    fn convert(
-        field: &str,
-        value: &str,
-        clash: &serde_yaml_ng::Mapping,
-    ) -> [serde_yaml_ng::Value; 3] {
-        let legacy: IVerge = serde_yaml_ng::from_str(&format!("{field}: {value}"))
+    fn convert(field: &str, value: &str, clash: &yaml_serde::Mapping) -> [yaml_serde::Value; 3] {
+        let legacy: IVerge = yaml_serde::from_str(&format!("{field}: {value}"))
             .unwrap_or_else(|error| panic!("{field}: {value} is not a legacy value: {error}"));
         let (application, session, clash) = typed_config_from_legacy_parts(&legacy, clash)
             .unwrap_or_else(|error| panic!("{field}: {value} does not convert: {error:#}"));
         [
-            serde_yaml_ng::to_value(application).unwrap(),
-            serde_yaml_ng::to_value(session).unwrap(),
-            serde_yaml_ng::to_value(clash).unwrap(),
+            yaml_serde::to_value(application).unwrap(),
+            yaml_serde::to_value(session).unwrap(),
+            yaml_serde::to_value(clash).unwrap(),
         ]
     }
 

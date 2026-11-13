@@ -21,7 +21,7 @@ pub enum Error {
     #[snafu(display("failed to preserve invalid session state"))]
     PreserveState { source: nyanpasu_persistence::Error },
     #[snafu(display("failed to serialize default session state"))]
-    SerializeDefault { source: serde_yaml_ng::Error },
+    SerializeDefault { source: yaml_serde::Error },
     #[snafu(display("failed to write default session state"))]
     WriteDefault { source: write::Error },
 }
@@ -58,7 +58,7 @@ fn read_with(
             });
         }
     };
-    match serde_yaml_ng::from_slice(&bytes) {
+    match yaml_serde::from_slice(&bytes) {
         Ok(state) => Ok(Some(state)),
         Err(error) => reset(path, &error).map(Some),
     }
@@ -67,7 +67,7 @@ fn read_with(
 fn reset(path: &Path, error: &(dyn std::error::Error + 'static)) -> Result<PersistentState, Error> {
     nyanpasu_persistence::preserve(path, error).context(PreserveStateSnafu)?;
     let state = PersistentState::default();
-    let bytes = serde_yaml_ng::to_string(&state).context(SerializeDefaultSnafu)?;
+    let bytes = yaml_serde::to_string(&state).context(SerializeDefaultSnafu)?;
     write::atomic_write(path, bytes.as_bytes()).context(WriteDefaultSnafu)?;
     Ok(state)
 }

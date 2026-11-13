@@ -83,7 +83,7 @@ tracing-test = { git = 'https://github.com/Frando/tracing-test.git', rev = 'e81e
   'no-env-filter',
   'pretty-log-printing',
 ] }
-serde_yaml_ng = { version = '0.10', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [
+yaml_serde = { version = '0.10', git = 'https://github.com/libnyanpasu/yaml-serde.git', rev = '17f2267d811a6371bd316e4bb46ccb7a9b39f4fa', features = [
   'specta',
 ] }
 sysproxy = { git = 'https://github.com/libnyanpasu/sysproxy-rs.git', version = '0.3', rev = '355d9c98e20f894e75f13049d0031d3794e9a74a' }

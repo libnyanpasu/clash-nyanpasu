@@ -87,11 +87,11 @@ fn builder_runs_a_managed_script_through_the_platform_adapters() {
     let scripts =
         EnhanceScriptRunner::new(dirs, Arc::new(super::test_extensions::TestExtensions)).unwrap();
     let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
-    let yaml = serde_yaml_ng::to_value(&*artifact.final_config).unwrap();
+    let yaml = yaml_serde::to_value(&*artifact.final_config).unwrap();
 
-    assert_eq!(yaml["mode"], serde_yaml_ng::Value::from("rule"));
-    assert_eq!(yaml["extra-key"], serde_yaml_ng::Value::from("keep"));
-    assert_eq!(yaml["mixed-port"], serde_yaml_ng::Value::from(7890));
+    assert_eq!(yaml["mode"], yaml_serde::Value::from("rule"));
+    assert_eq!(yaml["extra-key"], yaml_serde::Value::from("keep"));
+    assert_eq!(yaml["mixed-port"], yaml_serde::Value::from(7890));
     assert!(artifact.step_logs.iter().any(|log| {
         log.entries
             .iter()

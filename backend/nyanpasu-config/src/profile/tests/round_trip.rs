@@ -2,7 +2,7 @@
 use crate::profile::*;
 
 fn parse(yaml: &str) -> Profiles {
-    serde_yaml_ng::from_str::<Profiles>(yaml)
+    yaml_serde::from_str::<Profiles>(yaml)
         .unwrap_or_else(|e| panic!("profiles must deserialize, got: {e}"))
 }
 
@@ -13,7 +13,7 @@ fn durable_revision_defaults_for_legacy_documents_and_round_trips_when_advanced(
 
     assert_eq!(profiles.bump_revision().unwrap(), 1);
     assert_eq!(profiles.bump_revision().unwrap(), 2);
-    let dumped = serde_yaml_ng::to_string(&profiles).expect("serializes");
+    let dumped = yaml_serde::to_string(&profiles).expect("serializes");
     assert!(dumped.contains("revision: 2"));
     assert_eq!(parse(&dumped).revision(), 2);
 }
@@ -34,17 +34,17 @@ fn metadata_missing_custom_name_defaults_to_user_owned() {
     // Documents persisted before provenance tracking omit `custom_name`; the
     // default must be `true` so a refresh never renames a pre-existing profile.
     let meta: ProfileMetadata =
-        serde_yaml_ng::from_str("name: Legacy\n").expect("metadata deserializes");
+        yaml_serde::from_str("name: Legacy\n").expect("metadata deserializes");
     assert!(meta.custom_name);
 }
 
 #[test]
 fn metadata_custom_name_false_round_trips() {
     let meta: ProfileMetadata =
-        serde_yaml_ng::from_str("name: Sub\ncustom_name: false\n").expect("deserializes");
+        yaml_serde::from_str("name: Sub\ncustom_name: false\n").expect("deserializes");
     assert!(!meta.custom_name);
-    let dumped = serde_yaml_ng::to_string(&meta).expect("serializes");
-    let reparsed: ProfileMetadata = serde_yaml_ng::from_str(&dumped).expect("reparses");
+    let dumped = yaml_serde::to_string(&meta).expect("serializes");
+    let reparsed: ProfileMetadata = yaml_serde::from_str(&dumped).expect("reparses");
     assert!(
         !reparsed.custom_name,
         "custom_name must survive a round-trip"
@@ -162,7 +162,7 @@ items:
 
     profiles.validate().expect("document must validate");
 
-    let dumped = serde_yaml_ng::to_string(&profiles).expect("serialize");
+    let dumped = yaml_serde::to_string(&profiles).expect("serialize");
     let reparsed = parse(&dumped);
     assert_eq!(reparsed.current, profiles.current);
     assert_eq!(reparsed.items.len(), profiles.items.len());

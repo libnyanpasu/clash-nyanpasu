@@ -155,7 +155,7 @@ fn parse_journal_error_contract() {
     // deliberately converts it into a degradation string instead.
     let error = service.compensate(&prepared).unwrap_err();
     assert!(matches!(error, ProfileFileError::ParseJournal { .. }));
-    library_source::<serde_yaml::Error>(&error);
+    library_source::<yaml_serde::Error>(&error);
     assert_error(
         &error,
         json!({ "kind": "parse_journal", "path": path.display().to_string() }),
@@ -180,11 +180,11 @@ fn serialize_journal_error_contract() {
     // MaterializationJournal contains only strings (including ManagedProfilePath)
     // and u64, serialized into an in-memory string. No representable journal can
     // trigger a serialization error, so this is the sole direct variant fixture.
-    let source = serde_yaml::to_string(&RejectSerialization).unwrap_err();
+    let source = yaml_serde::to_string(&RejectSerialization).unwrap_err();
     let error = ProfileFileError::SerializeJournal {
         source: source.into(),
     };
-    library_source::<serde_yaml::Error>(&error);
+    library_source::<yaml_serde::Error>(&error);
     assert_error(
         &error,
         json!({ "kind": "serialize_journal" }),

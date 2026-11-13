@@ -98,7 +98,7 @@ serde = { version = '1.0', features = ['derive', 'rc'] }
 atomicwrites = '0.4.4'
 camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }
-serde_yaml_ng = { workspace = true }
+yaml_serde = { workspace = true }
 
 [target.'cfg(not(target_env = "musl"))'.dev-dependencies]
 # The desktop AES smoke test does not apply to generic router/musl targets.

@@ -204,7 +204,7 @@ fn duplicate_uid_fails_to_deserialize() {
           type: managed
           file: b.yaml
 "#;
-    assert!(serde_yaml_ng::from_str::<Profiles>(yaml).is_err());
+    assert!(yaml_serde::from_str::<Profiles>(yaml).is_err());
 }
 
 fn composition(uid: &str, base: Option<&str>, contributors: &[&str]) -> ProfileItem {
@@ -373,12 +373,12 @@ fn profiles_document_with_traversal_managed_path_fails_to_deserialize() {
           type: managed
           file: ../escape.yaml
 "#;
-    let error = serde_yaml_ng::from_str::<Profiles>(yaml).unwrap_err();
+    let error = yaml_serde::from_str::<Profiles>(yaml).unwrap_err();
     assert!(
         error.to_string().contains("parent"),
         "error must name the traversal rejection: {error}"
     );
 
     // 直接类型面同理(serde 字符串标量 → ManagedProfilePath)。
-    assert!(serde_yaml_ng::from_str::<ManagedProfilePath>("../escape.yaml").is_err());
+    assert!(yaml_serde::from_str::<ManagedProfilePath>("../escape.yaml").is_err());
 }

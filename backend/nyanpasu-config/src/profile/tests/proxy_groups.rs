@@ -370,15 +370,15 @@ fn repairing_a_valid_document_changes_nothing() {
 #[test]
 fn the_field_is_left_off_the_wire_when_empty_and_round_trips_when_set() {
     let mut profiles = document();
-    let dumped = serde_yaml_ng::to_string(&profiles).unwrap();
+    let dumped = yaml_serde::to_string(&profiles).unwrap();
     assert!(!dumped.contains("proxy_group_layouts"));
 
     profiles.proxy_group_layouts.insert(
         id("a"),
         layout(&["Proxy"], vec![folder("f1", "Streaming", &["Netflix"])]),
     );
-    let dumped = serde_yaml_ng::to_string(&profiles).unwrap();
-    let reparsed: Profiles = serde_yaml_ng::from_str(&dumped).unwrap();
+    let dumped = yaml_serde::to_string(&profiles).unwrap();
+    let reparsed: Profiles = yaml_serde::from_str(&dumped).unwrap();
     assert_eq!(reparsed.proxy_group_layouts, profiles.proxy_group_layouts);
 }
 

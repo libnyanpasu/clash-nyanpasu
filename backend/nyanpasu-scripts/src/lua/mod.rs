@@ -1,6 +1,6 @@
 use mlua::prelude::*;
 use nyanpasu_config::runtime::executor::StepLogEntry;
-use serde_yaml::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 use crate::extensions::LuaExtensions;
 
@@ -83,7 +83,7 @@ mod tests {
     fn test_process_honey() {
         use super::*;
         use crate::runner::Runner;
-        use serde_yaml::Mapping;
+        use yaml_serde::Mapping;
 
         let runner = LuaRunner::new(TestExtensions.lua().unwrap());
         let mapping = r#"
@@ -94,7 +94,7 @@ mod tests {
         shoud_remove: 123
         "#;
 
-        let mapping = serde_yaml::from_str::<Mapping>(mapping).unwrap();
+        let mapping = yaml_serde::from_str::<Mapping>(mapping).unwrap();
         let script = r#"
             console.log("Hello, world!");
             console.warn("Hello, world!");
@@ -117,7 +117,7 @@ mod tests {
         eprintln!("{logs:?}\n{result:?}");
         assert!(result.is_ok());
         assert_eq!(logs.len(), 3);
-        let expected = serde_yaml::from_str::<Mapping>(expected).unwrap();
+        let expected = yaml_serde::from_str::<Mapping>(expected).unwrap();
         assert_eq!(expected, result.unwrap());
     }
 
@@ -144,7 +144,7 @@ mod tests {
         use super::*;
         use crate::runner::Runner;
 
-        let config: Mapping = serde_yaml::from_str(
+        let config: Mapping = yaml_serde::from_str(
             "zeta: 1\nalpha: 2\ndns:\n  nameserver-policy:\n    p1: a\n    p2: b\n",
         )
         .unwrap();
@@ -158,7 +158,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            serde_yaml::to_string(&result).unwrap(),
+            yaml_serde::to_string(&result).unwrap(),
             "zeta: 1\nalpha: 2\ndns:\n  nameserver-policy:\n    p0: z\n    p1: a\n    p2: b\nomega: 3\n"
         );
     }

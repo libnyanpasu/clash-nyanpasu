@@ -59,8 +59,8 @@ impl EnhanceScriptRunner {
 }
 
 #[cfg(any(feature = "javascript", feature = "lua"))]
-fn config_to_mapping(config: &ConfigValue) -> Result<serde_yaml::Mapping, PortError> {
-    let value = serde_yaml::to_value(config).map_err(|e| format!("config to yaml: {e}"))?;
+fn config_to_mapping(config: &ConfigValue) -> Result<yaml_serde::Mapping, PortError> {
+    let value = yaml_serde::to_value(config).map_err(|e| format!("config to yaml: {e}"))?;
     value
         .as_mapping()
         .cloned()
@@ -68,8 +68,8 @@ fn config_to_mapping(config: &ConfigValue) -> Result<serde_yaml::Mapping, PortEr
 }
 
 #[cfg(any(feature = "javascript", feature = "lua"))]
-fn mapping_to_config(mapping: serde_yaml::Mapping) -> Result<ConfigValue, PortError> {
-    ConfigValue::try_from(serde_yaml::Value::Mapping(mapping))
+fn mapping_to_config(mapping: yaml_serde::Mapping) -> Result<ConfigValue, PortError> {
+    ConfigValue::try_from(yaml_serde::Value::Mapping(mapping))
         .map_err(|e| format!("yaml to config: {e:?}").into())
 }
 
@@ -113,7 +113,7 @@ impl ScriptRunner for EnhanceScriptRunner {
                 operation: ScriptOperation::ItemPredicate,
             })?;
         let lua = create_lua_context(&extensions).map_err(|e| format!("lua context: {e}"))?;
-        let item_yaml = serde_yaml::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
+        let item_yaml = yaml_serde::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
         let lua_item =
             ordered_map::to_lua(&lua, &item_yaml).map_err(|e| format!("item to lua: {e}"))?;
         lua.globals()
@@ -135,7 +135,7 @@ impl ScriptRunner for EnhanceScriptRunner {
                 operation: ScriptOperation::ItemExpression,
             })?;
         let lua = create_lua_context(&extensions).map_err(|e| format!("lua context: {e}"))?;
-        let item_yaml = serde_yaml::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
+        let item_yaml = yaml_serde::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
         let lua_item =
             ordered_map::to_lua(&lua, &item_yaml).map_err(|e| format!("item to lua: {e}"))?;
         lua.globals()
@@ -204,13 +204,13 @@ mod tests {
     use super::*;
 
     fn value(yaml: &str) -> ConfigValue {
-        let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let value: yaml_serde::Value = yaml_serde::from_str(yaml).unwrap();
         ConfigValue::try_from(value).unwrap()
     }
 
     #[cfg(any(feature = "javascript", feature = "lua"))]
-    fn to_yaml(config: &ConfigValue) -> serde_yaml::Value {
-        serde_yaml::to_value(config).unwrap()
+    fn to_yaml(config: &ConfigValue) -> yaml_serde::Value {
+        yaml_serde::to_value(config).unwrap()
     }
 
     #[cfg(feature = "javascript")]
@@ -238,7 +238,7 @@ function main(config) {
                 &mut logs,
             )
             .expect("script should succeed");
-        assert_eq!(to_yaml(&result)["mode"], serde_yaml::Value::from("rule"));
+        assert_eq!(to_yaml(&result)["mode"], yaml_serde::Value::from("rule"));
         assert!(!logs.is_empty(), "console.log must surface as step log");
     }
 
@@ -301,7 +301,7 @@ function main(config) {
             )
             .unwrap();
         assert_eq!(
-            serde_yaml::to_string(&to_yaml(&renamed)).unwrap(),
+            yaml_serde::to_string(&to_yaml(&renamed)).unwrap(),
             "name: renamed\ntype: ss\nserver: example.com\nport: 443\n"
         );
     }
@@ -334,7 +334,7 @@ function main(config) {
             .unwrap();
         assert_eq!(
             to_yaml(&replaced)["name"],
-            serde_yaml::Value::from("renamed")
+            yaml_serde::Value::from("renamed")
         );
     }
 

@@ -13,7 +13,7 @@ use std::{cell::Cell, ffi::c_void};
 
 use indexmap::IndexMap;
 use mlua::prelude::*;
-use serde_yaml::{Mapping, Value as Yaml};
+use yaml_serde::{Mapping, Value as Yaml};
 
 const METATABLE: &str = "nyanpasu.ordered_map.metatable";
 const STORES: &str = "nyanpasu.ordered_map.stores";
@@ -452,7 +452,7 @@ mod tests {
     /// returns, as YAML text.
     fn run(config: &str, script: &str) -> Result<String, String> {
         let lua = create_lua_context(&TestExtensions.lua().unwrap()).unwrap();
-        let config: Yaml = serde_yaml::from_str(config).unwrap();
+        let config: Yaml = yaml_serde::from_str(config).unwrap();
         lua.globals()
             .set("config", to_lua(&lua, &config).unwrap())
             .unwrap();
@@ -461,7 +461,7 @@ mod tests {
             .eval::<LuaValue>()
             .map_err(|e| e.to_string())?;
         let output = from_lua(&lua, output).map_err(|e| e.to_string())?;
-        Ok(serde_yaml::to_string(&output).unwrap())
+        Ok(yaml_serde::to_string(&output).unwrap())
     }
 
     const CONFIG: &str = "zeta: 1\nalpha: 2\nmid: 3\nbeta: 4\ndns:\n  nameserver-policy:\n    p1: a\n    p2: b\n    p3: c\n";

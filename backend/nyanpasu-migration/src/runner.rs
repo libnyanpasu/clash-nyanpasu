@@ -961,15 +961,15 @@ mod tests {
             runner.store.module_state("typed_config").applied_revision,
             2
         );
-        let _: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
+        let _: nyanpasu_config::application::NyanpasuAppConfig = yaml_serde::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::state::PersistentState = serde_yaml_ng::from_str(
+        let _: nyanpasu_config::state::PersistentState = yaml_serde::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml_ng::from_str(
+        let _: nyanpasu_config::clash::config::ClashConfig = yaml_serde::from_str(
             &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
         )
         .unwrap();
@@ -1582,7 +1582,7 @@ mod tests {
             .into_payload();
         std::fs::write(
             case.ctx.profiles_path(),
-            serde_yaml_ng::to_string(&payload).unwrap(),
+            yaml_serde::to_string(&payload).unwrap(),
         )
         .unwrap();
         let error = format!("{:#}", case.runner().unwrap_err());
@@ -1610,7 +1610,7 @@ mod tests {
         runner.run_pending().unwrap();
 
         assert_eq!(case.stamp(), Some(4));
-        let before: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(CLEAN_PROFILES).unwrap();
+        let before: yaml_serde::Mapping = yaml_serde::from_str(CLEAN_PROFILES).unwrap();
         let after = nyanpasu_persistence::format::inspect(&case.profiles())
             .unwrap()
             .into_payload();
@@ -1619,7 +1619,7 @@ mod tests {
         assert!(state.module_state("profiles").stamped);
     }
 
-    fn application_config_payload(case: &LegacyCase) -> serde_yaml_ng::Mapping {
+    fn application_config_payload(case: &LegacyCase) -> yaml_serde::Mapping {
         nyanpasu_persistence::format::inspect(
             &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
         )
@@ -1640,11 +1640,11 @@ mod tests {
     /// default application config, which is written with the stamp it had, if
     /// any.
     fn seed_typed_files(case: &LegacyCase, stamp: Option<u64>, settings: &str) {
-        let mut config = serde_yaml_ng::Mapping::new();
+        let mut config = yaml_serde::Mapping::new();
         if let Some(revision) = stamp {
             config.insert(
                 "_nyanpasu".into(),
-                serde_yaml_ng::from_str(&format!(
+                yaml_serde::from_str(&format!(
                     "document: application
 schema_revision: {revision}
 "
@@ -1653,39 +1653,39 @@ schema_revision: {revision}
             );
         }
         // A 2.0.x file predates the setting this build added.
-        let mut defaults: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
-            &serde_yaml_ng::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
+        let mut defaults: yaml_serde::Mapping = yaml_serde::from_str(
+            &yaml_serde::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
                 .unwrap(),
         )
         .unwrap();
         defaults.remove("window_close");
         config.extend(defaults);
-        config.extend(serde_yaml_ng::from_str::<serde_yaml_ng::Mapping>(settings).unwrap());
-        let application = serde_yaml_ng::to_string(&config).unwrap();
+        config.extend(yaml_serde::from_str::<yaml_serde::Mapping>(settings).unwrap());
+        let application = yaml_serde::to_string(&config).unwrap();
         std::fs::write(case.ctx.application_config_path(), application).unwrap();
         std::fs::write(
             case.ctx.session_state_path(),
-            serde_yaml_ng::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
+            yaml_serde::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
         )
         .unwrap();
         std::fs::write(
             case.ctx.clash_config_path(),
-            serde_yaml_ng::to_string(&clash_config_2_0()).unwrap(),
+            yaml_serde::to_string(&clash_config_2_0()).unwrap(),
         )
         .unwrap();
     }
 
     /// The default clash config as 2.0.x wrote it, with boolean guard fields
     /// and neither `tun` overrides nor mips options.
-    fn clash_config_2_0() -> serde_yaml_ng::Mapping {
-        let mut config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
-            &serde_yaml_ng::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+    fn clash_config_2_0() -> yaml_serde::Mapping {
+        let mut config: yaml_serde::Mapping = yaml_serde::from_str(
+            &yaml_serde::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
                 .unwrap(),
         )
         .unwrap();
         let overrides = config
             .get_mut("overrides")
-            .and_then(serde_yaml_ng::Value::as_mapping_mut)
+            .and_then(yaml_serde::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), true.into());
         overrides.insert("tcp-concurrent".into(), false.into());
@@ -1758,7 +1758,7 @@ schema_revision: {revision}
             .unwrap();
         assert_eq!(
             window_close["tray_menu"],
-            serde_yaml_ng::Value::from("destroy")
+            yaml_serde::Value::from("destroy")
         );
         assert_application_loads(&case);
     }
@@ -1873,7 +1873,7 @@ tray_menu_close_behavior: hide
         let mut payload = clash_config_2_0();
         let overrides = payload
             .get_mut("overrides")
-            .and_then(serde_yaml_ng::Value::as_mapping_mut)
+            .and_then(yaml_serde::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
@@ -1899,7 +1899,7 @@ tray_menu_close_behavior: hide
 
         assert_eq!(clash_config_stamp(&case), Some(4));
         let mut expected = payload;
-        expected.insert("tun_mips".into(), serde_yaml_ng::Mapping::new().into());
+        expected.insert("tun_mips".into(), yaml_serde::Mapping::new().into());
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
@@ -1938,16 +1938,16 @@ tray_menu_close_behavior: hide
                 .unwrap();
     }
 
-    fn clash_guard_field(case: &LegacyCase, key: &str) -> serde_yaml_ng::Value {
+    fn clash_guard_field(case: &LegacyCase, key: &str) -> yaml_serde::Value {
         clash_config_file(case).into_payload()["overrides"][key].clone()
     }
 
-    fn managed(value: bool) -> serde_yaml_ng::Value {
-        serde_yaml_ng::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
+    fn managed(value: bool) -> yaml_serde::Value {
+        yaml_serde::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
     }
 
-    fn managed_auto_route() -> serde_yaml_ng::Value {
-        serde_yaml_ng::from_str("{auto-route: {kind: managed, value: true}}").unwrap()
+    fn managed_auto_route() -> yaml_serde::Value {
+        yaml_serde::from_str("{auto-route: {kind: managed, value: true}}").unwrap()
     }
 
     #[test]
@@ -2007,12 +2007,12 @@ tray_menu_close_behavior: hide
         let mut expected = clash_config_file(&case).into_payload();
         let overrides = expected
             .get_mut("overrides")
-            .and_then(serde_yaml_ng::Value::as_mapping_mut)
+            .and_then(yaml_serde::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
         expected.insert("tun".into(), managed_auto_route());
-        expected.insert("tun_mips".into(), serde_yaml_ng::Mapping::new().into());
+        expected.insert("tun_mips".into(), yaml_serde::Mapping::new().into());
 
         let mut runner = case.runner();
         assert_eq!(
@@ -2119,7 +2119,7 @@ tray_menu_close_behavior: hide
         assert_eq!(clash_guard_field(&case, "mode"), "rule");
         assert_eq!(
             application_config_payload(&case)["hotkeys"],
-            serde_yaml_ng::to_value(vec!["clash_mode_rule,Ctrl+R"]).unwrap()
+            yaml_serde::to_value(vec!["clash_mode_rule,Ctrl+R"]).unwrap()
         );
         assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(clash_config_stamp(&case), Some(4));
@@ -2148,7 +2148,7 @@ tray_menu_close_behavior: hide
 
         assert_eq!(
             application_config_payload(&case)["hotkeys"],
-            serde_yaml_ng::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
+            yaml_serde::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
         );
         assert_eq!(storage.read().unwrap(), None);
         assert_eq!(application_stamp(&case), Some(4));
@@ -2156,7 +2156,7 @@ tray_menu_close_behavior: hide
         case.runner().run_pending().unwrap();
         assert_eq!(
             application_config_payload(&case)["hotkeys"],
-            serde_yaml_ng::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
+            yaml_serde::to_value(vec!["clash_mode_direct,Ctrl+D"]).unwrap()
         );
     }
 
@@ -2168,8 +2168,8 @@ tray_menu_close_behavior: hide
             Some(2),
             "hotkeys: ['clash_mode_script,Ctrl+S', 'clash_mode_global,Ctrl+G']\n",
         );
-        let mut config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
-            &serde_yaml_ng::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+        let mut config: yaml_serde::Mapping = yaml_serde::from_str(
+            &yaml_serde::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
                 .unwrap(),
         )
         .unwrap();
@@ -2194,7 +2194,7 @@ tray_menu_close_behavior: hide
         assert_eq!(clash_guard_field(&case, "mode"), "rule");
         assert_eq!(
             application_config_payload(&case)["hotkeys"],
-            serde_yaml_ng::to_value(vec!["clash_mode_global,Ctrl+G"]).unwrap()
+            yaml_serde::to_value(vec!["clash_mode_global,Ctrl+G"]).unwrap()
         );
         assert_eq!(application_stamp(&case), Some(4));
         assert_eq!(clash_config_stamp(&case), Some(4));

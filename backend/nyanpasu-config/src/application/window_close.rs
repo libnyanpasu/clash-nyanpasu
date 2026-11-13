@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn a_partial_document_fills_the_rest_with_defaults() {
-        let settings: WindowCloseSettings = serde_yaml_ng::from_str("tray_menu: hide\n").unwrap();
+        let settings: WindowCloseSettings = yaml_serde::from_str("tray_menu: hide\n").unwrap();
         assert_eq!(settings.tray_menu, WindowCloseOverride::Hide);
         assert_eq!(settings.global, WindowCloseBehavior::Destroy);
         assert_eq!(settings.main, WindowCloseOverride::Inherit);

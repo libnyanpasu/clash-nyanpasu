@@ -22,7 +22,7 @@ use nyanpasu_runtime_values::{
 
 #[test]
 fn boxed_commit_cause_preserves_display_and_source_chain() {
-    let yaml = serde_yaml_ng::from_str::<serde_yaml_ng::Value>("[").unwrap_err();
+    let yaml = yaml_serde::from_str::<yaml_serde::Value>("[").unwrap_err();
     let causes = [
         ReplaceIfVersionError::WriteConfig(std::io::Error::other("disk full").into()),
         ReplaceIfVersionError::LocalWrite(yaml.into()),
@@ -60,7 +60,7 @@ fn boxed_commit_cause_preserves_display_and_source_chain() {
                 "disk full"
             );
         } else {
-            assert!(original.downcast_ref::<serde_yaml_ng::Error>().is_some());
+            assert!(original.downcast_ref::<yaml_serde::Error>().is_some());
         }
     }
 

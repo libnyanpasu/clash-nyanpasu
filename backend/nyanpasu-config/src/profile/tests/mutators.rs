@@ -70,7 +70,7 @@ fn item_atomic_replacement_and_metadata_patch() {
     let mut item = managed_overlay("ov", "ov.yaml");
 
     // metadata patch
-    let patch = serde_yaml_ng::from_str("name: Renamed\n").unwrap();
+    let patch = yaml_serde::from_str("name: Renamed\n").unwrap();
     item.apply_metadata_patch(patch);
     assert_eq!(item.metadata.name, "Renamed");
 
@@ -120,7 +120,7 @@ fn rename_pins_custom_name_and_ignores_incoming_flag() {
     let mut item = managed_overlay("ov", "ov.yaml");
     assert!(!item.metadata.custom_name);
     // A real rename pins the flag even though the patch tries to set it false.
-    let patch = serde_yaml_ng::from_str("name: Renamed\ncustom_name: false\n").unwrap();
+    let patch = yaml_serde::from_str("name: Renamed\ncustom_name: false\n").unwrap();
     item.apply_metadata_patch(patch);
     assert_eq!(item.metadata.name, "Renamed");
     assert!(
@@ -132,7 +132,7 @@ fn rename_pins_custom_name_and_ignores_incoming_flag() {
 #[test]
 fn patch_repeating_the_current_name_does_not_pin() {
     let mut item = managed_overlay("ov", "ov.yaml"); // name == "ov"
-    let patch = serde_yaml_ng::from_str("name: ov\n").unwrap();
+    let patch = yaml_serde::from_str("name: ov\n").unwrap();
     item.apply_metadata_patch(patch);
     assert!(
         !item.metadata.custom_name,
@@ -145,7 +145,7 @@ fn patch_cannot_clear_a_pinned_custom_name() {
     let mut item = managed_overlay("ov", "ov.yaml");
     item.metadata.custom_name = true;
     // A desc-only patch carrying custom_name=false must not clear the pin.
-    let patch = serde_yaml_ng::from_str("desc: hello\ncustom_name: false\n").unwrap();
+    let patch = yaml_serde::from_str("desc: hello\ncustom_name: false\n").unwrap();
     item.apply_metadata_patch(patch);
     assert!(
         item.metadata.custom_name,

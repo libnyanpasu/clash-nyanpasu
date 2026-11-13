@@ -317,8 +317,8 @@ mod patch_tests {
             }))
             .unwrap();
             config.apply(patch);
-            let saved = serde_yaml_ng::to_string(&config).unwrap();
-            let loaded: ClashConfig = serde_yaml_ng::from_str(&saved).unwrap();
+            let saved = yaml_serde::to_string(&config).unwrap();
+            let loaded: ClashConfig = yaml_serde::from_str(&saved).unwrap();
             assert_eq!(loaded.tun.auto_route, field);
             assert!(loaded.enable_tun_mode);
             assert_eq!(loaded.tun_stack, TunStack::System);
@@ -327,9 +327,9 @@ mod patch_tests {
 
     #[test]
     fn mips_options_survive_switching_the_stack_away_and_back() {
-        let mut saved = serde_yaml_ng::to_value(ClashConfig::default()).unwrap();
+        let mut saved = yaml_serde::to_value(ClashConfig::default()).unwrap();
         saved.as_mapping_mut().unwrap().remove("tun_mips");
-        let mut config: ClashConfig = serde_yaml_ng::from_value(saved).unwrap();
+        let mut config: ClashConfig = yaml_serde::from_value(saved).unwrap();
         assert_eq!(config.tun_mips, MipsConfig::default());
 
         let patch =
@@ -341,8 +341,8 @@ mod patch_tests {
         config.apply(patch(serde_json::json!({ "tun_stack": "system" })));
         assert_eq!(config.selected_tun_stack(), SelectedTunStack::System);
 
-        let saved = serde_yaml_ng::to_string(&config).unwrap();
-        let mut config: ClashConfig = serde_yaml_ng::from_str(&saved).unwrap();
+        let saved = yaml_serde::to_string(&config).unwrap();
+        let mut config: ClashConfig = yaml_serde::from_str(&saved).unwrap();
         config.apply(patch(serde_json::json!({ "tun_stack": "mips" })));
         let options = MipsConfig {
             congestion_controller: Some(TunCongestionController::Bbr3),
@@ -368,31 +368,30 @@ mod patch_tests {
             },
             ..ClashConfig::default()
         };
-        let saved = serde_yaml_ng::to_value(&config).unwrap();
-        assert_eq!(saved["tun_stack"], serde_yaml_ng::Value::from("mips"));
+        let saved = yaml_serde::to_value(&config).unwrap();
+        assert_eq!(saved["tun_stack"], yaml_serde::Value::from("mips"));
         assert_eq!(
             saved["tun_mips"]["congestion_controller"],
-            serde_yaml_ng::Value::from("bbr3")
+            yaml_serde::Value::from("bbr3")
         );
     }
 
     #[test]
     fn old_clash_config_defaults_control_channel_without_application_fields() {
-        let mut yaml = serde_yaml_ng::to_value(ClashConfig::default()).unwrap();
+        let mut yaml = yaml_serde::to_value(ClashConfig::default()).unwrap();
         let mapping = yaml.as_mapping_mut().unwrap();
         mapping.remove("clash_control_channel");
         mapping.remove("clash_ipc_disable_http_controller");
         mapping.remove("redir_port");
         mapping.remove("tproxy_port");
         mapping.remove("transparent_proxy");
-        let config: ClashConfig = serde_yaml_ng::from_value(yaml).unwrap();
+        let config: ClashConfig = yaml_serde::from_value(yaml).unwrap();
         assert_eq!(config.clash_control_channel, ClashControlChannel::PreferIpc);
         assert!(!config.clash_ipc_disable_http_controller);
         assert_eq!(config.redir_port, None);
         assert_eq!(config.tproxy_port, None);
         assert_eq!(config.transparent_proxy, TransparentProxyConfig::default());
-        let app =
-            serde_yaml_ng::to_value(crate::application::NyanpasuAppConfig::default()).unwrap();
+        let app = yaml_serde::to_value(crate::application::NyanpasuAppConfig::default()).unwrap();
         assert!(app.get("clash_control_channel").is_none());
         assert!(app.get("clash_ipc_disable_http_controller").is_none());
     }
@@ -400,13 +399,13 @@ mod patch_tests {
     #[test]
     fn include_all_expansion_defaults_on_for_new_and_old_configs() {
         assert!(ClashConfig::default().expand_include_all);
-        let mut yaml = serde_yaml_ng::to_value(ClashConfig {
+        let mut yaml = yaml_serde::to_value(ClashConfig {
             expand_include_all: false,
             ..ClashConfig::default()
         })
         .unwrap();
         yaml.as_mapping_mut().unwrap().remove("expand_include_all");
-        let config: ClashConfig = serde_yaml_ng::from_value(yaml).unwrap();
+        let config: ClashConfig = yaml_serde::from_value(yaml).unwrap();
         assert!(config.expand_include_all);
     }
 
@@ -476,7 +475,7 @@ mod patch_tests {
 
         // Absent → keep.
         let keep: ClashConfigPatch =
-            serde_yaml_ng::from_str("enable_tun_mode: true\n").expect("patch must deserialize");
+            yaml_serde::from_str("enable_tun_mode: true\n").expect("patch must deserialize");
         assert_eq!(keep.socks_port, None, "absent decodes to outer None (keep)");
         let mut cfg = seeded();
         cfg.apply(keep);
@@ -484,7 +483,7 @@ mod patch_tests {
 
         // Explicit null → clear.
         let clear: ClashConfigPatch =
-            serde_yaml_ng::from_str("socks_port: null\n").expect("patch must deserialize");
+            yaml_serde::from_str("socks_port: null\n").expect("patch must deserialize");
         assert_eq!(
             clear.socks_port,
             Some(None),
@@ -497,7 +496,7 @@ mod patch_tests {
         // Sparse serialize: absent http_port must not appear.
         let mut patch = ClashConfig::new_empty_patch();
         patch.socks_port = Some(None);
-        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
         assert!(
             dumped.contains("socks_port: null"),
             "Some(None) -> null, got:\n{dumped}"

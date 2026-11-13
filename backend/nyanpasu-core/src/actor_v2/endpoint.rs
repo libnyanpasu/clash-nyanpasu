@@ -208,7 +208,7 @@ impl ControlEndpoint for LocalEndpoint {
                         source_hash: snapshot.revision.source_hash.clone(),
                         effective_hash: snapshot.revision.effective_hash.clone(),
                     },
-                    config: serde_yaml_ng::to_string(snapshot.config.as_ref()).map_err(|_| {
+                    config: yaml_serde::to_string(snapshot.config.as_ref()).map_err(|_| {
                         CoreError::new(
                             CoreErrorKind::Internal,
                             "failed to serialize effective config",

@@ -236,6 +236,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProfiles', ...args],
         queryFn: () => commands.getProfiles(...args),
       }),
+    getProfilesListing: (
+      ...args: Parameters<typeof commands.getProfilesListing>
+    ) =>
+      queryOptions({
+        queryKey: ['getProfilesListing', ...args],
+        queryFn: () => commands.getProfilesListing(...args),
+      }),
     probeProfileUrl: (...args: Parameters<typeof commands.probeProfileUrl>) =>
       queryOptions({
         queryKey: ['probeProfileUrl', ...args],
@@ -254,6 +261,20 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getProfileSyncRuns', ...args],
         queryFn: () => commands.getProfileSyncRuns(...args),
+      }),
+    getProfileSyncStatusSummary: (
+      ...args: Parameters<typeof commands.getProfileSyncStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getProfileSyncStatusSummary', ...args],
+        queryFn: () => commands.getProfileSyncStatusSummary(...args),
+      }),
+    getProfileSyncRunsSummary: (
+      ...args: Parameters<typeof commands.getProfileSyncRunsSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getProfileSyncRunsSummary', ...args],
+        queryFn: () => commands.getProfileSyncRunsSummary(...args),
       }),
     getProfileSyncLogs: (
       ...args: Parameters<typeof commands.getProfileSyncLogs>

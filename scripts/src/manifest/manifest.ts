@@ -12,11 +12,68 @@ export type SupportedArch =
 
 export type ArchMapping = Record<SupportedArch, string>
 
-export type LatestVersionResolver = Promise<{
-  name: string
+export type SupportedCore =
+  | 'mihomo'
+  | 'mihomo_alpha'
+  | 'clash_rs'
+  | 'clash_rs_alpha'
+  | 'meow'
+  | 'meow_alpha'
+
+export type ManifestCore = SupportedCore | 'clash_premium'
+
+export interface ResolvedCoreVersion {
+  name: SupportedCore
   version: string
   archMapping: ArchMapping
-}>
+}
+
+export type LatestVersionResolver = Promise<ResolvedCoreVersion>
+
+export interface VersionManifest {
+  manifest_version: number
+  latest: Record<ManifestCore, string>
+  arch_template: Record<ManifestCore, ArchMapping>
+  updated_at?: string
+}
+
+const MANIFEST_VERSION = 1
+
+// TODO(actor-migration): keep the removed Clash Premium manifest fields.
+// Reason: released manifest v1 clients treat `clash_premium` as required, so
+// its absence prevents them from reading any core update.
+// Remove when: no maintained release channel still serves manifest v1 clients.
+const LEGACY_CLASH_PREMIUM = {
+  version: '2023-09-05-gdcc8d87',
+  archMapping: {
+    'windows-x86_64': 'clash-windows-amd64-n{}.zip',
+    'windows-arm64': 'clash-windows-arm64-n{}.zip',
+    'linux-aarch64': 'clash-linux-arm64-n{}.gz',
+    'linux-amd64': 'clash-linux-amd64-n{}.gz',
+    'darwin-arm64': 'clash-darwin-arm64-n{}.gz',
+    'darwin-x64': 'clash-darwin-amd64-n{}.gz',
+  } satisfies ArchMapping,
+}
+
+export function createVersionManifest(
+  results: readonly ResolvedCoreVersion[],
+): VersionManifest {
+  const manifest: VersionManifest = {
+    manifest_version: MANIFEST_VERSION,
+    latest: {} as Record<ManifestCore, string>,
+    arch_template: {} as Record<ManifestCore, ArchMapping>,
+  }
+
+  for (const result of results) {
+    manifest.latest[result.name] = result.version
+    manifest.arch_template[result.name] = result.archMapping
+  }
+
+  manifest.latest.clash_premium = LEGACY_CLASH_PREMIUM.version
+  manifest.arch_template.clash_premium = LEGACY_CLASH_PREMIUM.archMapping
+
+  return manifest
+}
 
 export interface GitHubReleaseAsset {
   name: string
@@ -212,7 +269,9 @@ const MEOW_ALPHA_ARCH_MAPPING: ArchMapping = {
   'darwin-x64': 'meow-{}-x86_64-apple-darwin.tar.gz',
 }
 
-export function resolveMeowAlphaRelease(release: GitHubRelease) {
+export function resolveMeowAlphaRelease(
+  release: GitHubRelease,
+): ResolvedCoreVersion {
   if (release.tag_name !== 'Prerelease-Alpha' || !release.prerelease) {
     throw new Error('unexpected meow-rs alpha release metadata')
   }

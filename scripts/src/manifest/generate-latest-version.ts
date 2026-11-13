@@ -3,37 +3,20 @@ import * as path from 'node:path'
 import { colorize, consola } from '../shared/logger.ts'
 import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 import {
+  createVersionManifest,
   resolveClashRs,
   resolveClashRsAlpha,
   resolveMeow,
   resolveMeowAlpha,
   resolveMihomo,
   resolveMihomoAlpha,
-  type ArchMapping,
+  type VersionManifest,
 } from './manifest.ts'
 
 // === Constants ===
 
 const MANIFEST_DIR = path.join(WORKSPACE_ROOT, 'manifest')
 const MANIFEST_VERSION_PATH = path.join(MANIFEST_DIR, 'version.json')
-const MANIFEST_VERSION = 1
-
-// === Types ===
-
-type SupportedCore =
-  | 'mihomo'
-  | 'mihomo_alpha'
-  | 'clash_rs'
-  | 'clash_rs_alpha'
-  | 'meow'
-  | 'meow_alpha'
-
-interface ManifestVersion {
-  manifest_version: number
-  latest: Record<SupportedCore, string>
-  arch_template: Record<SupportedCore, ArchMapping>
-  updated_at?: string
-}
 
 // === Main ===
 
@@ -53,21 +36,12 @@ const results = await Promise.all(resolvers.map((r) => r()))
 consola.success('Resolved latest versions')
 consola.start('Generating manifest')
 
-const manifest: ManifestVersion = {
-  manifest_version: MANIFEST_VERSION,
-  latest: {} as Record<SupportedCore, string>,
-  arch_template: {} as Record<SupportedCore, ArchMapping>,
-}
-
-for (const result of results) {
-  manifest.latest[result.name as SupportedCore] = result.version
-  manifest.arch_template[result.name as SupportedCore] = result.archMapping
-}
+const manifest = createVersionManifest(results)
 
 await mkdir(MANIFEST_DIR, { recursive: true })
 
 // If no changes, skip writing manifest
-let previousManifest: Partial<ManifestVersion> = {}
+let previousManifest: Partial<VersionManifest> = {}
 try {
   previousManifest = JSON.parse(await readFile(MANIFEST_VERSION_PATH, 'utf8'))
   delete previousManifest.updated_at

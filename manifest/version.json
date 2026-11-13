@@ -6,7 +6,7 @@
     "clash_rs": "v0.10.11",
     "clash_rs_alpha": "0.10.11-alpha+sha.f2533d6",
     "meow": "v0.29.0",
-    "meow_alpha": "alpha-9f9dc68",
+    "meow_alpha": "alpha-a95189f",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
   "arch_template": {
@@ -67,5 +67,5 @@
       "darwin-x64": "clash-darwin-amd64-n{}.gz"
     }
   },
-  "updated_at": "2026-11-12T22:16:24.931Z"
+  "updated_at": "2026-11-13T22:16:20.383Z"
 }

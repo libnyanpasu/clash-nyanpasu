@@ -19,25 +19,20 @@ inventory = { version = '0.3', optional = true }
 serde_json = { version = '1', optional = true }
 struct-patch = { version = '0.14', optional = true }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
-  'default-meta',
   'nesting'
 ] }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
-  'default-meta',
   'nesting'
 ] }
 nyanpasu-rpc = { path = '../nyanpasu-rpc', default-features = false, features = [
   'http',
   'local-server',
-  'default-meta',
   'nesting'
 ] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
 nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
-nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false, features = [
-  'default-meta'
-] }
+nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
@@ -99,7 +94,6 @@ nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
   'test-support'
 ] }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false, features = [
-  'default-meta',
   'nesting',
   'test-support'
 ] }

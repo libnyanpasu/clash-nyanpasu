@@ -6,11 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default-meta = [
-  'nyanpasu-config/default-meta',
-  'nyanpasu-migration/default-meta'
-]
-default = ['default-meta', 'nesting']
+default = ['nesting']
 nesting = ['nyanpasu-config/nesting', 'struct-patch/nesting']
 verge-dev = []
 test-support = [

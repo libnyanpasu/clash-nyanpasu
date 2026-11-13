@@ -8,7 +8,6 @@ authors.workspace = true
 
 [features]
 default = []
-default-meta = ['nyanpasu-config/default-meta']
 nesting = ['nyanpasu-config/nesting']
 frame-io = ['dep:tokio']
 local-client = [

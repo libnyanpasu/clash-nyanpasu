@@ -10,6 +10,7 @@ use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
     Debug,
     Clone,
     Copy,
+    Default,
     Deserialize,
     Serialize,
     PartialEq,
@@ -26,6 +27,7 @@ pub enum ClashCore {
     ClashPremium = 0b0001,
     #[serde(rename = "clash-rs")]
     ClashRs,
+    #[default]
     #[serde(rename = "mihomo", alias = "clash-meta")]
     Mihomo,
     #[serde(rename = "mihomo-alpha")]
@@ -63,15 +65,6 @@ impl ClashCore {
             | ClashCore::Mihomo
             | ClashCore::MihomoAlpha
             | ClashCore::ClashRsAlpha => &[],
-        }
-    }
-}
-
-impl Default for ClashCore {
-    fn default() -> Self {
-        match cfg!(feature = "default-meta") {
-            false => Self::ClashPremium,
-            true => Self::Mihomo,
         }
     }
 }

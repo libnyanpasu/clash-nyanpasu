@@ -318,13 +318,7 @@ mockall = '0.15'
 fake-core = { path = '../fake-core' }
 
 [features]
-default = [
-  'custom-protocol',
-  'default-meta',
-  'nesting',
-  'script-javascript',
-  'script-lua'
-]
+default = ['custom-protocol', 'nesting', 'script-javascript', 'script-lua']
 script-javascript = [
   'nyanpasu-scripts/javascript',
   'dep:boa_engine',
@@ -334,11 +328,6 @@ script-lua = ['nyanpasu-scripts/lua', 'dep:mlua']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = ['nyanpasu-core/verge-dev', 'nyanpasu-os/verge-dev']
-default-meta = [
-  'nyanpasu-rpc/default-meta',
-  'nyanpasu-core/default-meta',
-  'nyanpasu-config/default-meta'
-]
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see

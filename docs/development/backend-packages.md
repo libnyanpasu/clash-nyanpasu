@@ -182,6 +182,6 @@ described in phases B–E of the spec.
 
 E2b moves the neutral production `TracingRpcAuditSink` with the registry and HTTP
 actor. The desktop enables `nyanpasu-rpc/http` explicitly; HTTP is off by default.
-Core/config dependencies disable defaults and forward `default-meta` and `nesting`.
+Core/config dependencies disable defaults and forward `nesting`.
 The existing Tauri-to-bus bridge and required frontend assets remain until E2c/E3a.
 RPC test support uses injected core fixtures; it has no implementation-crate edge.

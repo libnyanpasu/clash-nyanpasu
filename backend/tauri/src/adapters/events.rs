@@ -8,6 +8,7 @@ use tauri_specta::Event;
 use nyanpasu_runtime_values::{
     app_update::AppUpdateSnapshot,
     core_status::{CoreStatusInfo, ServiceHostStatus},
+    observation::{CoreStatusSummary, ServiceStatusSummary},
     storage::StorageRevision,
 };
 
@@ -25,6 +26,12 @@ pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ServiceStatusChangedEvent(pub ServiceHostStatus);
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct CoreStatusSummaryChangedEvent(pub CoreStatusSummary);
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct ServiceStatusSummaryChangedEvent(pub ServiceStatusSummary);
 
 /// Attaches Tauri event registration to the canonical payload.
 #[derive(Debug, Clone, Serialize, Deserialize, tauri_specta::Event)]

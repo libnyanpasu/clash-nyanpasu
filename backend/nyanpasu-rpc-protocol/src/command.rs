@@ -134,7 +134,9 @@ mod tests {
                 "get_app_config",
                 "get_clash_config",
                 "get_clash_info",
+                "get_configuration_status",
                 "get_core_log",
+                "get_core_status",
                 "get_postprocessing_output",
                 "get_profile_sync_logs",
                 "get_profile_sync_runs",
@@ -152,6 +154,7 @@ mod tests {
                 "query_logs",
                 "read_clipboard_text",
                 "read_profile_file",
+                "status_service",
             ]
         );
     }

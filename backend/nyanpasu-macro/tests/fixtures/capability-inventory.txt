@@ -49,12 +49,14 @@ get_clash_info | desktop,http | - | - | query | sensitive_read
 get_clash_settings | desktop,http | - | - | query | read
 get_clash_ws_snapshot | desktop,http | - | - | query | read
 get_config_features | desktop,http | - | - | query | read
-get_configuration_status | desktop,http,local | - | - | query | read
+get_configuration_status | desktop,http,local | - | - | query | sensitive_read
+get_configuration_status_summary | desktop,http | - | - | query | read
 get_core_agent_skills | desktop,http | - | - | query | read
 get_core_dir | desktop,http | - | - | query | read
 get_core_log | desktop,http | - | - | query | sensitive_read
 get_core_log_status | desktop,http | - | - | query | read
-get_core_status | desktop,http,local | - | - | query | read
+get_core_status | desktop,http,local | - | - | query | sensitive_read
+get_core_status_summary | desktop,http | - | - | query | read
 get_core_version | desktop | - | - | query | read
 get_custom_app_dir | desktop | - | - | query | read
 get_hotkey_functions | desktop,http | - | - | query | read
@@ -74,6 +76,7 @@ get_runtime_config | desktop,http | - | - | query | sensitive_read
 get_runtime_exists | desktop,http | - | - | query | read
 get_runtime_yaml | desktop,http | - | - | query | sensitive_read
 get_service_install_prompt | desktop,http | - | - | query | read
+get_service_status_summary | desktop,http | - | - | query | read
 get_storage_item | desktop,http,local | - | - | query | sensitive_read
 get_sys_proxy | desktop,http | os_integration | - | query | read
 get_system_accent_color | desktop,http | accent_color | - | query | read
@@ -157,7 +160,7 @@ show_native_message_dialog | desktop | dialog | - | mutation | system
 show_native_notification | desktop | notification | - | mutation | system
 simulate_crash | desktop | lifecycle | - | mutation | system
 start_service | desktop | elevation | presentation | mutation | system
-status_service | desktop,http | - | - | query | read
+status_service | desktop,http | - | - | query | sensitive_read
 stop_service | desktop | elevation | presentation | mutation | system
 subscribe_clash_connection_details | desktop | caller_webview | - | mutation | read
 take_pending_deep_links | desktop | deep_link | - | mutation | system

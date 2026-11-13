@@ -20,6 +20,27 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getConfigurationStatus', ...args],
         queryFn: () => commands.getConfigurationStatus(...args),
       }),
+    getConfigurationStatusSummary: (
+      ...args: Parameters<typeof commands.getConfigurationStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getConfigurationStatusSummary', ...args],
+        queryFn: () => commands.getConfigurationStatusSummary(...args),
+      }),
+    getServiceStatusSummary: (
+      ...args: Parameters<typeof commands.getServiceStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getServiceStatusSummary', ...args],
+        queryFn: () => commands.getServiceStatusSummary(...args),
+      }),
+    getCoreStatusSummary: (
+      ...args: Parameters<typeof commands.getCoreStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getCoreStatusSummary', ...args],
+        queryFn: () => commands.getCoreStatusSummary(...args),
+      }),
     readClipboardText: (
       ...args: Parameters<typeof commands.readClipboardText>
     ) =>

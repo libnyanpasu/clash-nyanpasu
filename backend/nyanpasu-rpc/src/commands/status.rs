@@ -3,11 +3,12 @@
 use crate::error::Result;
 
 use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_runtime_values::observation::{ConfigurationStatusSummary, ServiceStatusSummary};
 
 use super::types::ServiceStatusInfo;
 use crate::registry::RpcState;
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
     let info = client.service_status();
@@ -22,12 +23,28 @@ pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<Serv
     })
 }
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetConfigurationStatus, query)]
+/// The service daemon's version, install state and phase, without its server details.
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub fn get_service_status_summary(client: RpcState<'_, NyanpasuClient>) -> ServiceStatusSummary {
+    ServiceStatusSummary::from(&client.service_status())
+}
+
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetConfigurationStatus, query, scope = sensitive_read)]
 #[specta::specta]
 pub fn get_configuration_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> nyanpasu_runtime_values::configuration::ConfigurationStatus {
     client.configuration_status()
+}
+
+/// Convergence health, retry state and operation and source IDs, without diagnostic text.
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub fn get_configuration_status_summary(
+    client: RpcState<'_, NyanpasuClient>,
+) -> ConfigurationStatusSummary {
+    ConfigurationStatusSummary::from(&client.configuration_status())
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]

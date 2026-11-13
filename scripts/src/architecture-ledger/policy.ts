@@ -201,6 +201,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     'WINDOW_CLOSE',
     'DNSPOD_CONSENT',
     'SCRIPT_HOTKEYS',
+    'PREMIUM_CORE',
   ]),
   ...migrationModuleStatics('clash_config', [
     'MANAGEABLE_GUARD_FIELDS',

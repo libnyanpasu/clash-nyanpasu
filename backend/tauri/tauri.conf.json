@@ -41,7 +41,6 @@
     ],
     "resources": ["resources"],
     "externalBin": [
-      "sidecar/clash",
       "sidecar/mihomo",
       "sidecar/mihomo-alpha",
       "sidecar/clash-rs",

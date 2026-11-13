@@ -1,7 +1,11 @@
 import { expect, test, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
 import { focusManager, QueryClient } from '@tanstack/react-query'
-import { useClashCores, useClashCoreVersion } from '../src/ipc/use-clash-cores'
+import {
+  ClashCores,
+  useClashCores,
+  useClashCoreVersion,
+} from '../src/ipc/use-clash-cores'
 import { useCoreAgentSkills } from '../src/ipc/use-core-agent-skills'
 import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
@@ -38,6 +42,10 @@ test('core versions are read once, not on every visit or focus', async ({
   const first = await mount(() => useClashCores().query)
   await expect.poll(() => first.result.current.isSuccess).toBe(true)
   const calls = versionCalls()
+  expect(calls).toBe(Object.keys(ClashCores).length)
+  expect(Object.keys(first.result.current.data ?? {})).toEqual(
+    Object.keys(ClashCores),
+  )
   await first.unmount()
 
   const second = await mount(() => useClashCores().query)

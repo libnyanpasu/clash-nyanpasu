@@ -300,7 +300,6 @@ mod tests {
         assert_eq!(names(ClashCore::ClashRs), vec!["clash_rs_comp"]);
         // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
         assert!(names(ClashCore::ClashRsAlpha).is_empty());
-        assert!(names(ClashCore::ClashPremium).is_empty());
         // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
         assert_eq!(names(ClashCore::Meow), vec!["verge_hy_alpn"]);
     }
@@ -387,26 +386,6 @@ mod tests {
                 Some(TunCongestionController::Bbr)
             )
         );
-        assert_eq!(
-            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mips(&mips)),
-            standard(
-                TunStackWrite::Downgraded {
-                    selected: TunStack::Mips,
-                    written: TunStack::Gvisor,
-                },
-                None
-            )
-        );
-        assert_eq!(
-            derive_tun_flavor(ClashCore::ClashPremium, SelectedTunStack::Mixed),
-            standard(
-                TunStackWrite::Downgraded {
-                    selected: TunStack::Mixed,
-                    written: TunStack::Gvisor,
-                },
-                None
-            )
-        );
     }
 
     #[test]
@@ -429,31 +408,10 @@ mod tests {
     }
 
     #[test]
-    fn a_profile_stack_the_core_rejects_fails_the_build_while_tun_is_off() {
-        let input = profile_input(ClashCore::ClashPremium);
-        let error = RuntimeBuilder::build(
-            &input,
-            &OneFile(
-                "tun: { enable: false, stack: Mixed }
-",
-            ),
-            &EchoRunner,
-        )
-        .unwrap_err();
-        assert_eq!(
-            serde_json::to_value(&error).unwrap(),
-            serde_json::json!({
-                "kind": "unsupported_config_values",
-                "values": [{ "path": "tun.stack", "value": "Mixed", "supported": ["system", "gvisor"] }],
-            })
-        );
-    }
-
-    #[test]
     fn the_selected_stack_overrides_the_profile_stack_while_tun_is_on() {
-        let mut input = profile_input(ClashCore::ClashPremium);
+        let mut input = profile_input(ClashCore::Mihomo);
         input.clash.enable_tun_mode = true;
-        input.clash.tun_stack = TunStack::Mixed;
+        input.clash.tun_stack = TunStack::System;
         let artifact = RuntimeBuilder::build(
             &input,
             &OneFile(
@@ -465,7 +423,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             artifact.final_config.to_json()["tun"]["stack"],
-            serde_json::json!("gvisor")
+            serde_json::json!("system")
         );
         let warnings: Vec<_> = artifact
             .step_logs
@@ -473,7 +431,7 @@ mod tests {
             .flat_map(|log| &log.entries)
             .filter(|entry| entry.level == StepLogLevel::Warn)
             .collect();
-        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]

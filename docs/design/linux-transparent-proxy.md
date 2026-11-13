@@ -24,7 +24,6 @@ must never leave interception targeting the old service listener.
 | Mihomo / Alpha   | TCP, Linux and macOS                | TCP/UDP, Linux                                          | Linux supported |
 | Clash-rs / Alpha | TCP, Linux, build feature           | TCP/UDP, Linux, build feature                           | Deferred        |
 | Meow / Alpha     | Different listener/config semantics | TCP REDIRECT plus separately configured IPv4 UDP TPROXY | Deferred        |
-| Clash Premium    | Version-specific legacy behavior    | Requires binary verification                            | Deferred        |
 
 Do not infer compatibility from a shared YAML key. Meow's top-level
 `tproxy-port` automatically manages local TCP REDIRECT rules; it is not Mihomo's

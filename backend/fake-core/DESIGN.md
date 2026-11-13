@@ -5,7 +5,7 @@
 ### 目标
 
 - 为 PR-4S **S09** process-lifecycle / failure-matrix 测试提供**可重复、可注入**的假 Clash 核心进程。
-- 使用与真实 core **相同的 argv 形态**（check / mihomo / clash-rs / premium），避免测试只覆盖“假 CLI 方言”。
+- 使用与真实 core **相同的 argv 形态**（check / mihomo / clash-rs），避免测试只覆盖“假 CLI 方言”。
 - 用 **`FAKE_CORE_*` 环境变量** 控制 check/start/apply 成败与流输出，替代早期 illustrative flags（如 `--check-ok` / `--start-fail`）。
 - 用 TCP **READY / RELEASE** 屏障做父子同步；超时仅作死锁安全网，**禁止 sleep 排序**。
 - 支持动态 hold/http 端口（含 `0` 临时端口）并在 READY 帧中回报**实际**绑定端口，消除 TOCTOU。
@@ -107,7 +107,7 @@ Library (fake_core):
 
 ### Argv
 
-完整 argv 形态（check / mihomo / clash-rs / premium，与 nyanpasu-utils 真实调用一致）见 [README.md § Argv shapes](README.md#argv-shapes)。未知 flags 或缺失 `-d` / `-f` / `-c` → stderr + exit `2`。
+完整 argv 形态（check / mihomo / clash-rs，与 nyanpasu-utils 真实调用一致）见 [README.md § Argv shapes](README.md#argv-shapes)。未知 flags 或缺失 `-d` / `-f` / `-c` → stderr + exit `2`。
 
 ### 行为 env
 

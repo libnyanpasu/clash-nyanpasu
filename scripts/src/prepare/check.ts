@@ -138,13 +138,6 @@ async function main(
   }
   const tasks: Task[] = [
     {
-      name: 'clash',
-      version: versionManifest.latest.clash_premium,
-      func: (onProgress) =>
-        resolveSidecar(resourceContext, binary.clash(), { force, onProgress }),
-      retry: 5,
-    },
-    {
       name: 'mihomo',
       version: versionManifest.latest.mihomo,
       func: (onProgress) =>

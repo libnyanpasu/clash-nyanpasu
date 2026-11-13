@@ -41,7 +41,6 @@ pub struct ManifestVersionLatest {
     mihomo_alpha: String,
     clash_rs: String,
     clash_rs_alpha: String,
-    clash_premium: String,
     meow: String,
     #[serde(default)]
     meow_alpha: String,
@@ -53,7 +52,6 @@ pub struct ArchTemplate {
     mihomo_alpha: HashMap<String, String>,
     clash_rs: HashMap<String, String>,
     clash_rs_alpha: HashMap<String, String>,
-    clash_premium: HashMap<String, String>,
     meow: HashMap<String, String>,
     #[serde(default)]
     meow_alpha: HashMap<String, String>,
@@ -77,7 +75,6 @@ impl Default for ManifestVersionLatest {
             mihomo_alpha: "".to_string(),
             clash_rs: "".to_string(),
             clash_rs_alpha: "".to_string(),
-            clash_premium: "".to_string(),
             meow: "".to_string(),
             meow_alpha: "".to_string(),
         }
@@ -88,14 +85,6 @@ impl ManifestVersion {
     pub(self) fn get_matches(&self, core_type: &ClashCore) -> Option<(String, CoreTypeMeta)> {
         let arch = get_arch().ok()?;
         match core_type {
-            ClashCore::ClashPremium => Some((
-                self.arch_template
-                    .clash_premium
-                    .get(arch)?
-                    .clone()
-                    .replace("{}", &self.latest.clash_premium),
-                CoreTypeMeta::ClashPremium(self.latest.clash_premium.clone()),
-            )),
             ClashCore::Mihomo => Some((
                 self.arch_template
                     .mihomo

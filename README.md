@@ -106,7 +106,7 @@ traffic goes through a customizable Material You interface.
 
 ## Features
 
-- **Multiple proxy cores.** Manage Mihomo, Clash Rust, Meow, and Clash Premium,
+- **Multiple proxy cores.** Manage Mihomo, Clash Rust, and Meow,
   with separate stable and Alpha choices for Mihomo, Clash Rust, and Meow.
 - **Profile management.** Organize local profiles and subscriptions.
 - **Configuration enhancement.** Merge and transform profiles with YAML,

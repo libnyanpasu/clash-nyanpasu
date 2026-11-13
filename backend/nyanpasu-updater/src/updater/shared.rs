@@ -25,7 +25,6 @@ pub(super) fn is_alpha_version(version: &str) -> bool {
 
 /// Release identity used to resolve and verify a core artifact.
 pub enum CoreTypeMeta {
-    ClashPremium(String),
     Mihomo(String),
     MihomoAlpha,
     ClashRs(String),
@@ -47,9 +46,6 @@ pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> Stri
         }
         CoreTypeMeta::ClashRsAlpha => {
             format!("ibigbug/clash-rs/releases/download/latest/{artifact}")
-        }
-        CoreTypeMeta::ClashPremium(tag) => {
-            format!("zhongfly/Clash-premium-backup/releases/download/{tag}/{artifact}")
         }
         CoreTypeMeta::Meow(tag) => {
             format!("meow-rs/meow-rs/releases/download/{tag}/{artifact}")

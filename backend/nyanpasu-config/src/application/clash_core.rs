@@ -23,10 +23,8 @@ use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 )]
 #[strum(serialize_all = "kebab-case")]
 pub enum ClashCore {
-    #[serde(rename = "clash", alias = "clash-premium")]
-    ClashPremium = 0b0001,
     #[serde(rename = "clash-rs")]
-    ClashRs,
+    ClashRs = 0b0001,
     #[default]
     #[serde(rename = "mihomo", alias = "clash-meta")]
     Mihomo,
@@ -42,10 +40,8 @@ pub enum ClashCore {
 
 impl ClashCore {
     /// The core's sidecar and executable name, without the platform suffix.
-    /// Differs from `Display`, which renders `ClashPremium` as `clash-premium`.
     pub fn binary_name(&self) -> &'static str {
         match self {
-            ClashCore::ClashPremium => "clash",
             ClashCore::ClashRs => "clash-rs",
             ClashCore::Mihomo => "mihomo",
             ClashCore::MihomoAlpha => "mihomo-alpha",
@@ -60,8 +56,7 @@ impl ClashCore {
     pub fn agent_skills(&self) -> &'static [&'static str] {
         match self {
             ClashCore::Meow | ClashCore::MeowAlpha => &["meow-cli"],
-            ClashCore::ClashPremium
-            | ClashCore::ClashRs
+            ClashCore::ClashRs
             | ClashCore::Mihomo
             | ClashCore::MihomoAlpha
             | ClashCore::ClashRsAlpha => &[],
@@ -72,9 +67,6 @@ impl ClashCore {
 impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
     fn from(core: &ClashCore) -> Self {
         match core {
-            ClashCore::ClashPremium => nyanpasu_utils::core::CoreType::Clash(
-                nyanpasu_utils::core::ClashCoreType::ClashPremium,
-            ),
             ClashCore::ClashRs => nyanpasu_utils::core::CoreType::Clash(
                 nyanpasu_utils::core::ClashCoreType::ClashRust,
             ),
@@ -107,7 +99,6 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
     fn try_from(core: &nyanpasu_utils::core::CoreType) -> Result<Self, Self::Error> {
         match core {
             nyanpasu_utils::core::CoreType::Clash(clash) => match clash {
-                nyanpasu_utils::core::ClashCoreType::ClashPremium => Ok(ClashCore::ClashPremium),
                 nyanpasu_utils::core::ClashCoreType::ClashRust => Ok(ClashCore::ClashRs),
                 nyanpasu_utils::core::ClashCoreType::ClashRustAlpha => Ok(ClashCore::ClashRsAlpha),
                 nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
@@ -129,7 +120,6 @@ mod tests {
     #[test]
     fn binary_name_is_the_sidecar_name_of_every_core() {
         let cases = [
-            (ClashCore::ClashPremium, "clash"),
             (ClashCore::ClashRs, "clash-rs"),
             (ClashCore::Mihomo, "mihomo"),
             (ClashCore::MihomoAlpha, "mihomo-alpha"),

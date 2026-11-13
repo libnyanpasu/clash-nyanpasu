@@ -1,6 +1,5 @@
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
@@ -220,37 +219,21 @@ test.for(['pending', 'fetching'])(
   },
 )
 
-test('the deprecated core is marked and switching to it shows the removal notice', async ({
-  onTestFinished,
-}) => {
+test('the remaining cores can be selected', async ({ onTestFinished }) => {
   state.currentCore = 'mihomo'
   state.switchCore.mockClear()
   const view = await render(
     <TooltipProvider>
-      <SnackbarProvider>
-        <BlockTaskProvider>
-          <CoreManagerCard />
-        </BlockTaskProvider>
-      </SnackbarProvider>
+      <BlockTaskProvider>
+        <CoreManagerCard />
+      </BlockTaskProvider>
     </TooltipProvider>,
   )
   onTestFinished(async () => view.unmount())
 
-  const badges = view.container.querySelectorAll(
-    '[data-slot="deprecated-core-badge"]',
-  )
-  expect(badges).toHaveLength(1)
-  expect(badges[0].closest('button')?.textContent).toContain(ClashCores.clash)
-
-  const notice = m.settings_clash_core_manager_card_deprecation_notice()
-
-  await view.getByText(ClashCores.clash, { exact: true }).click()
-  await expect.poll(() => state.switchCore.mock.lastCall?.[0]).toBe('clash')
-  await expect.element(view.getByText(notice, { exact: true })).toBeVisible()
-
-  await view.getByText(ClashCores['clash-rs'], { exact: true }).click()
-  await expect.poll(() => state.switchCore.mock.lastCall?.[0]).toBe('clash-rs')
-  await expect
-    .element(view.getByText(notice, { exact: true }))
-    .not.toBeInTheDocument()
+  for (const core of Object.keys(ClashCores) as (keyof typeof ClashCores)[]) {
+    if (core === state.currentCore) continue
+    await view.getByText(ClashCores[core], { exact: true }).click()
+    await expect.poll(() => state.switchCore.mock.lastCall?.[0]).toBe(core)
+  }
 })

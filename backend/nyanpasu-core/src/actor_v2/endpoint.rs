@@ -731,9 +731,6 @@ fn app_core_kind_to_type(
     match kind {
         nyanpasu_core_manager::CoreKind::Mihomo => Ok(CoreType::Clash(ClashCoreType::Mihomo)),
         nyanpasu_core_manager::CoreKind::ClashRust => Ok(CoreType::Clash(ClashCoreType::ClashRust)),
-        nyanpasu_core_manager::CoreKind::ClashPremium => {
-            Ok(CoreType::Clash(ClashCoreType::ClashPremium))
-        }
         other => Err(CoreError::new(
             CoreErrorKind::Internal,
             format!("core kind {other:?} has no wire core type"),
@@ -761,7 +758,6 @@ pub fn wire_core_type_to_kind(core_type: &nyanpasu_utils::core::CoreType) -> Opt
         CoreType::Clash(ClashCoreType::ClashRust | ClashCoreType::ClashRustAlpha) => {
             Some(CoreKind::ClashRust)
         }
-        CoreType::Clash(ClashCoreType::ClashPremium) => Some(CoreKind::ClashPremium),
         CoreType::Clash(ClashCoreType::Meow | ClashCoreType::MeowAlpha) => Some(CoreKind::Meow),
         CoreType::SingBox => None,
     }

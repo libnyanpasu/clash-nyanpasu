@@ -1,6 +1,6 @@
 use super::verge::{self as legacy_app, IVerge};
 use nyanpasu_config::application::{
-    NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
+    ClashCore, NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
     StatisticWidgetVariant, WindowCloseOverride,
 };
 
@@ -64,10 +64,16 @@ pub(super) fn application_from_legacy(legacy: &IVerge) -> Result<NyanpasuAppConf
     {
         next.theme_color = value;
     }
-    if let Some(value) = &legacy.clash_core
-        && let Ok(value) = super::yaml_convert(value)
-    {
-        next.core = value;
+    if let Some(value) = &legacy.clash_core {
+        next.core = match value {
+            legacy_app::ClashCore::ClashPremium => ClashCore::Mihomo,
+            legacy_app::ClashCore::ClashRs => ClashCore::ClashRs,
+            legacy_app::ClashCore::Mihomo => ClashCore::Mihomo,
+            legacy_app::ClashCore::MihomoAlpha => ClashCore::MihomoAlpha,
+            legacy_app::ClashCore::ClashRsAlpha => ClashCore::ClashRsAlpha,
+            legacy_app::ClashCore::Meow => ClashCore::Meow,
+            legacy_app::ClashCore::MeowAlpha => ClashCore::MeowAlpha,
+        };
     }
     if let Some(value) = &legacy.hotkeys {
         next.hotkeys = value

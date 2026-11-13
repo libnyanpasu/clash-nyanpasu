@@ -40,18 +40,6 @@ test('rolling cores compare build hashes even when the SemVer base is unchanged'
   ).toBe(true)
 })
 
-test('dated Clash Premium releases compare dates and same-day hashes', () => {
-  expect(
-    hasNewerCoreVersion('clash', '2023-09-05-gabcdef0', 'n2023-09-04-g1234567'),
-  ).toBe(false)
-  expect(
-    hasNewerCoreVersion('clash', '2023-09-05-gabcdef0', '2023-09-05-gabcdef0'),
-  ).toBe(false)
-  expect(
-    hasNewerCoreVersion('clash', '2023-09-05-gabcdef0', '2023-09-05-g1234567'),
-  ).toBe(true)
-})
-
 test('unknown and unreadable versions do not report an update', () => {
   expect(
     hasNewerCoreVersion('meow-alpha', 'N/A', '0.22.0-alpha+sha.1234567'),

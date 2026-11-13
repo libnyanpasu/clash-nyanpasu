@@ -56,11 +56,7 @@ pub fn parse_version(core: ClashCore, banner: &str) -> Result<String, CoreVersio
         let alpha = token.strip_prefix("alpha-").is_some_and(|hash| {
             !hash.is_empty() && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
         });
-        let premium = matches!(core, ClashCore::ClashPremium)
-            && token.strip_prefix('n').is_some_and(|value| {
-                value.starts_with(|character: char| character.is_ascii_digit())
-            });
-        if release || alpha || premium {
+        if release || alpha {
             return Ok(token.to_owned());
         }
     }
@@ -94,11 +90,6 @@ mod tests {
                 ClashCore::MihomoAlpha,
                 "Mihomo Meta alpha-9f053c4",
                 "alpha-9f053c4",
-            ),
-            (
-                ClashCore::ClashPremium,
-                "Clash n2023-09-05-gdcc8d87",
-                "n2023-09-05-gdcc8d87",
             ),
         ] {
             assert_eq!(parse_version(core, banner).unwrap(), expected);

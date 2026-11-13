@@ -9,7 +9,6 @@ import { useQueryApi } from '../provider/rpc-provider'
 import { invokeMutation, invokeQuery } from './query-options'
 
 export const ClashCores = {
-  clash: 'Clash Premium',
   mihomo: 'Mihomo',
   'mihomo-alpha': 'Mihomo Alpha',
   'clash-rs': 'Clash Rust',
@@ -17,10 +16,6 @@ export const ClashCores = {
   meow: 'Meow',
   'meow-alpha': 'Meow Alpha',
 } as Record<ClashCore_Serialize, string>
-
-/** Clash Premium is removed in the next minor version. */
-export const isDeprecatedClashCore = (core?: ClashCore_Deserialize | null) =>
-  core === 'clash'
 
 export type ClashCoresInfo = Record<ClashCore_Serialize, ClashCoresDetail>
 
@@ -34,9 +29,9 @@ export type ClashCoresDetail = {
 export const useClashCores = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
-  const coreQueryKey = api.queries.getCoreVersion('clash').queryKey.slice(0, 1)
+  const coreQueryKey = api.queries.getCoreVersion('mihomo').queryKey.slice(0, 1)
   const agentSkillsQueryKey = api.queries
-    .getCoreAgentSkills('clash')
+    .getCoreAgentSkills('mihomo')
     .queryKey.slice(0, 1)
   const fetchLatestCoreVersions = api.queries.fetchLatestCoreVersions()
   const updateCoreCommand = api.mutations.updateCore

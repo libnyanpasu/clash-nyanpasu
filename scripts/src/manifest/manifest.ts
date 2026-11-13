@@ -184,22 +184,6 @@ export const resolveClashRsAlpha = async (): LatestVersionResolver => {
   return { name: 'clash_rs_alpha', version: alphaVersion, archMapping }
 }
 
-export const resolveClashPremium = async (): LatestVersionResolver => {
-  const version = await getLatestRelease('zhongfly', 'Clash-premium-backup')
-  consola.debug(`clash-premium latest release: ${version}`)
-
-  const archMapping: ArchMapping = {
-    'windows-x86_64': 'clash-windows-amd64-n{}.zip',
-    'windows-arm64': 'clash-windows-arm64-n{}.zip',
-    'linux-aarch64': 'clash-linux-arm64-n{}.gz',
-    'linux-amd64': 'clash-linux-amd64-n{}.gz',
-    'darwin-arm64': 'clash-darwin-arm64-n{}.gz',
-    'darwin-x64': 'clash-darwin-amd64-n{}.gz',
-  }
-
-  return { name: 'clash_premium', version, archMapping }
-}
-
 export const resolveMeow = async (): LatestVersionResolver => {
   const version = await getLatestRelease('meow-rs', 'meow-rs')
   consola.debug(`meow-rs latest release: ${version}`)

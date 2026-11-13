@@ -157,7 +157,7 @@ pub const PREBUILD_COMMAND: &str = "cargo build -p fake-core";
 pub enum Mode {
     /// `fake-core -t -d <app_dir> -f <config>`
     Check { app_dir: PathBuf, config: PathBuf },
-    /// Start argv (mihomo / clash-rs / premium shapes).
+    /// Start argv (mihomo / clash-rs shapes).
     Start { app_dir: PathBuf, config: PathBuf },
 }
 
@@ -233,13 +233,14 @@ pub struct ReadyConnection {
 /// Check: `-t -d <app_dir> -f <config>`
 /// Start (mihomo): `-m -d <app_dir> -f <config>`
 /// Start (clash-rs): `-d <app_dir> -c <config>`
-/// Start (premium): `-d <app_dir> -f <config>`
 pub fn parse_args<I, S>(args: I) -> Result<Mode, String>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
     let mut is_check = false;
+    let mut is_mihomo = false;
+    let mut uses_clash_rs_config = false;
     let mut app_dir: Option<PathBuf> = None;
     let mut config: Option<PathBuf> = None;
 
@@ -263,6 +264,7 @@ where
                 i += 1;
             }
             "-m" => {
+                is_mihomo = true;
                 i += 1;
             }
             "-d" => {
@@ -274,6 +276,7 @@ where
                 i += 1;
             }
             "-f" | "-c" => {
+                uses_clash_rs_config = rest[i] == "-c";
                 i += 1;
                 let value = rest
                     .get(i)
@@ -289,6 +292,10 @@ where
 
     let app_dir = app_dir.ok_or_else(|| "missing -d <app_dir>".to_string())?;
     let config = config.ok_or_else(|| "missing -f/-c <config>".to_string())?;
+
+    if !is_check && !is_mihomo && !uses_clash_rs_config {
+        return Err("start requires -m or -c <config>".to_string());
+    }
 
     if is_check {
         Ok(Mode::Check { app_dir, config })
@@ -669,15 +676,6 @@ impl FakeCoreCommand {
         self
     }
 
-    pub fn start_premium(mut self, app_dir: impl AsRef<Path>, config: impl AsRef<Path>) -> Self {
-        self.command
-            .arg("-d")
-            .arg(app_dir.as_ref())
-            .arg("-f")
-            .arg(config.as_ref());
-        self
-    }
-
     pub fn env(mut self, key: impl AsRef<str>, value: impl AsRef<std::ffi::OsStr>) -> Self {
         self.command.env(key.as_ref(), value.as_ref());
         self
@@ -775,15 +773,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn parse_premium_start_argv() {
-        let mode = parse_args(["fake-core", "-d", "/tmp/app", "-f", "/tmp/cfg.yaml"]).unwrap();
-        assert_eq!(
-            mode,
-            Mode::Start {
-                app_dir: PathBuf::from("/tmp/app"),
-                config: PathBuf::from("/tmp/cfg.yaml"),
-            }
-        );
+    fn start_requires_a_supported_core_shape() {
+        assert!(parse_args(["fake-core", "-d", "/tmp/app", "-f", "/tmp/cfg.yaml"]).is_err());
     }
 
     #[test]

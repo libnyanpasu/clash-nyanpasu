@@ -33,7 +33,6 @@ pub struct ClashConfig {
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub struct ClashVersion {
     pub version: String,
-    pub premium: Option<bool>,
     pub meta: Option<bool>,
 }
 
@@ -126,11 +125,10 @@ mod tests {
     }
 
     #[test]
-    fn clash_version_deserializes_without_premium_meta() {
+    fn clash_version_deserializes_without_meta() {
         // clash-rs returns only version
         let json = r#"{"version":"2025.01.01"}"#;
         let v: ClashVersion = serde_json::from_str(json).unwrap();
-        assert!(v.premium.is_none());
         assert!(v.meta.is_none());
     }
 
@@ -139,7 +137,6 @@ mod tests {
         let json = r#"{"version":"1.18.0","meta":true}"#;
         let v: ClashVersion = serde_json::from_str(json).unwrap();
         assert_eq!(v.meta, Some(true));
-        assert!(v.premium.is_none());
     }
 
     #[test]

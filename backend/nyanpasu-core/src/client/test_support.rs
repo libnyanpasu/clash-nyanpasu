@@ -850,7 +850,6 @@ pub fn runtime_core_spec(
 > {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
-        nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,
         nyanpasu_config::application::ClashCore::ClashRs
         | nyanpasu_config::application::ClashCore::ClashRsAlpha => CoreKind::ClashRust,
         nyanpasu_config::application::ClashCore::Mihomo

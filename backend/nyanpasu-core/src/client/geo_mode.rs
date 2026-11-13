@@ -25,8 +25,8 @@ impl ModeSource for CoreModeSource {
     }
 }
 
-/// Reads `geodata-mode` from every core instance as it binds. Cores without the field (clash-rs,
-/// Clash Premium) read the mmdb.
+/// Reads `geodata-mode` from every core instance as it binds. Cores without the field,
+/// such as clash-rs, read the mmdb.
 async fn follow_core(reporter: ModeReporter, core: CoreClient) {
     loop {
         let Ok(api) = core.api_client().await else {

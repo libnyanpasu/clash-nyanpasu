@@ -84,7 +84,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
 #[tokio::test]
 async fn the_check_and_the_apply_consume_the_same_bytes() {
     let dir = tempfile::tempdir().unwrap();
-    let mut graph = graph(&dir).await;
+    let graph = graph(&dir).await;
     let prepared = graph.preparation.prepare_latest().await.unwrap();
     let spec = graph
         .preparation
@@ -136,7 +136,7 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
 #[tokio::test]
 async fn a_host_without_a_check_reports_unavailable_rather_than_passing() {
     let dir = tempfile::tempdir().unwrap();
-    let mut graph = graph(&dir).await;
+    let graph = graph(&dir).await;
     graph
         .endpoint
         .set_check_answer(TestCheckAnswer::Unsupported);
@@ -169,7 +169,7 @@ async fn a_host_without_a_check_reports_unavailable_rather_than_passing() {
 #[tokio::test]
 async fn an_unreachable_check_is_unavailable_not_a_rejection() {
     let dir = tempfile::tempdir().unwrap();
-    let mut graph = graph(&dir).await;
+    let graph = graph(&dir).await;
     graph
         .endpoint
         .set_check_answer(TestCheckAnswer::Reject(CoreError::new(
@@ -206,7 +206,7 @@ async fn an_unreachable_check_is_unavailable_not_a_rejection() {
 #[tokio::test]
 async fn the_cores_own_verdict_is_a_rejection() {
     let dir = tempfile::tempdir().unwrap();
-    let mut graph = graph(&dir).await;
+    let graph = graph(&dir).await;
     graph
         .endpoint
         .set_check_answer(TestCheckAnswer::Reject(CoreError::new(
@@ -246,7 +246,7 @@ async fn the_cores_own_verdict_is_a_rejection() {
 #[tokio::test]
 async fn the_runtimes_own_check_timeout_is_unavailable_not_a_rejection() {
     let dir = tempfile::tempdir().unwrap();
-    let mut graph = graph(&dir).await;
+    let graph = graph(&dir).await;
     graph
         .endpoint
         .set_check_answer(TestCheckAnswer::Reject(CoreError::new(
@@ -289,7 +289,7 @@ async fn the_runtimes_own_check_timeout_is_unavailable_not_a_rejection() {
 #[tokio::test]
 async fn a_host_that_never_answers_elapses_into_unavailable() {
     let dir = tempfile::tempdir().unwrap();
-    let mut graph = graph(&dir).await;
+    let graph = graph(&dir).await;
     graph.endpoint.set_check_answer(TestCheckAnswer::Hang);
     let prepared = graph.preparation.prepare_latest().await.unwrap();
     let spec = graph

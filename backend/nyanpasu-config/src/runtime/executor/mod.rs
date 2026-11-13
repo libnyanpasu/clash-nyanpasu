@@ -54,6 +54,7 @@ pub struct RuntimePipelineInputs<'a> {
     /// `ClashConfig.enable_clash_fields`: whether the field filter runs.
     pub whitelist_enabled: bool,
     pub tun: TunParams,
+    pub dns: DnsParams,
     /// `ClashConfig.expand_include_all`: expand `include-all*` groups here
     /// instead of leaving them to the core.
     pub expand_include_all: bool,
@@ -100,6 +101,19 @@ pub struct TunParams {
     pub flavor: TunFlavor,
     /// Platform conditional as input: caller passes `cfg!(windows)` (spec §7.4).
     pub windows_fake_ip_filter: bool,
+}
+
+/// The `dns` and `hosts` tables Nyanpasu writes, already rendered by the
+/// caller for the selected core; executor stays core-free.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DnsParams {
+    /// Written whole over the profiles' `dns`; `None` leaves it to them.
+    pub dns: Option<ConfigValue>,
+    /// Written whole over the profiles' `hosts`, removing it when empty;
+    /// `None` leaves it to them.
+    pub hosts: Option<ConfigValue>,
+    /// What rendering left out, reported by the managed settings step.
+    pub warnings: Vec<String>,
 }
 
 /// Caller derives from the core and its config features; executor stays
@@ -335,7 +349,7 @@ pub fn execute(
         selected_profile_id: selected.clone(),
         step,
     };
-    let ownership = plan::ownership(&inputs.guard, &inputs.tun);
+    let ownership = plan::ownership(&inputs.guard, &inputs.tun, &inputs.dns);
     if inputs.whitelist_enabled {
         let stage1 = builtin::stage1_fields(&inputs.profiles.valid);
         let (filtered, patch) = builtin::filter_fields(&working, &stage1);
@@ -348,13 +362,14 @@ pub fn execute(
         builder.push_delta(step(BuiltinStepKind::KeepUnmanaged), working.clone(), patch)?;
     }
 
-    let (next, patch) = apply_settings(&working, &ownership);
-    working = Arc::new(next);
     let managed_settings = step(BuiltinStepKind::ManagedSettings);
+    // Read before the settings land: the warnings name what the profiles had.
     logs.extend(
         managed_settings.node_key(),
-        plan::managed_settings_logs(&inputs.tun),
+        plan::managed_settings_logs(&inputs.tun, &inputs.dns, &working),
     );
+    let (next, patch) = apply_settings(&working, &ownership);
+    working = Arc::new(next);
     builder.push_delta(managed_settings, working.clone(), patch)?;
     let (next, patch) = apply_defaults(&working, &ownership);
     working = Arc::new(next);

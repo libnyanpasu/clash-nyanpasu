@@ -9,12 +9,16 @@ use std::sync::Arc;
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::{
-        config::{ClashConfig, TransparentProxyValidationError, tun_stack::SelectedTunStack},
-        features::{FieldSupport, TunFeatures, UnsupportedConfigValue},
+        config::{
+            ClashConfig, TransparentProxyValidationError,
+            dns::{RenderedTable, render_hosts},
+            tun_stack::SelectedTunStack,
+        },
+        features::{DnsFeatures, FieldSupport, TunFeatures, UnsupportedConfigValue},
     },
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
-        BuiltinTransform, ExecutionTarget, GuardInputs, PortError, ProfileContentSource,
+        BuiltinTransform, DnsParams, ExecutionTarget, GuardInputs, PortError, ProfileContentSource,
         ResolvedPortBindings, RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs,
         ScriptRunner, StepLogEntry, TransformFailure, TunFlavor, TunParams, TunStackWrite, execute,
     },
@@ -139,6 +143,27 @@ pub fn derive_tun_flavor(core: ClashCore, selected: SelectedTunStack<'_>) -> Tun
     }
 }
 
+/// The `dns` and `hosts` tables Nyanpasu writes, rendered for the core's
+/// `features`. A core without a `dns` table gets neither.
+fn derive_dns_params(clash: &ClashConfig, features: &DnsFeatures) -> DnsParams {
+    let dns = clash.managed_dns().and_then(|dns| dns.render(features));
+    let hosts = clash
+        .managed_hosts()
+        .and_then(|hosts| render_hosts(hosts, features));
+    let mut warnings = Vec::new();
+    let mut take = |rendered: Option<RenderedTable>| {
+        rendered.map(|rendered| {
+            warnings.extend(rendered.warnings);
+            rendered.table
+        })
+    };
+    DnsParams {
+        dns: take(dns),
+        hosts: take(hosts),
+        warnings,
+    }
+}
+
 pub struct RuntimeBuilder;
 
 impl RuntimeBuilder {
@@ -191,6 +216,7 @@ impl RuntimeBuilder {
             Some(uid) => ExecutionTarget::Selected(uid.clone()),
             None => ExecutionTarget::Bare,
         };
+        let features = input.app.core.config_features();
         let builtin_transforms = if input.app.enable_builtin_enhanced {
             builtin_transforms_for(input.app.core)
         } else {
@@ -214,6 +240,7 @@ impl RuntimeBuilder {
                 flavor: derive_tun_flavor(input.app.core, input.clash.selected_tun_stack()),
                 windows_fake_ip_filter: cfg!(windows),
             },
+            dns: derive_dns_params(&input.clash, &features.dns),
             expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,
         };
@@ -221,11 +248,7 @@ impl RuntimeBuilder {
 
         // The core parses these keys whether TUN is on or not, and rejects the
         // whole config on a value it does not know.
-        let values = input
-            .app
-            .core
-            .config_features()
-            .unsupported_values(&artifact.final_config);
+        let values = features.unsupported_values(&artifact.final_config);
         ensure!(values.is_empty(), UnsupportedConfigValuesSnafu { values });
         Ok(artifact)
     }
@@ -405,6 +428,54 @@ mod tests {
                 "{stack:?}"
             );
         }
+    }
+
+    /// Kept settings have no effect while the profiles control DNS; once
+    /// Nyanpasu does, the table is rendered for the selected core.
+    #[test]
+    fn dns_settings_reach_the_runtime_only_while_controlled() {
+        use nyanpasu_config::clash::config::dns::{ControlSource, OneOrMany};
+
+        let profile =
+            OneFile("dns: { enable: true, nameserver: [1.1.1.1] }\nhosts: { a.lan: 10.0.0.1 }\n");
+        let mut input = profile_input(ClashCore::ClashRs);
+        input.clash.dns.prefer_h3 = true;
+        input.clash.hosts =
+            indexmap::IndexMap::from([("b.lan".to_owned(), OneOrMany::One("10.0.0.2".into()))]);
+
+        let config = RuntimeBuilder::build(&input, &profile, &EchoRunner)
+            .unwrap()
+            .final_config
+            .to_json();
+        assert_eq!(
+            config["dns"],
+            serde_json::json!({ "enable": true, "nameserver": ["1.1.1.1"] })
+        );
+
+        input.clash.dns_control = ControlSource::Nyanpasu;
+        input.clash.hosts_control = ControlSource::Nyanpasu;
+        let artifact = RuntimeBuilder::build(&input, &profile, &EchoRunner).unwrap();
+        let config = artifact.final_config.to_json();
+        assert_eq!(
+            config["dns"]["nameserver"],
+            serde_json::json!(input.clash.dns.nameserver)
+        );
+        assert!(
+            config["dns"].get("prefer-h3").is_none(),
+            "clash-rs does not read it"
+        );
+        assert_eq!(config["hosts"], serde_json::json!({ "b.lan": "10.0.0.2" }));
+        let warnings: Vec<_> = artifact
+            .step_logs
+            .iter()
+            .flat_map(|log| &log.entries)
+            .filter(|entry| entry.level == StepLogLevel::Warn)
+            .map(|entry| entry.message.as_str())
+            .collect();
+        assert_eq!(
+            warnings,
+            vec!["the selected core does not read `dns.prefer-h3`; it is not written"]
+        );
     }
 
     #[test]

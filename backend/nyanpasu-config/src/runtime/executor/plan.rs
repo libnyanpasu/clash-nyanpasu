@@ -14,13 +14,27 @@ use crate::{
     },
 };
 
-use super::{GuardInputs, StepLogEntry, TunFlavor, TunParams, TunStackWrite};
+use super::{DnsParams, GuardInputs, StepLogEntry, TunFlavor, TunParams, TunStackWrite};
 
-/// Every key post-processing decides: the guard's, then `tun` with its DNS
-/// takeover, then the `profile` cache.
-pub(super) fn ownership(guard: &GuardInputs<'_>, tun: &TunParams) -> OwnershipEntries {
+/// The `dns` keys a profile uses to send lookups to its own resolvers. They
+/// are reported when Nyanpasu's `dns` replaces them.
+const PROFILE_RESOLVER_KEYS: [&str; 3] = [
+    "nameserver-policy",
+    "proxy-server-nameserver",
+    "proxy-server-nameserver-policy",
+];
+
+/// Every key post-processing decides: the guard's, then `tun`, then `dns`
+/// with what TUN needs of it, then `hosts`, then the `profile` cache.
+pub(super) fn ownership(
+    guard: &GuardInputs<'_>,
+    tun: &TunParams,
+    dns: &DnsParams,
+) -> OwnershipEntries {
     let mut entries = guard_ownership(guard);
     entries.extend(tun_ownership(tun));
+    entries.extend(dns_ownership(tun, dns));
+    entries.extend(hosts_ownership(dns));
     entries.push(cache_ownership());
     entries
 }
@@ -64,35 +78,61 @@ pub(super) fn guard_ownership(guard: &GuardInputs<'_>) -> OwnershipEntries {
     entries
 }
 
-/// `tun` and the DNS takeover it needs. While TUN is off, a `tun` the
-/// profiles wrote is turned off and none is created.
+/// `tun`. While TUN is off, a `tun` the profiles wrote is turned off and none
+/// is created.
 pub(super) fn tun_ownership(tun: &TunParams) -> OwnershipEntries {
-    let mut entries = Vec::with_capacity(2);
-    if tun.enable {
-        entries.push((
-            "tun",
-            Ownership::Table {
-                entries: tun_entries(tun),
-                create: true,
-            },
-        ));
-        entries.push((
+    let entries = if tun.enable {
+        tun_entries(tun)
+    } else {
+        vec![("enable", Ownership::Forced(ConfigValue::Bool(false)))]
+    };
+    vec![(
+        "tun",
+        Ownership::Table {
+            entries,
+            create: tun.enable,
+        },
+    )]
+}
+
+/// `dns`, the one place that decides it. Nyanpasu's table replaces the
+/// profiles' whole. TUN answers lookups through the core, so it turns DNS on
+/// whichever source decides the table, and fills in a fake-IP setup only
+/// where the profiles left keys out.
+pub(super) fn dns_ownership(tun: &TunParams, dns: &DnsParams) -> OwnershipEntries {
+    match (&dns.dns, tun.enable) {
+        (Some(table), true) => vec![("dns", Ownership::Forced(with_dns_enabled(table)))],
+        (Some(table), false) => vec![("dns", Ownership::Forced(table.clone()))],
+        (None, true) => vec![(
             "dns",
             Ownership::Table {
                 entries: dns_entries(tun.windows_fake_ip_filter),
                 create: true,
             },
-        ));
-    } else {
-        entries.push((
-            "tun",
-            Ownership::Table {
-                entries: vec![("enable", Ownership::Forced(ConfigValue::Bool(false)))],
-                create: false,
-            },
-        ));
+        )],
+        (None, false) => Vec::new(),
     }
-    entries
+}
+
+/// `hosts`: Nyanpasu's table replaces the profiles' whole, and an empty one
+/// removes theirs.
+pub(super) fn hosts_ownership(dns: &DnsParams) -> OwnershipEntries {
+    match &dns.hosts {
+        Some(table) if table.as_object_arc().is_some_and(|map| map.is_empty()) => {
+            vec![("hosts", Ownership::Removed)]
+        }
+        Some(table) => vec![("hosts", Ownership::Forced(table.clone()))],
+        None => Vec::new(),
+    }
+}
+
+fn with_dns_enabled(table: &ConfigValue) -> ConfigValue {
+    let mut map = table
+        .as_object_arc()
+        .map(|map| (**map).clone())
+        .unwrap_or_default();
+    map.insert(Arc::from("enable"), ConfigValue::Bool(true));
+    ConfigValue::Object(Arc::new(map))
 }
 
 /// The `profile` cache. An existing `profile` is kept whole; its keys are not
@@ -150,18 +190,66 @@ fn tun_entries(tun: &TunParams) -> OwnershipEntries {
     entries
 }
 
-/// What the managed settings step reports about the settings it applied.
-pub(super) fn managed_settings_logs(tun: &TunParams) -> Vec<StepLogEntry> {
-    match tun.flavor {
-        TunFlavor::Standard {
-            stack: TunStackWrite::Downgraded { selected, written },
-            ..
-        } if tun.enable => vec![StepLogEntry::warn(format!(
+/// What the managed settings step reports about the settings it applies to
+/// `config`, the profiles' result.
+pub(super) fn managed_settings_logs(
+    tun: &TunParams,
+    dns: &DnsParams,
+    config: &ConfigValue,
+) -> Vec<StepLogEntry> {
+    let mut logs = Vec::new();
+    if let TunFlavor::Standard {
+        stack: TunStackWrite::Downgraded { selected, written },
+        ..
+    } = tun.flavor
+        && tun.enable
+    {
+        logs.push(StepLogEntry::warn(format!(
             "the selected core does not support the TUN stack `{}`; `{}` is used instead",
             selected.as_ref(),
             written.as_ref(),
-        ))],
-        _ => Vec::new(),
+        )));
+    }
+    logs.extend(dns.warnings.iter().map(StepLogEntry::warn));
+    let Some(table) = &dns.dns else {
+        return logs;
+    };
+    let disabled = table
+        .as_object_arc()
+        .and_then(|map| map.get("enable"))
+        .is_some_and(|enable| *enable == ConfigValue::Bool(false));
+    if tun.enable && disabled {
+        logs.push(StepLogEntry::warn(
+            "TUN mode answers DNS through the core, so `dns.enable` is written as true",
+        ));
+    }
+    let replaced: Vec<String> = config
+        .as_object_arc()
+        .and_then(|root| root.get("dns"))
+        .and_then(ConfigValue::as_object_arc)
+        .map(|profile_dns| {
+            PROFILE_RESOLVER_KEYS
+                .into_iter()
+                .filter(|key| profile_dns.get(*key).is_some_and(|value| !is_empty(value)))
+                .map(|key| format!("`{key}`"))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !replaced.is_empty() {
+        logs.push(StepLogEntry::warn(format!(
+            "Nyanpasu's DNS settings replace the profile's `dns`, including its {}",
+            replaced.join(", "),
+        )));
+    }
+    logs
+}
+
+fn is_empty(value: &ConfigValue) -> bool {
+    match value {
+        ConfigValue::Null => true,
+        ConfigValue::Array(items) => items.is_empty(),
+        ConfigValue::Object(map) => map.is_empty(),
+        _ => false,
     }
 }
 

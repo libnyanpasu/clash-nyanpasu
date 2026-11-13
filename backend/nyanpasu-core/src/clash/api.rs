@@ -30,6 +30,70 @@ pub struct ClashConfig {
     pub secret: Option<String>,
 }
 
+/// The live core configuration without the controller secret, for callers that only hold `read`.
+///
+/// `external_controller` is a validated socket address, or absent. The core reports it as free
+/// text, which can be shaped like a URL with credentials in its userinfo, path, query or host, so
+/// text that is not exactly an `ip:port` is not forwarded. The conversion destructures
+/// [`ClashConfig`] without `..`, so a new field must be classified.
+#[derive(Debug, Clone, Default, Serialize, Type)]
+pub struct ClashApiSettings {
+    pub port: Option<u16>,
+    pub mode: Option<String>,
+    pub ipv6: Option<bool>,
+    #[serde(rename = "socket-port")]
+    pub socket_port: Option<u16>,
+    #[serde(rename = "allow-lan")]
+    pub allow_lan: Option<bool>,
+    #[serde(rename = "log-level")]
+    pub log_level: Option<String>,
+    #[serde(rename = "mixed-port")]
+    pub mixed_port: Option<u16>,
+    #[serde(rename = "redir-port")]
+    pub redir_port: Option<u16>,
+    #[serde(rename = "socks-port")]
+    pub socks_port: Option<u16>,
+    #[serde(rename = "tproxy-port")]
+    pub tproxy_port: Option<u16>,
+    #[serde(rename = "external-controller")]
+    #[specta(type = Option<String>)]
+    pub external_controller: Option<std::net::SocketAddr>,
+}
+
+impl From<ClashConfig> for ClashApiSettings {
+    fn from(config: ClashConfig) -> Self {
+        let ClashConfig {
+            port,
+            mode,
+            ipv6,
+            socket_port,
+            allow_lan,
+            log_level,
+            mixed_port,
+            redir_port,
+            socks_port,
+            tproxy_port,
+            external_controller,
+            // The controller secret is only in the full config.
+            secret: _,
+        } = config;
+        Self {
+            port,
+            mode,
+            ipv6,
+            socket_port,
+            allow_lan,
+            log_level,
+            mixed_port,
+            redir_port,
+            socks_port,
+            tproxy_port,
+            external_controller: external_controller
+                .and_then(|address| address.parse::<std::net::SocketAddr>().ok()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub struct ClashVersion {
     pub version: String,
@@ -123,6 +187,53 @@ mod tests {
         assert_eq!(cfg.mixed_port, Some(7890));
         assert!(cfg.port.is_none());
         assert!(cfg.allow_lan.is_none());
+    }
+
+    fn settings_with_controller(controller: &str) -> ClashApiSettings {
+        ClashConfig {
+            mode: Some("rule".into()),
+            allow_lan: Some(true),
+            external_controller: Some(controller.into()),
+            secret: Some("secret-sentinel".into()),
+            ..Default::default()
+        }
+        .into()
+    }
+
+    #[test]
+    fn live_settings_drop_the_secret_and_keep_ordinary_fields() {
+        let settings = settings_with_controller("127.0.0.1:9090");
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(!json.contains("sentinel"), "{json}");
+        assert!(!json.contains("secret"), "{json}");
+        assert_eq!(settings.mode.as_deref(), Some("rule"));
+        assert_eq!(settings.allow_lan, Some(true));
+    }
+
+    #[test]
+    fn controller_is_forwarded_only_as_a_socket_address() {
+        for (raw, expected) in [
+            ("127.0.0.1:9090", Some("127.0.0.1:9090")),
+            ("0.0.0.0:9090", Some("0.0.0.0:9090")),
+            ("[::1]:9090", Some("[::1]:9090")),
+            ("[::]:9090", Some("[::]:9090")),
+            ("admin:controller-sentinel@127.0.0.1:9090", None),
+            ("127.0.0.1:9090/controller-sentinel", None),
+            ("127.0.0.1:9090?token=controller-sentinel", None),
+            ("controller-sentinel.example:9090", None),
+            ("http://127.0.0.1:9090/controller-sentinel", None),
+            ("127.0.0.1:9090@controller-sentinel.example", None),
+            ("/run/clash/controller-sentinel.sock", None),
+        ] {
+            let json = serde_json::to_string(&settings_with_controller(raw)).unwrap();
+            assert!(!json.contains("sentinel"), "{raw}: {json}");
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                value["external-controller"].as_str(),
+                expected,
+                "{raw}: {json}"
+            );
+        }
     }
 
     #[test]

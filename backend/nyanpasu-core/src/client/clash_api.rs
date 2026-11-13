@@ -5,11 +5,14 @@ use clash_api::{Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, Proxy
 use nyanpasu_config::application::NyanpasuAppConfig;
 
 use crate::clash::{
-    api::{ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes},
+    api::{
+        ClashApiSettings, ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes,
+        RuleProviderItem, RulesRes,
+    },
     proxies::ProxyProviderSummary,
 };
 
-use super::NyanpasuClient;
+use super::{ClashReadError, NyanpasuClient};
 
 /// Used only when the app config's default test URL is empty too.
 const FALLBACK_LATENCY_TEST_URL: &str = "http://www.gstatic.com/generate_204";
@@ -98,6 +101,14 @@ impl NyanpasuClient {
 
     pub async fn clash_configs(&self) -> Result<ClashConfig> {
         config_item(self.inner.core_api.api_client().await?.configs().await?)
+    }
+
+    /// The live core configuration without the controller secret.
+    ///
+    /// A failure carries a fixed message and none of the transport error: the core's response and
+    /// the request it failed on are not for a caller that only holds `read`.
+    pub async fn clash_api_settings(&self) -> Result<ClashApiSettings, ClashReadError> {
+        public_settings(self.clash_configs().await)
     }
 
     pub async fn clash_rule_providers(&self) -> Result<ProvidersRulesRes> {
@@ -216,6 +227,12 @@ fn rule_provider_item(provider: clash_api::RuleProvider) -> Result<RuleProviderI
     })
 }
 
+fn public_settings(configs: Result<ClashConfig>) -> Result<ClashApiSettings, ClashReadError> {
+    configs
+        .map(Into::into)
+        .map_err(|_| ClashReadError::SettingsUnavailable)
+}
+
 fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
     Ok(ClashConfig {
         port: config.port.map(u16::try_from).transpose()?,
@@ -235,7 +252,21 @@ fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
 
 #[cfg(test)]
 mod tests {
-    use super::rule_provider_item;
+    use super::{ClashReadError, rule_provider_item};
+
+    #[test]
+    fn a_failed_live_settings_read_carries_neither_the_source_nor_its_context() {
+        let failure = anyhow::anyhow!("GET https://user:error-sentinel@127.0.0.1:9090/configs")
+            .context("body: {\"secret\":\"error-sentinel\"}");
+
+        let error = super::public_settings(Err(failure)).unwrap_err();
+
+        assert_eq!(error, ClashReadError::SettingsUnavailable);
+        for rendered in [error.to_string(), format!("{error:?}")] {
+            assert!(!rendered.contains("sentinel"), "{rendered}");
+        }
+        assert!(std::error::Error::source(&error).is_none());
+    }
 
     #[test]
     fn a_delay_query_falls_back_to_the_app_default_then_gstatic() {

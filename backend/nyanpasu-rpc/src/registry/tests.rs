@@ -682,6 +682,72 @@ fn provider_query_returns_summaries_over_http() {
     core_server.abort();
 }
 
+/// A failure to read the live core settings reports neither the core's response nor the request.
+#[test]
+fn a_failed_core_read_serializes_a_fixed_error() {
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route(
+                "/configs",
+                get(|| async {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"message": "https://user:body-sentinel@probe.example/"})),
+                    )
+                }),
+            )
+            .route(
+                "/providers/proxies",
+                get(|| async { Json(json!({"providers": {}})) }),
+            ),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        for command in ["clash_api_get_settings"] {
+            let (status, body) = rpc_for_test_call(&app, command, json!({}), None).await;
+            assert_ne!(status, StatusCode::OK, "{command}");
+            let rendered = body.to_string();
+            assert!(!rendered.contains("sentinel"), "{command}: {rendered}");
+            assert!(!rendered.contains("example"), "{command}: {rendered}");
+            assert!(rendered.contains("unavailable"), "{command}: {rendered}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": "settings_unavailable"}}),
+                "{command}: {rendered}"
+            );
+        }
+    });
+    core_server.abort();
+}
+
 #[test]
 fn errors_preserve_domain_codes_and_operation_identity() {
     use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};

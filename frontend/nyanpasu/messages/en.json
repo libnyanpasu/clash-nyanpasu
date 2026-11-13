@@ -1610,6 +1610,7 @@
   "error_http_server_read_status_unsupported": "HTTP server status is only available in the desktop app",
   "error_http_server_change_unsupported": "HTTP server settings can only be changed in the desktop app",
   "error_http_server_read_status": "Could not read the HTTP server status",
+  "error_clash_read_settings_unavailable": "The Clash core settings are unavailable",
   "error_elevation_authorize": "Administrator access cannot be requested from here",
   "error_system_dns_run_flush_command": "Permission to run {command} was not granted",
   "error_system_dns_flush_rejected": "{command} did not succeed (exit code {code})",

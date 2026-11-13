@@ -14,6 +14,7 @@ clash_api_get_providers_proxies | desktop,http | - | presentation | query | read
 clash_api_get_providers_rules | desktop,http | - | - | query | read
 clash_api_get_proxy_delay | desktop,http | - | presentation | query | proxy
 clash_api_get_rules | desktop,http | - | - | query | read
+clash_api_get_settings | desktop,http | - | - | query | read
 clash_api_get_version | desktop,http | - | - | query | read
 clash_api_healthcheck_proxy_provider | desktop,http | - | presentation | mutation | proxy
 clash_api_update_providers_rules | desktop,http | - | - | mutation | profile
@@ -40,10 +41,12 @@ fetch_latest_core_versions | desktop,http | - | - | query | read
 flush_system_dns_cache | desktop | elevation | - | mutation | system
 get_all_storage_items | desktop,http | - | - | query | sensitive_read
 get_app_config | desktop,http | - | - | query | sensitive_read
+get_app_settings | desktop,http | - | - | query | read
 get_app_update_changelog | desktop | - | - | query | read
 get_app_update_state | desktop | app_update | - | query | read
 get_clash_config | desktop,http | - | - | query | sensitive_read
 get_clash_info | desktop,http | - | - | query | sensitive_read
+get_clash_settings | desktop,http | - | - | query | read
 get_clash_ws_snapshot | desktop,http | - | - | query | read
 get_config_features | desktop,http | - | - | query | read
 get_configuration_status | desktop,http,local | - | - | query | read

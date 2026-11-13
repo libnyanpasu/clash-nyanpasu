@@ -1556,6 +1556,7 @@
   "error_http_server_read_status_unsupported": "HTTP サーバーの状態はデスクトップアプリでのみ取得できます",
   "error_http_server_change_unsupported": "HTTP サーバーの設定はデスクトップアプリでのみ変更できます",
   "error_http_server_read_status": "HTTP サーバーの状態を取得できませんでした",
+  "error_clash_read_settings_unavailable": "Clash コアの設定を取得できません",
   "error_elevation_authorize": "ここからは管理者権限を要求できません",
   "error_system_dns_run_flush_command": "{command} を実行する権限が付与されませんでした",
   "error_system_dns_flush_rejected": "{command} が成功しませんでした（終了コード {code}）",

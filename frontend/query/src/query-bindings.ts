@@ -105,6 +105,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['clashApiGetProxyDelay', ...args],
         queryFn: () => commands.clashApiGetProxyDelay(...args),
       }),
+    clashApiGetSettings: (
+      ...args: Parameters<typeof commands.clashApiGetSettings>
+    ) =>
+      queryOptions({
+        queryKey: ['clashApiGetSettings', ...args],
+        queryFn: () => commands.clashApiGetSettings(...args),
+      }),
     clashApiGetConfigs: (
       ...args: Parameters<typeof commands.clashApiGetConfigs>
     ) =>
@@ -162,10 +169,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getCoreVersion', ...args],
         queryFn: () => commands.getCoreVersion(...args),
       }),
+    getAppSettings: (...args: Parameters<typeof commands.getAppSettings>) =>
+      queryOptions({
+        queryKey: ['getAppSettings', ...args],
+        queryFn: () => commands.getAppSettings(...args),
+      }),
     getAppConfig: (...args: Parameters<typeof commands.getAppConfig>) =>
       queryOptions({
         queryKey: ['getAppConfig', ...args],
         queryFn: () => commands.getAppConfig(...args),
+      }),
+    getClashSettings: (...args: Parameters<typeof commands.getClashSettings>) =>
+      queryOptions({
+        queryKey: ['getClashSettings', ...args],
+        queryFn: () => commands.getClashSettings(...args),
       }),
     getClashConfig: (...args: Parameters<typeof commands.getClashConfig>) =>
       queryOptions({

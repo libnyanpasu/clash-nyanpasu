@@ -1556,6 +1556,7 @@
   "error_http_server_read_status_unsupported": "只有桌面应用可以读取 HTTP 服务器状态",
   "error_http_server_change_unsupported": "只有桌面应用可以更改 HTTP 服务器设置",
   "error_http_server_read_status": "无法读取 HTTP 服务器状态",
+  "error_clash_read_settings_unavailable": "无法获取 Clash 核心设置",
   "error_elevation_authorize": "无法从此处请求管理员权限",
   "error_system_dns_run_flush_command": "未获得运行 {command} 的权限",
   "error_system_dns_flush_rejected": "{command} 执行失败 (退出码 {code})",

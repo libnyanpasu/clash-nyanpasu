@@ -11,7 +11,7 @@ mod request;
 pub use command::{CommandEffect, CommandKind, CommandMetadata, RpcTarget, ShellCapability};
 pub use command_catalog::COMMAND_CATALOG;
 pub use describe::{DescribedCommand, RpcDescribeResponse, ServerInfo, ServerKind};
-pub use error::{RpcError, RpcValue};
+pub use error::{ResponseVisibility, RpcError, RpcValue};
 pub use event::EventName;
 /// Canonical authentication and scope domain types shared across core and transports.
 pub use nyanpasu_contracts::auth::{AuthContext, Principal, Scope, ScopeSet};

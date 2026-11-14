@@ -27,6 +27,7 @@ specta = { version = '^2.0.0-rc.25' }
 url = '2'
 tempfile = '3'
 tokio-util = '0.7'
+zeroize = { version = '1.9', features = ['derive'] }
 
 [target.'cfg(not(windows))'.dependencies]
 whoami = '2.0.0'

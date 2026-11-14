@@ -583,13 +583,12 @@ async fn port_save_during_transition_commits_and_retry_applies_it() {
         Some(CoreStateDetail::Starting { epoch: 2 }),
         previous.applied_kind,
     );
-    let port = client
-        .get_clash_config()
-        .await
-        .unwrap()
-        .mixed_port
-        .start_port
-        + 1;
+    // The applied document must carry this exact port, so it has to be one that
+    // every platform lets an unprivileged process bind and that lies below the
+    // ranges the OS hands out to the listeners of concurrently running tests.
+    let port = (20_000..20_100)
+        .find(|port| std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, *port)).is_ok())
+        .expect("a free port below the ephemeral range");
     let patch =
         serde_json::from_value(serde_json::json!({"mixed_port": {"start_port": port}})).unwrap();
     let saved = client.patch_clash_config(patch).await.unwrap();

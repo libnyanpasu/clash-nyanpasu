@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use nyanpasu_core_manager::{CoreError, CoreErrorKind, CoreSpec};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 use nyanpasu_state_engine::StateDecision;
 use snafu::{IntoError, ResultExt};
@@ -42,7 +42,10 @@ use crate::{
     },
     client::{
         convergence::{OutcomeClass, next_wait},
-        core_lifecycle::{RuntimeSubmission, effective_host, ports::RuntimePreparationPort},
+        core_lifecycle::{
+            RuntimeSubmission, effective_host,
+            ports::{PreparedRuntime, RuntimePreparationPort},
+        },
         runtime_error,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
@@ -93,6 +96,14 @@ pub(super) struct RestorableBaseline {
     /// The build the confirmed receipt describes. A cancelled Try has to put
     /// this back, because it is what the runtime inspection reports.
     pub(super) confirmed_build: Option<Arc<crate::client::runtime::RuntimeSnapshot>>,
+}
+
+/// A built candidate and the execution host resolved from its inputs.
+pub(super) struct PreparedCandidate {
+    runtime: PreparedRuntime,
+    spec: CoreSpec,
+    target_host: ExecutionHost,
+    switching_on: bool,
 }
 
 /// How the decision phase ended.
@@ -155,16 +166,16 @@ impl ApplicationWorkflow {
 
         let mut check = CheckRecord::NotOwed;
         self.advance(AttemptStage::TryingCritical);
-        let outcome = self
-            .try_critical(
-                policy,
-                &baseline,
-                Some(target),
-                Some(inputs),
-                &mut check,
-                AttemptCharge::None,
-            )
-            .await;
+        let outcome = match self
+            .check_candidate(policy, &baseline, Some(target), inputs, &mut check)
+            .await
+        {
+            Ok(prepared) => {
+                self.apply_prepared(policy, &baseline, prepared, AttemptCharge::None)
+                    .await
+            }
+            Err(outcome) => outcome,
+        };
         if !matches!(
             outcome,
             RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)
@@ -380,31 +391,30 @@ impl ApplicationWorkflow {
             automatic: !explicit,
         };
         let attempts = self.committed_target().attempts;
-        let mut check = CheckRecord::NotOwed;
-        let outcome = self
-            .try_critical(
-                CommandPolicy::AllowDeferredWhenSafe,
-                &baseline,
-                Some(identity),
-                Some(inputs),
-                &mut check,
-                charge,
-            )
-            .await;
-        let waiting = matches!(check, CheckRecord::Unserviceable(_))
-            || matches!(
-                outcome,
-                RuntimePrepareOutcome::Rejected {
-                    cause: ApplyFailure {
-                        cause: RefusalCause::Evidence(_),
-                        ..
-                    },
+        let policy = CommandPolicy::AllowDeferredWhenSafe;
+        let outcome = match self
+            .prepare_candidate(policy, &baseline, Some(identity), inputs)
+            .await
+        {
+            Ok(prepared) => {
+                self.apply_prepared(policy, &baseline, prepared, charge)
+                    .await
+            }
+            Err(outcome) => outcome,
+        };
+        let waiting = matches!(
+            outcome,
+            RuntimePrepareOutcome::Rejected {
+                cause: ApplyFailure {
+                    cause: RefusalCause::Evidence(_),
                     ..
-                }
-            );
+                },
+                ..
+            }
+        );
         // A Try that reached the runtime was charged before its first action
-        // was written. One that ended earlier still built or checked the
-        // target, and pays here — unless all it met was a dependency.
+        // was written. One that ended earlier still built the target and pays
+        // here, unless all it met was a dependency.
         if !waiting && self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
@@ -657,15 +667,13 @@ impl ApplicationWorkflow {
 
     // -- TryingCritical ----------------------------------------------------
 
-    pub(super) async fn try_critical(
+    pub(super) async fn prepare_candidate(
         &mut self,
         policy: CommandPolicy,
         baseline: &RestorableBaseline,
         target: Option<String>,
-        inputs: Option<super::inputs::RuntimeInputs>,
-        check: &mut CheckRecord,
-        charge: AttemptCharge,
-    ) -> RuntimePrepareOutcome {
+        inputs: super::inputs::RuntimeInputs,
+    ) -> Result<PreparedCandidate, RuntimePrepareOutcome> {
         // Nothing unsettled can say whether a core may be started, or what a
         // Cancel would have to put back. A transition in progress is not a
         // stopped core and not a running one; an absent answer is neither
@@ -684,14 +692,14 @@ impl ApplicationWorkflow {
                 Some(_) => EvidenceGap::CoreTransitioning,
                 None => EvidenceGap::BaselineUnconfirmed,
             };
-            return RuntimePrepareOutcome::Rejected {
+            return Err(RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: MutationStage::Preparing,
                     cause: RefusalCause::Evidence(gap),
                     error: Arc::new(UnsettledBaselineSnafu { gap }.build()),
                 },
                 restored: baseline.state.clone(),
-            };
+            });
         }
 
         // R10, the third evidence gap. The host settled the question and the
@@ -706,7 +714,7 @@ impl ApplicationWorkflow {
         if baseline.run_intent == CoreRunIntent::Running
             && matches!(baseline.state, KnownRuntimeState::NeverApplied)
         {
-            return RuntimePrepareOutcome::Rejected {
+            return Err(RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: MutationStage::Preparing,
                     cause: RefusalCause::Evidence(EvidenceGap::NoRestorableBaseline),
@@ -718,14 +726,14 @@ impl ApplicationWorkflow {
                     ),
                 },
                 restored: baseline.state.clone(),
-            };
+            });
         }
 
         // Service mode is a preference resolved against the daemon's last
         // published phase, so a save while the service is unusable stays on
         // Local and never installs or starts it (#5443). Switching service
         // mode on is the explicit request the convergence below may serve.
-        let app = &inputs.as_ref().expect("critical inputs").app;
+        let app = &inputs.app;
         let switching_on =
             app.enable_service_mode && !self.lifecycle.application.load().state.enable_service_mode;
         let target_host = if switching_on {
@@ -736,15 +744,11 @@ impl ApplicationWorkflow {
         } else {
             effective_host(app, self.lifecycle.service_usable_now(), baseline.host)
         };
-        let prepared = match self
-            .preparation
-            .prepare_candidate_inputs(inputs.expect("critical operations capture runtime inputs"))
-            .await
-        {
+        let prepared = match self.preparation.prepare_candidate_inputs(inputs).await {
             Ok(prepared) => prepared,
             // A candidate that cannot be built cannot be built later either.
             Err(error) => {
-                return self.dispose(
+                return Err(self.dispose(
                     policy,
                     baseline,
                     TryOutcomeFacts {
@@ -755,13 +759,13 @@ impl ApplicationWorkflow {
                         target_digest: target.clone(),
                         error,
                     },
-                );
+                ));
             }
         };
         let spec = match self.preparation.core_spec(&prepared.snapshot.target_core) {
             Ok(spec) => spec,
             Err(error) => {
-                return self.dispose(
+                return Err(self.dispose(
                     policy,
                     baseline,
                     TryOutcomeFacts {
@@ -772,22 +776,41 @@ impl ApplicationWorkflow {
                         target_digest: target.clone(),
                         error: ResolveCoreBinarySnafu.into_error(error),
                     },
-                );
+                ));
             }
         };
 
+        Ok(PreparedCandidate {
+            runtime: prepared,
+            spec,
+            target_host,
+            switching_on,
+        })
+    }
+
+    async fn check_candidate(
+        &mut self,
+        policy: CommandPolicy,
+        baseline: &RestorableBaseline,
+        target: Option<String>,
+        inputs: super::inputs::RuntimeInputs,
+        check: &mut CheckRecord,
+    ) -> Result<PreparedCandidate, RuntimePrepareOutcome> {
+        let prepared = self
+            .prepare_candidate(policy, baseline, target.clone(), inputs)
+            .await?;
         // Validate the exact bytes the reconcile will submit through the local endpoint.
         match self
             .validator
             .check(RuntimeCheckRequest {
-                core_spec: spec,
-                intent: &prepared.intent,
+                core_spec: prepared.spec.clone(),
+                intent: &prepared.runtime.intent,
             })
             .await
         {
             RuntimeCheckOutcome::Passed => *check = CheckRecord::Passed,
             RuntimeCheckOutcome::Rejected { kind, message } => {
-                return self.dispose(
+                return Err(self.dispose(
                     policy,
                     baseline,
                     TryOutcomeFacts {
@@ -802,11 +825,11 @@ impl ApplicationWorkflow {
                         }
                         .build(),
                     },
-                );
+                ));
             }
             RuntimeCheckOutcome::Unavailable(reason) => {
                 *check = CheckRecord::Unserviceable(describe_unavailable_check(&reason));
-                return self.dispose(
+                return Err(self.dispose(
                     policy,
                     baseline,
                     TryOutcomeFacts {
@@ -817,10 +840,27 @@ impl ApplicationWorkflow {
                         target_digest: target.clone(),
                         error: CheckUnavailableSnafu { reason }.build(),
                     },
-                );
+                ));
             }
         }
 
+        Ok(prepared)
+    }
+
+    pub(super) async fn apply_prepared(
+        &mut self,
+        policy: CommandPolicy,
+        baseline: &RestorableBaseline,
+        prepared: PreparedCandidate,
+        charge: AttemptCharge,
+    ) -> RuntimePrepareOutcome {
+        let PreparedCandidate {
+            runtime: prepared,
+            target_host,
+            switching_on,
+            ..
+        } = prepared;
+        let target = prepared.target.clone();
         // R7: the user stopped the core. The target is validated and may be
         // saved; starting one here would fight the Stop the user asked for.
         if policy == CommandPolicy::SavedInactive {

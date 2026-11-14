@@ -44,7 +44,7 @@ use crate::{
         runtime::ConfirmedRuntime,
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
-    state::mutation::{intent::CoreRunIntent, value::CheckRecord},
+    state::mutation::intent::CoreRunIntent,
 };
 use nyanpasu_runtime_values::{
     configuration::ConvergenceHealth,
@@ -871,30 +871,29 @@ impl ApplicationWorkflow {
         }
         let charge = AttemptCharge::Target { automatic };
         let attempts = self.committed_target().attempts;
-        let mut check = CheckRecord::NotOwed;
-        let outcome = self
-            .try_critical(
-                CommandPolicy::AllowDeferredWhenSafe,
-                &baseline,
-                Some(identity),
-                Some(inputs),
-                &mut check,
-                charge,
-            )
-            .await;
-        let waiting = matches!(check, CheckRecord::Unserviceable(_))
-            || matches!(
-                outcome,
-                RuntimePrepareOutcome::Rejected {
-                    cause: ApplyFailure {
-                        cause: RefusalCause::Evidence(_),
-                        ..
-                    },
+        let policy = CommandPolicy::AllowDeferredWhenSafe;
+        let outcome = match self
+            .prepare_candidate(policy, &baseline, Some(identity), inputs)
+            .await
+        {
+            Ok(prepared) => {
+                self.apply_prepared(policy, &baseline, prepared, charge)
+                    .await
+            }
+            Err(outcome) => outcome,
+        };
+        let waiting = matches!(
+            outcome,
+            RuntimePrepareOutcome::Rejected {
+                cause: ApplyFailure {
+                    cause: RefusalCause::Evidence(_),
                     ..
-                }
-            );
+                },
+                ..
+            }
+        );
         // A Try that reached the runtime was charged before its first action
-        // was written; one that only built or checked pays here.
+        // was written; one that only built pays here.
         if !waiting && self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
@@ -914,9 +913,6 @@ impl ApplicationWorkflow {
             RuntimePrepareOutcome::RecoveryRequired(error) => {
                 self.lifecycle.ownership = Ownership::Unproven;
                 Reestablished::RecoveryRequired(error.to_string())
-            }
-            RuntimePrepareOutcome::Deferred { cause, .. } if waiting => {
-                self.wait_for_dependency(ConvergenceHealth::WaitingDependency, cause.message)
             }
             RuntimePrepareOutcome::Rejected {
                 cause:

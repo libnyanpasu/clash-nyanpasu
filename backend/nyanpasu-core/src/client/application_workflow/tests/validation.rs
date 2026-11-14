@@ -131,19 +131,14 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
 
 #[tokio::test]
 async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
-    use nyanpasu_state_engine::ReplaceIfVersionResult;
-
-    use crate::{
-        client::application_workflow::startup::StartupOutcome,
-        state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
-    };
+    use crate::client::application_workflow::startup::StartupOutcome;
 
     use super::{
-        mutations::{overrides, settled, simple_mutate},
+        mutations::{commit_source, overrides, settled},
         startup::{DaemonState, Setup},
     };
 
-    let mut graph = super::startup::graph(Setup {
+    let graph = super::startup::graph(Setup {
         service_mode: true,
         daemon: DaemonState::Running,
         residual: true,
@@ -161,18 +156,15 @@ async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
     let applied_before = graph.service_host.delegate.reconciled_bytes().len();
     assert_eq!(applied_before, 1);
 
-    let (id, result) = simple_mutate(
-        &mut graph.clash,
-        &graph.client,
+    let id = commit_source(
+        &graph.clash,
         overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
     )
-    .await;
-
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    .await
+    .unwrap();
     assert_eq!(
-        settled(&graph.client, id).await.outcome,
-        MutationOutcomeKind::Applied
+        settled(&graph.client, id).await.conclusion.label(),
+        "Converged"
     );
     let checked = graph.local.delegate.checked();
     assert_eq!(checked.len(), 1);

@@ -4,21 +4,20 @@ use std::sync::Arc;
 use nyanpasu_config::{clash::config::overrides::Mode, profile::ProfileId};
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::{
-    check::EvidenceGap,
+    configuration::ConvergenceHealth,
     execution_host::ExecutionHost,
     mutation::ConfigDomain,
     runtime::{Degradation, DegradationPhase, DegradationReason, InterruptFailure},
-    runtime_error::{ResolveCoreBinarySnafu, RuntimeError, UnsettledBaselineSnafu},
+    runtime_error::{RecoveryUnresolvedSnafu, ResolveCoreBinarySnafu, RuntimeError},
 };
 use nyanpasu_state_engine::Version;
 use snafu::IntoError as _;
 
 use super::{
     ApplicationWorkflowState, Conclusion, EngineVersions,
-    attempt::{AppliedVerdict, LiveAttempt},
+    attempt::LiveAttempt,
     inputs::RuntimeInputs,
-    mutation::{MutationStage, RefusalCause, RetryableCause, RuntimePrepareOutcome},
-    policy::CommandPolicy,
+    mutation::{ApplyOutcome, MutationStage, RetryableCause},
     tcc::{AttemptCharge, PreparedCandidate},
     workflow::ApplicationWorkflow,
 };
@@ -101,7 +100,11 @@ impl ApplicationWorkflowState {
         } else {
             conclusion
         };
-        self.record(None);
+        self.record(Some(super::mutation::RoundRecord::new(
+            id,
+            "SourceCommitted",
+            &conclusion,
+        )));
         self.reconciler.send_modify(|status| {
             status.seq = status
                 .seq
@@ -142,12 +145,12 @@ impl ApplicationWorkflow {
         );
         let mut baseline = self.observe_baseline().await;
         if !baseline.settled {
-            let gap = if baseline.observed.is_some() {
-                EvidenceGap::CoreTransitioning
-            } else {
-                EvidenceGap::BaselineUnconfirmed
-            };
-            let cause = Arc::new(UnsettledBaselineSnafu { gap }.build());
+            let cause = Arc::new(
+                RecoveryUnresolvedSnafu {
+                    reason: "the runtime has not reached an observable stable state".to_owned(),
+                }
+                .build(),
+            );
             if let Some(identity) = target {
                 self.install_mutation_target(
                     id,
@@ -204,6 +207,12 @@ impl ApplicationWorkflow {
         } else {
             None
         };
+        if baseline.run_intent == CoreRunIntent::StoppedByUser {
+            if let Some(identity) = target {
+                self.confirm_saved_inactive(identity);
+            }
+            return Conclusion::Inactive;
+        }
         self.live = Some(LiveAttempt::lifecycle(id));
         self.record_baseline(&baseline);
         let prepared = match self
@@ -213,46 +222,50 @@ impl ApplicationWorkflow {
         {
             Some(prepared) => Ok(prepared),
             None => self.preparation.prepare_inputs(inputs).await,
-        };
+        }
+        .and_then(|runtime| {
+            self.preparation
+                .core_spec(&runtime.snapshot.target_core)
+                .map_err(|error| ResolveCoreBinarySnafu.into_error(error))?;
+            Ok(runtime)
+        });
         let outcome = match prepared {
-            Ok(runtime) => match self.preparation.core_spec(&runtime.snapshot.target_core) {
-                Ok(spec) => {
-                    let policy = if baseline.run_intent == CoreRunIntent::StoppedByUser {
-                        CommandPolicy::SavedInactive
-                    } else {
-                        CommandPolicy::AllowDeferredWhenSafe
-                    };
-                    self.apply_prepared(
-                        policy,
-                        &baseline,
-                        PreparedCandidate {
-                            runtime,
-                            spec,
-                            target_host,
-                            switching_on: false,
-                        },
-                        AttemptCharge::None,
-                    )
-                    .await
-                }
-                Err(error) => {
-                    self.conclude_attempt(None);
-                    return Conclusion::NotInEffect {
-                        cause: Arc::new(ResolveCoreBinarySnafu.into_error(error)),
-                    };
-                }
-            },
+            Ok(runtime) => {
+                self.apply_prepared(
+                    &baseline,
+                    PreparedCandidate {
+                        runtime,
+                        target_host,
+                    },
+                    AttemptCharge::None,
+                )
+                .await
+            }
             Err(error) => {
+                let cause = Arc::new(error);
+                if let Some(identity) = target {
+                    self.install_mutation_target(
+                        id,
+                        identity,
+                        RetryableCause {
+                            stage: MutationStage::Preparing,
+                            message: cause.to_string(),
+                        },
+                    );
+                    let deferred = self
+                        .deferred
+                        .as_mut()
+                        .expect("the committed target was just installed");
+                    deferred.health = ConvergenceHealth::Blocked;
+                    deferred.next_attempt = None;
+                }
                 self.conclude_attempt(None);
-                return Conclusion::NotInEffect {
-                    cause: Arc::new(error),
-                };
+                return Conclusion::NotInEffect { cause };
             }
         };
         let conclusion = match outcome {
-            RuntimePrepareOutcome::Applied(candidate) => {
-                self.finish_applied(&AppliedVerdict::new(&candidate, false), degradations)
-                    .await;
+            ApplyOutcome::Applied(candidate) => {
+                self.finish_applied(&candidate, degradations).await;
                 self.applied_selection = Some(selection);
                 if let Some(context) = interruption
                     && let Some(error) =
@@ -273,50 +286,37 @@ impl ApplicationWorkflow {
                 }
                 Conclusion::Converged
             }
-            RuntimePrepareOutcome::SavedInactive { identity } => {
-                self.confirm_saved_inactive(identity);
-                Conclusion::Inactive
-            }
-            RuntimePrepareOutcome::RecoveryRequired(cause) => {
+            ApplyOutcome::Unknown(cause) => {
                 // The confirmed binding was invalidated with the unknown result;
                 // the effects owner has to stop using the ports it described.
                 self.notify_bound(true);
                 self.conclude_attempt(Some(cause.to_string()));
                 return Conclusion::Unknown { cause };
             }
-            RuntimePrepareOutcome::Deferred {
-                digest,
-                cause,
-                error,
-            } => {
-                self.install_mutation_target(id, digest, cause);
-                Conclusion::NotInEffect { cause: error }
-            }
-            RuntimePrepareOutcome::Rejected { cause, .. } => {
-                let waiting = matches!(cause.cause, RefusalCause::Evidence(_))
-                    || matches!(
-                        cause.error.core_kind(),
-                        Some(
-                            nyanpasu_core_manager::CoreErrorKind::RevisionConflict
-                                | nyanpasu_core_manager::CoreErrorKind::OperationConflict
-                                | nyanpasu_core_manager::CoreErrorKind::QueueFull
-                                | nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
-                        )
-                    );
+            ApplyOutcome::Refused(cause) | ApplyOutcome::Waiting(cause) => {
+                let waiting = matches!(
+                    cause.core_kind(),
+                    Some(
+                        nyanpasu_core_manager::CoreErrorKind::RevisionConflict
+                            | nyanpasu_core_manager::CoreErrorKind::OperationConflict
+                            | nyanpasu_core_manager::CoreErrorKind::QueueFull
+                            | nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
+                    )
+                );
                 if let Some(identity) = target {
                     self.install_mutation_target(
                         id,
                         identity,
                         RetryableCause {
                             stage: MutationStage::TryingCritical,
-                            message: cause.error.to_string(),
+                            message: cause.to_string(),
                         },
                     );
                 }
                 if waiting {
-                    Conclusion::Waiting { cause: cause.error }
+                    Conclusion::Waiting { cause }
                 } else {
-                    Conclusion::NotInEffect { cause: cause.error }
+                    Conclusion::NotInEffect { cause }
                 }
             }
         };

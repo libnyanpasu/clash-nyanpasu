@@ -32,7 +32,9 @@ use crate::{
     state::config_error::ConfigError,
 };
 
-fn receipt(outcome: &MutationOutcome<()>) -> &nyanpasu_runtime_values::runtime::CommitReceipt {
+pub(super) fn receipt(
+    outcome: &MutationOutcome<()>,
+) -> &nyanpasu_runtime_values::runtime::CommitReceipt {
     match outcome {
         MutationOutcome::Committed { commits, .. }
         | MutationOutcome::CommittedDegraded { commits, .. } => &commits[0],
@@ -51,7 +53,7 @@ fn switched_core(client: &NyanpasuClient) -> NyanpasuAppConfigPatch {
     }
 }
 
-async fn client_with_scripted_endpoint(
+pub(super) async fn client_with_scripted_endpoint(
     dir: &tempfile::TempDir,
 ) -> (
     NyanpasuClient,
@@ -135,6 +137,118 @@ async fn invalid_core_candidate_never_commits_or_submits() {
     client.wait_shutdown().await;
 }
 
+// Guards retaining preparation failures as blocked targets that an explicit retry can apply.
+#[tokio::test]
+async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
+    use nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch;
+    use nyanpasu_runtime_values::{configuration::ConvergenceHealth, runtime::DegradationReason};
+
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
+    let mut args = test_support::test_client_args_with_endpoint(
+        &dir,
+        scripted.clone(),
+        test_support::profile_test_adapters(&dir),
+    )
+    .await;
+    let builder = Arc::new(BlockingBuilder {
+        delegate: TestRuntimeBuildPort {
+            paths: args.runtime_paths.clone(),
+            capture: Arc::new(|_| Default::default()),
+        },
+        calls: AtomicUsize::new(1),
+        entered: Notify::new(),
+        release: Notify::new(),
+        fail: AtomicBool::new(false),
+    });
+    args.host_adapters.runtime_build = builder.clone();
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    endpoint.prime(&client).await;
+    scripted.queue(WaitScript::Held);
+    let applying = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_runtime_overrides(ClashGuardOverridesPatch {
+                    ipv6: Some(true),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    scripted.held().await;
+    let submitted = endpoint.reconciled_bytes().len();
+    let mut settings = client.inner.application.subscribe_settings_changes();
+    settings.borrow_and_update();
+    builder.calls.store(0, Ordering::SeqCst);
+    let saving = tokio::spawn({
+        let client = client.clone();
+        async move { client.patch_app_config(switched_core(&client)).await }
+    });
+    builder.entered.notified().await;
+
+    // Each check captures the other domain before its later commit, so neither
+    // checked candidate describes the combined target the workflow will read.
+    client
+        .inner
+        .clash_config
+        .patch_overrides(serde_json::from_value(serde_json::json!({"allow-lan": true})).unwrap())
+        .await
+        .unwrap();
+    builder.release.notify_one();
+    settings.changed().await.unwrap();
+    assert_eq!(endpoint.checked().len(), 3);
+    builder.fail.store(true, Ordering::SeqCst);
+    scripted.release();
+    applying.await.unwrap().unwrap();
+    let saved = saving.await.unwrap().unwrap();
+    assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Deferred);
+    assert!(matches!(
+        &saved.degradations()[0].reason,
+        DegradationReason::RuntimeDeferred { cause }
+            if matches!(cause.as_ref(), RuntimeError::BuildRuntime { .. })
+    ));
+    super::barrier(&client.inner.application_workflow).await;
+    assert_eq!(endpoint.reconciled_bytes().len(), submitted);
+    let status = client.configuration_status();
+    assert!(status.active.is_none());
+    assert_eq!(status.runtime.health, ConvergenceHealth::Blocked);
+    let journal = client.inner.application_workflow.mutation_journal();
+    let target = journal.deferred.as_ref().unwrap();
+    assert_eq!(
+        status.runtime.message.as_deref(),
+        Some(saved.degradations()[0].message.as_str())
+    );
+    assert!(target.next_attempt.is_none());
+
+    builder.fail.store(false, Ordering::SeqCst);
+    client.retry_runtime_now().await.unwrap();
+    assert_eq!(endpoint.reconciled_bytes().len(), submitted + 1);
+    assert_eq!(endpoint.checked().len(), 3);
+    let applied: yaml_serde::Value =
+        yaml_serde::from_slice(endpoint.reconciled_bytes().last().unwrap()).unwrap();
+    assert_eq!(applied["ipv6"].as_bool(), Some(true));
+    assert_eq!(applied["allow-lan"].as_bool(), Some(true));
+    assert_eq!(
+        client
+            .inner
+            .application_workflow
+            .0
+            .runtime
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .target_core,
+        client.get_app_config().await.unwrap().core
+    );
+    assert_eq!(
+        client.configuration_status().runtime.health,
+        ConvergenceHealth::Healthy
+    );
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
 // Guards settled's watch-closed branch, including an already closed receiver.
 #[tokio::test]
 async fn settled_after_workflow_stop_reports_closed() {
@@ -176,12 +290,21 @@ async fn a_commit_behind_an_unresolved_action_settles_as_unknown() {
         ),
         ..Default::default()
     };
-    let committed = client.inner.application.patch(patch).await.unwrap();
+    let enabled = patch.enable_builtin_enhanced.unwrap();
+    let outcome = client.patch_app_config(patch).await.unwrap();
+    assert_eq!(
+        receipt(&outcome).runtime,
+        RuntimeCommitStatus::RecoveryRequired
+    );
+    let committed = client.inner.application.snapshot();
+    assert_eq!(committed.state.enable_builtin_enhanced, enabled);
     let status = client
         .inner
         .application_workflow
-        .settled(ConfigDomain::Application, committed.version)
-        .await;
+        .0
+        .reconciler
+        .borrow()
+        .clone();
     assert!(matches!(status.conclusion, Conclusion::Unknown { .. }));
     assert_eq!(status.seen.application, committed.version);
     client.request_shutdown();
@@ -556,6 +679,218 @@ async fn application_runtime_save_commits_while_clash_application_is_held() {
     assert_eq!(
         receipt(&saving.await.unwrap().unwrap()).runtime,
         RuntimeCommitStatus::Applied
+    );
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+// Guards the owners comparing runtime projections before calling the gate or notifying the workflow.
+#[tokio::test]
+async fn unchanged_runtime_fields_do_not_check_or_apply() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, _) = client_with_scripted_endpoint(&dir).await;
+    let application = client.get_app_config().await.unwrap();
+    let clash = client.get_clash_config().await.unwrap();
+    let before = client.inner.application_workflow.0.reconciler.borrow().seq;
+    let saved = client
+        .patch_app_config(NyanpasuAppConfigPatch {
+            core: Some(application.core),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Unchanged);
+    let patch = serde_json::from_value(serde_json::json!({
+        "mixed_port": { "start_port": clash.mixed_port.start_port }
+    }))
+    .unwrap();
+    let saved = client.patch_clash_config(patch).await.unwrap();
+    assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Unchanged);
+    let current = client.get_profiles().await.unwrap().current.clone();
+    let saved = client.activate_profile(current).await.unwrap();
+    assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Unchanged);
+    super::barrier(&client.inner.application_workflow).await;
+    assert_eq!(
+        client.inner.application_workflow.0.reconciler.borrow().seq,
+        before
+    );
+    assert!(endpoint.checked().is_empty());
+    assert!(endpoint.reconciled_bytes().is_empty());
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+// Guards projecting round labels and causes through the existing OperationStatus wire fields.
+#[tokio::test]
+async fn recent_operations_describe_reconcile_rounds() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, _) = client_with_scripted_endpoint(&dir).await;
+    endpoint.set_rolls_back(true);
+    let outcome = client
+        .patch_app_config(switched_core(&client))
+        .await
+        .unwrap();
+    let status = client.configuration_status();
+    let round = &status.recent_operations[0];
+    assert_eq!(round.domain, "SourceCommitted");
+    assert_eq!(round.outcome, "NotInEffect");
+    assert!(round.conclusion.is_empty());
+    let journal = client.inner.application_workflow.mutation_journal();
+    let recorded = journal.completed.back().unwrap();
+    assert_eq!(round.operation_id, recorded.operation_id.to_string());
+    assert!(matches!(
+        recorded.cause.as_deref(),
+        Some(RuntimeError::CoreRolledBack { .. })
+    ));
+    assert_eq!(
+        round.message,
+        recorded.cause.as_ref().map(ToString::to_string)
+    );
+    assert_ne!(
+        Some(&round.operation_id),
+        receipt(&outcome).operation_id.as_ref()
+    );
+    endpoint.set_rolls_back(false);
+    client.inner.application_workflow.reconcile().await.unwrap();
+    let history = client.configuration_status().recent_operations;
+    assert_eq!(history.len(), status.recent_operations.len() + 1);
+    assert_eq!(history[0].domain, "Start");
+    assert_eq!(history[0].outcome, "Converged");
+    assert!(history[0].conclusion.is_empty());
+    assert_eq!(history[1].operation_id, round.operation_id);
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+// Guards committed saves reaching application without requiring an earlier session receipt.
+#[tokio::test]
+async fn running_without_a_session_receipt_does_not_refuse_a_save() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    endpoint.set_status(
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
+        Some(nyanpasu_core_manager::CoreKind::Mihomo),
+    );
+    let args = test_support::test_client_args_with_endpoint(
+        &dir,
+        endpoint.clone(),
+        test_support::profile_test_adapters(&dir),
+    )
+    .await;
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    assert!(
+        client
+            .inner
+            .application_workflow
+            .0
+            .runtime
+            .last_confirmed_runtime_receipt()
+            .is_none()
+    );
+    let selected = switched_core(&client);
+    let core = selected.core.unwrap();
+    let outcome = client.patch_app_config(selected).await.unwrap();
+    assert_eq!(receipt(&outcome).runtime, RuntimeCommitStatus::Applied);
+    assert_eq!(client.get_app_config().await.unwrap().core, core);
+    assert_eq!(endpoint.checked().len(), 1);
+    assert_eq!(endpoint.reconciled_bytes().len(), 1);
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+// Guards checking each source candidate while applying only the latest target queued behind an application.
+#[tokio::test]
+async fn queued_commits_apply_only_the_latest_target() {
+    use nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, scripted) = client_with_scripted_endpoint(&dir).await;
+    scripted.queue(WaitScript::Held);
+    let applying = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_runtime_overrides(ClashGuardOverridesPatch {
+                    ipv6: Some(true),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    scripted.held().await;
+    let second = client
+        .inner
+        .clash_config
+        .patch_overrides(serde_json::from_value(serde_json::json!({"allow-lan": true})).unwrap())
+        .await
+        .unwrap();
+    let latest = client
+        .inner
+        .clash_config
+        .patch_overrides(ClashGuardOverridesPatch {
+            ipv6: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(latest.version.as_ref() > second.version.as_ref());
+    assert_eq!(
+        endpoint.checked().len(),
+        3,
+        "each committed candidate was checked"
+    );
+    scripted.release();
+    applying.await.unwrap().unwrap();
+    assert_eq!(
+        receipt(&client.clash_outcome(second).await).runtime,
+        RuntimeCommitStatus::Applied
+    );
+    assert_eq!(
+        receipt(&client.clash_outcome(latest).await).runtime,
+        RuntimeCommitStatus::Applied
+    );
+    super::barrier(&client.inner.application_workflow).await;
+    let applied = endpoint.reconciled_bytes();
+    assert_eq!(
+        applied.len(),
+        2,
+        "queued notifications share one latest target application"
+    );
+    let latest: yaml_serde::Value = yaml_serde::from_slice(applied.last().unwrap()).unwrap();
+    assert_eq!(latest["ipv6"].as_bool(), Some(false));
+    assert_eq!(latest["allow-lan"].as_bool(), Some(true));
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+// Guards applying committed targets on startup and retry without a second independent check.
+#[tokio::test]
+async fn startup_and_retry_do_not_independently_check_committed_targets() {
+    use nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, _) = client_with_scripted_endpoint(&dir).await;
+    assert!(
+        endpoint.checked().is_empty(),
+        "startup applies an already committed target"
+    );
+    endpoint.set_failure(Some("queue_full"));
+    let saved = client
+        .patch_runtime_overrides(ClashGuardOverridesPatch {
+            ipv6: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Deferred);
+    let checked = endpoint.checked();
+    assert_eq!(checked.len(), 1);
+    endpoint.set_failure(None);
+    client.retry_runtime_now().await.unwrap();
+    assert_eq!(endpoint.checked().len(), 1);
+    assert_eq!(
+        endpoint.reconciled_bytes(),
+        [checked[0].config_bytes.clone()]
     );
     client.request_shutdown();
     client.wait_shutdown().await;

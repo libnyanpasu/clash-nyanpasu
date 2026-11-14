@@ -13,8 +13,7 @@ use nyanpasu_runtime_values::{
     profiles::ProfilesError,
     runtime_error::{CoreRejectedConfigSnafu, RuntimeError},
 };
-use nyanpasu_state_engine::{DecisionHandle, StateParticipant, StateSnapshot, Version};
-use tokio::sync::oneshot;
+use nyanpasu_state_engine::{StateSnapshot, Version};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
@@ -28,9 +27,7 @@ use crate::{
     },
     state::mutation::{
         MutationCoordinator,
-        intent::MutationIntent,
-        ports::{MutationParticipantFactory, RuntimeCandidate, RuntimeGate},
-        value::MutationReceipt,
+        ports::{RuntimeCandidate, RuntimeGate},
     },
 };
 
@@ -51,18 +48,6 @@ fn assert_no_prepared_files(directory: &std::path::Path) {
     }
 }
 
-struct NoParticipant;
-impl MutationParticipantFactory<Profiles> for NoParticipant {
-    fn make(
-        &self,
-        _: MutationIntent,
-        _: DecisionHandle,
-        _: oneshot::Sender<MutationReceipt>,
-    ) -> StateParticipant<Profiles> {
-        panic!("profile source commits do not enlist participants")
-    }
-}
-
 #[derive(Default)]
 struct Gate {
     reject: AtomicBool,
@@ -75,22 +60,21 @@ struct Gate {
 impl RuntimeGate for Gate {
     async fn check(&self, candidate: RuntimeCandidate) -> Result<(), Arc<RuntimeError>> {
         let crate::state::mutation::DomainChange::Profiles {
-            previous: Some(previous),
-            ..
+            candidate: next, ..
         } = &candidate.change
         else {
-            panic!("profile check carries its previous document")
+            panic!("profile check carries its candidate document")
         };
         let committed = self.snapshot.lock().unwrap().as_ref().unwrap().load();
         assert_eq!(
-            committed.state.revision(),
-            previous.revision(),
+            committed.state.revision() + 1,
+            next.revision(),
             "check precedes publication"
         );
         let document =
             std::fs::read_to_string(self.document.lock().unwrap().as_ref().unwrap()).unwrap();
         assert!(
-            document.contains(&format!("revision: {}", previous.revision())),
+            document.contains(&format!("revision: {}", committed.state.revision())),
             "check precedes document persistence"
         );
         assert_no_prepared_files(
@@ -177,7 +161,7 @@ async fn fixture() -> (ProfilesClient, Arc<Gate>, tempfile::TempDir) {
     *gate.snapshot.lock().unwrap() = Some(client.snapshot_handle());
     *gate.document.lock().unwrap() =
         Some(Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap());
-    coordinator.connect(Arc::new(NoParticipant), gate.clone(), gate.clone());
+    coordinator.connect(gate.clone(), gate.clone());
     let mut initial = Profiles::default();
     initial.append_item(profiles::file_config_item("selected"));
     initial.append_item(profiles::file_config_item("spare"));

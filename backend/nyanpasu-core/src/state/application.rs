@@ -37,7 +37,7 @@ impl ApplicationSnapshot {
 }
 
 pub struct ApplicationActorArgs {
-    pub(crate) mutations: MutationCoordinator<NyanpasuAppConfig>,
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     /// The channel of the installed build; only a nightly build is held to it.
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
@@ -47,7 +47,7 @@ pub struct ApplicationActorArgs {
 }
 
 pub struct ApplicationActorState {
-    mutations: MutationCoordinator<NyanpasuAppConfig>,
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,
@@ -129,14 +129,12 @@ impl ApplicationActor {
             })?;
         let current = state.manager.snapshot_handle().load();
         let version = current.version;
-        let reaches_runtime =
-            impact::application_target(&current.state) != impact::application_target(&next);
+        let reaches_runtime = impact::reaches_runtime(&current.state, &next, &[]);
         let operation_id = reaches_runtime.then(OperationId::generate);
         let gate = state.mutations.runtime();
         if reaches_runtime {
             gate.check(RuntimeCandidate {
                 change: DomainChange::Application {
-                    previous: Some(std::sync::Arc::new(current.state.clone())),
                     candidate: std::sync::Arc::new(next.clone()),
                 },
                 staged: Default::default(),
@@ -171,7 +169,6 @@ impl ApplicationActor {
             Err(error) => Err(ConfigError::commit_failure(
                 ConfigDomain::Application,
                 error,
-                None,
             )),
         }
     }

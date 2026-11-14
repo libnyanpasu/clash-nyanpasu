@@ -16,8 +16,6 @@ use nyanpasu_state_engine::{
 use serde::Serialize;
 use snafu::{IntoError, Snafu};
 
-use crate::state::mutation::value::MutationReceipt;
-
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[snafu(visibility(pub(crate)))]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -101,11 +99,7 @@ impl ConfigError {
     /// The one place a persistence error of a config source becomes a config
     /// error. A CAS mismatch reported by the coordinator is the same conflict
     /// as the manager's own `Conflict` result.
-    pub(crate) fn commit_failure(
-        domain: ConfigDomain,
-        error: ReplaceIfVersionError,
-        settlement: Option<&MutationReceipt>,
-    ) -> Self {
+    pub(crate) fn commit_failure(domain: ConfigDomain, error: ReplaceIfVersionError) -> Self {
         match error {
             ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
                 expected,
@@ -116,9 +110,8 @@ impl ConfigError {
                 actual: *actual.as_ref(),
             }
             .build(),
-            error => CommitSnafu { domain }.into_error(
-                crate::state::mutation::classify_commit_aborted(error, settlement),
-            ),
+            error => CommitSnafu { domain }
+                .into_error(crate::state::mutation::classify_commit_aborted(error)),
         }
     }
 }

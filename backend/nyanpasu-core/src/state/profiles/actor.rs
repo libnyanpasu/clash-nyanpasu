@@ -29,10 +29,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
 use crate::state::mutation::{
-    DomainChange, MutationCoordinator, ProfileContentLock, impact,
-    impact::{MutationHints, TouchedContent},
-    intent::CommandClass,
-    ports::RuntimeCandidate,
+    DomainChange, MutationCoordinator, ProfileContentLock, impact, ports::RuntimeCandidate,
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::profiles::{
@@ -76,7 +73,7 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
-    pub(crate) mutations: MutationCoordinator<Profiles>,
+    pub(crate) mutations: MutationCoordinator,
     pub(crate) content_lock: ProfileContentLock,
     pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
@@ -89,7 +86,7 @@ pub struct ProfilesActorArgs {
 }
 
 pub struct ProfilesActorState {
-    mutations: MutationCoordinator<Profiles>,
+    mutations: MutationCoordinator,
     content_lock: ProfileContentLock,
     manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
@@ -401,6 +398,12 @@ pub(super) enum AffectsRule {
     Always,
 }
 
+#[derive(Default)]
+struct ProfileCandidateContent {
+    touched: Vec<ManagedProfilePath>,
+    staged_content: std::collections::BTreeMap<String, String>,
+}
+
 impl ProfilesActor {
     fn current_state(state: &ProfilesActorState) -> Profiles {
         state.manager.snapshot_handle().load().state.clone()
@@ -459,19 +462,17 @@ impl ProfilesActor {
         state: &ProfilesActorState,
         before: &Profiles,
         candidate: &Profiles,
-        hints: &MutationHints,
+        hints: &ProfileCandidateContent,
         subject: &CommitSubject,
     ) -> Result<bool, ProfilesError> {
         state.mutations.ensure_ready()?;
-        let reaches =
-            impact::runtime_impact(before, candidate, hints, CommandClass::Save).is_some();
+        let reaches = impact::reaches_runtime(before, candidate, &hints.touched);
         if reaches {
             state
                 .mutations
                 .runtime()
                 .check(RuntimeCandidate {
                     change: DomainChange::Profiles {
-                        previous: Some(Arc::new(before.clone())),
                         candidate: Arc::new(candidate.clone()),
                     },
                     staged: hints.staged_content.clone(),
@@ -546,7 +547,7 @@ impl ProfilesActor {
         expected_version: Version,
         before: &Profiles,
         next: Profiles,
-        hints: MutationHints,
+        hints: ProfileCandidateContent,
         subject: CommitSubject,
     ) -> Result<CommitReport, ProfilesError> {
         let reaches = Self::check_candidate(state, before, &next, &hints, &subject).await?;
@@ -600,7 +601,7 @@ impl ProfilesActor {
                 path,
                 cleanup_failures,
             }
-            .into_error(crate::state::mutation::classify_commit_aborted(error, None)),
+            .into_error(crate::state::mutation::classify_commit_aborted(error)),
         }
     }
 
@@ -935,7 +936,7 @@ impl ProfilesActor {
         let affects = mutate(&mut next)?;
         let candidate = Self::prepare_candidate(next)?;
         let subject = Self::commit_subject(&affects, None, &candidate);
-        let hints = Self::mutation_hints(&affects, &candidate);
+        let hints = Self::candidate_content(&affects, &candidate);
         let report =
             Self::persist_candidate(state, expected_version, &before, candidate, hints, subject)
                 .await?;
@@ -1147,19 +1148,15 @@ impl ProfilesActor {
         Vec::new()
     }
 
-    fn mutation_hints(affects: &AffectsRule, candidate: &Profiles) -> MutationHints {
-        let mut hints = MutationHints::default();
+    fn candidate_content(affects: &AffectsRule, candidate: &Profiles) -> ProfileCandidateContent {
+        let mut hints = ProfileCandidateContent::default();
         if let AffectsRule::Touched(uid) = affects {
             if let Some(source) = candidate
                 .items
                 .get(uid)
                 .and_then(|item| item.definition.source())
             {
-                hints.touched.push(TouchedContent {
-                    path: source.materialized().file.clone(),
-                    content_digest: None,
-                    resource: None,
-                });
+                hints.touched.push(source.materialized().file.clone());
             }
         }
         hints
@@ -1181,7 +1178,7 @@ impl ProfilesActor {
         let subject = Self::commit_subject(&affects, created.as_ref(), &candidate);
         let expected_revision = candidate.revision();
         state.mutations.ensure_ready()?;
-        let mut hints = Self::mutation_hints(&affects, &candidate);
+        let mut hints = Self::candidate_content(&affects, &candidate);
         if let Some((path, resource)) = &resource {
             let content = match &resource {
                 MaterializationResource::File { content } => Some(content.clone()),
@@ -1200,11 +1197,7 @@ impl ProfilesActor {
                     Some(Self::read_external(&state.fs, target).await?)
                 }
             };
-            hints.touched.push(TouchedContent {
-                path: path.clone(),
-                content_digest: None,
-                resource: None,
-            });
+            hints.touched.push(path.clone());
             if let Some(content) = content {
                 hints.staged_content.insert(path.to_string(), content);
             }
@@ -2589,7 +2582,6 @@ mod tests {
     /// Runtime checks follow changed build inputs and touched closure files.
     #[test]
     fn profiles_operations_reach_the_runtime_by_diff_and_content() {
-        use crate::state::mutation::impact::RuntimeImpact;
         use nyanpasu_profile_transform::test_support::{file_config, metadata, overlay};
 
         // current -> `sel` with its scoped transform `scoped`; `global` is a
@@ -2624,8 +2616,8 @@ mod tests {
             change(&mut next);
             next
         };
-        let reconcile = Some(RuntimeImpact::Reconcile);
-        let cases: Vec<(&str, AffectsRule, Profiles, Profiles, Option<RuntimeImpact>)> = vec![
+        let reconcile = true;
+        let cases: Vec<(&str, AffectsRule, Profiles, Profiles, bool)> = vec![
             (
                 "select another profile",
                 AffectsRule::CurrentChanged,
@@ -2638,7 +2630,7 @@ mod tests {
                 AffectsRule::CurrentChanged,
                 base.clone(),
                 base.clone(),
-                None,
+                false,
             ),
             (
                 "change the global transforms",
@@ -2652,7 +2644,7 @@ mod tests {
                 AffectsRule::GlobalChanged,
                 base.clone(),
                 base.clone(),
-                None,
+                false,
             ),
             (
                 "change the valid fields",
@@ -2666,7 +2658,7 @@ mod tests {
                 AffectsRule::Always,
                 base.clone(),
                 base.clone(),
-                None,
+                false,
             ),
             (
                 "save the current profile's file",
@@ -2687,7 +2679,7 @@ mod tests {
                 AffectsRule::Touched(id("spare")),
                 base.clone(),
                 base.clone(),
-                None,
+                false,
             ),
             (
                 "patch the options of the current remote profile",
@@ -2716,7 +2708,7 @@ mod tests {
                     };
                     option.update_interval_minutes = RemoteSyncInterval::DISABLED;
                 }),
-                None,
+                false,
             ),
             (
                 "rename the current profile",
@@ -2725,7 +2717,7 @@ mod tests {
                 with(&base, &|p| {
                     p.items.get_mut(&id("sel")).unwrap().metadata.name = "renamed".into()
                 }),
-                None,
+                false,
             ),
             (
                 "add a profile",
@@ -2734,7 +2726,7 @@ mod tests {
                 with(&base, &|p| {
                     p.append_item(file_config("added", "added.yaml", &[]));
                 }),
-                None,
+                false,
             ),
             (
                 "move the current profile into a new folder",
@@ -2751,7 +2743,7 @@ mod tests {
                     })
                     .unwrap();
                 }),
-                None,
+                false,
             ),
             (
                 "reorder the profiles inside a folder",
@@ -2778,14 +2770,13 @@ mod tests {
                     })
                     .unwrap();
                 }),
-                None,
+                false,
             ),
         ];
         for (case, rule, before, after, expected) in cases {
-            let hints = ProfilesActor::mutation_hints(&rule, &after);
+            let hints = ProfilesActor::candidate_content(&rule, &after);
             assert_eq!(
-                (impact::classify_profiles(&before, &after, &hints) != RuntimeImpact::None)
-                    .then_some(RuntimeImpact::Reconcile),
+                impact::reaches_runtime(&before, &after, &hints.touched),
                 expected,
                 "{case}"
             );

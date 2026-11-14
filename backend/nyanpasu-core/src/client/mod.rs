@@ -204,9 +204,9 @@ pub struct NyanpasuClient {
 }
 
 struct MutationCoordinators {
-    application: MutationCoordinator<NyanpasuAppConfig>,
-    clash: MutationCoordinator<ClashConfig>,
-    profiles: MutationCoordinator<Profiles>,
+    application: MutationCoordinator,
+    clash: MutationCoordinator,
+    profiles: MutationCoordinator,
 }
 
 impl MutationCoordinators {
@@ -550,7 +550,6 @@ impl NyanpasuClient {
                 core: core_v2.clone(),
                 service,
                 builder: builder.clone(),
-                validator: validator.clone(),
                 ports: ports.clone(),
                 installer: binary_installer,
                 ownership: core_lifecycle::Ownership::Unproven,
@@ -576,14 +575,11 @@ impl NyanpasuClient {
                         workflow: application_workflow.clone(),
                     },
                 ));
-            let factory = Arc::new(application_workflow.clone());
             mutations
                 .application
-                .connect(factory.clone(), notifications.clone(), gate.clone());
-            mutations
-                .clash
-                .connect(factory.clone(), notifications.clone(), gate.clone());
-            mutations.profiles.connect(factory, notifications, gate);
+                .connect(notifications.clone(), gate.clone());
+            mutations.clash.connect(notifications.clone(), gate.clone());
+            mutations.profiles.connect(notifications, gate);
         }
         let updater = nyanpasu_updater::UpdaterClient::spawn(
             updater_backend_factory(ports.clone()).map_err(|error| match error {
@@ -1970,38 +1966,38 @@ pub(crate) mod tests {
         );
     }
 
-    /// Required subscriber that holds the transaction open inside `on_prepare`
-    /// until the test releases it, so the owning actor's mailbox is provably
-    /// blocked while the assertion runs.
-    struct ParkedPrepare {
+    /// Holds an independent check while committed reads bypass the source mailbox.
+    struct ParkedGate {
         entered: Arc<tokio::sync::Notify>,
         release: Arc<tokio::sync::Notify>,
     }
-
     #[async_trait::async_trait]
-    impl nyanpasu_state_engine::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
-        fn name(&self) -> nyanpasu_state_engine::SubscriberName<'_> {
-            "test-parked-prepare".into()
-        }
-
-        async fn on_prepare(
+    impl crate::state::mutation::ports::RuntimeGate for ParkedGate {
+        async fn check(
             &self,
-            _change: nyanpasu_state_engine::StateChange<NyanpasuAppConfig>,
-        ) -> nyanpasu_state_engine::Ack {
+            _: crate::state::mutation::ports::RuntimeCandidate,
+        ) -> std::result::Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>>
+        {
             self.entered.notify_one();
             self.release.notified().await;
-            nyanpasu_state_engine::Ack::Ok
+            Ok(())
+        }
+        fn committed(
+            &self,
+            _: nyanpasu_runtime_values::mutation::ConfigDomain,
+            _: nyanpasu_state_engine::Version,
+        ) {
         }
     }
 
     #[tokio::test]
-    async fn committed_config_reads_do_not_wait_for_a_parked_required_prepare() {
+    async fn committed_config_reads_do_not_wait_for_a_parked_check() {
         use futures_util::FutureExt;
 
         let dir = tempdir().expect("tempdir should be created");
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
+        let manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
             nyanpasu_migration::modules::application::ApplicationFormat,
         >::builder()
@@ -2010,12 +2006,16 @@ pub(crate) mod tests {
         .from_state(NyanpasuAppConfig::default())
         .await
         .expect("application manager should initialize");
-        manager.add_subscriber(Box::new(ParkedPrepare {
-            entered: entered.clone(),
-            release: release.clone(),
-        }));
+        let mutations = crate::state::mutation::MutationCoordinator::pending();
+        mutations.connect(
+            Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+            Arc::new(ParkedGate {
+                entered: entered.clone(),
+                release: release.clone(),
+            }),
+        );
         let application = ApplicationClient::from_manager(
-            crate::state::mutation::MutationCoordinator::isolated(),
+            mutations,
             manager,
             ReleaseChannel::Stable,
             tokio_util::sync::CancellationToken::new(),
@@ -2039,6 +2039,7 @@ pub(crate) mod tests {
         )
         .await
         .expect("clash config client should be created");
+        let writer = application.clone();
         let client = test_client_from_typed_clients(
             &dir,
             application,
@@ -2052,16 +2053,17 @@ pub(crate) mod tests {
         )
         .await;
 
-        assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
+        let previous = client
+            .get_app_config()
+            .await
+            .unwrap()
+            .enable_builtin_enhanced;
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.enable_system_proxy = Some(true);
-        let patching = {
-            let client = client.clone();
-            tokio::spawn(async move { client.patch_app_config(patch).await })
-        };
+        patch.enable_builtin_enhanced = Some(!previous);
+        let patching = { tokio::spawn(async move { writer.patch(patch).await }) };
 
-        // The transaction now owns the actor and is parked mid-prepare.
+        // The source owner is awaiting its independent check.
         entered.notified().await;
         let parked = client
             .get_app_config()
@@ -2069,7 +2071,7 @@ pub(crate) mod tests {
             .expect("a committed read must not await the parked actor")
             .expect("committed read should succeed");
         assert!(
-            !parked.enable_system_proxy,
+            parked.enable_builtin_enhanced == previous,
             "an unfinished transaction must not be visible as committed state"
         );
 
@@ -2078,7 +2080,14 @@ pub(crate) mod tests {
             .await
             .expect("patch task should join")
             .expect("patch should commit");
-        assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+        assert_eq!(
+            client
+                .get_app_config()
+                .await
+                .unwrap()
+                .enable_builtin_enhanced,
+            !previous
+        );
     }
 
     #[tokio::test]

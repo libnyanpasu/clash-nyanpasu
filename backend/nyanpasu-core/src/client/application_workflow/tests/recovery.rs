@@ -13,7 +13,6 @@ use crate::{
         },
         test_support::TestControlEndpoint,
     },
-    state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 
 /// The audited scenario: the app was running A, applied B, then asked to be
@@ -149,26 +148,17 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
 // the explicit retry, reading what the two slots kept. The interruptions are
 // scripted fakes and barriers; nothing here sleeps for an ordering.
 
+use crate::actor_v2::endpoint::ControlEndpoint as _;
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::{ReplaceIfVersionError, ReplaceIfVersionResult};
 
 use std::sync::atomic::Ordering;
 
 use super::{
-    ScriptedWaitEndpoint, WaitScript, barrier,
-    mutations::{
-        Fixture, app_with_core, fixture, mutate, mutate_with_hints, names_overrides, overrides,
-        parked_local_write, plain, refused, scripted_fixture, settled, simple_mutate,
-    },
+    ScriptedWaitEndpoint, WaitScript,
+    mutations::{app_with_core, commit_source, fixture, overrides, scripted_fixture, settled},
 };
-use crate::{
-    client::application_workflow::{
-        ApplicationWorkflowClient, Command, attempt::RecoveryView, mutation::DEFERRED_RETRY_BUDGET,
-    },
-    state::mutation::{
-        intent::CommandClass,
-        value::{MutationConclusion, MutationOutcomeKind},
-    },
+use crate::client::application_workflow::{
+    ApplicationWorkflowClient, Command, attempt::RecoveryView, mutation::DEFERRED_RETRY_BUDGET,
 };
 
 fn recovery(client: &ApplicationWorkflowClient) -> RecoveryView {
@@ -176,21 +166,6 @@ fn recovery(client: &ApplicationWorkflowClient) -> RecoveryView {
         .mutation_journal()
         .recovery
         .expect("an isolated execution domain names its attempt")
-}
-
-/// Waits until the running attempt has settled. A transaction can finish
-/// before its attempt does — Confirm and Cancel run after the decision — so
-/// its own result says nothing about that.
-async fn until_idle(client: &ApplicationWorkflowClient) {
-    let mut status = client.0.status.clone();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        status.wait_for(|status| status.active.is_none()),
-    )
-    .await
-    .expect("the attempt should come back")
-    .expect("the workflow should stay alive");
-    barrier(client).await;
 }
 
 fn isolated(client: &ApplicationWorkflowClient) -> bool {
@@ -206,282 +181,6 @@ fn pending_submission(scripted: &ScriptedWaitEndpoint) -> OperationId {
         .expect("the pending action is a submission")
 }
 
-/// A baseline the next mutation's Cancel can put back, applied for real.
-async fn prime(f: &mut Fixture) -> Arc<RuntimeApplyReceipt> {
-    let (id, primed) = simple_mutate(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
-    settled(&f.client, id).await;
-    f.store
-        .last_confirmed_runtime_receipt()
-        .expect("the primed apply is the baseline")
-}
-
-/// Makes the next source write fail, so the transaction aborts after its Try.
-fn fail_the_next_save(path: &camino::Utf8Path) {
-    let _ = std::fs::remove_file(path);
-    std::fs::create_dir_all(path).unwrap();
-}
-
-/// S10b: five saves of one committed target after its automatic budget is
-/// spent. Each is re-evaluated, none refills the budget, and only a new
-/// identity does.
-#[tokio::test]
-async fn saving_an_unchanged_target_never_refills_its_spent_budget() {
-    let mut f = fixture().await;
-    f.endpoint.set_failure(Some("queue_full"));
-    let target = overrides(serde_json::json!({"mode": "direct"}));
-    let (_, result) = mutate_with_hints(
-        &mut f.clash,
-        &f.client,
-        target.clone(),
-        CommandClass::Save,
-        names_overrides(),
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    for _ in 0..DEFERRED_RETRY_BUDGET {
-        f.client
-            .call(Command::RetryRuntime { explicit: false })
-            .await
-            .unwrap();
-    }
-    for _ in 0..5 {
-        let (id, result) = mutate_with_hints(
-            &mut f.clash,
-            &f.client,
-            target.clone(),
-            CommandClass::Save,
-            names_overrides(),
-        )
-        .await;
-        assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-        assert_eq!(
-            settled(&f.client, id).await.outcome,
-            MutationOutcomeKind::Deferred
-        );
-        assert_eq!(
-            f.client
-                .mutation_journal()
-                .deferred
-                .unwrap()
-                .attempts_remaining,
-            0
-        );
-    }
-    let (_, result) = simple_mutate(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "rule"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        f.client
-            .mutation_journal()
-            .deferred
-            .unwrap()
-            .attempts_remaining,
-        DEFERRED_RETRY_BUDGET
-    );
-}
-
-/// L3: the Cancel's restore loses the answer to its own submission. The slot
-/// holds that restore, not the Try before it; once it is seen to finish,
-/// recovery puts the baseline back and proves it.
-#[tokio::test]
-async fn a_lost_cancel_restore_is_kept_and_recovers_the_baseline() {
-    let mut f = scripted_fixture().await;
-    let baseline = prime(&mut f).await;
-
-    let entered = Arc::new(tokio::sync::Notify::new());
-    let release = Arc::new(tokio::sync::Notify::new());
-    let id = OperationId::generate();
-    let mutation = {
-        let client = f.client.clone();
-        let (entered, release) = (entered.clone(), release.clone());
-        let mut clash = f.clash;
-        tokio::spawn(async move {
-            let result = mutate(
-                &mut clash,
-                &client,
-                id,
-                overrides(serde_json::json!({"mode": "direct"})),
-                CommandClass::Save,
-                plain(),
-                parked_local_write(entered, release),
-            )
-            .await;
-            (clash, result)
-        })
-    };
-    entered.notified().await;
-    let scripted = f.scripted.clone().expect("a scripted fixture");
-    let tried = *scripted.operations().last().expect("the Try was submitted");
-    fail_the_next_save(&f.clash_path);
-    scripted.queue(WaitScript::Missing);
-    release.notify_one();
-    let (_, result) = mutation.await.unwrap();
-    assert!(
-        matches!(result, Err(ReplaceIfVersionError::WriteConfig(_))),
-        "{result:?}"
-    );
-    until_idle(&f.client).await;
-
-    assert_eq!(recovery(&f.client).operation_id, id);
-    let restore = pending_submission(&scripted);
-    assert_ne!(restore, tried, "the slot holds the restore, not the Try");
-    scripted.rescript(restore, WaitScript::Deliver);
-    f.client.retry_runtime().await.unwrap();
-
-    assert!(!isolated(&f.client));
-    assert_eq!(
-        f.store
-            .last_confirmed_runtime_receipt()
-            .unwrap()
-            .config_digest,
-        baseline.config_digest
-    );
-    assert_eq!(
-        f.endpoint.reconciled_bytes().last(),
-        Some(&baseline.config_text.as_bytes().to_vec())
-    );
-}
-
-/// L5 (N1): the submission was accepted and is still running when its wait
-/// ends. The slot holds that accepted submission; a retry while it runs
-/// changes nothing, and only its terminal answer lets the mutation's recovery
-/// continue.
-#[tokio::test]
-async fn an_accepted_submission_still_running_is_waited_out_before_recovery() {
-    let mut f = scripted_fixture().await;
-    let baseline = prime(&mut f).await;
-    let scripted = f.scripted.clone().expect("a scripted fixture");
-
-    scripted.queue(WaitScript::Running);
-    let (id, result) = simple_mutate(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "direct"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(
-        matches!(result, Err(ReplaceIfVersionError::State(_))),
-        "{result:?}"
-    );
-    until_idle(&f.client).await;
-    assert_eq!(recovery(&f.client).operation_id, id);
-    let tried = pending_submission(&scripted);
-
-    scripted.rescript(tried, WaitScript::Running);
-    let submitted = scripted.submitted();
-    let error = f.client.retry_runtime().await.unwrap_err();
-    assert!(matches!(
-        error,
-        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
-    ));
-    assert!(
-        error
-            .to_string()
-            .contains(&format!("{tried} is still Running")),
-        "the ticket arrived before the wait ended: {}",
-        error
-    );
-    assert!(isolated(&f.client));
-    assert_eq!(scripted.submitted(), submitted, "nothing is resent blind");
-
-    scripted.rescript(tried, WaitScript::Deliver);
-    f.client.retry_runtime().await.unwrap();
-    assert!(!isolated(&f.client));
-    assert_eq!(
-        f.store
-            .last_confirmed_runtime_receipt()
-            .unwrap()
-            .config_digest,
-        baseline.config_digest,
-        "the aborted mutation's candidate was applied, and recovery took it back"
-    );
-}
-
-/// L6 (N2): the first action is resolved and the restore recovery submits in
-/// its place loses its receipt. The slot now names the restore; the next retry
-/// asks only about it and resends nothing.
-#[tokio::test]
-async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
-    let mut f = scripted_fixture().await;
-    let baseline = prime(&mut f).await;
-    let scripted = f.scripted.clone().expect("a scripted fixture");
-
-    scripted.queue(WaitScript::Missing);
-    let id = OperationId::generate();
-    let (result, settlement) = super::mutations::mutate_settling(
-        &mut f.clash,
-        &f.client,
-        id,
-        overrides(serde_json::json!({"mode": "direct"})),
-        CommandClass::Save,
-        plain(),
-        super::mutations::no_local_write,
-    )
-    .await;
-    assert!(refused(&result), "{result:?}");
-    // Settled before the domain stays isolated, and the caller is told the
-    // outcome is unknown.
-    let receipt = settlement.await.expect("an unknown Try is settled too");
-    assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
-    let aborted = super::classify(result.unwrap_err(), &receipt);
-    assert!(
-        matches!(
-            super::aftermath(&aborted),
-            nyanpasu_runtime_values::mutation::RuntimeAftermath::Unknown { .. }
-        ),
-        "{aborted:?}"
-    );
-    let tried = pending_submission(&scripted);
-
-    scripted.rescript(tried, WaitScript::Deliver);
-    scripted.queue(WaitScript::Missing);
-    assert!(f.client.retry_runtime().await.is_err());
-    let restore = pending_submission(&scripted);
-    assert_ne!(restore, tried, "the resolved action was consumed");
-    assert_eq!(
-        recovery(&f.client).operation_id,
-        id,
-        "recovery continues the mutation's own attempt"
-    );
-
-    let submitted = scripted.submitted();
-    let error = f.client.retry_runtime().await.unwrap_err();
-    assert!(
-        error.to_string().contains(&restore.to_string()),
-        "{}",
-        error.to_string()
-    );
-    assert_eq!(
-        scripted.submitted(),
-        submitted,
-        "the lost restore is not resent"
-    );
-
-    scripted.rescript(restore, WaitScript::Deliver);
-    f.client.retry_runtime().await.unwrap();
-    assert!(!isolated(&f.client));
-    assert_eq!(
-        f.store
-            .last_confirmed_runtime_receipt()
-            .unwrap()
-            .config_digest,
-        baseline.config_digest
-    );
-}
-
 /// L9 (N4): an automatic retry of a committed target loses its receipt. It is
 /// not an unconfirmed source transaction: once the lost operation is seen to
 /// finish and the runtime is still on the baseline the retry found, the
@@ -489,21 +188,13 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
 /// untouched — and a later explicit retry applies it.
 #[tokio::test]
 async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once() {
-    let mut f = scripted_fixture().await;
+    let f = scripted_fixture().await;
     let scripted = f.scripted.clone().expect("a scripted fixture");
     f.endpoint.set_failure(Some("queue_full"));
-    let (id, result) = simple_mutate(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "direct"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&f.client, id).await.outcome,
-        MutationOutcomeKind::Deferred
-    );
+    let id = commit_source(&f.clash, overrides(serde_json::json!({"mode": "direct"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&f.client, id).await.conclusion.label(), "Waiting");
     let scheduled = f.client.mutation_journal().deferred.unwrap();
 
     scripted.queue(WaitScript::Missing);
@@ -518,7 +209,7 @@ async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once()
     f.client.retry_runtime().await.unwrap();
     assert!(!isolated(&f.client));
     let target = f.client.mutation_journal().deferred.expect("put back");
-    assert_eq!(target.operation_id, id);
+    assert_eq!(target.operation_id, scheduled.operation_id);
     assert_eq!(target.attempts_remaining, DEFERRED_RETRY_BUDGET - 1);
     assert_eq!(target.attempts, 1);
     assert_eq!(target.health, scheduled.health);
@@ -528,11 +219,10 @@ async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once()
     f.client.retry_runtime().await.unwrap();
     assert!(f.client.mutation_journal().deferred.is_none());
     assert!(
-        f.store
-            .last_confirmed_runtime_receipt()
-            .unwrap()
-            .config_text
-            .contains("mode: direct")
+        f.endpoint
+            .reconciled_bytes()
+            .last()
+            .is_some_and(|bytes| String::from_utf8_lossy(bytes).contains("mode: direct"))
     );
 }
 
@@ -570,7 +260,7 @@ async fn an_automatic_retry_never_recovers() {
 /// owner from the committed configuration (§4.2), and admission reopens.
 #[tokio::test]
 async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
-    let mut f = fixture().await;
+    let f = fixture().await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.reconcile().await.is_err());
     assert!(isolated(&f.client));
@@ -594,171 +284,22 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
         f.store
             .last_confirmed_runtime_receipt()
             .unwrap()
-            .config_text
-            .as_bytes(),
-        f.endpoint.reconciled_bytes().last().unwrap().as_slice()
+            .binding
+            .revision
+            .source_hash,
+        f.endpoint.status().await.unwrap().source_hash.unwrap(),
     );
 
-    let (_, admitted) = simple_mutate(
-        &mut f.application,
-        &f.client,
+    commit_source(
+        &f.application,
         app_with_core(nyanpasu_config::application::ClashCore::ClashRs),
-        CommandClass::ExplicitSwitch,
     )
-    .await;
-    assert!(admitted.is_ok(), "{admitted:?}");
+    .await
+    .unwrap();
 }
 
 /// The ordinary daemon, except that its next stop can be held past the
 /// service actor's bound, so the workflow never hears how it ended.
-struct ParkedStop {
-    delegate: crate::actor_v2::test_support::HostTransitionServiceAdapter,
-    park: std::sync::atomic::AtomicBool,
-    parked: tokio::sync::Notify,
-    release: tokio::sync::Notify,
-}
-
-#[async_trait::async_trait]
-impl nyanpasu_contracts::service::ServiceProcessControl for ParkedStop {
-    async fn probe(&self) -> Result<String, nyanpasu_contracts::service::ServiceCommandError> {
-        self.delegate.probe().await
-    }
-    async fn install(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
-        self.delegate.install().await
-    }
-    async fn uninstall(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
-        self.delegate.uninstall().await
-    }
-    async fn start_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
-        self.delegate.start_daemon().await
-    }
-    async fn stop_daemon(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
-        if self.park.swap(false, Ordering::SeqCst) {
-            self.parked.notify_one();
-            self.release.notified().await;
-        }
-        self.delegate.stop_daemon().await
-    }
-    async fn update(&self) -> Result<(), nyanpasu_contracts::service::ServiceCommandError> {
-        self.delegate.update().await
-    }
-}
-
-impl crate::actor_v2::service_actor::ServiceEndpointFactory for ParkedStop {
-    fn endpoint(&self) -> crate::actor_v2::endpoint::EndpointHandle {
-        self.delegate.endpoint()
-    }
-}
-
-/// Releasing the daemon is part of what Confirm owes a commit that leaves
-/// service mode. A release whose answer is lost leaves the stop pending and
-/// the domain isolated; once the stop is seen to end, recovery finishes what
-/// Confirm owed without stopping the daemon a second time.
-#[tokio::test]
-async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
-    use nyanpasu_runtime_values::execution_host::ExecutionHost;
-    let daemon = Arc::new(ParkedStop {
-        delegate: crate::actor_v2::test_support::HostTransitionServiceAdapter {
-            endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
-            calls: Arc::new(std::sync::Mutex::new(Vec::new())),
-            stopped: std::sync::atomic::AtomicBool::new(false),
-            installed_for: Default::default(),
-        },
-        park: std::sync::atomic::AtomicBool::new(false),
-        parked: tokio::sync::Notify::new(),
-        release: tokio::sync::Notify::new(),
-    });
-    let service = ServiceClient::spawn_bounded(
-        daemon.clone(),
-        daemon.clone(),
-        0,
-        std::time::Duration::from_millis(50),
-    )
-    .await
-    .unwrap();
-    let mut f = super::mutations::fixture_from(
-        true,
-        service,
-        false,
-        crate::client::core_lifecycle::Ownership::Established {
-            host: ExecutionHost::Local,
-        },
-    )
-    .await;
-    prime(&mut f).await;
-    let mut app = f.application.snapshot().as_ref().clone();
-    app.enable_service_mode = true;
-    let (id, result) = simple_mutate(
-        &mut f.application,
-        &f.client,
-        app.clone(),
-        CommandClass::ExplicitSwitch,
-    )
-    .await;
-    assert!(
-        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
-        "{result:?}"
-    );
-    assert_eq!(
-        settled(&f.client, id).await.conclusion,
-        MutationConclusion::Confirmed
-    );
-    assert_eq!(f.client.core_status().host, ExecutionHost::Service);
-
-    daemon.park.store(true, Ordering::SeqCst);
-    app.enable_service_mode = false;
-    let (id, result) = simple_mutate(
-        &mut f.application,
-        &f.client,
-        app,
-        CommandClass::ExplicitSwitch,
-    )
-    .await;
-    assert!(
-        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
-        "{result:?}"
-    );
-    daemon.parked.notified().await;
-    until_idle(&f.client).await;
-    let view = recovery(&f.client);
-    assert_eq!(view.operation_id, id);
-    assert!(
-        view.reason.contains("service StopDaemon command"),
-        "{}",
-        view.reason
-    );
-    assert_eq!(f.client.core_status().host, ExecutionHost::Local);
-    assert!(
-        f.client.retry_runtime().await.is_err(),
-        "the stop still runs"
-    );
-    assert!(!daemon.delegate.stopped.load(Ordering::SeqCst));
-
-    daemon.release.notify_one();
-    let resolved = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        while f.client.retry_runtime().await.is_err() {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await;
-    assert!(resolved.is_ok(), "the finished stop settles the release");
-    assert!(!isolated(&f.client));
-    assert!(f.client.mutation_journal().maintenance.is_none());
-    assert!(daemon.delegate.stopped.load(Ordering::SeqCst));
-    assert_eq!(
-        daemon
-            .delegate
-            .calls
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|call| **call == "stop_daemon")
-            .count(),
-        1,
-        "the stop whose answer was lost is not sent again"
-    );
-}
-
 /// A service daemon whose install is held at a barrier past the actor's
 /// bound, while its probe keeps answering `Ready`.
 struct ParkedInstall {

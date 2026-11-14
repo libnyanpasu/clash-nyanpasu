@@ -52,7 +52,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator<ClashConfig>,
+        mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -78,7 +78,7 @@ impl ClashConfigClient {
 
     /// Takes an initialized store, allowing subscriptions to precede actor startup.
     pub(crate) async fn from_manager(
-        mutations: MutationCoordinator<ClashConfig>,
+        mutations: MutationCoordinator,
         manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,

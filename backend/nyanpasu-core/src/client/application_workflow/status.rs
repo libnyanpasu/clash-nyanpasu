@@ -16,6 +16,20 @@ pub(crate) enum Conclusion {
     Closed,
 }
 
+impl Conclusion {
+    #[cfg(test)]
+    pub(super) fn label(&self) -> &'static str {
+        match self {
+            Self::Converged => "Converged",
+            Self::Inactive => "Inactive",
+            Self::NotInEffect { .. } => "NotInEffect",
+            Self::Waiting { .. } => "Waiting",
+            Self::Unknown { .. } => "Unknown",
+            Self::Closed => "Closed",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EngineVersions {
     pub application: Version,

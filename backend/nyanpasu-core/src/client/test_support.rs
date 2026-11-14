@@ -686,7 +686,7 @@ pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfi
 
 pub(crate) async fn test_typed_config_clients(
     dir: &TempDir,
-    clash_mutations: crate::state::mutation::MutationCoordinator<ClashConfig>,
+    clash_mutations: crate::state::mutation::MutationCoordinator,
 ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
     let application = ApplicationClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),

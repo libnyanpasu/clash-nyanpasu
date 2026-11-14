@@ -27,6 +27,14 @@ export {
   useQueryBindings,
   useRpc,
 } from './rpc-provider'
+export {
+  clearKvStorageLocalCache,
+  readKvStorageLocalCache,
+} from './kv-storage-provider'
+export type {
+  KvStoragePersistence,
+  KvStorageProviderProps,
+} from './kv-storage-provider'
 export { KvStorageProvider, MutationProvider }
 export { ConfigurationStatusProvider, useConfigurationStatus }
 

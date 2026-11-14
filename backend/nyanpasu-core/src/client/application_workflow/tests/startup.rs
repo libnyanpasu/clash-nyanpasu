@@ -36,8 +36,7 @@ use nyanpasu_ipc::{
     },
     types::{ServiceStatus, StatusInfo},
 };
-use nyanpasu_migration::modules::application::ApplicationFormat;
-use nyanpasu_state_engine::{PersistentStateManager, ReplaceIfVersionResult};
+use nyanpasu_state_engine::PersistentStateManager;
 use nyanpasu_updater::PreparedCoreBinary;
 use tokio::{sync::Notify, time::Instant};
 
@@ -48,10 +47,7 @@ use super::{
         startup::{ServiceEvidence, StartupOutcome, StartupReport},
     },
     Progress, RecordingNotifications,
-    mutations::{
-        application_manager, manager, mutate_with_hints, names_overrides, overrides, settled,
-        simple_mutate, temp_path,
-    },
+    mutations::{application_manager, commit_source, manager, overrides, settled, temp_path},
     ownership,
 };
 use crate::{
@@ -69,7 +65,6 @@ use crate::{
         runtime,
         test_support::{TestCheckAnswer, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
-    state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -335,8 +330,8 @@ pub(super) struct Graph {
     service: ServiceClient,
     pub(super) core: CoreClient,
     log: Log,
-    application: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
-    pub(super) clash: PersistentStateManager<ClashConfig>,
+    application: crate::client::application::ApplicationClient,
+    pub(super) clash: crate::client::clash_config::ClashConfigClient,
     ports: Arc<SessionPortResolver>,
     notifications: Arc<RecordingNotifications>,
     /// The workflow's shutdown token.
@@ -394,7 +389,8 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         },
     )
     .await;
-    let clash = manager(temp_path(&dir, "clash-config.yaml"), setup.clash).await;
+    let clash =
+        super::mutations::clash_manager(temp_path(&dir, "clash-config.yaml"), setup.clash).await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
     let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
         dir.path(),
@@ -409,32 +405,50 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         paths,
     ));
     let shutdown = tokio_util::sync::CancellationToken::new();
+    let tasks = tokio_util::task::TaskTracker::new();
+    let revisions = crate::client::runtime::RuntimeRevisionAllocator::new();
+    let content_lock = crate::state::mutation::ProfileContentLock::default();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            revisions: crate::client::runtime::RuntimeRevisionAllocator::new(),
+            revisions: revisions.clone(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
-            content_lock: crate::state::mutation::ProfileContentLock::default(),
+            content_lock: content_lock.clone(),
             core: match setup.handoff_budget {
                 Some(budget) => core.clone().impatient(budget),
                 None => core.clone(),
             },
             service: service.clone(),
-            builder,
-            validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
+            builder: builder.clone(),
             ports: ports.clone(),
             installer: Arc::new(Installer::succeeding()),
             ownership: Ownership::Unproven,
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
-            tasks: tokio_util::task::TaskTracker::new(),
+            tasks: tasks.clone(),
         },
         setup.schedule_ticks,
     )
     .await
     .unwrap();
+    let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> = Arc::new(
+        super::super::check::CandidateCheck::new(super::super::check::Args {
+            application: application.snapshot_handle(),
+            clash: clash.snapshot_handle(),
+            profiles: profiles.snapshot_handle(),
+            content_lock,
+            builder,
+            ports: ports.clone(),
+            revisions,
+            validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
+            workflow: client.clone(),
+        }),
+    );
+    let application =
+        super::mutations::application_owner(application, gate.clone(), &shutdown, &tasks).await;
+    let clash = super::mutations::clash_owner(clash, gate, &shutdown, &tasks).await;
     Graph {
         client,
         local,
@@ -532,19 +546,12 @@ impl Graph {
 
     /// Saves service mode the way a user does while the core is stopped.
     async fn save_service_mode(&mut self) {
-        let mut desired = self.application.snapshot().as_ref().clone();
+        let mut desired = self.application.snapshot().state;
         desired.enable_service_mode = true;
-        let (id, result) = simple_mutate(
-            &mut self.application,
-            &self.client,
-            desired,
-            CommandClass::ExplicitSwitch,
-        )
-        .await;
-        assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+        let id = commit_source(&self.application, desired).await.unwrap();
         assert_eq!(
-            settled(&self.client, id).await.outcome,
-            MutationOutcomeKind::SavedInactive
+            settled(&self.client, id).await.conclusion.label(),
+            "Inactive"
         );
     }
 }
@@ -834,7 +841,7 @@ async fn a_service_start_without_a_ready_daemon_runs_the_core_locally() {
 /// follows it without converging anything.
 #[tokio::test]
 async fn a_save_while_falling_back_stays_local_until_the_service_is_seen_ready() {
-    let mut g = graph(Setup {
+    let g = graph(Setup {
         service_mode: true,
         ..Setup::default()
     })
@@ -842,19 +849,10 @@ async fn a_save_while_falling_back_stays_local_until_the_service_is_seen_ready()
     assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
     *g.daemon.state.lock().unwrap() = DaemonState::Running;
 
-    let (id, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::Applied
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
     assert_eq!(g.host(), ExecutionHost::Local);
     assert_eq!(g.log(), ["local:reconcile", "local:reconcile"]);
     assert_eq!(g.daemon.converged(), 0);
@@ -879,7 +877,7 @@ async fn a_save_while_falling_back_stays_local_until_the_service_is_seen_ready()
 /// host. It is tried again only once its readiness changes, never on a save.
 #[tokio::test]
 async fn a_ready_service_that_fails_to_run_the_core_falls_back_locally() {
-    let mut g = graph(Setup {
+    let g = graph(Setup {
         service_mode: true,
         daemon: DaemonState::Running,
         ..Setup::default()
@@ -898,18 +896,10 @@ async fn a_ready_service_that_fails_to_run_the_core_falls_back_locally() {
     assert_eq!(g.log().last().map(String::as_str), Some("local:reconcile"));
 
     g.service_host.delegate.set_rolls_back(false);
-    let (id, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::Applied
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
     assert_eq!(g.host(), ExecutionHost::Local);
 
     // The daemon restarts. Both probes land before the workflow reads either,
@@ -979,7 +969,7 @@ async fn a_daemon_that_turns_unreadable_before_adoption_starts_nothing_locally()
 /// where it runs. A save then stays on the Service host it is on.
 #[tokio::test]
 async fn an_unreadable_probe_keeps_the_core_on_the_service_host() {
-    let mut g = graph(Setup {
+    let g = graph(Setup {
         service_mode: true,
         daemon: DaemonState::Running,
         ..Setup::default()
@@ -993,19 +983,10 @@ async fn an_unreadable_probe_keeps_the_core_on_the_service_host() {
         g.service.probe().await.unwrap().phase,
         ServicePhase::Unknown
     );
-    let (id, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::Applied
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
     assert_eq!(g.host(), ExecutionHost::Service);
     assert_eq!(
         g.log().last().map(String::as_str),
@@ -1117,7 +1098,7 @@ async fn a_transient_start_failure_retries_on_the_budget_schedule() {
 /// and which reopens the target with a fresh budget.
 #[tokio::test]
 async fn a_deterministic_start_failure_blocks_until_a_new_target_is_saved() {
-    let mut g = graph(Setup::default()).await;
+    let g = graph(Setup::default()).await;
     g.local.delegate.set_failure(Some("config_check_failed"));
 
     let report = g.start().await;
@@ -1130,18 +1111,10 @@ async fn a_deterministic_start_failure_blocks_until_a_new_target_is_saved() {
     assert!(g.local.delegate.reconciled_bytes().is_empty());
 
     g.local.delegate.set_failure(None);
-    let (id, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::SavedInactive
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Inactive");
     let reopened = g.target();
     assert_ne!(reopened.identity, blocked.identity);
     assert_eq!(
@@ -1166,25 +1139,18 @@ async fn a_deterministic_start_failure_blocks_until_a_new_target_is_saved() {
 /// budget it has, a spent budget stays spent, and only a different identity
 /// opens a fresh one.
 #[tokio::test]
-async fn a_stopped_save_reschedules_an_open_target_by_its_identity() {
-    let mut g = graph(Setup::default()).await;
+async fn a_stopped_save_keeps_an_open_target_until_its_inputs_change() {
+    let g = graph(Setup::default()).await;
     g.local.delegate.set_failure(Some("queue_full"));
     g.start().await;
     let scheduled = g.target();
-    let same = g.clash.snapshot().as_ref().clone();
+    let same = g.clash.snapshot().state;
 
-    let (id, _) = mutate_with_hints(
-        &mut g.clash,
-        &g.client,
-        same.clone(),
-        CommandClass::Save,
-        names_overrides(),
-    )
-    .await;
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::SavedInactive
-    );
+    let before = g.client.0.reconciler.borrow().seq;
+    let checks = g.local.delegate.checked().len();
+    commit_source(&g.clash, same.clone()).await.unwrap();
+    assert_eq!(g.client.0.reconciler.borrow().seq, before);
+    assert_eq!(g.local.delegate.checked().len(), checks);
     let rescheduled = g.target();
     assert_eq!(rescheduled.identity, scheduled.identity);
     assert_eq!(
@@ -1192,21 +1158,14 @@ async fn a_stopped_save_reschedules_an_open_target_by_its_identity() {
         (scheduled.attempts_remaining, scheduled.attempts),
         "nothing is refilled"
     );
-    assert!(rescheduled.next_attempt.unwrap() < scheduled.next_attempt.unwrap());
+    assert_eq!(rescheduled.next_attempt, scheduled.next_attempt);
 
     for _ in 0..DEFERRED_RETRY_BUDGET {
         g.retry_when_due().await;
     }
     let spent = g.target();
     assert_eq!((spent.attempts_remaining, spent.next_attempt), (0, None));
-    let (id, _) = mutate_with_hints(
-        &mut g.clash,
-        &g.client,
-        same,
-        CommandClass::Save,
-        names_overrides(),
-    )
-    .await;
+    let id = commit_source(&g.clash, same).await.unwrap();
     settled(&g.client, id).await;
     let unchanged = g.target();
     assert_eq!(
@@ -1215,13 +1174,9 @@ async fn a_stopped_save_reschedules_an_open_target_by_its_identity() {
         "a spent budget stays spent"
     );
 
-    let (id, _) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
     settled(&g.client, id).await;
     let fresh = g.target();
     assert_ne!(fresh.identity, spent.identity);
@@ -1366,7 +1321,7 @@ async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated
 /// applied rather than saved inactive.
 #[tokio::test]
 async fn an_explicit_start_after_a_user_stop_starts_the_core_on_either_path() {
-    let mut g = graph(Setup::default()).await;
+    let g = graph(Setup::default()).await;
     g.start().await;
     g.client.stop_core().await.unwrap();
 
@@ -1380,19 +1335,12 @@ async fn an_explicit_start_after_a_user_stop_starts_the_core_on_either_path() {
         g.local.delegate.status().await.unwrap().state,
         Some(CoreStateDetail::Running { .. })
     ));
-    let (id, _) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::Applied
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
 
-    let mut g = graph(Setup {
+    let g = graph(Setup {
         daemon: DaemonState::Running,
         ..Setup::default()
     })
@@ -1412,17 +1360,10 @@ async fn an_explicit_start_after_a_user_stop_starts_the_core_on_either_path() {
             host: ExecutionHost::Local
         }
     );
-    let (id, _) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::Applied
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
 }
 
 /// R21: a first StartupReconcile that an isolated domain refuses still
@@ -1471,7 +1412,7 @@ async fn a_refused_first_startup_publishes_once_unless_the_application_is_closin
 #[tokio::test]
 async fn recovery_keeps_a_running_owner_only_when_it_runs_the_committed_target() {
     for outstanding in [true, false] {
-        let mut g = graph(Setup {
+        let g = graph(Setup {
             command_timeout: Duration::from_millis(50),
             ..Setup::default()
         })
@@ -1480,18 +1421,10 @@ async fn recovery_keeps_a_running_owner_only_when_it_runs_the_committed_target()
         if outstanding {
             // Committed, deferred, and never applied: the core refused it.
             g.local.delegate.set_failure(Some("queue_full"));
-            let (id, result) = simple_mutate(
-                &mut g.clash,
-                &g.client,
-                overrides(serde_json::json!({"mode": "global"})),
-                CommandClass::Save,
-            )
-            .await;
-            assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-            assert_eq!(
-                settled(&g.client, id).await.outcome,
-                MutationOutcomeKind::Deferred
-            );
+            let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+                .await
+                .unwrap();
+            assert_eq!(settled(&g.client, id).await.conclusion.label(), "Waiting");
             g.local.delegate.set_failure(None);
         }
         // A lifecycle command whose helper outlives its bound isolates the
@@ -1615,19 +1548,11 @@ async fn a_dependency_wait_on_a_spent_budget_blocks_at_once() {
 /// the stopped core saves it inactive, and startup applies what is committed.
 #[tokio::test]
 async fn a_save_committed_before_startup_is_what_startup_applies() {
-    let mut g = graph(Setup::default()).await;
-    let (id, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::SavedInactive
-    );
+    let g = graph(Setup::default()).await;
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Inactive");
     assert!(g.log().is_empty());
 
     assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
@@ -1869,7 +1794,7 @@ async fn an_explicit_start_re_establishes_an_owner_for_the_host_now_asked_for() 
 /// nothing, even over a host frame that still says the core runs.
 #[tokio::test]
 async fn a_save_while_stopped_keeps_the_stop_and_starts_nothing() {
-    let mut g = graph(Setup::default()).await;
+    let g = graph(Setup::default()).await;
     g.start().await;
     g.client.stop_core().await.unwrap();
     g.local.delegate.set_status(
@@ -1877,19 +1802,10 @@ async fn a_save_while_stopped_keeps_the_stop_and_starts_nothing() {
         Some(CoreKind::Mihomo),
     );
 
-    let (id, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&g.client, id).await.outcome,
-        MutationOutcomeKind::SavedInactive
-    );
+    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+        .await
+        .unwrap();
+    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Inactive");
     assert_eq!(g.log(), ["local:reconcile", "local:stop"]);
     assert!(g.no_target());
 }

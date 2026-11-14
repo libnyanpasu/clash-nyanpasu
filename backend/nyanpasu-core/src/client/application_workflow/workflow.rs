@@ -24,9 +24,6 @@ pub(super) struct ApplicationWorkflow {
     pub notifications: Arc<dyn crate::client::effects::ports::CommitNotifications>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
-    /// The core's own verdict on a candidate document, asked before the Try
-    /// submits it. An absent answer is never a passing one.
-    pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
     pub lifecycle: CoreLifecycleWorkflow,
     /// A committed desired value the core is not running.
     pub deferred: Option<DeferredTarget>,

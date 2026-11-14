@@ -335,21 +335,9 @@ mod tests {
     fn receipt_for(candidate: CandidatePortBindings) -> RuntimeApplyReceipt {
         RuntimeApplyReceipt {
             revision: crate::client::runtime::tests::test_revision(),
-            config_text: std::sync::Arc::from("mode: rule\n"),
-            config_digest: "digest".into(),
             target_core: nyanpasu_config::application::ClashCore::Mihomo,
-            core_spec: nyanpasu_core_manager::CoreSpec {
-                kind: nyanpasu_core_manager::CoreKind::Mihomo,
-                binary_path: camino::Utf8PathBuf::from("fake-core"),
-                version: None,
-                features: Vec::new(),
-            },
             host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
-            local_ipc: nyanpasu_core_manager::LocalIpcSettings {
-                policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                keep_http_controller: true,
-            },
             binding: crate::actor_v2::facade::AppliedConfigBinding {
                 revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                     epoch: 1,

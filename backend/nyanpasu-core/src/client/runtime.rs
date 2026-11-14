@@ -652,21 +652,9 @@ pub(crate) mod tests {
     pub(super) fn receipt(revision: u64) -> RuntimeApplyReceipt {
         RuntimeApplyReceipt {
             revision: RuntimeRevision(revision),
-            config_text: Arc::from("mode: rule\n"),
-            config_digest: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
             target_core: ClashCore::default(),
-            core_spec: nyanpasu_core_manager::CoreSpec {
-                kind: nyanpasu_core_manager::CoreKind::Mihomo,
-                binary_path: camino::Utf8PathBuf::from("fake-core"),
-                version: None,
-                features: Vec::new(),
-            },
             host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
             run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
-            local_ipc: nyanpasu_core_manager::LocalIpcSettings {
-                policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                keep_http_controller: true,
-            },
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
                 .resolve_candidate(&crate::client::test_support::test_clash_config())

@@ -2,30 +2,14 @@
 //! nothing new, lets the running operation reach its own end, and only then
 //! stops the core and itself (X2–X4, V16).
 
-use std::{
-    sync::{Arc, atomic::Ordering},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use nyanpasu_config::application::ClashCore;
-use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::ReplaceIfVersionResult;
-use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    WaitScript,
-    mutations::{
-        Rejector, app_with_core, fixture, mutate, no_local_write, overrides, parked_local_write,
-        plain, refused, scripted_fixture, settled, simple_mutate,
-    },
-};
-use crate::state::mutation::{intent::CommandClass, value::MutationConclusion};
+use super::mutations::fixture;
 
 /// Long enough that only a stuck operation reaches it.
 const SETTLE: Duration = Duration::from_secs(5);
-/// How long a test lets the shutdown wait run while an operation is held.
-const CUT_SHORT: Duration = Duration::from_millis(50);
 
 /// Cancels the workflow's token, as the root shutdown does.
 fn request_shutdown(shutdown: &CancellationToken, tasks: &TaskTracker) {
@@ -50,202 +34,292 @@ async fn the_shutdown_refuses_new_work_and_stops_the_core_once() {
     assert_eq!(f.endpoint.submissions(), submitted + 1, "one stop");
 }
 
-/// X2 (V16): a Try in flight is never cut short. The core stops only once it
-/// confirmed.
-#[tokio::test]
-async fn the_shutdown_during_a_try_waits_for_it_to_confirm() {
-    let f = fixture().await;
-    let submitted = f.endpoint.submissions();
-    f.builder.park.store(true, Ordering::SeqCst);
-    let operation_id = OperationId::generate();
-    let mutation = {
-        let client = f.client.clone();
-        let mut clash = f.clash;
-        tokio::spawn(async move {
-            mutate(
-                &mut clash,
-                &client,
-                operation_id,
-                overrides(serde_json::json!({"mode": "global"})),
-                CommandClass::Save,
-                plain(),
-                no_local_write,
-            )
-            .await
-        })
-    };
-    f.builder.entered.notified().await;
-
-    request_shutdown(&f.shutdown, &f.tasks);
-    assert!(
-        !stopped_within(&f.tasks, CUT_SHORT).await,
-        "the Try still runs"
-    );
-    assert_eq!(
-        f.endpoint.submissions(),
-        submitted,
-        "nothing stopped the core"
-    );
-
-    f.builder.park.store(false, Ordering::SeqCst);
-    f.builder.release.notify_one();
-    assert!(matches!(
-        mutation.await.unwrap(),
-        Ok(ReplaceIfVersionResult::Replaced)
-    ));
-    assert_eq!(
-        settled(&f.client, operation_id).await.conclusion,
-        MutationConclusion::Confirmed
-    );
-    assert!(stopped_within(&f.tasks, SETTLE).await);
-    assert_eq!(
-        f.endpoint.submissions(),
-        submitted + 2,
-        "the Try applied, then the core stopped"
-    );
-}
-
-/// X3 (V16): the shutdown keeps a transaction waiting for its decision and
-/// refuses the one queued behind it without touching its source. That one is
-/// taken, and refused, once the first has settled.
-#[tokio::test]
-async fn the_shutdown_during_await_decision_waits_for_the_decision() {
-    let f = fixture().await;
-    let submitted = f.endpoint.submissions();
-    let entered = Arc::new(Notify::new());
-    let release = Arc::new(Notify::new());
-    let operation_id = OperationId::generate();
-    let undecided = {
-        let client = f.client.clone();
-        let mut clash = f.clash;
-        let (entered, release) = (entered.clone(), release.clone());
-        tokio::spawn(async move {
-            mutate(
-                &mut clash,
-                &client,
-                operation_id,
-                overrides(serde_json::json!({"mode": "global"})),
-                CommandClass::Save,
-                plain(),
-                parked_local_write(entered, release),
-            )
-            .await
-        })
-    };
-    entered.notified().await;
-
-    request_shutdown(&f.shutdown, &f.tasks);
-    assert!(
-        !stopped_within(&f.tasks, CUT_SHORT).await,
-        "the decision is awaited"
-    );
-    let mut application = f.application;
-    let before = application.snapshot_handle().load().version;
-    let queued = {
-        let client = f.client.clone();
-        tokio::spawn(async move {
-            let (_, result) = simple_mutate(
-                &mut application,
-                &client,
-                app_with_core(ClashCore::ClashRs),
-                CommandClass::ExplicitSwitch,
-            )
-            .await;
-            (application, result)
-        })
-    };
-    assert_eq!(
-        f.endpoint.submissions(),
-        submitted + 1,
-        "the Try applied once, and nothing stopped the core yet"
-    );
-
-    release.notify_one();
-    assert!(matches!(
-        undecided.await.unwrap(),
-        Ok(ReplaceIfVersionResult::Replaced)
-    ));
-    assert_eq!(
-        settled(&f.client, operation_id).await.conclusion,
-        MutationConclusion::Confirmed,
-        "the shutdown does not destroy an undecided transaction"
-    );
-    let (application, queued) = queued.await.unwrap();
-    assert!(refused(&queued), "{queued:?}");
-    assert_eq!(application.snapshot_handle().load().version, before);
-    assert!(stopped_within(&f.tasks, SETTLE).await);
-    assert_eq!(f.endpoint.submissions(), submitted + 2, "then the stop");
-}
-
-/// X4 (V16): a Cancel runs to its real completion. Its restore is held at the
-/// core while the shutdown waits, and the baseline is back before the core
-/// stops.
-#[tokio::test]
-async fn the_shutdown_during_a_cancel_waits_for_the_restore() {
-    let mut f = scripted_fixture().await;
-    let (_, primed) = simple_mutate(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
-    let baseline = f.store.last_confirmed_runtime_receipt().unwrap();
-    let scripted = f.scripted.clone().unwrap();
-    // The Try applies; the Cancel's restore is held.
-    scripted.queue(WaitScript::Deliver);
-    scripted.queue(WaitScript::Held);
-    f.clash.add_subscriber(Box::new(Rejector));
-    let operation_id = OperationId::generate();
-    let vetoed = mutate(
-        &mut f.clash,
-        &f.client,
-        operation_id,
-        overrides(serde_json::json!({"mode": "direct"})),
-        CommandClass::Save,
-        plain(),
-        no_local_write,
-    )
-    .await;
-    assert!(refused(&vetoed), "{vetoed:?}");
-    scripted.held().await;
-
-    request_shutdown(&f.shutdown, &f.tasks);
-    assert!(
-        !stopped_within(&f.tasks, CUT_SHORT).await,
-        "the restore is awaited"
-    );
-
-    scripted.release();
-    assert!(stopped_within(&f.tasks, SETTLE).await);
-    assert_eq!(
-        settled(&f.client, operation_id).await.conclusion,
-        MutationConclusion::Cancelled
-    );
-    assert_eq!(
-        f.store
-            .last_confirmed_runtime_receipt()
-            .unwrap()
-            .config_digest,
-        baseline.config_digest,
-        "the restore finished before the core stopped"
-    );
-}
-
 /// Once every client is gone, the actor is drained and stops the core in
 /// `post_stop`, with no token cancelled.
 #[tokio::test]
 async fn an_abandoned_workflow_still_stops_the_core() {
-    let f = fixture().await;
-    let submitted = f.endpoint.submissions();
-    let actor = f.client.0.actor.get_cell();
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = crate::client::test_support::TestControlEndpoint::succeeding();
+    let submitted = endpoint.submissions();
+    let core = crate::actor_v2::CoreClient::spawn(endpoint.clone())
+        .await
+        .unwrap();
+    let daemon = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+    let service = crate::actor_v2::service_actor::ServiceClient::spawn(daemon.clone(), daemon, 0)
+        .await
+        .unwrap();
+    let (client, _, _, _) = super::workflow_graph_with_clients(
+        &dir,
+        core,
+        service,
+        false,
+        Arc::new(crate::client::SessionPortResolver::default()),
+        CancellationToken::new(),
+    )
+    .await;
+    let actor = client.0.actor.get_cell();
 
-    drop(f.client);
+    drop(client);
 
     actor
         .wait(Some(SETTLE))
         .await
         .expect("the abandoned workflow stops after its shutdown");
-    assert_eq!(f.endpoint.submissions(), submitted + 1, "one stop");
+    assert_eq!(endpoint.submissions(), submitted + 1, "one stop");
+}
+
+// Guards the handler completing a submitted application before post_stop stops the core.
+#[tokio::test]
+async fn shutdown_waits_for_an_application_already_submitted() {
+    use futures_util::FutureExt as _;
+    use nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, scripted) =
+        super::commit_first::client_with_scripted_endpoint(&dir).await;
+    scripted.queue(super::WaitScript::Held);
+    let applying = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_runtime_overrides(ClashGuardOverridesPatch {
+                    ipv6: Some(true),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    scripted.held().await;
+    let submitted = endpoint.submissions();
+    client.request_shutdown();
+    assert!(client.wait_shutdown().now_or_never().is_none());
+    assert_eq!(
+        endpoint.submissions(),
+        submitted,
+        "shutdown awaits the application"
+    );
+    scripted.release();
+    applying.await.unwrap().unwrap();
+    client.wait_shutdown().await;
+    assert_eq!(endpoint.reconciled_bytes().len(), 1);
+    assert_eq!(
+        endpoint.submissions(),
+        submitted + 1,
+        "the core stops after applying"
+    );
+}
+
+struct HeldCheck {
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    rejection: Option<Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>>,
+}
+
+#[async_trait::async_trait]
+impl crate::state::mutation::ports::RuntimeGate for HeldCheck {
+    async fn check(
+        &self,
+        _: crate::state::mutation::ports::RuntimeCandidate,
+    ) -> Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        self.rejection.clone().map_or(Ok(()), Err)
+    }
+
+    fn committed(
+        &self,
+        _: nyanpasu_runtime_values::mutation::ConfigDomain,
+        _: nyanpasu_state_engine::Version,
+    ) {
+    }
+}
+
+// Guards owner-started checking and persistence finishing even when shutdown begins during checking.
+#[tokio::test]
+async fn shutdown_finishes_an_admitted_source_and_refuses_a_queued_source() {
+    use crate::state::config_error::ConfigError;
+    use futures_util::FutureExt as _;
+    use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
+
+    let dir = tempfile::tempdir().unwrap();
+    let gate = Arc::new(HeldCheck {
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+        rejection: None,
+    });
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    let manager = super::mutations::application_manager(
+        super::mutations::temp_path(&dir, "application.yaml"),
+        NyanpasuAppConfig::default(),
+    )
+    .await;
+    let application =
+        super::mutations::application_owner(manager, gate.clone(), &shutdown, &tasks).await;
+    let enabled = !application.snapshot().state.enable_builtin_enhanced;
+    let saving = tokio::spawn({
+        let application = application.clone();
+        async move {
+            application
+                .patch(NyanpasuAppConfigPatch {
+                    enable_builtin_enhanced: Some(enabled),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    gate.entered.notified().await;
+    let mut queued = Box::pin(application.patch(NyanpasuAppConfigPatch {
+        enable_silent_start: Some(!application.snapshot().state.enable_silent_start),
+        ..Default::default()
+    }));
+    assert!(queued.as_mut().now_or_never().is_none());
+    request_shutdown(&shutdown, &tasks);
+    assert!(tasks.wait().now_or_never().is_none());
+    gate.release.notify_one();
+    let saved = saving.await.unwrap().unwrap();
+    assert_eq!(
+        application.snapshot().state.enable_builtin_enhanced,
+        enabled
+    );
+    assert!(matches!(
+        queued.await,
+        Err(ConfigError::ShuttingDown { .. } | ConfigError::OwnerStopped { .. })
+    ));
+    tasks.wait().await;
+    assert_eq!(
+        application.snapshot().version,
+        saved.version,
+        "queued work never commits"
+    );
+}
+
+// Guards refusal before persistence: shutdown never creates a runtime compensation to wait for.
+#[tokio::test]
+async fn shutdown_keeps_a_refused_source_unchanged() {
+    use crate::state::config_error::ConfigError;
+    use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
+    use nyanpasu_runtime_values::{
+        mutation::{CommitAborted, RuntimeAftermath},
+        runtime_error::RuntimeError,
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = super::mutations::temp_path(&dir, "application.yaml");
+    let manager =
+        super::mutations::application_manager(path.clone(), NyanpasuAppConfig::default()).await;
+    let bytes = std::fs::read(&path).ok();
+    let gate = Arc::new(HeldCheck {
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+        rejection: Some(Arc::new(RuntimeError::ShuttingDown)),
+    });
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    let application =
+        super::mutations::application_owner(manager, gate.clone(), &shutdown, &tasks).await;
+    let before = application.snapshot();
+    let saving = tokio::spawn({
+        let application = application.clone();
+        async move {
+            application
+                .patch(NyanpasuAppConfigPatch {
+                    enable_builtin_enhanced: Some(!before.state.enable_builtin_enhanced),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    gate.entered.notified().await;
+    request_shutdown(&shutdown, &tasks);
+    gate.release.notify_one();
+    assert!(matches!(
+        saving.await.unwrap(),
+        Err(ConfigError::Commit {
+            source: CommitAborted::RuntimeRefused {
+                runtime: RuntimeAftermath::Untouched,
+                ..
+            },
+            ..
+        })
+    ));
+    tasks.wait().await;
+    assert_eq!(application.snapshot().version, before.version);
+    assert_eq!(std::fs::read(path).ok(), bytes);
+}
+
+// Guards SourceCommitted publishing Closed for a version already committed behind another application.
+#[tokio::test]
+async fn shutdown_reports_closed_for_a_committed_change_waiting_to_apply() {
+    use nyanpasu_config::{
+        application::NyanpasuAppConfigPatch, clash::config::overrides::ClashGuardOverridesPatch,
+    };
+    use nyanpasu_runtime_values::runtime::RuntimeCommitStatus;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, scripted) =
+        super::commit_first::client_with_scripted_endpoint(&dir).await;
+    scripted.queue(super::WaitScript::Held);
+    let applying = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_runtime_overrides(ClashGuardOverridesPatch {
+                    ipv6: Some(true),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    scripted.held().await;
+    let enabled = !client
+        .inner
+        .application
+        .snapshot()
+        .state
+        .enable_builtin_enhanced;
+    let mut changes = client.inner.application.subscribe_settings_changes();
+    changes.borrow_and_update();
+    let saving = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_app_config(NyanpasuAppConfigPatch {
+                    enable_builtin_enhanced: Some(enabled),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    changes.changed().await.unwrap();
+    let committed = client.inner.application.snapshot();
+    client.request_shutdown();
+    scripted.release();
+    applying.await.unwrap().unwrap();
+    let outcome = saving.await.unwrap().unwrap();
+    assert_eq!(
+        super::commit_first::receipt(&outcome).runtime,
+        RuntimeCommitStatus::RecoveryRequired
+    );
+    assert!(matches!(&outcome.degradations()[0].reason,
+        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { cause: Some(cause), .. }
+        if matches!(cause.as_ref(), nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)));
+    client.wait_shutdown().await;
+    assert_eq!(
+        client.inner.application.snapshot().version,
+        committed.version
+    );
+    assert_eq!(
+        client
+            .get_app_config()
+            .await
+            .unwrap()
+            .enable_builtin_enhanced,
+        enabled
+    );
+    assert_eq!(
+        endpoint.reconciled_bytes().len(),
+        1,
+        "the queued target was not applied"
+    );
 }

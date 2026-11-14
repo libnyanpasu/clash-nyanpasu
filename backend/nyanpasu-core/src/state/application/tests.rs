@@ -10,10 +10,7 @@ use nyanpasu_runtime_values::{
     mutation::{CommitAborted, ConfigDomain, RuntimeAftermath},
     runtime_error::{CoreRejectedConfigSnafu, RuntimeError},
 };
-use nyanpasu_state_engine::{
-    DecisionHandle, PersistentStateManagerSetup, StateParticipant, StateSnapshot, Version,
-};
-use tokio::sync::oneshot;
+use nyanpasu_state_engine::{PersistentStateManagerSetup, StateSnapshot, Version};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
@@ -28,9 +25,7 @@ use crate::{
         config_error::ConfigError,
         mutation::{
             MutationCoordinator,
-            intent::MutationIntent,
-            ports::{MutationParticipantFactory, RuntimeCandidate, RuntimeGate},
-            value::MutationReceipt,
+            ports::{RuntimeCandidate, RuntimeGate},
         },
     },
 };
@@ -114,17 +109,7 @@ impl CommitNotifications for Notifications {
         panic!("a source cannot publish sibling snapshots")
     }
 }
-struct NoParticipant;
-impl MutationParticipantFactory<NyanpasuAppConfig> for NoParticipant {
-    fn make(
-        &self,
-        _: MutationIntent,
-        _: DecisionHandle,
-        _: oneshot::Sender<MutationReceipt>,
-    ) -> StateParticipant<NyanpasuAppConfig> {
-        panic!("application commits do not enlist a runtime participant")
-    }
-}
+
 struct Fixture {
     client: ApplicationClient,
     path: Utf8PathBuf,
@@ -161,7 +146,6 @@ async fn fixture(rejection: Option<Arc<RuntimeError>>) -> Fixture {
         fail_write: Default::default(),
     });
     coordinator.connect(
-        Arc::new(NoParticipant),
         Arc::new(Notifications {
             events: events.clone(),
             path: path.clone(),

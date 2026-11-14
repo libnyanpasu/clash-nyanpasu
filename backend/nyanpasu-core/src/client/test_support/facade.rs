@@ -76,9 +76,7 @@ pub(crate) async fn test_client_from_typed_clients(
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
-    clash_mutations: Option<
-        crate::state::mutation::MutationCoordinator<nyanpasu_config::clash::config::ClashConfig>,
-    >,
+    clash_mutations: Option<crate::state::mutation::MutationCoordinator>,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
     geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
@@ -407,15 +405,8 @@ impl crate::state::mutation::ports::RuntimeGate for SavedRuntimeGate {
     }
 }
 
-fn connect_source<T: Clone + Send + Sync + 'static>(
-    client: &NyanpasuClient,
-    mutations: crate::state::mutation::MutationCoordinator<T>,
-) where
-    crate::client::application_workflow::ApplicationWorkflowClient:
-        crate::state::mutation::ports::MutationParticipantFactory<T>,
-{
+fn connect_source(client: &NyanpasuClient, mutations: crate::state::mutation::MutationCoordinator) {
     mutations.connect(
-        Arc::new(client.inner.application_workflow.clone()),
         Arc::new(effects::ports::NoopCommitNotifications),
         Arc::new(SavedRuntimeGate(client.inner.application_workflow.clone())),
     );

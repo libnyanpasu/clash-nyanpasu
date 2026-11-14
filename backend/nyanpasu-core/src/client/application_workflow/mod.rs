@@ -1,4 +1,4 @@
-//! Runtime application, participant mutations, connection interruption, host changes,
+//! Runtime application, connection interruption, host changes,
 //! binary installation, and shutdown share one workflow mailbox.
 pub(crate) mod adapters;
 pub(super) mod check;
@@ -8,8 +8,6 @@ pub(crate) use status::{Conclusion, EngineVersions, ReconcilerStatus};
 mod attempt;
 pub mod inputs;
 pub mod mutation;
-pub(crate) mod participant;
-pub(crate) mod policy;
 pub mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
@@ -23,10 +21,9 @@ mod tests;
 use std::sync::Arc;
 
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::{Ack, StateDecision, StateSnapshot};
+use nyanpasu_state_engine::StateSnapshot;
 use nyanpasu_updater::PreparedCoreBinary;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
-use snafu::OptionExt;
 use tokio::sync::{broadcast, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -36,25 +33,21 @@ use super::{
         ServiceRecovery,
     },
     runtime,
-    runtime_error::ack_of,
 };
 #[cfg(test)]
 use crate::actor_v2::HandoffReport;
-use crate::{
-    actor_v2::{
-        CoreClient, CoreStatusProjection,
-        facade::{CoreFacade, ReconcileReport, StopReport},
-        service_actor::ServiceClient,
-    },
-    state::mutation::value::MutationReceipt,
+use crate::actor_v2::{
+    CoreClient, CoreStatusProjection,
+    facade::{CoreFacade, ReconcileReport, StopReport},
+    service_actor::ServiceClient,
 };
-use mutation::{MutationJournal, MutationRequest};
+use mutation::{MutationJournal, RoundRecord};
 use nyanpasu_contracts::core_install::BinaryInstaller;
 #[cfg(test)]
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use nyanpasu_runtime_values::{
     core_status::ServiceHostStatus,
-    runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError},
+    runtime_error::{OwnerUnresponsiveSnafu, RuntimeError},
 };
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
@@ -75,10 +68,7 @@ pub struct CoreLifecycleStatus {
     pub uncertain: bool,
 }
 
-/// Work serialized by the execution domain. A source mutation is not one of
-/// these: it arrives as `BeginMutation`, a participant of its owning domain's
-/// transaction, so the workflow never becomes a second commit point for a
-/// configuration domain.
+/// Work serialized by the execution domain.
 pub(super) enum Command {
     /// Proves who owns the runtime and applies the committed configuration,
     /// once per session (T10 §1).
@@ -129,9 +119,6 @@ enum Message {
         domain: nyanpasu_runtime_values::mutation::ConfigDomain,
         version: nyanpasu_state_engine::Version,
     },
-    /// A mutation's Try, sent during the source transaction's prepare. A
-    /// refusal at entry refuses the whole mutation.
-    BeginMutation(Box<MutationRequest>),
     RecoveryTick,
     /// The daemon became ready, a new daemon became ready, or it stopped
     /// being ready. The handler reads the current status itself.
@@ -206,7 +193,6 @@ pub(super) struct ApplicationWorkflowArgs {
     pub core: CoreClient,
     pub service: ServiceClient,
     pub builder: Arc<dyn RuntimeBuildPort>,
-    pub validator: Arc<dyn ports::RuntimeValidatorPort>,
     /// The session port resolver: the preparation resolves candidates from it
     /// and the core lifecycle confirms or invalidates the binding.
     pub ports: Arc<super::SessionPortResolver>,
@@ -262,40 +248,6 @@ impl ApplicationWorkflowState {
         }
     }
 
-    /// Admission (v2 §5.2 step 2, §4.4, R4).
-    ///
-    /// Every refusal here happens before the candidate is persisted, so the
-    /// source store keeps the version it has and the runtime is untouched. This
-    /// is the whole point of putting admission inside `on_prepare`: a workflow
-    /// that is closing or isolated refuses the mutation rather than refusing
-    /// to apply one that is already committed.
-    async fn begin_mutation(&mut self, mut request: MutationRequest) {
-        let refusal = if self.closing() {
-            Some(RuntimeError::ShuttingDown)
-        } else if self.workflow.isolated() {
-            Some(RuntimeError::Isolated)
-        } else if request.decision.decision() != StateDecision::Undecided {
-            Some(RuntimeError::SourceSettled)
-        } else {
-            None
-        };
-        if let Some(refusal) = refusal {
-            request.answer(Ack::Rejected(ack_of(Arc::new(refusal))));
-            return;
-        }
-        // The caller is the source transaction, answered with the Try's
-        // verdict during prepare; the receipt goes back to its owner once the
-        // attempt has settled.
-        let id = request.operation_id;
-        let settle = request.settle.take();
-        self.start(id);
-        let receipt = self.workflow.run_mutation(request).await;
-        self.record(Some(receipt.clone()));
-        if let Some(settle) = settle {
-            let _ = settle.send(receipt);
-        }
-    }
-
     /// Runs one admitted command to its end. The mailbox is the only queue:
     /// the next command starts once this one has settled.
     async fn run(&mut self, command: Command, response: Response) {
@@ -307,8 +259,18 @@ impl ApplicationWorkflowState {
             _ => None,
         };
         self.workflow.sampled = None;
+        let trigger = match &command {
+            Command::StartupReconcile if self.workflow.startup.is_none() => Some("Startup"),
+            Command::Core(CoreCommand::Reconcile) => Some("Start"),
+            Command::Core(CoreCommand::ReplaceCoreBinary(_)) => Some("BinaryReplaced"),
+            Command::Core(CoreCommand::RecoverServiceEndpoint) => Some("ServiceRecovery"),
+            Command::RetryRuntime { .. } => Some("RetryRuntime"),
+            Command::FollowService => Some("ServiceReadiness"),
+            _ => None,
+        };
         let result = self.workflow.execute(response.id, command).await;
-        if let Some(seen) = self.workflow.sampled.take() {
+        let seen = self.workflow.sampled.take();
+        if trigger.is_some() || seen.is_some() {
             let conclusion = if self.workflow.isolated() {
                 Conclusion::Unknown {
                     cause: Arc::new(RuntimeError::Isolated),
@@ -336,15 +298,20 @@ impl ApplicationWorkflowState {
             } else {
                 Conclusion::Converged
             };
-            self.reconciler.send_modify(|status| {
-                status.seq = status
-                    .seq
-                    .checked_add(1)
-                    .expect("reconciler sequence must not overflow");
-                status.seen = seen;
-                status.conclusion = conclusion;
-                status.degradations.clear();
-            });
+            if let Some(trigger) = trigger {
+                self.publish_journal(Some(RoundRecord::new(response.id, trigger, &conclusion)));
+            }
+            if let Some(seen) = seen {
+                self.reconciler.send_modify(|status| {
+                    status.seq = status
+                        .seq
+                        .checked_add(1)
+                        .expect("reconciler sequence must not overflow");
+                    status.seen = seen;
+                    status.conclusion = conclusion;
+                    status.degradations.clear();
+                });
+            }
         }
         if let Some(progress) = progress {
             let error = result.as_ref().err().map(ToString::to_string);
@@ -379,14 +346,14 @@ impl ApplicationWorkflowState {
     }
 
     /// Records that the operation finished in the status and the journal.
-    fn record(&mut self, receipt: Option<MutationReceipt>) {
+    fn record(&mut self, round: Option<RoundRecord>) {
         let uncertain = self.workflow.isolated();
         self.status.send_modify(|status| {
             status.active = None;
             status.uncertain = uncertain;
         });
         self.reconciler.send_modify(|status| status.active = None);
-        self.publish_journal(receipt);
+        self.publish_journal(round);
     }
 
     /// Moves the core to the host the rule resolves to now, if it sits on
@@ -453,7 +420,7 @@ impl ApplicationWorkflowState {
         });
     }
 
-    fn publish_journal(&mut self, receipt: Option<MutationReceipt>) {
+    fn publish_journal(&mut self, round: Option<RoundRecord>) {
         let workflow = &self.workflow;
         let view = {
             let status = self.status.borrow();
@@ -473,16 +440,16 @@ impl ApplicationWorkflowState {
                 }),
             }
         };
-        let changed = receipt.is_some() || view != self.published;
+        let changed = round.is_some() || view != self.published;
         self.journal.send_if_modified(|journal| {
             if changed {
                 journal.event_seq += 1;
             }
-            if let Some(receipt) = receipt {
+            if let Some(round) = round {
                 if journal.completed.len() == HISTORY_LEN {
                     journal.completed.pop_front();
                 }
-                journal.completed.push_back(receipt);
+                journal.completed.push_back(round);
             }
             journal.recovery = workflow.recovery_view();
             journal.deferred = workflow.deferred.clone();
@@ -549,10 +516,6 @@ impl Actor for ApplicationWorkflowActor {
             }
             Message::Request(request) => {
                 state.request(request).await;
-                state.follow_service().await;
-            }
-            Message::BeginMutation(request) => {
-                state.begin_mutation(*request).await;
                 state.follow_service().await;
             }
             Message::RecoveryTick => {
@@ -705,7 +668,6 @@ impl ApplicationWorkflowClient {
             notifications: args.notifications,
             clash: args.clash,
             preparation,
-            validator: args.validator,
             deferred: None,
             pending_product: None,
             pending_release: None,
@@ -880,29 +842,13 @@ impl ApplicationWorkflowClient {
         self.0.status.borrow().clone()
     }
 
-    /// Hands the workflow one mutation's Try. The verdict comes back on the
-    /// request's own channel, so the caller — the source transaction's prepare
-    /// — is the only thing waiting for it.
-    pub(in crate::client) fn begin_mutation(
-        &self,
-        request: MutationRequest,
-    ) -> Result<(), RuntimeError> {
-        self.0
-            .actor
-            .cast(Message::BeginMutation(Box::new(request)))
-            .ok()
-            .context(OwnerUnavailableSnafu)
-    }
-
     /// The status watch, for a test that has to see closing begin.
     #[cfg(test)]
     pub(in crate::client) fn subscribe_status(&self) -> watch::Receiver<CoreLifecycleStatus> {
         self.0.status.clone()
     }
 
-    /// The structured record of recent mutations, what is deferred and why the
-    /// execution domain is isolated. Diagnostics: control logic reads these
-    /// values, never the text of an ACK.
+    /// Recent reconcile rounds, deferred targets, and execution-domain recovery diagnostics.
     pub(in crate::client) fn mutation_journal(&self) -> MutationJournal {
         self.0.mutations.borrow().clone()
     }

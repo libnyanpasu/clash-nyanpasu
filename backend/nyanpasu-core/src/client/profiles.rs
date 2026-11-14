@@ -111,7 +111,7 @@ impl ProfilesClient {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn new_with_jobs(
-        mutations: MutationCoordinator<Profiles>,
+        mutations: MutationCoordinator,
         content_lock: ProfileContentLock,
         profiles_path: Utf8PathBuf,
         jobs: nyanpasu_jobs::JobsClient,
@@ -224,7 +224,7 @@ impl ProfilesClient {
 
     #[cfg(any(test, feature = "test-support"))]
     pub async fn new(
-        mutations: MutationCoordinator<Profiles>,
+        mutations: MutationCoordinator,
         profiles_path: Utf8PathBuf,
         fs: Arc<dyn ProfileFsPort>,
         fetcher: Arc<dyn SubscriptionFetcher>,
@@ -1965,7 +1965,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_definition_prepare_cleanup_failure_compensates_new_and_preserves_old() {
+    async fn replace_definition_cleanup_preparation_failure_compensates_new_and_preserves_old() {
         let mut materialization = MockProfileMaterializationPort::new();
         materialization
             .expect_reconcile()

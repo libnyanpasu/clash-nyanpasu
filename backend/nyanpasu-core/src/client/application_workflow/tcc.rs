@@ -1,45 +1,19 @@
-//! The mutation lifecycle: `Preparing → TryingCritical → AwaitDecision →
-//! Confirming | Cancelling | RecoveryRequired` (v2 图 3).
-//!
-//! All of it runs inside the workflow's single execution domain, as one command
-//! of the actor's handler. Holding the domain from the Try through the decision
-//! is what keeps the committed order and the applied order the same: the next
-//! mutation is admitted only after this one has settled, so it reads the source
-//! configuration this one committed rather than the one it replaced (v2 §5.2).
-//!
-//! Only a mutation its source classified as reaching the runtime gets here,
-//! with that impact. The phases compose the pure services rather than
-//! restating them: `policy` decides what the command may do and whether a
-//! failure may still commit, the validator port asks the core about the
-//! candidate, and `runtime_recovery` decides whether a restore actually
-//! landed.
-
+//! Applying committed runtime targets and recovering interrupted attempts.
 use std::sync::Arc;
 
-use nyanpasu_core_manager::{CoreError, CoreErrorKind, CoreSpec};
+use nyanpasu_core_manager::CoreErrorKind;
 use nyanpasu_ipc::api::status::CoreStateDetail;
-use nyanpasu_state_engine::StateDecision;
-use snafu::{IntoError, ResultExt};
+use snafu::IntoError as _;
 
 use super::{
-    attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
+    attempt::{AttemptStage, LiveAttempt},
     mutation::{
-        AppliedCandidate, ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
-        MutationRequest, MutationStage, RefusalCause, RetryableCause, RuntimePrepareOutcome,
-        TargetOrigin,
+        AppliedCandidate, ApplyOutcome, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
+        RetryableCause, TargetOrigin,
     },
-    policy::{
-        BaselineAvailability, CommandPolicy, FailureDisposition, TryCauseKind, TryFailureFacts,
-        disposition, policy_for,
-    },
-    ports::{RuntimeCheckOutcome, RuntimeCheckRequest},
     workflow::ApplicationWorkflow,
 };
 use crate::{
-    actor_v2::{
-        facade::{AppliedConfigBinding, ReconcileResult},
-        intent::RuntimeIntent,
-    },
     client::{
         convergence::{OutcomeClass, next_wait},
         core_lifecycle::{
@@ -47,231 +21,36 @@ use crate::{
             ports::{PreparedRuntime, RuntimePreparationPort},
         },
         runtime_error,
-        runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
+        runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
-    state::mutation::{
-        DomainChange, impact,
-        intent::CoreRunIntent,
-        runtime_apply::RuntimeApplyReceipt,
-        value::{CheckRecord, MutationConclusion, MutationReceipt},
-    },
+    state::mutation::intent::CoreRunIntent,
 };
 use nyanpasu_runtime_values::{
-    check::{EvidenceGap, RuntimeCheckUnavailable},
     execution_host::ExecutionHost,
-    runtime::{DegradationReason, InterruptFailure},
     runtime_error::{
-        ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
-        CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
-        HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
-        PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
-        RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
-        SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
+        ApplyRuntimeSnafu, CoreRolledBackSnafu, HandoffOwnerMismatchSnafu, MoveHostSnafu,
+        PublishRuntimeSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu, RuntimeError,
+        StopServiceSnafu, SubmissionUnobservedSnafu,
     },
 };
 
-/// What was running when the mutation took the execution domain.
+/// The observed runtime retained by an interrupted committed-target attempt.
 #[derive(Clone)]
 pub(super) struct RestorableBaseline {
-    /// Whether the host's answer settles what the core is doing.
-    ///
-    /// Only `Stopped` and `Running` do. A transition in progress
-    /// (`Starting`, `Restarting`, `Switching`, `Stopping`) is an answer but not
-    /// a settled one, and a read that failed or a host that published nothing
-    /// is not even that. None of them is a baseline a Cancel could restore, and
-    /// none of them is a stop: they are all "not decided yet", and no commit
-    /// decision may be derived from one.
     pub(super) settled: bool,
     pub(super) expected: Option<crate::actor_v2::CoreStatusProjection>,
-    /// What the host actually said, for the diagnostics only.
-    pub(super) observed: Option<CoreStateDetail>,
     pub(super) state: KnownRuntimeState,
-    /// Which host owned the runtime when this mutation took the execution
-    /// domain. A Try that moves the host has to be able to move it back.
     pub(super) host: ExecutionHost,
-    /// Whether the user wants a core running at all. Only ever `Running` on
-    /// positive evidence, so an unreadable status can never start a core.
     pub(super) run_intent: CoreRunIntent,
-    pub(super) binding: Option<AppliedConfigBinding>,
-    /// The build the confirmed receipt describes. A cancelled Try has to put
-    /// this back, because it is what the runtime inspection reports.
-    pub(super) confirmed_build: Option<Arc<crate::client::runtime::RuntimeSnapshot>>,
 }
 
 /// A built candidate and the execution host resolved from its inputs.
 pub(super) struct PreparedCandidate {
     pub(super) runtime: PreparedRuntime,
-    pub(super) spec: CoreSpec,
     pub(super) target_host: ExecutionHost,
-    pub(super) switching_on: bool,
-}
-
-/// How the decision phase ended.
-enum DecisionOutcome {
-    Committed,
-    /// Aborted, whether or not the source put its own resources back: the
-    /// runtime goes back to the committed configuration either way (U7).
-    Aborted,
 }
 
 impl ApplicationWorkflow {
-    /// One mutation, from admission to settlement.
-    pub(super) async fn run_mutation(&mut self, mut request: MutationRequest) -> MutationReceipt {
-        let operation_id = request.operation_id;
-        let domain = request.change.domain();
-        // The attempt exists before anything is read, so an interruption from
-        // here on leaves it naming this mutation and its authoritative
-        // decision. An isolated domain admits no mutation, so nothing
-        // unresolved is replaced.
-        debug_assert!(
-            self.live.is_none(),
-            "an unresolved attempt is never replaced"
-        );
-        self.live = Some(LiveAttempt::source_decision(
-            operation_id,
-            request.decision.clone(),
-        ));
-
-        let clash = match &request.change {
-            DomainChange::Clash { candidate, .. } => candidate.as_ref().clone(),
-            _ => self.clash.load().state.clone(),
-        };
-        let selection_changed = matches!(&request.change,
-            DomainChange::Profiles { previous: Some(previous), candidate }
-                if impact::selection_changed(previous, candidate));
-        let interrupt = (request.hints.mode_requested && clash.break_connection.on_mode_change)
-            || (selection_changed && clash.break_connection.on_profile_change);
-        let interruption = if interrupt {
-            Some(
-                self.lifecycle
-                    .prepare_apply(
-                        operation_id,
-                        crate::client::core_lifecycle::apply::RuntimeApplyOptions {
-                            interrupt_connections: Some(crate::connections::ConnectionScope::All),
-                        },
-                    )
-                    .await,
-            )
-        } else {
-            None
-        };
-        let impact = request.impact;
-        let inputs = self.capture_candidate(&request).await;
-        let selection = super::committed::Selection::of(&inputs);
-        let target = inputs
-            .target_key()
-            .expect("the identity of a runtime candidate serializes");
-        let baseline = self.observe_baseline().await;
-        self.record_baseline(&baseline);
-        let policy = policy_for(request.class, impact, baseline.run_intent);
-
-        let mut check = CheckRecord::NotOwed;
-        self.advance(AttemptStage::TryingCritical);
-        let outcome = match self
-            .check_candidate(policy, &baseline, Some(target), inputs, &mut check)
-            .await
-        {
-            Ok(prepared) => {
-                self.apply_prepared(policy, &baseline, prepared, AttemptCharge::None)
-                    .await
-            }
-            Err(outcome) => outcome,
-        };
-        if !matches!(
-            outcome,
-            RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)
-        ) {
-            self.lifecycle.runtime.accept_transition();
-        }
-        // Recorded before the ACK leaves: once the transaction can commit, a
-        // recovery has to know what Confirm would owe the applied Try.
-        if let RuntimePrepareOutcome::Applied(candidate) = &outcome {
-            self.record_verdict(AppliedVerdict::new(
-                candidate,
-                leaves_service_mode(&request.change),
-            ));
-        }
-        if !matches!(outcome, RuntimePrepareOutcome::RecoveryRequired(_)) {
-            self.advance(AttemptStage::AwaitDecision);
-        }
-        // The verdict leaves before anything below runs: the source transaction
-        // cannot reach its decision until it arrives, and the decision is what
-        // everything below waits for.
-        request.answer(outcome.ack());
-
-        let mut receipt = MutationReceipt {
-            degradations: Vec::new(),
-            operation_id,
-            domain,
-            check,
-            outcome: outcome.kind(),
-            conclusion: MutationConclusion::Withdrawn,
-            detail: None,
-            cause: None,
-        };
-
-        if let RuntimePrepareOutcome::RecoveryRequired(error) = outcome {
-            // The source must settle before its terminal receipt, even though
-            // the unknown runtime cannot safely be confirmed or cancelled.
-            self.await_decision(&request).await;
-            receipt.detail = Some(error.to_string());
-            receipt.conclusion = MutationConclusion::RecoveryRequired;
-            self.conclude_attempt(Some(error.to_string()));
-            receipt.cause = Some(error);
-            return receipt;
-        }
-
-        let (conclusion, detail, cause) = match self.await_decision(&request).await {
-            DecisionOutcome::Committed => {
-                self.advance(AttemptStage::Confirming);
-                let result = self
-                    .confirm(outcome, &request, interruption, &mut receipt.degradations)
-                    .await;
-                self.notify_bound(true);
-                result
-            }
-            DecisionOutcome::Aborted => {
-                self.advance(AttemptStage::Cancelling);
-                let result = self.cancel(outcome, &baseline).await;
-                self.notify_bound(false);
-                result
-            }
-        };
-        if conclusion == MutationConclusion::Confirmed
-            && receipt.outcome == crate::state::mutation::value::MutationOutcomeKind::Applied
-        {
-            self.applied_selection = Some(selection);
-        }
-        receipt.conclusion = conclusion;
-        receipt.detail = detail;
-        receipt.cause = cause;
-        if let Some(deferred) = &mut self.deferred
-            && deferred.operation_id == receipt.operation_id
-        {
-            let unserviceable = matches!(receipt.check, CheckRecord::Unserviceable(_));
-            deferred.waits = next_wait(
-                deferred.waits,
-                if unserviceable {
-                    OutcomeClass::Dependency
-                } else {
-                    OutcomeClass::Application
-                },
-            )
-            .1;
-            if unserviceable && deferred.attempts_remaining > 0 {
-                deferred.health =
-                    nyanpasu_runtime_values::configuration::ConvergenceHealth::WaitingDependency;
-                deferred.next_attempt =
-                    Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5));
-            }
-        }
-        self.conclude_attempt(
-            (receipt.conclusion == MutationConclusion::RecoveryRequired)
-                .then(|| receipt.detail.clone().unwrap_or_default()),
-        );
-        receipt
-    }
-
     pub(super) async fn publish_committed_product(
         &mut self,
         product: Arc<crate::client::runtime::RuntimeSnapshot>,
@@ -401,36 +180,19 @@ impl ApplicationWorkflow {
             automatic: !explicit,
         };
         let attempts = self.committed_target().attempts;
-        let policy = CommandPolicy::AllowDeferredWhenSafe;
-        let outcome = match self
-            .prepare_candidate(policy, &baseline, Some(identity), inputs)
-            .await
-        {
-            Ok(prepared) => {
-                self.apply_prepared(policy, &baseline, prepared, charge)
-                    .await
-            }
+        let outcome = match self.prepare_candidate(&baseline, inputs).await {
+            Ok(prepared) => self.apply_prepared(&baseline, prepared, charge).await,
             Err(outcome) => outcome,
         };
-        let waiting = matches!(
-            outcome,
-            RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    cause: RefusalCause::Evidence(_),
-                    ..
-                },
-                ..
-            }
-        );
         // A Try that reached the runtime was charged before its first action
         // was written. One that ended earlier still built the target and pays
         // here, unless all it met was a dependency.
-        if !waiting && self.committed_target().attempts == attempts {
+        if self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
         let target = self.committed_target();
         match outcome {
-            RuntimePrepareOutcome::Applied(candidate) => {
+            ApplyOutcome::Applied(candidate) => {
                 self.applied_selection = Some(selection);
                 self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
@@ -445,53 +207,31 @@ impl ApplicationWorkflow {
             }
             // The target stays inside the attempt as its charge left it:
             // recovery either puts it back so or re-establishes the runtime.
-            RuntimePrepareOutcome::RecoveryRequired(error) => {
+            ApplyOutcome::Unknown(error) => {
                 self.conclude_attempt(Some(error.to_string()));
                 return;
             }
-            RuntimePrepareOutcome::Deferred { cause, .. } => {
-                target.cause = cause;
-                target.health = if waiting {
-                    ConvergenceHealth::WaitingDependency
-                } else if target.attempts_remaining > 0 {
+            ApplyOutcome::Waiting(error) => {
+                target.cause.message = error.to_string();
+                target.health = ConvergenceHealth::Blocked;
+                target.next_attempt = None;
+            }
+            ApplyOutcome::Refused(error) => {
+                target.cause.message = error.to_string();
+                target.health = if retryable_apply(&error) && target.attempts_remaining > 0 {
                     ConvergenceHealth::RetryScheduled
                 } else {
                     ConvergenceHealth::Blocked
                 };
-                target.next_attempt = if waiting {
-                    Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5))
-                } else {
-                    (target.attempts_remaining > 0).then(|| {
+                target.next_attempt =
+                    (target.health == ConvergenceHealth::RetryScheduled).then(|| {
                         tokio::time::Instant::now()
                             + RETRY_DELAYS
                                 [RETRY_DELAYS.len() - usize::from(target.attempts_remaining)]
-                    })
-                };
-            }
-            RuntimePrepareOutcome::Rejected { cause, .. } => {
-                target.cause.message = cause.error.to_string();
-                target.health = if waiting {
-                    ConvergenceHealth::WaitingDependency
-                } else {
-                    ConvergenceHealth::Blocked
-                };
-                target.next_attempt = waiting
-                    .then(|| tokio::time::Instant::now() + std::time::Duration::from_secs(5));
-            }
-            RuntimePrepareOutcome::SavedInactive { .. } => {
-                target.health = ConvergenceHealth::WaitingDependency;
-                target.next_attempt = None;
+                    });
             }
         }
-        target.waits = next_wait(
-            target.waits,
-            if waiting {
-                OutcomeClass::Dependency
-            } else {
-                OutcomeClass::Application
-            },
-        )
-        .1;
+        target.waits = next_wait(target.waits, OutcomeClass::Application).1;
         self.conclude_attempt(None);
     }
 
@@ -534,54 +274,6 @@ impl ApplicationWorkflow {
         inputs
     }
 
-    /// Puts the runtime on `target` and proves it, for a recovery that knows
-    /// which target the attempt owed. A verified runtime is only re-recorded;
-    /// anything else is restored through the path a Cancel uses (T8).
-    pub(super) async fn restore_recovery_target(
-        &mut self,
-        target: KnownRuntimeState,
-        binding: Option<AppliedConfigBinding>,
-    ) -> Result<(), String> {
-        let observed = self
-            .lifecycle
-            .core
-            .refresh_status()
-            .await
-            .map_err(|error| error.to_string())?;
-        let baseline = RestorableBaseline {
-            expected: Some(observed.clone()), settled: true,
-            observed: observed.snapshot.as_ref().and_then(|s| s.state.clone()),
-            state: target.clone(), host: observed.host,
-            run_intent: CoreRunIntent::Running, binding,
-            confirmed_build: self.lifecycle.runtime.confirmed()
-                .filter(|record| matches!(&target, KnownRuntimeState::Applied(receipt) if record.receipt.config_digest == receipt.config_digest && record.receipt.target_core == receipt.target_core))
-                .and_then(|record| record.artifact),
-        };
-        match target {
-            KnownRuntimeState::Applied(ref receipt) => {
-                let facts = ObservedRuntime::from_status(&observed);
-                if verify_recovery_target(receipt, &facts, Some(&receipt.binding))
-                    != RecoveryVerification::Verified
-                {
-                    self.restore(&baseline)
-                        .await
-                        .map_err(|error| error.to_string())?;
-                } else {
-                    self.lifecycle
-                        .runtime
-                        .record_confirmed_apply(baseline.confirmed_build.clone(), receipt.clone());
-                }
-            }
-            KnownRuntimeState::Stopped | KnownRuntimeState::NeverApplied => {
-                if !matches!(baseline.observed, Some(CoreStateDetail::Stopped { .. })) {
-                    return Err("the stopped baseline has not been verified".into());
-                }
-                self.lifecycle.ports.invalidate();
-            }
-        }
-        Ok(())
-    }
-
     /// Whether a fresh observation finds the runtime exactly where `baseline`
     /// did.
     pub(super) async fn runtime_matches(&self, baseline: &RestorableBaseline) -> bool {
@@ -600,9 +292,9 @@ impl ApplicationWorkflow {
 
     // -- Preparing ---------------------------------------------------------
 
-    /// Reads what is running before anything is built. This is the checkpoint a
-    /// Cancel restores, so it is the *actual* baseline and not the previous
-    /// desired value (v2 §5.3).
+    /// Reads what is running before anything is built: the actual runtime, not
+    /// the previous desired value. An apply is submitted against it, and the
+    /// recovery of an unresolved attempt compares the runtime with it.
     pub(super) async fn observe_baseline(&mut self) -> RestorableBaseline {
         // Whatever the host says, verbatim. A read that failed, a host that
         // published nothing and a core mid-transition are three different
@@ -630,12 +322,6 @@ impl ApplicationWorkflow {
                     .is_verified()
                 })
             });
-        let confirmed_build = self
-            .lifecycle
-            .runtime
-            .confirmed()
-            .and_then(|record| record.artifact);
-        let binding = confirmed.as_ref().map(|receipt| receipt.binding.clone());
         let last_apply = || {
             confirmed
                 .clone()
@@ -672,12 +358,9 @@ impl ApplicationWorkflow {
         RestorableBaseline {
             expected,
             settled,
-            observed,
             state,
             host,
             run_intent,
-            binding,
-            confirmed_build,
         }
     }
 
@@ -685,657 +368,144 @@ impl ApplicationWorkflow {
 
     pub(super) async fn prepare_candidate(
         &mut self,
-        policy: CommandPolicy,
         baseline: &RestorableBaseline,
-        target: Option<String>,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedCandidate, RuntimePrepareOutcome> {
-        // Nothing unsettled can say whether a core may be started, or what a
-        // Cancel would have to put back. A transition in progress is not a
-        // stopped core and not a running one; an absent answer is neither
-        // either (v2 §2.4, V11).
-        //
-        // This is a refusal, not an isolated execution domain. Nothing has been
-        // submitted, so there is no result that "may already have happened" —
-        // the candidate never touched the runtime, the baseline is exactly as
-        // certain as it was, and the caller may simply try again once the
-        // evidence settles. It deliberately does not go through the deferral
-        // conjunction either: that one reads how a Try *ended*, and no Try ran.
-        if !baseline.settled {
-            // Settled is false and the host answered, so whatever it said is
-            // one of the transitional states.
-            let gap = match baseline.observed {
-                Some(_) => EvidenceGap::CoreTransitioning,
-                None => EvidenceGap::BaselineUnconfirmed,
-            };
-            return Err(RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    stage: MutationStage::Preparing,
-                    cause: RefusalCause::Evidence(gap),
-                    error: Arc::new(UnsettledBaselineSnafu { gap }.build()),
-                },
-                restored: baseline.state.clone(),
-            });
-        }
-
-        // R10, the third evidence gap. The host settled the question and the
-        // answer is "a core is running that this session never applied to": the
-        // boot reconcile failed, or a service-hosted core was adopted without a
-        // receipt. A Try could be submitted against it, but its Cancel would
-        // have nothing to restore (`restore` says so), so the first persistence
-        // failure would isolate the domain for a gap that was visible before
-        // anything was submitted. Refuse it here instead, on the same terms as
-        // the other two: nothing was tried, so the caller may retry once a
-        // confirmed apply exists.
-        if baseline.run_intent == CoreRunIntent::Running
-            && matches!(baseline.state, KnownRuntimeState::NeverApplied)
-        {
-            return Err(RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    stage: MutationStage::Preparing,
-                    cause: RefusalCause::Evidence(EvidenceGap::NoRestorableBaseline),
-                    error: Arc::new(
-                        UnsettledBaselineSnafu {
-                            gap: EvidenceGap::NoRestorableBaseline,
-                        }
-                        .build(),
-                    ),
-                },
-                restored: baseline.state.clone(),
-            });
-        }
-
-        // Service mode is a preference resolved against the daemon's last
-        // published phase, so a save while the service is unusable stays on
-        // Local and never installs or starts it (#5443). Switching service
-        // mode on is the explicit request the convergence below may serve.
-        let app = &inputs.app;
-        let switching_on =
-            app.enable_service_mode && !self.lifecycle.application.load().state.enable_service_mode;
-        let target_host = if switching_on {
-            // The explicit request tries the service again, whatever it did
-            // last time.
-            self.lifecycle.service_failed = None;
-            ExecutionHost::Service
-        } else {
-            effective_host(app, self.lifecycle.service_usable_now(), baseline.host)
-        };
-        let prepared = match self.preparation.prepare_candidate_inputs(inputs).await {
-            Ok(prepared) => prepared,
-            // A candidate that cannot be built cannot be built later either.
-            Err(error) => {
-                return Err(self.dispose(
-                    policy,
-                    baseline,
-                    TryOutcomeFacts {
-                        stage: MutationStage::Preparing,
-                        cause: TryCauseKind::Deterministic,
-                        availability: BaselineAvailability::Known,
-                        invalid_item: true,
-                        target_digest: target.clone(),
-                        error,
-                    },
-                ));
-            }
-        };
-        let spec = match self.preparation.core_spec(&prepared.snapshot.target_core) {
-            Ok(spec) => spec,
-            Err(error) => {
-                return Err(self.dispose(
-                    policy,
-                    baseline,
-                    TryOutcomeFacts {
-                        stage: MutationStage::Preparing,
-                        cause: TryCauseKind::Permanent,
-                        availability: BaselineAvailability::Known,
-                        invalid_item: false,
-                        target_digest: target.clone(),
-                        error: ResolveCoreBinarySnafu.into_error(error),
-                    },
-                ));
-            }
-        };
-
-        Ok(PreparedCandidate {
-            runtime: prepared,
-            spec,
-            target_host,
-            switching_on,
-        })
-    }
-
-    async fn check_candidate(
-        &mut self,
-        policy: CommandPolicy,
-        baseline: &RestorableBaseline,
-        target: Option<String>,
-        inputs: super::inputs::RuntimeInputs,
-        check: &mut CheckRecord,
-    ) -> Result<PreparedCandidate, RuntimePrepareOutcome> {
-        let prepared = self
-            .prepare_candidate(policy, baseline, target.clone(), inputs)
-            .await?;
-        // Validate the exact bytes the reconcile will submit through the local endpoint.
-        match self
-            .validator
-            .check(RuntimeCheckRequest {
-                core_spec: prepared.spec.clone(),
-                intent: &prepared.runtime.intent,
-            })
+    ) -> Result<PreparedCandidate, ApplyOutcome> {
+        let target_host = effective_host(
+            &inputs.app,
+            self.lifecycle.service_usable_now(),
+            baseline.host,
+        );
+        let runtime = self
+            .preparation
+            .prepare_candidate_inputs(inputs)
             .await
-        {
-            RuntimeCheckOutcome::Passed => *check = CheckRecord::Passed,
-            RuntimeCheckOutcome::Rejected { kind, message } => {
-                return Err(self.dispose(
-                    policy,
-                    baseline,
-                    TryOutcomeFacts {
-                        stage: MutationStage::TryingCritical,
-                        cause: TryCauseKind::Deterministic,
-                        availability: BaselineAvailability::Known,
-                        invalid_item: true,
-                        target_digest: target.clone(),
-                        error: CoreRejectedConfigSnafu {
-                            core_kind: kind,
-                            message,
-                        }
-                        .build(),
-                    },
-                ));
-            }
-            RuntimeCheckOutcome::Unavailable(reason) => {
-                *check = CheckRecord::Unserviceable(describe_unavailable_check(&reason));
-                return Err(self.dispose(
-                    policy,
-                    baseline,
-                    TryOutcomeFacts {
-                        stage: MutationStage::TryingCritical,
-                        cause: check_cause(&reason),
-                        availability: BaselineAvailability::Known,
-                        invalid_item: false,
-                        target_digest: target.clone(),
-                        error: CheckUnavailableSnafu { reason }.build(),
-                    },
-                ));
-            }
-        }
-
-        Ok(prepared)
+            .map_err(|error| ApplyOutcome::Refused(Arc::new(error)))?;
+        self.preparation
+            .core_spec(&runtime.snapshot.target_core)
+            .map_err(|error| {
+                ApplyOutcome::Refused(Arc::new(ResolveCoreBinarySnafu.into_error(error)))
+            })?;
+        Ok(PreparedCandidate {
+            runtime,
+            target_host,
+        })
     }
 
     pub(super) async fn apply_prepared(
         &mut self,
-        policy: CommandPolicy,
         baseline: &RestorableBaseline,
         prepared: PreparedCandidate,
         charge: AttemptCharge,
-    ) -> RuntimePrepareOutcome {
+    ) -> ApplyOutcome {
         let PreparedCandidate {
-            runtime: prepared,
+            runtime,
             target_host,
-            switching_on,
-            ..
         } = prepared;
-        let target = prepared.target.clone();
-        // R7: the user stopped the core. The target is validated and may be
-        // saved; starting one here would fight the Stop the user asked for.
-        if policy == CommandPolicy::SavedInactive {
-            return RuntimePrepareOutcome::SavedInactive {
-                identity: target.expect("a validated critical candidate has its target identity"),
-            };
-        }
-
-        // A host switch is the one impact the reconcile below cannot deliver on
-        // its own: it submits the candidate to whichever host owns the runtime
-        // now, so committing on its verdict would report `Applied` for a
-        // mutation whose entire point — moving execution to the other host —
-        // never happened. The ownership moves first, and the reconcile that
-        // follows starts the candidate where the user asked for it.
-        //
-        // Cancel undoes it through the same path: `restore` moves ownership
-        // back to the baseline receipt's host before resubmitting it, and
-        // `verify_recovery_target` compares the host, so a handoff that
-        // silently failed is an unverified restore rather than a clean cancel.
-        //
-        // This is also the longest leg of the Try, and nothing about the source
-        // transaction bounds it. `change_execution_host` may install or start
-        // the daemon before it can own anything, the reconcile below carries the
-        // core's own apply budget, and `compensate_handoff` adds a move back
-        // plus a reconcile of the baseline. The source transaction waits for
-        // the verdict until all of it has finished.
         self.lifecycle.runtime.begin_transition();
-        // Charged before the first action that can reach the runtime is
-        // written, so a lost receipt does not skip it (T10 §1.8).
         self.charge_attempt(charge);
-        let mut handed_off = false;
         let mut expected = baseline
             .expected
             .clone()
-            .expect("critical baseline was observed");
+            .expect("the application baseline was observed");
         if target_host != baseline.host {
-            // Only switching service mode on may install or start the daemon;
-            // any other save adopts a Service that is already `Ready`.
-            match self
-                .lifecycle
-                .move_execution_host(target_host, switching_on)
-                .await
-            {
-                Ok(report) => {
-                    handed_off = report.completed();
-                    if handed_off {
-                        expected = match self.lifecycle.core.refresh_status().await {
-                            Ok(status) => status,
-                            Err(error) => {
-                                return self
-                                    .compensate_handoff(
-                                        baseline,
-                                        RuntimePrepareOutcome::Rejected {
-                                            cause: ApplyFailure {
-                                                stage: MutationStage::TryingCritical,
-                                                cause: RefusalCause::Try(not_submitted_cause(
-                                                    error.kind,
-                                                )),
-                                                error: Arc::new(RefreshStatusSnafu.into_error(
-                                                    runtime_error::core_failure(error),
-                                                )),
-                                            },
-                                            restored: baseline.state.clone(),
-                                        },
-                                    )
-                                    .await;
-                            }
-                        };
-                        let generation = match report {
-                            crate::actor_v2::HandoffReport::Completed { generation, .. } => {
-                                generation
-                            }
-                            crate::actor_v2::HandoffReport::NoChange => unreachable!(),
-                        };
-                        if expected.host != target_host || expected.generation != generation {
-                            return RuntimePrepareOutcome::RecoveryRequired(Arc::new(
-                                HandoffOwnerMismatchSnafu {
-                                    expected: target_host,
-                                }
-                                .build(),
+            match self.lifecycle.move_execution_host(target_host, false).await {
+                Ok(report) if report.completed() => {
+                    expected = match self.lifecycle.core.refresh_status().await {
+                        Ok(status) => status,
+                        Err(error) => {
+                            return ApplyOutcome::Waiting(Arc::new(
+                                RefreshStatusSnafu.into_error(runtime_error::core_failure(error)),
                             ));
                         }
+                    };
+                    let crate::actor_v2::HandoffReport::Completed { generation, .. } = report
+                    else {
+                        unreachable!("a completed handoff reports its generation")
+                    };
+                    if expected.host != target_host || expected.generation != generation {
+                        return ApplyOutcome::Unknown(Arc::new(
+                            HandoffOwnerMismatchSnafu {
+                                expected: target_host,
+                            }
+                            .build(),
+                        ));
                     }
                 }
+                Ok(_) => {}
                 Err(error) => {
-                    let cause = if error.handoff_started {
-                        core_error_cause(error.error.kind)
-                    } else {
-                        // Service preparation has not touched the Local core.
-                        // A refused elevation or unavailable daemon rejects this
-                        // request; a later explicit attempt can prepare again.
-                        TryCauseKind::Permanent
-                    };
-                    return self.dispose(
-                        policy,
-                        baseline,
-                        TryOutcomeFacts {
-                            stage: MutationStage::TryingCritical,
-                            cause,
-                            // A refused handoff leaves ownership where it was;
-                            // one that failed on the way says nothing about who
-                            // owns the runtime now, and the candidate was never
-                            // submitted either way.
-                            availability: if error.handoff_started && cause == TryCauseKind::Unknown
-                            {
-                                BaselineAvailability::Unconfirmed
-                            } else {
-                                BaselineAvailability::Known
-                            },
-                            invalid_item: false,
-                            target_digest: target.clone(),
-                            error: MoveHostSnafu { host: target_host }
-                                .into_error(runtime_error::core_failure(error.error)),
-                        },
+                    let handoff_started = error.handoff_started;
+                    let unknown = handoff_started && unknown_kind(error.error.kind);
+                    let error = Arc::new(
+                        MoveHostSnafu { host: target_host }
+                            .into_error(runtime_error::core_failure(error.error)),
                     );
+                    return if unknown {
+                        ApplyOutcome::Unknown(error)
+                    } else if handoff_started {
+                        ApplyOutcome::Refused(error)
+                    } else {
+                        ApplyOutcome::Waiting(error)
+                    };
                 }
             }
         }
-
-        let outcome = match self
+        match self
             .lifecycle
-            .submit_runtime(prepared, &self.preparation, &expected)
+            .submit_runtime(runtime, &self.preparation, &expected)
             .await
         {
             Ok(RuntimeSubmission::Applied {
-                product,
-                receipt,
-                report,
+                product, report, ..
             }) => {
                 let replaced = matches!(&report.output, nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(outcome)
                     if matches!(outcome.outcome, nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Restarted | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Switched));
-                RuntimePrepareOutcome::Applied(AppliedCandidate {
-                    receipt,
+                ApplyOutcome::Applied(AppliedCandidate {
                     product,
                     replaced,
                     report: Box::new(report),
                 })
             }
-            // The core's own transaction restored its own previous revision, so
-            // the submitted document never took effect. This is the one place
-            // that reading is admissible: it describes the request that just
-            // ran, not a B → A recovery the workflow asked for (C4 covers that
-            // one, and the Cancel path verifies it).
-            Ok(RuntimeSubmission::RolledBack(report)) => self.dispose(
-                policy,
-                baseline,
-                TryOutcomeFacts {
-                    stage: MutationStage::TryingCritical,
-                    cause: TryCauseKind::Permanent,
-                    availability: BaselineAvailability::Known,
-                    invalid_item: false,
-                    target_digest: target.clone(),
-                    error: CoreRolledBackSnafu {
-                        reason: report.failed_apply,
-                    }
-                    .build(),
-                },
-            ),
-            Ok(RuntimeSubmission::Unknown(uncertain)) => {
-                RuntimePrepareOutcome::RecoveryRequired(Arc::new(
-                    SubmissionUnobservedSnafu
-                        .into_error(runtime_error::core_failure(uncertain.error)),
-                ))
-            }
-            Ok(RuntimeSubmission::NotSubmitted(error)) => RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    stage: MutationStage::TryingCritical,
-                    cause: RefusalCause::Try(not_submitted_cause(error.kind)),
-                    error: Arc::new(
-                        ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)),
-                    ),
-                },
-                restored: baseline.state.clone(),
-            },
-            Err(error) => RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    stage: MutationStage::TryingCritical,
-                    cause: RefusalCause::Try(not_submitted_cause(error.core_kind())),
-                    error: Arc::new(error),
-                },
-                restored: baseline.state.clone(),
-            },
-            Ok(RuntimeSubmission::Unchanged(error)) => {
-                let cause = not_submitted_cause(error.kind);
-                self.dispose(
-                    policy,
-                    baseline,
-                    TryOutcomeFacts {
-                        stage: MutationStage::TryingCritical,
-                        cause,
-                        availability: if cause == TryCauseKind::Unknown {
-                            BaselineAvailability::Unconfirmed
-                        } else {
-                            BaselineAvailability::Known
-                        },
-                        invalid_item: cause == TryCauseKind::Deterministic,
-                        target_digest: target.clone(),
-                        error: ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)),
-                    },
-                )
-            }
-        };
-
-        if handed_off {
-            self.compensate_handoff(baseline, outcome).await
-        } else {
-            outcome
-        }
-    }
-
-    /// Puts the execution host and the runtime back after a Try that moved
-    /// ownership and then failed to apply.
-    ///
-    /// A completed handoff is an effect in its own right: the core the mutation
-    /// found running has been stopped, and ownership sits with the other host
-    /// whether or not the candidate that asked for it was ever applied. So a
-    /// failed Try after one owes exactly the compensation a Cancel owes, and
-    /// for the same reason — a `Rejected` claims the runtime was left alone,
-    /// and after a handoff that claim is false until the baseline is verified
-    /// back on its own host. The compensation therefore runs through `restore`,
-    /// the same path the Cancel uses, and the rejection is reported only once
-    /// it has been proven.
-    ///
-    /// An unknown outcome is deliberately left where it is: it already carries
-    /// the recovery context §11.4 reserves for "the result may already have
-    /// happened", and putting a baseline back on top of a candidate that may be
-    /// running is the one thing that state forbids.
-    async fn compensate_handoff(
-        &mut self,
-        baseline: &RestorableBaseline,
-        outcome: RuntimePrepareOutcome,
-    ) -> RuntimePrepareOutcome {
-        match &outcome {
-            // The handoff is what this mutation asked for; the candidate that
-            // asked for it is running on the host it named.
-            RuntimePrepareOutcome::Applied(_) => return outcome,
-            RuntimePrepareOutcome::Rejected { .. } | RuntimePrepareOutcome::Deferred { .. } => {}
-            // Either the outcome is unknown, or no Try ran at all. Neither is a
-            // failure this may compensate.
-            RuntimePrepareOutcome::RecoveryRequired(_)
-            | RuntimePrepareOutcome::SavedInactive { .. } => return outcome,
-        }
-        match self.restore(baseline).await {
-            Ok(()) => outcome,
-            Err(failure) => RuntimePrepareOutcome::RecoveryRequired(Arc::new(
-                HandoffNotRestoredSnafu { failure }.build(),
+            Ok(RuntimeSubmission::RolledBack(report)) => ApplyOutcome::Refused(Arc::new(
+                CoreRolledBackSnafu {
+                    reason: report.failed_apply,
+                }
+                .build(),
             )),
-        }
-    }
-
-    async fn capture_candidate(&self, request: &MutationRequest) -> super::inputs::RuntimeInputs {
-        let change = &request.change;
-        let app = match change {
-            DomainChange::Application { candidate, .. } => candidate.as_ref().clone(),
-            _ => self.lifecycle.application.load().state.clone(),
-        };
-        let clash = match change {
-            DomainChange::Clash { candidate, .. } => candidate.as_ref().clone(),
-            _ => self.clash.load().state.clone(),
-        };
-        let mut inputs = match change {
-            DomainChange::Profiles { candidate, .. } => {
-                self.preparation
-                    .capture_inputs(app, clash, candidate.clone())
-                    .await
-            }
-            _ => {
-                self.preparation
-                    .capture_committed_inputs(app, clash)
-                    .await
-                    .1
-            }
-        };
-        for (path, content) in &request.hints.staged_content {
-            if let Some(captured) = inputs.content.0.get_mut(path) {
-                *captured = Ok(content.clone());
-            }
-        }
-        inputs
-    }
-
-    /// The whole deferral conjunction in one place: a failed Try may still
-    /// commit only when every typed condition holds (v2 §2.2).
-    fn dispose(
-        &self,
-        policy: CommandPolicy,
-        baseline: &RestorableBaseline,
-        facts: TryOutcomeFacts,
-    ) -> RuntimePrepareOutcome {
-        let decision = disposition(&TryFailureFacts {
-            cause: facts.cause,
-            baseline: facts.availability,
-            policy,
-            candidate_has_invalid_item: facts.invalid_item,
-        });
-        let error = Arc::new(facts.error);
-        match decision {
-            FailureDisposition::Deferrable => RuntimePrepareOutcome::Deferred {
-                digest: facts
-                    .target_digest
-                    .expect("deferral requires a serialized complete runtime target"),
-                cause: RetryableCause {
-                    stage: facts.stage,
-                    message: error.to_string(),
-                },
-                error,
-            },
-            FailureDisposition::Reject => RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    stage: facts.stage,
-                    cause: RefusalCause::Try(facts.cause),
-                    error,
-                },
-                restored: baseline.state.clone(),
-            },
-            FailureDisposition::RecoveryRequired => RuntimePrepareOutcome::RecoveryRequired(error),
-        }
-    }
-
-    // -- AwaitDecision -----------------------------------------------------
-
-    /// Waits for the source transaction's own decision, however long its write
-    /// takes. Every exit of a transaction whose prepare ran publishes one, so
-    /// the wait always ends.
-    async fn await_decision(&self, request: &MutationRequest) -> DecisionOutcome {
-        match request.decision.wait().await {
-            StateDecision::Committed { .. } => DecisionOutcome::Committed,
-            StateDecision::Aborted { .. } => DecisionOutcome::Aborted,
-            StateDecision::Undecided => unreachable!("wait only returns a terminal decision"),
-        }
-    }
-
-    // -- Confirming --------------------------------------------------------
-
-    async fn confirm(
-        &mut self,
-        outcome: RuntimePrepareOutcome,
-        request: &MutationRequest,
-        interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
-        degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
-    ) -> (
-        MutationConclusion,
-        Option<String>,
-        Option<Arc<RuntimeError>>,
-    ) {
-        match outcome {
-            RuntimePrepareOutcome::Applied(candidate) => {
-                let applied = AppliedVerdict::new(&candidate, leaves_service_mode(&request.change));
-                let mut detail = self.finish_applied(&applied, degradations).await;
-                if let Some(context) = interruption {
-                    if let Some(error) =
-                        crate::client::core_lifecycle::CoreLifecycleWorkflow::finish_interruption(
-                            context,
-                            candidate.replaced,
-                        )
-                        .await
-                    {
-                        let cause = InterruptFailure::from(&error);
-                        degradations.push(nyanpasu_runtime_values::runtime::Degradation {
-                            phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
-                            reason: if request.hints.mode_requested {
-                                DegradationReason::ModeInterruptionFailed { cause }
-                            } else {
-                                DegradationReason::ProfileInterruptionFailed { cause }
-                            },
-                            message: error.to_string(),
-                            retryable: false,
-                        });
-                        let message = format!("source_interruption_failed: {error}");
-                        detail =
-                            Some(detail.map_or(message.clone(), |previous| {
-                                format!("{previous}; {message}")
-                            }));
-                    }
-                }
-                (MutationConclusion::Confirmed, detail, None)
-            }
-            RuntimePrepareOutcome::Deferred {
-                digest,
-                cause,
-                error,
-            } => {
-                let message = cause.message.clone();
-                self.install_mutation_target(request.operation_id, digest, cause);
-                (MutationConclusion::Confirmed, Some(message), Some(error))
-            }
-            RuntimePrepareOutcome::SavedInactive { identity } => {
-                self.confirm_saved_inactive(identity);
-                (MutationConclusion::Confirmed, None, None)
-            }
-            // A Required rejection aborts the transaction, so a commit on top of
-            // one means the store and this workflow disagree about what was
-            // decided. Nothing here may assume which is right.
-            RuntimePrepareOutcome::Rejected { cause, .. } => {
-                let error = CommittedAfterRefusalSnafu {
-                    operation_id: request.operation_id.to_string(),
-                }
-                .build();
-                tracing::error!(
-                    operation_id = %request.operation_id,
-                    refusal = %cause.error,
-                    "{error}"
-                );
-                (
-                    MutationConclusion::RecoveryRequired,
-                    Some(format!("{error}: {}", cause.error)),
-                    Some(Arc::new(error)),
-                )
-            }
-            RuntimePrepareOutcome::RecoveryRequired(_) => {
-                unreachable!("a recovery-required outcome never reaches the decision phase")
+            Ok(RuntimeSubmission::Unknown(uncertain)) => ApplyOutcome::Unknown(Arc::new(
+                SubmissionUnobservedSnafu.into_error(runtime_error::core_failure(uncertain.error)),
+            )),
+            Ok(RuntimeSubmission::NotSubmitted(error)) => ApplyOutcome::Waiting(Arc::new(
+                ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)),
+            )),
+            Err(error) => ApplyOutcome::Waiting(Arc::new(error)),
+            Ok(RuntimeSubmission::Unchanged(error)) => {
+                let error =
+                    Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
+                ApplyOutcome::Refused(error)
             }
         }
     }
 
-    /// What an applied Try is owed once its source commits, for Confirm and
-    /// for the recovery of a commit whose Confirm never finished. Every step
-    /// may run twice: a cleared target stays cleared, the same product is
-    /// published again, and the daemon is released only while it runs.
-    /// Returns why the product could not be published.
+    /// Publishes the product only after the core confirms its application.
     pub(super) async fn finish_applied(
         &mut self,
-        applied: &AppliedVerdict,
+        candidate: &AppliedCandidate,
         degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
-    ) -> Option<String> {
-        // The runtime reached the target, so whatever gap was outstanding is
-        // closed and its budget is no longer owed.
+    ) {
         self.deferred = None;
-        // The derived product is published only now: before the commit it
-        // would announce a document the transaction could still abort, and a
-        // failure here never undoes either the committed source or the
-        // running runtime (v2 §5.6).
         let failure = self
-            .publish_committed_product(applied.product.clone())
+            .publish_committed_product(candidate.product.clone())
             .await;
         self.lifecycle.runtime.accept_transition();
-        if let Some(cause) = &failure {
+        if let Some(cause) = failure {
             degradations.push(nyanpasu_runtime_values::runtime::Degradation {
                 phase: nyanpasu_runtime_values::runtime::DegradationPhase::RuntimeBuild,
                 message: cause.to_string(),
-                reason: DegradationReason::RuntimeProductPublishFailed {
-                    cause: cause.clone(),
-                },
+                reason: nyanpasu_runtime_values::runtime::DegradationReason::RuntimeProductPublishFailed { cause },
                 retryable: true,
             });
         }
-        // Only a confirmed move releases the old daemon. Cancel must still be
-        // able to restore it while the source transaction is undecided.
-        if applied.releases_service
-            && let Some(cause) = self.release_service().await
-        {
-            degradations.push(nyanpasu_runtime_values::runtime::Degradation {
-                phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
-                message: cause.to_string(),
-                reason: DegradationReason::ServiceStopFailed { cause },
-                retryable: true,
-            });
-        }
-        failure.map(|cause| cause.to_string())
     }
 
     /// Stops the daemon a confirmed move off service mode left behind, if it
@@ -1363,37 +533,6 @@ impl ApplicationWorkflow {
             .map(|error| format!("service_stop_failed: {error}"));
         failure
             .map(|error| Arc::new(StopServiceSnafu.into_error(runtime_error::core_failure(error))))
-    }
-
-    // -- Cancelling --------------------------------------------------------
-
-    async fn cancel(
-        &mut self,
-        outcome: RuntimePrepareOutcome,
-        baseline: &RestorableBaseline,
-    ) -> (
-        MutationConclusion,
-        Option<String>,
-        Option<Arc<RuntimeError>>,
-    ) {
-        let RuntimePrepareOutcome::Applied(_) = outcome else {
-            // Nothing reached the runtime, so there is nothing to put back.
-            return (MutationConclusion::Withdrawn, None, None);
-        };
-        match self.restore(baseline).await {
-            Ok(()) => {
-                self.lifecycle.runtime.accept_transition();
-                (MutationConclusion::Cancelled, None, None)
-            }
-            Err(failure) => {
-                let error = RestoreFailedSnafu { failure }.build();
-                (
-                    MutationConclusion::RecoveryRequired,
-                    Some(error.to_string()),
-                    Some(Arc::new(error)),
-                )
-            }
-        }
     }
 
     /// Installs the committed target of a source mutation that the core is not
@@ -1433,185 +572,6 @@ impl ApplicationWorkflow {
         });
     }
 
-    /// Puts the runtime back where the mutation found it, and proves it.
-    ///
-    /// The lower control plane answers a restore request with its own
-    /// transaction result, and a `RolledBack` there usually leaves the
-    /// candidate running. So the answer is never the proof: the proof is that
-    /// what is running now matches the baseline receipt (C4/D10/V04).
-    async fn restore(&mut self, baseline: &RestorableBaseline) -> Result<(), RestoreFailure> {
-        match &baseline.state {
-            KnownRuntimeState::Applied(receipt) => {
-                // A Try that moved the runtime to the other host has to move it
-                // back before anything is resubmitted: the baseline receipt
-                // describes an apply on *its* host, and reconciling it on the
-                // host the Try switched to would restore the document while
-                // leaving execution where the cancelled mutation put it.
-                if self.lifecycle.core.core_status().host != receipt.host
-                    && let Err(error) = self.lifecycle.move_execution_host(receipt.host, true).await
-                {
-                    // Ownership is where the failure left it, which is not a
-                    // fact about who is holding the candidate's ports.
-                    self.invalidate_unproven_ports();
-                    return Err(MoveHostBackSnafu { host: receipt.host }
-                        .into_error(runtime_error::core_failure(error.error)));
-                }
-                let expected = self
-                    .lifecycle
-                    .core
-                    .refresh_status()
-                    .await
-                    .map_err(runtime_error::core_failure)
-                    .context(ReadStatusSnafu)?;
-                let submitted = self
-                    .lifecycle
-                    .core
-                    .reconcile(
-                        &RuntimeIntent {
-                            local_ipc: receipt.local_ipc,
-                            core_type: (&receipt.target_core).into(),
-                            config_text: receipt.config_text.clone(),
-                            digest: receipt.config_digest.clone(),
-                        },
-                        receipt.core_spec.clone(),
-                        &expected,
-                    )
-                    .await;
-                // Only a confirmed apply says the submission took effect, and
-                // the receipt's local-IPC settings ride on it: no host
-                // publishes them back, so a `RolledBack`, an unobserved outcome
-                // or an error leaves that half of the baseline unproven however
-                // healthy the runtime looks afterwards.
-                let confirmed = match &submitted {
-                    Ok(ReconcileResult::Reconciled(report)) => Some(report),
-                    Ok(
-                        ReconcileResult::RolledBack(_)
-                        | ReconcileResult::Unknown(_)
-                        | ReconcileResult::NotSubmitted(_)
-                        | ReconcileResult::Unchanged(_),
-                    )
-                    | Err(_) => None,
-                };
-                // Nothing below can prove what is listening any more: the
-                // candidate's binding is still the confirmed one, the baseline
-                // may already be back on its own ports, and an unobserved
-                // restore may have left neither running. The binding ends here
-                // and is re-confirmed only where the restore is verified.
-                if confirmed.is_none() {
-                    self.invalidate_unproven_ports();
-                }
-                // An observation that failed is not an observation. Falling
-                // back to the published projection here would let the app prove
-                // a restore with the state it cached *before* the Try, which
-                // still describes the baseline whether or not anything was put
-                // back (C4/D10).
-                let Some(observed) = self.observe_runtime().await else {
-                    self.invalidate_unproven_ports();
-                    return Err(UnobservedSnafu {
-                        failure: submission_failure(&submitted),
-                    }
-                    .build());
-                };
-                match verify_recovery_target(
-                    receipt,
-                    &observed,
-                    confirmed.map(|report| &report.applied),
-                ) {
-                    RecoveryVerification::Verified => {
-                        // The checkpoint follows the runtime, not the attempt:
-                        // the candidate's receipt described an apply that has
-                        // just been undone. The document is the baseline's
-                        // again, but the instance running it is the one the
-                        // restore produced — a verified restore legitimately
-                        // lands in a new epoch and generation, and republishing
-                        // the pre-Try binding would name an instance that no
-                        // longer exists. The inspected apply follows it for the
-                        // same reason, so the application reports the runtime
-                        // that is running rather than the instance it replaced.
-                        let report = confirmed.expect("verified restore has a confirmed binding");
-                        let restored = Arc::new(RuntimeApplyReceipt {
-                            binding: report.applied.clone(),
-                            ..receipt.as_ref().clone()
-                        });
-                        self.lifecycle
-                            .runtime
-                            .record_confirmed_apply(baseline.confirmed_build.clone(), restored);
-                        if let Some(effective) = report.effective_config.clone()
-                            && let Some(pending) = self
-                                .lifecycle
-                                .runtime
-                                .confirmed()
-                                .and_then(|record| record.artifact)
-                            && let Ok(inspected) = pending.with_effective_config(
-                                effective,
-                                report.applied.host,
-                                report.applied.generation,
-                            )
-                        {
-                            self.lifecycle
-                                .runtime
-                                .applied(&pending.inspection_id, Arc::new(inspected));
-                        }
-                        Ok(())
-                    }
-                    RecoveryVerification::Mismatch { reasons } => {
-                        self.invalidate_unproven_ports();
-                        tracing::warn!(
-                            ?reasons,
-                            answer = %describe_submission(&submitted),
-                            "the restored runtime does not match its baseline"
-                        );
-                        Err(UnverifiedSnafu {
-                            failure: submission_failure(&submitted),
-                        }
-                        .build())
-                    }
-                }
-            }
-            // A core this session never applied to is running a document this
-            // application never recorded, so there is nothing to put back and
-            // stopping it would be a decision nobody asked for.
-            //
-            // A stopped baseline lands here too, and cannot be reached today: a
-            // stopped core makes every critical command `SavedInactive` (R7),
-            // so no Try runs against one and no Cancel ever has to take a
-            // candidate away. Should that change, an honest refusal is the
-            // right thing to inherit rather than a stop nobody requested.
-            KnownRuntimeState::Stopped | KnownRuntimeState::NeverApplied => {
-                Err(NotRecordedSnafu.build())
-            }
-        }
-    }
-
-    /// Ends the confirmed port binding when a restore cannot say what is
-    /// listening.
-    ///
-    /// `submit_runtime` already does this for its own unobserved outcome: the
-    /// binding the rest of the application reads must never decay into "the
-    /// port we used last time" (v2 §6.2). A restore that was not verified is
-    /// the same fact from the other side, and it is the one the forward path
-    /// cannot cover — the candidate applied and confirmed *its* ports, and
-    /// after an unknown restoration the baseline may be back on its own, the
-    /// candidate may still hold them, or neither may be running. Leaving the
-    /// candidate's binding confirmed would keep `SelfProxyPortSource` handing
-    /// out an endpoint nobody is known to own, right through the isolated
-    /// state that exists to stop exactly that.
-    ///
-    /// Receipts are untouched. They are what an explicit recovery re-confirms
-    /// a binding from, and they record what an apply bound rather than
-    /// claiming anything about now.
-    ///
-    /// Matching port *numbers* are deliberately not an exception. Two documents
-    /// asking for the same ports is not evidence that anything is listening on
-    /// them: a restoration can stop the candidate and then fail to start or
-    /// recover the baseline, which leaves the numbers identical and the
-    /// endpoint gone. Only an apply the core confirmed says a listener exists,
-    /// and that is the verified path, which re-confirms from the restored
-    /// receipt rather than leaving an older binding standing (D1).
-    fn invalidate_unproven_ports(&self) {
-        self.lifecycle.ports.invalidate();
-    }
-
     /// A fresh authoritative read of what the host is running, or nothing.
     ///
     /// `None` is deliberately not "the last thing we published": the cached
@@ -1628,146 +588,42 @@ impl ApplicationWorkflow {
     }
 }
 
-/// Who pays for a Try once it reaches the runtime (T10 §1.8).
+/// Which committed-target attempt consumes the automatic retry budget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum AttemptCharge {
-    /// A source mutation spends no automatic budget.
     None,
-    /// A retry of the committed target the live attempt carries: one attempt,
-    /// and one unit of its automatic budget unless the retry was explicit.
     Target { automatic: bool },
 }
 
-/// The facts one failed Try produced, before the policy has read them.
-struct TryOutcomeFacts {
-    stage: MutationStage,
-    cause: TryCauseKind,
-    availability: BaselineAvailability,
-    invalid_item: bool,
-    /// The document this attempt wanted running, when it got far enough to
-    /// build one. It is the identity a convergence budget is kept against.
-    target_digest: Option<String>,
-    error: RuntimeError,
-}
-
-/// Whether committing `change` leaves service mode, which is what makes
-/// Confirm release the daemon.
-fn leaves_service_mode(change: &DomainChange) -> bool {
-    matches!(change, DomainChange::Application { previous: Some(previous), candidate }
-        if impact::leaves_service_mode(previous, candidate))
-}
-
-/// The recorded reason a check did not run, as prose rather than a `Debug`
-/// rendering: the receipt's other text fields are read by people.
-fn describe_unavailable_check(reason: &RuntimeCheckUnavailable) -> String {
-    match reason {
-        RuntimeCheckUnavailable::NoEndpoint { reason } => {
-            format!("no host owns the runtime: {reason}")
-        }
-        RuntimeCheckUnavailable::HostUnsupported { host, reason } => {
-            format!("the {host:?} host exposes no configuration check: {reason}")
-        }
-        RuntimeCheckUnavailable::CandidateUnavailable { reason } => {
-            format!("the candidate could not be staged for the check: {reason}")
-        }
-        RuntimeCheckUnavailable::Backend { message, .. } => {
-            format!("the configuration check could not be served: {message}")
-        }
-    }
-}
-
-/// Classifies an unavailable check using the adapter's retryability conclusion.
-fn check_cause(reason: &RuntimeCheckUnavailable) -> TryCauseKind {
-    match reason {
-        RuntimeCheckUnavailable::Backend {
-            retryable: true, ..
-        }
-        | RuntimeCheckUnavailable::CandidateUnavailable { .. } => TryCauseKind::Transient,
-        RuntimeCheckUnavailable::Backend { .. } => TryCauseKind::Permanent,
-        RuntimeCheckUnavailable::NoEndpoint { .. }
-        | RuntimeCheckUnavailable::HostUnsupported { .. } => TryCauseKind::Permanent,
-    }
-}
-
-/// A terminated submission that applied nothing, typed by its kind.
-///
-/// `CoreError::retryable` is deliberately not read: it is a hint attached
-/// before the outcome was observed, and letting it decide is how a lost receipt
-/// turns into an automatic retry (v2 §2.2).
-fn not_submitted_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
-    match core_error_cause(kind) {
-        TryCauseKind::Unknown => TryCauseKind::Transient,
-        cause => cause,
-    }
-}
-
-fn core_error_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
-    match kind {
-        // The document is wrong; the same bytes fail the same way again.
-        Some(
-            CoreErrorKind::ConfigCheckFailed
-            | CoreErrorKind::InvalidConfig
-            | CoreErrorKind::ConfigNotFound
-            | CoreErrorKind::ControllerMissing,
-        ) => TryCauseKind::Deterministic,
-        // Observed, finished, and not going to change by itself.
-        Some(
-            CoreErrorKind::BinaryNotFound
-            | CoreErrorKind::NativeStoreUnavailable
-            | CoreErrorKind::ApplyFailed
-            | CoreErrorKind::NotStarted
-            | CoreErrorKind::AlreadyRunning,
-        ) => TryCauseKind::Permanent,
-        // Observed, finished, and a later attempt can legitimately differ.
-        Some(
-            CoreErrorKind::RevisionConflict
-            | CoreErrorKind::QueueFull
-            | CoreErrorKind::OperationConflict
-            | CoreErrorKind::ShuttingDown,
-        ) => TryCauseKind::Transient,
-        // None of these says what the core is running now.
-        Some(
+fn unknown_kind(kind: Option<CoreErrorKind>) -> bool {
+    matches!(
+        kind,
+        None | Some(
             CoreErrorKind::Quarantined
-            | CoreErrorKind::ApplyRollbackFailed
-            | CoreErrorKind::StopUnconfirmed
-            | CoreErrorKind::BackendUnavailable
-            | CoreErrorKind::Internal,
+                | CoreErrorKind::ApplyRollbackFailed
+                | CoreErrorKind::StopUnconfirmed
+                | CoreErrorKind::BackendUnavailable
+                | CoreErrorKind::Internal
         )
-        | None => TryCauseKind::Unknown,
-    }
+    )
 }
 
-/// The failure a restore request answered with, when it had one.
-fn submission_failure(
-    submitted: &Result<crate::actor_v2::facade::ReconcileResult, CoreError>,
-) -> Option<CoreFailure> {
-    use crate::actor_v2::facade::ReconcileResult;
-    match submitted {
-        Ok(ReconcileResult::NotSubmitted(error) | ReconcileResult::Unchanged(error))
-        | Err(error) => Some(runtime_error::core_failure(error.clone())),
-        Ok(ReconcileResult::Unknown(uncertain)) => {
-            Some(runtime_error::core_failure(uncertain.error.clone()))
-        }
-        Ok(ReconcileResult::Reconciled(_) | ReconcileResult::RolledBack(_)) => None,
-    }
-}
-
-fn describe_submission(
-    submitted: &Result<crate::actor_v2::facade::ReconcileResult, CoreError>,
-) -> String {
-    use crate::actor_v2::facade::ReconcileResult;
-    match submitted {
-        Ok(ReconcileResult::Reconciled(_)) => "applied".to_owned(),
-        Ok(ReconcileResult::NotSubmitted(error) | ReconcileResult::Unchanged(error)) => {
-            error.to_string()
-        }
-        Ok(ReconcileResult::RolledBack(report)) => format!(
-            "rolled back ({})",
-            report.failed_apply.as_deref().unwrap_or("unknown reason")
-        ),
-        Ok(ReconcileResult::Unknown(uncertain)) => format!("unobserved ({})", uncertain.error),
-        Err(error) => format!("failed ({error})"),
-    }
+pub(super) fn retryable_apply(error: &RuntimeError) -> bool {
+    matches!(error, RuntimeError::ApplyRuntime { .. }) && error.core_kind().is_none()
+        || matches!(
+            error.core_kind(),
+            Some(
+                CoreErrorKind::RevisionConflict
+                    | CoreErrorKind::QueueFull
+                    | CoreErrorKind::OperationConflict
+                    | CoreErrorKind::ShuttingDown
+                    | CoreErrorKind::BackendUnavailable
+                    | CoreErrorKind::Internal
+                    | CoreErrorKind::Quarantined
+                    | CoreErrorKind::ApplyRollbackFailed
+                    | CoreErrorKind::StopUnconfirmed
+            )
+        )
 }
 
 #[cfg(test)]
@@ -1778,26 +634,8 @@ mod tests {
     use nyanpasu_core_metadata::CoreErrorKind;
     use snafu::ResultExt as _;
 
-    use super::submission_failure;
-    use crate::{
-        actor_v2::{
-            CoreStatusProjection,
-            facade::{
-                AppliedConfigBinding, ReconcileReport, ReconcileResult, RolledBackReport,
-                UncertainReconcile,
-            },
-        },
-        client::runtime_error,
-    };
-    use nyanpasu_ipc::api::{
-        core::v2::{OperationOutputInfo, ReconcileOutcomeInfo, ReconcileOutcomeKind},
-        status::ConfigRevisionInfo,
-    };
-    use nyanpasu_runtime_values::{
-        core_status::EndpointConnectivity,
-        execution_host::ExecutionHost,
-        runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError},
-    };
+    use crate::client::runtime_error;
+    use nyanpasu_runtime_values::runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError};
 
     #[test]
     fn runtime_core_failure_conversion_preserves_kind_retryability_and_operation_id() {
@@ -1832,70 +670,8 @@ mod tests {
                         runtime.to_string(),
                         format!("could not apply the runtime configuration: {}", error)
                     );
-                    for submitted in [
-                        Ok(ReconcileResult::NotSubmitted(error.clone())),
-                        Ok(ReconcileResult::Unchanged(error.clone())),
-                        Err(error.clone()),
-                        Ok(ReconcileResult::Unknown(UncertainReconcile {
-                            error: error.clone(),
-                            status: CoreStatusProjection {
-                                host: ExecutionHost::Local,
-                                generation: 1,
-                                connectivity: EndpointConnectivity::Connected,
-                                snapshot: None,
-                            },
-                        })),
-                    ] {
-                        assert_eq!(
-                            submission_failure(&submitted),
-                            Some(expected.clone()),
-                            "{submitted:?}"
-                        );
-                    }
                 }
             }
-        }
-        let binding = AppliedConfigBinding {
-            revision: ConfigRevisionInfo {
-                epoch: 1,
-                generation: 1,
-                source_hash: "source".into(),
-                effective_hash: "effective".into(),
-            },
-            host: ExecutionHost::Local,
-            generation: 1,
-        };
-        let status = CoreStatusProjection {
-            host: ExecutionHost::Local,
-            generation: 1,
-            connectivity: EndpointConnectivity::Connected,
-            snapshot: None,
-        };
-        for submitted in [
-            Ok(ReconcileResult::Reconciled(ReconcileReport {
-                applied: binding.clone(),
-                effective_config: None,
-                output: OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
-                    outcome: ReconcileOutcomeKind::Started,
-                    revision: binding.revision.clone(),
-                    warning: None,
-                    failed_apply: None,
-                }),
-                status: status.clone(),
-            })),
-            Ok(ReconcileResult::RolledBack(RolledBackReport {
-                restored: binding.clone(),
-                failed_apply: Some("apply failed".into()),
-                output: OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
-                    outcome: ReconcileOutcomeKind::RolledBack,
-                    revision: binding.revision,
-                    warning: None,
-                    failed_apply: Some("apply failed".into()),
-                }),
-                status,
-            })),
-        ] {
-            assert_eq!(submission_failure(&submitted), None, "{submitted:?}");
         }
     }
 }

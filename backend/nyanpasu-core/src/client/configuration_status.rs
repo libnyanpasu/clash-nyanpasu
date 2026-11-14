@@ -90,12 +90,12 @@ impl NyanpasuClient {
                 .completed
                 .iter()
                 .rev()
-                .map(|receipt| OperationStatus {
-                    operation_id: receipt.operation_id.to_string(),
-                    domain: format!("{:?}", receipt.domain),
-                    outcome: format!("{:?}", receipt.outcome),
-                    conclusion: format!("{:?}", receipt.conclusion),
-                    message: receipt.detail.clone(),
+                .map(|round| OperationStatus {
+                    operation_id: round.operation_id.to_string(),
+                    domain: round.trigger.clone(),
+                    outcome: round.conclusion.clone(),
+                    conclusion: String::new(),
+                    message: round.cause.as_ref().map(ToString::to_string),
                 })
                 .collect(),
         }

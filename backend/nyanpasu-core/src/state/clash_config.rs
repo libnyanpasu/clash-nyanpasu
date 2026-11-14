@@ -37,14 +37,14 @@ impl ClashConfigSnapshot {
 }
 
 pub struct ClashConfigActorArgs {
-    pub(crate) mutations: MutationCoordinator<ClashConfig>,
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
-    mutations: MutationCoordinator<ClashConfig>,
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
 }
@@ -90,7 +90,7 @@ impl ClashConfigActor {
         state.mutations.ensure_ready()?;
         let current = state.manager.snapshot_handle().load();
         let version = current.version;
-        let reaches_runtime = impact::clash_target(&current.state) != impact::clash_target(&next);
+        let reaches_runtime = impact::reaches_runtime(&current.state, &next, &[]);
         let operation_id = reaches_runtime.then(OperationId::generate);
         let gate = state.mutations.runtime();
         if reaches_runtime {
@@ -124,11 +124,7 @@ impl ClashConfigActor {
                 actual: *actual_version.as_ref(),
             }
             .fail(),
-            Err(error) => Err(ConfigError::commit_failure(
-                ConfigDomain::Clash,
-                error,
-                None,
-            )),
+            Err(error) => Err(ConfigError::commit_failure(ConfigDomain::Clash, error)),
         }
     }
 }

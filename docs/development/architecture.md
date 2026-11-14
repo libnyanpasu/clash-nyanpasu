@@ -203,8 +203,9 @@ independent candidate checks and post-commit notifications. Profiles checks stag
 bytes before preparing resources. A composition-root-injected `ProfileContentLock`
 covers its file promotion, document publication and compensation; build capture
 reads the committed Profiles snapshot and its files under one read guard.
-`client/application_workflow/participant.rs` still implements the participant port. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
-stay under `state/mutation/`; public wire values live in runtime-values. The
+`RuntimeApplyReceipt`, the internal evidence of a confirmed runtime application,
+stays under `state/mutation/`; public wire values live in runtime-values. Recent
+operation history records reconcile rounds rather than individual source commits. The
 notification contract remains in `client/effects`; `EffectKind` lives in
 `nyanpasu-runtime-values::configuration`. The policy
 allows source dependencies on effects, jobs and value/validation contracts. It
@@ -220,8 +221,8 @@ independence of `state` and `client`. D2f supplies fixtures for these exact rule
 where Cargo cannot enforce an intra-crate direction. No control/application crates are
 created; a future independent consumer requires its own extraction inventory.
 
-D2c makes `RecoveryRequired` wait for the source's authoritative decision before
-terminal receipt and journal settlement. A2b delivers shell-injected script
+Source commits are independent of runtime application; the facade waits on the
+reconciler status for their committed versions. A2b delivers shell-injected script
 extensions and explicit JavaScript/Lua features. An engine is available only
 when scripts compiles it and the shell supplies its extensions; the factory's
 default methods decline with typed `StartEngine`. Pipeline and wire errors
@@ -479,7 +480,9 @@ State changes follow this order:
 1. Keep state ownership in `StateActor` or a state manager owned by `StateActor`.
 2. Keep schema and patch operations in pure services or domain types.
 3. Generate runtime config from snapshots rather than mutating runtime globals.
-4. Commit state first, then trigger side effects through actor messages. A Required participant (the runtime) is a vote before the commit, not a side effect; this rule covers ordinary side effects.
+4. Commit state first, then trigger side effects through actor messages. Pre-commit
+   validation changes nothing in the running core; the reconciler brings it to the
+   committed configuration afterwards.
    Application, Clash and Profiles check candidates independently before persistence, publish
    their snapshots and effects notifications, then notify the runtime workflow. The facade
    waits on the workflow status watch for the committed engine version; an apply

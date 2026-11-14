@@ -38,6 +38,9 @@ export const useClashCores = () => {
   const agentSkillsQueryKey = api.queries
     .getCoreAgentSkills('clash')
     .queryKey.slice(0, 1)
+  const agentSkillsSummaryQueryKey = api.queries
+    .getCoreAgentSkillsSummary('clash')
+    .queryKey.slice(0, 1)
   const fetchLatestCoreVersions = api.queries.fetchLatestCoreVersions()
   const updateCoreCommand = api.mutations.updateCore
   const changeClashCoreCommand = api.mutations.changeClashCore
@@ -151,18 +154,26 @@ export const useClashCores = () => {
     )
   }
 
+  const inspectUpdaterSummary = async (updaterId: number) => {
+    return unwrapResult(
+      await invokeQuery(api.queries.inspectUpdaterSummary(updaterId)),
+    )
+  }
+
   // An update replaces the binary and the agent skills its archive ships after
   // `updateCore` resolves, so its caller refetches once the updater is done.
   const refetchVersions = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: coreQueryKey }),
       queryClient.invalidateQueries({ queryKey: agentSkillsQueryKey }),
+      queryClient.invalidateQueries({ queryKey: agentSkillsSummaryQueryKey }),
     ])
 
   return {
     query,
     updateCore,
     inspectUpdater,
+    inspectUpdaterSummary,
     upsert,
     restartSidecar,
     fetchRemote,

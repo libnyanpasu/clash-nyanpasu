@@ -46,6 +46,7 @@ vi.mock('@nyanpasu/query', async (importOriginal) => ({
     },
     updateCore: { mutateAsync: state.updateCore, isPending: false },
     inspectUpdater: state.inspectUpdater,
+    inspectUpdaterSummary: state.inspectUpdater,
     refetchVersions: state.refetchVersions,
     upsert: { mutateAsync: state.switchCore, isPending: false },
     restartSidecar: vi.fn(),
@@ -253,4 +254,54 @@ test('the deprecated core is marked and switching to it shows the removal notice
   await expect
     .element(view.getByText(notice, { exact: true }))
     .not.toBeInTheDocument()
+})
+
+test('a unit failed state on UpdaterProgressSummary surfaces the error message', async ({
+  onTestFinished,
+}) => {
+  state.currentCore = 'mihomo'
+  state.cores = {
+    mihomo: {
+      name: 'Mihomo',
+      currentVersion: 'N/A',
+      latestVersion: 'v1.19.32',
+      versionReadError: true,
+    },
+    'meow-alpha': {
+      name: 'Meow Alpha',
+      currentVersion: 'N/A',
+      latestVersion: 'alpha-3c27aca',
+      versionReadError: true,
+    },
+  }
+  state.updateCore.mockClear()
+  state.inspectUpdater.mockClear()
+  state.message.mockClear()
+  state.inspectUpdater.mockResolvedValueOnce({
+    id: 1,
+    state: 'failed',
+    downloader: { state: 'failed', downloaded: 0, total: 0, speed: 0 },
+  })
+  const view = await render(
+    <TooltipProvider>
+      <BlockTaskProvider>
+        <CoreManagerCard />
+      </BlockTaskProvider>
+    </TooltipProvider>,
+  )
+  onTestFinished(async () => view.unmount())
+
+  await view
+    .getByLabelText(m.settings_clash_core_manager_card_reinstall_core())
+    .nth(0)
+    .click()
+
+  await expect.poll(() => state.inspectUpdater.mock.calls.length).toBe(1)
+  await expect.poll(() => state.message.mock.calls.length).toBe(1)
+  expect(state.message.mock.lastCall?.[0]).toContain(
+    m.settings_about_update_failed(),
+  )
+  expect(state.message.mock.lastCall?.[1]).toEqual(
+    expect.objectContaining({ kind: 'error', title: 'Error' }),
+  )
 })

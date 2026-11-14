@@ -4,6 +4,7 @@ import {
   degradationReasonMessage,
   effectFailureMessage,
   ipcErrorMessage,
+  publicDegradationReasonMessage,
 } from '@/utils/ipc-error'
 import type {
   ClashReadError,
@@ -1017,4 +1018,42 @@ test('public failure envelopes localize without detail and preserve commit after
       detail: 'full cause',
     }),
   ).toBe('explicit host diagnostic')
+})
+
+test('public degradation reasons localize safely without raw host diagnostics', () => {
+  expect(
+    publicDegradationReasonMessage({
+      code: 'runtime_recovery_required',
+      operation_id: null,
+      cause: { kind: 'owner_unresponsive' },
+    }),
+  ).toBe(
+    `${m.mutation_degradation_reason_runtime_recovery_required()} (${m.error_runtime_owner_unresponsive()})`,
+  )
+
+  expect(
+    publicDegradationReasonMessage({
+      code: 'runtime_deferred',
+      cause: { kind: 'apply_runtime', core_kind: 'binary_not_found' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_runtime_deferred({
+      reason: `${m.error_runtime_apply_runtime()} (${m.error_runtime_core_reason_binary_not_found()})`,
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({
+      code: 'profile_auto_activation_failed',
+      cause: { kind: 'profile_not_found' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_profile_auto_activation_failed({
+      reason: m.error_profiles_profile_not_found(),
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({ code: 'http_server_unavailable' }),
+  ).toBe(m.mutation_degradation_reason_http_server_unavailable())
 })

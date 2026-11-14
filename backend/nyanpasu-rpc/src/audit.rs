@@ -154,6 +154,34 @@ pub fn summarize_mutation<T>(outcome: &MutationOutcome<T>) -> CompletionSummary 
     }
 }
 
+/// Extract metadata from an already-projected public mutation outcome.
+#[must_use]
+pub(crate) fn summarize_public_mutation<T>(
+    outcome: &nyanpasu_rpc_protocol::types::PublicMutationOutcome<T>,
+) -> CompletionSummary {
+    match outcome {
+        nyanpasu_rpc_protocol::types::PublicMutationOutcome::Committed {
+            commits,
+            notifications_pending,
+            ..
+        } => CompletionSummary::Mutation {
+            commits: commits.clone(),
+            notifications_pending: *notifications_pending,
+            degradation_count: 0,
+        },
+        nyanpasu_rpc_protocol::types::PublicMutationOutcome::CommittedDegraded {
+            commits,
+            notifications_pending,
+            degradations,
+            ..
+        } => CompletionSummary::Mutation {
+            commits: commits.clone(),
+            notifications_pending: *notifications_pending,
+            degradation_count: degradations.len(),
+        },
+    }
+}
+
 /// Phases follow preparation and execution, rather than the returned error kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditPhase {

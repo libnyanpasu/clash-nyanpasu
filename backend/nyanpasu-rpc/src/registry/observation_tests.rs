@@ -261,6 +261,7 @@ async fn summary_queries_have_no_diagnostic_text_keys() {
             "server",
             "controller_url",
             "secret",
+            "dir",
         ] {
             assert!(
                 !names.iter().any(|name| name == forbidden),
@@ -268,5 +269,42 @@ async fn summary_queries_have_no_diagnostic_text_keys() {
             );
         }
     }
+    let mut skills_names = Vec::new();
+    let (status, skills_summary) = fixture
+        .call(
+            "get_core_agent_skills_summary",
+            json!({ "coreType": "mihomo" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{skills_summary}");
+    keys(&skills_summary, &mut skills_names);
+    assert!(
+        !skills_names
+            .iter()
+            .any(|name| name == "dir" || name == "error"),
+        "get_core_agent_skills_summary: {skills_names:?}"
+    );
+    let mut tp_names = Vec::new();
+    let tp_summary = serde_json::to_value(
+        nyanpasu_runtime_values::observation::TransparentProxyStatusSummary::from(
+            &nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus {
+                supported: true,
+                active: true,
+                mode: Some(
+                    nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyMode::Redir,
+                ),
+                revision: Some(nyanpasu_ipc::api::status::RevisionIdInfo {
+                    epoch: 1,
+                    generation: 2,
+                    effective_hash: "abc".into(),
+                }),
+                error: Some("raw host stderr /var/run/nft failed".into()),
+            },
+        ),
+    )
+    .unwrap();
+    assert_eq!(tp_summary["has_error"], true);
+    keys(&tp_summary, &mut tp_names);
+    assert!(!tp_names.iter().any(|name| name == "error"), "{tp_names:?}");
     fixture.shutdown().await;
 }

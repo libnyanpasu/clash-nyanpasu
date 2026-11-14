@@ -3,7 +3,8 @@ import { render } from 'vitest-browser-react'
 import { Card } from '@nyanpasu/ui/card'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import type { AppUpdateChangelog, AppUpdateSnapshot } from '@nyanpasu/rpc/types'
+import type { AppUpdateChangelog, AppUpdateSummary } from '@nyanpasu/rpc/types'
+import { AppUpdateChangelog as AppUpdateChangelogView } from '../src/pages/(main)/main/settings/_modules/app-update-changelog'
 import UpdateControls from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-controls'
 
 function UpdateCard() {
@@ -20,16 +21,15 @@ const state = vi.hoisted(() => ({
   snapshot: {
     revision: 1,
     phase: 'available',
-    release: { version: '2.1.0', date: null, body: 'Release notes' },
+    release: { version: '2.1.0', date: null },
     downloaded: 0,
     total: null,
     speed: 0,
-    source: null,
-    error: null,
+    source: 'github',
+    has_error: false,
     last_checked_at: null,
     supported: true,
-    endpoints: ['https://updates.example.test/stable'],
-  } as AppUpdateSnapshot,
+  } as AppUpdateSummary,
   check: vi.fn(),
   download: vi.fn(),
   cancelDownload: vi.fn(),
@@ -242,6 +242,15 @@ test('unknown download size uses indeterminate progress and keeps cancellation a
 
   const progress = view.getByRole('progressbar')
   await expect.element(progress).not.toHaveAttribute('aria-valuenow')
+  await expect
+    .element(
+      view.getByText(
+        m.settings_about_update_current_source({
+          source: m.update_source_github(),
+        }),
+      ),
+    )
+    .toBeVisible()
   const cancel = view.getByRole('button', {
     name: m.settings_about_update_cancel_download(),
   })
@@ -400,14 +409,14 @@ test('failed checks without a release retry checking rather than downloading', a
     ...state.snapshot,
     phase: 'failed',
     release: null,
-    error: 'Network unavailable',
+    has_error: true,
   }
   const view = await render(<UpdateCard />)
   onTestFinished(async () => view.unmount())
 
   await expect
     .element(view.getByRole('alert'))
-    .toHaveTextContent('Network unavailable')
+    .toHaveTextContent(m.settings_about_update_failed())
   await view
     .getByRole('button', { name: m.settings_about_update_idle() })
     .click()
@@ -523,15 +532,16 @@ test('the release body stands in when no version notes resolve', async ({
   onTestFinished,
 }) => {
   state.changelog = { entries: [], compare_url: null }
-  const view = await render(<UpdateCard />)
+  const view = await render(
+    <AppUpdateChangelogView
+      from="2.0.0"
+      to="2.1.0"
+      fallbackBody="Release notes"
+    />,
+  )
   onTestFinished(async () => view.unmount())
 
-  await view
-    .getByRole('button', { name: m.settings_about_update_changelog() })
-    .click()
-  await expect
-    .element(view.getByRole('dialog').getByText('Release notes'))
-    .toBeVisible()
+  await expect.element(view.getByText('Release notes')).toBeVisible()
 })
 
 test('last checked timestamp is shown in a tooltip', async ({
@@ -558,4 +568,50 @@ test('last checked timestamp is shown in a tooltip', async ({
     .getByRole('button', { name: m.settings_about_update_idle() })
     .hover()
   await expect.element(view.getByRole('tooltip')).toHaveTextContent(lastChecked)
+})
+
+test('safe AppUpdateSummary hides endpoints and raw errors while showing localized failure state', async ({
+  onTestFinished,
+}) => {
+  const previous = state.snapshot
+  state.snapshot = {
+    revision: 5,
+    phase: 'failed',
+    source: 'github',
+    release: {
+      version: '2.1.0',
+      date: '2026-11-02',
+    },
+    downloaded: 100,
+    total: 200,
+    speed: null,
+    has_error: true,
+    last_checked_at: '2026-10-03T12:00:00Z',
+    supported: true,
+  }
+  state.changelog = { entries: [], compare_url: null }
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => {
+    await view.unmount()
+    state.snapshot = previous
+  })
+
+  await expect
+    .element(view.getByRole('alert'))
+    .toHaveTextContent(m.settings_about_update_failed())
+  await view
+    .getByRole('button', { name: m.settings_about_update_changelog() })
+    .click()
+  await expect
+    .element(
+      view.getByRole('dialog').getByText(
+        m.settings_about_update_changelog_title({
+          version: '2.1.0',
+        }),
+      ),
+    )
+    .toBeVisible()
+  await expect
+    .element(view.getByRole('dialog').getByText('Release notes'))
+    .not.toBeInTheDocument()
 })

@@ -1,6 +1,6 @@
 import { useEffect, type PropsWithChildren } from 'react'
 import type { RpcClient } from '@nyanpasu/rpc'
-import type { Degradation } from '@nyanpasu/rpc/types'
+import type { Degradation, PublicDegradation } from '@nyanpasu/rpc/types'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import {
   ClashConnectionDetailsFreezeBoundary,
@@ -30,10 +30,12 @@ export {
 export { KvStorageProvider, MutationProvider }
 export { ConfigurationStatusProvider, useConfigurationStatus }
 
+export type AnyDegradation = Degradation | PublicDegradation
+
 export type NyanpasuQueryProviderProps = PropsWithChildren<{
   rpc: RpcClient
   queryClient: QueryClient
-  onDegraded?: (degradations: Degradation[]) => void
+  onDegraded?: (degradations: AnyDegradation[]) => void
 }>
 
 export const NyanpasuQueryProvider = ({
@@ -55,7 +57,7 @@ export const NyanpasuQueryProvider = ({
       )
         return
       if ('degradations' in data && Array.isArray(data.degradations)) {
-        onDegraded(data.degradations as Degradation[])
+        onDegraded(data.degradations as AnyDegradation[])
       }
     })
   }, [onDegraded, queryClient])

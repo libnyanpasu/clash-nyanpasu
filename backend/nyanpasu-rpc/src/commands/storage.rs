@@ -43,12 +43,12 @@ pub async fn get_hotkeys(client: RpcState<'_, NyanpasuClient>) -> Result<Vec<Str
 }
 
 // See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
-#[nyanpasu_macro::rpc(optional_capabilities(hotkey), scope = system)]
+#[nyanpasu_macro::rpc(optional_capabilities(hotkey), privacy, scope = system)]
 #[specta::specta]
 pub async fn set_hotkeys(
     client: RpcState<'_, NyanpasuClient>,
     hotkeys: Vec<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+) -> Result<nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome> {
     // An unparsable list is rejected before anything is written; a shortcut the
     // OS refuses lands as a degradation on a committed config.
     Ok(client
@@ -56,7 +56,8 @@ pub async fn set_hotkeys(
             hotkeys: Some(hotkeys),
             ..Default::default()
         })
-        .await?)
+        .await?
+        .into())
 }
 
 /// Debug: returns all frontend KV entries (keys with the `web:` prefix).

@@ -128,7 +128,7 @@ fn operation_receivers_decode_existing_success_values() {
                 vec![],
             )
         };
-        receive::<operations::CreateProfile>(create);
+        receive::<operations::CreateProfile>(crate::types::RpcMutationOutcome::Full(create).into());
         let delete = if degraded {
             nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded {
                 value: (),
@@ -139,8 +139,48 @@ fn operation_receivers_decode_existing_success_values() {
         } else {
             nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), vec![])
         };
-        receive::<operations::DeleteProfile>(delete);
+        receive::<operations::DeleteProfile>(crate::types::RpcMutationOutcome::Full(delete).into());
     }
+    let public_create =
+        crate::types::RpcProfileMutationOutcome::from(crate::types::RpcMutationOutcome::Public(
+            crate::types::PublicMutationOutcome::CommittedDegraded {
+                value: sample::<crate::operations::ProfileId>(json!("profile-1")),
+                commits: vec![],
+                notifications_pending: true,
+                degradations: vec![crate::types::PublicDegradation {
+                    phase: nyanpasu_runtime_values::runtime::DegradationPhase::RuntimeBuild,
+                    reason: crate::types::PublicDegradationReason::RuntimeDeferred {
+                        cause: crate::types::PublicRuntimeError::RestoreFailed,
+                    },
+                    retryable: true,
+                }],
+            },
+        ));
+    let public_wire = serde_json::to_value(&public_create).unwrap();
+    let decoded_create: <operations::CreateProfile as RpcOperation>::ReceivedResponse =
+        sample(public_wire.clone());
+    assert_eq!(serde_json::to_value(decoded_create).unwrap(), public_wire);
+
+    let public_delete =
+        crate::types::RpcUnitMutationOutcome::from(crate::types::RpcMutationOutcome::Public(
+            crate::types::PublicMutationOutcome::CommittedDegraded {
+                value: (),
+                commits: vec![],
+                notifications_pending: true,
+                degradations: vec![crate::types::PublicDegradation {
+                    phase: nyanpasu_runtime_values::runtime::DegradationPhase::UiEffect,
+                    reason: crate::types::PublicDegradationReason::ProxyCacheRefreshFailed,
+                    retryable: false,
+                }],
+            },
+        ));
+    let public_delete_wire = serde_json::to_value(&public_delete).unwrap();
+    let decoded_delete: <operations::DeleteProfile as RpcOperation>::ReceivedResponse =
+        sample(public_delete_wire.clone());
+    assert_eq!(
+        serde_json::to_value(decoded_delete).unwrap(),
+        public_delete_wire
+    );
     receive::<operations::ReadProfileFile>("proxies: []\n".into());
     receive::<operations::GetConfigurationStatus>(sample(json!({
         "event_seq": 1, "maintenance": null, "active": null, "effects": [], "sources": [],

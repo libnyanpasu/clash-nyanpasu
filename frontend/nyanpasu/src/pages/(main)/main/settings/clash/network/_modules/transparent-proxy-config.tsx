@@ -56,7 +56,7 @@ const DEFAULT_CONFIG: EffectiveTransparentProxyConfig = {
   ipv6: false,
 }
 
-const STATUS_QUERY_KEY = ['getTransparentProxyStatus'] as const
+const STATUS_QUERY_KEY = ['getTransparentProxyStatusSummary'] as const
 
 const reportError = (error: unknown) =>
   message(formatError(error), { title: 'Error', kind: 'error', error })
@@ -169,7 +169,7 @@ export default function TransparentProxyConfigSettings() {
   const tproxyPort = useClashSystemSetting('tproxy_port')
   const api = useQueryApi()
   const queryClient = useQueryClient()
-  const statusOptions = api.queries.getTransparentProxyStatus()
+  const statusOptions = api.queries.getTransparentProxyStatusSummary()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'
   const statusQuery = useQuery({
     ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
@@ -246,7 +246,9 @@ export default function TransparentProxyConfigSettings() {
     : 'disabled'
   const statusError = statusQuery.error
     ? formatError(statusQuery.error)
-    : (statusQuery.data?.error ?? null)
+    : statusQuery.data?.has_error
+      ? m.settings_clash_transparent_proxy_status_unavailable()
+      : null
   const actualStatusLabel = statusQuery.isPending
     ? m.settings_clash_transparent_proxy_status_loading()
     : statusQuery.isError

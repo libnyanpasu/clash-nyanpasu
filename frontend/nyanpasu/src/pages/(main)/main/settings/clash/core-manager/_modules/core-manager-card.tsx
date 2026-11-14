@@ -1,7 +1,6 @@
 import ArrowRightAltRounded from '~icons/material-symbols/arrow-right-alt-rounded'
 import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-code-update-outline-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
-import { isObject } from 'es-toolkit/compat'
 import { motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
@@ -29,7 +28,7 @@ import {
   useDeleteClashConnections,
   useSetting,
 } from '@nyanpasu/query'
-import { ClashCore, UpdaterSummary } from '@nyanpasu/rpc/types'
+import { ClashCore, UpdaterProgressSummary } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   SettingsCard,
@@ -41,32 +40,29 @@ function useCoreUpdateTask(
   core?: ClashCore | null,
   item?: ClashCoresDetail | null,
 ) {
-  const { updateCore, inspectUpdater, refetchVersions } = useClashCores()
+  const { updateCore, inspectUpdaterSummary, refetchVersions } = useClashCores()
 
-  const [updater, setUpdater] = useState<UpdaterSummary>()
+  const [updater, setUpdater] = useState<UpdaterProgressSummary>()
 
   const task = useBlockTask(`core-manager-update-${core}`, async () => {
     try {
       const updaterId = await updateCore.mutateAsync(core!)
 
       if (!updaterId) {
-        throw new Error('Failed to update')
+        throw new Error(m.settings_about_update_failed())
       }
 
       await new Promise<void>((resolve, reject) => {
         let stopped = false
         const poll = async () => {
           try {
-            const result = await inspectUpdater(updaterId)
+            const result = await inspectUpdaterSummary(updaterId)
             setUpdater(result)
-            if (isObject(result.state) && 'failed' in result.state) {
-              throw new Error(result.state.failed)
-            }
             if (
-              isObject(result.downloader.state) &&
-              'failed' in result.downloader.state
+              result.state === 'failed' ||
+              result.downloader.state === 'failed'
             ) {
-              throw new Error(result.downloader.state.failed)
+              throw new Error(m.settings_about_update_failed())
             }
             if (result.state === 'done') {
               stopped = true

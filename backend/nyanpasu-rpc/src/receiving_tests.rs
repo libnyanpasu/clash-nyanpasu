@@ -1326,6 +1326,45 @@ fn ipc_domains_and_envelope(present: bool) {
         ProfileSyncRead => profile_sync_read_error_cases,
     );
     receive::<received::Degradation>(degradation(present));
+    // Verify receiving types decode both Full and Public `ReceivedMutationOutcome` and `RpcAppUpdateOutcome`.
+    let public_outcome = nyanpasu_rpc_protocol::types::RpcMutationOutcome::Public(
+        nyanpasu_rpc_protocol::types::PublicMutationOutcome::CommittedDegraded {
+            value: "profile-1".to_owned(),
+            commits: vec![],
+            notifications_pending: true,
+            degradations: vec![nyanpasu_rpc_protocol::types::PublicDegradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::UiEffect,
+                reason:
+                    nyanpasu_rpc_protocol::types::PublicDegradationReason::ProxyCacheRefreshFailed,
+                retryable: present,
+            }],
+        },
+    );
+    let public_outcome_wire = serde_json::to_value(&public_outcome).unwrap();
+    let decoded_public: nyanpasu_rpc_protocol::types::ReceivedMutationOutcome<String> =
+        serde_json::from_value(public_outcome_wire.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(decoded_public).unwrap(),
+        public_outcome_wire
+    );
+    let update_public = nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome::Public(
+        nyanpasu_runtime_values::app_update::AppUpdateSummary {
+            revision: 4,
+            phase: nyanpasu_runtime_values::app_update::AppUpdatePhase::Failed,
+            release: None,
+            downloaded: 512,
+            total: Some(1024),
+            speed: 128.0,
+            source: present.then_some(nyanpasu_config::application::UpdateSource::Github),
+            has_error: present,
+            last_checked_at: Some("2026-11-14T00:00:00Z".to_owned()),
+            supported: true,
+        },
+    );
+    let update_wire = serde_json::to_value(&update_public).unwrap();
+    let decoded_update: nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome =
+        serde_json::from_value(update_wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded_update).unwrap(), update_wire);
     receive::<received::RpcError>(nyanpasu_rpc_protocol::RpcError {
         kind: "application_error",
         message: "envelope".into(),

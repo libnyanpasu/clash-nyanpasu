@@ -5,7 +5,10 @@
 //! localization without exposing local filesystem paths, URLs, credentials,
 //! host commands, scripts, logs, or raw underlying error strings.
 
-use nyanpasu_config::application::ClashCore;
+use nyanpasu_config::{
+    application::ClashCore,
+    profile::{FolderId, ProfileId},
+};
 use nyanpasu_core_metadata::CoreErrorKind;
 use nyanpasu_runtime_values::{
     app_update::{AppUpdateSnapshot, AppUpdateSummary},
@@ -526,6 +529,66 @@ pub enum RpcMutationOutcome<T> {
 impl<T> From<MutationOutcome<T>> for RpcMutationOutcome<T> {
     fn from(outcome: MutationOutcome<T>) -> Self {
         Self::Full(outcome)
+    }
+}
+
+/// Concrete transparent boundary wrapper for unit committed mutation outcomes.
+///
+/// Separate concrete wrappers exist for the exported command value types because
+/// pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(transparent)]
+pub struct RpcUnitMutationOutcome(pub RpcMutationOutcome<()>);
+
+impl From<MutationOutcome<()>> for RpcUnitMutationOutcome {
+    fn from(outcome: MutationOutcome<()>) -> Self {
+        Self(RpcMutationOutcome::Full(outcome))
+    }
+}
+
+impl From<RpcMutationOutcome<()>> for RpcUnitMutationOutcome {
+    fn from(outcome: RpcMutationOutcome<()>) -> Self {
+        Self(outcome)
+    }
+}
+
+/// Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+///
+/// Separate concrete wrappers exist for the exported command value types because
+/// pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(transparent)]
+pub struct RpcProfileMutationOutcome(pub RpcMutationOutcome<ProfileId>);
+
+impl From<MutationOutcome<ProfileId>> for RpcProfileMutationOutcome {
+    fn from(outcome: MutationOutcome<ProfileId>) -> Self {
+        Self(RpcMutationOutcome::Full(outcome))
+    }
+}
+
+impl From<RpcMutationOutcome<ProfileId>> for RpcProfileMutationOutcome {
+    fn from(outcome: RpcMutationOutcome<ProfileId>) -> Self {
+        Self(outcome)
+    }
+}
+
+/// Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+///
+/// Separate concrete wrappers exist for the exported command value types because
+/// pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(transparent)]
+pub struct RpcFolderMutationOutcome(pub RpcMutationOutcome<FolderId>);
+
+impl From<MutationOutcome<FolderId>> for RpcFolderMutationOutcome {
+    fn from(outcome: MutationOutcome<FolderId>) -> Self {
+        Self(RpcMutationOutcome::Full(outcome))
+    }
+}
+
+impl From<RpcMutationOutcome<FolderId>> for RpcFolderMutationOutcome {
+    fn from(outcome: RpcMutationOutcome<FolderId>) -> Self {
+        Self(outcome)
     }
 }
 

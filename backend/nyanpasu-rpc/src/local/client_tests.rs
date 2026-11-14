@@ -129,7 +129,7 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
             .rpc
             .dependencies
             .client
-            .snapshot(event)
+            .snapshot(event, nyanpasu_rpc_protocol::ResponseVisibility::Full)
             .await
             .unwrap();
         let peer = Peer::start(&fixture, source.clone()).await;

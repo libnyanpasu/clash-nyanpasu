@@ -126,10 +126,14 @@ async fn cached_icon_content_is_checked_before_serving() {
         let request = IconRequest::Cached {
             url: "https://icons.example/untrusted".into(),
         };
-        let error = super::read(&fixture.rpc.dependencies, request)
-            .await
-            .err()
-            .unwrap();
+        let error = super::read(
+            &fixture.rpc.dependencies,
+            nyanpasu_rpc_protocol::ResponseVisibility::Full,
+            request,
+        )
+        .await
+        .err()
+        .unwrap();
         assert_eq!(error.kind, "invalid_icon");
         assert!(!error.message.contains("untrusted icon bytes"));
     }
@@ -143,13 +147,81 @@ async fn headless_host_icons_report_unavailable() {
     for path in ["/tray", "/widget"] {
         let request = parse(path, Some("mode=normal")).unwrap();
         assert_eq!(
-            super::read(&fixture.rpc.dependencies, request)
-                .await
-                .err()
-                .unwrap()
-                .kind,
+            super::read(
+                &fixture.rpc.dependencies,
+                nyanpasu_rpc_protocol::ResponseVisibility::Full,
+                request,
+            )
+            .await
+            .err()
+            .unwrap()
+            .kind,
             "unavailable"
         );
     }
+    fixture.shutdown().await;
+}
+
+#[cfg(feature = "http")]
+pub(crate) async fn failing_fixture(fetches: usize) -> crate::test_support::Fixture {
+    use nyanpasu_contracts::net::MockIconFetcher;
+    use std::sync::Arc;
+
+    let directory = tempfile::tempdir().unwrap();
+    let mut args = crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    )
+    .await;
+    let mut fetcher = MockIconFetcher::new();
+    fetcher
+        .expect_fetch()
+        .times(fetches)
+        .returning(|url, _| Err(anyhow::anyhow!("upstream connect error for {url}")));
+    args.host_adapters.icon_fetcher = Arc::new(fetcher);
+    crate::test_support::Fixture::with_setup(false, &[], directory, args).await
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn cached_icon_error_hides_secret_url_on_public_visibility() {
+    use nyanpasu_rpc_protocol::ResponseVisibility;
+
+    let secret_icon = "https://user:pass@secret-icon-canary.invalid/icon.png";
+    let fixture = failing_fixture(2).await;
+
+    let public_err = super::read(
+        &fixture.rpc.dependencies,
+        ResponseVisibility::Public,
+        IconRequest::Cached {
+            url: secret_icon.into(),
+        },
+    )
+    .await
+    .err()
+    .unwrap();
+    let public_wire = serde_json::to_string(&public_err).unwrap();
+    assert!(
+        !public_wire.contains("secret-icon-canary")
+            && !public_wire.contains("user:pass")
+            && !public_wire.contains("detail"),
+        "public icon error must hide URL and detail: {public_wire}"
+    );
+
+    let full_err = super::read(
+        &fixture.rpc.dependencies,
+        ResponseVisibility::Full,
+        IconRequest::Cached {
+            url: secret_icon.into(),
+        },
+    )
+    .await
+    .err()
+    .unwrap();
+    let full_wire = serde_json::to_string(&full_err).unwrap();
+    assert!(
+        full_wire.contains("secret-icon-canary"),
+        "full icon error retains diagnostic URL: {full_wire}"
+    );
     fixture.shutdown().await;
 }

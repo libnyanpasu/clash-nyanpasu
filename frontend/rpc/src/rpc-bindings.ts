@@ -23,7 +23,7 @@ export function createRpcClient(
      */
     rpcDescribe: () => __RPC_INVOKE<RpcDescribeResponse>('rpc_describe'),
     getHttpServerStatus: () =>
-      typedError<HttpServerStatus, IpcError>(
+      typedError<HttpServerStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_http_server_status'),
       ),
     getConfigurationStatus: () =>
@@ -38,18 +38,20 @@ export function createRpcClient(
       __RPC_INVOKE<ServiceStatusSummary>('get_service_status_summary'),
     /**  Which core is running and in what state, without controller endpoints or failure text. */
     getCoreStatusSummary: () =>
-      typedError<CoreStatusSummary, IpcError>(
+      typedError<CoreStatusSummary, IpcError_Serialize>(
         __RPC_INVOKE('get_core_status_summary'),
       ),
     readClipboardText: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
+      typedError<string, IpcError_Serialize>(
+        __RPC_INVOKE('read_clipboard_text'),
+      ),
     queryCoreLogs: (query: CoreLogQuery) =>
       typedError<CoreLogPage, CoreLogError>(
         __RPC_INVOKE('query_core_logs', { query }),
       ),
     /**  Public core-log page summary without payloads, source labels, raw timestamps, keyword search, or storage error text. */
     queryCoreLogsSummary: (query: CoreLogSummaryQuery) =>
-      typedError<CoreLogPageSummary, IpcError>(
+      typedError<CoreLogPageSummary, IpcError_Serialize>(
         __RPC_INVOKE('query_core_logs_summary', { query }),
       ),
     getCoreLog: (cursor: CoreLogCursor) =>
@@ -62,7 +64,7 @@ export function createRpcClient(
       ),
     /**  Public core-log status summary without raw storage error messages. */
     getCoreLogStatusSummary: () =>
-      typedError<CoreLogStatusSummary, IpcError>(
+      typedError<CoreLogStatusSummary, IpcError_Serialize>(
         __RPC_INVOKE('get_core_log_status_summary'),
       ),
     listLogFiles: (source: LogSource) =>
@@ -74,16 +76,22 @@ export function createRpcClient(
      *  server field is the combination of host and port
      */
     getSysProxy: () =>
-      typedError<GetSysProxyResponse, IpcError>(__RPC_INVOKE('get_sys_proxy')),
+      typedError<GetSysProxyResponse, IpcError_Serialize>(
+        __RPC_INVOKE('get_sys_proxy'),
+      ),
     getClashInfo: () =>
-      typedError<ClashInfo, IpcError>(__RPC_INVOKE('get_clash_info')),
+      typedError<ClashInfo, IpcError_Serialize>(__RPC_INVOKE('get_clash_info')),
     /**  get the runtime config */
     getRuntimeConfig: () =>
-      typedError<any | null, IpcError>(__RPC_INVOKE('get_runtime_config')),
+      typedError<any | null, IpcError_Serialize>(
+        __RPC_INVOKE('get_runtime_config'),
+      ),
     getRuntimeYaml: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('get_runtime_yaml')),
+      typedError<string, IpcError_Serialize>(__RPC_INVOKE('get_runtime_yaml')),
     getRuntimeExists: () =>
-      typedError<string[], IpcError>(__RPC_INVOKE('get_runtime_exists')),
+      typedError<string[], IpcError_Serialize>(
+        __RPC_INVOKE('get_runtime_exists'),
+      ),
     inspectRuntime: () =>
       typedError<
         {
@@ -101,7 +109,7 @@ export function createRpcClient(
           final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
-        IpcError
+        IpcError_Serialize
       >(__RPC_INVOKE('inspect_runtime')),
     inspectAppliedRuntime: () =>
       typedError<
@@ -120,14 +128,14 @@ export function createRpcClient(
           final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
-        IpcError
+        IpcError_Serialize
       >(__RPC_INVOKE('inspect_applied_runtime')),
     inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
-      typedError<RuntimeInspectionContent, IpcError>(
+      typedError<RuntimeInspectionContent, IpcError_Serialize>(
         __RPC_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
       ),
     getPostprocessingOutput: () =>
-      typedError<PostProcessingOutput, IpcError>(
+      typedError<PostProcessingOutput, IpcError_Serialize>(
         __RPC_INVOKE('get_postprocessing_output'),
       ),
     clashApiGetProxyDelay: (
@@ -137,7 +145,7 @@ export function createRpcClient(
       url: string | null,
       expected: string | null,
     ) =>
-      typedError<Delay, IpcError>(
+      typedError<Delay, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_proxy_delay', {
           name,
           provider,
@@ -151,19 +159,23 @@ export function createRpcClient(
      *  [`clash_api_get_configs`].
      */
     clashApiGetSettings: () =>
-      typedError<ClashApiSettings, IpcError>(
+      typedError<ClashApiSettings, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_settings'),
       ),
     clashApiGetConfigs: () =>
-      typedError<ClashApiConfig, IpcError>(
+      typedError<ClashApiConfig, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_configs'),
       ),
     clashApiGetVersion: () =>
-      typedError<ClashVersion, IpcError>(__RPC_INVOKE('clash_api_get_version')),
+      typedError<ClashVersion, IpcError_Serialize>(
+        __RPC_INVOKE('clash_api_get_version'),
+      ),
     clashApiGetRules: () =>
-      typedError<RulesRes, IpcError>(__RPC_INVOKE('clash_api_get_rules')),
+      typedError<RulesRes, IpcError_Serialize>(
+        __RPC_INVOKE('clash_api_get_rules'),
+      ),
     clashApiGetProvidersRules: () =>
-      typedError<ProvidersRulesRes, IpcError>(
+      typedError<ProvidersRulesRes, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_providers_rules'),
       ),
     clashApiGetGroupDelay: (
@@ -171,24 +183,24 @@ export function createRpcClient(
       url: string | null,
       expected: string | null,
     ) =>
-      typedError<{ [key in ProxyName]: number }, IpcError>(
+      typedError<{ [key in ProxyName]: number }, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_group_delay', { group, url, expected }),
       ),
     clashApiGetProvidersProxies: () =>
       typedError<
         { [key in ProviderName]: ProxyProviderSummary_Serialize },
-        IpcError
+        IpcError_Serialize
       >(__RPC_INVOKE('clash_api_get_providers_proxies')),
     fetchLatestCoreVersions: () =>
-      typedError<ManifestVersionLatest, IpcError>(
+      typedError<ManifestVersionLatest, IpcError_Serialize>(
         __RPC_INVOKE('fetch_latest_core_versions'),
       ),
     inspectUpdater: (updaterId: number) =>
-      typedError<UpdaterSummary, IpcError>(
+      typedError<UpdaterSummary, IpcError_Serialize>(
         __RPC_INVOKE('inspect_updater', { updaterId }),
       ),
     getCoreVersion: (coreType: ClashCore_Deserialize) =>
-      typedError<string, IpcError>(
+      typedError<string, IpcError_Serialize>(
         __RPC_INVOKE('get_core_version', { coreType }),
       ),
     /**
@@ -196,11 +208,11 @@ export function createRpcClient(
      *  [`get_app_config`].
      */
     getAppSettings: () =>
-      typedError<ApplicationSettings_Serialize, IpcError>(
+      typedError<ApplicationSettings_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('get_app_settings'),
       ),
     getAppConfig: () =>
-      typedError<NyanpasuAppConfig_Serialize, IpcError>(
+      typedError<NyanpasuAppConfig_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('get_app_config'),
       ),
     /**
@@ -208,18 +220,24 @@ export function createRpcClient(
      *  full config is [`get_clash_config`].
      */
     getClashSettings: () =>
-      typedError<ClashSettings, IpcError>(__RPC_INVOKE('get_clash_settings')),
+      typedError<ClashSettings, IpcError_Serialize>(
+        __RPC_INVOKE('get_clash_settings'),
+      ),
     getClashConfig: () =>
-      typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
+      typedError<ClashConfig, IpcError_Serialize>(
+        __RPC_INVOKE('get_clash_config'),
+      ),
     getConfigFeatures: () =>
-      typedError<ConfigFeatures, IpcError>(__RPC_INVOKE('get_config_features')),
+      typedError<ConfigFeatures, IpcError_Serialize>(
+        __RPC_INVOKE('get_config_features'),
+      ),
     getIpLookupProviders: () =>
-      typedError<IpLookupProviderInfo[], IpcError>(
+      typedError<IpLookupProviderInfo[], IpcError_Serialize>(
         __RPC_INVOKE('get_ip_lookup_providers'),
       ),
     getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
     getProfiles: () =>
-      typedError<ProfileDocument_Serialize, IpcError>(
+      typedError<ProfileDocument_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('get_profiles'),
       ),
     /**
@@ -241,11 +259,11 @@ export function createRpcClient(
         update_interval_minutes: RemoteSyncInterval | null
       } | null,
     ) =>
-      typedError<ProfileUrlProbe, IpcError>(
+      typedError<ProfileUrlProbe, IpcError_Serialize>(
         __RPC_INVOKE('probe_profile_url', { url, option }),
       ),
     getProfileSyncStatus: (uid: ProfileId) =>
-      typedError<ProfileSyncStatus, IpcError>(
+      typedError<ProfileSyncStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_status', { uid }),
       ),
     getProfileSyncRuns: (
@@ -255,7 +273,7 @@ export function createRpcClient(
         id: string
       } | null,
     ) =>
-      typedError<RunPageDto, IpcError>(
+      typedError<RunPageDto, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_runs', { uid, after }),
       ),
     /**
@@ -263,7 +281,7 @@ export function createRpcClient(
      *  [`get_profile_sync_status`].
      */
     getProfileSyncStatusSummary: (uid: ProfileId) =>
-      typedError<ProfileSyncSummary, IpcError>(
+      typedError<ProfileSyncSummary, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_status_summary', { uid }),
       ),
     /**
@@ -277,52 +295,65 @@ export function createRpcClient(
         id: string
       } | null,
     ) =>
-      typedError<SyncRunPageSummary, IpcError>(
+      typedError<SyncRunPageSummary, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_runs_summary', { uid, after }),
       ),
     getProfileSyncLogs: (uid: ProfileId, run: string, after: string | null) =>
-      typedError<LogPageDto, IpcError>(
+      typedError<LogPageDto, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_logs', { uid, run, after }),
       ),
     readProfileFile: (uid: ProfileId) =>
-      typedError<string, IpcError>(__RPC_INVOKE('read_profile_file', { uid })),
+      typedError<string, IpcError_Serialize>(
+        __RPC_INVOKE('read_profile_file', { uid }),
+      ),
     getCustomAppDir: () =>
-      typedError<string | null, IpcError>(__RPC_INVOKE('get_custom_app_dir')),
+      typedError<string | null, IpcError_Serialize>(
+        __RPC_INVOKE('get_custom_app_dir'),
+      ),
     statusService: () =>
-      typedError<ServiceStatusInfo_Serialize, IpcError>(
+      typedError<ServiceStatusInfo_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('status_service'),
       ),
     isPortable: () =>
-      typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
+      typedError<boolean, IpcError_Serialize>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
-      typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
+      typedError<Proxies_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('get_proxies'),
+      ),
     /**
      *  Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
      *  credential, so `get_proxies` only reports whether a group has one.
      */
     getProxyGroupIcons: () =>
-      typedError<{ [key in ProxyName]: string }, IpcError>(
+      typedError<{ [key in ProxyName]: string }, IpcError_Serialize>(
         __RPC_INVOKE('get_proxy_group_icons'),
       ),
     isTrayIconSet: (mode: TrayIcon) =>
-      typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
+      typedError<boolean, IpcError_Serialize>(
+        __RPC_INVOKE('is_tray_icon_set', { mode }),
+      ),
     isWidgetIconSet: (mode: TrayIcon) =>
-      typedError<boolean, IpcError>(
+      typedError<boolean, IpcError_Serialize>(
         __RPC_INVOKE('is_widget_icon_set', { mode }),
       ),
     getCoreStatus: () =>
-      typedError<CoreStatusInfo, IpcError>(__RPC_INVOKE('get_core_status')),
+      typedError<CoreStatusInfo, IpcError_Serialize>(
+        __RPC_INVOKE('get_core_status'),
+      ),
     urlDelayTest: (url: string, expectedStatus: number) =>
-      typedError<number | null, IpcError>(
+      typedError<number | null, IpcError_Serialize>(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
       ),
-    getIpsbAsn: () => typedError<any, IpcError>(__RPC_INVOKE('get_ipsb_asn')),
+    getIpsbAsn: () =>
+      typedError<any, IpcError_Serialize>(__RPC_INVOKE('get_ipsb_asn')),
     isAppimage: () =>
-      typedError<boolean, IpcError>(__RPC_INVOKE('is_appimage')),
+      typedError<boolean, IpcError_Serialize>(__RPC_INVOKE('is_appimage')),
     getServiceInstallPrompt: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('get_service_install_prompt')),
+      typedError<string, IpcError_Serialize>(
+        __RPC_INVOKE('get_service_install_prompt'),
+      ),
     getStorageItem: (key: string) =>
-      typedError<StorageItem<string>, IpcError>(
+      typedError<StorageItem<string>, IpcError_Serialize>(
         __RPC_INVOKE('get_storage_item', { key }),
       ),
     /**
@@ -330,29 +361,31 @@ export function createRpcClient(
      *  Internal storage entries used by other subsystems are excluded.
      */
     getAllStorageItems: () =>
-      typedError<StorageEntry[], IpcError>(
+      typedError<StorageEntry[], IpcError_Serialize>(
         __RPC_INVOKE('get_all_storage_items'),
       ),
     getHotkeys: () =>
-      typedError<string[], IpcError>(__RPC_INVOKE('get_hotkeys')),
+      typedError<string[], IpcError_Serialize>(__RPC_INVOKE('get_hotkeys')),
     getCoreDir: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('get_core_dir')),
+      typedError<string, IpcError_Serialize>(__RPC_INVOKE('get_core_dir')),
     /**
      *  The agent skills a core ships. Their folders are on the host that runs
      *  Nyanpasu, which is also where an agent driving the core has to run.
      */
     getCoreAgentSkills: (coreType: ClashCore_Deserialize) =>
-      typedError<CoreAgentSkill[], IpcError>(
+      typedError<CoreAgentSkill[], IpcError_Serialize>(
         __RPC_INVOKE('get_core_agent_skills', { coreType }),
       ),
     getClashWsSnapshot: () =>
-      typedError<ClashWsSnapshot, IpcError>(
+      typedError<ClashWsSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('get_clash_ws_snapshot'),
       ),
     getTrafficSummary: () =>
-      typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
+      typedError<TrafficSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_traffic_summary'),
+      ),
     queryTrafficReport: (request: ReportRequest) =>
-      typedError<TrafficReport, IpcError>(
+      typedError<TrafficReport, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_report', { request }),
       ),
     queryTrafficUsage: (
@@ -365,7 +398,7 @@ export function createRpcClient(
       } | null,
       limit: number,
     ) =>
-      typedError<UsagePage, IpcError>(
+      typedError<UsagePage, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_usage', {
           query,
           groupBy,
@@ -379,7 +412,7 @@ export function createRpcClient(
       groupBy: Dimension,
       keys: string[],
     ) =>
-      typedError<UsageGroup[], IpcError>(
+      typedError<UsageGroup[], IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_usage_by_keys', { query, groupBy, keys }),
       ),
     queryTrafficClosedConnections: (
@@ -392,7 +425,7 @@ export function createRpcClient(
       } | null,
       limit: number,
     ) =>
-      typedError<ClosedPage, IpcError>(
+      typedError<ClosedPage, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_closed_connections', {
           range,
           filters,
@@ -401,35 +434,35 @@ export function createRpcClient(
         }),
       ),
     queryTrafficActiveConnectionIds: (filters: TrafficFilter[]) =>
-      typedError<string[], IpcError>(
+      typedError<string[], IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_active_connection_ids', { filters }),
       ),
     getAppUpdateState: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('get_app_update_state'),
       ),
     getAppUpdateChangelog: (from: string, to: string) =>
-      typedError<AppUpdateChangelog, IpcError>(
+      typedError<AppUpdateChangelog, IpcError_Serialize>(
         __RPC_INVOKE('get_app_update_changelog', { from, to }),
       ),
     getReleaseChannel: () =>
-      typedError<ReleaseChannelInfo, IpcError>(
+      typedError<ReleaseChannelInfo, IpcError_Serialize>(
         __RPC_INVOKE('get_release_channel'),
       ),
     getSystemAccentColor: () =>
-      typedError<string | null, IpcError>(
+      typedError<string | null, IpcError_Serialize>(
         __RPC_INVOKE('get_system_accent_color'),
       ),
     getTransparentProxyStatus: () =>
-      typedError<NetworkTransparentProxyStatus, IpcError>(
+      typedError<NetworkTransparentProxyStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_transparent_proxy_status'),
       ),
     writeClipboardText: (text: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('write_clipboard_text', { text }),
       ),
     showNativeNotification: (title: string, body: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('show_native_notification', { title, body }),
       ),
     showNativeMessageDialog: (
@@ -438,7 +471,7 @@ export function createRpcClient(
       kind: NativeDialogKind,
       buttons: NativeDialogButtons,
     ) =>
-      typedError<string, IpcError>(
+      typedError<string, IpcError_Serialize>(
         __RPC_INVOKE('show_native_message_dialog', {
           message,
           title,
@@ -451,60 +484,68 @@ export function createRpcClient(
       title: string | null,
       kind: NativeDialogKind,
     ) =>
-      typedError<boolean, IpcError>(
+      typedError<boolean, IpcError_Serialize>(
         __RPC_INVOKE('ask_native_dialog', { message, title, kind }),
       ),
     openNativeFileDialog: (title: string | null, filters: FileDialogFilter[]) =>
-      typedError<string | null, IpcError>(
+      typedError<string | null, IpcError_Serialize>(
         __RPC_INVOKE('open_native_file_dialog', { title, filters }),
       ),
     retryConfigurationRuntime: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('retry_configuration_runtime'),
+      ),
     retryConfigurationEffect: (kind: EffectKind) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('retry_configuration_effect', { kind }),
       ),
     setReleaseChannel: (channel: ReleaseChannel) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_release_channel', { channel }),
       ),
     checkAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError>(__RPC_INVOKE('check_app_update')),
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
+        __RPC_INVOKE('check_app_update'),
+      ),
     downloadAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('download_app_update'),
       ),
     cancelAppUpdateDownload: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('cancel_app_update_download'),
       ),
     installAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('install_app_update'),
       ),
     discardAppUpdatePackage: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('discard_app_update_package'),
       ),
     subscribeClashConnectionDetails: (
       onFrame: Channel<ClashConnectionDetails_Deserialize>,
     ) =>
-      typedError<SubscriptionId, IpcError>(
+      typedError<SubscriptionId, IpcError_Serialize>(
         __RPC_INVOKE('subscribe_clash_connection_details', { onFrame }),
       ),
     unsubscribeClashConnectionDetails: (id: SubscriptionId) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('unsubscribe_clash_connection_details', { id }),
       ),
     probeDirectEgress: () =>
-      typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
+      typedError<DirectEgress, IpcError_Serialize>(
+        __RPC_INVOKE('probe_direct_egress'),
+      ),
     /**  Desktop-only: the host is whatever the caller types, like a URL probe. */
     testStunServer: (host: string, port: number) =>
-      typedError<StunServerTest, IpcError>(
+      typedError<StunServerTest, IpcError_Serialize>(
         __RPC_INVOKE('test_stun_server', { host, port }),
       ),
     clearCoreLogs: () =>
-      typedError<null, CoreLogError>(__RPC_INVOKE('clear_core_logs')),
+      typedError<null, CoreLogCommandError_Serialize>(
+        __RPC_INVOKE('clear_core_logs'),
+      ),
     openLogSession: (source: LogSource, request: OpenLogs) =>
       typedError<LogSession, LogError>(
         __RPC_INVOKE('open_log_session', { source, request }),
@@ -523,33 +564,37 @@ export function createRpcClient(
         __RPC_INVOKE('close_log_session', { source, session }),
       ),
     reportFrontendEvents: (batch: FrontendEventBatch) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('report_frontend_events', { batch }),
       ),
     flushSystemDnsCache: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('flush_system_dns_cache')),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('flush_system_dns_cache'),
+      ),
     openAppConfigDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_app_config_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_app_config_dir')),
     openAppDataDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_app_data_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_app_data_dir')),
     openBackupsDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_backups_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_backups_dir')),
     createConfigBackup: () =>
-      typedError<ConfigBackupInfo, IpcError>(
+      typedError<ConfigBackupInfo, IpcError_Serialize>(
         __RPC_INVOKE('create_config_backup'),
       ),
     openLogsDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_logs_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_logs_dir')),
     openWebUrl: (url: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_web_url', { url })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('open_web_url', { url }),
+      ),
     openCoreDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_core_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_core_dir')),
     /**  restart the sidecar */
     restartSidecar: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_sidecar')),
     /**  Patch the ordinary application preferences. */
     patchAppConfig: (patch: ApplicationPreferencesPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_app_config', { patch }),
       ),
     /**
@@ -557,12 +602,12 @@ export function createRpcClient(
      *  and its guard, the bypass list and the PAC URL.
      */
     patchSystemSettings: (patch: SystemSettingsPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_system_settings', { patch }),
       ),
     /**  Patch the ordinary Clash settings: profile expansion and connection breaking. */
     patchClashConfig: (patch: ClashSettingsPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_clash_config', { patch }),
       ),
     /**
@@ -570,49 +615,54 @@ export function createRpcClient(
      *  the web UI templates and the field filter.
      */
     patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_clash_system_config', { patch }),
       ),
     /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
     patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_runtime_overrides', { patch }),
       ),
     /**  Patch the controller exposure: LAN access and the controller secret. */
     patchRuntimeAccess: (patch: ClashAccessPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_runtime_access', { patch }),
       ),
     /**  Switch the proxy mode (rule, global, direct, script). */
     setProxyMode: (mode: Mode) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_proxy_mode', { mode }),
       ),
     changeClashCore: (clashCore: ClashCore_Deserialize) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('change_clash_core', { clashCore }),
       ),
     clashApiDeleteConnections: (id: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_delete_connections', { id }),
       ),
     clashApiUpdateProvidersRules: (name: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_update_providers_rules', { name }),
       ),
     invokeUwpTool: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('invoke_uwp_tool')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('invoke_uwp_tool')),
     updateCore: (coreType: ClashCore_Deserialize) =>
-      typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
-    collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+      typedError<number, IpcError_Serialize>(
+        __RPC_INVOKE('update_core', { coreType }),
+      ),
+    collectLogs: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('collect_logs')),
     reportIssue: (page: PageCapabilities) =>
-      typedError<null, IpcError>(__RPC_INVOKE('report_issue', { page })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('report_issue', { page }),
+      ),
     setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
       ),
     setWidgetIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('set_widget_icon_from_bytes', { mode, bytesBase64 }),
       ),
     /**
@@ -620,7 +670,7 @@ export function createRpcClient(
      *  plain error — the committed/degraded model (spec §6.2) does not apply.
      */
     enhanceProfiles: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('enhance_profiles')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('enhance_profiles')),
     importProfile: (
       url: string,
       name: string | null,
@@ -634,7 +684,7 @@ export function createRpcClient(
         { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
       folder: string | null,
     ) =>
-      typedError<MutationOutcome<ProfileId>, IpcError>(
+      typedError<MutationOutcome<ProfileId>, IpcError_Serialize>(
         __RPC_INVOKE('import_profile', {
           url,
           name,
@@ -649,33 +699,35 @@ export function createRpcClient(
      *  every such event.
      */
     takePendingDeepLinks: () =>
-      typedError<string[], IpcError>(__RPC_INVOKE('take_pending_deep_links')),
+      typedError<string[], IpcError_Serialize>(
+        __RPC_INVOKE('take_pending_deep_links'),
+      ),
     /**  create a new profile */
     createProfile: (
       request: NewProfileRequest_Deserialize,
       fileData: string | null,
     ) =>
-      typedError<MutationOutcome<ProfileId>, IpcError>(
+      typedError<MutationOutcome<ProfileId>, IpcError_Serialize>(
         __RPC_INVOKE('create_profile', { request, fileData }),
       ),
     reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('reorder_profile', { activeId, overId }),
       ),
     reorderProfilesByList: (list: ProfileId[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('reorder_profiles_by_list', { list }),
       ),
     setProfileLayout: (layout: ProfileLayout) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_profile_layout', { layout }),
       ),
     createProfileFolder: (name: string, members: ProfileId[]) =>
-      typedError<MutationOutcome<FolderId>, IpcError>(
+      typedError<MutationOutcome<FolderId>, IpcError_Serialize>(
         __RPC_INVOKE('create_profile_folder', { name, members }),
       ),
     setProxyGroupLayout: (profile: ProfileId, layout: ProxyGroupLayout) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_proxy_group_layout', { profile, layout }),
       ),
     createProxyGroupFolder: (
@@ -683,7 +735,7 @@ export function createRpcClient(
       name: string,
       members: string[],
     ) =>
-      typedError<MutationOutcome<FolderId>, IpcError>(
+      typedError<MutationOutcome<FolderId>, IpcError_Serialize>(
         __RPC_INVOKE('create_proxy_group_folder', { profile, name, members }),
       ),
     updateProfile: (
@@ -695,65 +747,70 @@ export function createRpcClient(
         update_interval_minutes: RemoteSyncInterval | null
       } | null,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('update_profile', { uid, option }),
       ),
     deleteProfile: (uid: ProfileId) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('delete_profile', { uid }),
       ),
     activateProfile: (uid: string | null) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('activate_profile', { uid }),
       ),
     setGlobalTransforms: (ids: ProfileId[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_global_transforms', { ids }),
       ),
     setProfileValidFields: (fields: string[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_profile_valid_fields', { fields }),
       ),
     patchProfileMetadata: (
       uid: ProfileId,
       patch: ProfileMetadataPatch_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_profile_metadata', { uid, patch }),
       ),
     patchRemoteProfileOptions: (
       uid: ProfileId,
       patch: RemoteProfileOptionsPatch_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('patch_remote_profile_options', { uid, patch }),
       ),
     replaceProfileDefinition: (
       uid: ProfileId,
       definition: ProfileDefinition_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('replace_profile_definition', { uid, definition }),
       ),
     viewProfile: (uid: ProfileId) =>
-      typedError<null, IpcError>(__RPC_INVOKE('view_profile', { uid })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('view_profile', { uid }),
+      ),
     saveProfileFile: (uid: ProfileId, fileData: string) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('save_profile_file', { uid, fileData }),
       ),
     setCustomAppDir: (path: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('set_custom_app_dir', { path })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('set_custom_app_dir', { path }),
+      ),
     installService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('install_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('install_service')),
     uninstallService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('uninstall_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('uninstall_service')),
     startService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('start_service')),
-    stopService: () => typedError<null, IpcError>(__RPC_INVOKE('stop_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('start_service')),
+    stopService: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('stop_service')),
     restartService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('restart_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_service')),
     setServiceMode: (enabled: boolean) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_service_mode', { enabled }),
       ),
     /**
@@ -761,7 +818,7 @@ export function createRpcClient(
      *  `patch_app_config` rejects the section.
      */
     setRemoteAccess: (config: RemoteAccessConfig) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_remote_access', { config }),
       ),
     /**
@@ -770,45 +827,47 @@ export function createRpcClient(
      *  return it.
      */
     createHttpLaunchUrl: () =>
-      typedError<string | null, IpcError>(
+      typedError<string | null, IpcError_Serialize>(
         __RPC_INVOKE('create_http_launch_url'),
       ),
     selectProxy: (group: string, name: string) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('select_proxy', { group, name }),
       ),
     clearProxyFixed: (group: string) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('clear_proxy_fixed', { group }),
       ),
     updateProxyProvider: (name: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('update_proxy_provider', { name }),
       ),
     clashApiHealthcheckProxyProvider: (name: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_healthcheck_proxy_provider', { name }),
       ),
     restartApplication: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_application')),
     setTrayIcon: (mode: TrayIcon, path: string | null) =>
-      typedError<null, IpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('set_tray_icon', { mode, path }),
+      ),
     /**
      *  Sets the statistic widget's own icon for `mode` from a file, or resets it
      *  to the bundled one when `path` is `None`.
      */
     setWidgetIcon: (mode: TrayIcon, path: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('set_widget_icon', { mode, path }),
       ),
     openThat: (path: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_that', { path })),
     setStorageItem: (key: string, value: string) =>
-      typedError<StorageRevision, IpcError>(
+      typedError<StorageRevision, IpcError_Serialize>(
         __RPC_INVOKE('set_storage_item', { key, value }),
       ),
     removeStorageItem: (key: string) =>
-      typedError<StorageRevision, IpcError>(
+      typedError<StorageRevision, IpcError_Serialize>(
         __RPC_INVOKE('remove_storage_item', { key }),
       ),
     /**
@@ -816,39 +875,43 @@ export function createRpcClient(
      *  Internal storage entries used by other subsystems are left intact.
      */
     clearStorage: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('clear_storage')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('clear_storage')),
     setHotkeys: (hotkeys: string[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<MutationOutcome<null>, IpcError_Serialize>(
         __RPC_INVOKE('set_hotkeys', { hotkeys }),
       ),
     mutateProxies: () =>
-      typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('mutate_proxies')),
+      typedError<Proxies_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('mutate_proxies'),
+      ),
     setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>
-      typedError<ClashWsRecording, IpcError>(
+      typedError<ClashWsRecording, IpcError_Serialize>(
         __RPC_INVOKE('set_clash_ws_recording', { kind, enabled }),
       ),
     clearClashWsHistory: (kind: ClashWsKind) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clear_clash_ws_history', { kind }),
       ),
     saveWindowSizeState: (label: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('save_window_size_state', { label }),
       ),
     createMainWindow: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('create_main_window')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('create_main_window')),
     createDebugTrayMenuWindow: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('create_debug_tray_menu_window'),
+      ),
     /**
      *  Panics on purpose, so the crash reporter can be tested. The panic hook
      *  exits differently when the main thread panics, hence the choice.
      */
     simulateCrash: (mainThread: boolean) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('simulate_crash', { mainThread }),
       ),
     createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
       ),
     /**
@@ -856,7 +919,7 @@ export function createRpcClient(
      *  so a window can only report itself.
      */
     reportWindowReady: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('report_window_ready')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('report_window_ready')),
     copyClashEnv: (envType: CopyEnvOption) =>
       __RPC_INVOKE<void>('copy_clash_env', { envType }),
     quitApplication: () => __RPC_INVOKE<void>('quit_application'),
@@ -2347,6 +2410,26 @@ export type CoreInfos_Serialize = {
   detail?: CoreStateDetail | null
 }
 
+/**
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
+ *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ */
+export type CoreLogCommandError =
+  CoreLogCommandError_Serialize | CoreLogCommandError_Deserialize
+
+/**
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
+ *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ */
+export type CoreLogCommandError_Deserialize =
+  CoreLogError | IpcError_Deserialize
+
+/**
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
+ *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ */
+export type CoreLogCommandError_Serialize = CoreLogError | IpcError_Serialize
+
 export type CoreLogCompression = 'none' | 'preset' | 'trained'
 
 export type CoreLogCursor = {
@@ -3337,19 +3420,15 @@ export type IpLookupProviderInfo = {
 }
 
 /**  A failed command as the frontend receives it. */
-export type IpcError = {
-  /**  The domain failure; the frontend localizes it. */
-  kind: IpcErrorKind
-  /**  The error's own message, shown when `kind` cannot be localized. */
-  message: string
-  /**  The original error, copied by the user for diagnosis. */
-  detail: string
-}
+export type IpcError = IpcError_Serialize | IpcError_Deserialize
 
 /**  The domain a command failed in. A domain joins once its errors are typed. */
-export type IpcErrorKind =
+export type IpcErrorKind = IpcErrorKind_Serialize | IpcErrorKind_Deserialize
+
+/**  The domain a command failed in. A domain joins once its errors are typed. */
+export type IpcErrorKind_Deserialize =
   /**  Not classified into a domain; only `message` describes it. */
-  | { domain: 'unknown' }
+  | ({ domain: 'unknown' } & { error?: never })
   | { domain: 'profiles'; error: ProfilesError }
   | { domain: 'runtime'; error: RuntimeError }
   | { domain: 'config'; error: ConfigError }
@@ -3361,6 +3440,46 @@ export type IpcErrorKind =
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
+  /**  Exhaustive public classification for callers without `Scope::SensitiveRead`. */
+  | { domain: 'public'; error: PublicFailure_Deserialize }
+
+/**  The domain a command failed in. A domain joins once its errors are typed. */
+export type IpcErrorKind_Serialize =
+  /**  Not classified into a domain; only `message` describes it. */
+  | ({ domain: 'unknown' } & { error?: never })
+  | { domain: 'profiles'; error: ProfilesError }
+  | { domain: 'runtime'; error: RuntimeError }
+  | { domain: 'config'; error: ConfigError }
+  | { domain: 'storage'; error: StorageOperationError }
+  | { domain: 'system_dns'; error: SystemDnsError }
+  | { domain: 'system_proxy'; error: OsProxyError }
+  | { domain: 'effects'; error: EffectsError }
+  | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'clash_read'; error: ClashReadError }
+  | { domain: 'core_log_read'; error: CoreLogReadError }
+  | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
+  /**  Exhaustive public classification for callers without `Scope::SensitiveRead`. */
+  | { domain: 'public'; error: PublicFailure_Serialize }
+
+/**  A failed command as the frontend receives it. */
+export type IpcError_Deserialize = {
+  /**  The domain failure; the frontend localizes it. */
+  kind: IpcErrorKind_Deserialize
+  /**  The error's own message, shown when `kind` cannot be localized. */
+  message: string
+  /**  The original error, copied by the user for diagnosis when permitted. */
+  detail?: string | null
+}
+
+/**  A failed command as the frontend receives it. */
+export type IpcError_Serialize = {
+  /**  The domain failure; the frontend localizes it. */
+  kind: IpcErrorKind_Serialize
+  /**  The error's own message, shown when `kind` cannot be localized. */
+  message: string
+  /**  The original error, copied by the user for diagnosis when permitted. */
+  detail?: string | null
+}
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -5807,6 +5926,1294 @@ export type Proxy_Serialize = {
   emptyFallback: ProxyName | null
   provider: string | null
 }
+
+/**  Safe public Clash read error discriminant. */
+export type PublicClashReadError =
+  | { kind: 'settings_unavailable' }
+  | { kind: 'proxies_unavailable' }
+  | { kind: 'unknown_group' }
+  | { kind: 'delay_test_failed' }
+  | { kind: 'version_unavailable' }
+  | { kind: 'rules_unavailable' }
+  | { kind: 'rule_providers_unavailable' }
+  | { kind: 'proxy_providers_unavailable' }
+  | { kind: 'streams_unavailable' }
+
+/**  Safe public commit-aborted decision metadata. */
+export type PublicCommitAborted =
+  PublicCommitAborted_Serialize | PublicCommitAborted_Deserialize
+
+/**  Public commit abort phase discriminant. */
+export type PublicCommitAbortedKind =
+  | 'write_config'
+  | 'recover_after_write_failure'
+  | 'runtime_refused'
+  | 'runtime_failed'
+  | 'validate_state'
+
+/**  Safe public commit-aborted decision metadata. */
+export type PublicCommitAborted_Deserialize = {
+  kind: PublicCommitAbortedKind
+  runtime?: PublicRuntimeAftermathKind | null
+  runtime_causes?: PublicRuntimeError_Deserialize[]
+  aftermath_cause?: PublicRuntimeError_Deserialize | null
+}
+
+/**  Safe public commit-aborted decision metadata. */
+export type PublicCommitAborted_Serialize = {
+  kind: PublicCommitAbortedKind
+  runtime?: PublicRuntimeAftermathKind | null
+  runtime_causes?: PublicRuntimeError_Serialize[]
+  aftermath_cause?: PublicRuntimeError_Serialize | null
+}
+
+/**  Safe public configuration error for callers without `SensitiveRead`. */
+export type PublicConfigError =
+  PublicConfigError_Serialize | PublicConfigError_Deserialize
+
+/**  Safe public configuration error for callers without `SensitiveRead`. */
+export type PublicConfigError_Deserialize =
+  | ({ kind: 'leave_nightly_channel' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_update_sources' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_core_logs' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_public_ip_probe_sources' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'invalid_latency_timeout' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind } & {
+      source?: never
+    })
+  | ({ kind: 'validate_hotkey_capability' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'validate_hotkeys'; reason: PublicHotkeyErrorKind } & {
+      source?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & { reason?: never; source?: never })
+  | ({ kind: 'shutting_down' } & { reason?: never; source?: never })
+  | ({ kind: 'owner_stopped' } & { reason?: never; source?: never })
+  | ({ kind: 'session_state_stopped' } & { reason?: never; source?: never })
+  | ({
+      kind: 'invalid_transparent_proxy'
+      reason: PublicTransparentProxyValidationKind
+    } & { source?: never })
+  | ({ kind: 'transparent_proxy_requires_service_mode' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & { reason?: never; source?: never })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Deserialize } & {
+      reason?: never
+    })
+  | ({ kind: 'persist_session_state' } & { reason?: never; source?: never })
+
+/**  Safe public configuration error for callers without `SensitiveRead`. */
+export type PublicConfigError_Serialize =
+  | ({ kind: 'leave_nightly_channel' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_update_sources' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_core_logs' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_public_ip_probe_sources' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'invalid_latency_timeout' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind } & {
+      source?: never
+    })
+  | ({ kind: 'validate_hotkey_capability' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'validate_hotkeys'; reason: PublicHotkeyErrorKind } & {
+      source?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & { reason?: never; source?: never })
+  | ({ kind: 'shutting_down' } & { reason?: never; source?: never })
+  | ({ kind: 'owner_stopped' } & { reason?: never; source?: never })
+  | ({ kind: 'session_state_stopped' } & { reason?: never; source?: never })
+  | ({
+      kind: 'invalid_transparent_proxy'
+      reason: PublicTransparentProxyValidationKind
+    } & { source?: never })
+  | ({ kind: 'transparent_proxy_requires_service_mode' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & { reason?: never; source?: never })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Serialize } & {
+      reason?: never
+    })
+  | ({ kind: 'persist_session_state' } & { reason?: never; source?: never })
+
+/**  Safe public core log read/clear error discriminant. */
+export type PublicCoreLogReadError =
+  | { kind: 'invalid_request' }
+  | { kind: 'cursor_expired' }
+  | { kind: 'record_gone' }
+  | { kind: 'too_large' }
+  | { kind: 'unavailable' }
+
+/**  Safe public side-effects error discriminant. */
+export type PublicEffectsError = { kind: 'effects_stopped' }
+
+/**
+ *  Exhaustive public classification for a failed command when the caller lacks
+ *  `Scope::SensitiveRead`.
+ */
+export type PublicFailure = PublicFailure_Serialize | PublicFailure_Deserialize
+
+/**
+ *  Exhaustive public classification for a failed command when the caller lacks
+ *  `Scope::SensitiveRead`.
+ */
+export type PublicFailure_Deserialize =
+  | { domain: 'profiles'; error: PublicProfilesError_Deserialize }
+  | { domain: 'runtime'; error: PublicRuntimeError_Deserialize }
+  | { domain: 'config'; error: PublicConfigError_Deserialize }
+  | { domain: 'storage'; error: PublicStorageError }
+  | { domain: 'system_dns'; error: PublicSystemDnsError }
+  | { domain: 'system_proxy'; error: PublicOsProxyError }
+  | { domain: 'effects'; error: PublicEffectsError }
+  | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'clash_read'; error: PublicClashReadError }
+  | { domain: 'core_log_read'; error: PublicCoreLogReadError }
+  | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
+  | {
+      domain: 'core'
+      error: {
+        kind: CoreErrorKind
+      }
+    }
+
+/**
+ *  Exhaustive public classification for a failed command when the caller lacks
+ *  `Scope::SensitiveRead`.
+ */
+export type PublicFailure_Serialize =
+  | { domain: 'profiles'; error: PublicProfilesError_Serialize }
+  | { domain: 'runtime'; error: PublicRuntimeError_Serialize }
+  | { domain: 'config'; error: PublicConfigError_Serialize }
+  | { domain: 'storage'; error: PublicStorageError }
+  | { domain: 'system_dns'; error: PublicSystemDnsError }
+  | { domain: 'system_proxy'; error: PublicOsProxyError }
+  | { domain: 'effects'; error: PublicEffectsError }
+  | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'clash_read'; error: PublicClashReadError }
+  | { domain: 'core_log_read'; error: PublicCoreLogReadError }
+  | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
+  | {
+      domain: 'core'
+      error: {
+        kind: CoreErrorKind
+      }
+    }
+
+/**  Safe public hotkey parse rejection discriminant without binding strings. */
+export type PublicHotkeyErrorKind =
+  | 'malformed_entry'
+  | 'unknown_function'
+  | 'empty_key_segment'
+  | 'unsupported_accelerator'
+  | 'missing_super_key'
+  | 'duplicate_accelerator'
+
+/**  Safe public HTTP server control error discriminant. */
+export type PublicHttpServerError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Safe public core binary installation discriminant without filesystem paths. */
+export type PublicInstallCoreBinaryKind =
+  | PublicInstallCoreBinaryKind_Serialize
+  | PublicInstallCoreBinaryKind_Deserialize
+
+/**  Safe public core binary installation discriminant without filesystem paths. */
+export type PublicInstallCoreBinaryKind_Deserialize =
+  | ({ kind: 'authorize_core_copy'; core: ClashCore_Deserialize } & {
+      exit_code?: never
+    })
+  | ({ kind: 'start_elevated_copy'; core: ClashCore_Deserialize } & {
+      exit_code?: never
+    })
+  | {
+      kind: 'elevated_copy_failed'
+      core: ClashCore_Deserialize
+      exit_code: number | null
+    }
+  | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public core binary installation discriminant without filesystem paths. */
+export type PublicInstallCoreBinaryKind_Serialize =
+  | ({ kind: 'authorize_core_copy'; core: ClashCore_Serialize } & {
+      exit_code?: never
+    })
+  | ({ kind: 'start_elevated_copy'; core: ClashCore_Serialize } & {
+      exit_code?: never
+    })
+  | {
+      kind: 'elevated_copy_failed'
+      core: ClashCore_Serialize
+      exit_code: number | null
+    }
+  | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public OS proxy error discriminant without proxy host strings. */
+export type PublicOsProxyError =
+  | { kind: 'read_os_proxy' }
+  | { kind: 'write_os_proxy'; enable: boolean; port: number }
+
+/**  Safe public port resolution discriminant. */
+export type PublicPortResolveKind =
+  | { kind: 'port_not_available'; field: PortField; port: number }
+  | { kind: 'no_open_port'; field: PortField }
+  | { kind: 'port_conflict'; first: PortField; second: PortField; port: number }
+
+/**  Safe public profile content validation failure reason. */
+export type PublicProfileContentKind =
+  'not_yaml_mapping' | 'reserialize_yaml' | 'missing_proxies' | 'empty_script'
+
+/**  Safe public profile sync read error discriminant. */
+export type PublicProfileSyncReadError =
+  | { kind: 'unknown_profile' }
+  | { kind: 'not_remote' }
+  | { kind: 'invalid_cursor' }
+  | { kind: 'unavailable' }
+
+/**  Safe public profile error for callers without `SensitiveRead`. */
+export type PublicProfilesError =
+  PublicProfilesError_Serialize | PublicProfilesError_Deserialize
+
+/**  Safe public profile error for callers without `SensitiveRead`. */
+export type PublicProfilesError_Deserialize =
+  | ({ kind: 'profile_not_found' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_has_no_file' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'not_a_remote_profile' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_writable' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_in_use'; referrer_count: number } & {
+      reason?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_id_collision' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'validation_failed' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_size_mismatch' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_duplicate' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'revision_overflow' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'invalid_subscription_url' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'remote_profile_needs_import' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'refresh_in_progress' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fetch_subscription'; reason: PublicSubscriptionFetchKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_content_rejected'; reason: PublicProfileContentKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_yaml' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_deleted_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_changed_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fingerprint_definition' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_profile_file'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'profile_file_missing' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_external_profile'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'materialization'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Deserialize } & {
+      reason?: never
+      referrer_count?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'service_stopped' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'shutting_down' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+
+/**  Safe public profile error for callers without `SensitiveRead`. */
+export type PublicProfilesError_Serialize =
+  | ({ kind: 'profile_not_found' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_has_no_file' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'not_a_remote_profile' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_writable' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_in_use'; referrer_count: number } & {
+      reason?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_id_collision' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'validation_failed' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_size_mismatch' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_duplicate' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'revision_overflow' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'invalid_subscription_url' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'remote_profile_needs_import' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'refresh_in_progress' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fetch_subscription'; reason: PublicSubscriptionFetchKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_content_rejected'; reason: PublicProfileContentKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_yaml' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_deleted_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_changed_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fingerprint_definition' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_profile_file'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'profile_file_missing' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_external_profile'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'materialization'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Serialize } & {
+      reason?: never
+      referrer_count?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'service_stopped' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'shutting_down' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+
+/**  Safe public remote-access config rejection discriminant. */
+export type PublicRemoteAccessErrorKind = 'port_zero' | 'use_dedicated_command'
+
+/**  Public summary of what became of the runtime after an aborted commit. */
+export type PublicRuntimeAftermathKind =
+  'untouched' | 'rolled_back' | 'rollback_failed' | 'unknown'
+
+/**  Safe public runtime build failure discriminant without script output logs. */
+export type PublicRuntimeBuildKind =
+  | { kind: 'start_script_runner' }
+  | { kind: 'validate_profiles' }
+  | {
+      kind: 'validate_transparent_proxy'
+      reason: PublicTransparentProxyValidationKind
+    }
+  | { kind: 'transparent_proxy_requires_service_mode' }
+  | { kind: 'run_pipeline'; stage: PublicRuntimePipelineKind }
+  | { kind: 'transforms_failed' }
+  | { kind: 'serialize_final_config' }
+  | { kind: 'config_not_mapping' }
+  | { kind: 'unsupported_config_values' }
+
+/**  Safe public runtime check unavailability discriminant without raw messages. */
+export type PublicRuntimeCheckUnavailableKind =
+  | { kind: 'no_endpoint' }
+  | { kind: 'host_unsupported'; host: ExecutionHost }
+  | { kind: 'candidate_unavailable' }
+  | { kind: 'backend'; core_kind: CoreErrorKind | null }
+
+/**  Safe public runtime error for callers without `SensitiveRead`. */
+export type PublicRuntimeError =
+  PublicRuntimeError_Serialize | PublicRuntimeError_Deserialize
+
+/**  Safe public runtime error for callers without `SensitiveRead`. */
+export type PublicRuntimeError_Deserialize =
+  | ({ kind: 'shutting_down' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'isolated' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'owner_unresponsive' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'owner_unavailable' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'source_settled' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'apply_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_core'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_service_endpoint'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'refresh_status'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'install_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'start_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'restart_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'uninstall_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'move_host'
+      host: ExecutionHost
+      core_kind: CoreErrorKind | null
+    } & { core?: never; gap?: never; reason?: never; source?: never })
+  | ({ kind: 'submission_unobserved'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'service_hosts_core' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'core_not_started' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recovery_unresolved' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'build_runtime'; source: PublicRuntimeBuildKind } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'publish_runtime' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'resolve_port'; source: PublicPortResolveKind } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'resolve_core_binary'; core: ClashCore_Deserialize } & {
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'install_core_binary'
+      source: PublicInstallCoreBinaryKind_Deserialize
+    } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'prepare_service_install_prompt' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'read_core_version'; core: ClashCore_Deserialize } & {
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'unsettled_baseline'; gap: EvidenceGap } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'core_rejected_config'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'check_unavailable'
+      reason: PublicRuntimeCheckUnavailableKind
+    } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      source?: never
+    })
+  | ({ kind: 'core_rolled_back' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'handoff_owner_mismatch' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'handoff_not_restored' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'restore_failed' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'committed_after_refusal' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'no_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'serialize_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'convert_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_snapshot_changed' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_node_not_found' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+
+/**  Safe public runtime error for callers without `SensitiveRead`. */
+export type PublicRuntimeError_Serialize =
+  | ({ kind: 'shutting_down' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'isolated' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'owner_unresponsive' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'owner_unavailable' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'source_settled' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'apply_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_core'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_service_endpoint'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'refresh_status'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'install_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'start_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'restart_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'uninstall_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'move_host'
+      host: ExecutionHost
+      core_kind: CoreErrorKind | null
+    } & { core?: never; gap?: never; reason?: never; source?: never })
+  | ({ kind: 'submission_unobserved'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'service_hosts_core' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'core_not_started' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recovery_unresolved' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'build_runtime'; source: PublicRuntimeBuildKind } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'publish_runtime' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'resolve_port'; source: PublicPortResolveKind } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'resolve_core_binary'; core: ClashCore_Serialize } & {
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'install_core_binary'
+      source: PublicInstallCoreBinaryKind_Serialize
+    } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'prepare_service_install_prompt' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'read_core_version'; core: ClashCore_Serialize } & {
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'unsettled_baseline'; gap: EvidenceGap } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'core_rejected_config'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'check_unavailable'
+      reason: PublicRuntimeCheckUnavailableKind
+    } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      source?: never
+    })
+  | ({ kind: 'core_rolled_back' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'handoff_owner_mismatch' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'handoff_not_restored' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'restore_failed' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'committed_after_refusal' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'no_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'serialize_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'convert_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_snapshot_changed' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_node_not_found' } & {
+      core?: never
+      core_kind?: never
+      gap?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+
+/**  Safe public runtime pipeline failure stage without script/file diagnostics. */
+export type PublicRuntimePipelineKind =
+  | 'execute_script'
+  | 'selected_profile_not_found'
+  | 'selected_profile_not_config'
+  | 'composition_member_invalid'
+  | 'content_source'
+  | 'parse_profile'
+  | 'snapshot'
+  | 'internal'
+
+/**  Safe public storage operation discriminant without database paths or keys. */
+export type PublicStorageError =
+  | { kind: 'open_database' }
+  | { kind: 'inspect_database' }
+  | { kind: 'preserve_database' }
+  | { kind: 'begin_transaction' }
+  | { kind: 'open_table' }
+  | { kind: 'read_item' }
+  | { kind: 'write_item' }
+  | { kind: 'remove_item' }
+  | { kind: 'list_items' }
+  | { kind: 'commit_transaction' }
+  | { kind: 'decode_value' }
+  | { kind: 'encode_value' }
+
+/**  Safe public subscription fetch failure classification without request URLs. */
+export type PublicSubscriptionFetchKind =
+  | { kind: 'build_http_client' }
+  | { kind: 'request_subscription' }
+  | { kind: 'subscription_http_status'; status: number }
+  | { kind: 'read_subscription_body' }
+
+/**  Safe public system DNS flush discriminant without host command paths. */
+export type PublicSystemDnsError =
+  | { kind: 'authorize_dns_flush' }
+  | { kind: 'run_flush_command' }
+  | { kind: 'flush_rejected'; exit_code: number | null }
+  | { kind: 'unsupported' }
+
+/**  Safe public transparent proxy mode discriminant. */
+export type PublicTransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
+
+/**  Safe public transparent proxy validation discriminant without interface names. */
+export type PublicTransparentProxyValidationKind =
+  | { kind: 'unsupported_target' }
+  | { kind: 'tun_conflict' }
+  | { kind: 'missing_listener'; mode: PublicTransparentProxyMode }
+  | { kind: 'zero_port' }
+  | { kind: 'empty_target' }
+  | { kind: 'invalid_interface' }
+  | { kind: 'duplicate_interface' }
+  | { kind: 'too_many_interfaces' }
 
 /**  A failure of publishing the derived runtime config file. */
 export type PublishRuntimeError =

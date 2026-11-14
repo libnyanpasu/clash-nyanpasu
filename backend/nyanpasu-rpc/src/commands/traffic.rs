@@ -64,8 +64,10 @@ pub async fn get_core_log_status_summary(
 
 #[nyanpasu_macro::rpc(http, result, scope = settings)]
 #[specta::specta]
-pub async fn clear_core_logs(client: RpcState<'_, NyanpasuClient>) -> CoreLogResult<()> {
-    client.clear_core_logs().await
+pub async fn clear_core_logs(
+    client: RpcState<'_, NyanpasuClient>,
+) -> std::result::Result<(), crate::error::CoreLogCommandError> {
+    client.clear_core_logs().await.map_err(Into::into)
 }
 
 #[nyanpasu_macro::rpc(http, query)]

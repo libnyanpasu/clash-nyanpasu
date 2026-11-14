@@ -64,7 +64,10 @@ mod traffic;
 pub(crate) mod traffic_frames;
 mod transparent_proxy;
 
-pub use self::remote_access::{Error as RemoteAccessSpawnError, SetRemoteAccessError};
+pub use self::remote_access::{
+    Error as RemoteAccessSpawnError, MAX_SECRET_RECORD_BYTES, RemoteAccessAuthClient,
+    RemoteAccessAuthPorts, RemoteAuthError, SetRemoteAccessError,
+};
 use self::{
     application::ApplicationClient,
     clash_config::ClashConfigClient,

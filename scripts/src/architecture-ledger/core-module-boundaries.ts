@@ -482,9 +482,9 @@ export function coreModuleViolations(
       if (
         (policy(consumer) === 'control' && module[0] === 'client') ||
         (policy(consumer) === 'state' &&
-          ((module[0] === 'client' && module[1] === 'application_workflow') ||
+          ((module[0] === 'client' && module[1] === 'reconciler') ||
             // Match by name on purpose, mirroring the spec's rg reverse check.
-            name === 'ApplicationWorkflowClient'))
+            name === 'RuntimeReconcilerClient'))
       ) {
         fail(
           `${ref.scope.typeAlias ? 'unsupported type alias hides ' : ''}forbidden ${policy(consumer)} import ${[...module, name].filter(Boolean).join('::')}`,

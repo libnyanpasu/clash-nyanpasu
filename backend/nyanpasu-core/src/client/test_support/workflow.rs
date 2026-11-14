@@ -45,13 +45,7 @@ pub async fn start_replacement(
     let (artifact, _) = f.artifact(target);
     let staging_path = artifact.staging.path().to_owned();
     let client = f.client.clone();
-    let task = tokio::spawn(async move {
-        client
-            .inner
-            .application_workflow
-            .replace_binary(artifact)
-            .await
-    });
+    let task = tokio::spawn(async move { client.inner.reconciler.replace_binary(artifact).await });
     f.installer.entered.notified().await;
     (task, staging_path)
 }

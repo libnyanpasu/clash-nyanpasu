@@ -7,7 +7,7 @@ use super::{
 use crate::{
     actor_v2::{CoreClient, service_actor::ServiceClient},
     client::{
-        application_workflow::{ApplicationWorkflowClient, Message},
+        reconciler::{Message, RuntimeReconcilerClient},
         test_support::TestControlEndpoint,
     },
 };
@@ -17,10 +17,10 @@ use std::{
     time::Duration,
 };
 use struct_patch::Patch as _;
-fn unknown(client: &ApplicationWorkflowClient) -> bool {
+fn unknown(client: &RuntimeReconcilerClient) -> bool {
     client.reconciler_status().conclusion.label() == "Unknown"
 }
-async fn tick(client: &ApplicationWorkflowClient) {
+async fn tick(client: &RuntimeReconcilerClient) {
     client.0.actor.cast(Message::Tick).unwrap();
     super::barrier(client).await;
 }
@@ -80,7 +80,7 @@ async fn a_lost_handoff() -> super::startup::Graph {
     assert!(
         matches!(
             report.outcome,
-            crate::client::application_workflow::startup::StartupOutcome::RecoveryRequired { .. }
+            crate::client::reconciler::startup::StartupOutcome::RecoveryRequired { .. }
         ),
         "{report:?}"
     );

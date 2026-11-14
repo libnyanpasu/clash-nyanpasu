@@ -21,7 +21,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::Notify;
 
 use super::{
-    super::{ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters},
+    super::{RuntimeReconcilerArgs, RuntimeReconcilerClient, adapters},
     RecordingNotifications, ScriptedWaitEndpoint, WaitScript,
 };
 use crate::{
@@ -73,7 +73,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
+        inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
     ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
@@ -98,7 +98,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
 }
 
 pub(super) struct Fixture {
-    pub(super) client: ApplicationWorkflowClient,
+    pub(super) client: RuntimeReconcilerClient,
     pub(super) endpoint: Arc<TestControlEndpoint>,
     pub(super) builder: Arc<ParkingBuilder>,
     pub(super) application: crate::client::application::ApplicationClient,
@@ -340,8 +340,8 @@ pub(super) async fn fixture_from(
     let notifications = Arc::new(RecordingNotifications::default());
     let revisions = runtime::RuntimeRevisionAllocator::new();
     let content_lock = crate::state::mutation::ProfileContentLock::default();
-    let client = ApplicationWorkflowClient::spawn_with_ticks(
-        ApplicationWorkflowArgs {
+    let client = RuntimeReconcilerClient::spawn_with_ticks(
+        RuntimeReconcilerArgs {
             revisions: revisions.clone(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
@@ -863,7 +863,7 @@ pub(super) async fn commit_source<S: SourceOwner>(
     owner.replace(next).await
 }
 pub(super) async fn settled(
-    client: &ApplicationWorkflowClient,
+    client: &RuntimeReconcilerClient,
     source: CommittedSource,
 ) -> super::super::ReconcilerStatus {
     if source.reaches_runtime {

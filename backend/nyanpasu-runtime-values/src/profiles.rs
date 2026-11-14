@@ -157,7 +157,7 @@ pub enum ProfilesError {
         #[serde(skip)]
         cleanup_failures: Vec<ProfilesError>,
     },
-    #[snafu(context(false), display("the application workflow is not ready"))]
+    #[snafu(context(false), display("the runtime reconciler is not ready"))]
     WorkflowNotReady {
         #[serde(skip)]
         source: NotReady,

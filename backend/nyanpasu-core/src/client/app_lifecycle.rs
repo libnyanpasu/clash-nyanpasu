@@ -6,7 +6,7 @@ use std::future::Future;
 use nyanpasu_owner_support::shutdown;
 use tokio_util::sync::CancellationToken;
 
-use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
+use super::{NyanpasuClient, Result, reconciler::startup::StartupReport};
 
 impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,
@@ -14,7 +14,7 @@ impl NyanpasuClient {
     /// on it until the workflow answers, with no bound (see `TODO(startup)`
     /// in `resolve_setup`). An unavailable workflow reports recovery required.
     pub async fn startup_reconcile(&self) -> StartupReport {
-        self.inner.application_workflow.startup_reconcile().await
+        self.inner.reconciler.startup_reconcile().await
     }
 
     /// Lets the background sources run: scheduled subscription refreshes,
@@ -460,7 +460,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn the_core_stops_even_when_the_workflow_died_without_its_cleanup() {
         let g = Graph::new().await;
-        g.client.inner.application_workflow.kill().await;
+        g.client.inner.reconciler.kill().await;
 
         g.client.request_shutdown();
         assert!(g.stopped_within(SETTLE).await);

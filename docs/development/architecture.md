@@ -197,7 +197,7 @@ The delivered Phase D module boundary (tasks §4) classifies
 `actor_v2/`, `clash/`, `proxies.rs` and `connections.rs` as control, `client/`
 as application/facade, and `state/` as source ownership. Application may import
 control; control must not import `client`. Source owners must not directly import
-`client::application_workflow` or `ApplicationWorkflowClient`. They consume the
+`client::reconciler` or `RuntimeReconcilerClient`. They consume the
 ports defined in `state/mutation/ports.rs`. All three source owners use `RuntimeGate` for
 independent candidate checks and post-commit notifications. Profiles checks staged
 bytes before preparing resources. A composition-root-injected `ProfileContentLock`
@@ -487,7 +487,7 @@ State changes follow this order:
    their snapshots and effects notifications, then notify the runtime workflow. The facade
    waits on the workflow status watch for the committed engine version; an apply
    failure leaves the source committed and is reported as degradation.
-   Every committed-target apply uses `application_workflow::tcc::apply_prepared`,
+   Every committed-target apply uses `reconciler::apply::apply_prepared`,
    including lifecycle starts, retries, service recovery and binary-replacement
    restarts. It acquires any connection-interruption source before submission,
    publishes products only after confirmed success and closes known port transitions,

@@ -26,7 +26,7 @@ use crate::{
     },
     client::{
         ClientError, NyanpasuClient,
-        application_workflow::Conclusion,
+        reconciler::Conclusion,
         test_support::{self, TestControlEndpoint, runtime_build::TestRuntimeBuildPort},
     },
     state::config_error::ConfigError,
@@ -206,7 +206,7 @@ async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
         DegradationReason::RuntimeDeferred { cause }
             if matches!(cause.as_ref(), RuntimeError::BuildRuntime { .. })
     ));
-    super::barrier(&client.inner.application_workflow).await;
+    super::barrier(&client.inner.reconciler).await;
     assert_eq!(endpoint.reconciled_bytes().len(), submitted);
     let status = client.configuration_status();
     assert!(status.active.is_none());
@@ -227,7 +227,7 @@ async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
     assert_eq!(
         client
             .inner
-            .application_workflow
+            .reconciler
             .0
             .runtime
             .last_confirmed_runtime_receipt()
@@ -248,7 +248,7 @@ async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
 async fn settled_after_workflow_stop_reports_closed() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _, _) = client_with_scripted_endpoint(&dir).await;
-    let workflow = client.inner.application_workflow.clone();
+    let workflow = client.inner.reconciler.clone();
     client.request_shutdown();
     client.wait_shutdown().await;
     let status = workflow
@@ -291,13 +291,7 @@ async fn a_commit_behind_an_unresolved_action_settles_as_unknown() {
     ));
     let committed = client.inner.application.snapshot();
     assert_eq!(committed.state.enable_builtin_enhanced, enabled);
-    let status = client
-        .inner
-        .application_workflow
-        .0
-        .reconciler
-        .borrow()
-        .clone();
+    let status = client.inner.reconciler.0.reconciler.borrow().clone();
     assert!(matches!(status.conclusion, Conclusion::Unknown { .. }));
     assert_eq!(status.seen.application, committed.version);
     client.request_shutdown();
@@ -542,7 +536,7 @@ async fn leaving_service_mode_releases_daemon_for_running_and_user_stopped_cores
         let (client, daemon, _) = service_client(&dir).await;
         client.set_service_mode(true).await.unwrap();
         if stop_core {
-            client.inner.application_workflow.stop_core().await.unwrap();
+            client.inner.reconciler.stop_core().await.unwrap();
         }
         let outcome = client.set_service_mode(false).await.unwrap();
         assert_eq!(
@@ -598,12 +592,7 @@ async fn port_save_during_transition_commits_and_retry_applies_it() {
     assert_eq!(persisted.mixed_port.start_port, port);
     assert!(endpoint.reconciled_bytes().is_empty());
     endpoint.set_status(previous.state, previous.applied_kind);
-    client
-        .inner
-        .application_workflow
-        .retry_runtime()
-        .await
-        .unwrap();
+    client.inner.reconciler.retry_runtime().await.unwrap();
     assert_eq!(endpoint.reconciled_bytes().len(), 1);
     let applied: yaml_serde::Value =
         yaml_serde::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
@@ -679,7 +668,7 @@ async fn unchanged_runtime_fields_do_not_check_or_apply() {
     let (client, endpoint, _) = client_with_scripted_endpoint(&dir).await;
     let application = client.get_app_config().await.unwrap();
     let clash = client.get_clash_config().await.unwrap();
-    let before = client.inner.application_workflow.0.reconciler.borrow().seq;
+    let before = client.inner.reconciler.0.reconciler.borrow().seq;
     let saved = client
         .patch_app_config(NyanpasuAppConfigPatch {
             core: Some(application.core),
@@ -697,11 +686,8 @@ async fn unchanged_runtime_fields_do_not_check_or_apply() {
     let current = client.get_profiles().await.unwrap().current.clone();
     let saved = client.activate_profile(current).await.unwrap();
     assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Unchanged);
-    super::barrier(&client.inner.application_workflow).await;
-    assert_eq!(
-        client.inner.application_workflow.0.reconciler.borrow().seq,
-        before
-    );
+    super::barrier(&client.inner.reconciler).await;
+    assert_eq!(client.inner.reconciler.0.reconciler.borrow().seq, before);
     assert!(endpoint.checked().is_empty());
     assert!(endpoint.reconciled_bytes().is_empty());
     client.request_shutdown();
@@ -728,7 +714,7 @@ async fn recent_operations_describe_reconcile_rounds() {
             .get("conclusion")
             .is_none()
     );
-    let journal = client.inner.application_workflow.reconciler_status();
+    let journal = client.inner.reconciler.reconciler_status();
     let recorded = journal.recent.back().unwrap();
     assert_eq!(round.operation_id, recorded.operation_id.to_string());
     assert!(matches!(
@@ -744,12 +730,8 @@ async fn recent_operations_describe_reconcile_rounds() {
         receipt(&outcome).operation_id.as_ref()
     );
     endpoint.set_rolls_back(false);
-    client.inner.application_workflow.reconcile().await.unwrap();
-    client
-        .inner
-        .application_workflow
-        .settle_core_changes()
-        .await;
+    client.inner.reconciler.reconcile().await.unwrap();
+    client.inner.reconciler.settle_core_changes().await;
     let history = client.configuration_status().recent_operations;
     assert_eq!(history.len(), status.recent_operations.len() + 2);
     assert_eq!(history[0].domain, "CoreChanged");
@@ -786,7 +768,7 @@ async fn running_without_a_session_receipt_does_not_refuse_a_save() {
     assert!(
         client
             .inner
-            .application_workflow
+            .reconciler
             .0
             .runtime
             .last_confirmed_runtime_receipt()
@@ -854,7 +836,7 @@ async fn queued_commits_apply_only_the_latest_target() {
         receipt(&client.clash_outcome(latest).await).runtime,
         RuntimeCommitStatus::Applied
     );
-    super::barrier(&client.inner.application_workflow).await;
+    super::barrier(&client.inner.reconciler).await;
     let applied = endpoint.reconciled_bytes();
     assert_eq!(
         applied.len(),

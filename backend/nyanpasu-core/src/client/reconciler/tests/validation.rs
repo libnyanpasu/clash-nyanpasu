@@ -134,7 +134,7 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
 
 #[tokio::test]
 async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
-    use crate::client::application_workflow::startup::StartupOutcome;
+    use crate::client::reconciler::startup::StartupOutcome;
 
     use super::{
         mutations::{commit_source, overrides, settled},

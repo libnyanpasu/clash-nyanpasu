@@ -43,7 +43,7 @@ pub enum ConfigError {
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(display("editing hotkeys is not supported"))]
     ValidateHotkeyCapability,
-    #[snafu(context(false), display("the application workflow is not ready"))]
+    #[snafu(context(false), display("the runtime reconciler is not ready"))]
     WorkflowNotReady {
         #[serde(skip)]
         source: NotReady,

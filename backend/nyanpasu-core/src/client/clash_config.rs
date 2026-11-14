@@ -174,14 +174,14 @@ impl super::NyanpasuClient {
         let settled = if committed.reaches_runtime {
             Some(
                 self.inner
-                    .application_workflow
+                    .reconciler
                     .settled(ConfigDomain::Clash, committed.version)
                     .await,
             )
         } else {
             None
         };
-        super::application_workflow::status::outcome(
+        super::reconciler::status::outcome(
             nyanpasu_runtime_values::runtime::CommitReceipt {
                 operation_id: committed.operation_id.map(|id| id.to_string()),
                 domain: "clash".into(),

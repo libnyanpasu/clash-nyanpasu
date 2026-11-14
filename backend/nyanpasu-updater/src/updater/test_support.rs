@@ -1,4 +1,4 @@
-//! Deterministic backend shared by owner and application workflow tests.
+//! Deterministic backend shared by owner and runtime reconciler tests.
 
 use std::{sync::Arc, time::Instant};
 

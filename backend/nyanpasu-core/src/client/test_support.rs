@@ -29,8 +29,8 @@ use tempfile::TempDir;
 
 use super::{
     ClientSetupArgs, NyanpasuClient, RuntimePaths, application::ApplicationClient,
-    application_workflow, clash_config::ClashConfigClient, effects,
-    host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
+    clash_config::ClashConfigClient, effects, host_adapters::ClientHostAdapters, hotkey, jobs,
+    logs, reconciler, session_state::SessionStateClient,
 };
 use crate::{
     actor_v2::{
@@ -94,7 +94,7 @@ pub struct TestControlEndpoint {
     )>,
     /// Scripts whether the next `Recover` submission fails (R6a): the
     /// death-proof step must abort
-    /// `ApplicationWorkflowClient::replace_binary` before the installer
+    /// `RuntimeReconcilerClient::replace_binary` before the installer
     /// runs when recovery itself cannot prove the core is dead.
     /// Defaults to `false` so existing tests, which never scripted
     /// `Recover` before it became an unconditional step, keep seeing it
@@ -180,15 +180,11 @@ impl TestControlEndpoint {
         let report = client.startup_reconcile().await;
         assert_eq!(
             report.outcome,
-            application_workflow::startup::StartupOutcome::Ready,
+            reconciler::startup::StartupOutcome::Ready,
             "fixture boot: {report:?}"
         );
         #[cfg(test)]
-        client
-            .inner
-            .application_workflow
-            .settle_core_changes()
-            .await;
+        client.inner.reconciler.settle_core_changes().await;
         self.fail.store(failed, std::sync::atomic::Ordering::SeqCst);
         self.reset_tracking();
     }
@@ -393,7 +389,7 @@ impl TestControlEndpoint {
                 error: None,
             };
         }
-        // R6a: `ApplicationWorkflowClient::replace_binary` now submits
+        // `RuntimeReconcilerClient::replace_binary` submits
         // `Recover` unconditionally as the death proof, and the facade
         // rejects any other output for it. Scriptable to fail so a test
         // can prove the replacement aborts before its installer runs when
@@ -978,7 +974,7 @@ impl ChangelogHttp for UnconfiguredChangelogHttp {
 
 pub fn test_adapters(
     profile_files: Arc<super::host_adapters::ProfileFileFactory>,
-    runtime_build: Arc<dyn super::application_workflow::ports::RuntimeBuildPort>,
+    runtime_build: Arc<dyn super::reconciler::ports::RuntimeBuildPort>,
 ) -> ClientHostAdapters {
     ClientHostAdapters {
         icon_fetcher: Arc::new(MockIconFetcher::new()),
@@ -995,8 +991,8 @@ pub fn test_adapters(
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub fn workflow(client: &NyanpasuClient) -> application_workflow::ApplicationWorkflowClient {
-    client.inner.application_workflow.clone()
+pub fn workflow(client: &NyanpasuClient) -> reconciler::RuntimeReconcilerClient {
+    client.inner.reconciler.clone()
 }
 #[cfg(any(test, feature = "test-support"))]
 pub fn clash_snapshot(client: &NyanpasuClient) -> crate::state::clash_config::ClashConfigSnapshot {

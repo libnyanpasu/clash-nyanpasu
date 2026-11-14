@@ -7140,6 +7140,7 @@ dependencies = [
  "camino",
  "dunce",
  "futures",
+ "getrandom 0.4.3",
  "hex",
  "mockall",
  "nyanpasu-config",
@@ -7164,6 +7165,7 @@ dependencies = [
  "whoami",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
+ "zeroize",
 ]
 
 [[package]]

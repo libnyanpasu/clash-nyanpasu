@@ -1822,7 +1822,7 @@ dependencies = [
  "mlua",
  "mockall",
  "nanoid",
- "nix 0.31.3",
+ "nix 0.32.0",
  "notify",
  "notify-debouncer-full",
  "nyanpasu-config",
@@ -6463,6 +6463,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77730ed34f01f4990cb2ea67fec715ecebc6fab9a6396cf83c5529b13f581bdc"
+dependencies = [
+ "bitflags 2.13.2",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "no_std_io2"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7207,7 +7219,7 @@ dependencies = [
  "anyhow",
  "atomicwrites",
  "backon",
- "nix 0.31.3",
+ "nix 0.32.0",
  "nyanpasu-utils",
  "serde",
  "snafu 0.9.2",

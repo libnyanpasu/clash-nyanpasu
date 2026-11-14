@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createCommandTransport,
   createRpcClient,
+  getClientId,
   isIpcError,
   rpcDomainError,
   RpcFailure,
@@ -51,7 +52,10 @@ describe('rpc command facade', () => {
     })
     expect(fetchMock).toHaveBeenCalledWith('/bridge/rpc', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-nyanpasu-client-id': getClientId(),
+      },
       body: JSON.stringify({
         method: 'inspect_runtime_node',
         params: { snapshotId: 'a', nodeId: 2 },
@@ -242,4 +246,77 @@ it('keeps HTTP failures without an envelope as plain errors', async () => {
   expect(failure).toBeInstanceOf(Error)
   expect(failure).not.toBeInstanceOf(RpcFailure)
   expect(failure).toEqual(new Error('RPC failed with HTTP 503'))
+})
+
+describe('HTTP authentication', () => {
+  it('reports 401 as an unauthorized RpcFailure and notifies the caller', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ kind: 'forbidden', message: 'Login required' }),
+      }),
+    )
+    const onUnauthorized = vi.fn()
+
+    const failure: unknown = await createCommandTransport('none', 'browser', {
+      onUnauthorized,
+    })
+      .invoke('get_profiles')
+      .catch((error) => error)
+
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+    expect(failure).toBeInstanceOf(RpcFailure)
+    expect((failure as RpcFailure).envelope.kind).toBe('unauthorized')
+    expect((failure as RpcFailure).message).toBe('Login required')
+  })
+
+  it('classifies a 401 without a JSON body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => {
+          throw new SyntaxError()
+        },
+      }),
+    )
+    const onUnauthorized = vi.fn()
+
+    await expect(
+      createCommandTransport('none', 'browser', { onUnauthorized }).invoke(
+        'get_profiles',
+      ),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        envelope: { kind: 'unauthorized', message: 'Authentication required' },
+      }),
+    )
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it('does not report other failures as unauthorized', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: async () => ({ kind: 'forbidden', message: 'No scope' }),
+      }),
+    )
+    const onUnauthorized = vi.fn()
+
+    await expect(
+      createCommandTransport('none', 'browser', { onUnauthorized }).invoke(
+        'get_profiles',
+      ),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        envelope: expect.objectContaining({ kind: 'forbidden' }),
+      }),
+    )
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
 })

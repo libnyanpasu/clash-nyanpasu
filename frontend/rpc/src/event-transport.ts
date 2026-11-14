@@ -1,3 +1,6 @@
+import { createClosedStreamProbe, type AuthProbe } from './auth-probe'
+import { withClientId } from './client-id'
+
 export type RpcEvent<T> = {
   event: string
   id: number
@@ -14,8 +17,16 @@ export interface RpcEventTransport {
   dispose(): void
 }
 
+export interface HttpEventTransportOptions {
+  /** Probes credentials when the stream closes for good, to detect `401`. */
+  probeAuth?: AuthProbe
+}
+
 /** Each client owns one shared SSE connection, released after its last listener. */
-export function createHttpEventTransport(): RpcEventTransport {
+export function createHttpEventTransport(
+  options: HttpEventTransportOptions = {},
+): RpcEventTransport {
+  const probeClosedStream = createClosedStreamProbe(options.probeAuth)
   const listeners = new Map<string, Set<RpcEventCallback<unknown>>>()
   const resyncListeners = new Set<() => void>()
   let source: EventSource | null = null
@@ -24,7 +35,7 @@ export function createHttpEventTransport(): RpcEventTransport {
 
   const connect = () => {
     if (source || disposed) return
-    source = new EventSource('/bridge/events')
+    source = new EventSource(withClientId('/bridge/events'))
     source.addEventListener('message', (message) => {
       let event: { name: string; payload: unknown }
       try {
@@ -42,6 +53,9 @@ export function createHttpEventTransport(): RpcEventTransport {
     const resync = () => {
       for (const callback of resyncListeners) callback()
     }
+    source.addEventListener('error', () => {
+      if (source) probeClosedStream(source)
+    })
     source.addEventListener('open', resync)
     source.addEventListener('resync', resync)
   }

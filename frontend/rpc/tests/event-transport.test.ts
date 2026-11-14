@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getClientId } from '../src/client-id'
 import { createHttpEventTransport } from '../src/event-transport'
 
 class FakeEventSource {
   static instances: FakeEventSource[] = []
   readonly listeners = new Map<string, EventListener>()
   readonly close = vi.fn()
+  readyState = 0
 
   constructor(readonly url: string) {
     FakeEventSource.instances.push(this)
@@ -42,7 +44,9 @@ describe('HTTP event transport', () => {
 
     expect(FakeEventSource.instances).toHaveLength(1)
     const source = FakeEventSource.instances[0]
-    expect(source.url).toBe('/bridge/events')
+    expect(source.url).toBe(
+      `/bridge/events?client_id=${encodeURIComponent(getClientId())}`,
+    )
     source.dispatch(
       'message',
       JSON.stringify({ name: 'clash-ws-event', payload: { sequence: 42 } }),
@@ -178,5 +182,48 @@ describe('HTTP event transport', () => {
     stop()
     expect(source.close).toHaveBeenCalledOnce()
     transport.dispose()
+  })
+
+  describe('revoked credentials', () => {
+    it('probes once when the stream closes for good', async () => {
+      useBrowserEventSource()
+      let finish = () => {}
+      const probeAuth = vi.fn(
+        () => new Promise<void>((resolve) => (finish = resolve)),
+      )
+      const transport = createHttpEventTransport({ probeAuth })
+      transport.listenResync(() => {})
+      const source = FakeEventSource.instances[0]
+
+      source.dispatch('error')
+      expect(probeAuth).not.toHaveBeenCalled()
+
+      source.readyState = 2
+      source.dispatch('error')
+      source.dispatch('error')
+      expect(probeAuth).toHaveBeenCalledOnce()
+
+      finish()
+      await Promise.resolve()
+      await Promise.resolve()
+      source.dispatch('error')
+      expect(probeAuth).toHaveBeenCalledTimes(2)
+      transport.dispose()
+    })
+
+    it('survives a failing probe', async () => {
+      useBrowserEventSource()
+      const probeAuth = vi.fn().mockRejectedValue(new Error('offline'))
+      const transport = createHttpEventTransport({ probeAuth })
+      transport.listenResync(() => {})
+      const source = FakeEventSource.instances[0]
+      source.readyState = 2
+
+      source.dispatch('error')
+      await Promise.resolve()
+
+      expect(probeAuth).toHaveBeenCalledOnce()
+      transport.dispose()
+    })
   })
 })

@@ -1,6 +1,6 @@
 # Remote access, CLI, agent skill and MCP: design
 
-Status: **in progress**. Layers 01–03 are implemented; the remaining layers are proposed.
+Status: **in progress**. Layers 01–03 are implemented, with partial slices delivered for Layers 04–06; the remaining layers are proposed.
 The maintainer's decisions are recorded in [§11](#11-decisions) and the delivery
 state in [§12](#12-order).
 
@@ -679,7 +679,7 @@ authorization are complete.
 | 03    | Privilege-separated application, Clash and runtime request contracts, matching frontend callers and retry-helper review                                                                  | **implemented** |
 | 04    | Secret-free query/event/reset projections and read-only frontend bootstrap                                                                                                               | **partial**     |
 | 05    | Shared authorization over commands, direct routes (including icons) and events; `rpc_describe`; generated JSON Schema                                                                    | **partial**     |
-| 06    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | proposed        |
+| 06    | Remote-access actor with protected persistence; HTTP token, browser and resource-session authentication                                                                                  | **partial**     |
 | 07    | TLS, `lan_authenticated`, `local_open` and the remote access UI                                                                                                                          | proposed        |
 | 08    | Persisted local-socket switch and the reviewed CLI local allowlist                                                                                                                       | proposed        |
 | 09    | `nyanpasu-cli`: target resolution, contexts, transports, curated commands                                                                                                                | proposed        |
@@ -775,6 +775,25 @@ cancelling already-admitted business work), resource sessions enforce idle
 expiry and principal binding without granting scopes, failed-authentication peer
 tracking stays bounded fail-closed without evicting active failure windows or
 lockouts, and secret storage enforces write-time protection and bounded record
-sizing with redacted parse errors. Host composition roots keep `remote_auth` at
-`None` until concrete OS file/credential-store adapters, UI gates, and
-production HTTP/RPC wiring land in subsequent layers.
+sizing with redacted parse errors.
+
+Also delivered for **partial** Layer 06 in the OS secret-adapter and
+host-composition slice (stack layer 13): `PathResolver::remote_access_dir`
+(`<data_dir>/remote-access`) and `remote_access_secrets_path`
+(`auth-secrets.json`) in `nyanpasu-paths` with canonical data-root backup
+exclusions (reserved even before the first secret directory exists) and
+`InvalidConfigSource` rejection when the config directory resolves at or inside
+`remote-access`; concrete OS adapters in `nyanpasu-os::remote_auth`
+(`OsAuthClock`, `OsEntropySource`, `FsSecretStore` with Unix
+`0o700`/`0o600`/`O_NOFOLLOW`/`O_NONBLOCK` and Windows owner-only `O:<userSID>`
+protected DACL / root-inclusive ancestor ACLs / `HandleIdentity` /
+no-`FILE_SHARE_DELETE` enforcement plus unsupported-ACL fallback classification,
+`OsKeyringBackend` with category-only error redaction, and lazy
+`KeyringSecretCipher` using `XChaCha20-Poly1305` and installation-isolated
+`instance_key_account` without touching global keyring state); and explicit
+fail-closed `RemoteAccessAuthPorts` (`Some(...)`) composition wired in both
+`backend/tauri` and `nyanpasu-server` via shared `build_os_remote_auth_bundle`
+(`"remote-access"` scope and `RemoteAuthPolicy::max_persisted_record_bytes`).
+Remaining Layer 06 HTTP login/browser/resource-session request admission, UI
+security gates, LAN/anonymous principals, and new auth strategies stay gated
+until subsequent HTTP/RPC and UI layers.

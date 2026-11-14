@@ -132,6 +132,9 @@ nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-f
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
   'test-support'
 ] }
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
+  'test-support'
+] }
 tracing-subscriber = { version = '0.3', features = [
   'env-filter',
   'json',

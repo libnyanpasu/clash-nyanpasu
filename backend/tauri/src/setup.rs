@@ -524,7 +524,20 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
         accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
-        remote_auth: None,
+        remote_auth: Some({
+            let policy = nyanpasu_core::client::RemoteAuthPolicy::default();
+            let bundle = nyanpasu_os::remote_auth::build_os_remote_auth_bundle(
+                paths.remote_access_secrets_path().as_std_path(),
+                policy.max_persisted_record_bytes,
+            );
+            nyanpasu_core::client::RemoteAccessAuthPorts::new(
+                bundle.clock,
+                bundle.entropy,
+                bundle.store,
+                Some(bundle.cipher),
+            )
+            .with_policy(policy)
+        }),
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     }))

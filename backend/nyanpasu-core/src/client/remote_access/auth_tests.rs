@@ -2002,3 +2002,300 @@ async fn resource_session_idle_expiry_cleans_up_anonymous_and_non_expiring_beare
 
     f.finish().await;
 }
+
+async fn build_os_bundle_args(
+    temp: &tempfile::TempDir,
+    cred: Arc<dyn nyanpasu_os::remote_auth::CredentialSecretBackend>,
+    policy: RemoteAuthPolicy,
+) -> crate::client::ClientSetupArgs {
+    let mut args = test_client_args_with_endpoint(
+        temp,
+        TestControlEndpoint::succeeding(),
+        crate::client::test_support::profile_test_adapters(temp),
+    )
+    .await;
+    let bundle = nyanpasu_os::remote_auth::build_remote_auth_bundle_with_backend(
+        args.paths.remote_access_secrets_path().as_std_path(),
+        policy.max_persisted_record_bytes,
+        cred,
+    );
+    args.remote_auth = Some(
+        RemoteAccessAuthPorts::new(
+            bundle.clock,
+            bundle.entropy,
+            bundle.store,
+            Some(bundle.cipher),
+        )
+        .with_policy(policy),
+    );
+    args
+}
+
+#[cfg(unix)]
+fn set_unix_dir_mode(path: &std::path::Path, mode: u32) {
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    fs::create_dir_all(path).unwrap();
+    let mut perms = fs::metadata(path).unwrap().permissions();
+    perms.set_mode(mode);
+    fs::set_permissions(path, perms).unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn core_composition_with_real_os_store_persists_creates_revocations_and_keeps_keyring_lazy() {
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    let dir = tempfile::tempdir().unwrap();
+    let backend =
+        Arc::new(nyanpasu_os::remote_auth::test_support::InMemoryCredentialBackend::new());
+    let policy = RemoteAuthPolicy::default();
+
+    // Startup on empty data dir succeeds lazily without touching the keyring backend or pre-creating
+    // `auth-secrets.json`.
+    let args1 = build_os_bundle_args(&dir, backend.clone(), policy.clone()).await;
+    // Force predictable 0o700 mode on `app_data_dir` inside tempdir so Unix store sees `Protected`.
+    set_unix_dir_mode(args1.paths.app_data_dir().as_std_path(), 0o700);
+    let secrets_path = args1.paths.remote_access_secrets_path().into_std_path_buf();
+    let client1 = NyanpasuClient::try_new(args1).await.unwrap();
+    assert!(!secrets_path.exists());
+    assert_eq!(backend.call_counts(), (0, 0));
+
+    let issued = client1
+        .create_remote_access_token(CreateAccessTokenRequest {
+            name: TokenName::parse("os-persist").unwrap(),
+            scopes: ScopeSet::from([Scope::Read, Scope::Proxy]),
+            expires_at_ms: None,
+        })
+        .await
+        .unwrap();
+    assert!(secrets_path.is_file());
+    let file_mode = fs::metadata(&secrets_path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(file_mode, 0o600);
+    // Protected plaintext persistence must not touch the OS keyring at all.
+    assert_eq!(backend.call_counts(), (0, 0));
+    let summary_id = issued.summary.id;
+    let token_raw = issued.token.expose_secret().to_owned();
+    client1.request_shutdown();
+    client1.wait_shutdown().await;
+    drop(client1);
+
+    // Restart client against the same PathResolver root: token survives and authenticates cleanly.
+    let client2 =
+        NyanpasuClient::try_new(build_os_bundle_args(&dir, backend.clone(), policy.clone()).await)
+            .await
+            .unwrap();
+    let listed = client2.list_remote_access_tokens().await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, summary_id);
+    let auth = client2
+        .login_remote_with_token(peer(7), SecretString::new(token_raw.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        auth.auth.scopes,
+        ScopeSet::from([Scope::Read, Scope::Proxy])
+    );
+
+    // Revoke token, shut down, and restart: revocation persists and login stays denied.
+    client2
+        .revoke_remote_access_token(summary_id)
+        .await
+        .unwrap();
+    client2.request_shutdown();
+    client2.wait_shutdown().await;
+    drop(client2);
+
+    let client3 =
+        NyanpasuClient::try_new(build_os_bundle_args(&dir, backend.clone(), policy.clone()).await)
+            .await
+            .unwrap();
+    assert_eq!(
+        client3
+            .login_remote_with_token(peer(7), SecretString::new(token_raw))
+            .await
+            .unwrap_err(),
+        RemoteAuthError::Unauthorized
+    );
+    client3.request_shutdown();
+    client3.wait_shutdown().await;
+    drop(client3);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn core_composition_with_unprotected_os_store_uses_lazy_aead_and_fails_closed_on_tamper_or_missing_key()
+ {
+    use std::fs;
+
+    let dir = tempfile::tempdir().unwrap();
+    let backend =
+        Arc::new(nyanpasu_os::remote_auth::test_support::InMemoryCredentialBackend::new());
+    let policy = RemoteAuthPolicy::default();
+
+    // Empty relaxed startup still stays lazy (never touches keyring until a secret is persisted).
+    let args1 = build_os_bundle_args(&dir, backend.clone(), policy.clone()).await;
+    // Force `remote-access` to mode 0o755 so `FsSecretStore` classifies `Unprotected` and
+    // requires `KeyringSecretCipher` AEAD encryption instead of plaintext.
+    set_unix_dir_mode(args1.paths.remote_access_dir().as_std_path(), 0o755);
+    let secrets_path = args1.paths.remote_access_secrets_path().into_std_path_buf();
+    let client1 = NyanpasuClient::try_new(args1).await.unwrap();
+    assert_eq!(backend.call_counts(), (0, 0));
+
+    let issued = client1
+        .create_remote_access_token(CreateAccessTokenRequest {
+            name: TokenName::parse("aead-secret-token").unwrap(),
+            scopes: ScopeSet::from([Scope::Read]),
+            expires_at_ms: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(backend.call_counts().1, 1);
+    let raw_bytes = fs::read(&secrets_path).unwrap();
+    let raw_lossy = String::from_utf8_lossy(&raw_bytes);
+    assert!(
+        !raw_lossy.contains("aead-secret-token") && !raw_lossy.contains("plain_v1"),
+        "unprotected medium must persist ciphertext, never plaintext token metadata"
+    );
+    client1.request_shutdown();
+    client1.wait_shutdown().await;
+    drop(client1);
+
+    // Restart with the same backend + path decrypts and authenticates cleanly.
+    let client2 =
+        NyanpasuClient::try_new(build_os_bundle_args(&dir, backend.clone(), policy.clone()).await)
+            .await
+            .unwrap();
+    let auth = client2
+        .login_remote_with_token(
+            peer(9),
+            SecretString::new(issued.token.expose_secret().to_owned()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(auth.auth.scopes, ScopeSet::from([Scope::Read]));
+    client2.request_shutdown();
+    client2.wait_shutdown().await;
+    drop(client2);
+
+    // Restart with a fresh empty backend (missing key) MUST fail startup closed and NOT create a new key.
+    let wrong_backend =
+        Arc::new(nyanpasu_os::remote_auth::test_support::InMemoryCredentialBackend::new());
+    let missing_key_err = match NyanpasuClient::try_new(
+        build_os_bundle_args(&dir, wrong_backend.clone(), policy.clone()).await,
+    )
+    .await
+    {
+        Ok(_) => panic!("missing AEAD key for existing encrypted store must fail startup"),
+        Err(err) => err,
+    };
+    assert!(matches!(
+        missing_key_err,
+        SetupError::StartRemoteAccess { .. }
+    ));
+    assert_eq!(wrong_backend.call_counts().1, 0);
+
+    // Tampering a ciphertext byte on disk MUST fail startup closed with `StartRemoteAccess`.
+    let mut tampered = raw_bytes.clone();
+    let last_idx = tampered.len() - 1;
+    tampered[last_idx] ^= 0x55;
+    fs::write(&secrets_path, &tampered).unwrap();
+    let tamper_err = match NyanpasuClient::try_new(
+        build_os_bundle_args(&dir, backend.clone(), policy.clone()).await,
+    )
+    .await
+    {
+        Ok(_) => panic!("tampered encrypted store must fail startup closed"),
+        Err(err) => err,
+    };
+    assert!(matches!(tamper_err, SetupError::StartRemoteAccess { .. }));
+
+    // Restore valid ciphertext and verify tiny `max_persisted_record_bytes` policy limit refuses
+    // oversized loads/writes while keeping behavior fail-closed.
+    fs::write(&secrets_path, &raw_bytes).unwrap();
+    let tiny_policy = RemoteAuthPolicy {
+        max_persisted_record_bytes: 32,
+        ..policy
+    };
+    let tiny_limit_err =
+        match NyanpasuClient::try_new(build_os_bundle_args(&dir, backend, tiny_policy).await).await
+        {
+            Ok(_) => panic!("record exceeding max_persisted_record_bytes must fail startup closed"),
+            Err(err) => err,
+        };
+    assert!(matches!(
+        tiny_limit_err,
+        SetupError::StartRemoteAccess { .. }
+    ));
+}
+
+#[tokio::test]
+async fn core_composition_with_os_bundle_survives_restart_and_fails_closed_on_corrupt_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend =
+        Arc::new(nyanpasu_os::remote_auth::test_support::InMemoryCredentialBackend::new());
+    let policy = RemoteAuthPolicy::default();
+
+    let args1 = build_os_bundle_args(&dir, backend.clone(), policy.clone()).await;
+    let secrets_path = args1.paths.remote_access_secrets_path().into_std_path_buf();
+    let client1 = NyanpasuClient::try_new(args1).await.unwrap();
+    assert!(!secrets_path.exists());
+    assert_eq!(backend.call_counts(), (0, 0));
+
+    let issued = client1
+        .create_remote_access_token(CreateAccessTokenRequest {
+            name: TokenName::parse("cross-platform-os-token").unwrap(),
+            scopes: ScopeSet::from([Scope::Read]),
+            expires_at_ms: None,
+        })
+        .await
+        .unwrap();
+    assert!(secrets_path.is_file());
+    let summary_id = issued.summary.id;
+    let token_raw = issued.token.expose_secret().to_owned();
+    client1.request_shutdown();
+    client1.wait_shutdown().await;
+    drop(client1);
+
+    let client2 =
+        NyanpasuClient::try_new(build_os_bundle_args(&dir, backend.clone(), policy.clone()).await)
+            .await
+            .unwrap();
+    let auth = client2
+        .login_remote_with_token(peer(11), SecretString::new(token_raw.clone()))
+        .await
+        .unwrap();
+    assert_eq!(auth.auth.scopes, ScopeSet::from([Scope::Read]));
+    client2
+        .revoke_remote_access_token(summary_id)
+        .await
+        .unwrap();
+    client2.request_shutdown();
+    client2.wait_shutdown().await;
+    drop(client2);
+
+    let client3 =
+        NyanpasuClient::try_new(build_os_bundle_args(&dir, backend.clone(), policy.clone()).await)
+            .await
+            .unwrap();
+    assert_eq!(
+        client3
+            .login_remote_with_token(peer(11), SecretString::new(token_raw))
+            .await
+            .unwrap_err(),
+        RemoteAuthError::Unauthorized
+    );
+    client3.request_shutdown();
+    client3.wait_shutdown().await;
+    drop(client3);
+
+    // Corrupting the persisted file must fail `NyanpasuClient::try_new` closed rather than
+    // recovering with an empty token set.
+    std::fs::write(&secrets_path, b"not-valid-auth-secrets").unwrap();
+    let corrupt_err =
+        match NyanpasuClient::try_new(build_os_bundle_args(&dir, backend, policy).await).await {
+            Ok(_) => panic!("corrupt persisted secrets file must fail startup closed"),
+            Err(err) => err,
+        };
+    assert!(matches!(corrupt_err, SetupError::StartRemoteAccess { .. }));
+}

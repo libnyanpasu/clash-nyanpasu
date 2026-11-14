@@ -6910,6 +6910,7 @@ dependencies = [
  "nyanpasu-migration",
  "nyanpasu-net",
  "nyanpasu-observers",
+ "nyanpasu-os",
  "nyanpasu-owner-support",
  "nyanpasu-paths",
  "nyanpasu-persistence",

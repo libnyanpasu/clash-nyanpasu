@@ -13,7 +13,11 @@ use crate::{error::CliError, target::TransportChoice};
 
 /// Controls a running Clash Nyanpasu shell over its local socket or HTTP.
 #[derive(Debug, Parser)]
-#[command(name = "nyanpasu-cli", version, arg_required_else_help = true)]
+#[command(
+    name = "nyanpasu-cli",
+    version = env!("NYANPASU_CLI_VERSION"),
+    arg_required_else_help = true
+)]
 pub struct Cli {
     /// Use this context for this invocation without changing the default.
     #[arg(long, global = true, value_name = "NAME")]

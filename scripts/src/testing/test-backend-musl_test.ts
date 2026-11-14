@@ -13,7 +13,10 @@ test('musl builds and requires the neutral RPC HTTP and local endpoint test targ
   assert.match(runner, /--features nyanpasu-rpc\/local-server /)
   assert.match(runner, /--features nyanpasu-rpc-protocol\/frame-io /)
   assert.match(runner, /--features nyanpasu-rpc-protocol\/local-client /)
-  assert.match(runner, /'lib:nyanpasu_rpc_protocol'/)
+  assert.match(runner, /-p nyanpasu-rpc-wire /)
+  assert.match(runner, /--features nyanpasu-rpc-wire\/frame-io /)
+  assert.match(runner, /--features nyanpasu-rpc-wire\/local-client /)
+  assert.match(runner, /'lib:nyanpasu_rpc_wire'/)
   assert.match(runner, /'lib:nyanpasu_rpc',/)
   assert.match(
     runner,
@@ -25,18 +28,30 @@ test('musl builds and requires the neutral RPC HTTP and local endpoint test targ
   )
   assert.match(
     runner,
-    /-p nyanpasu-server --features nyanpasu-os\/test-support --lib --tests/,
+    /build --locked --manifest-path backend\/Cargo.toml -p nyanpasu-cli --lib --bin nyanpasu-cli --jobs 12/,
+  )
+  assert.match(
+    runner,
+    /-p nyanpasu-server -p nyanpasu-cli --features nyanpasu-os\/test-support --lib --tests/,
   )
   assert.match(runner, /'lib:nyanpasu_server'/)
+  assert.match(runner, /'lib:nyanpasu_cli'/)
   // Cargo --tests includes unit tests for binary targets. Every emitted test
   // artifact must be registered; the runner continues to reject extras.
   assert.match(runner, /'bin:nyanpasu-server'/)
+  assert.match(runner, /'bin:nyanpasu-cli'/)
   assert.match(runner, /'test:panic_process'/)
+  assert.match(runner, /'test:process'/)
   const production = runner.match(
     /build --locked[^\n]*-p nyanpasu-server[^\n]*/,
   )?.[0]
   assert.ok(production)
   assert.doesNotMatch(production, /panic-injection|--all-features/)
+  const cliProduction = runner.match(
+    /build --locked[^\n]*-p nyanpasu-cli[^\n]*/,
+  )?.[0]
+  assert.ok(cliProduction)
+  assert.doesNotMatch(cliProduction, /--all-features/)
   assert.match(runner, /artifact\.profile\?\.test/)
   assert.match(runner, /unexpected test target/)
 })

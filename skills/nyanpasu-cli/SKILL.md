@@ -85,5 +85,8 @@ on standard error and tell the user.
 ## Run it as an MCP server
 
 `nyanpasu-cli mcp` serves the same curated operations over standard input and output.
-It is read-only by default; `nyanpasu-cli mcp --scope proxy` adds the `proxy` tools,
-always limited to the caller's own scopes. It never offers `remote_admin`.
+It is read-only by default; `nyanpasu-cli mcp --scope proxy` adds the `proxy` tools
+(repeat `--scope` for additional scopes), always limited to the caller's own scopes.
+Pass `nyanpasu-cli mcp --raw` to also expose a generic `call_method` tool for
+uncurated commands, still bounded by the caller's scopes. It never offers
+`remote_admin`.

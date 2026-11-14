@@ -294,6 +294,13 @@ fn help_version_and_completion_exit_zero() {
         let output = cli(&config).args(arguments).output().unwrap();
         assert_eq!(code(&output), 0, "{arguments:?}");
         assert!(!output.stdout.is_empty());
+        if arguments == ["--version"] {
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert_eq!(
+                stdout.trim(),
+                format!("nyanpasu-cli {}", env!("NYANPASU_CLI_VERSION"))
+            );
+        }
     }
 }
 

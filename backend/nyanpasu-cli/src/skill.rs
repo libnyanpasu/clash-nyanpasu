@@ -23,7 +23,9 @@ fn candidates(executable_dir: &Path) -> Vec<PathBuf> {
         "skills",
         "resources/skills",
         "../Resources/skills",
+        "../lib/Clash Nyanpasu/skills",
         "../lib/clash-nyanpasu/skills",
+        "../share/Clash Nyanpasu/skills",
         "../share/clash-nyanpasu/skills",
     ]
     .iter()
@@ -41,8 +43,16 @@ pub fn locate(override_dir: Option<&Path>, executable: Option<&Path>) -> Result<
     if let Some(dir) = override_dir {
         searched.push(dir.to_owned());
     }
-    if let Some(dir) = executable.and_then(Path::parent) {
-        searched.extend(candidates(dir));
+    if let Some(exec) = executable {
+        if let Some(dir) = exec.parent() {
+            searched.extend(candidates(dir));
+        }
+        if let Ok(resolved) = exec.canonicalize()
+            && resolved != exec
+            && let Some(dir) = resolved.parent()
+        {
+            searched.extend(candidates(dir));
+        }
     }
     #[cfg(debug_assertions)]
     searched.push(
@@ -204,43 +214,85 @@ mod tests {
             .collect()
     }
 
-    /// Walks a documented command through the real grammar.
-    fn check_command(span: &str) -> Result<(), String> {
-        use clap::CommandFactory as _;
-
-        let root = crate::cli::Cli::command();
-        let value_flags: Vec<String> = root
-            .get_arguments()
-            .filter(|argument| argument.get_action().takes_values())
-            .filter_map(|argument| argument.get_long().map(|long| format!("--{long}")))
-            .collect();
-        let mut current = &root;
-        let mut tokens = span.split_whitespace().skip(1);
-        while let Some(token) = tokens.next() {
-            if token.starts_with('-') {
-                if value_flags.iter().any(|flag| flag == token) {
-                    tokens.next();
+    /// Splits a shell-style command example, preserving single-quoted tokens and
+    /// unescaping Markdown table `\|` pipes.
+    fn tokenize_command(span: &str) -> Result<Vec<String>, String> {
+        let mut tokens = Vec::new();
+        let mut current = String::new();
+        let mut in_single_quotes = false;
+        let mut chars = span.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\'' => in_single_quotes = !in_single_quotes,
+                '\\' if chars.peek() == Some(&'|') => {
+                    chars.next();
+                    current.push('|');
                 }
-                continue;
+                c if c.is_whitespace() && !in_single_quotes => {
+                    if !current.is_empty() {
+                        tokens.push(std::mem::take(&mut current));
+                    }
+                }
+                c => current.push(c),
             }
-            if !current.has_subcommands() {
-                break;
-            }
-            if token.starts_with(['<', '\'', '[']) {
-                return Err(format!("`{span}`: expected a subcommand, found `{token}`"));
-            }
-            current = current.find_subcommand(token).ok_or_else(|| {
-                format!(
-                    "`{span}`: `{token}` is not a subcommand of `{}`",
-                    current.get_name()
-                )
-            })?;
         }
-        if current.has_subcommands() {
+        if in_single_quotes {
+            return Err(format!("`{span}`: unterminated single quote"));
+        }
+        if !current.is_empty() {
+            tokens.push(current);
+        }
+        Ok(tokens)
+    }
+
+    fn expand_token(token: &str) -> Vec<String> {
+        if let Some(inner) = token.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+            if inner.contains('|') {
+                return inner.split('|').map(str::to_owned).collect();
+            }
+            if inner.to_ascii_lowercase().contains("json") {
+                return vec!["{}".to_owned()];
+            }
+            return vec!["placeholder".to_owned()];
+        }
+        vec![token.to_owned()]
+    }
+
+    /// Parses a documented command with the real `clap` grammar and `Command::plan`.
+    fn check_command(span: &str) -> Result<(), String> {
+        use clap::Parser as _;
+
+        let tokens = tokenize_command(span)?;
+        let Some((program, args)) = tokens.split_first() else {
+            return Err(format!("`{span}`: empty command"));
+        };
+        if program != SKILL_NAME {
             return Err(format!(
-                "`{span}`: incomplete, `{}` needs a subcommand",
-                current.get_name()
+                "`{span}`: expected `{SKILL_NAME}`, found `{program}`"
             ));
+        }
+
+        let mut invocations = vec![vec![program.clone()]];
+        for token in args {
+            let choices = expand_token(token);
+            let mut next = Vec::with_capacity(invocations.len() * choices.len());
+            for prefix in &invocations {
+                for choice in &choices {
+                    let mut candidate = prefix.clone();
+                    candidate.push(choice.clone());
+                    next.push(candidate);
+                }
+            }
+            invocations = next;
+        }
+
+        for argv in invocations {
+            let parsed = crate::cli::Cli::try_parse_from(&argv)
+                .map_err(|error| format!("`{span}` ({argv:?}): {error}"))?;
+            parsed
+                .command
+                .plan()
+                .map_err(|error| format!("`{span}` ({argv:?}): {error}"))?;
         }
         Ok(())
     }
@@ -255,6 +307,9 @@ mod tests {
             }
         }
         assert!(checked >= 25, "the skill documents only {checked} commands");
+        assert!(check_command("nyanpasu-cli logs tail --nonexistent").is_err());
+        assert!(check_command("nyanpasu-cli mode set invalid").is_err());
+        assert!(check_command("nyanpasu-cli mode").is_err());
     }
 
     #[test]
@@ -278,12 +333,22 @@ mod tests {
     #[test]
     fn the_skill_has_its_front_matter_and_the_rules_agents_need() {
         let skill = SKILL_FILES[0].1;
+        let lower = skill.to_lowercase();
         assert!(skill.starts_with("---\nname: nyanpasu-cli\ndescription: "));
-        for rule in ["--json", "confirm", "exit code 6", "never put a token"] {
-            assert!(
-                skill.to_lowercase().contains(rule),
-                "SKILL.md lacks the `{rule}` rule"
-            );
+        for rule in [
+            "--json",
+            "status",
+            "methods",
+            "confirm",
+            "exit code 6",
+            "never create tokens",
+            "remote-access settings",
+            "never put a token",
+            "nyanpasu-cli mcp",
+            "--scope",
+            "--raw",
+        ] {
+            assert!(lower.contains(rule), "SKILL.md lacks the `{rule}` rule");
         }
         for (file, text) in SKILL_FILES {
             for code in 0..=6 {
@@ -324,6 +389,42 @@ mod tests {
         assert_eq!(
             locate(Some(&folder), None).unwrap(),
             folder.canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn locate_finds_macos_linux_and_windows_bundle_layouts() {
+        let root = tempfile::tempdir().unwrap();
+
+        let mac_root = root.path().join("mac/Clash Nyanpasu.app/Contents");
+        let mac_skill = mac_root.join("Resources/skills").join(SKILL_NAME);
+        fs::create_dir_all(mac_root.join("MacOS")).unwrap();
+        fs::create_dir_all(&mac_skill).unwrap();
+        fs::write(mac_skill.join("SKILL.md"), "mac").unwrap();
+        assert_eq!(
+            locate(None, Some(&mac_root.join("MacOS/nyanpasu-cli"))).unwrap(),
+            mac_skill.canonicalize().unwrap()
+        );
+
+        let linux_root = root.path().join("linux/usr");
+        let linux_skill = linux_root
+            .join("lib/Clash Nyanpasu/skills")
+            .join(SKILL_NAME);
+        fs::create_dir_all(linux_root.join("bin")).unwrap();
+        fs::create_dir_all(&linux_skill).unwrap();
+        fs::write(linux_skill.join("SKILL.md"), "linux").unwrap();
+        assert_eq!(
+            locate(None, Some(&linux_root.join("bin/nyanpasu-cli"))).unwrap(),
+            linux_skill.canonicalize().unwrap()
+        );
+
+        let win_root = root.path().join("win");
+        let win_skill = win_root.join("resources/skills").join(SKILL_NAME);
+        fs::create_dir_all(&win_skill).unwrap();
+        fs::write(win_skill.join("SKILL.md"), "win").unwrap();
+        assert_eq!(
+            locate(None, Some(&win_root.join("nyanpasu-cli.exe"))).unwrap(),
+            win_skill.canonicalize().unwrap()
         );
     }
 
@@ -389,6 +490,28 @@ mod tests {
         assert!(
             install(&source, &agent, true).is_err(),
             "a real directory is never replaced, even with --force"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn locate_follows_symlinked_executable() {
+        let root = tempfile::tempdir().unwrap();
+        let mac_root = root.path().join("Clash Nyanpasu.app/Contents");
+        let mac_bin = mac_root.join("MacOS/nyanpasu-cli");
+        let mac_skill = mac_root.join("Resources/skills").join(SKILL_NAME);
+        fs::create_dir_all(mac_bin.parent().unwrap()).unwrap();
+        fs::create_dir_all(&mac_skill).unwrap();
+        fs::write(&mac_bin, "bin").unwrap();
+        fs::write(mac_skill.join("SKILL.md"), "mac").unwrap();
+
+        let usr_bin = root.path().join("usr/local/bin/nyanpasu-cli");
+        fs::create_dir_all(usr_bin.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&mac_bin, &usr_bin).unwrap();
+
+        assert_eq!(
+            locate(None, Some(&usr_bin)).unwrap(),
+            mac_skill.canonicalize().unwrap()
         );
     }
 }

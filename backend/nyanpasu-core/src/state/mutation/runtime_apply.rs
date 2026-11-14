@@ -1,8 +1,7 @@
-//! Internal evidence of the runtime accepted by the core, used for recovery.
+//! Internal evidence of the runtime accepted by the core.
 
 use nyanpasu_config::application::ClashCore;
 
-use super::intent::CoreRunIntent;
 use crate::{
     actor_v2::facade::AppliedConfigBinding,
     client::{ports::CandidatePortBindings, runtime::RuntimeRevision},
@@ -16,11 +15,8 @@ pub(crate) struct RuntimeApplyReceipt {
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
     pub host: ExecutionHost,
-    /// Whether the app wants this runtime running at all. A core the user
-    /// stopped is a target too, and a recovery must not start it.
-    pub run_intent: CoreRunIntent,
-    /// The binding this apply produced. A recovery may legitimately land on a
-    /// newer instance generation, so only its content identity is a target.
+    pub instance_id: Option<String>,
+    /// The binding confirmed by this application, used to verify a running instance.
     pub binding: AppliedConfigBinding,
     /// The ports this apply bound. Confirming them is gated on this receipt.
     pub ports: CandidatePortBindings,

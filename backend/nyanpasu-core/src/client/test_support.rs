@@ -178,6 +178,11 @@ impl TestControlEndpoint {
             "fixture boot: {report:?}"
         );
         self.fail.store(failed, std::sync::atomic::Ordering::SeqCst);
+        self.reset_tracking();
+    }
+
+    /// Clears observations after a fixture has established its running or stopped intent.
+    pub(crate) fn reset_tracking(&self) {
         self.submissions
             .store(0, std::sync::atomic::Ordering::SeqCst);
         self.checks.lock().unwrap().clear();
@@ -388,7 +393,12 @@ impl TestControlEndpoint {
         self.reconciled.lock().unwrap().push(bytes.clone());
         let mut current = self.revision.lock().unwrap();
         if let Some(expected) = &request.expected_applied {
-            let stale = expected.epoch.get() != current.epoch
+            let stopped = matches!(
+                self.status_override.lock().unwrap().0,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+            );
+            let stale = stopped
+                || expected.epoch.get() != current.epoch
                 || expected.generation != current.generation
                 || expected.effective_hash != current.effective_hash;
             if stale {
@@ -398,17 +408,21 @@ impl TestControlEndpoint {
                     output: None,
                     error: Some(nyanpasu_ipc::api::core::v2::OperationErrorInfo {
                         kind: Some("revision_conflict".into()),
-                        message: format!(
-                            "revision conflict: expected epoch={} generation={} \
+                        message: if stopped {
+                            "revision conflict: actual revision is absent".to_owned()
+                        } else {
+                            format!(
+                                "revision conflict: expected epoch={} generation={} \
                              effective_hash={}, actual epoch={} generation={} \
                              effective_hash={}",
-                            expected.epoch.get(),
-                            expected.generation,
-                            expected.effective_hash,
-                            current.epoch,
-                            current.generation,
-                            current.effective_hash,
-                        ),
+                                expected.epoch.get(),
+                                expected.generation,
+                                expected.effective_hash,
+                                current.epoch,
+                                current.generation,
+                                current.effective_hash,
+                            )
+                        },
                         retryable: true,
                     }),
                 };
@@ -555,6 +569,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let (state, applied_kind) = self.status_override.lock().unwrap().clone();
         Ok(crate::actor_v2::endpoint::CoreStatusSnapshot {
+            instance_id: Some("test-core-instance".into()),
             controller: None,
             state,
             state_changed_at: 0,
@@ -958,4 +973,53 @@ pub fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
         profile_files::fixed_profile_file_factory(ports),
         Arc::new(runtime_build),
     )
+}
+
+#[cfg(test)]
+mod revision_precondition_tests {
+    use super::*;
+
+    #[test]
+    fn a_stopped_core_rejects_a_historical_revision_precondition() {
+        use nyanpasu_core_manager::{
+            ConfigInput, CoreCommand, CoreCommandEnvelope, CoreKind, CoreSpec, Epoch,
+            InstanceOptions, OperationId, ReconcileRequest, RevisionId,
+        };
+        let endpoint = TestControlEndpoint::succeeding();
+        endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                reason: Some("crashed".into()),
+            }),
+            None,
+        );
+        let revision = endpoint.revision.lock().unwrap().clone();
+        let result = endpoint.operation(&crate::actor_v2::endpoint::CoreSubmission {
+            expected_owner: None,
+            core_type: None,
+            envelope: CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+                    core: CoreSpec {
+                        kind: CoreKind::Mihomo,
+                        binary_path: "mihomo".into(),
+                        version: None,
+                        features: vec![],
+                    },
+                    config: ConfigInput::Inline {
+                        bytes: b"proxies: []".to_vec(),
+                        expected_digest: None,
+                    },
+                    options: InstanceOptions::default(),
+                    expected_applied: Some(RevisionId {
+                        epoch: Epoch::new(revision.epoch).unwrap(),
+                        generation: revision.generation,
+                        effective_hash: revision.effective_hash,
+                    }),
+                })),
+            },
+        });
+        let error = result.error.unwrap();
+        assert_eq!(error.kind.as_deref(), Some("revision_conflict"));
+        assert!(error.message.contains("actual revision is absent"));
+    }
 }

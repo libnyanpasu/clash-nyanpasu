@@ -146,9 +146,11 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
             outcome.degradations()[0].reason,
             nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { .. }
         ));
+        // The cached startup reply acknowledges the queued commit notification without applying again.
+        client.startup_reconcile().await;
         assert_eq!(
             client.configuration_status().runtime.health,
-            nyanpasu_runtime_values::configuration::ConvergenceHealth::RetryScheduled
+            nyanpasu_runtime_values::configuration::ConvergenceHealth::Blocked
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =

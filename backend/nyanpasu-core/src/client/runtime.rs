@@ -235,6 +235,27 @@ impl RuntimeSnapshotStore {
         });
     }
 
+    /// Restores the availability of the unchanged instance without discarding its inspection.
+    pub(in crate::client) fn reconfirm_observed_apply(&self, generation: u64) {
+        self.0.send_if_modified(|state| {
+            let changed = state
+                .confirmed
+                .as_ref()
+                .is_some_and(|c| c.receipt.binding.generation != generation)
+                || state.transition
+                || state
+                    .confirmed
+                    .as_ref()
+                    .is_some_and(|record| !record.available);
+            if let Some(confirmed) = &mut state.confirmed {
+                confirmed.available = true;
+                Arc::make_mut(&mut confirmed.receipt).binding.generation = generation;
+            }
+            state.transition = false;
+            changed
+        });
+    }
+
     pub(in crate::client) fn confirmed(&self) -> Option<ConfirmedRuntime> {
         self.0.borrow().confirmed.clone()
     }
@@ -650,12 +671,25 @@ pub(crate) mod tests {
         assert_eq!(first.revision.get(), 1);
     }
 
+    #[test]
+    fn reconfirmation_rebinds_the_receipt_to_the_observed_connection() {
+        let store = RuntimeSnapshotStore::default();
+        store.confirm_applied(Arc::new(receipt(1)));
+        store.begin_transition();
+        store.reconfirm_observed_apply(42);
+        let confirmed = store.confirmed().unwrap();
+        assert_eq!(confirmed.receipt.binding.generation, 42);
+        assert!(confirmed.available);
+        assert!(store.accepted_binding().is_some());
+        assert!(matches!(confirmed.inspection, InspectionState::Unavailable));
+    }
+
     pub(super) fn receipt(revision: u64) -> RuntimeApplyReceipt {
         RuntimeApplyReceipt {
+            instance_id: None,
             revision: RuntimeRevision(revision),
             target_core: ClashCore::default(),
             host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
-            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
                 .resolve_candidate(&crate::client::test_support::test_clash_config())

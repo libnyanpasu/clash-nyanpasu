@@ -35,6 +35,15 @@ use std::{
 use struct_patch::Patch;
 use tokio::sync::Notify;
 
+fn stopped_endpoint() -> Arc<TestControlEndpoint> {
+    let endpoint = TestControlEndpoint::succeeding();
+    endpoint.set_status(
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+        None,
+    );
+    endpoint
+}
+
 /// A publication that fails the way a full disk does.
 pub(super) fn scripted_publish_failure() -> nyanpasu_runtime_values::publish::PublishRuntimeError {
     nyanpasu_runtime_values::publish::PublishRuntimeError::CreateRuntimeDirectory {
@@ -123,13 +132,10 @@ async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
     assert!(Arc::ptr_eq(&written, &observed));
 }
 
-/// V09: an apply the core confirmed is the recovery checkpoint even when the
-/// effective-config inspection never arrives. The baseline must not fall back
-/// to an older apply, and it must not wait for an inspection that is only ever
-/// diagnostic. The fake core answers `effective_config` with `None` here, so
-/// `applied` stays empty throughout.
+/// A confirmed submission is recorded before its optional effective-config
+/// inspection, so the latest accepted revision remains available as evidence.
 #[tokio::test]
-async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
+async fn a_confirmed_apply_advances_without_waiting_for_an_inspection() {
     let dir = tempfile::tempdir().unwrap();
     let store = runtime::RuntimeSnapshotStore::default();
     let (client, builder, _, _) = workflow_graph_with_store(&dir, store.clone()).await;
@@ -167,7 +173,7 @@ async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
 #[tokio::test]
 async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = stopped_endpoint();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
     let service = {
         let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
@@ -223,9 +229,7 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
 #[tokio::test]
 async fn stopping_the_core_ends_the_confirmed_port_binding() {
     let dir = tempfile::tempdir().unwrap();
-    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
-        .await
-        .unwrap();
+    let core = CoreClient::spawn(stopped_endpoint()).await.unwrap();
     let service = {
         let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
         ServiceClient::spawn(process_control.clone(), process_control, 0)
@@ -273,9 +277,7 @@ async fn workflow_graph_with_store(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
-        .await
-        .unwrap();
+    let core = CoreClient::spawn(stopped_endpoint()).await.unwrap();
     let service = {
         let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
         ServiceClient::spawn(process_control.clone(), process_control, 0)
@@ -374,19 +376,19 @@ fn fixed_port(port: u16) -> nyanpasu_config::clash::config::clash_strategy::port
 }
 
 #[tokio::test]
-async fn idle_ticks_do_not_advance_the_journal() {
+async fn idle_ticks_do_not_advance_the_status() {
     let dir = tempfile::tempdir().unwrap();
-    let (client, ..) = workflow_graph(&dir).await;
+    let (client, builder, ..) = workflow_graph(&dir).await;
+    builder.release.notify_one();
+    client.reconcile().await.unwrap();
     barrier(&client).await;
-    let mut journal = client.subscribe_mutations();
-    journal.borrow_and_update();
-    let before = client.mutation_journal().event_seq;
-    for message in [Message::ConvergenceTick, Message::RecoveryTick] {
-        client.0.actor.cast(message).unwrap();
-    }
+    let mut status = client.subscribe_reconciler();
+    status.borrow_and_update();
+    let before = client.reconciler_status().seq;
+    client.0.actor.cast(Message::Tick).unwrap();
     barrier(&client).await;
-    assert_eq!(client.mutation_journal().event_seq, before);
-    assert!(!journal.has_changed().unwrap());
+    assert_eq!(client.reconciler_status().seq, before);
+    assert!(!status.has_changed().unwrap());
 }
 
 struct ParkedEndpoint {
@@ -486,7 +488,7 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     let dir = tempfile::tempdir().unwrap();
     let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
     let endpoint = Arc::new(ParkedEndpoint {
-        delegate: HostTransitionEndpoint::new(ExecutionHost::Service, calls.clone()),
+        delegate: HostTransitionEndpoint::stopped(ExecutionHost::Service, calls.clone()),
         entered: Notify::new(),
         release: Notify::new(),
     });
@@ -513,7 +515,7 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     .await;
     let mut args = test_client_args_with_endpoint(
         &dir,
-        TestControlEndpoint::succeeding(),
+        stopped_endpoint(),
         crate::client::test_support::profile_test_adapters(&dir),
     )
     .await;
@@ -627,11 +629,14 @@ async fn replacement_decisions_use_applied_identity_and_always_recover() {
         let f = Fixture::new(false, false).await;
         (async {
             f.endpoint.prime(&f.client).await;
-            f.endpoint
-                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+            f.client.stop_core().await.unwrap();
             let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
             patch.core = Some(desired);
             f.client.patch_app_config(patch).await.unwrap();
+            if !stopped {
+                f.client.reconcile_core().await.unwrap();
+            }
+            f.endpoint.reset_tracking();
             f.endpoint.set_status(
                 Some(if stopped {
                     CoreStateDetail::Stopped { reason: None }
@@ -794,22 +799,31 @@ async fn failed_installation_does_not_restart() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product() {
+async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
     let f = Fixture::new(false, false).await;
-    (async {
-        f.endpoint.prime(&f.client).await;
-        f.endpoint.set_result_missing(true);
-        let error = f.client.reconcile_core().await.unwrap_err();
-        assert_eq!(error.core_kind(), Some(CoreErrorKind::BackendUnavailable));
-        assert!(f.client.inner.application_workflow.status().uncertain);
-        assert!(f.client.promoted_runtime().await.is_some());
-        assert!(matches!(
-            f.client.stop_core().await.unwrap_err(),
-            RuntimeError::Isolated
-        ));
-        assert_eq!(f.endpoint.submissions(), 1);
-    })
-    .await;
+    f.endpoint.prime(&f.client).await;
+    f.endpoint.set_result_missing(true);
+    let error = f.client.reconcile_core().await.unwrap_err();
+    assert_eq!(error.core_kind(), Some(CoreErrorKind::BackendUnavailable));
+    assert_eq!(
+        f.client.configuration_status().runtime.health,
+        nyanpasu_runtime_values::configuration::ConvergenceHealth::RecoveryRequired
+    );
+    assert!(f.client.promoted_runtime().await.is_some());
+    let outcome = f
+        .client
+        .patch_runtime_overrides(override_patch(serde_json::json!({"ipv6":true})))
+        .await
+        .unwrap();
+    assert_eq!(
+        commit_first::receipt(&outcome).runtime,
+        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired
+    );
+    assert_eq!(
+        serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["ipv6"],
+        true
+    );
+    assert_eq!(f.endpoint.submissions(), 1);
 }
 
 /// Two graphs share no workflow state: a reconcile in one builds nothing in
@@ -849,7 +863,7 @@ async fn a_reconcile_and_a_shutdown_stay_within_their_graph() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = stopped_endpoint();
     let client = NyanpasuClient::try_new(
         test_client_args_with_endpoint(
             &dir,
@@ -881,7 +895,10 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
             .unwrap();
         assert_eq!(applied.config()["mode"].as_str(), Some("global"));
         assert_eq!(applied.config()["ipv6"].as_bool(), Some(true));
-        assert_eq!(applied.revision.get(), 3);
+        assert_eq!(
+            applied.target_core,
+            client.get_app_config().await.unwrap().core
+        );
         assert_eq!(endpoint.submissions(), 2);
     })
     .await;
@@ -890,7 +907,7 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = stopped_endpoint();
     let args = test_client_args_with_endpoint(
         &dir,
         endpoint.clone(),
@@ -1043,7 +1060,7 @@ async fn until_notified(client: &NyanpasuClient) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_override_patch_submits_once_and_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = stopped_endpoint();
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
@@ -1094,7 +1111,7 @@ async fn an_override_patch_submits_once_and_notifies_the_ui() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_core_reconcile_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = stopped_endpoint();
     let ui = Arc::new(CountingUi {
         refreshed: tokio::sync::watch::Sender::new(0),
     });
@@ -1128,7 +1145,7 @@ async fn a_core_reconcile_notifies_the_ui() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_explicit_start_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = stopped_endpoint();
     // No StartupReconcile runs, so nothing proves who owns the stopped core.
     endpoint.set_status(
         Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
@@ -1210,18 +1227,14 @@ async fn a_control_channel_patch_does_not_start_a_stopped_core() {
     let f = Fixture::new(false, false).await;
     (async {
         f.endpoint.prime(&f.client).await;
-        f.endpoint.set_status(
-            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
-            None,
-        );
+        f.client.stop_core().await.unwrap();
+        f.endpoint.reset_tracking();
         let mut patch = ClashConfig::new_empty_patch();
         patch.clash_control_channel = Some(ClashControlChannel::HttpOnly);
         f.client.patch_clash_config(patch).await.unwrap();
         assert_eq!(f.endpoint.submissions(), 0);
-        f.endpoint.set_status(
-            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
-            Some(nyanpasu_core_manager::CoreKind::Mihomo),
-        );
+        f.client.reconcile_core().await.unwrap();
+        f.endpoint.reset_tracking();
         let mut patch = ClashConfig::new_empty_patch();
         patch.clash_control_channel = Some(ClashControlChannel::PreferIpc);
         // Also change the HTTP setting so this target differs from the still-running baseline.
@@ -1249,13 +1262,11 @@ impl BinaryInstallProgress for TerminalProgress {
     }
 }
 
-/// V27: an installation refused before it runs settles its progress observer
-/// exactly once, whether the shutdown or an isolated execution domain refused
-/// it. It waits behind a parked installation, and its caller has already given
-/// up on it.
+/// A caller leaving does not drop the queued installation's terminal progress
+/// notification when shutdown or a pending external action prevents it running.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it() {
-    for isolate in [false, true] {
+async fn a_queued_installation_settles_progress_when_shutdown_or_pending_work_blocks_it() {
+    for lose_restart in [false, true] {
         let f = Fixture::new(true, false).await;
         (async {
             // A running core, so the installation ends in a restart.
@@ -1267,12 +1278,11 @@ async fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rej
             let client = &f.client.inner.application_workflow;
             // Polling once sends the request; dropping the call then is the
             // caller giving up on it.
-            let mut call =
-                Box::pin(client.call(Command::Core(CoreCommand::ReplaceCoreBinary(queued))));
+            let mut call = Box::pin(client.call(Command::ReplaceCoreBinary(queued)));
             assert!(call.as_mut().now_or_never().is_none());
             drop(call);
             assert!(terminal.0.lock().unwrap().is_empty());
-            if isolate {
+            if lose_restart {
                 // The parked installation's restart loses its result.
                 f.endpoint.set_result_missing(true);
                 f.installer.release.notify_one();
@@ -1291,8 +1301,8 @@ async fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rej
                 1,
                 "rejected request must deliver exactly one terminal notification"
             );
-            assert!(outcomes[0].as_ref().unwrap().contains(if isolate {
-                "left the runtime unsettled"
+            assert!(outcomes[0].as_ref().unwrap().contains(if lose_restart {
+                "core operation"
             } else {
                 "shutting down"
             }));

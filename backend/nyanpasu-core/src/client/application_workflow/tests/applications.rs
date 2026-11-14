@@ -34,7 +34,7 @@ use crate::{
 #[tokio::test]
 async fn lifecycle_start_publishes_only_after_acceptance_and_preserves_ports_on_rollback() {
     let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
+    let endpoint = super::stopped_endpoint();
     let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
     let core = CoreClient::spawn(scripted.clone()).await.unwrap();
     let process = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
@@ -172,8 +172,29 @@ async fn not_submitted_internal_is_refused_without_replay() {
     .await;
     let client = crate::client::NyanpasuClient::try_new(args).await.unwrap();
     endpoint.delegate.prime(&client).await;
-    let ports = client.inner.ports.confirmed().unwrap();
+    assert!(client.inner.ports.confirmed().is_some());
     let previous = client.promoted_runtime().await.unwrap().revision;
+    let mut receipt = client
+        .inner
+        .application_workflow
+        .0
+        .runtime
+        .last_confirmed_runtime_receipt()
+        .unwrap()
+        .as_ref()
+        .clone();
+    receipt.binding.revision.epoch = 0;
+    client
+        .inner
+        .application_workflow
+        .0
+        .runtime
+        .confirm_applied(Arc::new(receipt));
+    let confirmed_ports = client.inner.ports.confirmed();
+    endpoint.delegate.set_status(
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 0, pid: 42 }),
+        Some(nyanpasu_core_manager::CoreKind::Mihomo),
+    );
     endpoint.invalid_epoch.store(true, Ordering::SeqCst);
     let outcome = client
         .patch_runtime_overrides(
@@ -203,24 +224,14 @@ async fn not_submitted_internal_is_refused_without_replay() {
         cause.core_kind(),
         Some(nyanpasu_core_manager::CoreErrorKind::Internal)
     );
-    assert_eq!(client.inner.ports.confirmed(), Some(ports));
+    assert_eq!(client.inner.ports.confirmed(), confirmed_ports);
     assert_eq!(client.promoted_runtime().await.unwrap().revision, previous);
     let sequence = status.seq;
     assert_eq!(endpoint.delegate.submissions(), 0);
-    // A valid observation would now permit a submission, if the refused target were retried.
-    endpoint.invalid_epoch.store(false, Ordering::SeqCst);
+    // An unchanged refused target is not resubmitted by ticks.
     tokio::time::advance(Duration::from_secs(60)).await;
     let workflow = &client.inner.application_workflow;
-    workflow
-        .0
-        .actor
-        .cast(super::super::Message::ConvergenceTick)
-        .unwrap();
-    workflow
-        .0
-        .actor
-        .cast(super::super::Message::RecoveryTick)
-        .unwrap();
+    workflow.0.actor.cast(super::super::Message::Tick).unwrap();
     super::barrier(workflow).await;
     assert_eq!(endpoint.delegate.submissions(), 0);
     assert_eq!(workflow.0.reconciler.borrow().seq, sequence);

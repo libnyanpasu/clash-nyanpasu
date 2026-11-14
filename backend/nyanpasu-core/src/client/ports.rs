@@ -334,10 +334,10 @@ mod tests {
     /// field matters to the resolver; the rest is what the core confirmed.
     fn receipt_for(candidate: CandidatePortBindings) -> RuntimeApplyReceipt {
         RuntimeApplyReceipt {
+            instance_id: None,
             revision: crate::client::runtime::tests::test_revision(),
             target_core: nyanpasu_config::application::ClashCore::Mihomo,
             host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
-            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             binding: crate::actor_v2::facade::AppliedConfigBinding {
                 revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                     epoch: 1,

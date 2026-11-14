@@ -48,6 +48,7 @@ impl ControlEndpoint for Endpoint {
     }
     async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
         Ok(CoreStatusSnapshot {
+            instance_id: None,
             controller: None,
             state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             state_changed_at: 0,

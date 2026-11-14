@@ -214,13 +214,10 @@ async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
     let status = client.configuration_status();
     assert!(status.active.is_none());
     assert_eq!(status.runtime.health, ConvergenceHealth::Blocked);
-    let journal = client.inner.application_workflow.mutation_journal();
-    let target = journal.deferred.as_ref().unwrap();
     assert_eq!(
         status.runtime.message.as_deref(),
         Some(saved.degradations()[0].message.as_str())
     );
-    assert!(target.next_attempt.is_none());
 
     builder.fail.store(false, Ordering::SeqCst);
     client.retry_runtime_now().await.unwrap();
@@ -735,8 +732,8 @@ async fn recent_operations_describe_reconcile_rounds() {
     assert_eq!(round.domain, "SourceCommitted");
     assert_eq!(round.outcome, "NotInEffect");
     assert!(round.conclusion.is_empty());
-    let journal = client.inner.application_workflow.mutation_journal();
-    let recorded = journal.completed.back().unwrap();
+    let journal = client.inner.application_workflow.reconciler_status();
+    let recorded = journal.recent.back().unwrap();
     assert_eq!(round.operation_id, recorded.operation_id.to_string());
     assert!(matches!(
         recorded.cause.as_deref(),

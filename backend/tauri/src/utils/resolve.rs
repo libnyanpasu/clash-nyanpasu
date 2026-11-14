@@ -42,8 +42,7 @@ pub fn resolve_setup(app: &mut App) {
                 report.operation_id
             ),
         }
-        // Even an unsettled startup lets them run: what they change queues
-        // behind the startup command.
+        // Background sources may commit after any startup conclusion.
         log_err!(client.start_background_sources());
     }
 

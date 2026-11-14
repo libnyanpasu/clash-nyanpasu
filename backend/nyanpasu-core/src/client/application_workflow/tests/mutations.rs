@@ -21,10 +21,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::Notify;
 
 use super::{
-    super::{
-        ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
-        mutation::DEFERRED_RETRY_BUDGET,
-    },
+    super::{ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters},
     RecordingNotifications, ScriptedWaitEndpoint, WaitScript,
 };
 use crate::{
@@ -109,13 +106,12 @@ pub(super) struct Fixture {
     pub(super) application: crate::client::application::ApplicationClient,
     pub(super) clash: crate::client::clash_config::ClashConfigClient,
     pub(super) store: runtime::RuntimeSnapshotStore,
-    ports: Arc<SessionPortResolver>,
+    pub(super) ports: Arc<SessionPortResolver>,
     app_path: Utf8PathBuf,
     /// Where the build reads managed profile content from, so a test that
     /// drives the profiles domain can put a real document behind a path.
     /// The same client the workflow holds, so a test can read which host owns
     /// the runtime at a point of its choosing.
-    core: CoreClient,
     /// The same resolver the workflow holds, and the one the rest of the
     /// application reads its endpoint from.
     /// The endpoint the core is reached through, when a test scripts how its
@@ -180,10 +176,11 @@ pub(super) fn temp_path(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
 /// the default fixture.
 pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
     RuntimeApplyReceipt {
+        instance_id: None,
         revision: runtime::tests::test_revision(),
         target_core: ClashCore::default(),
         host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
-        run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
+
         binding: crate::actor_v2::facade::AppliedConfigBinding {
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: 1,
@@ -336,7 +333,15 @@ pub(super) async fn fixture_from(
     let ports = Arc::new(SessionPortResolver::new(store.clone()));
     if confirmed_apply {
         // The endpoint starts with the apply evidence a session normally gets at startup.
-        store.confirm_applied(Arc::new(adopted_baseline()));
+        let mut receipt = adopted_baseline();
+        receipt.target = super::super::inputs::RuntimeInputs {
+            app: application.snapshot_handle().load().state.clone(),
+            clash: clash.snapshot_handle().load().state.clone(),
+            profiles: Arc::new(profiles.snapshot_handle().load().state.clone()),
+            content: super::super::inputs::FrozenProfileContent::default(),
+        }
+        .target_key();
+        store.confirm_applied(Arc::new(receipt));
     }
     let (shutdown, tasks) = (
         tokio_util::sync::CancellationToken::new(),
@@ -391,7 +396,6 @@ pub(super) async fn fixture_from(
         store,
         ports,
         app_path,
-        core,
         scripted,
         shutdown,
         tasks,
@@ -498,185 +502,51 @@ async fn deferred_fixture() -> Fixture {
 }
 
 #[tokio::test]
-async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
-    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
-    let f = deferred_fixture().await;
-    let source = f.clash.snapshot_handle().load().version;
-    for remaining in [2, 1, 0] {
-        f.client
-            .call(super::super::Command::RetryRuntime { explicit: false })
-            .await
-            .unwrap();
-        assert_eq!(
-            f.client
-                .mutation_journal()
-                .deferred
-                .unwrap()
-                .attempts_remaining,
-            remaining
-        );
-    }
-    let attempts = f.endpoint.submissions();
-    f.client
-        .call(super::super::Command::RetryRuntime { explicit: false })
-        .await
-        .unwrap();
-    assert_eq!(f.endpoint.submissions(), attempts);
-    assert_eq!(
-        f.client.mutation_journal().deferred.unwrap().health,
-        ConvergenceHealth::Blocked
-    );
-    f.endpoint.set_failure(None);
-    f.client.retry_runtime().await.unwrap();
-    assert!(f.client.mutation_journal().deferred.is_none());
-    assert_eq!(f.clash.snapshot_handle().load().version, source);
-    assert_eq!(
-        f.endpoint
-            .reconciled_bytes()
-            .last()
-            .is_some_and(|bytes| String::from_utf8_lossy(bytes).contains("mode: direct")),
-        true
-    );
-}
-
-#[tokio::test]
 async fn runtime_retry_applies_committed_bytes_without_an_independent_check() {
-    for explicit in [false, true] {
-        let f = deferred_fixture().await;
-        let checked = f.endpoint.checked();
-        assert_eq!(checked.len(), 1);
-        let source = f.clash.snapshot_handle().load().version;
-        f.endpoint.set_failure(None);
-        f.endpoint
-            .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
-        let before = f.endpoint.submissions();
-
-        f.client
-            .call(super::super::Command::RetryRuntime { explicit })
-            .await
-            .unwrap();
-
-        assert!(f.client.mutation_journal().deferred.is_none());
-        assert_eq!(f.endpoint.checked().len(), checked.len());
-        assert_eq!(f.endpoint.submissions(), before + 1);
-        assert_eq!(
-            f.endpoint.reconciled_bytes(),
-            [checked[0].config_bytes.clone()]
-        );
-        assert_eq!(f.clash.snapshot_handle().load().version, source);
-    }
-}
-
-/// Unreadable runtime evidence keeps a committed target waiting without
-/// spending its apply budget. An application result resets the wait count.
-#[tokio::test]
-async fn dependency_retries_count_waits_until_an_application_result() {
     let f = deferred_fixture().await;
-    f.endpoint.set_failure(None);
-    f.endpoint.set_status_fails(true);
-    for waits in 1..=3 {
-        f.client
-            .call(super::super::Command::RetryRuntime { explicit: false })
-            .await
-            .unwrap();
-        let gap = f.client.mutation_journal().deferred.unwrap();
-        assert_eq!(gap.waits, waits);
-        assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET);
-        assert_eq!(gap.attempts, 0);
-    }
-
-    f.endpoint.set_status_fails(false);
-    f.endpoint.set_failure(Some("queue_full"));
-    f.client
-        .call(super::super::Command::RetryRuntime { explicit: false })
-        .await
-        .unwrap();
-    let gap = f.client.mutation_journal().deferred.unwrap();
-    assert_eq!(gap.waits, 0);
-    assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET - 1);
-    assert_eq!(gap.attempts, 1);
-}
-
-/// T10 §1.7 #2 (D11): an automatic retry never moves the runtime to another
-/// host, since that can mean installing or starting the daemon behind the
-/// user's back. It waits for the owner instead, and spends nothing.
-#[tokio::test]
-async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
-    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
-    let service = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
-    let f = fixture_with_hosts(true, Some(service.clone())).await;
-    f.endpoint.set_failure(Some("queue_full"));
-    let id = commit_source(&f.clash, overrides(serde_json::json!({"mode":"direct"})))
-        .await
-        .unwrap();
-    assert_eq!(
-        settled(&f.client, id).await.conclusion.label(),
-        "NotInEffect"
-    );
-    f.endpoint.set_failure(None);
-    // The runtime now runs on the other host, on an apply this session
-    // confirmed there: a baseline a Try would accept, on a host the committed
-    // configuration does not ask for.
-    f.client.change_host(ExecutionHost::Service).await.unwrap();
-    service.set_source_hash(&nyanpasu_core_manager::payload_digest(b"mode: rule\n"));
-    service.set_status(
-        Some(CoreStateDetail::Running { epoch: 1, pid: 7 }),
-        Some(CoreKind::Mihomo),
-    );
-    let mut receipt = adopted_baseline();
-    receipt.host = ExecutionHost::Service;
-    receipt.binding.host = ExecutionHost::Service;
-    receipt.binding.generation = f.core.status().generation;
-    f.store.confirm_applied(Arc::new(receipt));
-    let before = f.client.mutation_journal().deferred.unwrap();
-
-    f.client
-        .call(super::super::Command::RetryRuntime { explicit: false })
-        .await
-        .unwrap();
-
-    let target = f.client.mutation_journal().deferred.unwrap();
-    assert_eq!(target.health, ConvergenceHealth::WaitingDependency);
-    assert_eq!(
-        (target.attempts_remaining, target.attempts),
-        (before.attempts_remaining, before.attempts)
-    );
-    assert_eq!(f.core.status().host, ExecutionHost::Service);
-    assert!(service.reconciled_bytes().is_empty());
-}
-
-#[tokio::test]
-async fn stopped_runtime_is_not_started_by_retry_now() {
-    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
-    let f = deferred_fixture().await;
+    let checked = f.endpoint.checked();
+    let source = f.clash.snapshot().version;
     f.endpoint.set_failure(None);
     f.endpoint
-        .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+        .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
+    let before = f.endpoint.submissions();
+    f.client.retry_runtime().await.unwrap();
+    assert_eq!(f.client.reconciler_status().conclusion.label(), "Converged");
+    assert_eq!(f.endpoint.checked().len(), checked.len());
+    assert_eq!(f.endpoint.submissions(), before + 1);
+    assert_eq!(
+        f.endpoint.reconciled_bytes(),
+        [checked[0].config_bytes.clone()]
+    );
+    assert_eq!(f.clash.snapshot().version, source);
+}
+
+#[tokio::test]
+async fn explicitly_stopped_runtime_is_not_started_by_retry_now() {
+    let f = fixture().await;
+    f.client.stop_core().await.unwrap();
     let before = f.endpoint.submissions();
     f.client.retry_runtime().await.unwrap();
     assert_eq!(f.endpoint.submissions(), before);
-    assert_eq!(
-        f.client.mutation_journal().deferred.unwrap().health,
-        ConvergenceHealth::WaitingDependency
-    );
+    assert_eq!(f.client.reconciler_status().conclusion.label(), "Inactive");
 }
 
 #[tokio::test]
-async fn committed_product_retry_does_not_resubmit_or_rewrite_source() {
+async fn committed_product_retry_republishes_without_rewriting_source() {
     let f = fixture().await;
     f.builder.fail_publish.store(true, Ordering::SeqCst);
-    let id = commit_source(&f.clash, overrides(serde_json::json!({"mode":"global"})))
+    let version = commit_source(&f.clash, overrides(serde_json::json!({"mode":"global"})))
         .await
         .unwrap();
-    settled(&f.client, id).await;
-    assert!(f.client.mutation_journal().maintenance.is_some());
+    settled(&f.client, version).await;
+    assert!(f.client.reconciler_status().maintenance.is_some());
     let submitted = f.endpoint.reconciled_bytes().len();
-    let version = f.clash.snapshot_handle().load().version;
+    let version = f.clash.snapshot().version;
     f.builder.fail_publish.store(false, Ordering::SeqCst);
     f.client.retry_runtime().await.unwrap();
-    assert!(f.client.mutation_journal().maintenance.is_none());
-    assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
-    assert_eq!(f.clash.snapshot_handle().load().version, version);
+    assert!(f.client.reconciler_status().maintenance.is_none());
+    assert_eq!(f.endpoint.reconciled_bytes().len(), submitted + 1);
+    assert_eq!(f.clash.snapshot().version, version);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1096,24 +966,20 @@ async fn a_host_that_does_not_name_its_core_admits_a_critical_mutation() {
 }
 
 #[tokio::test]
-async fn a_stopped_core_saves_the_checked_target_without_starting_it() {
+async fn a_stopped_core_starts_the_new_checked_target() {
     let f = fixture().await;
     f.endpoint
         .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
-    let source = commit_source(&f.application, app_with_core(ClashCore::ClashRs))
+    let version = commit_source(&f.application, app_with_core(ClashCore::ClashRs))
         .await
         .unwrap();
-    assert!(matches!(
-        settled(&f.client, source).await.conclusion,
-        super::super::Conclusion::Inactive
-    ));
-    assert_eq!(f.application.snapshot().state.core, ClashCore::ClashRs);
-    assert!(f.endpoint.reconciled_bytes().is_empty());
     assert_eq!(
-        f.endpoint.checked().len(),
-        1,
-        "the source still checks before saving"
+        settled(&f.client, version).await.conclusion.label(),
+        "Converged"
     );
+    assert_eq!(f.application.snapshot().state.core, ClashCore::ClashRs);
+    assert_eq!(f.endpoint.reconciled_bytes().len(), 1);
+    assert_eq!(f.endpoint.checked().len(), 1);
 }
 
 #[tokio::test]
@@ -1127,7 +993,7 @@ async fn a_recorded_user_stop_saves_without_starting_even_when_the_host_is_quiet
         .unwrap();
     assert!(matches!(
         settled(&f.client, source).await.conclusion,
-        super::super::Conclusion::Inactive
+        super::super::Conclusion::Waiting { .. }
     ));
     assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
     assert!(!f.client.status().uncertain);

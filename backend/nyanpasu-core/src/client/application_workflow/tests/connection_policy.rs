@@ -336,14 +336,13 @@ async fn close_failure_is_committed_degraded_and_not_replayed() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close() {
+async fn a_missing_source_is_degraded_while_a_user_stopped_core_saves_inactive() {
     for stopped in [false, true] {
         let f = Fixture::new(false).await;
         *f.endpoint.binding.lock().unwrap() = None;
         if stopped {
-            f.endpoint
-                .delegate
-                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+            f.client.stop_core().await.unwrap();
+            f.calls.events.lock().unwrap().clear();
         }
         (async {
             let outcome = f
@@ -361,11 +360,7 @@ async fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
-                if stopped {
-                    Vec::<&str>::new()
-                } else {
-                    vec!["reconcile"]
-                }
+                if stopped { vec![] } else { vec!["reconcile"] }
             );
         })
         .await;
@@ -656,17 +651,13 @@ async fn rejected_profile_activation_does_not_reconcile_or_interrupt() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
+async fn a_profile_without_a_source_is_degraded_unless_the_user_stopped_the_core() {
     for stopped in [false, true] {
         let f = Fixture::new(false).await;
         *f.endpoint.binding.lock().unwrap() = None;
-        if stopped {
-            f.endpoint
-                .delegate
-                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
-        }
         (async {
             let uid = add_profile(&f).await;
+            if stopped { f.client.stop_core().await.unwrap(); f.calls.events.lock().unwrap().clear(); }
             let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
             if stopped {
                 assert!(outcome.degradations().is_empty());
@@ -678,11 +669,7 @@ async fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interrupti
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
-                if stopped {
-                    Vec::<&str>::new()
-                } else {
-                    vec!["reconcile"]
-                }
+                if stopped { vec![] } else { vec!["reconcile"] }
             );
         })
         .await;
@@ -1335,7 +1322,7 @@ async fn deferred_mode_change_interrupts_connections_once_on_retry() {
         f.client.reconcile_core().await.unwrap();
         assert_eq!(
             *f.calls.events.lock().unwrap(),
-            ["reconcile", "close", "reconcile"]
+            ["reconcile", "close", "reconcile", "reconcile"]
         );
         f.client.request_shutdown();
         f.client.wait_shutdown().await;
@@ -1397,7 +1384,7 @@ async fn deferred_profile_change_interrupts_connections_once_on_retry() {
         f.client.reconcile_core().await.unwrap();
         assert_eq!(
             *f.calls.events.lock().unwrap(),
-            ["reconcile", "close", "reconcile"]
+            ["reconcile", "close", "reconcile", "reconcile"]
         );
         f.client.request_shutdown();
         f.client.wait_shutdown().await;

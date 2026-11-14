@@ -31,6 +31,7 @@ use nyanpasu_ipc::api::{
 /// No field here is ever derived by the router itself.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreStatusSnapshot {
+    pub instance_id: Option<String>,
     pub controller: Option<nyanpasu_ipc::api::status::CoreControllerInfo>,
     /// `None` means the host published no state this router can trust — an
     /// unmapped future variant, or a daemon that answered without a detail.
@@ -38,7 +39,7 @@ pub struct CoreStatusSnapshot {
     /// answer a stop proof must never accept.
     pub state: Option<CoreStateDetail>,
     pub state_changed_at: i64,
-    /// The applied revision's CAS identity, when one is running.
+    /// The last applied revision's CAS identity, which may survive a stopped instance.
     pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
     /// The source identity of that same applied revision.
     ///
@@ -404,6 +405,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
         }
     };
     CoreStatusSnapshot {
+        instance_id: status.instance_id.map(|id| id.to_string()),
         controller: status.controller.as_ref().and_then(map_controller),
         state,
         state_changed_at: status.changed_at,
@@ -765,6 +767,7 @@ pub fn wire_core_type_to_kind(core_type: &nyanpasu_utils::core::CoreType) -> Opt
 
 fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
     CoreStatusSnapshot {
+        instance_id: infos.instance_id.clone(),
         controller: infos.controller.clone(),
         // A daemon too old to publish `detail` leaves this unknown. The coarse
         // `CoreInfos::state` cannot stand in: it collapses Starting and

@@ -76,7 +76,7 @@ jobs:
 
       # `pnpm tauri build` generates the open source credits before the frontend.
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2.90.3
+        uses: taiki-e/install-action@v2.90.4
         with:
           tool: cargo-about@0.9.2
 

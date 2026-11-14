@@ -11,6 +11,7 @@ use nyanpasu_runtime_values::{
     storage::{StorageItem, StorageRevision},
 };
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::{
     operation::{NoDomainError, RpcOperation},
@@ -18,7 +19,7 @@ use crate::{
 };
 
 /// Creates a profile with the existing nested definition and optional file contents.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateProfileRequest {
     pub request: NewProfileRequest,
@@ -26,28 +27,28 @@ pub struct CreateProfileRequest {
 }
 
 /// Removes the identified profile.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteProfileRequest {
     pub uid: ProfileId,
 }
 
 /// Reads the identified profile's file.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadProfileFileRequest {
     pub uid: ProfileId,
 }
 
 /// Reads a frontend storage key in the existing namespace.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GetStorageItemRequest {
     pub key: String,
 }
 
 /// Writes a frontend storage value.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SetStorageItemRequest {
     pub key: String,
@@ -55,21 +56,21 @@ pub struct SetStorageItemRequest {
 }
 
 /// Removes a frontend storage key.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveStorageItemRequest {
     pub key: String,
 }
 
 /// Lists files from an application or service log source.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ListLogFilesRequest {
     pub source: LogSource,
 }
 
 /// Opens a log session owned by the transport-supplied caller.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenLogSessionRequest {
     pub source: LogSource,
@@ -77,7 +78,7 @@ pub struct OpenLogSessionRequest {
 }
 
 /// Queries a log session; nested log fields retain their existing serialized names.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryLogsRequest {
     pub source: LogSource,
@@ -85,7 +86,7 @@ pub struct QueryLogsRequest {
 }
 
 /// Closes a session owned by the transport-supplied caller.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseLogSessionRequest {
     pub source: LogSource,

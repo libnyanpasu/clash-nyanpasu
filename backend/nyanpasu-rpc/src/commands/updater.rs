@@ -20,7 +20,7 @@ pub async fn get_core_agent_skills(
     Ok(client.core_agent_skills(core_type).await)
 }
 
-/// Safe agent skill names and descriptions without local filesystem directories.
+/// Safe agent skill names and availability without local filesystem directories.
 /// The full skills (including `dir`) are returned by [`get_core_agent_skills`].
 #[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]

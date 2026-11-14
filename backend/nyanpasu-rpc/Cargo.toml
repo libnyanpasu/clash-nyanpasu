@@ -87,6 +87,7 @@ serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://githu
 ] }
 snafu = { workspace = true }
 specta = { version = '^2.0.0-rc.25', features = [
+  'derive',
   'serde_json',
   'serde_yaml',
   'uuid',
@@ -146,4 +147,5 @@ tracing-subscriber = { version = '0.3', features = [
 ] }
 tower = { version = '0.5', features = ['util'] }
 mockall = '0.15'
+specta-serde = '0.0.12'
 zip = '9.0.0'

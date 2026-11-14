@@ -55,6 +55,7 @@ inventory::submit! {
             effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Http, RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: panic_handler,
+        input_schema: None,
     }
 }
 
@@ -64,5 +65,6 @@ inventory::submit! {
             effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: owner_work,
+        input_schema: None,
     }
 }

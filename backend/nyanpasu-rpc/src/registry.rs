@@ -1,6 +1,11 @@
 //! Shared command registry, audit kernel and experimental HTTP routes.
 
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+};
 
 use nyanpasu_rpc_protocol::{
     AuthContext, COMMAND_CATALOG, CommandKind, CommandMetadata, Principal, ResponseVisibility,
@@ -229,6 +234,17 @@ pub type RpcFuture = Pin<Box<dyn Future<Output = RpcCompletion<Value>> + Send + 
 /// Decode and bind inputs before returning the future that executes the handler.
 pub type RpcHandler =
     fn(Arc<RpcDependencies>, RpcCallMeta, RpcCaller, Value) -> Result<RpcFuture, RpcError>;
+
+/// Canonical deserialized request input definition captured from `#[nyanpasu_macro::rpc]`
+/// for commands exposed over `http` or `local` transports.
+#[derive(Clone, Copy)]
+pub struct CommandInputSchema {
+    /// Whether the command parser accepts named parameters (`false` means zero-arg `null | {}`).
+    pub has_params: bool,
+    /// Registers the command's canonical input type into `Types` and returns its [`specta::datatype::DataType`].
+    pub datatype: fn(&mut specta::Types) -> specta::datatype::DataType,
+}
+
 /// One declaration registers one neutral handler, including operation-bound commands.
 /// The macro checks public requests, success types and method names before JSON erasure.
 ///
@@ -298,9 +314,37 @@ pub type RpcHandler =
 pub struct CommandEntry {
     pub metadata: CommandMetadata,
     pub handler: RpcHandler,
+    pub input_schema: Option<CommandInputSchema>,
 }
 
 inventory::collect!(CommandEntry);
+
+fn collect_command_input_schemas<'a>(
+    entries: impl IntoIterator<Item = &'a CommandEntry>,
+) -> Result<HashMap<&'static str, CommandInputSchema>, SetupError> {
+    let mut seen = HashSet::new();
+    let mut map = HashMap::new();
+    for entry in entries {
+        if !seen.insert(entry.metadata.name) {
+            return Err(SetupError::RegisterCommand {
+                name: entry.metadata.name,
+            });
+        }
+        if let Some(schema) = entry.input_schema {
+            map.insert(entry.metadata.name, schema);
+        }
+    }
+    Ok(map)
+}
+
+/// Collect canonical input schema hooks for all linked commands that publish one.
+///
+/// Used by schema exporters so non-operation commands retain their generated `Args`
+/// `#[serde(rename_all = "camelCase")]` container rules while `operation = ...` commands
+/// point at their canonical `<Op as RpcOperation>::Request` owner.
+pub fn command_input_schemas() -> Result<HashMap<&'static str, CommandInputSchema>, SetupError> {
+    collect_command_input_schemas(inventory::iter::<CommandEntry>)
+}
 
 #[derive(Clone)]
 pub(crate) struct RegisteredCommand {
@@ -698,5 +742,224 @@ pub fn assert_command_category_inventory() {
                 .kind,
             "unsupported"
         );
+    }
+}
+
+#[cfg(test)]
+mod input_schema_tests {
+    use std::collections::HashSet;
+
+    use nyanpasu_rpc_protocol::CommandEffect;
+    use specta::{Format as _, Type as _, Types, datatype::DataType};
+
+    use super::*;
+
+    fn dummy_handler(
+        _: Arc<RpcDependencies>,
+        _: RpcCallMeta,
+        _: RpcCaller,
+        _: Value,
+    ) -> Result<RpcFuture, RpcError> {
+        unreachable!("metadata test handler is never called")
+    }
+
+    fn dummy_metadata(name: &'static str) -> CommandMetadata {
+        CommandMetadata {
+            name,
+            kind: CommandKind::Shared,
+            effect: CommandEffect::Query,
+            scope: nyanpasu_rpc_protocol::Scope::Read,
+            targets: &[RpcTarget::Http],
+            capabilities: &[],
+            optional_capabilities: &[],
+        }
+    }
+
+    #[test]
+    fn http_and_local_commands_publish_canonical_input_schemas() {
+        let schemas =
+            command_input_schemas().expect("linked command inventory must not contain duplicates");
+        let mut types = Types::default();
+        let mut generated_args_identities = HashSet::new();
+
+        for metadata in COMMAND_CATALOG.iter().filter(|cmd| {
+            cmd.targets.contains(&RpcTarget::Http) || cmd.targets.contains(&RpcTarget::Local)
+        }) {
+            let entry = schemas
+                .get(metadata.name)
+                .unwrap_or_else(|| panic!("missing CommandInputSchema for {}", metadata.name));
+            let dt = (entry.datatype)(&mut types);
+            if !entry.has_params {
+                assert!(
+                    matches!(&dt, DataType::Tuple(tuple) if tuple.elements.is_empty()),
+                    "{} zero-arg schema must use unit tuple",
+                    metadata.name
+                );
+            } else if let DataType::Reference(specta::datatype::Reference::Named(reference)) = &dt {
+                let ndt = types
+                    .get(reference)
+                    .expect("registered named input type must exist");
+                if ndt.name.starts_with("__UnifiedArgs_") {
+                    assert_eq!(
+                        ndt.name,
+                        format!("__UnifiedArgs_{}", metadata.name),
+                        "generated args struct must preserve command-specific name"
+                    );
+                    assert!(
+                        generated_args_identities
+                            .insert((ndt.module_path.clone(), ndt.name.clone())),
+                        "duplicate generated Args identity {}::{} for {}",
+                        ndt.module_path,
+                        ndt.name,
+                        metadata.name
+                    );
+                }
+            } else {
+                panic!("expected named input schema struct for {}", metadata.name);
+            }
+        }
+
+        // Distinct non-operation commands get distinct generated Args names/identities,
+        // and carry the real camelCase parameter fields used by the command parser.
+        assert!(generated_args_identities.len() >= 2);
+        assert!(
+            generated_args_identities
+                .iter()
+                .any(|(_, name)| name == "__UnifiedArgs_set_proxy_mode")
+        );
+        assert!(
+            generated_args_identities
+                .iter()
+                .any(|(_, name)| name == "__UnifiedArgs_change_clash_core")
+        );
+
+        let mut args_types = Types::default();
+        let change_core_dt = (schemas["change_clash_core"].datatype)(&mut args_types);
+        let DataType::Reference(specta::datatype::Reference::Named(change_core_ref)) =
+            change_core_dt
+        else {
+            panic!("change_clash_core input should be a named reference");
+        };
+        let change_core_ndt = args_types.get(&change_core_ref).unwrap();
+        assert_eq!(change_core_ndt.name, "__UnifiedArgs_change_clash_core");
+        let Some(DataType::Struct(change_core_struct)) = &change_core_ndt.ty else {
+            panic!("generated Args metadata must use a struct DataType");
+        };
+        let specta::datatype::Fields::Named(named) = &change_core_struct.fields else {
+            panic!("generated Args metadata must use named struct fields");
+        };
+        let field_keys: Vec<&str> = named.fields.iter().map(|(k, _)| k.as_ref()).collect();
+        assert_eq!(field_keys, vec!["clash_core"]);
+        assert!(
+            change_core_struct
+                .attributes
+                .get_named("serde:container:rename_all_deserialize")
+                .is_some(),
+            "generated Args must carry serde(rename_all = \"camelCase\") deserialize metadata"
+        );
+
+        let phased = specta_serde::PhasesFormat
+            .map_types(&args_types)
+            .expect("PhasesFormat must handle generated __UnifiedArgs_* struct");
+        let phased_ndt = phased
+            .as_ref()
+            .get(&change_core_ref)
+            .expect("phased args type must exist");
+        let effective_ndt = if let Some(DataType::Enum(wrapper)) = &phased_ndt.ty
+            && let Some((_, variant)) = wrapper
+                .variants
+                .iter()
+                .find(|(name, _)| name == "Deserialize")
+            && let specta::datatype::Fields::Unnamed(unnamed) = &variant.fields
+            && let Some(Some(DataType::Reference(specta::datatype::Reference::Named(inner_ref)))) =
+                unnamed.fields.first().map(|f| &f.ty)
+        {
+            phased
+                .as_ref()
+                .get(inner_ref)
+                .expect("Deserialize split target must exist")
+        } else {
+            phased_ndt
+        };
+        let Some(DataType::Struct(phased_struct)) = &effective_ndt.ty else {
+            panic!("phased Args must resolve to a struct");
+        };
+        let specta::datatype::Fields::Named(phased_named) = &phased_struct.fields else {
+            panic!("phased Args must have named fields");
+        };
+        let phased_keys: Vec<&str> = phased_named
+            .fields
+            .iter()
+            .map(|(k, _)| k.as_ref())
+            .collect();
+        assert_eq!(phased_keys, vec!["clashCore"]);
+
+        // Zero-arg commands report `has_params = false` with unit tuple.
+        assert!(!schemas["get_profiles"].has_params);
+
+        // Verify typed operation owners remain their canonical *Request structs.
+        let mut op_types = Types::default();
+        let create_dt = (schemas["create_profile"].datatype)(&mut op_types);
+        let DataType::Reference(specta::datatype::Reference::Named(create_ref)) = create_dt else {
+            panic!("create_profile input should be a named reference");
+        };
+        assert_eq!(
+            op_types.get(&create_ref).unwrap().name,
+            "CreateProfileRequest"
+        );
+    }
+
+    #[test]
+    fn collector_rejects_duplicate_command_names_and_allows_shared_request_types() {
+        let first = CommandEntry {
+            metadata: dummy_metadata("cmd_alpha"),
+            handler: dummy_handler,
+            input_schema: Some(CommandInputSchema {
+                has_params: true,
+                datatype: nyanpasu_rpc_protocol::operations::CreateProfileRequest::definition,
+            }),
+        };
+        let second_shared_request = CommandEntry {
+            metadata: dummy_metadata("cmd_beta"),
+            handler: dummy_handler,
+            input_schema: Some(CommandInputSchema {
+                has_params: true,
+                datatype: nyanpasu_rpc_protocol::operations::CreateProfileRequest::definition,
+            }),
+        };
+
+        let shared = collect_command_input_schemas([&first, &second_shared_request])
+            .expect("canonical request reuse across distinct commands must be allowed");
+        assert_eq!(shared.len(), 2);
+        let mut types = Types::default();
+        let dt_a = (shared["cmd_alpha"].datatype)(&mut types);
+        let dt_b = (shared["cmd_beta"].datatype)(&mut types);
+        let (
+            DataType::Reference(specta::datatype::Reference::Named(ref_a)),
+            DataType::Reference(specta::datatype::Reference::Named(ref_b)),
+        ) = (dt_a, dt_b)
+        else {
+            panic!("shared canonical request inputs must be named references");
+        };
+        assert_eq!(
+            types.get(&ref_a).unwrap().name,
+            types.get(&ref_b).unwrap().name
+        );
+
+        let duplicate = CommandEntry {
+            metadata: dummy_metadata("cmd_alpha"),
+            handler: dummy_handler,
+            input_schema: Some(CommandInputSchema {
+                has_params: false,
+                datatype: <() as specta::Type>::definition,
+            }),
+        };
+        let err = collect_command_input_schemas([&first, &duplicate])
+            .err()
+            .expect("duplicate wire command names must be rejected");
+        assert!(matches!(
+            err,
+            SetupError::RegisterCommand { name: "cmd_alpha" }
+        ));
     }
 }

@@ -537,6 +537,42 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         format_ident!("_params")
     };
 
+    let input_schema_expr = if neutral_enabled && (options.http || options.local) {
+        if fields.is_empty() {
+            quote! {
+                ::std::option::Option::Some(::nyanpasu_rpc::registry::CommandInputSchema {
+                    has_params: false,
+                    datatype: |types| <() as ::specta::Type>::definition(types),
+                })
+            }
+        } else if let Some(operation) = operation {
+            quote! {
+                ::std::option::Option::Some(::nyanpasu_rpc::registry::CommandInputSchema {
+                    has_params: true,
+                    datatype: |types| <<#operation as #operation_trait>::Request as ::specta::Type>::definition(types),
+                })
+            }
+        } else {
+            let unique_args_ident = format_ident!("__UnifiedArgs_{}", name);
+            quote! {
+                ::std::option::Option::Some(::nyanpasu_rpc::registry::CommandInputSchema {
+                    has_params: true,
+                    datatype: |types| {
+                        #[allow(non_camel_case_types, dead_code)]
+                        #[derive(::serde::Deserialize, ::specta::Type)]
+                        #[serde(rename_all = "camelCase")]
+                        struct #unique_args_ident {
+                            #(#fields,)*
+                        }
+                        <#unique_args_ident as ::specta::Type>::definition(types)
+                    },
+                })
+            }
+        }
+    } else {
+        quote!(::std::option::Option::None)
+    };
+
     Ok(quote! {
         #implementation
         #wrapper
@@ -561,6 +597,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             ::nyanpasu_rpc::registry::CommandEntry {
                 metadata: #metadata,
                 handler: #neutral_handler,
+                input_schema: #input_schema_expr,
             }
         }
     })
@@ -1767,6 +1804,36 @@ mod tests {
         ));
         assert!(expanded.contains("handler : __unified_rpc_profile_mutation"));
         assert!(!expanded.contains("RpcError :: unsupported"));
+    }
+
+    #[test]
+    fn input_schema_preserves_operation_request_or_unique_camel_case_args() {
+        let non_op = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, scope = proxy)]
+            fn select_proxy(group_name: String, proxy_name: Option<String>) -> bool { true }
+        })
+        .unwrap()
+        .to_string();
+        assert!(non_op.contains("__UnifiedArgs_select_proxy"));
+        assert!(non_op.contains("rename_all = \"camelCase\""));
+        assert!(non_op.contains("has_params : true"));
+
+        let op = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(local, http, operation = contracts::SetStorageItem, scope = settings)]
+            fn set_storage_item(key: String, value: String) -> String { value }
+        })
+        .unwrap()
+        .to_string();
+        assert!(!op.contains("__UnifiedArgs_"));
+        assert!(op.contains("< contracts :: SetStorageItem as :: nyanpasu_rpc_protocol :: operation :: RpcOperation > :: Request as :: specta :: Type"));
+
+        let zero_arg = expand(syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, query)]
+            fn ping() -> bool { true }
+        })
+        .unwrap()
+        .to_string();
+        assert!(zero_arg.contains("has_params : false"));
     }
 
     use quote::{ToTokens, format_ident};

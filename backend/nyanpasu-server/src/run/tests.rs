@@ -440,5 +440,6 @@ inventory::submit! {
             effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: owner_work,
+        input_schema: None,
     }
 }

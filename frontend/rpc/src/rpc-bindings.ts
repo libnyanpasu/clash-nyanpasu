@@ -385,7 +385,7 @@ export function createRpcClient(
         __RPC_INVOKE('get_core_agent_skills', { coreType }),
       ),
     /**
-     *  Safe agent skill names and descriptions without local filesystem directories.
+     *  Safe agent skill names and availability without local filesystem directories.
      *  The full skills (including `dir`) are returned by [`get_core_agent_skills`].
      */
     getCoreAgentSkillsSummary: (coreType: ClashCore_Deserialize) =>

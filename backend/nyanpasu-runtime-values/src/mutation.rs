@@ -17,9 +17,9 @@ pub enum ConfigDomain {
     Profiles,
 }
 
-/// The application workflow is not connected yet, so no mutation can run.
+/// The runtime reconciler is not connected yet, so no mutation can run.
 #[derive(Debug, Snafu)]
-#[snafu(display("the application workflow is not ready"))]
+#[snafu(display("the runtime reconciler is not ready"))]
 #[snafu(visibility(pub))]
 pub struct NotReady;
 

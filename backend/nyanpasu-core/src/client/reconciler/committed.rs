@@ -5,7 +5,7 @@ use nyanpasu_runtime_values::{
     runtime::{Degradation, DegradationPhase, DegradationReason},
 };
 
-use super::{inputs::RuntimeInputs, workflow::ApplicationWorkflow};
+use super::{inputs::RuntimeInputs, workflow::RuntimeReconciler};
 use crate::client::core_lifecycle::Ownership;
 
 #[derive(Clone)]
@@ -45,7 +45,7 @@ impl Selection {
     }
 }
 
-impl ApplicationWorkflow {
+impl RuntimeReconciler {
     pub(super) async fn maintain_service_release(&mut self, service_preferred: bool) {
         if !self.release_owed
             || self.pending_release.is_some()

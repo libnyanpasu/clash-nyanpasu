@@ -9,7 +9,7 @@ use crate::state::profiles::sources::SourcesSnapshot;
 
 impl NyanpasuClient {
     pub fn configuration_status(&self) -> ConfigurationStatus {
-        let status = self.inner.application_workflow.reconciler_status();
+        let status = self.inner.reconciler.reconciler_status();
         let effects = self.inner.effects.snapshot();
         let sources = self.inner.profiles.sources();
         let source_versions = SourceVersions {
@@ -19,22 +19,21 @@ impl NyanpasuClient {
             profiles: self.inner.profiles.snapshot().revision(),
         };
         let (health, message) = match &status.conclusion {
-            super::application_workflow::Conclusion::Converged
-            | super::application_workflow::Conclusion::Inactive => {
+            super::reconciler::Conclusion::Converged | super::reconciler::Conclusion::Inactive => {
                 (ConvergenceHealth::Healthy, None)
             }
-            super::application_workflow::Conclusion::Waiting { cause } => (
+            super::reconciler::Conclusion::Waiting { cause } => (
                 ConvergenceHealth::WaitingDependency,
                 Some(cause.to_string()),
             ),
-            super::application_workflow::Conclusion::NotInEffect { cause } => {
+            super::reconciler::Conclusion::NotInEffect { cause } => {
                 (ConvergenceHealth::Blocked, Some(cause.to_string()))
             }
-            super::application_workflow::Conclusion::Unknown { cause } => (
+            super::reconciler::Conclusion::Unknown { cause } => (
                 ConvergenceHealth::WaitingDependency,
                 Some(cause.to_string()),
             ),
-            super::application_workflow::Conclusion::Closed => (
+            super::reconciler::Conclusion::Closed => (
                 ConvergenceHealth::WaitingDependency,
                 Some(
                     nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown.to_string(),
@@ -103,12 +102,12 @@ impl NyanpasuClient {
     pub fn subscribe_configuration_changes(
         &self,
     ) -> (
-        tokio::sync::watch::Receiver<super::application_workflow::ReconcilerStatus>,
+        tokio::sync::watch::Receiver<super::reconciler::ReconcilerStatus>,
         tokio::sync::watch::Receiver<super::effects::actor::EffectsSnapshot>,
         tokio::sync::watch::Receiver<SourcesSnapshot>,
     ) {
         (
-            self.inner.application_workflow.subscribe_reconciler(),
+            self.inner.reconciler.subscribe_reconciler(),
             self.inner.effects.subscribe(),
             self.inner.profiles.subscribe_sources(),
         )

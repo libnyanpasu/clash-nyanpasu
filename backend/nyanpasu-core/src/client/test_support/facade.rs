@@ -385,7 +385,7 @@ pub async fn test_client_with_materialization(
 
 // These facade fixtures keep the core inactive and bypass candidate validation;
 // committed versions still have to reach the real status watch before responding.
-struct SavedRuntimeGate(crate::client::application_workflow::ApplicationWorkflowClient);
+struct SavedRuntimeGate(crate::client::reconciler::RuntimeReconcilerClient);
 
 #[async_trait::async_trait]
 impl crate::state::mutation::ports::RuntimeGate for SavedRuntimeGate {
@@ -408,6 +408,6 @@ impl crate::state::mutation::ports::RuntimeGate for SavedRuntimeGate {
 fn connect_source(client: &NyanpasuClient, mutations: crate::state::mutation::MutationCoordinator) {
     mutations.connect(
         Arc::new(effects::ports::NoopCommitNotifications),
-        Arc::new(SavedRuntimeGate(client.inner.application_workflow.clone())),
+        Arc::new(SavedRuntimeGate(client.inner.reconciler.clone())),
     );
 }

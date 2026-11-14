@@ -18,7 +18,7 @@ use super::{
         self, Attempt, AttemptOutcome, Conclusion, CoreFact, Facts, OwnerPlan, ServiceEvidence,
         Step, Trigger,
     },
-    workflow::ApplicationWorkflow,
+    workflow::RuntimeReconciler,
 };
 use crate::{
     actor_v2::{
@@ -95,7 +95,7 @@ pub(super) fn cause(reason: String) -> Arc<RuntimeError> {
     Arc::new(ConfigurationNotInEffectSnafu { reason }.build())
 }
 
-impl ApplicationWorkflow {
+impl RuntimeReconciler {
     pub(super) async fn begin_round(&mut self) -> Round {
         let application = self.lifecycle.application.load();
         let clash = self.clash.load();

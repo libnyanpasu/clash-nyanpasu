@@ -3,7 +3,7 @@
 use super::test_support::test_client_args_with_endpoint;
 use crate::client::{
     NyanpasuClient,
-    application_workflow::startup::StartupOutcome,
+    reconciler::startup::StartupOutcome,
     test_support,
     test_support::{
         TestControlEndpoint,

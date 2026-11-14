@@ -176,7 +176,7 @@ async fn not_submitted_internal_is_refused_without_replay() {
     let previous = client.promoted_runtime().await.unwrap().revision;
     let mut receipt = client
         .inner
-        .application_workflow
+        .reconciler
         .0
         .runtime
         .last_confirmed_runtime_receipt()
@@ -186,7 +186,7 @@ async fn not_submitted_internal_is_refused_without_replay() {
     receipt.binding.revision.epoch = 0;
     client
         .inner
-        .application_workflow
+        .reconciler
         .0
         .runtime
         .confirm_applied(Arc::new(receipt));
@@ -211,7 +211,7 @@ async fn not_submitted_internal_is_refused_without_replay() {
     );
     let status = client
         .inner
-        .application_workflow
+        .reconciler
         .settled(
             ConfigDomain::Clash,
             client.inner.clash_config.snapshot().version,
@@ -229,7 +229,7 @@ async fn not_submitted_internal_is_refused_without_replay() {
     assert_eq!(endpoint.delegate.submissions(), 0);
     // An unchanged refused target is not resubmitted by ticks.
     tokio::time::advance(Duration::from_secs(60)).await;
-    let workflow = &client.inner.application_workflow;
+    let workflow = &client.inner.reconciler;
     workflow.0.actor.cast(super::super::Message::Tick).unwrap();
     super::barrier(workflow).await;
     workflow.settle_core_changes().await;

@@ -1,5 +1,5 @@
 use crate::{core::tray::proxies, log_err, window::WindowManager};
-use nyanpasu_core::client::{NyanpasuClient, application_workflow::startup::StartupOutcome};
+use nyanpasu_core::client::{NyanpasuClient, reconciler::startup::StartupOutcome};
 use tauri::{App, Manager};
 
 /// handle something when start app

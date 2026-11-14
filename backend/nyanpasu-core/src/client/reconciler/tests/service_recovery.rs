@@ -140,7 +140,7 @@ impl crate::actor_v2::service_actor::ServiceEndpointFactory for RecoveringDaemon
 
 struct RecoveryGraph {
     _dir: tempfile::TempDir,
-    client: ApplicationWorkflowClient,
+    client: RuntimeReconcilerClient,
     daemon: Arc<RecoveringDaemon>,
     clash: crate::client::clash_config::ClashConfigClient,
     shutdown: CancellationToken,

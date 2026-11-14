@@ -177,12 +177,7 @@ export type ConfigurationStatus = {
 export type ConfigurationStatusChanged = ConfigurationStatus
 
 export type ConvergenceHealth =
-  | 'healthy'
-  | 'pending'
-  | 'retry_scheduled'
-  | 'waiting_dependency'
-  | 'blocked'
-  | 'recovery_required'
+  'healthy' | 'pending' | 'retry_scheduled' | 'waiting_dependency' | 'blocked'
 
 /**
  *  The core's control endpoint, as the manager resolved it.
@@ -523,7 +518,6 @@ export type OperationStatus = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   message: string | null
 }
 
@@ -561,8 +555,6 @@ export type RpcValue = any
 export type RuntimeConvergence = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   message: string | null
 }
 

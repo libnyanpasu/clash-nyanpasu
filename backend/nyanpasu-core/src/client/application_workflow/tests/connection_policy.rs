@@ -802,11 +802,11 @@ async fn shutdown_reports_closed_for_a_committed_profile_waiting_to_apply() {
     f.calls.release.notify_one();
     let outcome = f.client.after_commit(&report).await;
     assert!(matches!(&outcome.degradations()[0].reason,
-        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { cause: Some(cause), .. }
+        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { cause, .. }
         if matches!(cause.as_ref(), nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)));
     assert!(
         matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. }
-        if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired)
+        if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred)
     );
     first.await.unwrap().unwrap();
     shutdown.await;

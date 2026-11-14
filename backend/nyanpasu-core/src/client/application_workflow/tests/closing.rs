@@ -198,10 +198,7 @@ async fn shutdown_finishes_an_admitted_source_and_refuses_a_queued_source() {
 async fn shutdown_keeps_a_refused_source_unchanged() {
     use crate::state::config_error::ConfigError;
     use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
-    use nyanpasu_runtime_values::{
-        mutation::{CommitAborted, RuntimeAftermath},
-        runtime_error::RuntimeError,
-    };
+    use nyanpasu_runtime_values::{mutation::CommitAborted, runtime_error::RuntimeError};
 
     let dir = tempfile::tempdir().unwrap();
     let path = super::mutations::temp_path(&dir, "application.yaml");
@@ -234,10 +231,7 @@ async fn shutdown_keeps_a_refused_source_unchanged() {
     assert!(matches!(
         saving.await.unwrap(),
         Err(ConfigError::Commit {
-            source: CommitAborted::RuntimeRefused {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::RuntimeRefused { .. },
             ..
         })
     ));
@@ -297,10 +291,10 @@ async fn shutdown_reports_closed_for_a_committed_change_waiting_to_apply() {
     let outcome = saving.await.unwrap().unwrap();
     assert_eq!(
         super::commit_first::receipt(&outcome).runtime,
-        RuntimeCommitStatus::RecoveryRequired
+        RuntimeCommitStatus::Deferred
     );
     assert!(matches!(&outcome.degradations()[0].reason,
-        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { cause: Some(cause), .. }
+        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { cause, .. }
         if matches!(cause.as_ref(), nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)));
     client.wait_shutdown().await;
     assert_eq!(

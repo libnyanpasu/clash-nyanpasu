@@ -54,8 +54,6 @@ const status: ConfigurationStatus = {
   runtime: {
     health: 'healthy',
     operation_id: null,
-    attempts: 0,
-    automatic_remaining: 0,
     message: null,
   },
   effects: [

@@ -898,11 +898,7 @@ mod tests {
             &[
                 "'profile_materialization'",
                 "'runtime_build'",
-                "'runtime_check'",
-                "'runtime_promote'",
-                "'runtime_publish'",
                 "'runtime_apply'",
-                "'core_rollback'",
                 "'system_effect'",
                 "'ui_effect'",
             ],

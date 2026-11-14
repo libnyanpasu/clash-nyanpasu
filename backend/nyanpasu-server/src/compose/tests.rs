@@ -294,7 +294,7 @@ async fn server_refuses_elevation_on_config_retry_compensation_and_copy_paths_re
 #[tokio::test]
 async fn application_write_failure_leaves_service_runtime_untouched() {
     use nyanpasu_core::{client::ClientError, state::config_error::ConfigError};
-    use nyanpasu_runtime_values::mutation::{CommitAborted, RuntimeAftermath};
+    use nyanpasu_runtime_values::mutation::CommitAborted;
 
     let f = fixture(true).await;
     mode(&f.client, true).await.unwrap();
@@ -310,10 +310,7 @@ async fn application_write_failure_leaves_service_runtime_untouched() {
     assert!(matches!(
         result.as_ref().map_err(|error| error.as_ref()),
         Err(ClientError::Config(ConfigError::Commit {
-            source: CommitAborted::WriteConfig {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::WriteConfig { .. },
             ..
         }))
     ));

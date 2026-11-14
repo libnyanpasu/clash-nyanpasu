@@ -194,11 +194,7 @@ async fn config_persistence_failure_leaves_runtime_and_source_unchanged() {
     );
     let crate::client::ClientError::Config(crate::state::config_error::ConfigError::Commit {
         domain: nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
-        source:
-            nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig {
-                source,
-                runtime: nyanpasu_runtime_values::mutation::RuntimeAftermath::Untouched,
-            },
+        source: nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig { source },
     }) = error
     else {
         panic!("{error:?}")

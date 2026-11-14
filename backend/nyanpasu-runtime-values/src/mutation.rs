@@ -1,4 +1,4 @@
-//! Public source-commit failures and runtime aftermath.
+//! Public source-commit failures.
 
 use std::sync::Arc;
 
@@ -23,50 +23,34 @@ pub enum ConfigDomain {
 #[snafu(visibility(pub))]
 pub struct NotReady;
 
-/// Why a source transaction did not commit, classified once from the
-/// persistence error and, when the Runtime took part, the receipt it settled
-/// (U7). A source wraps it in its own domain error.
+/// Why a source transaction did not commit. A source wraps this in its domain error.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[snafu(visibility(pub))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommitAborted {
     /// The yaml write failed; nothing committed.
-    #[snafu(display("failed to write the config{runtime}"))]
+    #[snafu(display("failed to write the config"))]
     WriteConfig {
-        runtime: RuntimeAftermath,
         #[serde(skip)]
         source: BoxedCause,
     },
     /// The write failed and so did the recovery of what the transaction staged.
-    #[snafu(display("failed to write the config and failed to recover afterwards{runtime}"))]
+    #[snafu(display("failed to write the config and failed to recover afterwards"))]
     RecoverAfterWriteFailure {
-        runtime: RuntimeAftermath,
         #[serde(skip)]
         source: BoxedCause,
     },
-    /// A required participant refused the candidate.
-    #[snafu(display("the runtime refused the change: {}{runtime}", joined(errors)))]
+    /// Candidate validation refused the change.
+    #[snafu(display("the core rejected the candidate configuration: {}", joined(errors)))]
     RuntimeRefused {
         errors: Vec<Arc<RuntimeError>>,
-        runtime: RuntimeAftermath,
         #[serde(skip)]
         source: BoxedCause,
     },
-    /// A required participant could not decide.
-    #[snafu(display(
-        "the runtime failed while applying the change: {}{runtime}",
-        joined(errors)
-    ))]
+    /// Candidate validation could not return a verdict.
+    #[snafu(display("the change could not be checked against the core: {}", joined(errors)))]
     RuntimeFailed {
         errors: Vec<Arc<RuntimeError>>,
-        runtime: RuntimeAftermath,
-        #[serde(skip)]
-        source: BoxedCause,
-    },
-    /// The coordinator refused before persisting: builder validation, or a CAS
-    /// mismatch the caller did not classify as its own version conflict.
-    #[snafu(display("the state change was refused before it was saved"))]
-    ValidateState {
         #[serde(skip)]
         source: BoxedCause,
     },
@@ -80,40 +64,27 @@ fn joined(errors: &[Arc<RuntimeError>]) -> String {
         .join("; ")
 }
 
-/// What became of the runtime after an aborted commit, from the receipt's
-/// structured fields. `detail` is the receipt's operator diagnostics, never an
-/// input to a decision.
-#[derive(Debug, Clone, Serialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum RuntimeAftermath {
-    /// The runtime took no part, or the transaction withdrew before it did.
-    Untouched,
-    /// The runtime went back to the previous configuration.
-    RolledBack,
-    /// Rolling the runtime back failed; recovery is required.
-    RollbackFailed { detail: Arc<RuntimeError> },
-    /// What the runtime is running is unknown and needs recovery.
-    Unknown { detail: Arc<RuntimeError> },
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Reads as the tail of a sentence: nothing when the runtime was not touched.
-impl std::fmt::Display for RuntimeAftermath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Untouched => Ok(()),
-            Self::RolledBack => {
-                f.write_str("; the runtime was rolled back to the previous configuration")
-            }
-            Self::RollbackFailed { detail } => {
-                write!(
-                    f,
-                    "; rolling the runtime back failed: {detail}; recovery required"
-                )
-            }
-            Self::Unknown { detail } => write!(
-                f,
-                "; what the runtime is running is unknown and needs recovery: {detail}"
-            ),
-        }
+    #[test]
+    fn candidate_check_failures_distinguish_refusal_from_unavailability() {
+        let refused = CommitAborted::RuntimeRefused {
+            errors: vec![Arc::new(RuntimeError::ShuttingDown)],
+            source: Box::new(std::io::Error::other("candidate check refused")),
+        };
+        assert_eq!(
+            refused.to_string(),
+            "the core rejected the candidate configuration: the application is shutting down"
+        );
+        let failed = CommitAborted::RuntimeFailed {
+            errors: vec![Arc::new(RuntimeError::ShuttingDown)],
+            source: Box::new(std::io::Error::other("candidate check unavailable")),
+        };
+        assert_eq!(
+            failed.to_string(),
+            "the change could not be checked against the core: the application is shutting down"
+        );
     }
 }

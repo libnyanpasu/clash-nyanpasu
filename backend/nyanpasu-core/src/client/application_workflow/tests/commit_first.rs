@@ -448,3 +448,115 @@ async fn leaving_service_mode_releases_daemon_for_running_and_user_stopped_cores
         client.wait_shutdown().await;
     }
 }
+
+// Guards saving Clash while observation is transitioning, then applying the committed target on retry.
+#[tokio::test]
+async fn port_save_during_transition_commits_and_retry_applies_it() {
+    use nyanpasu_ipc::api::status::CoreStateDetail;
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, _) = client_with_scripted_endpoint(&dir).await;
+    let previous = endpoint.status().await.unwrap();
+    endpoint.set_status(
+        Some(CoreStateDetail::Starting { epoch: 2 }),
+        previous.applied_kind,
+    );
+    let port = client
+        .get_clash_config()
+        .await
+        .unwrap()
+        .mixed_port
+        .start_port
+        + 1;
+    let patch =
+        serde_json::from_value(serde_json::json!({"mixed_port": {"start_port": port}})).unwrap();
+    let saved = client.patch_clash_config(patch).await.unwrap();
+    assert_eq!(receipt(&saved).runtime, RuntimeCommitStatus::Deferred);
+    assert!(matches!(saved, MutationOutcome::CommittedDegraded { .. }));
+    assert_eq!(
+        client
+            .get_clash_config()
+            .await
+            .unwrap()
+            .mixed_port
+            .start_port,
+        port
+    );
+    let path = client.inner.paths.clash_config_path();
+    let persisted: nyanpasu_config::clash::config::ClashConfig =
+        yaml_serde::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(persisted.mixed_port.start_port, port);
+    assert!(endpoint.reconciled_bytes().is_empty());
+    endpoint.set_status(previous.state, previous.applied_kind);
+    client
+        .inner
+        .application_workflow
+        .retry_runtime()
+        .await
+        .unwrap();
+    assert_eq!(endpoint.reconciled_bytes().len(), 1);
+    let applied: yaml_serde::Value =
+        yaml_serde::from_slice(&endpoint.reconciled_bytes()[0]).unwrap();
+    assert_eq!(applied["mixed-port"].as_u64(), Some(u64::from(port)));
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+// Guards RuntimeGate checking outside the workflow mailbox and publication before settled waits.
+#[tokio::test]
+async fn application_runtime_save_commits_while_clash_application_is_held() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, endpoint, scripted) = client_with_scripted_endpoint(&dir).await;
+    scripted.queue(WaitScript::Held);
+    let applying = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_runtime_overrides(
+                    nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+                        ipv6: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .await
+        }
+    });
+    scripted.held().await;
+    let before = client.inner.application.snapshot();
+    let enabled = !before.state.enable_builtin_enhanced;
+    let mut settings = client.inner.application.subscribe_settings_changes();
+    settings.borrow_and_update();
+    let saving = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .patch_app_config(NyanpasuAppConfigPatch {
+                    enable_builtin_enhanced: Some(enabled),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    settings.changed().await.unwrap();
+    let published = client.inner.application.snapshot();
+    assert!(published.version.as_ref() > before.version.as_ref());
+    assert_eq!(published.state.enable_builtin_enhanced, enabled);
+    let persisted: nyanpasu_config::application::NyanpasuAppConfig = yaml_serde::from_slice(
+        &std::fs::read(client.inner.paths.application_config_path()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(persisted.enable_builtin_enhanced, enabled);
+    assert!(!applying.is_finished());
+    assert!(!saving.is_finished());
+    assert_eq!(endpoint.checked().len(), 2);
+    scripted.release();
+    assert_eq!(
+        receipt(&applying.await.unwrap().unwrap()).runtime,
+        RuntimeCommitStatus::Applied
+    );
+    assert_eq!(
+        receipt(&saving.await.unwrap().unwrap()).runtime,
+        RuntimeCommitStatus::Applied
+    );
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}

@@ -3,7 +3,7 @@
 pub(crate) mod adapters;
 pub(super) mod check;
 mod committed;
-mod status;
+pub(super) mod status;
 pub(crate) use status::{Conclusion, EngineVersions, ReconcilerStatus};
 mod attempt;
 pub mod inputs;
@@ -91,6 +91,7 @@ pub(super) enum Command {
     /// resolves to, if it sits on the other one.
     FollowService,
     PrepareService,
+    InterruptConnections,
 }
 
 /// Settles a command that was refused before it ran. An installation owes
@@ -858,6 +859,15 @@ impl ApplicationWorkflowClient {
                     ..current
                 };
             }
+        }
+    }
+
+    pub(super) async fn interrupt_connections(
+        &self,
+    ) -> Result<Option<crate::actor_v2::api::ApiError>, RuntimeError> {
+        match self.call(Command::InterruptConnections).await? {
+            Output::Interruption(failure) => Ok(failure),
+            _ => unreachable!("interruption commands return their failure"),
         }
     }
 

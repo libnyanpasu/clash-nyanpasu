@@ -337,7 +337,9 @@ async fn workflow_graph_with_clients(
 ) {
     use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
     use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
-    let (application, _, clash) = test_typed_config_clients(dir).await;
+    let (application, _, clash) =
+        test_typed_config_clients(dir, crate::state::mutation::MutationCoordinator::isolated())
+            .await;
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
@@ -1249,6 +1251,14 @@ async fn a_control_channel_patch_does_not_start_a_stopped_core() {
         );
         let mut patch = ClashConfig::new_empty_patch();
         patch.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        // Also change the HTTP setting so this target differs from the still-running baseline.
+        patch.clash_ipc_disable_http_controller = Some(
+            !f.client
+                .get_clash_config()
+                .await
+                .unwrap()
+                .clash_ipc_disable_http_controller,
+        );
         f.client.patch_clash_config(patch).await.unwrap();
         assert_eq!(f.endpoint.submissions(), 1);
     })

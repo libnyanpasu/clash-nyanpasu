@@ -35,7 +35,9 @@ struct Graph {
 async fn graph(dir: &tempfile::TempDir) -> Graph {
     use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
     use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
-    let (application, _, clash) = test_typed_config_clients(dir).await;
+    let (application, _, clash) =
+        test_typed_config_clients(dir, crate::state::mutation::MutationCoordinator::isolated())
+            .await;
     let profiles = crate::client::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),

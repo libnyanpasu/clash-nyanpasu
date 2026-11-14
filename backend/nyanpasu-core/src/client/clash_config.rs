@@ -73,6 +73,16 @@ impl ClashConfigClient {
                 .context(InitializeStateSnafu { path: &config_path })?
         };
 
+        Self::from_manager(mutations, manager, shutdown, tasks).await
+    }
+
+    /// Takes an initialized store, allowing subscriptions to precede actor startup.
+    pub(crate) async fn from_manager(
+        mutations: MutationCoordinator<ClashConfig>,
+        manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self, Error> {
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
@@ -96,8 +106,8 @@ impl ClashConfigClient {
         })
     }
 
-    /// The last committed clash config. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// The last committed Clash config. Reads bypass the mailbox, so
+    /// an independent check or a source write cannot delay them.
     pub fn snapshot(&self) -> ClashConfigSnapshot {
         ClashConfigSnapshot::from_versioned(&self.inner.snapshot.load())
     }
@@ -161,6 +171,33 @@ impl ClashConfigClient {
 impl Drop for ClashConfigClientInner {
     fn drop(&mut self) {
         self.actor_ref.stop(None);
+    }
+}
+
+impl super::NyanpasuClient {
+    pub(super) async fn clash_outcome(
+        &self,
+        committed: ClashConfigSnapshot,
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        let settled = if committed.reaches_runtime {
+            Some(
+                self.inner
+                    .application_workflow
+                    .settled(ConfigDomain::Clash, committed.version)
+                    .await,
+            )
+        } else {
+            None
+        };
+        super::application_workflow::status::outcome(
+            nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: committed.operation_id.map(|id| id.to_string()),
+                domain: "clash".into(),
+                source_version: *committed.version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            settled,
+        )
     }
 }
 

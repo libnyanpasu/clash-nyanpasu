@@ -686,6 +686,7 @@ pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfi
 
 pub(crate) async fn test_typed_config_clients(
     dir: &TempDir,
+    clash_mutations: crate::state::mutation::MutationCoordinator<ClashConfig>,
 ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
     let application = ApplicationClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
@@ -705,7 +706,7 @@ pub(crate) async fn test_typed_config_clients(
     .expect("session state client should be created");
     seed_test_clash_config(dir.path().join("clash-config.yaml"));
     let clash_config = ClashConfigClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        clash_mutations,
         temp_config_path(dir, "clash-config.yaml"),
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),

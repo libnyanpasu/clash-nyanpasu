@@ -195,15 +195,19 @@ async fn mode_interruption_follows_same_instance_reconcile_once() {
             .unwrap();
         assert!(outcome.degradations().is_empty());
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        let version = f.client.inner.clash_config.snapshot().version;
+        let checks = f.endpoint.delegate.checked().len();
         let repeated = f
             .client
             .patch_runtime_overrides(mode_patch())
             .await
             .unwrap();
         assert!(repeated.degradations().is_empty());
+        assert_eq!(f.client.inner.clash_config.snapshot().version, version);
+        assert_eq!(f.endpoint.delegate.checked().len(), checks);
         assert_eq!(
             *f.calls.events.lock().unwrap(),
-            ["reconcile", "close", "reconcile", "close"]
+            ["reconcile", "close", "close"]
         );
     })
     .await;
@@ -237,6 +241,14 @@ async fn disabled_policy_and_non_mode_patches_do_not_close_connections() {
             .await
             .unwrap();
         assert!(outcome.degradations().is_empty());
+        // Setting the mode again closes nothing while the policy is off, and
+        // applies nothing either. The API query count is not asserted: every
+        // overrides patch also asks for a proxy refresh, which reads the API
+        // on its own schedule.
+        f.client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
     })
     .await;
@@ -846,16 +858,14 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
         } else {
             Mode::Global
         };
+        let saved = f.client.inner.clash_config.patch_overrides(ClashGuardOverridesPatch {
+            mode: Some(next_mode),
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(saved.state.overrides.mode(), next_mode);
         let mode = {
             let client = f.client.clone();
-            tokio::spawn(async move {
-                client
-                    .patch_runtime_overrides(ClashGuardOverridesPatch {
-                        mode: Some(next_mode),
-                        ..Default::default()
-                    })
-                    .await
-            })
+            tokio::spawn(async move { client.clash_outcome(saved).await })
         };
         // Polling once sends each request, so both wait behind the held
         // interruption.
@@ -878,17 +888,15 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
         };
         let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());
-        // A queued Try has not committed its source.
-        assert_eq!(
-            serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
-            before
-        );
+        // The source is committed while the runtime mailbox is still occupied.
+        assert_eq!(f.client.inner.clash_config.snapshot().state.overrides.mode(), next_mode);
+        assert!(!mode.is_finished());
         assert_eq!(installer.0.load(Ordering::SeqCst), 0);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(mode.await.unwrap().unwrap().degradations().is_empty());
+        assert!(mode.await.unwrap().degradations().is_empty());
         host.await.unwrap();
         install.await.unwrap();
         assert_eq!(
@@ -1041,4 +1049,88 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         );
     })
     .await;
+}
+
+// Guards excluding unchanged mode from interruption when another override changes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unchanged_mode_with_another_override_applies_without_interruption() {
+    let f = Fixture::new(false).await;
+    let mode = f.client.get_clash_config().await.unwrap().overrides.mode();
+    let outcome = f
+        .client
+        .patch_runtime_overrides(ClashGuardOverridesPatch {
+            mode: Some(mode),
+            ipv6: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(outcome.degradations().is_empty());
+    assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+}
+
+// Guards the facade returning a mode-interruption degradation without committing or applying.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repeated_mode_close_failure_is_degraded_without_a_commit() {
+    let f = Fixture::new(false).await;
+    f.calls.fail_close.store(true, Ordering::SeqCst);
+    let before = f.client.inner.clash_config.snapshot();
+    let outcome = f
+        .client
+        .patch_runtime_overrides(ClashGuardOverridesPatch {
+            mode: Some(before.state.overrides.mode()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        outcome,
+        nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { .. }
+    ));
+    assert_eq!(outcome.degradations().len(), 1);
+    assert!(matches!(
+        outcome.degradations()[0].reason,
+        nyanpasu_runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
+    ));
+    assert!(!outcome.degradations()[0].retryable);
+    assert_eq!(
+        f.client.inner.clash_config.snapshot().version,
+        before.version
+    );
+    assert!(f.endpoint.delegate.checked().is_empty());
+    assert_eq!(*f.calls.events.lock().unwrap(), ["close"]);
+}
+
+// Guards InterruptConnections running inside the workflow mailbox before later runtime work.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repeated_mode_interruption_serializes_runtime_commands() {
+    let f = Fixture::new(false).await;
+    f.calls.hold_close.store(true, Ordering::SeqCst);
+    let mode = f.client.get_clash_config().await.unwrap().overrides.mode();
+    let interruption = tokio::spawn({
+        let client = f.client.clone();
+        async move {
+            client
+                .patch_runtime_overrides(ClashGuardOverridesPatch {
+                    mode: Some(mode),
+                    ..Default::default()
+                })
+                .await
+        }
+    });
+    f.calls.entered.notified().await;
+    let mut reconcile = Box::pin(f.client.reconcile_core());
+    assert!(reconcile.as_mut().now_or_never().is_none());
+    assert_eq!(*f.calls.events.lock().unwrap(), ["close"]);
+    f.calls.release.notify_one();
+    assert!(
+        interruption
+            .await
+            .unwrap()
+            .unwrap()
+            .degradations()
+            .is_empty()
+    );
+    reconcile.await.unwrap();
+    assert_eq!(*f.calls.events.lock().unwrap(), ["close", "reconcile"]);
 }

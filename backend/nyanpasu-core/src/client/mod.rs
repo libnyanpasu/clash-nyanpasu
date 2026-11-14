@@ -28,7 +28,7 @@ pub mod application;
 pub mod application_workflow;
 pub mod artifact_snapshot;
 mod clash_api;
-mod clash_config;
+pub(crate) mod clash_config;
 mod clash_streams;
 pub mod configuration_status;
 pub mod core_lifecycle;
@@ -1102,7 +1102,15 @@ impl NyanpasuClient {
         } else {
             None
         };
-        Ok(application::outcome(committed, settled))
+        Ok(application_workflow::status::outcome(
+            nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: committed.operation_id.map(|id| id.to_string()),
+                domain: "application".into(),
+                source_version: *committed.version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            settled,
+        ))
     }
 
     /// Prepares the daemon before committing service preference; ownership changes after commit.
@@ -1247,8 +1255,50 @@ impl NyanpasuClient {
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-        let client = self.inner.clash_config.clone();
-        let outcome = client.patch_overrides(patch).await?.outcome();
+        let current = self.inner.clash_config.snapshot();
+        let nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+            mode,
+            log_level,
+            allow_lan,
+            secret,
+            unified_delay,
+            tcp_concurrent,
+            ipv6,
+        } = &patch;
+        let outcome = if mode.is_some_and(|mode| mode == current.state.overrides.mode())
+            && log_level.is_none()
+            && allow_lan.is_none()
+            && secret.is_none()
+            && unified_delay.is_none()
+            && tcp_concurrent.is_none()
+            && ipv6.is_none()
+        {
+            let failure = self
+                .inner
+                .application_workflow
+                .interrupt_connections()
+                .await
+                .map_err(|error| {
+                    ConfigError::runtime_check_failure(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+                        Arc::new(error),
+                    )
+                })?;
+            let degradations = failure.into_iter().map(|error| {
+                nyanpasu_runtime_values::runtime::Degradation {
+                    phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
+                    reason: nyanpasu_runtime_values::runtime::DegradationReason::ModeInterruptionFailed {
+                        cause: (&error).into(),
+                    },
+                    message: error.to_string(),
+                    retryable: false,
+                }
+            }).collect();
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), degradations)
+        } else {
+            let committed = self.inner.clash_config.patch_overrides(patch).await?;
+            self.clash_outcome(committed).await
+        };
         self.request_proxy_refresh();
         Ok(outcome)
     }
@@ -1270,7 +1320,8 @@ impl NyanpasuClient {
             return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
         }
         let client = self.inner.clash_config.clone();
-        Ok(client.patch(patch).await?.outcome())
+        let committed = client.patch(patch).await?;
+        Ok(self.clash_outcome(committed).await)
     }
 
     // ---- profiles domain (PR-3 T07) ----
@@ -1989,6 +2040,7 @@ pub(crate) mod tests {
             application,
             session_state,
             clash_config,
+            None,
             Arc::new(NoopSystemDnsCache),
             Arc::new(MockDirectEgressProbe::new()),
             Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
@@ -2690,7 +2742,11 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
 
         (async {
-            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let (application, session_state, clash_config) = test_typed_config_clients(
+                &dir,
+                crate::state::mutation::MutationCoordinator::isolated(),
+            )
+            .await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.theme_color = Some(yaml_serde::from_str("\"#123456\"").unwrap());
             application

@@ -198,9 +198,9 @@ The delivered Phase D module boundary (tasks §4) classifies
 as application/facade, and `state/` as source ownership. Application may import
 control; control must not import `client`. Source owners must not directly import
 `client::application_workflow` or `ApplicationWorkflowClient`. They consume the
-ports defined in `state/mutation/ports.rs`. Application uses `RuntimeGate` for
-independent candidate checks and post-commit notifications; Clash and Profiles
-retain `MutationParticipantFactory<T>`. `client/application_workflow/participant.rs`
+ports defined in `state/mutation/ports.rs`. Application and Clash use `RuntimeGate` for
+independent candidate checks and post-commit notifications; Profiles retains
+`MutationParticipantFactory<T>`. `client/application_workflow/participant.rs`
 implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
 stay under `state/mutation/`; public wire values live in runtime-values. The
 notification contract remains in `client/effects`; `EffectKind` lives in
@@ -478,8 +478,8 @@ State changes follow this order:
 2. Keep schema and patch operations in pure services or domain types.
 3. Generate runtime config from snapshots rather than mutating runtime globals.
 4. Commit state first, then trigger side effects through actor messages. A Required participant (the runtime) is a vote before the commit, not a side effect; this rule covers ordinary side effects.
-   Application checks the candidate independently before persistence, publishes its
-   snapshot and effects notification, then notifies the runtime workflow. The facade
+   Application and Clash check candidates independently before persistence, publish
+   their snapshots and effects notifications, then notify the runtime workflow. The facade
    waits on the workflow status watch for the committed engine version; an apply
    failure leaves the source committed and is reported as degradation.
 5. Report post-commit side-effect failures as degraded results instead of silently rolling back persisted state.

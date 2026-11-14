@@ -7,10 +7,7 @@ use crate::client::{
     test_support,
     test_support::{
         TestControlEndpoint,
-        workflow::{
-            Fixture, ScriptedWaitEndpoint, WaitScript, aftermath, disable_mode_interruption,
-            override_patch, start_replacement,
-        },
+        workflow::{Fixture, disable_mode_interruption, override_patch, start_replacement},
     },
 };
 use futures_util::FutureExt;
@@ -167,85 +164,56 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
     }).await;
 }
 
-/// V08/V09 (U7): a save whose write fails after its Try applied is returned
-/// as an error that names the persistence cause and what became of the
-/// runtime: rolled back, or not, in which case the domain is isolated. The
-/// source keeps its version either way.
+/// A failed source write never changes the running core or publishes a new version.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
-    for restore_lost in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
-        let args = test_client_args_with_endpoint(&dir, scripted.clone()).await;
-        let path = args.paths.clash_config_path();
-        let client = NyanpasuClient::try_new(args).await.unwrap();
-        (async {
-            endpoint.prime(&client).await;
-            disable_mode_interruption(&client).await;
-            let before = test_support::clash_snapshot(&client);
-            if path.exists() {
-                std::fs::remove_file(&path).unwrap();
-            }
-            std::fs::create_dir_all(&path).unwrap();
-            // The Try applies; the Cancel's restore may lose its answer.
-            scripted.queue(WaitScript::Deliver);
-            if restore_lost {
-                scripted.queue(WaitScript::Missing);
-            }
-            let error = client
-                .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
-                .await
-                .expect_err("the save failed");
-            let after = test_support::clash_snapshot(&client);
-            assert_eq!(after.version, before.version);
-            assert_eq!(
-                serde_json::to_value(after.state).unwrap(),
-                serde_json::to_value(before.state).unwrap()
-            );
-            let crate::client::ClientError::Config(
-                crate::state::config_error::ConfigError::Commit {
-                    domain: nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
-                    source: aborted,
-                },
-            ) = &error
-            else {
-                panic!("{error:?}");
-            };
-            let nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig { source, .. } =
-                aborted
-            else {
-                panic!("{aborted:?}");
-            };
-            assert!(
-                source.to_string().contains("failed to write config"),
-                "{source}"
-            );
-            assert_eq!(
-                endpoint.submissions(),
-                2,
-                "Try applied and Cancel resubmitted the baseline"
-            );
-            if restore_lost {
-                assert!(
-                    matches!(
-                        aftermath(aborted),
-                        nyanpasu_runtime_values::mutation::RuntimeAftermath::RollbackFailed { .. }
-                    ),
-                    "{aborted:?}"
-                );
-                assert!(test_support::workflow(&client).status().uncertain);
-            } else {
-                assert!(
-                    matches!(
-                        aftermath(aborted),
-                        nyanpasu_runtime_values::mutation::RuntimeAftermath::RolledBack
-                    ),
-                    "{aborted:?}"
-                );
-                assert!(!test_support::workflow(&client).status().uncertain);
-            }
-        })
-        .await;
+async fn config_persistence_failure_leaves_runtime_and_source_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+    let path = args.paths.clash_config_path();
+    let client = NyanpasuClient::try_new(args).await.unwrap();
+    endpoint.prime(&client).await;
+    disable_mode_interruption(&client).await;
+    let before = test_support::clash_snapshot(&client);
+    let runtime = client.promoted_runtime().await;
+    if path.exists() {
+        std::fs::remove_file(&path).unwrap();
     }
+    std::fs::create_dir_all(&path).unwrap();
+    let error = client
+        .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
+        .await
+        .expect_err("the save failed");
+    let after = test_support::clash_snapshot(&client);
+    assert_eq!(after.version, before.version);
+    assert_eq!(
+        serde_json::to_value(after.state).unwrap(),
+        serde_json::to_value(before.state).unwrap()
+    );
+    let crate::client::ClientError::Config(crate::state::config_error::ConfigError::Commit {
+        domain: nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+        source:
+            nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig {
+                source,
+                runtime: nyanpasu_runtime_values::mutation::RuntimeAftermath::Untouched,
+            },
+    }) = error
+    else {
+        panic!("{error:?}")
+    };
+    assert!(
+        source.to_string().contains("failed to write config"),
+        "{source}"
+    );
+    assert_eq!(
+        endpoint.submissions(),
+        0,
+        "persistence failure must not submit a runtime change"
+    );
+    assert!(endpoint.reconciled_bytes().is_empty());
+    assert_eq!(
+        client.promoted_runtime().await.unwrap().revision,
+        runtime.unwrap().revision
+    );
+    assert!(!test_support::workflow(&client).status().uncertain);
 }

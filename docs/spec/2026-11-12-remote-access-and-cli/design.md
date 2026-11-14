@@ -760,4 +760,21 @@ test and strict Ajv validation of real Rust wire values cover the artifact.
 These are structural v0 schemas; the server remains authoritative for omitted
 Serde attributes, custom decoders, numeric representation and domain/permission
 checks, as documented in the artifact's `validationProfile` and resolved schema
-`$comment`. Production scoped login, CLI and MCP remain subsequent work.
+`$comment`.
+
+Also delivered in the core remote-auth owner slice (stack layer 12): neutral
+credential, session, launch-code, resource-session, TLS material, clock,
+entropy, and write-time protected storage ports (`AuthClock`, `EntropySource`,
+`SecretStore`, `SecretCipher`) plus zeroized/redacted secret wrappers in
+`nyanpasu-contracts::auth`, and the explicitly composed `RemoteAccessAuthActor`
+under `RemoteAccessClient` and `NyanpasuClient` domain operations in
+`nyanpasu-core`. Access tokens hash only the parsed 256-bit secret via SHA-256
+with constant-time verification, dual UTC wall/monotonic deadlines wake active
+resource-lease cancellation without waiting for new client requests (without
+cancelling already-admitted business work), resource sessions enforce idle
+expiry and principal binding without granting scopes, failed-authentication peer
+tracking stays bounded fail-closed without evicting active failure windows or
+lockouts, and secret storage enforces write-time protection and bounded record
+sizing with redacted parse errors. Host composition roots keep `remote_auth` at
+`None` until concrete OS file/credential-store adapters, UI gates, and
+production HTTP/RPC wiring land in subsequent layers.

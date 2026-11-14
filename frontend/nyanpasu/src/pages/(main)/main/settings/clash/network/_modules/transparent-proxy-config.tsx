@@ -24,7 +24,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
   unwrapQueryOptions,
-  useClashSetting,
+  useClashSystemSetting,
   useQueryApi,
   useSetting,
 } from '@nyanpasu/query'
@@ -164,9 +164,9 @@ function GatewayInterfacesConfig({
 export default function TransparentProxyConfigSettings() {
   const core = useSetting('core')
   const serviceMode = useSetting('enable_service_mode')
-  const transparentProxy = useClashSetting('transparent_proxy')
-  const redirPort = useClashSetting('redir_port')
-  const tproxyPort = useClashSetting('tproxy_port')
+  const transparentProxy = useClashSystemSetting('transparent_proxy')
+  const redirPort = useClashSystemSetting('redir_port')
+  const tproxyPort = useClashSystemSetting('tproxy_port')
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const statusOptions = api.queries.getTransparentProxyStatus()

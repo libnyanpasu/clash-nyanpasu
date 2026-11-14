@@ -6,14 +6,16 @@ import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import {
   unwrapQueryOptions,
   useClashSetting,
-  useClashSettings,
+  useClashSystemSetting,
+  useClashSystemSettings,
   useQueryApi,
   useSetting,
+  useSystemSetting,
 } from '@nyanpasu/query'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 export const useSystemProxy = () => {
-  const systemProxy = useSetting('enable_system_proxy')
+  const systemProxy = useSystemSetting('enable_system_proxy')
 
   const blockTask = useBlockTask('system-proxy', async () => {
     await systemProxy.upsert(!systemProxy.value)
@@ -26,7 +28,7 @@ export const useSystemProxy = () => {
 }
 
 export const useTunMode = () => {
-  const tunMode = useClashSetting('enable_tun_mode')
+  const tunMode = useClashSystemSetting('enable_tun_mode')
   const transparentProxy = useClashSetting('transparent_proxy')
   const disabled =
     !tunMode.value &&
@@ -51,7 +53,7 @@ export const useTransparentProxy = () => {
   })
   const core = useSetting('core')
   const serviceMode = useSetting('enable_service_mode')
-  const clash = useClashSettings()
+  const clash = useClashSystemSettings()
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'

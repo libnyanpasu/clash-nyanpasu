@@ -1,4 +1,9 @@
 import { useMemo } from 'react'
+import { unwrapResult } from '@nyanpasu/rpc'
+import type { Mode } from '@nyanpasu/rpc/types'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryApi } from '../provider/rpc-provider'
+import { invokeMutation } from './query-options'
 import { useClashConfig } from './use-clash-config'
 
 export type ProxyMode = 'rule' | 'global' | 'direct'
@@ -15,7 +20,22 @@ export type ProxyMode = 'rule' | 'global' | 'direct'
  * - The backend applies the configured connection-interruption policy
  */
 export const useProxyMode = () => {
+  const api = useQueryApi()
+  const queryClient = useQueryClient()
   const clashConfig = useClashConfig()
+  const setMode = api.mutations.setProxyMode
+
+  const upsertMode = useMutation({
+    mutationKey: setMode.mutationKey,
+    mutationFn: async (mode: Mode) => {
+      return unwrapResult(await invokeMutation(setMode, [mode]))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: api.queries.clashApiGetConfigs().queryKey,
+      })
+    },
+  })
 
   const value = useMemo(() => {
     const modes: Record<ProxyMode, boolean> = {
@@ -39,13 +59,13 @@ export const useProxyMode = () => {
   }, [clashConfig.query.data])
 
   const upsert = async (mode: ProxyMode) => {
-    return await clashConfig.upsert.mutateAsync({ mode })
+    return await upsertMode.mutateAsync(mode)
   }
 
   return {
     value,
     query: clashConfig.query,
-    isPending: clashConfig.upsert.isPending,
+    isPending: upsertMode.isPending,
     upsert,
   }
 }

@@ -3,7 +3,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashSetting } from '@nyanpasu/query'
+import { useClashSystemSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -11,7 +11,7 @@ import {
 } from '../../../../_modules/settings-card'
 
 export default function FieldFilterButton() {
-  const { value, upsert } = useClashSetting('enable_clash_fields')
+  const { value, upsert } = useClashSystemSetting('enable_clash_fields')
 
   const handleFieldFilter = useLockFn(async (input: boolean) => {
     try {

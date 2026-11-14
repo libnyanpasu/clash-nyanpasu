@@ -38,18 +38,38 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 ### Use the unified RPC surface
 
-A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. General `patch_*` commands accept ordinary preferences only; reject out-of-scope fields while decoding their request types, and split the domain when another such field or a policy group would grow the exception list.
+A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. Scopes are independent permissions, so each `patch_*` command has a concrete request type that writes only fields of its declared class; reject out-of-scope fields while decoding the request type, and split the domain when another such field or a policy group would grow the exception list.
 
-`patch_app_config` accepts `ApplicationPreferencesPatch` (`nyanpasu-config`), a concrete
-patch struct that holds only the permitted preference fields; its generated schema is
-derived from those fields and never advertises a privileged one. It is decoded through the
-internal full patch (`NyanpasuAppConfigPatch`), so omitted and `null` fields, aliases and
-unrelated unknown keys keep their meaning, and then projected explicitly. The projection
-destructures the full patch without `..`, so a field added to the config must be classified
-as a preference or a dedicated setting before it compiles; a present `hotkeys`,
-`enable_service_mode` or `remote_access` refuses the whole patch before the DTO exists.
-Converting the DTO back to the full patch sets only preferences. For an ordinary preference
-`null` is a no-op; only `release_channel` and `pac_url` clear on `null`.
+| Request type (`nyanpasu-config`) | Command                     | Scope      | Writes                                                                                        |
+| -------------------------------- | --------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings` | ordinary application preferences                                                              |
+| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL                                    |
+| `ClashSettingsPatch`             | `patch_clash_config`        | `settings` | `expand_include_all`, `break_connection`                                                      |
+| `ClashSystemPatch`               | `patch_clash_system_config` | `system`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
+| `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
+| `ClashAccessPatch`               | `patch_runtime_access`      | `system`   | `allow-lan`, `secret`                                                                         |
+| `Mode`                           | `set_proxy_mode`            | `proxy`    | the proxy mode                                                                                |
+
+Hotkeys, service mode, remote access and the core selection keep their dedicated commands
+(`set_hotkeys`, `set_service_mode`, `set_remote_access`, `change_clash_core`). The whole
+`overrides` record is in no Clash patch: replacing it also writes the proxy mode and the
+ordinary overrides, which are other classes, so overrides are written only through the
+three per-class commands above. This is an intentional tightening of the wire contract: a
+`patch_clash_config` body with `overrides`, or any field of another class, is refused as a
+whole with `invalid_params` and commits nothing. `NyanpasuAppConfigPatch` and
+`ClashConfigPatch` stay the internal patches of trusted Rust callers and are not exported
+to the frontend schema.
+
+Every request type is decoded through its internal full patch, so omitted and `null`
+fields, aliases and unrelated unknown keys keep their meaning, and is then projected
+explicitly. The projection destructures the full patch without `..`, so a field added to
+the config must be classified before it compiles; a present field of another class,
+whatever its value, refuses the whole patch and names the field the way the wire spells it
+(for example `allow-lan`). Converting a request back to the full patch sets only its own
+fields. For an ordinary field `null` is a no-op; only the double-option fields
+(`release_channel`, `pac_url` and the optional Clash ports) clear on `null`. A generated
+schema is derived from the fields of the request type and never advertises a field of
+another class.
 
 `remote_access` is written only by `set_remote_access`, a Desktop-only mutation that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows

@@ -10,14 +10,20 @@ import { MutationCache, QueryClient } from '@tanstack/react-query'
 import {
   useClashSetting,
   useClashSettings,
+  useClashSystemSetting,
+  useClashSystemSettings,
   useSetting,
   useSettings,
+  useSystemSetting,
+  useSystemSettings,
 } from '../src/ipc/use-settings'
 import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
 const appConfig = {
   theme_mode: 'dark',
   core: 'mihomo',
+  enable_system_proxy: false,
+  pac_url: 'https://example.com/proxy.pac',
   enable_service_mode: false,
   hotkeys: ['toggle_tun_mode,Control+Q'],
 } satisfies Partial<NyanpasuAppConfig_Serialize>
@@ -45,7 +51,9 @@ async function setup<T>(
     get_app_config: async () => appConfig,
     get_clash_config: async () => clashConfig,
     patch_app_config: async () => degraded,
+    patch_system_settings: async () => degraded,
     patch_clash_config: async () => degraded,
+    patch_clash_system_config: async () => degraded,
   })
   const client = new QueryClient({
     mutationCache: new MutationCache({
@@ -74,17 +82,17 @@ test('useSetting reads and patches a typed application field', async ({
   onTestFinished,
 }) => {
   const { hook, settled, invoke } = await setup(
-    () => useSetting('core'),
+    () => useSetting('theme_mode'),
     onTestFinished,
   )
-  await expect.poll(() => hook.result.current.value).toBe('mihomo')
+  await expect.poll(() => hook.result.current.value).toBe('dark')
 
   await hook.act(async () => {
-    await hook.result.current.upsert('clash-rs')
+    await hook.result.current.upsert('light')
   })
 
   expect(invoke).toHaveBeenCalledWith('patch_app_config', {
-    patch: { core: 'clash-rs' },
+    patch: { theme_mode: 'light' },
   })
   expect(settled).toEqual([degraded])
 })
@@ -142,11 +150,11 @@ test('a refused settings mutation preserves RpcFailure and never reports success
   expect(settled).toEqual([])
 })
 
-test('useClashSetting sends only the changed sub-field', async ({
+test('useClashSystemSetting sends only the changed sub-field', async ({
   onTestFinished,
 }) => {
   const { hook, settled, invoke } = await setup(
-    () => useClashSetting('mixed_port'),
+    () => useClashSystemSetting('mixed_port'),
     onTestFinished,
   )
   await expect
@@ -157,17 +165,17 @@ test('useClashSetting sends only the changed sub-field', async ({
     await hook.result.current.upsert({ start_port: 7899 })
   })
 
-  expect(invoke).toHaveBeenCalledWith('patch_clash_config', {
+  expect(invoke).toHaveBeenCalledWith('patch_clash_system_config', {
     patch: { mixed_port: { start_port: 7899 } },
   })
   expect(settled).toEqual([degraded])
 })
 
-test('useClashSetting clears an optional field with an explicit null', async ({
+test('useClashSystemSetting clears an optional field with an explicit null', async ({
   onTestFinished,
 }) => {
   const { hook, settled, invoke } = await setup(
-    () => useClashSetting('socks_port'),
+    () => useClashSystemSetting('socks_port'),
     onTestFinished,
   )
   await expect
@@ -178,19 +186,24 @@ test('useClashSetting clears an optional field with an explicit null', async ({
     await hook.result.current.upsert(null)
   })
 
-  expect(invoke).toHaveBeenCalledWith('patch_clash_config', {
+  expect(invoke).toHaveBeenCalledWith('patch_clash_system_config', {
     patch: { socks_port: null },
   })
   expect(settled).toEqual([degraded])
 })
 
 test('upsert takes null only for a field null clears', () => {
-  type AppValue = Parameters<ReturnType<typeof useSetting<'core'>>['upsert']>[0]
+  type AppValue = Parameters<
+    ReturnType<typeof useSetting<'theme_mode'>>['upsert']
+  >[0]
   type ClashValue = Parameters<
-    ReturnType<typeof useClashSetting<'enable_tun_mode'>>['upsert']
+    ReturnType<typeof useClashSystemSetting<'enable_tun_mode'>>['upsert']
   >[0]
   type ClearableValue = Parameters<
-    ReturnType<typeof useClashSetting<'socks_port'>>['upsert']
+    ReturnType<typeof useClashSystemSetting<'socks_port'>>['upsert']
+  >[0]
+  type SystemClearableValue = Parameters<
+    ReturnType<typeof useSystemSetting<'pac_url'>>['upsert']
   >[0]
 
   // Any other field reads JSON null as "not set": the call would commit
@@ -200,8 +213,9 @@ test('upsert takes null only for a field null clears', () => {
   // @ts-expect-error null is not a value of a required clash field
   const clash: ClashValue = null
   const cleared: ClearableValue = null
+  const pacCleared: SystemClearableValue = null
 
-  expect([app, clash, cleared]).toEqual([null, null, null])
+  expect([app, clash, cleared, pacCleared]).toEqual([null, null, null, null])
 })
 
 test('ordinary settings writes exclude dedicated fields', () => {
@@ -214,6 +228,9 @@ test('ordinary settings writes exclude dedicated fields', () => {
   type HotkeysValue = Parameters<
     ReturnType<typeof useSetting<'hotkeys'>>['upsert']
   >[0]
+  type CoreValue = Parameters<
+    ReturnType<typeof useSetting<'core'>>['upsert']
+  >[0]
 
   // @ts-expect-error service mode has a dedicated command
   const servicePatch: Patch = { enable_service_mode: false }
@@ -223,6 +240,12 @@ test('ordinary settings writes exclude dedicated fields', () => {
   const serviceValue: ServiceValue = false
   // @ts-expect-error hotkey fields are read-only through useSetting
   const hotkeysValue: HotkeysValue = []
+  // @ts-expect-error the core selection has a dedicated command
+  const corePatch: Patch = { core: 'mihomo' }
+  // @ts-expect-error the core selection is read-only through useSetting
+  const coreValue: CoreValue = 'mihomo'
+  // @ts-expect-error system fields are written through useSystemSettings
+  const systemPatch: Patch = { enable_system_proxy: true }
   const ordinary: Patch = { theme_mode: 'dark' }
 
   expect([
@@ -230,12 +253,18 @@ test('ordinary settings writes exclude dedicated fields', () => {
     hotkeysPatch,
     serviceValue,
     hotkeysValue,
+    corePatch,
+    coreValue,
+    systemPatch,
     ordinary,
   ]).toEqual([
     { enable_service_mode: false },
     { hotkeys: [] },
     false,
     [],
+    { core: 'mihomo' },
+    'mihomo',
+    { enable_system_proxy: true },
     { theme_mode: 'dark' },
   ])
 })
@@ -264,14 +293,99 @@ test('useClashSettings passes the mutation outcome through', async ({
   let outcome: unknown
   await hook.act(async () => {
     outcome = await hook.result.current.upsert.mutateAsync({
-      enable_tun_mode: true,
+      expand_include_all: true,
     })
   })
 
   expect(outcome).toEqual(degraded)
   expect(invoke).toHaveBeenCalledWith('patch_clash_config', {
-    patch: { enable_tun_mode: true },
+    patch: { expand_include_all: true },
   })
+})
+
+test('control-plane writes are refused by the type of the ordinary Clash hook', () => {
+  type Patch = Parameters<
+    ReturnType<typeof useClashSettings>['upsert']['mutateAsync']
+  >[0]
+  type TunValue = Parameters<
+    ReturnType<typeof useClashSetting<'enable_tun_mode'>>['upsert']
+  >[0]
+  type SystemPatch = Parameters<
+    ReturnType<typeof useClashSystemSettings>['upsert']['mutateAsync']
+  >[0]
+
+  // @ts-expect-error TUN is a control-plane field
+  const tunPatch: Patch = { enable_tun_mode: true }
+  // @ts-expect-error the whole override record is in no Clash request
+  const overridesPatch: SystemPatch = { overrides: {} }
+  // @ts-expect-error TUN is read-only through useClashSetting
+  const tunValue: TunValue = true
+  const ordinary: Patch = { expand_include_all: true }
+
+  expect([tunPatch, overridesPatch, tunValue, ordinary]).toEqual([
+    { enable_tun_mode: true },
+    { overrides: {} },
+    true,
+    { expand_include_all: true },
+  ])
+})
+
+test('useSystemSetting patches a system field through its own command', async ({
+  onTestFinished,
+}) => {
+  const { hook, settled, invoke } = await setup(
+    () => useSystemSetting('enable_system_proxy'),
+    onTestFinished,
+  )
+  await expect.poll(() => hook.result.current.value).toBe(false)
+
+  await hook.act(async () => {
+    await hook.result.current.upsert(true)
+  })
+
+  expect(invoke).toHaveBeenCalledWith('patch_system_settings', {
+    patch: { enable_system_proxy: true },
+  })
+  expect(invoke).not.toHaveBeenCalledWith('patch_app_config', expect.anything())
+  expect(settled).toEqual([degraded])
+})
+
+test('useSystemSetting clears the PAC URL with an explicit null', async ({
+  onTestFinished,
+}) => {
+  const { hook, invoke } = await setup(
+    () => useSystemSetting('pac_url'),
+    onTestFinished,
+  )
+  await expect
+    .poll(() => hook.result.current.value)
+    .toBe('https://example.com/proxy.pac')
+
+  await hook.act(async () => {
+    await hook.result.current.upsert(null)
+  })
+
+  expect(invoke).toHaveBeenCalledWith('patch_system_settings', {
+    patch: { pac_url: null },
+  })
+})
+
+test('useSystemSettings passes the mutation outcome through', async ({
+  onTestFinished,
+}) => {
+  const { hook } = await setup(() => useSystemSettings(), onTestFinished)
+  await expect
+    .poll(() => hook.result.current.query.data?.enable_system_proxy)
+    .toBe(false)
+
+  let outcome: unknown
+  await hook.act(async () => {
+    outcome = await hook.result.current.upsert.mutateAsync({
+      enable_proxy_guard: true,
+    })
+  })
+
+  expect(outcome).toEqual(degraded)
 })
 
 test('a patch resolves only after the config is read back', async ({

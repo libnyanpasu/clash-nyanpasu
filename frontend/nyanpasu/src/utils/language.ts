@@ -11,7 +11,7 @@ export type Language = (typeof locales)[number]
 export const LANGUAGE_STORAGE_KEY = 'paraglide-language-cache'
 
 // encode the language storage key to avoid special characters
-const CACHED_LANGUAGE_STORAGE_KEY = btoa(LANGUAGE_STORAGE_KEY)
+export const CACHED_LANGUAGE_STORAGE_KEY = btoa(LANGUAGE_STORAGE_KEY)
 
 /**
  * Spellings that older builds persisted for a language, mapped to the paraglide

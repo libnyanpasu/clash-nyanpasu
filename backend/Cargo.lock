@@ -6841,6 +6841,7 @@ dependencies = [
  "specta",
  "struct-patch",
  "strum",
+ "subtle",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -6852,6 +6853,7 @@ dependencies = [
  "url",
  "uuid",
  "yaml_serde",
+ "zeroize",
  "zstd",
 ]
 

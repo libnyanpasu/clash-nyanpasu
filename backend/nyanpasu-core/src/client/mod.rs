@@ -48,6 +48,7 @@ pub mod logs;
 mod network_tests;
 pub(crate) mod ports;
 pub mod profiles;
+pub mod remote_access;
 pub mod runtime;
 pub mod runtime_build;
 pub mod runtime_error;

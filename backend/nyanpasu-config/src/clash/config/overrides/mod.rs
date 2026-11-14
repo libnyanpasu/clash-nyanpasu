@@ -1,5 +1,8 @@
 mod manageable;
+mod requests;
 mod tun;
+
+pub use requests::*;
 
 pub use manageable::ManageableField;
 pub use tun::{TunOverrides, TunOverridesPatch};

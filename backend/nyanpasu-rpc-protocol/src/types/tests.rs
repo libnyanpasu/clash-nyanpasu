@@ -237,3 +237,115 @@ fn public_error_forms_omit_detail_and_preserve_decision_metadata() {
         assert_eq!(*decoded_failure, failure);
     }
 }
+
+#[test]
+fn public_and_received_mutation_outcomes_decode_full_and_public_payloads() {
+    use nyanpasu_runtime_values::{
+        app_update::{AppUpdatePhase, AppUpdateRelease, AppUpdateSnapshot, AppUpdateSummary},
+        runtime::{CommitReceipt, DegradationPhase, RuntimeCommitStatus},
+    };
+
+    let full_json = serde_json::json!({
+        "status": "committed_degraded",
+        "value": "profile-1",
+        "commits": [{
+            "operation_id": "op-1",
+            "domain": "profiles",
+            "source_version": 3,
+            "runtime": "applied"
+        }],
+        "notifications_pending": true,
+        "degradations": [{
+            "phase": "runtime_apply",
+            "reason": {"code": "runtime_deferred", "cause": {"kind": "shutting_down"}},
+            "message": "secret host path /home/alice/cfg.yaml",
+            "retryable": true
+        }]
+    });
+    let full_received: super::ReceivedMutationOutcome<String> =
+        serde_json::from_value(full_json).unwrap();
+    assert!(matches!(
+        full_received,
+        super::ReceivedMutationOutcome::Full(_)
+    ));
+
+    let public_outcome = super::PublicMutationOutcome::CommittedDegraded {
+        value: "profile-1".to_owned(),
+        commits: vec![CommitReceipt {
+            operation_id: Some("op-1".to_owned()),
+            domain: "profiles".to_owned(),
+            source_version: 3,
+            runtime: RuntimeCommitStatus::Applied,
+        }],
+        notifications_pending: true,
+        degradations: vec![
+            super::PublicDegradation {
+                phase: DegradationPhase::RuntimeApply,
+                reason: super::PublicDegradationReason::RuntimeDeferred {
+                    cause: super::PublicRuntimeError::ShuttingDown,
+                },
+                retryable: true,
+            },
+            super::PublicDegradation {
+                phase: DegradationPhase::SystemEffect,
+                reason: super::PublicDegradationReason::ProfileAutoActivationFailed {
+                    cause: super::PublicProfilesError::Commit {
+                        source: super::PublicCommitAborted {
+                            kind: super::PublicCommitAbortedKind::RuntimeFailed,
+                            runtime: Some(super::PublicRuntimeAftermathKind::RolledBack),
+                            runtime_causes: vec![super::PublicRuntimeError::CoreRejectedConfig {
+                                core_kind: Some(
+                                    nyanpasu_core_metadata::CoreErrorKind::InvalidConfig,
+                                ),
+                            }],
+                            aftermath_cause: None,
+                        },
+                    },
+                },
+                retryable: false,
+            },
+        ],
+    };
+    let encoded_public = serde_json::to_value(&public_outcome).unwrap();
+    assert_eq!(encoded_public["status"], "committed_degraded");
+    assert_eq!(encoded_public["value"], "profile-1");
+    assert_eq!(encoded_public["notifications_pending"], true);
+    assert!(encoded_public["degradations"][0].get("message").is_none());
+
+    let public_received: super::ReceivedMutationOutcome<String> =
+        serde_json::from_value(encoded_public).unwrap();
+    assert!(matches!(
+        public_received,
+        super::ReceivedMutationOutcome::Public(_)
+    ));
+
+    let snapshot = AppUpdateSnapshot {
+        revision: 9,
+        phase: AppUpdatePhase::Failed,
+        release: Some(AppUpdateRelease {
+            version: "2.1.0".into(),
+            date: Some("2026-11-14".into()),
+            body: Some("secret release notes".into()),
+        }),
+        downloaded: 512,
+        total: Some(1024),
+        speed: 128.0,
+        source: None,
+        error: Some("https://user:pass@secret.example/update failed".into()),
+        last_checked_at: Some("2026-11-14T00:00:00Z".into()),
+        supported: true,
+        endpoints: vec!["https://user:pass@secret.example/latest.json".into()],
+    };
+    let summary = AppUpdateSummary::from(&snapshot);
+    let summary_json = serde_json::to_value(&summary).unwrap();
+    assert_eq!(summary_json["phase"], "failed");
+    assert_eq!(summary_json["has_error"], true);
+    assert!(summary_json.get("endpoints").is_none());
+    assert!(summary_json.get("error").is_none());
+    assert!(summary_json["release"].get("body").is_none());
+    let decoded_summary: super::RpcAppUpdateOutcome = serde_json::from_value(summary_json).unwrap();
+    assert!(matches!(
+        decoded_summary,
+        super::RpcAppUpdateOutcome::Public(_)
+    ));
+}

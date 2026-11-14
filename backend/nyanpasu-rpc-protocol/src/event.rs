@@ -12,6 +12,7 @@ const ALL_TARGETS: &[RpcTarget] = &[RpcTarget::Desktop, RpcTarget::Http, RpcTarg
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EventName {
     AppUpdateStateChanged,
+    AppUpdateSummaryChanged,
     ClashWs,
     ConfigurationStatusChanged,
     ConfigurationStatusSummaryChanged,
@@ -30,8 +31,9 @@ pub enum EventName {
 
 impl EventName {
     /// All shared identities in desktop bridge registration order.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::AppUpdateStateChanged,
+        Self::AppUpdateSummaryChanged,
         Self::ClashWs,
         Self::CoreLogsChanged,
         Self::ConfigurationStatusChanged,
@@ -52,6 +54,7 @@ impl EventName {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::AppUpdateStateChanged => "app-update-state-changed",
+            Self::AppUpdateSummaryChanged => "app-update-summary-changed",
             Self::ClashWs => "clash-ws-event",
             Self::ConfigurationStatusChanged => "configuration-status-changed",
             Self::ConfigurationStatusSummaryChanged => "configuration-status-summary-changed",
@@ -80,6 +83,7 @@ impl EventName {
             // desktop-only signal may reach another transport is the separate
             // question of event exposure, decided with admission.
             Self::ClashWs
+            | Self::AppUpdateSummaryChanged
             | Self::ConfigurationStatusSummaryChanged
             | Self::CoreLogsSummaryChanged
             | Self::CoreStatusSummaryChanged
@@ -119,6 +123,7 @@ impl EventName {
             | Self::CoreStatusChanged
             | Self::ServiceStatusChanged => ALL_TARGETS,
             Self::ClashWs
+            | Self::AppUpdateSummaryChanged
             | Self::ConfigurationStatusSummaryChanged
             | Self::CoreLogsSummaryChanged
             | Self::CoreStatusSummaryChanged
@@ -132,7 +137,9 @@ impl EventName {
     /// Shell capability required before a non-desktop transport may expose or deliver this event.
     pub fn capability(self) -> Option<ShellCapability> {
         match self {
-            Self::AppUpdateStateChanged => Some(ShellCapability::AppUpdate),
+            Self::AppUpdateStateChanged | Self::AppUpdateSummaryChanged => {
+                Some(ShellCapability::AppUpdate)
+            }
             Self::SchemeRequestReceived => Some(ShellCapability::DeepLink),
             Self::WindowMessage => Some(ShellCapability::Window),
             Self::ClashWs
@@ -167,6 +174,7 @@ mod tests {
         assert_eq!(
             by_scope(Scope::Read),
             [
+                "app-update-summary-changed",
                 "clash-ws-event",
                 "scheme-request-received-event",
                 "storage-resync-event",

@@ -23,7 +23,7 @@ use super::{
     ports::{UpdaterBackend, UpdaterProgress},
     shared::{self, CoreTypeMeta},
 };
-use crate::download::{DownloadSession, DownloadStatus};
+use crate::download::{DownloadProgressSummary, DownloadSession, DownloadStatus};
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_contracts::{bundle_metadata::BundleMetadata, net::SelfProxyPortSource};
 use nyanpasu_paths::PathResolver;
@@ -46,6 +46,56 @@ pub struct UpdaterSummary {
     pub id: usize,
     pub state: UpdaterState,
     pub downloader: DownloadStatus,
+}
+
+/// Safe core updater state without raw failure strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdaterProgressState {
+    Idle,
+    Downloading,
+    Decompressing,
+    Replacing,
+    Restarting,
+    Done,
+    Failed,
+}
+
+impl From<&UpdaterState> for UpdaterProgressState {
+    fn from(state: &UpdaterState) -> Self {
+        match state {
+            UpdaterState::Idle => Self::Idle,
+            UpdaterState::Downloading => Self::Downloading,
+            UpdaterState::Decompressing => Self::Decompressing,
+            UpdaterState::Replacing => Self::Replacing,
+            UpdaterState::Restarting => Self::Restarting,
+            UpdaterState::Done => Self::Done,
+            UpdaterState::Failed(_) => Self::Failed,
+        }
+    }
+}
+
+/// Safe core updater progress snapshot for callers without `Scope::SensitiveRead`.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, Type)]
+pub struct UpdaterProgressSummary {
+    pub id: usize,
+    pub state: UpdaterProgressState,
+    pub downloader: DownloadProgressSummary,
+}
+
+impl From<&UpdaterSummary> for UpdaterProgressSummary {
+    fn from(summary: &UpdaterSummary) -> Self {
+        let UpdaterSummary {
+            id,
+            state,
+            downloader,
+        } = summary;
+        Self {
+            id: *id,
+            state: state.into(),
+            downloader: downloader.into(),
+        }
+    }
 }
 
 /// Prepares core artifacts using the session proxy source and bundle metadata.

@@ -118,7 +118,7 @@
     "lint-staged": "17.6.0",
     "npm-run-all2": "9.0.4",
     "oxlint": "1.93.0",
-    "playwright": "1.65.0",
+    "playwright": "1.65.1",
     "postcss": "8.5.33",
     "postcss-html": "2.0.0",
     "prettier": "3.10.1",

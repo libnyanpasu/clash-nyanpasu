@@ -21,7 +21,7 @@ use crate::{
             ports::{PreparedRuntime, RuntimePreparationPort},
         },
         runtime_error,
-        runtime_recovery::{ObservedRuntime, verify_recovery_target},
+        runtime_recovery::{ObservedRuntime, matches_confirmed_apply, verify_recovery_target},
     },
     state::mutation::intent::CoreRunIntent,
 };
@@ -48,6 +48,8 @@ pub(super) struct RestorableBaseline {
 pub(super) struct PreparedCandidate {
     pub(super) runtime: PreparedRuntime,
     pub(super) target_host: ExecutionHost,
+    pub(super) selection: super::committed::Selection,
+    pub(super) interruption: Option<super::committed::SelectionChange>,
 }
 
 impl ApplicationWorkflow {
@@ -142,7 +144,6 @@ impl ApplicationWorkflow {
         }
         let identity = target.identity.clone();
         let inputs = self.capture_committed().await;
-        let selection = super::committed::Selection::of(&inputs);
         if inputs.target_key().as_ref() != Some(&identity) {
             // A newer committed source owns convergence now. Never reapply the
             // old bytes: the target ends with this attempt. Nothing was applied,
@@ -192,10 +193,7 @@ impl ApplicationWorkflow {
         }
         let target = self.committed_target();
         match outcome {
-            ApplyOutcome::Applied(candidate) => {
-                self.applied_selection = Some(selection);
-                self.publish_committed_product(candidate.product).await;
-                self.lifecycle.runtime.accept_transition();
+            ApplyOutcome::Applied(_) => {
                 self.notify_bound(true);
                 // Converged: the target ends with this attempt.
                 if self.lifecycle.core.pending_action().is_none() {
@@ -216,13 +214,17 @@ impl ApplicationWorkflow {
                 target.health = ConvergenceHealth::Blocked;
                 target.next_attempt = None;
             }
-            ApplyOutcome::Refused(error) => {
+            ApplyOutcome::Refused {
+                cause: error,
+                action_started,
+            } => {
                 target.cause.message = error.to_string();
-                target.health = if retryable_apply(&error) && target.attempts_remaining > 0 {
-                    ConvergenceHealth::RetryScheduled
-                } else {
-                    ConvergenceHealth::Blocked
-                };
+                target.health =
+                    if action_started && retryable_apply(&error) && target.attempts_remaining > 0 {
+                        ConvergenceHealth::RetryScheduled
+                    } else {
+                        ConvergenceHealth::Blocked
+                    };
                 target.next_attempt =
                     (target.health == ConvergenceHealth::RetryScheduled).then(|| {
                         tokio::time::Instant::now()
@@ -314,12 +316,7 @@ impl ApplicationWorkflow {
             .last_confirmed_runtime_receipt()
             .filter(|receipt| {
                 expected.as_ref().is_some_and(|status| {
-                    verify_recovery_target(
-                        receipt,
-                        &ObservedRuntime::from_status(status),
-                        Some(&receipt.binding),
-                    )
-                    .is_verified()
+                    matches_confirmed_apply(receipt, &ObservedRuntime::from_status(status))
                 })
             });
         let last_apply = || {
@@ -371,24 +368,38 @@ impl ApplicationWorkflow {
         baseline: &RestorableBaseline,
         inputs: super::inputs::RuntimeInputs,
     ) -> Result<PreparedCandidate, ApplyOutcome> {
+        self.apply_result = Some(super::mutation::ApplyResultKind::Refused);
         let target_host = effective_host(
             &inputs.app,
             self.lifecycle.service_usable_now(),
             baseline.host,
         );
-        let runtime = self
-            .preparation
-            .prepare_candidate_inputs(inputs)
-            .await
-            .map_err(|error| ApplyOutcome::Refused(Arc::new(error)))?;
+        let selection = super::committed::Selection::of(&inputs);
+        let interruption = selection.interruption(self.applied_selection.as_ref(), &inputs.clash);
+        let target = inputs.target_key();
+        let runtime = match self
+            .checked
+            .take()
+            .filter(|prepared| target.is_some() && prepared.target == target)
+        {
+            Some(runtime) => Ok(runtime),
+            None => self.preparation.prepare_inputs(inputs).await,
+        }
+        .map_err(|error| ApplyOutcome::Refused {
+            cause: Arc::new(error),
+            action_started: false,
+        })?;
         self.preparation
             .core_spec(&runtime.snapshot.target_core)
-            .map_err(|error| {
-                ApplyOutcome::Refused(Arc::new(ResolveCoreBinarySnafu.into_error(error)))
+            .map_err(|error| ApplyOutcome::Refused {
+                cause: Arc::new(ResolveCoreBinarySnafu.into_error(error)),
+                action_started: false,
             })?;
         Ok(PreparedCandidate {
             runtime,
             target_host,
+            selection,
+            interruption,
         })
     }
 
@@ -398,16 +409,104 @@ impl ApplicationWorkflow {
         prepared: PreparedCandidate,
         charge: AttemptCharge,
     ) -> ApplyOutcome {
+        use crate::client::core_lifecycle::{CoreLifecycleWorkflow, apply::RuntimeApplyOptions};
+        use nyanpasu_runtime_values::runtime::{
+            Degradation, DegradationPhase, DegradationReason, InterruptFailure,
+        };
+
+        let selection = prepared.selection.clone();
+        let interruption = prepared.interruption;
+        let context = if interruption.is_some() {
+            let operation_id = self
+                .live
+                .as_ref()
+                .expect("application runs within a live attempt")
+                .operation_id;
+            Some(
+                self.lifecycle
+                    .prepare_apply(
+                        operation_id,
+                        RuntimeApplyOptions {
+                            interrupt_connections: Some(crate::connections::ConnectionScope::All),
+                        },
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        let outcome = self.submit_prepared(baseline, prepared, charge).await;
+        self.apply_result = Some(outcome.kind());
+        match &outcome {
+            ApplyOutcome::Applied(candidate) => {
+                self.applied_selection = Some(selection);
+                if let Some(cause) = self
+                    .publish_committed_product(candidate.product.clone())
+                    .await
+                {
+                    tracing::warn!(%cause, "could not publish the confirmed runtime product");
+                    self.round_degradations.push(Degradation {
+                        phase: DegradationPhase::RuntimeBuild,
+                        message: cause.to_string(),
+                        reason: DegradationReason::RuntimeProductPublishFailed { cause },
+                        retryable: true,
+                    });
+                }
+                self.lifecycle.runtime.accept_transition();
+                if let Some(context) = context
+                    && let Some(error) =
+                        CoreLifecycleWorkflow::finish_interruption(context, candidate.replaced)
+                            .await
+                {
+                    tracing::warn!(%error, "could not interrupt the previous runtime's connections");
+                    let cause = InterruptFailure::from(&error);
+                    self.round_degradations.push(Degradation {
+                        phase: DegradationPhase::SystemEffect,
+                        reason: match interruption
+                            .expect("an interruption context has a selection change")
+                        {
+                            super::committed::SelectionChange::Mode => {
+                                DegradationReason::ModeInterruptionFailed { cause }
+                            }
+                            super::committed::SelectionChange::Profile => {
+                                DegradationReason::ProfileInterruptionFailed { cause }
+                            }
+                        },
+                        message: error.to_string(),
+                        retryable: false,
+                    });
+                }
+            }
+            ApplyOutcome::Refused { .. } | ApplyOutcome::Waiting(_) => {
+                self.lifecycle.runtime.accept_transition();
+            }
+            ApplyOutcome::Unknown(_) => self.lifecycle.ports.invalidate(),
+        }
+        outcome
+    }
+
+    async fn submit_prepared(
+        &mut self,
+        baseline: &RestorableBaseline,
+        prepared: PreparedCandidate,
+        charge: AttemptCharge,
+    ) -> ApplyOutcome {
         let PreparedCandidate {
             runtime,
             target_host,
+            selection: _,
+            interruption: _,
         } = prepared;
         self.lifecycle.runtime.begin_transition();
         self.charge_attempt(charge);
-        let mut expected = baseline
-            .expected
-            .clone()
-            .expect("the application baseline was observed");
+        let Some(mut expected) = baseline.expected.clone() else {
+            return ApplyOutcome::Waiting(Arc::new(
+                nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                    reason: "the runtime status could not be read before submission".to_owned(),
+                }
+                .build(),
+            ));
+        };
         if target_host != baseline.host {
             match self.lifecycle.move_execution_host(target_host, false).await {
                 Ok(report) if report.completed() => {
@@ -443,7 +542,10 @@ impl ApplicationWorkflow {
                     return if unknown {
                         ApplyOutcome::Unknown(error)
                     } else if handoff_started {
-                        ApplyOutcome::Refused(error)
+                        ApplyOutcome::Refused {
+                            cause: error,
+                            action_started: true,
+                        }
                     } else {
                         ApplyOutcome::Waiting(error)
                     };
@@ -466,45 +568,31 @@ impl ApplicationWorkflow {
                     report: Box::new(report),
                 })
             }
-            Ok(RuntimeSubmission::RolledBack(report)) => ApplyOutcome::Refused(Arc::new(
-                CoreRolledBackSnafu {
-                    reason: report.failed_apply,
-                }
-                .build(),
-            )),
+            Ok(RuntimeSubmission::RolledBack(report)) => ApplyOutcome::Refused {
+                cause: Arc::new(
+                    CoreRolledBackSnafu {
+                        reason: report.failed_apply,
+                    }
+                    .build(),
+                ),
+                action_started: true,
+            },
             Ok(RuntimeSubmission::Unknown(uncertain)) => ApplyOutcome::Unknown(Arc::new(
                 SubmissionUnobservedSnafu.into_error(runtime_error::core_failure(uncertain.error)),
             )),
-            Ok(RuntimeSubmission::NotSubmitted(error)) => ApplyOutcome::Waiting(Arc::new(
-                ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)),
-            )),
-            Err(error) => ApplyOutcome::Waiting(Arc::new(error)),
+            Ok(RuntimeSubmission::NotSubmitted(error)) => not_submitted_outcome(error),
+            Err(error) => ApplyOutcome::Refused {
+                cause: Arc::new(error),
+                action_started: false,
+            },
             Ok(RuntimeSubmission::Unchanged(error)) => {
                 let error =
                     Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
-                ApplyOutcome::Refused(error)
+                ApplyOutcome::Refused {
+                    cause: error,
+                    action_started: true,
+                }
             }
-        }
-    }
-
-    /// Publishes the product only after the core confirms its application.
-    pub(super) async fn finish_applied(
-        &mut self,
-        candidate: &AppliedCandidate,
-        degradations: &mut Vec<nyanpasu_runtime_values::runtime::Degradation>,
-    ) {
-        self.deferred = None;
-        let failure = self
-            .publish_committed_product(candidate.product.clone())
-            .await;
-        self.lifecycle.runtime.accept_transition();
-        if let Some(cause) = failure {
-            degradations.push(nyanpasu_runtime_values::runtime::Degradation {
-                phase: nyanpasu_runtime_values::runtime::DegradationPhase::RuntimeBuild,
-                message: cause.to_string(),
-                reason: nyanpasu_runtime_values::runtime::DegradationReason::RuntimeProductPublishFailed { cause },
-                retryable: true,
-            });
         }
     }
 
@@ -595,6 +683,27 @@ pub(super) enum AttemptCharge {
     Target { automatic: bool },
 }
 
+fn not_submitted_outcome(error: nyanpasu_core_manager::CoreError) -> ApplyOutcome {
+    let waiting = matches!(
+        error.kind,
+        Some(
+            CoreErrorKind::RevisionConflict
+                | CoreErrorKind::OperationConflict
+                | CoreErrorKind::QueueFull
+                | CoreErrorKind::BackendUnavailable
+        )
+    );
+    let error = Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
+    if waiting {
+        ApplyOutcome::Waiting(error)
+    } else {
+        ApplyOutcome::Refused {
+            cause: error,
+            action_started: false,
+        }
+    }
+}
+
 fn unknown_kind(kind: Option<CoreErrorKind>) -> bool {
     matches!(
         kind,
@@ -636,6 +745,54 @@ mod tests {
 
     use crate::client::runtime_error;
     use nyanpasu_runtime_values::runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError};
+
+    // Guards classifying only these four kinds as dependencies, regardless of the retryable hint.
+    #[test]
+    fn not_submitted_waits_only_for_conflicts_and_unavailable_dependencies() {
+        for kind in [
+            None,
+            Some(CoreErrorKind::Internal),
+            Some(CoreErrorKind::ConfigCheckFailed),
+            Some(CoreErrorKind::ShuttingDown),
+            Some(CoreErrorKind::RevisionConflict),
+            Some(CoreErrorKind::OperationConflict),
+            Some(CoreErrorKind::QueueFull),
+            Some(CoreErrorKind::BackendUnavailable),
+        ] {
+            for retryable in [false, true] {
+                let outcome = super::not_submitted_outcome(CoreError {
+                    kind,
+                    message: "refusal".into(),
+                    retryable,
+                    operation_id: None,
+                });
+                let waiting = matches!(
+                    kind,
+                    Some(
+                        CoreErrorKind::RevisionConflict
+                            | CoreErrorKind::OperationConflict
+                            | CoreErrorKind::QueueFull
+                            | CoreErrorKind::BackendUnavailable
+                    )
+                );
+                match outcome {
+                    super::ApplyOutcome::Waiting(cause) => {
+                        assert!(waiting, "{kind:?}");
+                        assert_eq!(cause.core_kind(), kind);
+                    }
+                    super::ApplyOutcome::Refused {
+                        cause,
+                        action_started,
+                    } => {
+                        assert!(!waiting, "{kind:?}");
+                        assert!(!action_started);
+                        assert_eq!(cause.core_kind(), kind);
+                    }
+                    outcome => panic!("unexpected classification: {outcome:?}"),
+                }
+            }
+        }
+    }
 
     #[test]
     fn runtime_core_failure_conversion_preserves_kind_retryability_and_operation_id() {

@@ -49,9 +49,32 @@ pub(crate) struct AppliedCandidate {
 #[derive(Debug, Clone)]
 pub(crate) enum ApplyOutcome {
     Applied(AppliedCandidate),
-    Refused(Arc<RuntimeError>),
+    Refused {
+        cause: Arc<RuntimeError>,
+        /// Whether an owner action ran, so the existing application retry policy still applies.
+        action_started: bool,
+    },
     Waiting(Arc<RuntimeError>),
     Unknown(Arc<RuntimeError>),
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ApplyResultKind {
+    Applied,
+    Refused,
+    Waiting,
+    Unknown,
+}
+
+impl ApplyOutcome {
+    pub(super) fn kind(&self) -> ApplyResultKind {
+        match self {
+            Self::Applied(_) => ApplyResultKind::Applied,
+            Self::Refused { .. } => ApplyResultKind::Refused,
+            Self::Waiting(_) => ApplyResultKind::Waiting,
+            Self::Unknown(_) => ApplyResultKind::Unknown,
+        }
+    }
 }
 
 /// A committed desired value the core is not running, with its automatic

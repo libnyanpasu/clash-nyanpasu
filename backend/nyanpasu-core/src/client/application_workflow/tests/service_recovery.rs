@@ -9,6 +9,7 @@ use nyanpasu_contracts::{
 };
 use nyanpasu_ipc::api::{core::v2::OperationInfo, status::CoreStateDetail};
 use nyanpasu_runtime_values::core_status::EndpointConnectivity;
+use struct_patch::Patch as _;
 
 struct RecoveringEndpoint {
     delegate: Arc<TestControlEndpoint>,
@@ -137,6 +138,7 @@ struct RecoveryGraph {
     client: ApplicationWorkflowClient,
     daemon: Arc<RecoveringDaemon>,
     builder: Arc<BlockingBuilder>,
+    clash: crate::client::clash_config::ClashConfigClient,
     shutdown: CancellationToken,
 }
 
@@ -184,7 +186,7 @@ impl RecoveryGraph {
             .await
             .unwrap();
         let shutdown = CancellationToken::new();
-        let (client, builder, application, _) = workflow_graph_with_clients(
+        let (client, builder, application, clash) = workflow_graph_with_clients(
             &dir,
             core.clone(),
             service,
@@ -204,6 +206,7 @@ impl RecoveryGraph {
             client,
             daemon,
             builder,
+            clash,
             shutdown,
         }
     }
@@ -307,14 +310,44 @@ async fn daemon_crash_reconnects_and_restores_only_a_previously_running_core() {
 
 #[tokio::test]
 async fn transport_outage_reconnects_without_restart_or_reconcile() {
+    use nyanpasu_runtime_values::mutation::ConfigDomain;
     let graph = RecoveryGraph::new(true).await;
+    graph.client.reconcile().await.unwrap();
+    let submitted = graph.daemon.endpoint.delegate.submissions();
+    let generation = graph.client.core_status().generation;
     graph.outage(false).await;
     graph.attempt().await;
     assert_eq!(graph.starts(), 0);
-    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+    assert!(graph.client.core_status().generation > generation);
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), submitted);
     assert_eq!(
         graph.client.core_status().connectivity,
         EndpointConnectivity::Connected
+    );
+    let version = graph.clash.snapshot().version;
+    graph.client.source_committed(ConfigDomain::Clash, version);
+    barrier(&graph.client).await;
+    assert_eq!(
+        graph.daemon.endpoint.delegate.submissions(),
+        submitted,
+        "the unchanged target still matches the confirmed receipt after reconnect"
+    );
+    let mut config = graph.clash.snapshot().state;
+    config.overrides.apply(
+        nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+            mode: Some(nyanpasu_config::clash::config::overrides::Mode::Global),
+            ..Default::default()
+        },
+    );
+    graph.clash.replace(config).await.unwrap();
+    let version = graph.clash.snapshot().version;
+    graph.client.source_committed(ConfigDomain::Clash, version);
+    let status = graph.client.settled(ConfigDomain::Clash, version).await;
+    assert_eq!(status.conclusion.label(), "Converged");
+    assert_eq!(
+        graph.daemon.endpoint.delegate.submissions(),
+        submitted + 1,
+        "a later save applies without stopping the unchanged instance"
     );
 }
 

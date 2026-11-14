@@ -41,7 +41,7 @@ use crate::{
         convergence::{OutcomeClass, RETRY_DELAYS, next_wait},
         core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
-        runtime_recovery::{ObservedRuntime, verify_recovery_target},
+        runtime_recovery::{ObservedRuntime, matches_confirmed_apply},
     },
     state::mutation::intent::CoreRunIntent,
 };
@@ -706,7 +706,7 @@ impl ApplicationWorkflow {
                 }
             }
             Some(CoreStateDetail::Running { .. }) => {
-                // Step 3: kept, not resubmitted, and its binding is a fact
+                // Step 3: kept, not reaction_started, and its binding is a fact
                 // again.
                 if let Some(confirmed) = self.verified_running_receipt(&status).await {
                     self.lifecycle
@@ -755,12 +755,10 @@ impl ApplicationWorkflow {
         );
         let confirmed = self.lifecycle.runtime.confirmed().filter(|confirmed| {
             recovering
-                && verify_recovery_target(
+                && matches_confirmed_apply(
                     &confirmed.receipt,
                     &ObservedRuntime::from_status(status),
-                    Some(&confirmed.receipt.binding),
                 )
-                .is_verified()
         })?;
         let committed = self.capture_committed().await.target_key()?;
         (confirmed.receipt.target.as_ref() == Some(&committed)).then_some(confirmed)
@@ -836,7 +834,6 @@ impl ApplicationWorkflow {
             );
         }
         let inputs = self.capture_committed().await;
-        let selection = super::committed::Selection::of(&inputs);
         let Some(identity) = inputs.target_key() else {
             return self.block("the committed configuration has no runtime identity".to_owned());
         };
@@ -882,9 +879,6 @@ impl ApplicationWorkflow {
         }
         match outcome {
             ApplyOutcome::Applied(candidate) => {
-                self.applied_selection = Some(selection);
-                self.publish_committed_product(candidate.product).await;
-                self.lifecycle.runtime.accept_transition();
                 self.committed_target().waits = 0;
                 Reestablished::Applied(candidate.report)
             }
@@ -892,8 +886,12 @@ impl ApplicationWorkflow {
                 self.lifecycle.ownership = Ownership::Unproven;
                 Reestablished::RecoveryRequired(error.to_string())
             }
-            ApplyOutcome::Waiting(error) | ApplyOutcome::Refused(error) => {
-                if super::tcc::retryable_apply(&error) {
+            ApplyOutcome::Waiting(error) => self.schedule_retry(error.to_string()),
+            ApplyOutcome::Refused {
+                cause: error,
+                action_started,
+            } => {
+                if action_started && super::tcc::retryable_apply(&error) {
                     self.schedule_retry(error.to_string())
                 } else {
                     self.block_applied(error.to_string())

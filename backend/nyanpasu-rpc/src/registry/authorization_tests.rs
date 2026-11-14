@@ -1132,3 +1132,540 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
 
     fixture.shutdown().await;
 }
+
+#[tokio::test]
+async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
+    use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig};
+    use nyanpasu_rpc_protocol::RpcOwner;
+
+    use crate::http::{
+        HttpServerClient, auth::NyanpasuClientHttpAuthenticator, routes::RpcHttpRoutes,
+    };
+
+    let directory = tempfile::tempdir().unwrap();
+    let routes = Arc::new(RpcHttpRoutes::default());
+    let authenticator = Arc::new(crate::http::auth::RpcHttpAuthenticator::default());
+    let mut args = test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    )
+    .await;
+    args.host_adapters.http_server =
+        Some(control_factory(None, routes.clone(), authenticator.clone()));
+    let paths = args.paths.clone();
+    let client = nyanpasu_core::client::NyanpasuClient::try_new(args)
+        .await
+        .unwrap();
+    authenticator
+        .install(Arc::new(NyanpasuClientHttpAuthenticator::new(&client)))
+        .unwrap();
+    let sink = Arc::new(AuditSink::default());
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(sink),
+            client: client.clone(),
+            storage: nyanpasu_core::storage::Storage::try_new(
+                &directory.path().join("storage.redb"),
+            )
+            .unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        ServerInfo::desktop("2.0.0-admin"),
+        CAPABILITIES,
+    )
+    .unwrap();
+    routes.install(&rpc).unwrap();
+
+    let remote_admin_methods = [
+        ("list_remote_access_tokens", json!({})),
+        (
+            "create_remote_access_token",
+            json!({
+                "request": {
+                    "name": "admin-check",
+                    "scopes": [Scope::Read],
+                }
+            }),
+        ),
+        (
+            "revoke_remote_access_token",
+            json!({ "id": "tok_missing_01" }),
+        ),
+        ("list_remote_browser_sessions", json!({})),
+        (
+            "revoke_remote_browser_session",
+            json!({ "id": "sess_missing_01" }),
+        ),
+        ("create_http_launch_url", json!({})),
+        (
+            "set_remote_access",
+            json!({
+                "config": RemoteAccessConfig::default(),
+            }),
+        ),
+    ];
+
+    // 1. Even a full-scope HTTP caller or Local socket caller gets `unsupported` (`501`),
+    //    and `rpc_describe` reports `allowed: false` on Http & Local, `allowed: true` on Desktop.
+    let full_http = AuthContext::session("sess_full_check");
+    let http_desc = rpc.describe(RpcTarget::Http, &full_http);
+    let local_ctx = AuthContext::local_socket("1000");
+    let local_desc = rpc.describe(RpcTarget::Local, &local_ctx);
+    let desktop_desc = rpc.describe(RpcTarget::Desktop, &AuthContext::desktop("main"));
+    let router = rpc.clone().router();
+
+    for (method, params) in &remote_admin_methods {
+        assert!(
+            http_desc.commands.iter().all(|c| c.name != *method),
+            "HTTP describe must omit desktop-only {method}"
+        );
+        assert!(
+            local_desc.commands.iter().all(|c| c.name != *method),
+            "Local describe must omit desktop-only {method}"
+        );
+        assert!(
+            desktop_desc
+                .commands
+                .iter()
+                .find(|c| c.name == *method)
+                .unwrap()
+                .allowed,
+            "Desktop describe must allow {method}"
+        );
+
+        let (status, body) = rpc_for_test_call_with_auth(
+            &router,
+            method,
+            params.clone(),
+            None,
+            Some(full_http.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method}: {body}");
+        assert_eq!(body["kind"], "unsupported", "{method}: {body}");
+
+        let local_err = rpc
+            .call(
+                RpcTransport::Local,
+                method,
+                RpcCaller::new(local_ctx.clone(), RpcOwner::local_connection("test", 1)),
+                params.clone(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(local_err.kind, "unsupported", "{method}: {local_err:?}");
+
+        let empty_desktop = AuthContext::new(
+            Principal::Desktop {
+                window: "main".to_owned(),
+            },
+            ScopeSet::empty(),
+        );
+        let forbidden_err = rpc
+            .call(
+                RpcTransport::TauriIpc,
+                method,
+                RpcCaller::new(empty_desktop, RpcOwner::desktop("main")),
+                params.clone(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            forbidden_err.kind, "forbidden",
+            "{method}: {forbidden_err:?}"
+        );
+    }
+
+    // 2. Desktop `RpcCaller::desktop("main")` exercises the full admin lifecycle end-to-end:
+    //    enable HTTP -> create launch URL -> login -> list/revoke browser session (closes SSE) ->
+    //    create/list token -> token login -> revoke token (cascades to derived session SSE).
+    let desktop = || RpcCaller::desktop("main");
+    let config = RemoteAccessConfig {
+        http: HttpAccessConfig {
+            enabled: true,
+            strategy: HttpAccessStrategy::LocalAuthenticated,
+            ..Default::default()
+        },
+    };
+    rpc.call(
+        RpcTransport::TauriIpc,
+        "set_remote_access",
+        desktop(),
+        json!({ "config": config }),
+    )
+    .await
+    .unwrap();
+
+    let launch_url: String = serde_json::from_value(
+        rpc.call(
+            RpcTransport::TauriIpc,
+            "create_http_launch_url",
+            desktop(),
+            json!({}),
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    let parsed_launch = url::Url::parse(&launch_url).unwrap();
+    let base_url = format!(
+        "http://{}:{}",
+        parsed_launch.host_str().unwrap(),
+        parsed_launch.port().unwrap()
+    );
+
+    let http = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+
+    // Launch URL exchanges for a session cookie and opens an SSE stream.
+    let exchange = http.get(&launch_url).send().await.unwrap();
+    assert_eq!(exchange.status(), reqwest::StatusCode::SEE_OTHER);
+    let cookie_pair = exchange
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let mut sse_launch = http
+        .get(format!("{base_url}/bridge/events"))
+        .header("cookie", &cookie_pair)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream();
+    assert!(sse_launch.next().await.unwrap().is_ok());
+
+    let sessions: Vec<nyanpasu_contracts::auth::BrowserSessionSummary> = serde_json::from_value(
+        rpc.call(
+            RpcTransport::TauriIpc,
+            "list_remote_browser_sessions",
+            desktop(),
+            json!({}),
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(sessions.len(), 1);
+    let launch_sess_id = sessions[0].id.clone();
+
+    rpc.call(
+        RpcTransport::TauriIpc,
+        "revoke_remote_browser_session",
+        desktop(),
+        json!({ "id": launch_sess_id }),
+    )
+    .await
+    .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(2), sse_launch.next())
+            .await
+            .unwrap()
+            .is_none(),
+        "revoking browser session via desktop RPC must close its active SSE stream"
+    );
+
+    // Create a named token via desktop RPC; list omits the secret.
+    let created = rpc
+        .call(
+            RpcTransport::TauriIpc,
+            "create_remote_access_token",
+            desktop(),
+            json!({
+                "request": {
+                    "name": "cli-helper",
+                    "scopes": [Scope::Read, Scope::Proxy],
+                }
+            }),
+        )
+        .await
+        .unwrap();
+    let created_token = created["token"].as_str().unwrap().to_owned();
+    let created_summary: nyanpasu_contracts::auth::AccessTokenSummary =
+        serde_json::from_value(created["summary"].clone()).unwrap();
+    let listed: Vec<nyanpasu_contracts::auth::AccessTokenSummary> = serde_json::from_value(
+        rpc.call(
+            RpcTransport::TauriIpc,
+            "list_remote_access_tokens",
+            desktop(),
+            json!({}),
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, created_summary.id);
+    assert!(!format!("{listed:?}").contains(&created_token));
+
+    // Exchange token via POST /bridge/login, open SSE with the derived session cookie,
+    // and verify revoking the token cancels the derived session's SSE stream.
+    let login_res = http
+        .post(format!("{base_url}/bridge/login"))
+        .json(&json!({ "token": created_token }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login_res.status(), reqwest::StatusCode::OK);
+    let derived_cookie = login_res
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let mut sse_token = http
+        .get(format!("{base_url}/bridge/events"))
+        .header("cookie", &derived_cookie)
+        .send()
+        .await
+        .unwrap()
+        .bytes_stream();
+    assert!(sse_token.next().await.unwrap().is_ok());
+
+    rpc.call(
+        RpcTransport::TauriIpc,
+        "revoke_remote_access_token",
+        desktop(),
+        json!({ "id": created_summary.id }),
+    )
+    .await
+    .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(2), sse_token.next())
+            .await
+            .unwrap()
+            .is_none(),
+        "revoking a token via desktop RPC must cascade and close derived session SSE streams"
+    );
+
+    let after_revoke: Vec<nyanpasu_contracts::auth::AccessTokenSummary> = serde_json::from_value(
+        rpc.call(
+            RpcTransport::TauriIpc,
+            "list_remote_access_tokens",
+            desktop(),
+            json!({}),
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(after_revoke.is_empty());
+
+    // Keep reference to HttpServerClient type checked in test module.
+    let _typecheck: Option<HttpServerClient> = None;
+
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
+#[tokio::test]
+async fn http_owner_isolation_supports_sse_client_id_query_and_rejects_invalid_nonce() {
+    let fixture = Fixture::new(false).await;
+    let router = fixture.rpc.clone().router();
+    let token_auth = auth_with_scopes([Scope::Read]);
+
+    // Same token with two distinct `?client_id=` SSE query nonces produces distinct owner hashes.
+    let mut req_alpha_query = Request::get("/bridge/events?client_id=tab-alpha")
+        .body(Body::empty())
+        .unwrap();
+    req_alpha_query.extensions_mut().insert(token_auth.clone());
+    let resp_alpha = router.clone().oneshot(req_alpha_query).await.unwrap();
+    assert_eq!(resp_alpha.status(), StatusCode::OK);
+
+    let mut req_alpha_header = Request::get("/bridge/events")
+        .header("x-nyanpasu-client-id", "tab-alpha")
+        .body(Body::empty())
+        .unwrap();
+    req_alpha_header.extensions_mut().insert(token_auth.clone());
+    let resp_alpha_hdr = router.clone().oneshot(req_alpha_header).await.unwrap();
+    assert_eq!(resp_alpha_hdr.status(), StatusCode::OK);
+
+    let mut req_beta_query = Request::get("/bridge/events?client_id=tab-beta")
+        .body(Body::empty())
+        .unwrap();
+    req_beta_query.extensions_mut().insert(token_auth.clone());
+    let resp_beta = router.clone().oneshot(req_beta_query).await.unwrap();
+    assert_eq!(resp_beta.status(), StatusCode::OK);
+
+    // `/bridge/connection-details` also accepts `?client_id=` fallback and `X-Nyanpasu-Client-Id`.
+    let mut conn_alpha = Request::get("/bridge/connection-details?client_id=tab-alpha")
+        .body(Body::empty())
+        .unwrap();
+    conn_alpha.extensions_mut().insert(token_auth.clone());
+    assert_eq!(
+        router.clone().oneshot(conn_alpha).await.unwrap().status(),
+        StatusCode::OK
+    );
+
+    let mut conn_beta = Request::get("/bridge/connection-details?client_id=tab-beta")
+        .body(Body::empty())
+        .unwrap();
+    conn_beta.extensions_mut().insert(token_auth.clone());
+    assert_eq!(
+        router.clone().oneshot(conn_beta).await.unwrap().status(),
+        StatusCode::OK
+    );
+
+    // Malformed nonce (e.g. containing ':') returns `400 invalid_params`.
+    let mut bad_nonce = Request::get("/bridge/events?client_id=bad:id")
+        .body(Body::empty())
+        .unwrap();
+    bad_nonce.extensions_mut().insert(token_auth);
+    let bad_resp = router.oneshot(bad_nonce).await.unwrap();
+    assert_eq!(bad_resp.status(), StatusCode::BAD_REQUEST);
+    let bad_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(bad_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(bad_body["kind"], "invalid_params");
+
+    {
+        let records = fixture.sink.records.lock();
+        let event_owners: Vec<&str> = records
+            .iter()
+            .filter(|r| {
+                r.header.method == "events_subscribe"
+                    && matches!(
+                        r.phase,
+                        AuditPhase::Subscription {
+                            outcome: SubscriptionOutcome::Established
+                        }
+                    )
+            })
+            .map(|r| r.header.owner.as_str())
+            .collect();
+        assert_eq!(event_owners.len(), 3, "{event_owners:?}");
+        assert_eq!(
+            event_owners[0], event_owners[1],
+            "X-Nyanpasu-Client-Id and ?client_id= with same nonce must yield identical owners"
+        );
+        assert_ne!(
+            event_owners[0], event_owners[2],
+            "distinct client_id nonces under the same token must isolate owners"
+        );
+
+        let conn_owners: Vec<&str> = records
+            .iter()
+            .filter(|r| {
+                r.header.method == "connection_details_subscribe"
+                    && matches!(
+                        r.phase,
+                        AuditPhase::Subscription {
+                            outcome: SubscriptionOutcome::Established
+                        }
+                    )
+            })
+            .map(|r| r.header.owner.as_str())
+            .collect();
+        assert_eq!(conn_owners.len(), 2, "{conn_owners:?}");
+        assert_eq!(conn_owners[0], event_owners[0]);
+        assert_eq!(conn_owners[1], event_owners[2]);
+    }
+
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
+    use nyanpasu_config::application::{
+        HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig, Scope as ConfigScope,
+    };
+    use nyanpasu_core::client::SetRemoteAccessError;
+
+    let fixture = Fixture::new(false).await;
+    let client = fixture.rpc.dependencies.client.clone();
+    let initial = client.remote_access_config();
+
+    let empty_err = client
+        .set_remote_access(RemoteAccessConfig {
+            http: HttpAccessConfig {
+                enabled: true,
+                strategy: HttpAccessStrategy::LocalOpen,
+                local_open_scopes: vec![],
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(empty_err, SetRemoteAccessError::Client { .. }),
+        "{empty_err:?}"
+    );
+    assert!(
+        format!("{empty_err:?}").contains("LocalOpenScopesEmpty"),
+        "{empty_err:?}"
+    );
+    assert_eq!(client.remote_access_config(), initial);
+
+    for forbidden in [
+        ConfigScope::SensitiveRead,
+        ConfigScope::System,
+        ConfigScope::RemoteAdmin,
+    ] {
+        let err = client
+            .set_remote_access(RemoteAccessConfig {
+                http: HttpAccessConfig {
+                    enabled: true,
+                    strategy: HttpAccessStrategy::LocalOpen,
+                    local_open_scopes: vec![ConfigScope::Read, forbidden],
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, SetRemoteAccessError::Client { .. }),
+            "{err:?}"
+        );
+        assert!(
+            format!("{err:?}").contains("InvalidRemoteAccess"),
+            "{err:?}"
+        );
+        assert_eq!(client.remote_access_config(), initial);
+    }
+
+    // Also verify rejected via UnifiedRpc without committing.
+    let rpc_err = fixture
+        .rpc
+        .call(
+            RpcTransport::TauriIpc,
+            "set_remote_access",
+            RpcCaller::desktop("main"),
+            json!({
+                "config": RemoteAccessConfig {
+                    http: HttpAccessConfig {
+                        enabled: true,
+                        strategy: HttpAccessStrategy::LocalOpen,
+                        local_open_scopes: vec![ConfigScope::System],
+                        ..Default::default()
+                    },
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(rpc_err.kind, "application_error", "{rpc_err:?}");
+    assert_eq!(client.remote_access_config(), initial);
+
+    fixture.shutdown().await;
+}

@@ -420,3 +420,136 @@ impl PrincipalStreams {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use nyanpasu_contracts::auth::{AuthRevocation, Principal, Scope, SessionId, TokenId};
+    use parking_lot::Mutex;
+    use tokio::sync::broadcast;
+    use tokio_util::sync::CancellationToken;
+    use tracing::{Level, Subscriber};
+    use tracing_subscriber::{
+        Layer,
+        layer::{Context, SubscriberExt as _},
+    };
+
+    use super::*;
+
+    #[derive(Clone, Default)]
+    struct RemoteAccessWarnCapture(Arc<Mutex<Vec<(Level, BTreeMap<String, String>)>>>);
+
+    struct Visitor(BTreeMap<String, String>);
+
+    impl tracing::field::Visit for Visitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.insert(field.name().to_owned(), format!("{value:?}"));
+        }
+    }
+
+    impl<S: Subscriber> Layer<S> for RemoteAccessWarnCapture {
+        fn on_event(&self, event: &tracing::Event<'_>, _: Context<'_, S>) {
+            if event.metadata().target() == "nyanpasu::remote_access" {
+                let mut visitor = Visitor(BTreeMap::new());
+                event.record(&mut visitor);
+                self.0.lock().push((*event.metadata().level(), visitor.0));
+            }
+        }
+    }
+
+    #[test]
+    fn clamp_local_open_scopes_strips_privileged_scopes() {
+        let clamped = clamp_local_open_scopes(&[
+            Scope::Read,
+            Scope::SensitiveRead,
+            Scope::Proxy,
+            Scope::Profile,
+            Scope::Settings,
+            Scope::System,
+            Scope::RemoteAdmin,
+        ]);
+        assert!(clamped.contains(Scope::Read));
+        assert!(clamped.contains(Scope::Proxy));
+        assert!(clamped.contains(Scope::Profile));
+        assert!(clamped.contains(Scope::Settings));
+        assert!(!clamped.contains(Scope::SensitiveRead));
+        assert!(!clamped.contains(Scope::System));
+        assert!(!clamped.contains(Scope::RemoteAdmin));
+    }
+
+    #[tokio::test]
+    async fn principal_streams_cancels_matching_revocations_and_lag_cancels_all() {
+        let streams = PrincipalStreams::default();
+        let parent = CancellationToken::new();
+
+        let token_principal = Principal::Token {
+            id: "tok_01".to_owned(),
+            name: "cli".to_owned(),
+        };
+        let derived_session = Principal::Session {
+            id: "sess_derived".to_owned(),
+        };
+        let independent_session = Principal::Session {
+            id: "sess_other".to_owned(),
+        };
+
+        let (tok_cancel, _tok_guard) = streams.register(&token_principal, &parent);
+        let (derived_cancel, _derived_guard) = streams.register(&derived_session, &parent);
+        let (other_cancel, other_guard) = streams.register(&independent_session, &parent);
+        let (anon_cancel, anon_guard) = streams.register(&Principal::Anonymous, &parent);
+        assert!(anon_guard.is_none());
+
+        // Single-session revocation touches only that session.
+        streams.handle_revocation(&AuthRevocation::Session {
+            session_id: SessionId::parse("sess_other").unwrap(),
+        });
+        assert!(other_cancel.is_cancelled());
+        assert!(!tok_cancel.is_cancelled());
+        assert!(!derived_cancel.is_cancelled());
+        assert!(!anon_cancel.is_cancelled());
+        drop(other_guard);
+
+        // Re-register an unrelated session; token revocation cancels the token and its derived
+        // session without touching the unrelated session.
+        let (unrelated_cancel, _unrelated_guard) = streams.register(&independent_session, &parent);
+        streams.handle_revocation(&AuthRevocation::Token {
+            token_id: TokenId::parse("tok_01").unwrap(),
+            session_ids: vec![SessionId::parse("sess_derived").unwrap()],
+        });
+        assert!(tok_cancel.is_cancelled());
+        assert!(derived_cancel.is_cancelled());
+        assert!(!unrelated_cancel.is_cancelled());
+
+        // Broadcast lag cancels all remaining tracked streams and emits a WARN log.
+        let (tx, rx) = broadcast::channel(1);
+        tx.send(AuthRevocation::Session {
+            session_id: SessionId::parse("sess_x").unwrap(),
+        })
+        .unwrap();
+        tx.send(AuthRevocation::Session {
+            session_id: SessionId::parse("sess_y").unwrap(),
+        })
+        .unwrap();
+        let stop = CancellationToken::new();
+        let capture = RemoteAccessWarnCapture::default();
+        let _sub =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
+        let watcher = tokio::spawn({
+            let streams = streams.clone();
+            let stop = stop.clone();
+            async move { streams.drive_receiver(rx, stop).await }
+        });
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            unrelated_cancel.cancelled(),
+        )
+        .await
+        .expect("lagged revocation receiver must cancel remaining streams");
+        stop.cancel();
+        watcher.await.unwrap();
+
+        let logs = capture.0.lock();
+        assert!(logs.iter().any(|(level, _)| *level == Level::WARN));
+    }
+}

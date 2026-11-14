@@ -1885,6 +1885,594 @@ pub(crate) mod tests {
         );
         upstream_task.abort();
     }
+
+    #[tokio::test]
+    async fn login_page_redirect_and_token_login_logout_flow() {
+        use std::collections::BTreeMap;
+
+        use nyanpasu_contracts::auth::{CreateAccessTokenRequest, TokenName};
+        use tracing::{Level, Subscriber, instrument::WithSubscriber as _};
+        use tracing_subscriber::{
+            Layer,
+            layer::{Context, SubscriberExt as _},
+        };
+
+        #[derive(Clone, Default)]
+        struct RemoteAccessCapture(Arc<Mutex<Vec<(Level, BTreeMap<String, String>)>>>);
+
+        struct Visitor(BTreeMap<String, String>);
+
+        impl tracing::field::Visit for Visitor {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                self.0.insert(field.name().to_owned(), format!("{value:?}"));
+            }
+        }
+
+        impl<S: Subscriber> Layer<S> for RemoteAccessCapture {
+            fn on_event(&self, event: &tracing::Event<'_>, _: Context<'_, S>) {
+                if event.metadata().target() == "nyanpasu::remote_access" {
+                    let mut visitor = Visitor(BTreeMap::new());
+                    event.record(&mut visitor);
+                    self.0.lock().push((*event.metadata().level(), visitor.0));
+                }
+            }
+        }
+
+        let fixture = crate::test_support::Fixture::new(false).await;
+        let routes = Arc::new(routes::RpcHttpRoutes::default());
+        routes.install(&fixture.rpc).unwrap();
+        let authenticator = Arc::new(auth::NyanpasuClientHttpAuthenticator::new(
+            &fixture.rpc.dependencies.client,
+        ));
+        let server = HttpServerClient::spawn(
+            Some(Frontend::Embedded(Arc::new(Assets))),
+            routes.clone(),
+            authenticator.clone(),
+        )
+        .await
+        .unwrap();
+        let status = enable(&server).await;
+        let url = status
+            .url
+            .as_deref()
+            .unwrap()
+            .trim_end_matches('/')
+            .to_owned();
+
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+
+        // HTML document GET redirects unauthenticated users to /login.
+        let root_html = http
+            .get(&url)
+            .header("accept", "text/html")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(root_html.status(), StatusCode::FOUND);
+        assert_eq!(root_html.headers()["location"], "/login");
+        assert_eq!(root_html.headers()["cache-control"], "no-store");
+        assert_eq!(root_html.headers()["referrer-policy"], "no-referrer");
+
+        // GET /login serves the CSP-locked embedded HTML page without caching.
+        let login_res = http.get(format!("{url}/login")).send().await.unwrap();
+        assert_eq!(login_res.status(), StatusCode::OK);
+        assert_eq!(
+            login_res.headers()["content-type"],
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(
+            login_res.headers()["content-security-policy"],
+            login::LOGIN_CSP
+        );
+        assert_eq!(login_res.headers()["x-content-type-options"], "nosniff");
+        assert_eq!(login_res.headers()["cache-control"], "no-store");
+        let login_html = login_res.text().await.unwrap();
+        assert!(login_html.contains("/bridge/login"));
+
+        // Non-JSON / malformed / unauthorized POST /bridge/login fail closed and avoid secret logs.
+        let bad_ct = http
+            .post(format!("{url}/bridge/login"))
+            .header("content-type", "text/plain")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad_ct.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+        let bad_json = http
+            .post(format!("{url}/bridge/login"))
+            .header("content-type", "application/json")
+            .body("{")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad_json.status(), StatusCode::BAD_REQUEST);
+
+        let secret_hex = "a".repeat(64);
+        let bogus_token = format!("npk_wrongid_{secret_hex}");
+        let bad_login = http
+            .post(format!("{url}/bridge/login"))
+            .json(&serde_json::json!({ "token": bogus_token }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad_login.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(bad_login.headers()["cache-control"], "no-store");
+
+        // Verify WARN logging target `nyanpasu::remote_access` emits peer IP + public token_id
+        // and never logs secrets on rejected login or bearer authentication.
+        let capture = RemoteAccessCapture::default();
+        let authority = url.strip_prefix("http://").unwrap().to_owned();
+        let direct_app = build_http_app(
+            routes.build().unwrap(),
+            Some(Frontend::Embedded(Arc::new(Assets))),
+            authority.clone(),
+            HttpAccessConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            authenticator.clone(),
+            PrincipalStreams::default(),
+            CancellationToken::new(),
+        )
+        .unwrap();
+        let mut login_req = Request::post("/bridge/login")
+            .header("host", &authority)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::json!({ "token": bogus_token }).to_string(),
+            ))
+            .unwrap();
+        login_req
+            .extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 45678))));
+        let mut bearer_req = Request::post("/bridge/rpc")
+            .header("host", &authority)
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {bogus_token}"))
+            .body(Body::from(r#"{"method":"rpc_describe","params":{}}"#))
+            .unwrap();
+        bearer_req
+            .extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 45679))));
+        async {
+            let r1 = direct_app.clone().oneshot(login_req).await.unwrap();
+            assert_eq!(r1.status(), StatusCode::UNAUTHORIZED);
+            let r2 = direct_app.oneshot(bearer_req).await.unwrap();
+            assert_eq!(r2.status(), StatusCode::UNAUTHORIZED);
+        }
+        .with_subscriber(tracing_subscriber::registry().with(capture.clone()))
+        .await;
+        {
+            let logs = capture.0.lock();
+            assert_eq!(logs.len(), 2, "{logs:?}");
+            assert!(logs.iter().all(|(level, _)| *level == Level::WARN));
+            let rendered = format!("{:?}", *logs);
+            assert!(rendered.contains("wrongid"), "{rendered}");
+            assert!(rendered.contains("127.0.0.1:45678"), "{rendered}");
+            assert!(rendered.contains("127.0.0.1:45679"), "{rendered}");
+            assert!(!rendered.contains(&secret_hex), "{rendered}");
+        }
+
+        // Create a Read-only token via NyanpasuClient.
+        let issued = fixture
+            .rpc
+            .dependencies
+            .client
+            .create_remote_access_token(CreateAccessTokenRequest {
+                name: TokenName::parse("readonly-ui").unwrap(),
+                scopes: ScopeSet::from([Scope::Read]),
+                expires_at_ms: None,
+            })
+            .await
+            .unwrap();
+        let raw_token = issued.token.expose_secret().to_owned();
+
+        // Authorization: Bearer is accepted on /bridge/* only, never on static routes.
+        assert_eq!(
+            http.get(&url)
+                .header("authorization", format!("Bearer {raw_token}"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let bearer_ok = http
+            .post(format!("{url}/bridge/rpc"))
+            .header("authorization", format!("Bearer {raw_token}"))
+            .json(&serde_json::json!({
+                "method": "list_log_files",
+                "params": { "source": "app" }
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bearer_ok.status(), StatusCode::OK);
+        let bearer_forbidden = http
+            .post(format!("{url}/bridge/rpc"))
+            .header("authorization", format!("Bearer {raw_token}"))
+            .json(&serde_json::json!({
+                "method": "get_core_log_status",
+                "params": {}
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bearer_forbidden.status(), StatusCode::FORBIDDEN);
+
+        // POST /bridge/login exchanges the token for an HttpOnly SameSite=Strict session cookie.
+        let login_ok = http
+            .post(format!("{url}/bridge/login"))
+            .json(&serde_json::json!({ "token": raw_token }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(login_ok.status(), StatusCode::OK);
+        assert_eq!(login_ok.headers()["cache-control"], "no-store");
+        let set_cookie = login_ok.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(set_cookie.contains("HttpOnly; SameSite=Strict; Path=/"));
+        let cookie_pair = set_cookie.split(';').next().unwrap().to_owned();
+
+        assert_eq!(
+            http.get(&url)
+                .header("cookie", &cookie_pair)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            http.post(format!("{url}/bridge/rpc"))
+                .header("cookie", &cookie_pair)
+                .json(&serde_json::json!({
+                    "method": "list_log_files",
+                    "params": { "source": "app" }
+                }))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+
+        // POST /bridge/logout revokes the session and clears the cookie.
+        let logout = http
+            .post(format!("{url}/bridge/logout"))
+            .header("cookie", &cookie_pair)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(logout.status(), StatusCode::NO_CONTENT);
+        assert!(
+            logout.headers()["set-cookie"]
+                .to_str()
+                .unwrap()
+                .contains("Max-Age=0")
+        );
+
+        let after_logout = http
+            .get(&url)
+            .header("accept", "text/html")
+            .header("cookie", &cookie_pair)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(after_logout.status(), StatusCode::FOUND);
+        assert_eq!(after_logout.headers()["location"], "/login");
+
+        server.shutdown().await.unwrap();
+        fixture.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn post_bridge_rpc_requires_application_json_content_type() {
+        let fixture = crate::test_support::Fixture::new(false).await;
+        let routes = Arc::new(routes::RpcHttpRoutes::default());
+        routes.install(&fixture.rpc).unwrap();
+        let authenticator = Arc::new(auth::NyanpasuClientHttpAuthenticator::new(
+            &fixture.rpc.dependencies.client,
+        ));
+        let server = HttpServerClient::spawn(None, routes, authenticator)
+            .await
+            .unwrap();
+        let status = enable(&server).await;
+        let entry = fixture
+            .rpc
+            .dependencies
+            .client
+            .launch_url_for(status.url.as_deref().unwrap())
+            .await
+            .unwrap();
+        let (client, url) = authenticated_client(&entry).await;
+
+        let wrong_ct = client
+            .post(format!("{url}/bridge/rpc"))
+            .header("content-type", "text/plain")
+            .body(r#"{"method":"rpc_describe","params":{}}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(wrong_ct.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let body: serde_json::Value = wrong_ct.json().await.unwrap();
+        assert_eq!(body["kind"], "invalid_params");
+
+        let with_charset = client
+            .post(format!("{url}/bridge/rpc"))
+            .header("content-type", "application/json; charset=utf-8")
+            .body(r#"{"method":"rpc_describe","params":{}}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(with_charset.status(), StatusCode::OK);
+
+        server.shutdown().await.unwrap();
+        fixture.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn local_open_clamps_anonymous_scopes_and_restarts_on_strategy_change() {
+        let fixture = crate::test_support::Fixture::new(false).await;
+        let routes = Arc::new(routes::RpcHttpRoutes::default());
+        routes.install(&fixture.rpc).unwrap();
+        let authenticator = Arc::new(auth::NyanpasuClientHttpAuthenticator::new(
+            &fixture.rpc.dependencies.client,
+        ));
+        let server = HttpServerClient::spawn(
+            Some(Frontend::Embedded(Arc::new(Assets))),
+            routes,
+            authenticator,
+        )
+        .await
+        .unwrap();
+
+        let open_config = HttpAccessConfig {
+            enabled: true,
+            strategy: HttpAccessStrategy::LocalOpen,
+            local_open_scopes: vec![
+                Scope::Read,
+                Scope::SensitiveRead,
+                Scope::System,
+                Scope::RemoteAdmin,
+            ],
+            ..Default::default()
+        };
+        let status = server.configure(&open_config).await.unwrap();
+        let port = status.port.unwrap();
+        let url = status.url.unwrap().trim_end_matches('/').to_owned();
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+
+        let mut sse = client
+            .get(format!("{url}/bridge/events"))
+            .send()
+            .await
+            .unwrap()
+            .bytes_stream();
+        assert!(sse.next().await.unwrap().is_ok());
+
+        let described: nyanpasu_rpc_protocol::RpcDescribeResponse = client
+            .post(format!("{url}/bridge/rpc"))
+            .json(&serde_json::json!({ "method": "rpc_describe", "params": {} }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(described.principal, Principal::Anonymous);
+        assert_eq!(described.scopes, ScopeSet::from([Scope::Read]));
+
+        assert_eq!(
+            client
+                .post(format!("{url}/bridge/rpc"))
+                .json(&serde_json::json!({
+                    "method": "list_log_files",
+                    "params": { "source": "app" }
+                }))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        for (method, expected) in [
+            ("get_core_log_status", StatusCode::FORBIDDEN),
+            ("patch_system_settings", StatusCode::FORBIDDEN),
+            ("list_remote_access_tokens", StatusCode::NOT_IMPLEMENTED),
+        ] {
+            let response = client
+                .post(format!("{url}/bridge/rpc"))
+                .json(&serde_json::json!({ "method": method, "params": {} }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected, "{method}");
+        }
+
+        // Changing local_open_scopes while enabled restarts the listener and updates scopes.
+        let narrowed = HttpAccessConfig {
+            port: Some(port),
+            local_open_scopes: vec![Scope::Proxy],
+            ..open_config
+        };
+        server.configure(&narrowed).await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), sse.next())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let after_scope_change: nyanpasu_rpc_protocol::RpcDescribeResponse = client
+            .post(format!("{url}/bridge/rpc"))
+            .json(&serde_json::json!({ "method": "rpc_describe", "params": {} }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(after_scope_change.scopes, ScopeSet::from([Scope::Proxy]));
+
+        // Switching strategy to LocalAuthenticated restarts the listener and closes anonymous access.
+        let authenticated_cfg = HttpAccessConfig {
+            strategy: HttpAccessStrategy::LocalAuthenticated,
+            ..narrowed
+        };
+        server.configure(&authenticated_cfg).await.unwrap();
+        assert_eq!(
+            client
+                .post(format!("{url}/bridge/rpc"))
+                .json(&serde_json::json!({ "method": "rpc_describe", "params": {} }))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            client
+                .get(&url)
+                .header("accept", "text/html")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FOUND
+        );
+
+        server.shutdown().await.unwrap();
+        fixture.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn memory_auth_session_revocation_closes_active_sse_and_dev_websocket() {
+        async fn upstream_ws(ws: WebSocketUpgrade) -> Response {
+            ws.protocols(["vite-hmr"])
+                .on_upgrade(|mut socket| async move {
+                    while let Some(Ok(message)) = socket.recv().await {
+                        if socket.send(message).await.is_err() {
+                            break;
+                        }
+                    }
+                })
+                .into_response()
+        }
+
+        let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let upstream_task = tokio::spawn(async move {
+            axum::serve(listener, Router::new().fallback(upstream_ws))
+                .await
+                .unwrap();
+        });
+
+        let events = Router::new().route(
+            "/bridge/events",
+            get(|| async {
+                let ready = futures::stream::once(async {
+                    Ok::<_, std::convert::Infallible>(
+                        axum::response::sse::Event::default().data("ready"),
+                    )
+                });
+                axum::response::Sse::new(ready.chain(futures::stream::pending()))
+            }),
+        );
+        let auth = Arc::new(MemoryAuthenticator::new());
+        let server = HttpServerClient::spawn(
+            Some(Frontend::Dev(base.parse().unwrap())),
+            Arc::new(move || Ok(events.clone())),
+            auth.clone(),
+        )
+        .await
+        .unwrap();
+        let status = enable(&server).await;
+        let url = status.url.unwrap().trim_end_matches('/').to_owned();
+
+        // Frontend::Dev passes through the exact same HTTP auth middleware.
+        let unauth = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        assert_eq!(
+            unauth
+                .get(&url)
+                .header("accept", "text/html")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FOUND
+        );
+        assert_eq!(
+            unauth
+                .get(format!("{url}/@vite/client"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let cookie_val =
+            "nps_sess_revokeme_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        auth.register_cookie(cookie_val, "sess_revokeme");
+        let cookie_header = format!("nyanpasu_session={cookie_val}");
+
+        let authed = reqwest::Client::builder().no_proxy().build().unwrap();
+        let mut sse = authed
+            .get(format!("{url}/bridge/events"))
+            .header("cookie", &cookie_header)
+            .send()
+            .await
+            .unwrap()
+            .bytes_stream();
+        assert!(sse.next().await.unwrap().unwrap().starts_with(b"data:"));
+
+        let mut ws_req = format!("{}/?token=hmr", url.replace("http:", "ws:"))
+            .into_client_request()
+            .unwrap();
+        ws_req
+            .headers_mut()
+            .insert("cookie", cookie_header.parse().unwrap());
+        ws_req
+            .headers_mut()
+            .insert("sec-websocket-protocol", "vite-hmr".parse().unwrap());
+        let (mut ws, _) = tokio_tungstenite::connect_async(ws_req).await.unwrap();
+
+        auth.revoke_session("sess_revokeme");
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), sse.next())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let ws_end = tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .unwrap();
+        assert!(matches!(
+            ws_end,
+            None | Some(Ok(WsMessage::Close(_))) | Some(Err(_))
+        ));
+
+        server.shutdown().await.unwrap();
+        upstream_task.abort();
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]

@@ -18,7 +18,7 @@ use nyanpasu_config::profile::{
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use nyanpasu_state_engine::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+    PersistentStateManagerSetup, StateSnapshot,
     error::{LoadError, UpsertError},
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
@@ -48,12 +48,7 @@ pub enum Error {
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<Profiles, ProfilesFormat>>,
-    },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<Profiles, ProfilesFormat>>,
+        source: LoadError,
     },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
@@ -79,7 +74,7 @@ pub struct ProfilesClient {
 struct ProfilesClientInner {
     actor_ref: ActorRef<ProfilesActorMessage>,
     content_lock: ProfileContentLock,
-    /// Committed state, read straight from the coordinator's store so a reader
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<Profiles>,
     sources: tokio::sync::watch::Receiver<SourcesSnapshot>,
@@ -136,12 +131,7 @@ impl ProfilesClient {
                 path: &profiles_path,
             })?
         } else {
-            setup
-                .from_state(Profiles::default())
-                .await
-                .context(InitializeStateSnafu {
-                    path: &profiles_path,
-                })?
+            setup.from_state(Profiles::default())
         };
 
         // A hand-edited or downgraded document may carry malformed folders or

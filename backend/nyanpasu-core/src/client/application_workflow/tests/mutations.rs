@@ -125,7 +125,7 @@ pub(super) struct Fixture {
     _dir: tempfile::TempDir,
 }
 
-pub(super) async fn manager<T>(path: Utf8PathBuf, state: T) -> PersistentStateManager<T>
+pub(super) fn manager<T>(path: Utf8PathBuf, state: T) -> PersistentStateManager<T>
 where
     T: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
 {
@@ -133,12 +133,9 @@ where
         .config_path(path)
         .assemble()
         .from_state(state)
-        .await
-        .map_err(|error| format!("{error:?}"))
-        .expect("the state manager should initialize")
 }
 
-pub(super) async fn clash_manager(
+pub(super) fn clash_manager(
     path: Utf8PathBuf,
     state: ClashConfig,
 ) -> PersistentStateManager<ClashConfig, nyanpasu_migration::modules::clash_config::ClashConfigFormat>
@@ -147,12 +144,10 @@ pub(super) async fn clash_manager(
         .config_path(path)
         .assemble()
         .from_state(state)
-        .await
-        .unwrap()
 }
 
 /// [`manager`] for the application config, which the app persists stamped.
-pub(super) async fn application_manager(
+pub(super) fn application_manager(
     path: Utf8PathBuf,
     state: NyanpasuAppConfig,
 ) -> PersistentStateManager<NyanpasuAppConfig, ApplicationFormat> {
@@ -160,9 +155,6 @@ pub(super) async fn application_manager(
         .config_path(path)
         .assemble()
         .from_state(state)
-        .await
-        .map_err(|error| format!("{error:?}"))
-        .expect("the state manager should initialize")
 }
 
 pub(super) fn temp_path(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
@@ -310,13 +302,12 @@ pub(super) async fn fixture_from(
 
     let clash_path = temp_path(&dir, "clash-config.yaml");
     let app_path = temp_path(&dir, "application.yaml");
-    let application = application_manager(app_path.clone(), NyanpasuAppConfig::default()).await;
+    let application = application_manager(app_path.clone(), NyanpasuAppConfig::default());
     let clash = clash_manager(
         clash_path.clone(),
         crate::client::test_support::test_clash_config(),
-    )
-    .await;
-    let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
+    );
+    let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default());
 
     let paths = runtime::RuntimePaths::from_resolver(&crate::utils::test_support::test_paths(
         dir.path(),
@@ -464,8 +455,7 @@ async fn domain_actor_refuses_writes_before_composition_is_ready() {
     let manager = application_manager(
         temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig::default(),
-    )
-    .await;
+    );
     let application = crate::client::application::ApplicationClient::from_manager(
         crate::state::mutation::MutationCoordinator::pending(),
         manager,

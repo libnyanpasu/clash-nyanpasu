@@ -7,7 +7,9 @@ use nyanpasu_config::{
 };
 use nyanpasu_runtime_values::{
     hotkey::HotkeyParseError,
-    mutation::{CommitAborted, ConfigDomain, NotReady},
+    mutation::{
+        CommitAborted, ConfigDomain, NotReady, RecoverAfterWriteFailureSnafu, WriteConfigSnafu,
+    },
 };
 use nyanpasu_state_engine::{
     ReplaceIfVersionError,
@@ -97,21 +99,30 @@ impl ConfigError {
     }
 
     /// The one place a persistence error of a config source becomes a config
-    /// error. A CAS mismatch reported by the coordinator is the same conflict
-    /// as the manager's own `Conflict` result.
+    /// error. A CAS mismatch from the persistent manager's publication check
+    /// is the same conflict as its pre-write `Conflict` result.
     pub(crate) fn commit_failure(domain: ConfigDomain, error: ReplaceIfVersionError) -> Self {
-        match error {
+        let runtime = nyanpasu_runtime_values::mutation::RuntimeAftermath::Untouched;
+        let source = match error {
             ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
                 expected,
                 actual,
-            }) => VersionConflictSnafu {
-                domain,
-                expected: *expected.as_ref(),
-                actual: *actual.as_ref(),
+            }) => {
+                return VersionConflictSnafu {
+                    domain,
+                    expected: *expected.as_ref(),
+                    actual: *actual.as_ref(),
+                }
+                .build();
             }
-            .build(),
-            error => CommitSnafu { domain }
-                .into_error(crate::state::mutation::classify_commit_aborted(error)),
-        }
+            error @ (ReplaceIfVersionError::WriteConfig(_)
+            | ReplaceIfVersionError::LocalWrite(_)) => WriteConfigSnafu { runtime }
+                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => {
+                RecoverAfterWriteFailureSnafu { runtime }
+                    .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
+            }
+        };
+        CommitSnafu { domain }.into_error(source)
     }
 }

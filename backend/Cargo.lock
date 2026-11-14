@@ -7490,12 +7490,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
- "async-trait",
  "atomicwrites",
  "bon",
  "camino",
  "fs-err",
- "indexmap 2.14.2",
  "nyanpasu-persistence",
  "serde",
  "tempfile",

@@ -63,7 +63,7 @@ nyanpasu-config             domain models and pure runtime executor
 
 backend/nyanpasu-rpc/src/          shared commands, registry, audit, event bus and optional HTTP adapter
 backend/nyanpasu-rpc-protocol/src/ RPC owner values, request/error envelopes, JSON values and shared event names
-backend/nyanpasu-state-engine/src/ generic state coordination, persistence and transaction settlement
+backend/nyanpasu-state-engine/src/ atomic document persistence and versioned snapshots
 backend/nyanpasu-observers/src/    log capture owner and storage ports
 backend/nyanpasu-updater/src/      core update owner, HTTP backend, downloads and unpacking
 backend/nyanpasu-migration/src/    configuration upgrades, backups and session document reads

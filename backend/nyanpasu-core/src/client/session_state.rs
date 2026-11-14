@@ -6,9 +6,7 @@ use nyanpasu_config::state::{
     window::{WindowLabel, WindowState},
 };
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
-use nyanpasu_state_engine::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot, error::LoadError,
-};
+use nyanpasu_state_engine::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -26,11 +24,6 @@ pub enum Error {
     LoadState {
         source: nyanpasu_migration::session_state::Error,
     },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<PersistentState>>,
-    },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
 }
@@ -42,7 +35,7 @@ pub struct SessionStateClient {
 
 struct SessionStateClientInner {
     actor_ref: ActorRef<SessionStateActorMessage>,
-    /// Committed state, read straight from the coordinator's store so a reader
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<PersistentState>,
 }
@@ -69,10 +62,7 @@ impl SessionStateClient {
         let setup = PersistentStateManagerSetup::<PersistentState>::builder()
             .config_path(config_path.clone())
             .assemble();
-        let manager = setup
-            .from_state(state)
-            .await
-            .context(InitializeStateSnafu { path: &config_path })?;
+        let manager = setup.from_state(state);
 
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(None, SessionStateActor, SessionStateActorArgs { manager })

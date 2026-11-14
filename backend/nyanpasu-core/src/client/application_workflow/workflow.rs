@@ -32,6 +32,8 @@ pub(super) struct ApplicationWorkflow {
     /// and why the last attempt failed. An explicit retry releases it.
     pub pending_release: Option<String>,
     pub sampled: Option<super::EngineVersions>,
+    pub apply_result: Option<super::mutation::ApplyResultKind>,
+    pub round_degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
     pub checked: Option<crate::client::core_lifecycle::ports::PreparedRuntime>,
     pub applied_selection: Option<super::committed::Selection>,
     pub service_preferred: bool,
@@ -79,53 +81,66 @@ impl ApplicationWorkflow {
     ) -> Result<Output, RuntimeError> {
         // Observe the old host before any operation can replace its projection.
         self.lifecycle.capture_core_intent();
-        match command {
-            Command::StartupReconcile => Ok(Output::Startup(Box::new(
-                self.startup_reconcile(operation_id).await,
-            ))),
-            Command::Core(command) => self.execute_lifecycle(operation_id, command).await,
-            Command::RetryRuntime { explicit } => self
-                .retry_runtime(operation_id, explicit)
-                .await
-                .map(|_| Output::Unit),
-            Command::InterruptConnections => {
-                let failure = if self.clash.load().state.break_connection.on_mode_change {
-                    let context = self
-                        .lifecycle
-                        .prepare_apply(
-                            operation_id,
-                            super::super::core_lifecycle::apply::RuntimeApplyOptions {
-                                interrupt_connections: Some(
-                                    crate::connections::ConnectionScope::All,
-                                ),
-                            },
-                        )
-                        .await;
-                    CoreLifecycleWorkflow::finish_interruption(context, false).await
-                } else {
-                    None
-                };
-                Ok(Output::Interruption(failure))
-            }
-            Command::PrepareService => {
-                use snafu::IntoError as _;
-                self.lifecycle
-                    .core
-                    .prepare_service_host()
+        let result = async {
+            match command {
+                Command::StartupReconcile => Ok(Output::Startup(Box::new(
+                    self.startup_reconcile(operation_id).await,
+                ))),
+                Command::Core(command) => self.execute_lifecycle(operation_id, command).await,
+                Command::RetryRuntime { explicit } => self
+                    .retry_runtime(operation_id, explicit)
                     .await
-                    .map_err(|error| {
-                        nyanpasu_runtime_values::runtime_error::MoveHostSnafu {
-                            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Service,
-                        }
-                        .into_error(crate::client::runtime_error::core_failure(error))
-                    })?;
-                self.lifecycle.service_failed = None;
-                Ok(Output::Unit)
+                    .map(|_| Output::Unit),
+                Command::InterruptConnections => {
+                    let failure = if self.clash.load().state.break_connection.on_mode_change {
+                        let context = self
+                            .lifecycle
+                            .prepare_apply(
+                                operation_id,
+                                super::super::core_lifecycle::apply::RuntimeApplyOptions {
+                                    interrupt_connections: Some(
+                                        crate::connections::ConnectionScope::All,
+                                    ),
+                                },
+                            )
+                            .await;
+                        CoreLifecycleWorkflow::finish_interruption(context, false).await
+                    } else {
+                        None
+                    };
+                    Ok(Output::Interruption(failure))
+                }
+                Command::PrepareService => {
+                    use snafu::IntoError as _;
+                    self.lifecycle
+                        .core
+                        .prepare_service_host()
+                        .await
+                        .map_err(|error| {
+                            nyanpasu_runtime_values::runtime_error::MoveHostSnafu {
+                                host:
+                                    nyanpasu_runtime_values::execution_host::ExecutionHost::Service,
+                            }
+                            .into_error(crate::client::runtime_error::core_failure(error))
+                        })?;
+                    self.lifecycle.service_failed = None;
+                    Ok(Output::Unit)
+                }
+                Command::FollowService => {
+                    self.follow_service(operation_id).await;
+                    Ok(Output::Unit)
+                }
             }
-            Command::FollowService => {
-                self.follow_service(operation_id).await;
-                Ok(Output::Unit)
-            }
+        }
+        .await;
+        self.finish_runtime_round().await;
+        result
+    }
+
+    /// Completes maintenance after the command has settled its live attempt.
+    pub(super) async fn finish_runtime_round(&mut self) {
+        if !self.lifecycle.closing.is_cancelled() && !self.isolated() {
+            self.maintain_service_release().await;
         }
     }
 
@@ -157,18 +172,42 @@ impl ApplicationWorkflow {
             "an unresolved attempt is never replaced"
         );
         self.live = Some(LiveAttempt::lifecycle(operation_id));
-        let result = match self.lifecycle.execute(command, &self.preparation).await {
-            // The restart a binary replacement owed waits for a proven owner:
-            // the open reestablish target is what brings it (T10 §1.7 #7).
-            Ok(Output::RestartWithheld) => {
-                if let Some(target) = &mut self.deferred
-                    && matches!(target.origin, TargetOrigin::Reestablish(_))
-                {
-                    target.next_attempt = Some(tokio::time::Instant::now());
+        let result = match command {
+            CoreCommand::Reconcile => self.apply_lifecycle_target().await.map(Output::Reconcile),
+            CoreCommand::RecoverServiceEndpoint => {
+                if self.lifecycle.recovery_due() {
+                    let result = match self.lifecycle.recover_service_endpoint().await {
+                        Ok(true) => self.apply_lifecycle_target().await.map(|_| Output::Unit),
+                        Ok(false) => Ok(Output::Unit),
+                        Err(error) => Err(error),
+                    };
+                    self.lifecycle
+                        .finish_service_recovery(result.as_ref().err());
+                    result
+                } else {
+                    Ok(Output::Unit)
                 }
-                Ok(Output::Unit)
             }
-            result => result,
+            CoreCommand::ReplaceCoreBinary(artifact) => {
+                match self.lifecycle.replace_binary(&artifact).await {
+                    Ok(crate::client::core_lifecycle::RestartIntent::Owed) => {
+                        if self.lifecycle.start_permitted() {
+                            artifact.progress.restarting();
+                            self.apply_lifecycle_target().await.map(|_| Output::Unit)
+                        } else {
+                            if let Some(target) = &mut self.deferred
+                                && matches!(target.origin, TargetOrigin::Reestablish(_))
+                            {
+                                target.next_attempt = Some(tokio::time::Instant::now());
+                            }
+                            Ok(Output::Unit)
+                        }
+                    }
+                    Ok(crate::client::core_lifecycle::RestartIntent::NotOwed) => Ok(Output::Unit),
+                    Err(error) => Err(error),
+                }
+            }
+            command => self.lifecycle.execute(command).await,
         };
         if matches!(&result, Ok(Output::Reconcile(_))) {
             self.deferred = None;
@@ -187,12 +226,59 @@ impl ApplicationWorkflow {
         // Returning is the command's own conclusion; an action it left
         // pending is not, and the error it returned says why.
         let reason = self
-            .lifecycle
-            .core
-            .pending_action()
-            .and(result.as_ref().err())
-            .map(ToString::to_string);
+            .live
+            .as_ref()
+            .and_then(|live| live.unresolved.clone())
+            .or_else(|| {
+                self.lifecycle
+                    .core
+                    .pending_action()
+                    .and(result.as_ref().err())
+                    .map(ToString::to_string)
+            });
         self.conclude_attempt(reason);
         result
+    }
+    /// Applies the current committed target within the lifecycle command's attempt.
+    async fn apply_lifecycle_target(
+        &mut self,
+    ) -> Result<crate::actor_v2::facade::ReconcileReport, RuntimeError> {
+        let inputs = self.capture_committed().await;
+        let baseline = self.observe_baseline().await;
+        self.record_baseline(&baseline);
+        let outcome = match self.prepare_candidate(&baseline, inputs).await {
+            Ok(prepared) => {
+                self.apply_prepared(&baseline, prepared, super::tcc::AttemptCharge::None)
+                    .await
+            }
+            Err(outcome) => outcome,
+        };
+        match outcome {
+            super::mutation::ApplyOutcome::Applied(candidate) => Ok(*candidate.report),
+            super::mutation::ApplyOutcome::Unknown(error) => {
+                self.conclude_attempt(Some(error.to_string()));
+                Err(Arc::try_unwrap(error)
+                    .expect("lifecycle application errors have no other owner"))
+            }
+            super::mutation::ApplyOutcome::Waiting(error)
+            | super::mutation::ApplyOutcome::Refused { cause: error, .. } => {
+                if let RuntimeError::CoreRolledBack { reason } = error.as_ref() {
+                    use snafu::IntoError as _;
+                    return Err(nyanpasu_runtime_values::runtime_error::ApplyRuntimeSnafu
+                        .into_error(crate::client::runtime_error::core_failure(
+                            nyanpasu_core_manager::CoreError::new(
+                                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
+                                format!(
+                                    "core reconcile was rolled back to the previous revision: {}",
+                                    reason.as_deref().unwrap_or("unknown reason")
+                                ),
+                                false,
+                            ),
+                        )));
+                }
+                Err(Arc::try_unwrap(error)
+                    .expect("lifecycle application errors have no other owner"))
+            }
+        }
     }
 }

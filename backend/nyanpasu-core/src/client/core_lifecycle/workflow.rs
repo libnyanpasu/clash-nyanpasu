@@ -25,7 +25,7 @@ use crate::{
     },
     client::{
         runtime_error,
-        runtime_recovery::{ObservedRuntime, verify_recovery_target},
+        runtime_recovery::{ObservedRuntime, matches_confirmed_apply},
     },
     state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
@@ -34,10 +34,10 @@ use nyanpasu_runtime_values::{
     execution_host::ExecutionHost,
     publish::PublishRuntimeError,
     runtime_error::{
-        ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, PublishRuntimeSnafu,
-        RecoverRuntimeSnafu, RecoverServiceEndpointSnafu, RefreshStatusSnafu,
-        ResolveCoreBinarySnafu, RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu,
-        StartServiceSnafu, StopCoreSnafu, StopServiceSnafu, UninstallServiceSnafu,
+        ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, RecoverRuntimeSnafu,
+        RecoverServiceEndpointSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
+        RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu, StartServiceSnafu, StopCoreSnafu,
+        StopServiceSnafu, UninstallServiceSnafu,
     },
 };
 
@@ -188,17 +188,13 @@ pub(in crate::client) enum RuntimeSubmission {
 }
 
 impl CoreLifecycleWorkflow {
-    pub async fn execute(
-        &mut self,
-        command: Command,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<Output, RuntimeError> {
+    pub async fn execute(&mut self, command: Command) -> Result<Output, RuntimeError> {
         match command {
-            Command::RecoverServiceEndpoint => {
-                self.recover_service_endpoint(preparation).await?;
-                Ok(Output::Unit)
+            Command::Reconcile
+            | Command::RecoverServiceEndpoint
+            | Command::ReplaceCoreBinary(_) => {
+                unreachable!("runtime applications are orchestrated by the application workflow")
             }
-            Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
             #[cfg(test)]
             Command::ChangeHost(host) => Ok(Output::Handoff(
                 self.move_execution_host(host, true)
@@ -207,13 +203,6 @@ impl CoreLifecycleWorkflow {
                     .map_err(runtime_error::core_failure)
                     .context(ApplyRuntimeSnafu)?,
             )),
-            Command::ReplaceCoreBinary(artifact) => {
-                Ok(if self.replace_binary(artifact, preparation).await? {
-                    Output::RestartWithheld
-                } else {
-                    Output::Unit
-                })
-            }
             Command::StopCore => {
                 // A stop the user asked for outlives both its own failure and
                 // the snapshot it invalidates: the projection can still say
@@ -436,34 +425,10 @@ impl CoreLifecycleWorkflow {
             && self.recovery_incomplete()
     }
 
-    async fn recover_service_endpoint(
+    pub(in crate::client) async fn recover_service_endpoint(
         &mut self,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<(), RuntimeError> {
-        if !self.recovery_due() {
-            return Ok(());
-        }
+    ) -> Result<bool, RuntimeError> {
         self.recovery.attempts += 1;
-        let result = self.recovery_attempt(preparation).await;
-        self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
-        if result.as_ref().is_err_and(|e| !e.retryable()) {
-            // Paused, not abandoned: a terminal failure ends the automatic
-            // retries, and an explicit Service start still has a restoration
-            // to finish.
-            self.recovery.pause();
-        }
-        if self.recovery.attempts >= RECOVERY_BUDGET && self.recovery_incomplete() {
-            tracing::warn!(
-                "service endpoint recovery budget spent; explicitly select or start Service to re-arm"
-            );
-        }
-        result
-    }
-
-    async fn recovery_attempt(
-        &mut self,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<(), RuntimeError> {
         if matches!(
             self.core.core_status().connectivity,
             EndpointConnectivity::Degraded { .. }
@@ -477,10 +442,8 @@ impl CoreLifecycleWorkflow {
             self.note_interrupted_core(report.interrupted_running());
         }
         if self.closing.is_cancelled() || self.recovery.intent != CoreIntent::Restore {
-            return Ok(());
+            return Ok(false);
         }
-        // A transport-only outage must not reapply or stop an already live
-        // runtime. Only restore a previously running core to a stopped host.
         match self
             .core
             .refresh_status()
@@ -490,28 +453,27 @@ impl CoreLifecycleWorkflow {
             .snapshot
             .and_then(|s| s.state)
         {
-            // The runtime outlived the outage; there is nothing left to owe.
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. }) => {
                 self.recovery.intent = CoreIntent::Idle;
+                Ok(false)
             }
-            // Restoring the interrupted core is a start, and only a proven
-            // owner of the desired host may make it (T10 §1.7 #6).
-            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-                if !self.closing.is_cancelled() && self.start_permitted() =>
-            {
-                // Every phase boundary this workflow owns is checked, but a
-                // cancel landing inside the build or the submission still
-                // completes: abandoning a submitted config mid-flight would
-                // turn a known outcome into an uncertain one. It stays bounded
-                // because shutdown is serialized behind this operation and
-                // stops whatever it started.
-                self.reconcile(preparation).await?;
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. }) => {
+                Ok(!self.closing.is_cancelled() && self.start_permitted())
             }
-            // Any other state proves nothing about whether the core should be
-            // running, so the intent stays owed to the next attempt.
-            _ => {}
+            _ => Ok(false),
         }
-        Ok(())
+    }
+
+    pub(in crate::client) fn finish_service_recovery(&mut self, error: Option<&RuntimeError>) {
+        self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
+        if error.is_some_and(|error| !error.retryable()) {
+            self.recovery.pause();
+        }
+        if self.recovery.attempts >= RECOVERY_BUDGET && self.recovery_incomplete() {
+            tracing::warn!(
+                "service endpoint recovery budget spent; explicitly select or start Service to re-arm"
+            );
+        }
     }
 
     /// Moves ownership of the runtime to `host` and nothing else.
@@ -540,52 +502,6 @@ impl CoreLifecycleWorkflow {
         self.follow_host();
         self.note_interrupted_core(report.interrupted_running());
         Ok(report)
-    }
-
-    async fn reconcile(
-        &mut self,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<ReconcileReport, RuntimeError> {
-        let prepared = preparation.prepare_latest().await?;
-        self.apply_runtime(prepared, preparation).await
-    }
-
-    pub async fn apply_runtime(
-        &mut self,
-        prepared: PreparedRuntime,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<ReconcileReport, RuntimeError> {
-        preparation
-            .publish(&prepared.snapshot)
-            .await
-            .context(PublishRuntimeSnafu)?;
-        // Promoted means the product was published, not that the host applied it.
-        self.runtime.generated(prepared.snapshot.clone());
-        let expected = self
-            .core
-            .refresh_status()
-            .await
-            .map_err(runtime_error::core_failure)
-            .context(RefreshStatusSnafu)?;
-        match self
-            .submit_runtime(prepared, preparation, &expected)
-            .await?
-        {
-            RuntimeSubmission::Applied { report, .. } => Ok(report),
-            RuntimeSubmission::NotSubmitted(error) | RuntimeSubmission::Unchanged(error) => {
-                Err(error)
-                    .map_err(runtime_error::core_failure)
-                    .context(ApplyRuntimeSnafu)
-            }
-            RuntimeSubmission::RolledBack(report) => ReconcileResult::RolledBack(report)
-                .into_applied()
-                .map_err(runtime_error::core_failure)
-                .context(ApplyRuntimeSnafu),
-            RuntimeSubmission::Unknown(uncertain) => ReconcileResult::Unknown(uncertain)
-                .into_applied()
-                .map_err(runtime_error::core_failure)
-                .context(ApplyRuntimeSnafu),
-        }
     }
 
     /// Submits a candidate to the core and records what it confirmed, without
@@ -707,13 +623,7 @@ impl CoreLifecycleWorkflow {
     ) -> Option<CoreKind> {
         let confirmed = self.runtime.confirmed()?;
         let observed = ObservedRuntime::from_status(status);
-        if !verify_recovery_target(
-            &confirmed.receipt,
-            &observed,
-            Some(&confirmed.receipt.binding),
-        )
-        .is_verified()
-        {
+        if !matches_confirmed_apply(&confirmed.receipt, &observed) {
             return None;
         }
         let core_type: nyanpasu_utils::core::CoreType = (&confirmed.receipt.target_core).into();
@@ -721,13 +631,11 @@ impl CoreLifecycleWorkflow {
     }
 
     /// Installs `artifact` and restarts the core when the replacement owes it
-    /// one. Returns whether that restart was withheld: it is a start, and
-    /// needs a proven owner of the desired host (T10 §1.7 #7).
-    async fn replace_binary(
+    /// one. The caller applies the committed target when a restart is owed.
+    pub(in crate::client) async fn replace_binary(
         &mut self,
-        artifact: PreparedCoreBinary,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<bool, RuntimeError> {
+        artifact: &PreparedCoreBinary,
+    ) -> Result<RestartIntent, RuntimeError> {
         let desired = self.application.load().state.core;
         let status = self
             .core
@@ -787,13 +695,15 @@ impl CoreLifecycleWorkflow {
             .install(&request)
             .await
             .context(InstallCoreBinarySnafu)?;
-        if restart {
-            if !self.start_permitted() {
-                return Ok(true);
-            }
-            artifact.progress.restarting();
-            self.reconcile(preparation).await?;
-        }
-        Ok(false)
+        Ok(if restart {
+            RestartIntent::Owed
+        } else {
+            RestartIntent::NotOwed
+        })
     }
+}
+
+pub(in crate::client) enum RestartIntent {
+    Owed,
+    NotOwed,
 }

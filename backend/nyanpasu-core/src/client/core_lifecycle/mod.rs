@@ -12,7 +12,7 @@ use nyanpasu_updater::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;
 pub(in crate::client) use workflow::{
-    CoreLifecycleWorkflow, RuntimeSubmission, ServiceRecovery, effective_host,
+    CoreLifecycleWorkflow, RestartIntent, RuntimeSubmission, ServiceRecovery, effective_host,
 };
 
 pub(in crate::client) const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
@@ -39,10 +39,6 @@ pub(in crate::client) enum Output {
     #[cfg(test)]
     Handoff(HandoffReport),
     Stop(StopReport),
-    /// The binary was installed, and the restart it owed was left to the
-    /// open reestablish target: no host is proven to own the runtime
-    /// (T10 §1.7 #7). Never leaves the workflow.
-    RestartWithheld,
     /// StartupReconcile's report (T10 §1.6).
     Startup(Box<super::application_workflow::startup::StartupReport>),
 }

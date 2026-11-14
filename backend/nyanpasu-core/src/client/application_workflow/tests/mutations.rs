@@ -490,7 +490,10 @@ async fn deferred_fixture() -> Fixture {
     let id = commit_source(&f.clash, overrides(serde_json::json!({"mode":"direct"})))
         .await
         .unwrap();
-    assert_eq!(settled(&f.client, id).await.conclusion.label(), "Waiting");
+    assert_eq!(
+        settled(&f.client, id).await.conclusion.label(),
+        "NotInEffect"
+    );
     f
 }
 
@@ -606,7 +609,10 @@ async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
     let id = commit_source(&f.clash, overrides(serde_json::json!({"mode":"direct"})))
         .await
         .unwrap();
-    assert_eq!(settled(&f.client, id).await.conclusion.label(), "Waiting");
+    assert_eq!(
+        settled(&f.client, id).await.conclusion.label(),
+        "NotInEffect"
+    );
     f.endpoint.set_failure(None);
     // The runtime now runs on the other host, on an apply this session
     // confirmed there: a baseline a Try would accept, on a host the committed

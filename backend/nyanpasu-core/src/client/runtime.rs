@@ -177,6 +177,7 @@ impl RuntimeSnapshotStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn generated(&self, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }

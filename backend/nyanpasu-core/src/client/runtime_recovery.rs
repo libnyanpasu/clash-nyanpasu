@@ -82,6 +82,22 @@ impl ObservedRuntime {
     }
 }
 
+/// Whether the running instance still runs the confirmed application.
+/// Router generations change on reconnect and do not identify a core process.
+pub(in crate::client) fn matches_confirmed_apply(
+    receipt: &RuntimeApplyReceipt,
+    observed: &ObservedRuntime,
+) -> bool {
+    observed.host == receipt.host
+        && observed
+            .binding
+            .as_ref()
+            .is_some_and(|binding| binding.revision == receipt.binding.revision)
+        && observed.source_hash.as_deref() == Some(receipt.binding.revision.source_hash.as_str())
+        && matches!(observed.state, Some(CoreStateDetail::Running { epoch, .. })
+            if epoch == receipt.binding.revision.epoch)
+}
+
 /// One way the observed runtime fails to be the recovery target.
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::client) enum RecoveryMismatch {
@@ -500,5 +516,62 @@ mod binding_regression {
         observed.binding = Some(confirmed.clone());
         observed.binding.as_mut().unwrap().generation += 1;
         assert!(!verify_recovery_target(&receipt, &observed, Some(&confirmed)).is_verified());
+    }
+}
+
+#[cfg(test)]
+mod confirmed_apply_tests {
+    use super::*;
+
+    // Guards comparing the core revision and running epoch while ignoring router generation and pid.
+    #[test]
+    fn confirmed_apply_matches_only_the_same_running_revision() {
+        let receipt = super::tests::receipt(CoreRunIntent::Running);
+        let mut observed = ObservedRuntime {
+            host: receipt.host,
+            binding: Some(receipt.binding.clone()),
+            state: Some(CoreStateDetail::Running {
+                epoch: receipt.binding.revision.epoch,
+                pid: 42,
+            }),
+            source_hash: Some(receipt.binding.revision.source_hash.clone()),
+            applied_kind: None,
+        };
+        observed.binding.as_mut().unwrap().generation += 1;
+        assert!(matches_confirmed_apply(&receipt, &observed));
+        for field in [
+            "host",
+            "epoch",
+            "generation",
+            "effective_hash",
+            "source_hash",
+            "running_epoch",
+            "stopped",
+            "no_binding",
+            "no_source",
+        ] {
+            let mut mismatch = observed.clone();
+            match field {
+                "host" => mismatch.host = ExecutionHost::Service,
+                "epoch" => mismatch.binding.as_mut().unwrap().revision.epoch += 1,
+                "generation" => mismatch.binding.as_mut().unwrap().revision.generation += 1,
+                "effective_hash" => mismatch
+                    .binding
+                    .as_mut()
+                    .unwrap()
+                    .revision
+                    .effective_hash
+                    .push('x'),
+                "source_hash" => mismatch.source_hash = Some("different".into()),
+                "running_epoch" => {
+                    mismatch.state = Some(CoreStateDetail::Running { epoch: 99, pid: 42 })
+                }
+                "stopped" => mismatch.state = Some(CoreStateDetail::Stopped { reason: None }),
+                "no_binding" => mismatch.binding = None,
+                "no_source" => mismatch.source_hash = None,
+                _ => unreachable!(),
+            }
+            assert!(!matches_confirmed_apply(&receipt, &mismatch), "{field}");
+        }
     }
 }

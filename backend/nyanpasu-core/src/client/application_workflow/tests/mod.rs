@@ -8,6 +8,7 @@ use crate::{
         },
     },
 };
+mod applications;
 mod closing;
 mod commit_first;
 mod connection_policy;

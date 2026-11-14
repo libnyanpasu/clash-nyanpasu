@@ -1424,7 +1424,10 @@ async fn recovery_keeps_a_running_owner_only_when_it_runs_the_committed_target()
             let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
                 .await
                 .unwrap();
-            assert_eq!(settled(&g.client, id).await.conclusion.label(), "Waiting");
+            assert_eq!(
+                settled(&g.client, id).await.conclusion.label(),
+                "NotInEffect"
+            );
             g.local.delegate.set_failure(None);
         }
         // A lifecycle command whose helper outlives its bound isolates the
@@ -1973,4 +1976,52 @@ async fn stale_convergence_callback_keeps_the_replacement_timer_owned() {
     );
     g.shutdown.cancel();
     g.client.0.actor.stop_and_wait(None, None).await.unwrap();
+}
+
+// Guards the shared maintenance step after retry moves a deferred target off the service host.
+#[tokio::test]
+async fn deferred_service_mode_disable_releases_daemon_after_retry() {
+    let g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
+    let previous = g.service_host.delegate.status().await.unwrap();
+    g.service_host.delegate.set_status(
+        Some(CoreStateDetail::Starting { epoch: 2 }),
+        previous.applied_kind,
+    );
+    let committed = g
+        .application
+        .patch(nyanpasu_config::application::NyanpasuAppConfigPatch {
+            enable_service_mode: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let status = g
+        .client
+        .settled(
+            nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+            committed.version,
+        )
+        .await;
+    assert_eq!(status.conclusion.label(), "Waiting");
+    assert_eq!(g.core.status().host, ExecutionHost::Service);
+    assert_eq!(*g.daemon.state.lock().unwrap(), DaemonState::Running);
+    let previous_log = g.log().len();
+    g.service_host
+        .delegate
+        .set_status(previous.state, previous.applied_kind);
+    g.client.retry_runtime().await.unwrap();
+    assert_eq!(
+        &g.log()[previous_log..],
+        ["service:stop", "local:reconcile"]
+    );
+    assert_eq!(g.core.status().host, ExecutionHost::Local);
+    assert_eq!(*g.daemon.state.lock().unwrap(), DaemonState::Stopped);
+    assert!(g.ports.confirmed().is_some());
+    assert!(g.no_target());
 }

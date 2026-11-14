@@ -4,11 +4,10 @@ use std::sync::Arc;
 use nyanpasu_config::{clash::config::overrides::Mode, profile::ProfileId};
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::{
-    configuration::ConvergenceHealth,
     execution_host::ExecutionHost,
     mutation::ConfigDomain,
-    runtime::{Degradation, DegradationPhase, DegradationReason, InterruptFailure},
-    runtime_error::{RecoveryUnresolvedSnafu, ResolveCoreBinarySnafu, RuntimeError},
+    runtime::{Degradation, DegradationPhase, DegradationReason},
+    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
 };
 use nyanpasu_state_engine::Version;
 use snafu::IntoError as _;
@@ -18,15 +17,12 @@ use super::{
     attempt::LiveAttempt,
     inputs::RuntimeInputs,
     mutation::{ApplyOutcome, MutationStage, RetryableCause},
-    tcc::{AttemptCharge, PreparedCandidate},
+    tcc::AttemptCharge,
     workflow::ApplicationWorkflow,
 };
 use crate::{
     client::{
-        core_lifecycle::{
-            CoreLifecycleWorkflow, Ownership, apply::RuntimeApplyOptions, effective_host,
-            ports::RuntimePreparationPort,
-        },
+        core_lifecycle::{Ownership, effective_host},
         runtime_error,
     },
     state::mutation::intent::CoreRunIntent,
@@ -42,6 +38,29 @@ impl Selection {
         Self {
             mode: inputs.clash.overrides.mode(),
             current: inputs.profiles.current.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum SelectionChange {
+    Mode,
+    Profile,
+}
+
+impl Selection {
+    pub(super) fn interruption(
+        &self,
+        previous: Option<&Self>,
+        clash: &nyanpasu_config::clash::config::ClashConfig,
+    ) -> Option<SelectionChange> {
+        let previous = previous?;
+        if previous.mode != self.mode && clash.break_connection.on_mode_change {
+            Some(SelectionChange::Mode)
+        } else if previous.current != self.current && clash.break_connection.on_profile_change {
+            Some(SelectionChange::Profile)
+        } else {
+            None
         }
     }
 }
@@ -73,7 +92,7 @@ impl ApplicationWorkflowState {
             self.workflow.release_owed = false;
             self.workflow.pending_release = None;
         }
-        let mut degradations = Vec::new();
+        self.workflow.round_degradations.clear();
         let conclusion = if self.closing() {
             Conclusion::Closed
         } else if self.workflow.isolated() {
@@ -81,15 +100,10 @@ impl ApplicationWorkflowState {
                 cause: Arc::new(RuntimeError::Isolated),
             }
         } else {
-            self.workflow
-                .apply_source(id, inputs, &mut degradations)
-                .await
+            self.workflow.apply_source(id, inputs).await
         };
-        if !self.closing() && !self.workflow.isolated() {
-            self.workflow
-                .maintain_service_release(&mut degradations)
-                .await;
-        }
+        self.workflow.finish_runtime_round().await;
+        let degradations = std::mem::take(&mut self.workflow.round_degradations);
         let conclusion = if self.workflow.isolated() && !matches!(conclusion, Conclusion::Closed) {
             match conclusion {
                 Conclusion::Unknown { .. } => conclusion,
@@ -119,24 +133,8 @@ impl ApplicationWorkflowState {
 }
 
 impl ApplicationWorkflow {
-    async fn apply_source(
-        &mut self,
-        id: OperationId,
-        inputs: RuntimeInputs,
-        degradations: &mut Vec<Degradation>,
-    ) -> Conclusion {
+    async fn apply_source(&mut self, id: OperationId, inputs: RuntimeInputs) -> Conclusion {
         let selection = Selection::of(&inputs);
-        let mode_changed = self
-            .applied_selection
-            .as_ref()
-            .is_some_and(|old| old.mode != selection.mode);
-        let profile_changed = self
-            .applied_selection
-            .as_ref()
-            .is_some_and(|old| old.current != selection.current);
-        let interrupt_mode = mode_changed && inputs.clash.break_connection.on_mode_change;
-        let interrupt =
-            interrupt_mode || (profile_changed && inputs.clash.break_connection.on_profile_change);
         let target = inputs.target_key();
         let target_host = effective_host(
             &inputs.app,
@@ -193,20 +191,6 @@ impl ApplicationWorkflow {
             }
             baseline = self.observe_baseline().await;
         }
-        let interruption = if interrupt {
-            Some(
-                self.lifecycle
-                    .prepare_apply(
-                        id,
-                        RuntimeApplyOptions {
-                            interrupt_connections: Some(crate::connections::ConnectionScope::All),
-                        },
-                    )
-                    .await,
-            )
-        } else {
-            None
-        };
         if baseline.run_intent == CoreRunIntent::StoppedByUser {
             if let Some(identity) = target {
                 self.confirm_saved_inactive(identity);
@@ -215,75 +199,16 @@ impl ApplicationWorkflow {
         }
         self.live = Some(LiveAttempt::lifecycle(id));
         self.record_baseline(&baseline);
-        let prepared = match self
-            .checked
-            .take()
-            .filter(|prepared| target.is_some() && prepared.target == target)
-        {
-            Some(prepared) => Ok(prepared),
-            None => self.preparation.prepare_inputs(inputs).await,
-        }
-        .and_then(|runtime| {
-            self.preparation
-                .core_spec(&runtime.snapshot.target_core)
-                .map_err(|error| ResolveCoreBinarySnafu.into_error(error))?;
-            Ok(runtime)
-        });
-        let outcome = match prepared {
-            Ok(runtime) => {
-                self.apply_prepared(
-                    &baseline,
-                    PreparedCandidate {
-                        runtime,
-                        target_host,
-                    },
-                    AttemptCharge::None,
-                )
-                .await
+        let outcome = match self.prepare_candidate(&baseline, inputs).await {
+            Ok(prepared) => {
+                self.apply_prepared(&baseline, prepared, AttemptCharge::None)
+                    .await
             }
-            Err(error) => {
-                let cause = Arc::new(error);
-                if let Some(identity) = target {
-                    self.install_mutation_target(
-                        id,
-                        identity,
-                        RetryableCause {
-                            stage: MutationStage::Preparing,
-                            message: cause.to_string(),
-                        },
-                    );
-                    let deferred = self
-                        .deferred
-                        .as_mut()
-                        .expect("the committed target was just installed");
-                    deferred.health = ConvergenceHealth::Blocked;
-                    deferred.next_attempt = None;
-                }
-                self.conclude_attempt(None);
-                return Conclusion::NotInEffect { cause };
-            }
+            Err(outcome) => outcome,
         };
         let conclusion = match outcome {
-            ApplyOutcome::Applied(candidate) => {
-                self.finish_applied(&candidate, degradations).await;
-                self.applied_selection = Some(selection);
-                if let Some(context) = interruption
-                    && let Some(error) =
-                        CoreLifecycleWorkflow::finish_interruption(context, candidate.replaced)
-                            .await
-                {
-                    let cause = InterruptFailure::from(&error);
-                    degradations.push(Degradation {
-                        phase: DegradationPhase::SystemEffect,
-                        reason: if interrupt_mode {
-                            DegradationReason::ModeInterruptionFailed { cause }
-                        } else {
-                            DegradationReason::ProfileInterruptionFailed { cause }
-                        },
-                        message: error.to_string(),
-                        retryable: false,
-                    });
-                }
+            ApplyOutcome::Applied(_) => {
+                self.deferred = None;
                 Conclusion::Converged
             }
             ApplyOutcome::Unknown(cause) => {
@@ -293,16 +218,16 @@ impl ApplicationWorkflow {
                 self.conclude_attempt(Some(cause.to_string()));
                 return Conclusion::Unknown { cause };
             }
-            ApplyOutcome::Refused(cause) | ApplyOutcome::Waiting(cause) => {
-                let waiting = matches!(
-                    cause.core_kind(),
-                    Some(
-                        nyanpasu_core_manager::CoreErrorKind::RevisionConflict
-                            | nyanpasu_core_manager::CoreErrorKind::OperationConflict
-                            | nyanpasu_core_manager::CoreErrorKind::QueueFull
-                            | nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
-                    )
-                );
+            outcome @ (ApplyOutcome::Refused { .. } | ApplyOutcome::Waiting(_)) => {
+                let waiting = matches!(outcome, ApplyOutcome::Waiting(_));
+                let (cause, action_started) = match outcome {
+                    ApplyOutcome::Refused {
+                        cause,
+                        action_started,
+                    } => (cause, action_started),
+                    ApplyOutcome::Waiting(cause) => (cause, false),
+                    _ => unreachable!("only a refusal or dependency reaches this branch"),
+                };
                 if let Some(identity) = target {
                     self.install_mutation_target(
                         id,
@@ -312,6 +237,14 @@ impl ApplicationWorkflow {
                             message: cause.to_string(),
                         },
                     );
+                }
+                if !waiting
+                    && !action_started
+                    && let Some(target) = &mut self.deferred
+                {
+                    target.health =
+                        nyanpasu_runtime_values::configuration::ConvergenceHealth::Blocked;
+                    target.next_attempt = None;
                 }
                 if waiting {
                     Conclusion::Waiting { cause }
@@ -328,7 +261,7 @@ impl ApplicationWorkflow {
         conclusion
     }
 
-    pub(super) async fn maintain_service_release(&mut self, degradations: &mut Vec<Degradation>) {
+    pub(super) async fn maintain_service_release(&mut self) {
         if !self.release_owed
             || self.pending_release.is_some()
             || self.lifecycle.application.load().state.enable_service_mode
@@ -345,7 +278,8 @@ impl ApplicationWorkflow {
             return;
         }
         if let Some(cause) = self.release_service().await {
-            degradations.push(Degradation {
+            tracing::warn!(%cause, "could not release the service daemon");
+            self.round_degradations.push(Degradation {
                 phase: DegradationPhase::SystemEffect,
                 message: cause.to_string(),
                 reason: DegradationReason::ServiceStopFailed { cause },

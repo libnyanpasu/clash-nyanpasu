@@ -259,6 +259,8 @@ impl ApplicationWorkflowState {
             _ => None,
         };
         self.workflow.sampled = None;
+        self.workflow.apply_result = None;
+        self.workflow.round_degradations.clear();
         let trigger = match &command {
             Command::StartupReconcile if self.workflow.startup.is_none() => Some("Startup"),
             Command::Core(CoreCommand::Reconcile) => Some("Start"),
@@ -271,27 +273,40 @@ impl ApplicationWorkflowState {
         let result = self.workflow.execute(response.id, command).await;
         let seen = self.workflow.sampled.take();
         if trigger.is_some() || seen.is_some() {
+            let waiting = matches!(
+                self.workflow.apply_result,
+                Some(mutation::ApplyResultKind::Waiting)
+            );
             let conclusion = if self.workflow.isolated() {
                 Conclusion::Unknown {
                     cause: Arc::new(RuntimeError::Isolated),
                 }
             } else if let Some(error) = result.as_ref().err() {
-                Conclusion::NotInEffect {
-                    cause: Arc::new(
-                        nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
-                            reason: error.to_string(),
-                        }
-                        .build(),
-                    ),
+                let cause = Arc::new(
+                    nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                        reason: error.to_string(),
+                    }
+                    .build(),
+                );
+                if waiting {
+                    Conclusion::Waiting { cause }
+                } else {
+                    Conclusion::NotInEffect { cause }
                 }
             } else if let Some(target) = &self.workflow.deferred {
-                Conclusion::Waiting {
-                    cause: Arc::new(
-                        nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
-                            reason: target.cause.message.clone(),
-                        }
-                        .build(),
-                    ),
+                let cause = Arc::new(
+                    nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                        reason: target.cause.message.clone(),
+                    }
+                    .build(),
+                );
+                if matches!(
+                    self.workflow.apply_result,
+                    Some(mutation::ApplyResultKind::Refused)
+                ) {
+                    Conclusion::NotInEffect { cause }
+                } else {
+                    Conclusion::Waiting { cause }
                 }
             } else if self.workflow.lifecycle.stop_requested() {
                 Conclusion::Inactive
@@ -301,6 +316,7 @@ impl ApplicationWorkflowState {
             if let Some(trigger) = trigger {
                 self.publish_journal(Some(RoundRecord::new(response.id, trigger, &conclusion)));
             }
+            let degradations = std::mem::take(&mut self.workflow.round_degradations);
             if let Some(seen) = seen {
                 self.reconciler.send_modify(|status| {
                     status.seq = status
@@ -309,7 +325,7 @@ impl ApplicationWorkflowState {
                         .expect("reconciler sequence must not overflow");
                     status.seen = seen;
                     status.conclusion = conclusion;
-                    status.degradations.clear();
+                    status.degradations = degradations;
                 });
             }
         }
@@ -656,8 +672,6 @@ impl ApplicationWorkflowClient {
         let service_status = args.service.subscribe();
         let core = args.core.observer();
         let preparation = RuntimePreparation::new(
-            args.application.clone(),
-            args.clash.clone(),
             args.profiles.clone(),
             args.content_lock,
             args.builder,
@@ -672,6 +686,8 @@ impl ApplicationWorkflowClient {
             pending_product: None,
             pending_release: None,
             sampled: None,
+            apply_result: None,
+            round_degradations: Vec::new(),
             checked: None,
             applied_selection: None,
             service_preferred: args.application.load().state.enable_service_mode,

@@ -194,7 +194,10 @@ async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once()
     let id = commit_source(&f.clash, overrides(serde_json::json!({"mode": "direct"})))
         .await
         .unwrap();
-    assert_eq!(settled(&f.client, id).await.conclusion.label(), "Waiting");
+    assert_eq!(
+        settled(&f.client, id).await.conclusion.label(),
+        "NotInEffect"
+    );
     let scheduled = f.client.mutation_journal().deferred.unwrap();
 
     scripted.queue(WaitScript::Missing);

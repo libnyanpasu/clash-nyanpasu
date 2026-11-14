@@ -3354,7 +3354,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn failed_reconcile_still_advances_the_promoted_read_model() {
+    async fn failed_reconcile_preserves_the_confirmed_product() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let client = NyanpasuClient::try_new(
@@ -3375,7 +3375,7 @@ pub(crate) mod tests {
             let before = client.promoted_runtime().await.unwrap();
             let _ = client.reconcile_core().await.expect_err("reconcile fails");
             let after = client.promoted_runtime().await.unwrap();
-            assert!(after.revision > before.revision);
+            assert_eq!(after.revision, before.revision);
         })
         .await;
     }

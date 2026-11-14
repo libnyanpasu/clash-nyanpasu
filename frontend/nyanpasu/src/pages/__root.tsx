@@ -176,16 +176,8 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
       return m.mutation_degradation_phase_profile_materialization()
     case 'runtime_build':
       return m.mutation_degradation_phase_runtime_build()
-    case 'runtime_check':
-      return m.mutation_degradation_phase_runtime_check()
-    case 'runtime_promote':
-      return m.mutation_degradation_phase_runtime_promote()
-    case 'runtime_publish':
-      return m.mutation_degradation_phase_runtime_publish()
     case 'runtime_apply':
       return m.mutation_degradation_phase_runtime_apply()
-    case 'core_rollback':
-      return m.mutation_degradation_phase_core_rollback()
     case 'system_effect':
       return m.mutation_degradation_phase_system_effect()
     case 'ui_effect':

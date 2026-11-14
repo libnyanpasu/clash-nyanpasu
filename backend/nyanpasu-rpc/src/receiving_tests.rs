@@ -30,12 +30,12 @@ use nyanpasu_runtime_values::{
     core_spec::CoreSpecError,
     effects::EffectsError,
     hotkey::{HotkeyAction, HotkeyParseError},
-    mutation::{CommitAborted, NotReady, RuntimeAftermath},
+    mutation::{CommitAborted, NotReady},
     ports::PortResolveError,
     profiles::{ProfileContentError, ProfilesError},
     publish::PublishRuntimeError,
     runtime::{Degradation, DegradationReason, InterruptFailure, MutationOutcome},
-    runtime_error::{CoreFailure, RestoreFailure, RuntimeError},
+    runtime_error::{CoreFailure, RuntimeError},
 };
 use nyanpasu_state_engine::error::UpsertError;
 use serde::{Serialize, de::DeserializeOwned};
@@ -89,12 +89,9 @@ cases!(
     received::RuntimeError,
     present;
     ShuttingDown,
-    Isolated,
     OwnerUnresponsive {
         operation_id: "field-5/路徑\\file.yaml".to_owned(),
     },
-    OwnerUnavailable,
-    SourceSettled,
     ApplyRuntime {
         failure: core_failure(present),
     },
@@ -130,11 +127,7 @@ cases!(
         failure: core_failure(present),
     },
     ServiceHostsCore,
-    CoreNotStarted {
-        reason: "field-6/路徑\\file.yaml".to_owned(),
-        retryable: present,
-    },
-    RecoveryUnresolved {
+    ConfigurationNotInEffect {
         reason: "field-7/路徑\\file.yaml".to_owned(),
     },
     BuildRuntime {
@@ -158,9 +151,6 @@ cases!(
     ReadCoreVersion {
         source: core_version_error_cases(present).remove(0),
     },
-    UnsettledBaseline {
-        gap: sample(json!("no_restorable_baseline")),
-    },
     CoreRejectedConfig {
         core_kind: if present {
             Some(sample(json!("backend_unavailable")))
@@ -170,7 +160,7 @@ cases!(
         message: "field-8/路徑\\file.yaml".to_owned(),
     },
     CheckUnavailable {
-        reason: sample(json!({"cause": "no_endpoint", "reason": "offline"})),
+        reason: check_unavailable_cases(present).remove(0),
     },
     CoreRolledBack {
         reason: if present {
@@ -182,18 +172,6 @@ cases!(
     SubmissionUnobserved {
         failure: core_failure(present),
     },
-    HandoffOwnerMismatch {
-        expected: sample(json!(if present { "service" } else { "local" })),
-    },
-    HandoffNotRestored {
-        failure: restore_failure_cases(present).remove(0),
-    },
-    RestoreFailed {
-        failure: restore_failure_cases(present).remove(0),
-    },
-    CommittedAfterRefusal {
-        operation_id: "field-10/路徑\\file.yaml".to_owned(),
-    },
     NoRuntimeConfig,
     SerializeRuntimeConfig {
         source: yaml_source(),
@@ -203,35 +181,6 @@ cases!(
     },
     RuntimeSnapshotChanged,
     RuntimeNodeNotFound { node_id: 7 },
-);
-
-cases!(
-    restore_failure_cases,
-    RestoreFailure,
-    RestoreFailure,
-    present;
-    MoveHostBack {
-        host: sample(json!(if present { "service" } else { "local" })),
-        failure: core_failure(present),
-    },
-    ReadStatus {
-        failure: core_failure(present),
-    },
-    Unobserved {
-        failure: if present {
-            Some(core_failure(present))
-        } else {
-            None
-        },
-    },
-    Unverified {
-        failure: if present {
-            Some(core_failure(present))
-        } else {
-            None
-        },
-    },
-    NotRecorded,
 );
 
 cases!(
@@ -404,18 +353,6 @@ cases!(
     DegradationReason,
     received::DegradationReason,
     present;
-    RuntimeRecoveryRequired {
-        operation_id: if present {
-            Some("field-14/路徑\\file.yaml".to_owned())
-        } else {
-            None
-        },
-        cause: if present {
-            Some(Arc::new(runtime_error_cases(present).remove(0)))
-        } else {
-            None
-        },
-    },
     RuntimeDeferred {
         cause: Arc::new(runtime_error_cases(present).remove(0)),
     },
@@ -451,40 +388,18 @@ cases!(
     received::CommitAborted,
     present;
     WriteConfig {
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
     },
     RecoverAfterWriteFailure {
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
     },
     RuntimeRefused {
         errors: vec![Arc::new(runtime_error_cases(present).remove(0))],
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
     },
     RuntimeFailed {
         errors: vec![Arc::new(runtime_error_cases(present).remove(0))],
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
-    },
-    ValidateState {
-        source: Box::new(io_source()),
-    },
-);
-
-cases!(
-    runtime_aftermath_cases,
-    RuntimeAftermath,
-    received::RuntimeAftermath,
-    present;
-    Untouched,
-    RolledBack,
-    RollbackFailed {
-        detail: Arc::new(runtime_error_cases(present).remove(0)),
-    },
-    Unknown {
-        detail: Arc::new(runtime_error_cases(present).remove(0)),
     },
 );
 
@@ -1124,9 +1039,6 @@ cases!(
 
 cases!(
     check_unavailable_cases, RuntimeCheckUnavailable, RuntimeCheckUnavailable, present;
-    NoEndpoint { reason: "offline".into() },
-    HostUnsupported { host: sample(json!("local")), reason: "not supported".into() },
-    CandidateUnavailable { reason: "missing candidate".into() },
     Backend { kind: present.then(|| sample(json!("backend_unavailable"))), message: "unavailable".into(), retryable: present },
 );
 
@@ -1176,13 +1088,11 @@ fn receiving_types_preserve_all_error_and_mutation_variants() {
         transform_failure_cases(present);
         profile_validation_error_cases(present);
         runtime_error_cases(present);
-        restore_failure_cases(present);
         profile_content_error_cases(present);
         profiles_error_cases(present);
         mutation_outcome_cases(present);
         degradation_reason_cases(present);
         commit_aborted_cases(present);
-        runtime_aftermath_cases(present);
         port_resolve_error_cases(present);
         core_spec_error_cases(present);
         publish_runtime_error_cases(present);

@@ -88,7 +88,7 @@ async fn a_lost_handoff() -> super::startup::Graph {
     let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
-        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
+        nyanpasu_runtime_values::runtime_error::RuntimeError::ConfigurationNotInEffect { .. }
     ));
     assert!(
         error.to_string().contains("handoff to Local"),

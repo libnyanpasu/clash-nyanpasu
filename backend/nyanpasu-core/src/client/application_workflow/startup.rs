@@ -7,7 +7,7 @@ use nyanpasu_runtime_values::{
     configuration::ConvergenceHealth,
     core_status::EndpointConnectivity,
     execution_host::ExecutionHost,
-    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+    runtime_error::{ConfigurationNotInEffectSnafu, RuntimeError},
 };
 
 use super::{
@@ -92,7 +92,7 @@ pub(super) struct Round {
 }
 
 pub(super) fn cause(reason: String) -> Arc<RuntimeError> {
-    Arc::new(RecoveryUnresolvedSnafu { reason }.build())
+    Arc::new(ConfigurationNotInEffectSnafu { reason }.build())
 }
 
 impl ApplicationWorkflow {

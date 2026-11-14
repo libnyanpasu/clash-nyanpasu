@@ -35,9 +35,7 @@ use crate::{
     state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 use nyanpasu_runtime_values::{
-    execution_host::ExecutionHost,
-    mutation::{CommitAborted, RuntimeAftermath},
-    runtime_error::RuntimeError,
+    execution_host::ExecutionHost, mutation::CommitAborted, runtime_error::RuntimeError,
 };
 
 // -- fixture ---------------------------------------------------------------
@@ -658,15 +656,9 @@ async fn unsupported_engine_is_rejected_before_source_persistence() {
                 }
                 other => panic!("unexpected {domain} error: {other:?}"),
             };
-            let CommitAborted::RuntimeRefused {
-                errors,
-                runtime: aftermath,
-                ..
-            } = commit
-            else {
+            let CommitAborted::RuntimeRefused { errors, .. } = commit else {
                 panic!("{commit:?}")
             };
-            assert!(matches!(aftermath, RuntimeAftermath::Untouched));
             assert_eq!(errors.len(), 1);
             let RuntimeError::BuildRuntime { source: build } = errors[0].as_ref() else {
                 panic!("{errors:?}")
@@ -1061,10 +1053,7 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
     assert!(matches!(
         error,
         nyanpasu_runtime_values::profiles::ProfilesError::Commit {
-            source: CommitAborted::RuntimeRefused {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::RuntimeRefused { .. },
             ..
         }
     ));

@@ -17,7 +17,7 @@ use nyanpasu_contracts::{
 use nyanpasu_core_metadata::CoreErrorKind;
 use nyanpasu_profile_transform::RuntimeBuildLog;
 use nyanpasu_runtime_values::{
-    check::{EvidenceGap, RuntimeCheckUnavailable},
+    check::RuntimeCheckUnavailable,
     effects::EffectsError,
     execution_host::ExecutionHost,
     hotkey::HotkeyAction,
@@ -25,7 +25,7 @@ use nyanpasu_runtime_values::{
     ports::PortResolveError,
     profiles::MaterializationOperation,
     runtime::{CommitReceipt, DegradationPhase, InterruptFailure},
-    runtime_error::{CoreFailure, RestoreFailure},
+    runtime_error::CoreFailure,
 };
 
 /// An owned error envelope; the domain payload is decoded according to its command.
@@ -59,16 +59,10 @@ impl RpcError {
 pub enum RuntimeError {
     /// Refused at admission: nothing ran.
     ShuttingDown,
-    /// Refused at admission: nothing ran.
-    Isolated,
     /// The workflow took the command and never answered, so it may have run.
     OwnerUnresponsive {
         operation_id: String,
     },
-    /// Refused at admission: the runtime owner is gone, so nothing ran.
-    OwnerUnavailable,
-    /// Refused at admission: the source transaction had already been decided.
-    SourceSettled,
     ApplyRuntime {
         failure: CoreFailure,
     },
@@ -106,14 +100,8 @@ pub enum RuntimeError {
     },
     /// The service hosts the runtime; the local host must take it over first.
     ServiceHostsCore,
-    /// An explicit start that could not put the core on its host; `reason` is
-    /// the diagnostic text of the convergence that gave up.
-    CoreNotStarted {
-        reason: String,
-        retryable: bool,
-    },
-    /// An explicit recovery that could not settle the runtime.
-    RecoveryUnresolved {
+    /// The committed configuration is waiting or has not taken effect.
+    ConfigurationNotInEffect {
         reason: String,
     },
     BuildRuntime {
@@ -137,11 +125,6 @@ pub enum RuntimeError {
     ReadCoreVersion {
         source: CoreVersionError,
     },
-    /// A candidate was refused before anything was submitted, for want of a
-    /// baseline to apply against.
-    UnsettledBaseline {
-        gap: EvidenceGap,
-    },
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
         message: String,
@@ -156,23 +139,6 @@ pub enum RuntimeError {
     /// The submission ended unobserved, so it may have taken effect.
     SubmissionUnobserved {
         failure: CoreFailure,
-    },
-    HandoffOwnerMismatch {
-        expected: ExecutionHost,
-    },
-    /// A mutation that moved the runtime to the other host and failed there
-    /// could not put it back.
-    HandoffNotRestored {
-        failure: RestoreFailure,
-    },
-    /// A cancelled mutation could not put the runtime back.
-    RestoreFailed {
-        failure: RestoreFailure,
-    },
-    /// The store committed a mutation whose runtime target the workflow had
-    /// refused.
-    CommittedAfterRefusal {
-        operation_id: String,
     },
     /// No runtime configuration has been built yet.
     NoRuntimeConfig,
@@ -325,12 +291,6 @@ pub struct Degradation {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum DegradationReason {
-    /// The runtime owner stopped before the mutation settled, or settled it as
-    /// needing recovery.
-    RuntimeRecoveryRequired {
-        operation_id: Option<String>,
-        cause: Option<Arc<RuntimeError>>,
-    },
     /// The runtime will apply the committed mutation later.
     RuntimeDeferred {
         cause: Arc<RuntimeError>,
@@ -361,45 +321,18 @@ pub enum DegradationReason {
     },
 }
 
-/// Why a source transaction did not commit, classified once from the
-/// persistence error and, when the Runtime took part, the receipt it settled
-/// (U7). A source wraps it in its own domain error.
+/// Why a source transaction did not commit. A source wraps this in its domain error.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommitAborted {
     /// The yaml write failed; nothing committed.
-    WriteConfig { runtime: RuntimeAftermath },
+    WriteConfig {},
     /// The write failed and so did the recovery of what the transaction staged.
-    RecoverAfterWriteFailure { runtime: RuntimeAftermath },
-    /// A required participant refused the candidate.
-    RuntimeRefused {
-        errors: Vec<Arc<RuntimeError>>,
-        runtime: RuntimeAftermath,
-    },
-    /// A required participant could not decide.
-    RuntimeFailed {
-        errors: Vec<Arc<RuntimeError>>,
-        runtime: RuntimeAftermath,
-    },
-    /// The coordinator refused before persisting: builder validation, or a CAS
-    /// mismatch the caller did not classify as its own version conflict.
-    ValidateState {},
-}
-
-/// What became of the runtime after an aborted commit, from the receipt's
-/// structured fields. `detail` is the receipt's operator diagnostics, never an
-/// input to a decision.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum RuntimeAftermath {
-    /// The runtime took no part, or the transaction withdrew before it did.
-    Untouched,
-    /// The runtime went back to the previous configuration.
-    RolledBack,
-    /// Rolling the runtime back failed; recovery is required.
-    RollbackFailed { detail: Arc<RuntimeError> },
-    /// What the runtime is running is unknown and needs recovery.
-    Unknown { detail: Arc<RuntimeError> },
+    RecoverAfterWriteFailure {},
+    /// Candidate validation refused the change.
+    RuntimeRefused { errors: Vec<Arc<RuntimeError>> },
+    /// Candidate validation could not return a verdict.
+    RuntimeFailed { errors: Vec<Arc<RuntimeError>> },
 }
 
 /// A failure of locating the binary a core is started from.

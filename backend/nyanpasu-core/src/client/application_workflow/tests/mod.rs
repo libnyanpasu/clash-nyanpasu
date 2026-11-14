@@ -808,7 +808,7 @@ async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
     assert_eq!(error.core_kind(), Some(CoreErrorKind::BackendUnavailable));
     assert_eq!(
         f.client.configuration_status().runtime.health,
-        nyanpasu_runtime_values::configuration::ConvergenceHealth::RecoveryRequired
+        nyanpasu_runtime_values::configuration::ConvergenceHealth::WaitingDependency
     );
     assert!(f.client.promoted_runtime().await.is_some());
     let outcome = f
@@ -818,7 +818,7 @@ async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
         .unwrap();
     assert_eq!(
         commit_first::receipt(&outcome).runtime,
-        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired
+        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred
     );
     assert_eq!(
         serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["ipv6"],

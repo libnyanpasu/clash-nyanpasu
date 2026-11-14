@@ -457,10 +457,6 @@ impl ProfilesActor {
         Ok(next)
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "profile checks preserve the shared domain error contract"
-    )]
     async fn check_candidate(
         state: &ProfilesActorState,
         before: &Profiles,
@@ -483,25 +479,16 @@ impl ProfilesActor {
                 .await
                 .map_err(|error| {
                     use nyanpasu_runtime_values::{
-                        mutation::{CommitAborted, RuntimeAftermath},
-                        runtime_error::RuntimeError,
+                        mutation::CommitAborted, runtime_error::RuntimeError,
                     };
                     let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
                     let errors = vec![error.clone()];
-                    let runtime = RuntimeAftermath::Untouched;
+
                     let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. })
                     {
-                        CommitAborted::RuntimeFailed {
-                            errors,
-                            runtime,
-                            source,
-                        }
+                        CommitAborted::RuntimeFailed { errors, source }
                     } else {
-                        CommitAborted::RuntimeRefused {
-                            errors,
-                            runtime,
-                            source,
-                        }
+                        CommitAborted::RuntimeRefused { errors, source }
                     };
                     ProfilesError::Commit {
                         uid: subject.0.clone(),
@@ -589,7 +576,6 @@ impl ProfilesActor {
         (uid, path): CommitSubject,
         cleanup_failures: Vec<ProfilesError>,
     ) -> ProfilesError {
-        let runtime = nyanpasu_runtime_values::mutation::RuntimeAftermath::Untouched;
         let source = match error {
             ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
                 expected,
@@ -603,12 +589,11 @@ impl ProfilesActor {
                 .build();
             }
             error @ (ReplaceIfVersionError::WriteConfig(_)
-            | ReplaceIfVersionError::LocalWrite(_)) => WriteConfigSnafu { runtime }
-                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
-            error @ ReplaceIfVersionError::ResourceRecovery { .. } => {
-                RecoverAfterWriteFailureSnafu { runtime }
-                    .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
+            | ReplaceIfVersionError::LocalWrite(_)) => {
+                WriteConfigSnafu.into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
             }
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => RecoverAfterWriteFailureSnafu
+                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
         };
         CommitSnafu {
             uid,

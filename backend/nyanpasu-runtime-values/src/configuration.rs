@@ -26,8 +26,6 @@ pub struct SourceVersions {
 pub struct RuntimeConvergence {
     pub health: ConvergenceHealth,
     pub operation_id: Option<String>,
-    pub attempts: u32,
-    pub automatic_remaining: u8,
     pub message: Option<String>,
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -48,7 +46,6 @@ pub struct OperationStatus {
     pub operation_id: String,
     pub domain: String,
     pub outcome: String,
-    pub conclusion: String,
     pub message: Option<String>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -59,7 +56,6 @@ pub enum ConvergenceHealth {
     RetryScheduled,
     WaitingDependency,
     Blocked,
-    RecoveryRequired,
 }
 
 /// Execution order of a plan. The ordering is load-bearing: the tray menu is

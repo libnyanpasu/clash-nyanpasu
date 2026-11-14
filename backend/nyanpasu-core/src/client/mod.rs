@@ -1114,10 +1114,6 @@ impl NyanpasuClient {
     }
 
     /// Prepares the daemon before committing service preference; ownership changes after commit.
-    #[expect(
-        clippy::result_large_err,
-        reason = "the facade preserves the shared domain error contract"
-    )]
     pub async fn set_service_mode(
         &self,
         enabled: bool,

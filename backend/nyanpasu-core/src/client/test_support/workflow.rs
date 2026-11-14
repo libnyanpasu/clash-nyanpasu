@@ -21,20 +21,6 @@ use std::{
 };
 use struct_patch::Patch;
 use tokio::sync::Notify;
-/// What became of the runtime after the aborted commit.
-pub fn aftermath(
-    aborted: &nyanpasu_runtime_values::mutation::CommitAborted,
-) -> &nyanpasu_runtime_values::mutation::RuntimeAftermath {
-    use nyanpasu_runtime_values::mutation::CommitAborted::*;
-    match aborted {
-        WriteConfig { runtime, .. }
-        | RecoverAfterWriteFailure { runtime, .. }
-        | RuntimeRefused { runtime, .. }
-        | RuntimeFailed { runtime, .. } => runtime,
-        ValidateState { .. } => panic!("{aborted:?} has no runtime aftermath"),
-    }
-}
-
 pub async fn disable_mode_interruption(client: &NyanpasuClient) {
     let mut config = client.get_clash_config().await.unwrap();
     config.break_connection.on_mode_change = false;

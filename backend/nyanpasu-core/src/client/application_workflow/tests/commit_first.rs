@@ -11,8 +11,8 @@ use nyanpasu_contracts::{
 };
 use nyanpasu_runtime_values::{
     execution_host::ExecutionHost,
-    mutation::{CommitAborted, ConfigDomain, RuntimeAftermath},
-    runtime::{MutationOutcome, RuntimeCommitStatus},
+    mutation::{CommitAborted, ConfigDomain},
+    runtime::{DegradationReason, MutationOutcome, RuntimeCommitStatus},
     runtime_error::RuntimeError,
 };
 use tokio::sync::Notify;
@@ -120,10 +120,7 @@ async fn invalid_core_candidate_never_commits_or_submits() {
     assert!(matches!(
         client.patch_app_config(switched_core(&client)).await,
         Err(ClientError::Config(ConfigError::Commit {
-            source: CommitAborted::RuntimeRefused {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::RuntimeRefused { .. },
             ..
         }))
     ));
@@ -273,10 +270,7 @@ async fn a_commit_behind_an_unresolved_action_settles_as_unknown() {
         .patch_app_config(switched_core(&client))
         .await
         .unwrap();
-    assert_eq!(
-        receipt(&first).runtime,
-        RuntimeCommitStatus::RecoveryRequired
-    );
+    assert_eq!(receipt(&first).runtime, RuntimeCommitStatus::Deferred);
     let patch = NyanpasuAppConfigPatch {
         enable_builtin_enhanced: Some(
             !client
@@ -289,10 +283,12 @@ async fn a_commit_behind_an_unresolved_action_settles_as_unknown() {
     };
     let enabled = patch.enable_builtin_enhanced.unwrap();
     let outcome = client.patch_app_config(patch).await.unwrap();
-    assert_eq!(
-        receipt(&outcome).runtime,
-        RuntimeCommitStatus::RecoveryRequired
-    );
+    assert_eq!(receipt(&outcome).runtime, RuntimeCommitStatus::Deferred);
+    assert!(matches!(
+        &outcome.degradations()[0].reason,
+        DegradationReason::RuntimeDeferred { cause }
+            if matches!(cause.as_ref(), RuntimeError::ConfigurationNotInEffect { .. })
+    ));
     let committed = client.inner.application.snapshot();
     assert_eq!(committed.state.enable_builtin_enhanced, enabled);
     let status = client
@@ -470,12 +466,7 @@ async fn refusing_elevation_keeps_service_preference_uncommitted() {
     let before = client.inner.application.snapshot().version;
     let error = client.set_service_mode(true).await.unwrap_err();
     let ClientError::Config(ConfigError::Commit {
-        source:
-            CommitAborted::RuntimeRefused {
-                errors,
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+        source: CommitAborted::RuntimeRefused { errors, .. },
         ..
     }) = error
     else {
@@ -731,7 +722,12 @@ async fn recent_operations_describe_reconcile_rounds() {
     let round = &status.recent_operations[0];
     assert_eq!(round.domain, "SourceCommitted");
     assert_eq!(round.outcome, "NotInEffect");
-    assert!(round.conclusion.is_empty());
+    assert!(
+        serde_json::to_value(round)
+            .unwrap()
+            .get("conclusion")
+            .is_none()
+    );
     let journal = client.inner.application_workflow.reconciler_status();
     let recorded = journal.recent.back().unwrap();
     assert_eq!(round.operation_id, recorded.operation_id.to_string());
@@ -758,10 +754,14 @@ async fn recent_operations_describe_reconcile_rounds() {
     assert_eq!(history.len(), status.recent_operations.len() + 2);
     assert_eq!(history[0].domain, "CoreChanged");
     assert_eq!(history[0].outcome, "Converged");
-    assert!(history[0].conclusion.is_empty());
+    assert!(
+        serde_json::to_value(&history[0])
+            .unwrap()
+            .get("conclusion")
+            .is_none()
+    );
     assert_eq!(history[1].domain, "Start");
     assert_eq!(history[1].outcome, "Converged");
-    assert!(history[1].conclusion.is_empty());
     assert_eq!(history[2].operation_id, round.operation_id);
     client.request_shutdown();
     client.wait_shutdown().await;

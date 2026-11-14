@@ -30,11 +30,12 @@ impl NyanpasuClient {
             super::application_workflow::Conclusion::NotInEffect { cause } => {
                 (ConvergenceHealth::Blocked, Some(cause.to_string()))
             }
-            super::application_workflow::Conclusion::Unknown { cause } => {
-                (ConvergenceHealth::RecoveryRequired, Some(cause.to_string()))
-            }
+            super::application_workflow::Conclusion::Unknown { cause } => (
+                ConvergenceHealth::WaitingDependency,
+                Some(cause.to_string()),
+            ),
             super::application_workflow::Conclusion::Closed => (
-                ConvergenceHealth::RecoveryRequired,
+                ConvergenceHealth::WaitingDependency,
                 Some(
                     nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown.to_string(),
                 ),
@@ -50,8 +51,6 @@ impl NyanpasuClient {
                 .active
                 .or_else(|| status.recent.back().map(|round| round.operation_id))
                 .map(|id| id.to_string()),
-            attempts: 0,
-            automatic_remaining: 0,
             message,
         };
         ConfigurationStatus {
@@ -96,7 +95,6 @@ impl NyanpasuClient {
                     operation_id: round.operation_id.to_string(),
                     domain: round.trigger.clone(),
                     outcome: round.conclusion.clone(),
-                    conclusion: String::new(),
                     message: round.cause.as_ref().map(ToString::to_string),
                 })
                 .collect(),

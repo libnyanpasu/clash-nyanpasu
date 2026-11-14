@@ -31,29 +31,264 @@ use nyanpasu_rpc_protocol::{
     ResponseVisibility, RpcError, RpcValue,
     types::{
         PublicClashReadError, PublicCommitAborted, PublicCommitAbortedKind, PublicConfigError,
-        PublicCoreLogReadError, PublicEffectsError, PublicFailure, PublicHotkeyErrorKind,
-        PublicHttpServerError, PublicInstallCoreBinaryKind, PublicOsProxyError,
-        PublicPortResolveKind, PublicProfileContentKind, PublicProfileSyncReadError,
-        PublicProfilesError, PublicRemoteAccessErrorKind, PublicRuntimeAftermathKind,
-        PublicRuntimeBuildKind, PublicRuntimeCheckUnavailableKind, PublicRuntimeError,
-        PublicRuntimePipelineKind, PublicStorageError, PublicSubscriptionFetchKind,
-        PublicSystemDnsError, PublicTransparentProxyMode, PublicTransparentProxyValidationKind,
+        PublicCoreLogReadError, PublicDegradation, PublicDegradationReason, PublicEffectsError,
+        PublicFailure, PublicHotkeyErrorKind, PublicHttpServerError, PublicInstallCoreBinaryKind,
+        PublicMutationOutcome, PublicOsProxyError, PublicPortResolveKind, PublicProfileContentKind,
+        PublicProfileSyncReadError, PublicProfilesError, PublicRemoteAccessErrorKind,
+        PublicRuntimeAftermathKind, PublicRuntimeBuildKind, PublicRuntimeCheckUnavailableKind,
+        PublicRuntimeError, PublicRuntimePipelineKind, PublicStorageError,
+        PublicSubscriptionFetchKind, PublicSystemDnsError, PublicTransparentProxyMode,
+        PublicTransparentProxyValidationKind, RpcAppUpdateOutcome, RpcFolderMutationOutcome,
+        RpcMutationOutcome, RpcProfileMutationOutcome, RpcUnitMutationOutcome,
     },
 };
 use nyanpasu_runtime_values::{
+    app_update::AppUpdateSummary,
     check::RuntimeCheckUnavailable,
     effects::EffectsError,
     hotkey::HotkeyParseError,
     mutation::{CommitAborted, RuntimeAftermath},
     ports::PortResolveError,
     profiles::{ProfileContentError, ProfilesError},
+    runtime::{Degradation, DegradationReason, MutationOutcome},
     runtime_error::RuntimeError,
 };
 
-use crate::error::{IpcError, IpcErrorKind};
+use crate::{
+    audit::{CompletionSummary, summarize_mutation, summarize_public_mutation},
+    error::{IpcError, IpcErrorKind},
+};
 
 /// Fixed non-sensitive messages for public RPC errors.
 const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
+
+/// Explicit typed boundary for RPC command outputs whose serialized shape depends on
+/// [`ResponseVisibility`] and/or carries mutation audit metadata.
+///
+/// Only canonical dual-shape wrappers ([`RpcMutationOutcome<T>`], [`RpcAppUpdateOutcome`])
+/// implement this trait so `#[nyanpasu_macro::rpc(..., privacy)]` enforces at compile time
+/// that declared command signatures match both full and public wire payloads while resolving
+/// wrapper type aliases naturally through Rust's type system.
+///
+/// Raw domain `MutationOutcome<T>` (and aliases of it) must NOT satisfy `privacy`:
+///
+/// ```compile_fail
+/// use nyanpasu_runtime_values::runtime::MutationOutcome;
+///
+/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// fn raw_outcome() -> MutationOutcome<()> {
+///     MutationOutcome::Committed {
+///         value: (),
+///         commits: Vec::new(),
+///         notifications_pending: false,
+///     }
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use nyanpasu_runtime_values::runtime::MutationOutcome;
+///
+/// type RawMutationAlias = MutationOutcome<()>;
+///
+/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// fn raw_alias_outcome() -> RawMutationAlias {
+///     MutationOutcome::Committed {
+///         value: (),
+///         commits: Vec::new(),
+///         notifications_pending: false,
+///     }
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// fn wrong_plain_type() -> String {
+///     "not a dual-shape outcome".to_owned()
+/// }
+/// ```
+pub trait RpcResponseProjection: Sized {
+    /// Extract audit completion metadata from the original typed value before projection or encoding.
+    fn summarize_completion(&self) -> CompletionSummary;
+
+    /// Project (when `ResponseVisibility::Public`) and encode the reply to JSON.
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError>;
+}
+
+impl<T: serde::Serialize> RpcResponseProjection for RpcMutationOutcome<T> {
+    fn summarize_completion(&self) -> CompletionSummary {
+        match self {
+            Self::Full(outcome) => summarize_mutation(outcome),
+            Self::Public(outcome) => summarize_public_mutation(outcome),
+        }
+    }
+
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError> {
+        let encoded = match (visibility, self) {
+            (ResponseVisibility::Full, Self::Full(outcome)) => serde_json::to_value(outcome),
+            (ResponseVisibility::Public, Self::Full(outcome)) => {
+                serde_json::to_value(project_mutation_outcome(outcome))
+            }
+            (_, Self::Public(outcome)) => serde_json::to_value(outcome),
+        };
+        encoded.map_err(|error| application_error_for(visibility, &error))
+    }
+}
+
+impl RpcResponseProjection for RpcUnitMutationOutcome {
+    fn summarize_completion(&self) -> CompletionSummary {
+        self.0.summarize_completion()
+    }
+
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError> {
+        self.0.encode_for_visibility(visibility)
+    }
+}
+
+impl RpcResponseProjection for RpcProfileMutationOutcome {
+    fn summarize_completion(&self) -> CompletionSummary {
+        self.0.summarize_completion()
+    }
+
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError> {
+        self.0.encode_for_visibility(visibility)
+    }
+}
+
+impl RpcResponseProjection for RpcFolderMutationOutcome {
+    fn summarize_completion(&self) -> CompletionSummary {
+        self.0.summarize_completion()
+    }
+
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError> {
+        self.0.encode_for_visibility(visibility)
+    }
+}
+
+impl RpcResponseProjection for RpcAppUpdateOutcome {
+    fn summarize_completion(&self) -> CompletionSummary {
+        CompletionSummary::NotReported
+    }
+
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError> {
+        let encoded = match (visibility, self) {
+            (ResponseVisibility::Full, Self::Full(snapshot)) => serde_json::to_value(snapshot),
+            (ResponseVisibility::Public, Self::Full(snapshot)) => {
+                serde_json::to_value(AppUpdateSummary::from(&snapshot))
+            }
+            (_, Self::Public(summary)) => serde_json::to_value(summary),
+        };
+        encoded.map_err(|error| application_error_for(visibility, &error))
+    }
+}
+
+/// Project a rich [`MutationOutcome<T>`] onto [`PublicMutationOutcome<T>`] without cloning `T`.
+pub(crate) fn project_mutation_outcome<T>(outcome: MutationOutcome<T>) -> PublicMutationOutcome<T> {
+    match outcome {
+        MutationOutcome::Committed {
+            value,
+            commits,
+            notifications_pending,
+        } => PublicMutationOutcome::Committed {
+            value,
+            commits,
+            notifications_pending,
+        },
+        MutationOutcome::CommittedDegraded {
+            value,
+            commits,
+            notifications_pending,
+            degradations,
+        } => PublicMutationOutcome::CommittedDegraded {
+            value,
+            commits,
+            notifications_pending,
+            degradations: degradations.iter().map(project_degradation).collect(),
+        },
+    }
+}
+
+fn project_degradation(degradation: &Degradation) -> PublicDegradation {
+    let Degradation {
+        phase,
+        reason,
+        message: _,
+        retryable,
+    } = degradation;
+    PublicDegradation {
+        phase: *phase,
+        reason: project_degradation_reason(reason),
+        retryable: *retryable,
+    }
+}
+
+fn project_degradation_reason(reason: &DegradationReason) -> PublicDegradationReason {
+    match reason {
+        DegradationReason::RuntimeRecoveryRequired {
+            operation_id,
+            cause,
+        } => PublicDegradationReason::RuntimeRecoveryRequired {
+            operation_id: operation_id.clone(),
+            cause: cause.as_deref().map(project_runtime_error),
+        },
+        DegradationReason::RuntimeDeferred { cause } => PublicDegradationReason::RuntimeDeferred {
+            cause: project_runtime_error(cause),
+        },
+        DegradationReason::RuntimeProductPublishFailed { cause } => {
+            PublicDegradationReason::RuntimeProductPublishFailed {
+                cause: project_runtime_error(cause),
+            }
+        }
+        DegradationReason::ServiceStopFailed { cause } => {
+            PublicDegradationReason::ServiceStopFailed {
+                cause: project_runtime_error(cause),
+            }
+        }
+        DegradationReason::ModeInterruptionFailed { cause } => {
+            PublicDegradationReason::ModeInterruptionFailed { cause: *cause }
+        }
+        DegradationReason::ProfileInterruptionFailed { cause } => {
+            PublicDegradationReason::ProfileInterruptionFailed { cause: *cause }
+        }
+        DegradationReason::ProxyInterruptionFailed { cause } => {
+            PublicDegradationReason::ProxyInterruptionFailed { cause: *cause }
+        }
+        DegradationReason::ProxyCacheRefreshFailed => {
+            PublicDegradationReason::ProxyCacheRefreshFailed
+        }
+        DegradationReason::JournalInvalid => PublicDegradationReason::JournalInvalid,
+        DegradationReason::JobsJournalUnavailable => {
+            PublicDegradationReason::JobsJournalUnavailable
+        }
+        DegradationReason::MaterializationDeferred => {
+            PublicDegradationReason::MaterializationDeferred
+        }
+        DegradationReason::CleanupDeferred => PublicDegradationReason::CleanupDeferred,
+        DegradationReason::ProfileAutoActivationFailed { profile: _, cause } => {
+            PublicDegradationReason::ProfileAutoActivationFailed {
+                cause: project_profiles_error(cause),
+            }
+        }
+        DegradationReason::HttpServerUnavailable => PublicDegradationReason::HttpServerUnavailable,
+    }
+}
 
 /// Convert any command failure into an `RpcError` matching `visibility`.
 ///

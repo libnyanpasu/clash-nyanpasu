@@ -7,7 +7,7 @@ import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale, locales, overwriteGetLocale } from '@/paraglide/runtime'
-import type { AppUpdateSnapshot } from '@nyanpasu/rpc/types'
+import type { AppUpdateSummary } from '@nyanpasu/rpc/types'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -25,16 +25,15 @@ const backend = vi.hoisted(() => ({
   snapshot: {
     revision: 1,
     phase: 'downloading',
-    release: { version: '2.1.0', date: null, body: 'Release notes' },
+    release: { version: '2.1.0', date: null },
     downloaded: 32 * 1024 * 1024,
     total: 128 * 1024 * 1024,
     speed: 2 * 1024 * 1024,
     source: 'github',
-    error: null,
+    has_error: false,
     last_checked_at: '2026-10-03T12:00:00Z',
     supported: true,
-    endpoints: ['https://updates.example.test/stable'],
-  } as AppUpdateSnapshot,
+  } as AppUpdateSummary,
   check: vi.fn(),
   download: vi.fn(),
   cancelDownload: vi.fn(),

@@ -119,6 +119,14 @@ impl SubscriptionSource for NyanpasuClient {
                     .await
                     .map_err(|error| error::application_error_for(visibility, error))?,
             ),
+            EventName::AppUpdateSummaryChanged => {
+                serde_json::to_value(nyanpasu_runtime_values::app_update::AppUpdateSummary::from(
+                    &self
+                        .get_app_update_state()
+                        .await
+                        .map_err(|error| error::application_error_for(visibility, error))?,
+                ))
+            }
             EventName::CoreLogsChanged => serde_json::to_value(CoreLogsChanged {
                 status: self
                     .get_core_log_status()

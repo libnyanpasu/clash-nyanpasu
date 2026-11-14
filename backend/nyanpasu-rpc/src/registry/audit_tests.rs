@@ -62,12 +62,12 @@ fn receipt() -> CommitReceipt {
     }
 }
 
-#[nyanpasu_macro::rpc(http, scope = settings)]
+#[nyanpasu_macro::rpc(http, privacy, scope = settings)]
 fn audit_mutation(
     value: String,
     degraded: bool,
     fail_encoding: bool,
-) -> MutationOutcome<AuditValue> {
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<AuditValue> {
     let value = AuditValue {
         value,
         fail_encoding,
@@ -92,6 +92,38 @@ fn audit_mutation(
             notifications_pending: false,
         }
     }
+    .into()
+}
+
+type AuditOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<AuditValue>;
+
+#[nyanpasu_macro::rpc(http, privacy, scope = settings)]
+fn audit_mutation_alias(value: String, degraded: bool, fail_encoding: bool) -> AuditOutcomeAlias {
+    let value = AuditValue {
+        value,
+        fail_encoding,
+    };
+    let commits = vec![receipt()];
+    if degraded {
+        MutationOutcome::CommittedDegraded {
+            value,
+            commits,
+            notifications_pending: true,
+            degradations: vec![Degradation {
+                phase: DegradationPhase::UiEffect,
+                reason: DegradationReason::ProxyCacheRefreshFailed,
+                message: SECRET.into(),
+                retryable: true,
+            }],
+        }
+    } else {
+        MutationOutcome::Committed {
+            value,
+            commits,
+            notifications_pending: false,
+        }
+    }
+    .into()
 }
 
 #[tokio::test]
@@ -178,60 +210,134 @@ async fn app_preferences_decode_rejection_is_recorded_before_admission() {
 
 #[tokio::test]
 async fn audit_preserves_committed_degraded_summary() {
+    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+
     let fixture = Fixture::new(false).await;
-    for degraded in [false, true] {
-        let (status, value) = fixture
-            .call(
-                "audit_mutation",
+    let public_auth = AuthContext::new(
+        Principal::Token {
+            id: "tok-settings-audit".into(),
+            name: "settings-only".into(),
+        },
+        [Scope::Settings].into_iter().collect(),
+    );
+    for command in ["audit_mutation", "audit_mutation_alias"] {
+        for degraded in [false, true] {
+            // Privileged caller (SensitiveRead) receives Full MutationOutcome.
+            let (status, full_value) = fixture
+                .call(
+                    command,
+                    json!({"value": SECRET, "degraded": degraded, "failEncoding": false}),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(full_value["value"], SECRET);
+            if degraded {
+                assert_eq!(full_value["degradations"][0]["message"], SECRET);
+            }
+
+            // Caller with only Scope::Settings receives PublicMutationOutcome (message projected away).
+            let (pub_status, pub_value) = crate::test_support::rpc_for_test_call_with_auth(
+                &fixture.rpc.clone().router(),
+                command,
                 json!({"value": SECRET, "degraded": degraded, "failEncoding": false}),
+                None,
+                Some(public_auth.clone()),
             )
             .await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(value["value"], SECRET);
-        let mut records = fixture.sink.records.lock();
-        assert_eq!(records.len(), 3);
-        assert_eq!(
-            records[1].phase,
-            AuditPhase::Finished {
-                outcome: RpcAuditOutcome::Success,
-                completion: CompletionSummary::Mutation {
-                    commits: vec![receipt()],
-                    notifications_pending: degraded,
-                    degradation_count: usize::from(degraded)
-                },
+            assert_eq!(pub_status, StatusCode::OK);
+            assert_eq!(pub_value["value"], SECRET);
+            if degraded {
+                assert_eq!(pub_value["status"], "committed_degraded");
+                assert_eq!(pub_value["notifications_pending"], true);
+                assert_eq!(pub_value["commits"].as_array().unwrap().len(), 1);
+                assert_eq!(
+                    pub_value["degradations"],
+                    json!([{
+                        "phase": "ui_effect",
+                        "reason": { "code": "proxy_cache_refresh_failed" },
+                        "retryable": true,
+                    }])
+                );
+            } else {
+                assert_eq!(pub_value["status"], "committed");
             }
-        );
-        assert!(!format!("{records:?}").contains(SECRET));
-        records.clear();
+
+            let mut records = fixture.sink.records.lock();
+            assert_eq!(records.len(), 6);
+            for idx in [1, 4] {
+                assert_eq!(
+                    records[idx].phase,
+                    AuditPhase::Finished {
+                        outcome: RpcAuditOutcome::Success,
+                        completion: CompletionSummary::Mutation {
+                            commits: vec![receipt()],
+                            notifications_pending: degraded,
+                            degradation_count: usize::from(degraded)
+                        },
+                    }
+                );
+            }
+            assert!(!format!("{records:?}").contains(SECRET));
+            records.clear();
+        }
     }
     fixture.shutdown().await;
 }
 
 #[tokio::test]
 async fn audit_keeps_receipts_when_response_encoding_fails() {
+    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+
     let fixture = Fixture::new(false).await;
-    let (status, error) = fixture
-        .call(
-            "audit_mutation",
+    let public_auth = AuthContext::new(
+        Principal::Token {
+            id: "tok-settings-audit-enc".into(),
+            name: "settings-only".into(),
+        },
+        [Scope::Settings].into_iter().collect(),
+    );
+    for command in ["audit_mutation", "audit_mutation_alias"] {
+        let (status, error) = fixture
+            .call(
+                command,
+                json!({"value": SECRET, "degraded": true, "failEncoding": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error["kind"], "application_error");
+
+        let (pub_status, pub_error) = crate::test_support::rpc_for_test_call_with_auth(
+            &fixture.rpc.clone().router(),
+            command,
             json!({"value": SECRET, "degraded": true, "failEncoding": true}),
+            None,
+            Some(public_auth.clone()),
         )
         .await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(error["kind"], "application_error");
-    assert_eq!(
-        fixture.sink.records.lock()[1].phase,
-        AuditPhase::Finished {
-            outcome: RpcAuditOutcome::Failure {
-                kind: "application_error",
-                code: None
-            },
-            completion: CompletionSummary::Mutation {
-                commits: vec![receipt()],
-                notifications_pending: true,
-                degradation_count: 1
-            },
+        assert_eq!(pub_status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(pub_error["kind"], "application_error");
+        assert!(!pub_error.to_string().contains(SECRET), "{pub_error}");
+
+        let mut records = fixture.sink.records.lock();
+        for idx in [1, 4] {
+            assert_eq!(
+                records[idx].phase,
+                AuditPhase::Finished {
+                    outcome: RpcAuditOutcome::Failure {
+                        kind: "application_error",
+                        code: None
+                    },
+                    completion: CompletionSummary::Mutation {
+                        commits: vec![receipt()],
+                        notifications_pending: true,
+                        degradation_count: 1
+                    },
+                }
+            );
         }
-    );
+        assert!(!format!("{records:?}").contains(SECRET));
+        records.clear();
+    }
     fixture.shutdown().await;
 }
 

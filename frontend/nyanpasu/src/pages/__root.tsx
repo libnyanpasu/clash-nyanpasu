@@ -19,7 +19,10 @@ import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
 import { queryClient, rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
-import { degradationReasonMessage } from '@/utils/ipc-error'
+import {
+  degradationReasonMessage,
+  publicDegradationReasonMessage,
+} from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
 import {
@@ -28,9 +31,13 @@ import {
   type RuntimeInfo,
 } from '@nyanpasu/platform'
 import { PlatformProvider } from '@nyanpasu/platform/react'
-import { NyanpasuQueryProvider, useSettings } from '@nyanpasu/query'
+import {
+  NyanpasuQueryProvider,
+  useSettings,
+  type AnyDegradation,
+} from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
-import { type Degradation, type DegradationPhase } from '@nyanpasu/rpc/types'
+import { type DegradationPhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   createRootRouteWithContext,
@@ -198,16 +205,20 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
 }
 
 function formatDegradationItem(
-  degradation: Degradation,
+  degradation: AnyDegradation,
   profileLabel: ProfileLabel,
 ): string {
+  const detail =
+    'message' in degradation
+      ? degradationReasonMessage(degradation.reason, profileLabel)
+      : publicDegradationReasonMessage(degradation.reason)
   return m.mutation_degraded_item({
     phase: localizeDegradationPhase(degradation.phase),
-    detail: degradationReasonMessage(degradation.reason, profileLabel),
+    detail,
   })
 }
 
-type DegradationHandler = (degradations: Degradation[]) => void
+type DegradationHandler = (degradations: AnyDegradation[]) => void
 
 function MutationDegradationNotifier({
   handler,
@@ -227,7 +238,7 @@ function MutationDegradationNotifier({
           phase: degradation.phase,
           reason: degradation.reason,
           retryable: degradation.retryable,
-          message: degradation.message,
+          message: 'message' in degradation ? degradation.message : undefined,
         })
       }
 
@@ -262,7 +273,7 @@ export default function App() {
   const [appWindow] = useState(createWindowAdapter)
   const degradationHandler = useRef<DegradationHandler | null>(null)
   const onDegraded = useCallback(
-    (items: Degradation[]) => degradationHandler.current?.(items),
+    (items: AnyDegradation[]) => degradationHandler.current?.(items),
     [],
   )
 

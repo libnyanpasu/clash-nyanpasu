@@ -330,7 +330,7 @@ fn public_and_received_mutation_outcomes_decode_full_and_public_payloads() {
         downloaded: 512,
         total: Some(1024),
         speed: 128.0,
-        source: None,
+        source: Some(nyanpasu_config::application::UpdateSource::Github),
         error: Some("https://user:pass@secret.example/update failed".into()),
         last_checked_at: Some("2026-11-14T00:00:00Z".into()),
         supported: true,
@@ -339,6 +339,7 @@ fn public_and_received_mutation_outcomes_decode_full_and_public_payloads() {
     let summary = AppUpdateSummary::from(&snapshot);
     let summary_json = serde_json::to_value(&summary).unwrap();
     assert_eq!(summary_json["phase"], "failed");
+    assert_eq!(summary_json["source"], "github");
     assert_eq!(summary_json["has_error"], true);
     assert!(summary_json.get("endpoints").is_none());
     assert!(summary_json.get("error").is_none());

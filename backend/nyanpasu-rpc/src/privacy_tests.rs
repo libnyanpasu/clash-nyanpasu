@@ -582,3 +582,528 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_and_aft
     assert_eq!(plain_wire["message"], "internal error");
     assert_eq!(plain_wire["domain_error"]["kind"]["domain"], "unknown");
 }
+
+fn canary_degraded_outcome(
+    value: &str,
+    secret_path: &str,
+    secret_url: &str,
+    secret_diag: &str,
+) -> nyanpasu_runtime_values::runtime::MutationOutcome<String> {
+    use nyanpasu_config::profile::ProfileId;
+    use nyanpasu_contracts::profiles::error::ProfileFileError;
+    use nyanpasu_runtime_values::{
+        profiles::ProfilesError,
+        runtime::{
+            CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
+            RuntimeCommitStatus,
+        },
+        runtime_error::RuntimeError,
+    };
+
+    let secret_profile: ProfileId = "secret-profile-uid".parse().unwrap();
+    MutationOutcome::CommittedDegraded {
+        value: value.to_owned(),
+        commits: vec![CommitReceipt {
+            operation_id: Some("op_layer10_canary".to_owned()),
+            domain: "profiles".to_owned(),
+            source_version: 42,
+            runtime: RuntimeCommitStatus::Deferred,
+        }],
+        notifications_pending: true,
+        degradations: vec![
+            Degradation {
+                phase: DegradationPhase::RuntimeApply,
+                reason: DegradationReason::RuntimeRecoveryRequired {
+                    operation_id: Some("op_layer10_canary".to_owned()),
+                    cause: Some(Arc::new(RuntimeError::CoreRejectedConfig {
+                        core_kind: None,
+                        message: format!("failed inspecting {secret_path} at {secret_url}"),
+                    })),
+                },
+                message: format!("recovery failed: {secret_diag}"),
+                retryable: true,
+            },
+            Degradation {
+                phase: DegradationPhase::SystemEffect,
+                reason: DegradationReason::ProfileAutoActivationFailed {
+                    profile: secret_profile.clone(),
+                    cause: Arc::new(ProfilesError::ReadProfileFile {
+                        uid: secret_profile,
+                        source: ProfileFileError::InspectPath {
+                            path: std::path::Path::new(secret_path).into(),
+                            source: std::io::Error::other(secret_diag),
+                        },
+                    }),
+                },
+                message: format!("activation failed: {secret_url}"),
+                retryable: false,
+            },
+        ],
+    }
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = read)]
+fn privacy_canary_read_mutation(
+    secret_path: String,
+    secret_url: String,
+    secret_diag: String,
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<String> {
+    canary_degraded_outcome("read-committed-ok", &secret_path, &secret_url, &secret_diag).into()
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = proxy)]
+fn privacy_canary_proxy_mutation(
+    secret_path: String,
+    secret_url: String,
+    secret_diag: String,
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<String> {
+    canary_degraded_outcome(
+        "proxy-committed-ok",
+        &secret_path,
+        &secret_url,
+        &secret_diag,
+    )
+    .into()
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = profile)]
+fn privacy_canary_profile_mutation(
+    secret_path: String,
+    secret_url: String,
+    secret_diag: String,
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<String> {
+    canary_degraded_outcome(
+        "profile-committed-ok",
+        &secret_path,
+        &secret_url,
+        &secret_diag,
+    )
+    .into()
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = settings)]
+fn privacy_canary_settings_mutation(
+    secret_path: String,
+    secret_url: String,
+    secret_diag: String,
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<String> {
+    canary_degraded_outcome(
+        "settings-committed-ok",
+        &secret_path,
+        &secret_url,
+        &secret_diag,
+    )
+    .into()
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = system)]
+fn privacy_canary_system_mutation(
+    secret_path: String,
+    secret_url: String,
+    secret_diag: String,
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<String> {
+    canary_degraded_outcome(
+        "system-committed-ok",
+        &secret_path,
+        &secret_url,
+        &secret_diag,
+    )
+    .into()
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = remote_admin)]
+fn privacy_canary_remote_admin_mutation(
+    secret_path: String,
+    secret_url: String,
+    secret_diag: String,
+) -> nyanpasu_rpc_protocol::types::RpcMutationOutcome<String> {
+    canary_degraded_outcome(
+        "remote-admin-committed-ok",
+        &secret_path,
+        &secret_url,
+        &secret_diag,
+    )
+    .into()
+}
+
+#[nyanpasu_macro::rpc(http, privacy, scope = system)]
+fn privacy_canary_app_update_mutation(
+    secret_err: String,
+    secret_endpoint: String,
+    secret_body: String,
+) -> nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome {
+    use nyanpasu_config::application::UpdateSource;
+    use nyanpasu_runtime_values::app_update::{
+        AppUpdatePhase, AppUpdateRelease, AppUpdateSnapshot,
+    };
+
+    AppUpdateSnapshot {
+        revision: 9,
+        phase: AppUpdatePhase::Failed,
+        release: Some(AppUpdateRelease {
+            version: "2.3.4".to_owned(),
+            date: Some("2026-11-14T00:00:00Z".to_owned()),
+            body: Some(secret_body),
+        }),
+        downloaded: 512,
+        total: Some(2048),
+        speed: 64.5,
+        source: Some(UpdateSource::Github),
+        error: Some(secret_err),
+        last_checked_at: Some("2026-11-14T00:00:00Z".to_owned()),
+        supported: true,
+        endpoints: vec![secret_endpoint],
+    }
+    .into()
+}
+
+#[tokio::test]
+async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes() {
+    use nyanpasu_rpc_protocol::types::ReceivedMutationOutcome;
+
+    let fixture = Fixture::new(false).await;
+    let router = fixture.rpc.clone().router();
+
+    let secret_path = "/Users/alice/.config/clash-nyanpasu/secret.yaml";
+    let secret_url = "https://user:hunter2@secret-canary.invalid/sub";
+    let secret_diag = "raw-host-diagnostic-token";
+
+    let cases = [
+        (
+            Scope::Read,
+            "privacy_canary_read_mutation",
+            "read-committed-ok",
+        ),
+        (
+            Scope::Proxy,
+            "privacy_canary_proxy_mutation",
+            "proxy-committed-ok",
+        ),
+        (
+            Scope::Profile,
+            "privacy_canary_profile_mutation",
+            "profile-committed-ok",
+        ),
+        (
+            Scope::Settings,
+            "privacy_canary_settings_mutation",
+            "settings-committed-ok",
+        ),
+        (
+            Scope::System,
+            "privacy_canary_system_mutation",
+            "system-committed-ok",
+        ),
+        (
+            Scope::RemoteAdmin,
+            "privacy_canary_remote_admin_mutation",
+            "remote-admin-committed-ok",
+        ),
+    ];
+
+    for (scope, method, expected_value) in cases {
+        let expected_full = serde_json::to_value(canary_degraded_outcome(
+            expected_value,
+            secret_path,
+            secret_url,
+            secret_diag,
+        ))
+        .unwrap();
+
+        let (public_status, public_body) = rpc_for_test_call_with_auth(
+            &router,
+            method,
+            json!({
+                "secretPath": secret_path,
+                "secretUrl": secret_url,
+                "secretDiag": secret_diag,
+            }),
+            None,
+            Some(auth_with_scopes([scope])),
+        )
+        .await;
+        assert_eq!(public_status, StatusCode::OK, "{method}: {public_body}");
+        assert_no_canary(
+            &public_body,
+            &[
+                secret_path,
+                secret_url,
+                secret_diag,
+                "hunter2",
+                "secret-profile-uid",
+            ],
+        );
+        assert_eq!(public_body["status"], "committed_degraded");
+        assert_eq!(public_body["value"], expected_value);
+        assert_eq!(public_body["notifications_pending"], true);
+        assert!(
+            public_body["commits"][0]["operation_id"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty()),
+            "missing commit operation_id: {public_body}"
+        );
+        assert_eq!(public_body["commits"][0]["domain"], "profiles");
+        assert_eq!(public_body["commits"][0]["source_version"], 42);
+        assert_eq!(public_body["commits"][0]["runtime"], "deferred");
+        assert_eq!(public_body["degradations"][0]["phase"], "runtime_apply");
+        assert_eq!(public_body["degradations"][0]["retryable"], true);
+        assert!(public_body["degradations"][0].get("message").is_none());
+        assert_eq!(
+            public_body["degradations"][0]["reason"]["code"],
+            "runtime_recovery_required"
+        );
+        assert_eq!(
+            public_body["degradations"][0]["reason"]["operation_id"],
+            public_body["commits"][0]["operation_id"]
+        );
+        assert_eq!(
+            public_body["degradations"][0]["reason"]["cause"]["kind"],
+            "core_rejected_config"
+        );
+        assert_eq!(
+            public_body["degradations"][1]["reason"]["code"],
+            "profile_auto_activation_failed"
+        );
+        assert_eq!(public_body["degradations"][1]["retryable"], false);
+        assert!(public_body["degradations"][1].get("message").is_none());
+        let decoded_public: ReceivedMutationOutcome<String> =
+            serde_json::from_value(public_body.clone()).unwrap();
+        assert!(matches!(decoded_public, ReceivedMutationOutcome::Public(_)));
+
+        let (full_status, full_body) = rpc_for_test_call_with_auth(
+            &router,
+            method,
+            json!({
+                "secretPath": secret_path,
+                "secretUrl": secret_url,
+                "secretDiag": secret_diag,
+            }),
+            None,
+            Some(auth_with_scopes([scope, Scope::SensitiveRead])),
+        )
+        .await;
+        assert_eq!(full_status, StatusCode::OK, "{method} full: {full_body}");
+        assert_eq!(full_body, expected_full);
+        let decoded_full: ReceivedMutationOutcome<String> =
+            serde_json::from_value(full_body).unwrap();
+        assert!(matches!(decoded_full, ReceivedMutationOutcome::Full(_)));
+    }
+
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
+    use futures::StreamExt as _;
+    use nyanpasu_core::client::app_update::AppUpdateEventSink as _;
+    use nyanpasu_runtime_values::app_update::{
+        AppUpdatePhase, AppUpdateRelease, AppUpdateSnapshot,
+    };
+
+    let fixture = Fixture::new(false).await;
+    let router = fixture.rpc.clone().router();
+
+    let secret_err = "raw updater failure at /var/lib/secret-installer";
+    let secret_endpoint = "https://token:pw@internal-mirror.invalid/release.json";
+    let secret_body = "private changelog notes";
+
+    // System-only caller sees safe AppUpdateSummary (no error/endpoints/release.body)
+    // while retaining the bounded non-sensitive UpdateSource enum variant.
+    let (status, public_body) = rpc_for_test_call_with_auth(
+        &router,
+        "privacy_canary_app_update_mutation",
+        json!({
+            "secretErr": secret_err,
+            "secretEndpoint": secret_endpoint,
+            "secretBody": secret_body,
+        }),
+        None,
+        Some(auth_with_scopes([Scope::System])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{public_body}");
+    assert_no_canary(&public_body, &[secret_err, secret_endpoint, secret_body]);
+    assert_eq!(public_body["phase"], "failed");
+    assert_eq!(public_body["has_error"], true);
+    assert_eq!(public_body["source"], "github");
+    assert_eq!(public_body["downloaded"], 512);
+    assert_eq!(public_body["total"], 2048);
+    assert_eq!(public_body["release"]["version"], "2.3.4");
+    assert!(public_body["release"].get("body").is_none());
+    assert!(public_body.get("endpoints").is_none());
+    assert!(public_body.get("error").is_none());
+
+    // System + SensitiveRead preserves full AppUpdateSnapshot.
+    let (full_status, full_body) = rpc_for_test_call_with_auth(
+        &router,
+        "privacy_canary_app_update_mutation",
+        json!({
+            "secretErr": secret_err,
+            "secretEndpoint": secret_endpoint,
+            "secretBody": secret_body,
+        }),
+        None,
+        Some(auth_with_scopes([Scope::System, Scope::SensitiveRead])),
+    )
+    .await;
+    assert_eq!(full_status, StatusCode::OK, "{full_body}");
+    assert_eq!(full_body["error"], secret_err);
+    assert_eq!(full_body["endpoints"], json!([secret_endpoint]));
+    assert_eq!(full_body["release"]["body"], secret_body);
+    assert_eq!(full_body["source"], "github");
+
+    // BusAppUpdateEventSink emits AppUpdateSummaryChanged for Scope::Read subscribers
+    // without leaking full AppUpdateStateChanged payloads on unnamed SSE streams.
+    let revocation = tokio_util::sync::CancellationToken::new();
+    let mut sse_req = Request::get("/bridge/events").body(Body::empty()).unwrap();
+    sse_req
+        .extensions_mut()
+        .insert(auth_with_scopes([Scope::Read]));
+    sse_req
+        .extensions_mut()
+        .insert(crate::http::HttpSessionRevocation(revocation.clone()));
+    let response = router.clone().oneshot(sse_req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut stream = response.into_body().into_data_stream();
+    let _ready = stream.next().await.unwrap().unwrap();
+
+    let sink = crate::events::BusAppUpdateEventSink::new(fixture.rpc.dependencies.events.clone());
+    sink.publish(AppUpdateSnapshot {
+        revision: 11,
+        phase: AppUpdatePhase::Failed,
+        release: Some(AppUpdateRelease {
+            version: "2.3.4".to_owned(),
+            date: None,
+            body: Some(secret_body.to_owned()),
+        }),
+        downloaded: 100,
+        total: Some(1000),
+        speed: 12.0,
+        source: Some(nyanpasu_config::application::UpdateSource::Github),
+        error: Some(secret_err.to_owned()),
+        last_checked_at: None,
+        supported: true,
+        endpoints: vec![secret_endpoint.to_owned()],
+    });
+    let chunk = stream.next().await.unwrap().unwrap();
+    revocation.cancel();
+
+    let sse_text = std::str::from_utf8(&chunk).unwrap().to_owned();
+    assert!(
+        sse_text.contains("\"name\":\"app-update-summary-changed\""),
+        "expected safe summary SSE event: {sse_text}"
+    );
+    assert!(
+        !sse_text.contains("app-update-state-changed"),
+        "must not emit SensitiveRead app-update-state-changed to Read-only stream: {sse_text}"
+    );
+    assert!(
+        sse_text.contains("\"source\":\"github\""),
+        "safe summary SSE event must carry bounded source variant: {sse_text}"
+    );
+    assert!(!sse_text.contains(secret_err));
+    assert!(!sse_text.contains(secret_endpoint));
+    assert!(!sse_text.contains(secret_body));
+
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn sensitive_getters_reject_without_sensitive_read_while_safe_summaries_stay_useful() {
+    use nyanpasu_updater::{
+        DownloadProgressState, DownloadStatus, DownloaderState, UpdaterProgressState,
+        UpdaterProgressSummary, UpdaterState, UpdaterSummary,
+    };
+
+    let fixture = Fixture::new(false).await;
+    let router = fixture.rpc.clone().router();
+
+    // Sensitive getters require Scope::SensitiveRead.
+    for (method, params) in [
+        ("get_core_dir", json!({})),
+        ("get_service_install_prompt", json!({})),
+        ("get_core_agent_skills", json!({ "coreType": "mihomo" })),
+        ("inspect_updater", json!({ "updaterId": 0 })),
+    ] {
+        let (status, _) = rpc_for_test_call_with_auth(
+            &router,
+            method,
+            params,
+            None,
+            Some(auth_with_scopes([Scope::Read])),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "{method} should require SensitiveRead"
+        );
+    }
+
+    // System scope alone must not implicitly grant Read or SensitiveRead.
+    for (method, params) in [
+        ("get_core_agent_skills", json!({ "coreType": "mihomo" })),
+        (
+            "get_core_agent_skills_summary",
+            json!({ "coreType": "mihomo" }),
+        ),
+        ("inspect_updater", json!({ "updaterId": 0 })),
+        ("inspect_updater_summary", json!({ "updaterId": 0 })),
+    ] {
+        let (status, _) = rpc_for_test_call_with_auth(
+            &router,
+            method,
+            params,
+            None,
+            Some(auth_with_scopes([Scope::System])),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "{method} must reject System-only callers"
+        );
+    }
+
+    // Safe CoreAgentSkillSummary remains readable with Scope::Read only and exposes no `dir`.
+    let (summary_status, summary_body) = rpc_for_test_call_with_auth(
+        &router,
+        "get_core_agent_skills_summary",
+        json!({ "coreType": "mihomo" }),
+        None,
+        Some(auth_with_scopes([Scope::Read])),
+    )
+    .await;
+    assert_eq!(summary_status, StatusCode::OK, "{summary_body}");
+    let summary_json = serde_json::to_string(&summary_body).unwrap();
+    assert!(!summary_json.contains("\"dir\""), "{summary_json}");
+
+    // Failed updater and downloader states stay failed without raw diagnostic text.
+    let secret_updater_err = "failed replacing /usr/local/bin/mihomo-secret";
+    let secret_dl_err = "TLS error on https://user:pw@mirror.invalid/core.gz";
+    let failed_updater = UpdaterSummary {
+        id: 7,
+        state: UpdaterState::Failed(secret_updater_err.to_owned()),
+        downloader: DownloadStatus {
+            state: DownloaderState::Failed(secret_dl_err.to_owned()),
+            downloaded: 256,
+            total: 1024,
+            speed: 0.0,
+        },
+    };
+    let safe_updater = UpdaterProgressSummary::from(&failed_updater);
+    assert_eq!(safe_updater.id, 7);
+    assert_eq!(safe_updater.state, UpdaterProgressState::Failed);
+    assert_eq!(safe_updater.downloader.state, DownloadProgressState::Failed);
+    let safe_wire = serde_json::to_value(&safe_updater).unwrap();
+    assert_no_canary(
+        &safe_wire,
+        &[secret_updater_err, secret_dl_err, "mirror.invalid"],
+    );
+    assert_eq!(safe_wire["state"], "failed");
+    assert_eq!(safe_wire["downloader"]["state"], "failed");
+    assert_eq!(safe_wire["downloader"]["downloaded"], 256);
+    assert_eq!(safe_wire["downloader"]["total"], 1024);
+
+    fixture.shutdown().await;
+}

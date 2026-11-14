@@ -199,6 +199,14 @@ export function createRpcClient(
       typedError<UpdaterSummary, IpcError_Serialize>(
         __RPC_INVOKE('inspect_updater', { updaterId }),
       ),
+    /**
+     *  Safe updater progress without raw failure diagnostics. The full summary is
+     *  [`inspect_updater`].
+     */
+    inspectUpdaterSummary: (updaterId: number) =>
+      typedError<UpdaterProgressSummary, IpcError_Serialize>(
+        __RPC_INVOKE('inspect_updater_summary', { updaterId }),
+      ),
     getCoreVersion: (coreType: ClashCore_Deserialize) =>
       typedError<string, IpcError_Serialize>(
         __RPC_INVOKE('get_core_version', { coreType }),
@@ -376,6 +384,14 @@ export function createRpcClient(
       typedError<CoreAgentSkill[], IpcError_Serialize>(
         __RPC_INVOKE('get_core_agent_skills', { coreType }),
       ),
+    /**
+     *  Safe agent skill names and descriptions without local filesystem directories.
+     *  The full skills (including `dir`) are returned by [`get_core_agent_skills`].
+     */
+    getCoreAgentSkillsSummary: (coreType: ClashCore_Deserialize) =>
+      typedError<CoreAgentSkillSummary[], IpcError_Serialize>(
+        __RPC_INVOKE('get_core_agent_skills_summary', { coreType }),
+      ),
     getClashWsSnapshot: () =>
       typedError<ClashWsSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('get_clash_ws_snapshot'),
@@ -441,6 +457,14 @@ export function createRpcClient(
       typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('get_app_update_state'),
       ),
+    /**
+     *  Safe application update phase, progress, and release metadata without raw error diagnostics.
+     *  The full snapshot is [`get_app_update_state`].
+     */
+    getAppUpdateSummary: () =>
+      typedError<AppUpdateSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_app_update_summary'),
+      ),
     getAppUpdateChangelog: (from: string, to: string) =>
       typedError<AppUpdateChangelog, IpcError_Serialize>(
         __RPC_INVOKE('get_app_update_changelog', { from, to }),
@@ -456,6 +480,14 @@ export function createRpcClient(
     getTransparentProxyStatus: () =>
       typedError<NetworkTransparentProxyStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_transparent_proxy_status'),
+      ),
+    /**
+     *  Safe transparent proxy capture status without raw host error diagnostics. The full status is
+     *  [`get_transparent_proxy_status`].
+     */
+    getTransparentProxyStatusSummary: () =>
+      typedError<TransparentProxyStatusSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_transparent_proxy_status_summary'),
       ),
     writeClipboardText: (text: string) =>
       typedError<null, IpcError_Serialize>(
@@ -500,27 +532,27 @@ export function createRpcClient(
         __RPC_INVOKE('retry_configuration_effect', { kind }),
       ),
     setReleaseChannel: (channel: ReleaseChannel) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_release_channel', { channel }),
       ),
     checkAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError_Serialize>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('check_app_update'),
       ),
     downloadAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError_Serialize>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('download_app_update'),
       ),
     cancelAppUpdateDownload: () =>
-      typedError<AppUpdateSnapshot, IpcError_Serialize>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('cancel_app_update_download'),
       ),
     installAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError_Serialize>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('install_app_update'),
       ),
     discardAppUpdatePackage: () =>
-      typedError<AppUpdateSnapshot, IpcError_Serialize>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('discard_app_update_package'),
       ),
     subscribeClashConnectionDetails: (
@@ -594,7 +626,7 @@ export function createRpcClient(
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_sidecar')),
     /**  Patch the ordinary application preferences. */
     patchAppConfig: (patch: ApplicationPreferencesPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_app_config', { patch }),
       ),
     /**
@@ -602,12 +634,12 @@ export function createRpcClient(
      *  and its guard, the bypass list and the PAC URL.
      */
     patchSystemSettings: (patch: SystemSettingsPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_system_settings', { patch }),
       ),
     /**  Patch the ordinary Clash settings: profile expansion and connection breaking. */
     patchClashConfig: (patch: ClashSettingsPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_clash_config', { patch }),
       ),
     /**
@@ -615,22 +647,22 @@ export function createRpcClient(
      *  the web UI templates and the field filter.
      */
     patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_clash_system_config', { patch }),
       ),
     /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
     patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_runtime_overrides', { patch }),
       ),
     /**  Patch the controller exposure: LAN access and the controller secret. */
     patchRuntimeAccess: (patch: ClashAccessPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_runtime_access', { patch }),
       ),
     /**  Switch the proxy mode (rule, global, direct). */
     setProxyMode: (mode: Mode) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_proxy_mode', { mode }),
       ),
     changeClashCore: (clashCore: ClashCore_Deserialize) =>
@@ -684,7 +716,7 @@ export function createRpcClient(
         { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
       folder: string | null,
     ) =>
-      typedError<MutationOutcome<ProfileId>, IpcError_Serialize>(
+      typedError<RpcProfileMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('import_profile', {
           url,
           name,
@@ -707,27 +739,27 @@ export function createRpcClient(
       request: NewProfileRequest_Deserialize,
       fileData: string | null,
     ) =>
-      typedError<MutationOutcome<ProfileId>, IpcError_Serialize>(
+      typedError<RpcProfileMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('create_profile', { request, fileData }),
       ),
     reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('reorder_profile', { activeId, overId }),
       ),
     reorderProfilesByList: (list: ProfileId[]) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('reorder_profiles_by_list', { list }),
       ),
     setProfileLayout: (layout: ProfileLayout) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_profile_layout', { layout }),
       ),
     createProfileFolder: (name: string, members: ProfileId[]) =>
-      typedError<MutationOutcome<FolderId>, IpcError_Serialize>(
+      typedError<RpcFolderMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('create_profile_folder', { name, members }),
       ),
     setProxyGroupLayout: (profile: ProfileId, layout: ProxyGroupLayout) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_proxy_group_layout', { profile, layout }),
       ),
     createProxyGroupFolder: (
@@ -735,7 +767,7 @@ export function createRpcClient(
       name: string,
       members: string[],
     ) =>
-      typedError<MutationOutcome<FolderId>, IpcError_Serialize>(
+      typedError<RpcFolderMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('create_proxy_group_folder', { profile, name, members }),
       ),
     updateProfile: (
@@ -747,44 +779,44 @@ export function createRpcClient(
         update_interval_minutes: RemoteSyncInterval | null
       } | null,
     ) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('update_profile', { uid, option }),
       ),
     deleteProfile: (uid: ProfileId) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('delete_profile', { uid }),
       ),
     activateProfile: (uid: string | null) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('activate_profile', { uid }),
       ),
     setGlobalTransforms: (ids: ProfileId[]) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_global_transforms', { ids }),
       ),
     setProfileValidFields: (fields: string[]) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_profile_valid_fields', { fields }),
       ),
     patchProfileMetadata: (
       uid: ProfileId,
       patch: ProfileMetadataPatch_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_profile_metadata', { uid, patch }),
       ),
     patchRemoteProfileOptions: (
       uid: ProfileId,
       patch: RemoteProfileOptionsPatch_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_remote_profile_options', { uid, patch }),
       ),
     replaceProfileDefinition: (
       uid: ProfileId,
       definition: ProfileDefinition_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('replace_profile_definition', { uid, definition }),
       ),
     viewProfile: (uid: ProfileId) =>
@@ -792,7 +824,7 @@ export function createRpcClient(
         __RPC_INVOKE('view_profile', { uid }),
       ),
     saveProfileFile: (uid: ProfileId, fileData: string) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('save_profile_file', { uid, fileData }),
       ),
     setCustomAppDir: (path: string) =>
@@ -810,7 +842,7 @@ export function createRpcClient(
     restartService: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_service')),
     setServiceMode: (enabled: boolean) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_service_mode', { enabled }),
       ),
     /**
@@ -818,7 +850,7 @@ export function createRpcClient(
      *  `patch_app_config` rejects the section.
      */
     setRemoteAccess: (config: RemoteAccessConfig) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_remote_access', { config }),
       ),
     /**
@@ -831,11 +863,11 @@ export function createRpcClient(
         __RPC_INVOKE('create_http_launch_url'),
       ),
     selectProxy: (group: string, name: string) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('select_proxy', { group, name }),
       ),
     clearProxyFixed: (group: string) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('clear_proxy_fixed', { group }),
       ),
     updateProxyProvider: (name: string) =>
@@ -877,7 +909,7 @@ export function createRpcClient(
     clearStorage: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('clear_storage')),
     setHotkeys: (hotkeys: string[]) =>
-      typedError<MutationOutcome<null>, IpcError_Serialize>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_hotkeys', { hotkeys }),
       ),
     mutateProxies: () =>
@@ -929,6 +961,10 @@ export function createRpcClient(
     appUpdateStateChanged: makeEvent<AppUpdateStateChanged>(
       transport.events,
       'app-update-state-changed',
+    ),
+    appUpdateSummaryChanged: makeEvent<AppUpdateSummaryChanged>(
+      transport.events,
+      'app-update-summary-changed',
     ),
     clashWsEvent: makeEvent<ClashWsEvent>(transport.events, 'clash-ws-event'),
     configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
@@ -1034,6 +1070,12 @@ export type AppUpdateRelease = {
   body: string | null
 }
 
+/**  Safe release summary without release note bodies or source endpoints. */
+export type AppUpdateReleaseSummary = {
+  version: string
+  date: string | null
+}
+
 export type AppUpdateSnapshot = {
   revision: number
   phase: AppUpdatePhase
@@ -1049,6 +1091,22 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+/**  Safe app-update state summary for callers without `Scope::SensitiveRead`. */
+export type AppUpdateSummary = {
+  revision: number
+  phase: AppUpdatePhase
+  release: AppUpdateReleaseSummary | null
+  downloaded: number
+  total: number | null
+  speed: number | null
+  source: UpdateSource | null
+  has_error: boolean
+  last_checked_at: string | null
+  supported: boolean
+}
+
+export type AppUpdateSummaryChanged = AppUpdateSummary
 
 /**
  *  A patch of the ordinary preferences.
@@ -2272,6 +2330,12 @@ export type CoreAgentSkill = {
   installed: boolean
 }
 
+/**  Safe agent skill availability summary without host filesystem paths. */
+export type CoreAgentSkillSummary = {
+  name: string
+  installed: boolean
+}
+
 /**
  *  The core's control endpoint, as the manager resolved it.
  *
@@ -2887,6 +2951,18 @@ export type DirectEgress =
 export type Direction = 'latest' | 'before' | 'after'
 
 export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
+
+/**  Safe download state without raw HTTP/OS error diagnostics. */
+export type DownloadProgressState =
+  'idle' | 'downloading' | 'failed' | 'finished'
+
+/**  Safe download progress snapshot for callers without `Scope::SensitiveRead`. */
+export type DownloadProgressSummary = {
+  state: DownloadProgressState
+  downloaded: number
+  total: number
+  speed: number | null
+}
 
 /**  A snapshot of a download session's progress, polled by IPC. */
 export type DownloadStatus = {
@@ -6048,6 +6124,126 @@ export type PublicCoreLogReadError =
   | { kind: 'too_large' }
   | { kind: 'unavailable' }
 
+/**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
+export type PublicDegradation =
+  PublicDegradation_Serialize | PublicDegradation_Deserialize
+
+/**  Safe public reason discriminant why a committed mutation degraded. */
+export type PublicDegradationReason =
+  PublicDegradationReason_Serialize | PublicDegradationReason_Deserialize
+
+/**  Safe public reason discriminant why a committed mutation degraded. */
+export type PublicDegradationReason_Deserialize =
+  | {
+      code: 'runtime_recovery_required'
+      operation_id: string | null
+      cause: PublicRuntimeError_Deserialize | null
+    }
+  | ({ code: 'runtime_deferred'; cause: PublicRuntimeError_Deserialize } & {
+      operation_id?: never
+    })
+  | ({
+      code: 'runtime_product_publish_failed'
+      cause: PublicRuntimeError_Deserialize
+    } & { operation_id?: never })
+  | ({ code: 'service_stop_failed'; cause: PublicRuntimeError_Deserialize } & {
+      operation_id?: never
+    })
+  | ({ code: 'mode_interruption_failed'; cause: InterruptFailure } & {
+      operation_id?: never
+    })
+  | ({ code: 'profile_interruption_failed'; cause: InterruptFailure } & {
+      operation_id?: never
+    })
+  | ({ code: 'proxy_interruption_failed'; cause: InterruptFailure } & {
+      operation_id?: never
+    })
+  | ({ code: 'proxy_cache_refresh_failed' } & {
+      cause?: never
+      operation_id?: never
+    })
+  | ({ code: 'journal_invalid' } & { cause?: never; operation_id?: never })
+  | ({ code: 'jobs_journal_unavailable' } & {
+      cause?: never
+      operation_id?: never
+    })
+  | ({ code: 'materialization_deferred' } & {
+      cause?: never
+      operation_id?: never
+    })
+  | ({ code: 'cleanup_deferred' } & { cause?: never; operation_id?: never })
+  | ({
+      code: 'profile_auto_activation_failed'
+      cause: PublicProfilesError_Deserialize
+    } & { operation_id?: never })
+  | ({ code: 'http_server_unavailable' } & {
+      cause?: never
+      operation_id?: never
+    })
+
+/**  Safe public reason discriminant why a committed mutation degraded. */
+export type PublicDegradationReason_Serialize =
+  | {
+      code: 'runtime_recovery_required'
+      operation_id: string | null
+      cause: PublicRuntimeError_Serialize | null
+    }
+  | ({ code: 'runtime_deferred'; cause: PublicRuntimeError_Serialize } & {
+      operation_id?: never
+    })
+  | ({
+      code: 'runtime_product_publish_failed'
+      cause: PublicRuntimeError_Serialize
+    } & { operation_id?: never })
+  | ({ code: 'service_stop_failed'; cause: PublicRuntimeError_Serialize } & {
+      operation_id?: never
+    })
+  | ({ code: 'mode_interruption_failed'; cause: InterruptFailure } & {
+      operation_id?: never
+    })
+  | ({ code: 'profile_interruption_failed'; cause: InterruptFailure } & {
+      operation_id?: never
+    })
+  | ({ code: 'proxy_interruption_failed'; cause: InterruptFailure } & {
+      operation_id?: never
+    })
+  | ({ code: 'proxy_cache_refresh_failed' } & {
+      cause?: never
+      operation_id?: never
+    })
+  | ({ code: 'journal_invalid' } & { cause?: never; operation_id?: never })
+  | ({ code: 'jobs_journal_unavailable' } & {
+      cause?: never
+      operation_id?: never
+    })
+  | ({ code: 'materialization_deferred' } & {
+      cause?: never
+      operation_id?: never
+    })
+  | ({ code: 'cleanup_deferred' } & { cause?: never; operation_id?: never })
+  | ({
+      code: 'profile_auto_activation_failed'
+      cause: PublicProfilesError_Serialize
+    } & { operation_id?: never })
+  | ({ code: 'http_server_unavailable' } & {
+      cause?: never
+      operation_id?: never
+    })
+
+/**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
+export type PublicDegradation_Deserialize = {
+  phase: DegradationPhase
+  reason: PublicDegradationReason_Deserialize
+  retryable: boolean
+}
+
+/**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
+export type PublicDegradation_Serialize = {
+  phase: DegradationPhase
+  reason: PublicDegradationReason_Serialize
+  retryable: boolean
+}
+
 /**  Safe public side-effects error discriminant. */
 export type PublicEffectsError = { kind: 'effects_stopped' }
 
@@ -6152,6 +6348,42 @@ export type PublicInstallCoreBinaryKind_Serialize =
       exit_code: number | null
     }
   | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+export type PublicMutationOutcome<T> =
+  PublicMutationOutcome_Serialize<T> | PublicMutationOutcome_Deserialize<T>
+
+/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+export type PublicMutationOutcome_Deserialize<T> =
+  | ({
+      status: 'committed'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+    } & { degradations?: never })
+  | {
+      status: 'committed_degraded'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+      degradations: PublicDegradation_Deserialize[]
+    }
+
+/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+export type PublicMutationOutcome_Serialize<T> =
+  | ({
+      status: 'committed'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+    } & { degradations?: never })
+  | {
+      status: 'committed_degraded'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+      degradations: PublicDegradation_Serialize[]
+    }
 
 /**  Safe public OS proxy error discriminant without proxy host strings. */
 export type PublicOsProxyError =
@@ -7349,6 +7581,14 @@ export type RevisionSummary = {
   generation: number
 }
 
+/**
+ *  Canonical command reply union for app-update state-changing commands.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`AppUpdateSnapshot`]; all other
+ *  callers receive [`AppUpdateSummary`].
+ */
+export type RpcAppUpdateOutcome = AppUpdateSnapshot | AppUpdateSummary
+
 /**  Canonical caller-scoped discovery document returned by `rpc_describe`. */
 export type RpcDescribeResponse = {
   protocol: number
@@ -7359,6 +7599,87 @@ export type RpcDescribeResponse = {
   commands: DescribedCommand[]
 }
 
+/**
+ *  Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcFolderMutationOutcome =
+  RpcFolderMutationOutcome_Serialize | RpcFolderMutationOutcome_Deserialize
+
+/**
+ *  Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcFolderMutationOutcome_Deserialize =
+  RpcMutationOutcome_Deserialize<FolderId>
+
+/**
+ *  Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcFolderMutationOutcome_Serialize =
+  RpcMutationOutcome_Serialize<FolderId>
+
+/**
+ *  Canonical command reply union for committed mutations.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+ *  callers receive [`PublicMutationOutcome<T>`].
+ */
+export type RpcMutationOutcome<T> =
+  RpcMutationOutcome_Serialize<T> | RpcMutationOutcome_Deserialize<T>
+
+/**
+ *  Canonical command reply union for committed mutations.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+ *  callers receive [`PublicMutationOutcome<T>`].
+ */
+export type RpcMutationOutcome_Deserialize<T> =
+  MutationOutcome<T> | PublicMutationOutcome_Deserialize<T>
+
+/**
+ *  Canonical command reply union for committed mutations.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+ *  callers receive [`PublicMutationOutcome<T>`].
+ */
+export type RpcMutationOutcome_Serialize<T> =
+  MutationOutcome<T> | PublicMutationOutcome_Serialize<T>
+
+/**
+ *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcProfileMutationOutcome =
+  RpcProfileMutationOutcome_Serialize | RpcProfileMutationOutcome_Deserialize
+
+/**
+ *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcProfileMutationOutcome_Deserialize =
+  RpcMutationOutcome_Deserialize<ProfileId>
+
+/**
+ *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcProfileMutationOutcome_Serialize =
+  RpcMutationOutcome_Serialize<ProfileId>
+
 /**  A command's explicitly enabled transport. */
 export type RpcTarget =
   /**  The complete desktop command surface. */
@@ -7367,6 +7688,33 @@ export type RpcTarget =
   | 'http'
   /**  Local socket access, independently opted into by the declaration. */
   | 'local'
+
+/**
+ *  Concrete transparent boundary wrapper for unit committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcUnitMutationOutcome =
+  RpcUnitMutationOutcome_Serialize | RpcUnitMutationOutcome_Deserialize
+
+/**
+ *  Concrete transparent boundary wrapper for unit committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcUnitMutationOutcome_Deserialize =
+  RpcMutationOutcome_Deserialize<null>
+
+/**
+ *  Concrete transparent boundary wrapper for unit committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcUnitMutationOutcome_Serialize =
+  RpcMutationOutcome_Serialize<null>
 
 export type RuleKey = {
   kind: string
@@ -8402,6 +8750,15 @@ export type TransparentProxyConfigPatch = {
 
 export type TransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
 
+/**  Safe view of transparent proxy status without raw host error messages or revision hashes. */
+export type TransparentProxyStatusSummary = {
+  supported: boolean
+  active: boolean
+  mode: NetworkTransparentProxyMode | null
+  revision: RevisionSummary | null
+  has_error: boolean
+}
+
 export type TransparentProxyValidationError =
   | { kind: 'unsupported_target' }
   | { kind: 'tun_conflict' }
@@ -8475,6 +8832,23 @@ export type UnsupportedConfigValue = {
 }
 
 export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
+
+/**  Safe core updater state without raw failure strings. */
+export type UpdaterProgressState =
+  | 'idle'
+  | 'downloading'
+  | 'decompressing'
+  | 'replacing'
+  | 'restarting'
+  | 'done'
+  | 'failed'
+
+/**  Safe core updater progress snapshot for callers without `Scope::SensitiveRead`. */
+export type UpdaterProgressSummary = {
+  id: number
+  state: UpdaterProgressState
+  downloader: DownloadProgressSummary
+}
 
 export type UpdaterState =
   | 'idle'

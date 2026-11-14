@@ -876,7 +876,7 @@ mod tests {
             downloaded: 512,
             total: Some(1024),
             speed: 128.0,
-            source: None,
+            source: Some(nyanpasu_config::application::UpdateSource::Github),
             error: Some(hostile()),
             last_checked_at: Some("2026-11-14T00:00:00Z".into()),
             supported: true,
@@ -886,6 +886,10 @@ mod tests {
         assert_clean(&safe_update);
         assert!(safe_update.has_error);
         assert_eq!(safe_update.phase, AppUpdatePhase::Failed);
+        assert_eq!(
+            safe_update.source,
+            Some(nyanpasu_config::application::UpdateSource::Github)
+        );
         assert_eq!(safe_update.release.unwrap().version, "2.1.0");
     }
 }

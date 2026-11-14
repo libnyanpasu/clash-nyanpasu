@@ -26,7 +26,7 @@ import {
 } from '@nyanpasu/ui/navigation-list'
 import LogoSvg from '@/assets/image/logo.svg?react'
 import { m } from '@/paraglide/messages'
-import { useCoreAgentSkills, useSetting } from '@nyanpasu/query'
+import { useCoreAgentSkillsSummary, useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
 import { Link, useLinkProps } from '@tanstack/react-router'
@@ -90,7 +90,7 @@ function SettingsNavigationItem({
 
 export default function SettingsNavigate() {
   const { value: currentCore } = useSetting('core')
-  const { data: agentSkills } = useCoreAgentSkills(currentCore)
+  const { data: agentSkills } = useCoreAgentSkillsSummary(currentCore)
 
   // The AI page hands agents the skills the current core ships.
   const hasAgentSkills = !!agentSkills?.length

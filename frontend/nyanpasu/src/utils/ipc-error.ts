@@ -27,6 +27,7 @@ import type {
   ProfileSyncReadError,
   PublicCommitAborted,
   PublicConfigError,
+  PublicDegradationReason,
   PublicFailure,
   PublicHotkeyErrorKind,
   PublicInstallCoreBinaryKind,
@@ -1430,6 +1431,42 @@ export function effectFailureMessage(code: EffectFailureCode): string {
   }
 }
 
+type SharedDegradationReason = Exclude<
+  DegradationReason,
+  | { code: 'runtime_recovery_required' }
+  | { code: 'runtime_deferred' }
+  | { code: 'runtime_product_publish_failed' }
+  | { code: 'service_stop_failed' }
+  | { code: 'profile_auto_activation_failed' }
+>
+
+function sharedDegradationReasonMessage(
+  reason: SharedDegradationReason,
+): string {
+  switch (reason.code) {
+    case 'mode_interruption_failed':
+    case 'profile_interruption_failed':
+    case 'proxy_interruption_failed':
+      return m.mutation_degradation_reason_interruption_failed()
+    case 'proxy_cache_refresh_failed':
+      return m.mutation_degradation_reason_proxy_cache_refresh_failed()
+    case 'jobs_journal_unavailable':
+      return m.profile_sync_journal_degraded()
+    case 'journal_invalid':
+      return m.mutation_degradation_reason_journal_invalid()
+    case 'materialization_deferred':
+      return m.mutation_degradation_reason_materialization_deferred()
+    case 'cleanup_deferred':
+      return m.mutation_degradation_reason_cleanup_deferred()
+    case 'http_server_unavailable':
+      return m.mutation_degradation_reason_http_server_unavailable()
+    default: {
+      const _exhaustive: never = reason
+      return String(_exhaustive)
+    }
+  }
+}
+
 /** The simplest message for one degradation of a committed mutation. */
 export function degradationReasonMessage(
   reason: DegradationReason,
@@ -1449,29 +1486,38 @@ export function degradationReasonMessage(
     case 'runtime_product_publish_failed':
     case 'service_stop_failed':
       return runtimeErrorMessage(reason.cause, profileLabel)
-    case 'mode_interruption_failed':
-    case 'profile_interruption_failed':
-    case 'proxy_interruption_failed':
-      return m.mutation_degradation_reason_interruption_failed()
-    case 'proxy_cache_refresh_failed':
-      return m.mutation_degradation_reason_proxy_cache_refresh_failed()
-    case 'jobs_journal_unavailable':
-      return m.profile_sync_journal_degraded()
-    case 'journal_invalid':
-      return m.mutation_degradation_reason_journal_invalid()
-    case 'materialization_deferred':
-      return m.mutation_degradation_reason_materialization_deferred()
-    case 'cleanup_deferred':
-      return m.mutation_degradation_reason_cleanup_deferred()
-    case 'http_server_unavailable':
-      return m.mutation_degradation_reason_http_server_unavailable()
     case 'profile_auto_activation_failed':
       return m.mutation_degradation_reason_profile_auto_activation_failed({
         reason: profilesErrorMessage(reason.cause, profileLabel),
       })
-    default: {
-      const _exhaustive: never = reason
-      return String(_exhaustive)
+    default:
+      return sharedDegradationReasonMessage(reason)
+  }
+}
+
+/** The simplest message for one public degradation without sensitive host detail. */
+export function publicDegradationReasonMessage(
+  reason: PublicDegradationReason,
+): string {
+  switch (reason.code) {
+    case 'runtime_recovery_required': {
+      const summary = m.mutation_degradation_reason_runtime_recovery_required()
+      return reason.cause
+        ? `${summary} (${publicRuntimeErrorMessage(reason.cause)})`
+        : summary
     }
+    case 'runtime_deferred':
+      return m.mutation_degradation_reason_runtime_deferred({
+        reason: publicRuntimeErrorMessage(reason.cause),
+      })
+    case 'runtime_product_publish_failed':
+    case 'service_stop_failed':
+      return publicRuntimeErrorMessage(reason.cause)
+    case 'profile_auto_activation_failed':
+      return m.mutation_degradation_reason_profile_auto_activation_failed({
+        reason: publicProfilesErrorMessage(reason.cause),
+      })
+    default:
+      return sharedDegradationReasonMessage(reason)
   }
 }

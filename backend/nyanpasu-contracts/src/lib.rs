@@ -1,5 +1,6 @@
 //! Shared values and ports for consumers and implementations outside the application core.
 
+pub mod auth;
 pub mod bundle_metadata;
 pub mod core_install;
 pub mod core_version;

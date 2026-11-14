@@ -4246,33 +4246,40 @@ async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
 }
 
 #[tokio::test]
-async fn runtime_retry_waits_for_check_dependency_without_spending_apply_budget() {
-    use nyanpasu_runtime_values::configuration::ConvergenceHealth;
-    let f = deferred_fixture().await;
-    f.endpoint.set_failure(None);
-    f.endpoint
-        .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
-    let before = f.endpoint.submissions();
-    f.client
-        .call(super::super::Command::RetryRuntime { explicit: false })
-        .await
-        .unwrap();
-    let gap = f.client.mutation_journal().deferred.unwrap();
-    assert_eq!(gap.health, ConvergenceHealth::WaitingDependency);
-    assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET);
-    assert_eq!(gap.attempts, 0);
-    assert_eq!(f.endpoint.submissions(), before);
+async fn runtime_retry_applies_committed_bytes_without_an_independent_check() {
+    for explicit in [false, true] {
+        let f = deferred_fixture().await;
+        let checked = f.endpoint.checked();
+        assert_eq!(checked.len(), 1);
+        let source = f.clash.snapshot_handle().load().version;
+        f.endpoint.set_failure(None);
+        f.endpoint
+            .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
+        let before = f.endpoint.submissions();
+
+        f.client
+            .call(super::super::Command::RetryRuntime { explicit })
+            .await
+            .unwrap();
+
+        assert!(f.client.mutation_journal().deferred.is_none());
+        assert_eq!(f.endpoint.checked().len(), checked.len());
+        assert_eq!(f.endpoint.submissions(), before + 1);
+        assert_eq!(
+            f.endpoint.reconciled_bytes(),
+            [checked[0].config_bytes.clone()]
+        );
+        assert_eq!(f.clash.snapshot_handle().load().version, source);
+    }
 }
 
-/// S17 on a committed target: consecutive dependency results count up
-/// without touching the budget or the attempt count, and the first
-/// application result starts the count over.
+/// Unreadable runtime evidence keeps a committed target waiting without
+/// spending its apply budget. An application result resets the wait count.
 #[tokio::test]
 async fn dependency_retries_count_waits_until_an_application_result() {
     let f = deferred_fixture().await;
     f.endpoint.set_failure(None);
-    f.endpoint
-        .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
+    f.endpoint.set_status_fails(true);
     for waits in 1..=3 {
         f.client
             .call(super::super::Command::RetryRuntime { explicit: false })
@@ -4284,9 +4291,7 @@ async fn dependency_retries_count_waits_until_an_application_result() {
         assert_eq!(gap.attempts, 0);
     }
 
-    // The check answers again and the apply fails transiently: an attempt
-    // that reached the runtime leaves the backoff and pays for itself.
-    f.endpoint.set_check_answer(TestCheckAnswer::Pass);
+    f.endpoint.set_status_fails(false);
     f.endpoint.set_failure(Some("queue_full"));
     f.client
         .call(super::super::Command::RetryRuntime { explicit: false })

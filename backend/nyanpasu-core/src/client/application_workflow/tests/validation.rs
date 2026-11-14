@@ -127,10 +127,19 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
 
 #[tokio::test]
 async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
-    use super::startup::{DaemonState, Setup};
-    use crate::client::application_workflow::startup::StartupOutcome;
+    use nyanpasu_state_engine::ReplaceIfVersionResult;
 
-    let graph = super::startup::graph(Setup {
+    use crate::{
+        client::application_workflow::startup::StartupOutcome,
+        state::mutation::{intent::CommandClass, value::MutationOutcomeKind},
+    };
+
+    use super::{
+        mutations::{overrides, settled, simple_mutate},
+        startup::{DaemonState, Setup},
+    };
+
+    let mut graph = super::startup::graph(Setup {
         service_mode: true,
         daemon: DaemonState::Running,
         residual: true,
@@ -138,20 +147,37 @@ async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
         ..Setup::default()
     })
     .await;
-    let checked_before = graph.local.delegate.checked().len();
-
     let report = graph.start().await;
 
     assert_eq!(report.outcome, StartupOutcome::Ready, "{report:?}");
     assert_eq!(graph.core.status().host, ExecutionHost::Service);
-    let checked = graph.local.delegate.checked();
-    assert_eq!(checked.len(), checked_before + 1);
+    assert!(graph.local.delegate.checked().is_empty());
     assert!(graph.service_host.delegate.checked().is_empty());
-    assert!(checked[checked_before].staged_config.is_none());
+    assert!(graph.local.delegate.reconciled_bytes().is_empty());
+    let applied_before = graph.service_host.delegate.reconciled_bytes().len();
+    assert_eq!(applied_before, 1);
+
+    let (id, result) = simple_mutate(
+        &mut graph.clash,
+        &graph.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
     assert_eq!(
-        checked[checked_before].config_bytes,
-        graph.service_host.delegate.reconciled_bytes()[0]
+        settled(&graph.client, id).await.outcome,
+        MutationOutcomeKind::Applied
     );
+    let checked = graph.local.delegate.checked();
+    assert_eq!(checked.len(), 1);
+    assert!(graph.service_host.delegate.checked().is_empty());
+    assert!(checked[0].staged_config.is_none());
+    assert!(graph.local.delegate.reconciled_bytes().is_empty());
+    let applied = graph.service_host.delegate.reconciled_bytes();
+    assert_eq!(applied.len(), applied_before + 1);
+    assert_eq!(checked[0].config_bytes, applied[applied_before]);
 }
 
 /// A check service that is momentarily unreachable is also not a pass, and it

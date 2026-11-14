@@ -50,7 +50,7 @@ use super::{
     Progress, RecordingNotifications,
     mutations::{
         application_manager, manager, mutate_with_hints, names_overrides, overrides, settled,
-        simple_mutate, temp_path, unserviceable_check,
+        simple_mutate, temp_path,
     },
     ownership,
 };
@@ -336,7 +336,7 @@ pub(super) struct Graph {
     pub(super) core: CoreClient,
     log: Log,
     application: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
-    clash: PersistentStateManager<ClashConfig>,
+    pub(super) clash: PersistentStateManager<ClashConfig>,
     ports: Arc<SessionPortResolver>,
     notifications: Arc<RecordingNotifications>,
     /// The workflow's shutdown token.
@@ -584,6 +584,19 @@ async fn a_clean_local_start_applies_once_under_a_proven_owner() {
         Some(ExecutionHost::Local)
     );
     assert_eq!(g.log(), ["local:reconcile"]);
+    assert!(g.local.delegate.checked().is_empty());
+    assert!(g.service_host.delegate.checked().is_empty());
+    let built = g
+        .ports
+        .runtime()
+        .confirmed()
+        .expect("a successful startup records its runtime")
+        .artifact
+        .expect("startup publishes its committed build");
+    assert_eq!(
+        g.local.delegate.reconciled_bytes(),
+        [built.config_text.as_bytes().to_vec()]
+    );
     assert_eq!(g.notifications.full(), 1);
     assert_eq!(g.notifications.bound(), 0);
     assert_eq!(
@@ -598,6 +611,48 @@ async fn a_clean_local_start_applies_once_under_a_proven_owner() {
         g.ports.confirmed().is_some(),
         "the apply confirmed its ports"
     );
+}
+
+/// Startup and its retries submit the committed document even when an
+/// independent validator cannot serve it. The endpoint records bytes but does
+/// not validate them; rejection inside reconcile belongs to the real endpoint.
+#[tokio::test]
+async fn startup_and_retry_apply_committed_bytes_without_an_independent_check() {
+    for answer in [
+        TestCheckAnswer::Pass,
+        TestCheckAnswer::Unsupported,
+        TestCheckAnswer::Reject(CoreError::new(
+            CoreErrorKind::ConfigCheckFailed,
+            "scripted: independent validation rejects the document",
+            false,
+        )),
+    ] {
+        let g = graph(Setup::default()).await;
+        g.local.delegate.set_check_answer(answer);
+        g.local.delegate.set_failure(Some("queue_full"));
+        let report = g.start().await;
+        assert!(degraded(&report, ConvergenceHealth::RetryScheduled));
+        assert!(g.local.delegate.checked().is_empty());
+        assert!(g.local.delegate.reconciled_bytes().is_empty());
+
+        g.local.delegate.set_failure(None);
+        g.retry_when_due().await;
+
+        assert!(g.no_target());
+        assert!(g.local.delegate.checked().is_empty());
+        let built = g
+            .ports
+            .runtime()
+            .confirmed()
+            .expect("a successful apply records its runtime")
+            .artifact
+            .expect("the committed build is published after application");
+        assert_eq!(
+            g.local.delegate.reconciled_bytes(),
+            [built.config_text.as_bytes().to_vec()]
+        );
+        assert_eq!(g.log(), ["local:reconcile", "local:reconcile"]);
+    }
 }
 
 /// S5: a core an earlier session left running in the service, with Service
@@ -1061,25 +1116,18 @@ async fn a_transient_start_failure_retries_on_the_budget_schedule() {
 #[tokio::test]
 async fn a_deterministic_start_failure_blocks_until_a_new_target_is_saved() {
     let mut g = graph(Setup::default()).await;
-    g.local
-        .delegate
-        .set_check_answer(TestCheckAnswer::Reject(CoreError::new(
-            CoreErrorKind::ConfigCheckFailed,
-            "scripted: the document is wrong",
-            false,
-        )));
+    g.local.delegate.set_failure(Some("config_check_failed"));
 
     let report = g.start().await;
 
     assert!(degraded(&report, ConvergenceHealth::Blocked), "{report:?}");
     let blocked = g.target();
     assert_eq!(blocked.next_attempt, None);
-    assert!(
-        g.log().is_empty(),
-        "the check refused it before any submission"
-    );
+    assert_eq!(g.log(), ["local:reconcile"]);
+    assert!(g.local.delegate.checked().is_empty());
+    assert!(g.local.delegate.reconciled_bytes().is_empty());
 
-    g.local.delegate.set_check_answer(TestCheckAnswer::Pass);
+    g.local.delegate.set_failure(None);
     let (id, result) = simple_mutate(
         &mut g.clash,
         &g.client,
@@ -1106,7 +1154,7 @@ async fn a_deterministic_start_failure_blocks_until_a_new_target_is_saved() {
 
     g.retry_when_due().await;
     assert!(g.no_target());
-    assert_eq!(g.log(), ["local:reconcile"]);
+    assert_eq!(g.log(), ["local:reconcile", "local:reconcile"]);
     let applied = String::from_utf8(g.local.delegate.reconciled_bytes()[0].clone()).unwrap();
     assert!(applied.contains("mode: global"), "{applied}");
 }
@@ -1721,9 +1769,8 @@ async fn a_binary_replaced_without_a_proven_owner_brings_the_target_forward() {
     assert_eq!(g.reconciles(), 0, "the owner is still unproven");
 }
 
-/// S17: consecutive dependency results back off 5, 5, 10, 30, 60, 60 s, an
-/// unserviceable check among them, without spending the budget or counting
-/// an attempt; only an application result starts the table over.
+/// Consecutive unavailable-owner results back off without spending the apply
+/// budget; an application result resets the dependency wait count.
 #[tokio::test]
 async fn dependency_waits_back_off_until_an_application_result() {
     let g = graph(Setup::default()).await;
@@ -1748,29 +1795,8 @@ async fn dependency_waits_back_off_until_an_application_result() {
     }
     assert_eq!(delays, [5, 5, 10, 30, 60, 60]);
 
-    let g = graph(Setup::default()).await;
-    g.local
-        .delegate
-        .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
-    for (attempt, delay) in [5, 5, 10].into_iter().enumerate() {
-        let before = Instant::now();
-        if attempt == 0 {
-            g.start().await;
-        } else {
-            g.retry_when_due().await;
-        }
-        let after = Instant::now();
-        let target = g.target();
-        assert_eq!(target.health, ConvergenceHealth::WaitingDependency);
-        assert_eq!(
-            (target.attempts_remaining, target.attempts),
-            (DEFERRED_RETRY_BUDGET, 0)
-        );
-        assert_scheduled(&target, before, after, Duration::from_secs(delay));
-    }
     assert!(g.log().is_empty());
-
-    g.local.delegate.set_check_answer(TestCheckAnswer::Pass);
+    g.daemon.unreadable.store(false, Ordering::SeqCst);
     g.local.delegate.set_failure(Some("queue_full"));
     g.retry_when_due().await;
     let target = g.target();

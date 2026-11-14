@@ -9,7 +9,7 @@ use serde_json::json;
 use tracing::instrument::WithSubscriber as _;
 use tracing_subscriber::layer::SubscriberExt as _;
 
-#[nyanpasu_macro::rpc(capabilities(presentation))]
+#[nyanpasu_macro::rpc(capabilities(presentation), scope = settings)]
 #[tauri::command]
 #[specta::specta]
 async fn audit_native_echo(

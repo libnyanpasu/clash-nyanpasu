@@ -489,6 +489,14 @@ export function createRpcClient(
       typedError<TransparentProxyStatusSummary, IpcError_Serialize>(
         __RPC_INVOKE('get_transparent_proxy_status_summary'),
       ),
+    listRemoteAccessTokens: () =>
+      typedError<AccessTokenSummary[], IpcError_Serialize>(
+        __RPC_INVOKE('list_remote_access_tokens'),
+      ),
+    listRemoteBrowserSessions: () =>
+      typedError<BrowserSessionSummary[], IpcError_Serialize>(
+        __RPC_INVOKE('list_remote_browser_sessions'),
+      ),
     writeClipboardText: (text: string) =>
       typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('write_clipboard_text', { text }),
@@ -862,6 +870,18 @@ export function createRpcClient(
       typedError<string | null, IpcError_Serialize>(
         __RPC_INVOKE('create_http_launch_url'),
       ),
+    createRemoteAccessToken: (request: CreateRemoteAccessTokenRequest) =>
+      typedError<CreatedRemoteAccessToken, IpcError_Serialize>(
+        __RPC_INVOKE('create_remote_access_token', { request }),
+      ),
+    revokeRemoteAccessToken: (id: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('revoke_remote_access_token', { id }),
+      ),
+    revokeRemoteBrowserSession: (id: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('revoke_remote_browser_session', { id }),
+      ),
     selectProxy: (group: string, name: string) =>
       typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('select_proxy', { group, name }),
@@ -1035,6 +1055,35 @@ export function createRpcClient(
 export type RpcClient = ReturnType<typeof createRpcClient>
 
 /* Types */
+/**  Lifecycle state reported for a named access token (non-secret). */
+export type AccessTokenStatus =
+  /**  Token may authenticate and issue sessions until optional expiry. */
+  | 'active'
+  /**  Token has passed its `expires_at_ms` timestamp. */
+  | 'expired'
+
+/**
+ *  Non-secret metadata for a persisted access token.
+ *
+ *  Never contains the raw bearer token or its SHA-256 hash.
+ */
+export type AccessTokenSummary = {
+  /**  Public non-secret token identifier. */
+  id: string
+  /**  User-assigned display label. */
+  name: string
+  /**  Independent permissions granted to this token. */
+  scopes: ScopeSet
+  /**  Wall-clock creation timestamp in Unix epoch milliseconds. */
+  created_at_ms: number
+  /**  Optional wall-clock expiration timestamp in Unix epoch milliseconds. */
+  expires_at_ms: number | null
+  /**  Wall-clock timestamp of last successful verification, if any. */
+  last_used_at_ms: number | null
+  /**  Current status at inspection time. */
+  status: AccessTokenStatus
+}
+
 export type AppUpdateChangelog = {
   /**  Newest first. */
   entries: AppUpdateChangelogEntry[]
@@ -1368,6 +1417,22 @@ export type BreakConnectionStrategyPatch_Serialize = {
   on_proxy_change?: ProxyChangeBreakMode | null
   on_profile_change?: boolean | null
   on_mode_change?: boolean | null
+}
+
+/**  Non-secret metadata for an active browser/access session. */
+export type BrowserSessionSummary = {
+  /**  Public non-secret session identifier (never the cookie). */
+  id: string
+  /**  Backing token ID when the session was established via `login_with_token`. */
+  backing_token_id: string | null
+  /**  Independent scopes held by this session. */
+  scopes: ScopeSet
+  /**  Wall-clock creation timestamp in Unix epoch milliseconds. */
+  created_at_ms: number
+  /**  Wall-clock last-activity timestamp in Unix epoch milliseconds. */
+  last_active_at_ms: number
+  /**  Optional wall-clock hard expiration tied to a backing token, if any. */
+  token_expires_at_ms: number | null
 }
 
 /**  Built-in post-processing steps applied to the selected config. */
@@ -2817,6 +2882,23 @@ export type CoreVersionError =
   | { kind: 'core_version_exit'; core: string }
   | { kind: 'core_version_not_reported'; core: string }
 
+/**  Request payload for minting a named remote-access bearer token. */
+export type CreateRemoteAccessTokenRequest = {
+  name: string
+  scopes: ScopeSet
+  expires_at_ms?: number | null
+}
+
+/**
+ *  Newly minted access token returned once at creation time.
+ *
+ *  Subsequent `list_remote_access_tokens` calls return only non-secret metadata.
+ */
+export type CreatedRemoteAccessToken = {
+  summary: AccessTokenSummary
+  token: string
+}
+
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
   phase: DegradationPhase
@@ -3343,6 +3425,11 @@ export type HttpAccessConfig = {
   port?: number | null
   /**  Serve the bundled web UI. When false only the API is served. */
   serve_webui?: boolean
+  /**
+   *  What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`]. Kept while
+   *  another strategy is selected.
+   */
+  local_open_scopes?: Scope[]
 }
 
 /**
@@ -3352,8 +3439,14 @@ export type HttpAccessConfig = {
  *  request, scope and transport checks. Until then a stored value cannot name them.
  */
 export type HttpAccessStrategy =
-  /**  Loopback only; every request must carry the per-start credential. */
-  'local_authenticated'
+  /**  Loopback only; every request must carry a valid credential. */
+  | 'local_authenticated'
+  /**
+   *  Loopback only; a request without a credential is an anonymous caller holding
+   *  [`HttpAccessConfig::local_open_scopes`]. Every local process of every OS user can
+   *  reach it, because loopback TCP is not user-scoped.
+   */
+  | 'local_open'
 
 /**  Why an HTTP server query or setting change could not be performed. */
 export type HttpServerControlError =
@@ -6740,7 +6833,11 @@ export type PublicProfilesError_Serialize =
     })
 
 /**  Safe public remote-access config rejection discriminant. */
-export type PublicRemoteAccessErrorKind = 'port_zero' | 'use_dedicated_command'
+export type PublicRemoteAccessErrorKind =
+  | 'port_zero'
+  | 'local_open_scopes_empty'
+  | 'local_open_scope_forbidden'
+  | 'use_dedicated_command'
 
 /**  Public summary of what became of the runtime after an aborted commit. */
 export type PublicRuntimeAftermathKind =
@@ -7499,6 +7596,14 @@ export type RemoteAccessConfig = {
 export type RemoteAccessError =
   /**  Port 0 asks the OS for any port; the persisted port is always a concrete one. */
   | { kind: 'port_zero' }
+  /**  An anonymous caller must hold at least one scope; `local_open` with none admits nothing. */
+  | { kind: 'local_open_scopes_empty' }
+  /**  An anonymous caller never holds secrets, system control or remote administration. */
+  | {
+      kind: 'local_open_scope_forbidden'
+      /**  The scope that anonymous callers can never hold. */
+      scope: Scope
+    }
   /**
    *  The section is changed only by the dedicated remote-access command, never by a
    *  general application patch.

@@ -71,15 +71,22 @@ fields. For an ordinary field `null` is a no-op; only the double-option fields
 schema is derived from the fields of the request type and never advertises a field of
 another class.
 
-`remote_access` is written only by `set_remote_access`, a Desktop-only mutation that
+`remote_access` is written only by `set_remote_access`, a Desktop-only (`scope = remote_admin`) mutation that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
-them, and a listener that cannot follow is a `http_server_unavailable` degradation,
-never a rollback. A single serial owner (`RemoteAccessClient` in core) runs the whole
-operation, so concurrent edits cannot configure the listener from an older snapshot and
-a caller that leaves does not cancel it. Startup validates the saved settings before
-activating a listener. `get_http_server_status` is HTTP-exposed and
-never carries a credential; the login URL comes from the desktop-only mutation
-`create_http_launch_url`, which is a mutation so that it is not kept in a client cache.
+them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
+`local_open_scopes` changes), and a listener that cannot follow is a
+`http_server_unavailable` degradation, never a rollback. A single serial owner
+(`RemoteAccessClient` in core) runs the whole operation, so concurrent edits cannot
+configure the listener from an older snapshot and a caller that leaves does not cancel
+it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
+`local_open` with empty `local_open_scopes` or forbidden `sensitive_read`/`system`/`remote_admin`
+scopes) before activating a listener. `get_http_server_status` is HTTP-exposed and
+never carries a credential; launch URLs, access tokens, and browser sessions are managed
+through desktop-only `scope = remote_admin` commands in
+`nyanpasu-rpc/src/commands/remote_access.rs` (`create_http_launch_url`,
+`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
+`list_remote_browser_sessions`, `revoke_remote_browser_session`). `create_http_launch_url`
+is a mutation so launch codes are not kept in a client cache.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
 `patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
@@ -155,23 +162,36 @@ unnamed `/bridge/events` SSE (filtering by target/capability/scope plus `resync`
 and session revocation cancellation), and `LocalServer` `Subscribe` (refusing
 `Forbidden`/`Unsupported` before snapshot or event-stream allocation).
 `rpc_describe` is callable by any resolved caller even without `Scope::Read`
-(including a future explicitly permitted anonymous context via the user-approved
+(including `local_open` anonymous callers via the user-approved
 `own-only` self-inspection exception; unresolved/unauthenticated callers still
 receive `401 unauthorized`), and `allowed` reflects target, capabilities, native
 linkage, and caller scopes without disclosing other principals or credentials.
 `LocalSocket` attributes the peer OS user (`UID`/`SID` in
-`nyanpasu-single-instance`); HTTP bootstrap assigns a non-secret `Principal::Session`
-(`sess_...`) distinct from `access_token` and the `nyanpasu_http_session` cookie; and
-audit headers log only non-secret public principal identifiers (`desktop:<window>`,
-`local_socket:<user>`, `session:<id>`, `token:<id>`). Layer 09 delivers public typed
+`nyanpasu-single-instance`). HTTP consumes a late-bound `HttpAuthenticator` port
+(`RpcHttpAuthenticator` / `NyanpasuClientHttpAuthenticator`) backed by
+`RemoteAccessAuthActor`: after Host/Origin verification and `Content-Type: application/json`
+checks on `/bridge/rpc`, credentials resolve in order as `Authorization: Bearer <token>` on
+`/bridge/*` only (`Principal::Token`), `nyanpasu_session` (`HttpOnly; SameSite=Strict; Path=/`)
+cookie (`Principal::Session`, `sess_...`), or (when `strategy` is `local_open`)
+`Principal::Anonymous` clamped via `clamp_local_open_scopes` so `sensitive_read`, `system`,
+and `remote_admin` are never granted. Unauthenticated HTML document `GET` requests redirect
+(`302`) to the CSP-locked `/login` page; `GET /?code=...` exchanges a 60-second single-use
+launch code for a session cookie (`303 /`); `POST /bridge/login` (JSON `{ token }`) creates a
+token-backed browser session; and `POST /bridge/logout` revokes the session and clears the
+cookie (`Max-Age=0`). `PrincipalStreams` watches `AuthRevocation` (and cancels all active
+streams if the receiver lags or closes) so active SSE and `Frontend::Dev` WebSocket streams
+terminate on token/session revocation or expiry. `RpcOwner::http` derives from
+`principal.audit_label()` and the validated `X-Nyanpasu-Client-Id` header (or `?client_id=`
+fallback on `/bridge/events` and `/bridge/connection-details`). Authentication rejections
+log at `WARN` on `nyanpasu::remote_access` with peer IP and optional public token ID only,
+never raw secrets, cookies, or launch codes; audit headers log only non-secret public
+principal identifiers (`desktop:<window>`, `local_socket:<user>`, `session:<id>`,
+`token:<id>`, `anonymous`). Layer 09 delivers public typed
 application and transport-parse error privacy across non-`SensitiveRead` scopes
 (`PublicFailure`, `CoreLogCommandError`, optional `IpcError::detail`, and
 `ResponseVisibility` projection across RPC, parse/route rejections, `/bridge/icons/*`,
-`/bridge/events`, and `LocalServer`); the remaining privacy gates (degraded
-mutation outcomes `MutationOutcome::CommittedDegraded` and sensitive-read success
-getter classifications/safe updater progress) remain mandatory in the next slice
-before admitting scoped tokens, anonymous access, or LAN exposure (followed by
-JSON Schema generation).
+`/bridge/events`, and `LocalServer`); error and `CommittedDegraded` projection keeps
+non-`SensitiveRead` scopes safe for scoped tokens and `local_open`.
 The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
@@ -342,7 +362,7 @@ local socket/CLI must enter this same kernel at INFO.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
 - Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given `ResponseVisibility::for_auth`) walks the source chain and preserves domain payloads and core retry metadata for `SensitiveRead` (`Full`) callers, while projecting non-`SensitiveRead` (`Public`) callers to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on settings-scoped core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
-- Keep HTTP RPC, SSE, and the development proxy behind the existing per-start access credential and Host/Origin checks. A session cookie identifies an owner; it does not by itself authenticate access. Keep the server disabled by default and bound to loopback. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
+- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
 - Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. Register shared events in the transport metadata and publish them through the bus and its delivery adapters; do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
@@ -352,8 +372,9 @@ local socket/CLI must enter this same kernel at INFO.
 Icon reads use special byte entries rather than JSON commands. The neutral
 `nyanpasu_rpc::icons` module owns `IconRequest`, the shared path/query parser,
 MIME validation and reads through the existing cache and host ports. HTTP mounts
-`GET /bridge/icons/{*path}` behind the listener's Host/Origin and access-cookie
-authentication; the session cookie identifies the audit owner. Desktop registers
+`GET /bridge/icons/{*path}` behind the listener's Host/Origin and HTTP authentication
+(`Authorization: Bearer`, `nyanpasu_session`, or clamped `local_open` anonymous); the
+resolved principal identifies the audit owner. Desktop registers
 `nyanpasu-icons` and calls the neutral module directly, with accepted requests
 tracked by the existing startup task tracker and refused during shutdown.
 Neither entry exposes a local command or a resource registry.

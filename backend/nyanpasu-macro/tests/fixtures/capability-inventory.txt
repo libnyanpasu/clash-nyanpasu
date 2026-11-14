@@ -33,6 +33,7 @@ create_main_window | desktop | window | - | mutation | system
 create_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile
 create_profile_folder | desktop,http | - | presentation | mutation | profile
 create_proxy_group_folder | desktop,http | - | presentation | mutation | profile
+create_remote_access_token | desktop | - | - | mutation | remote_admin
 delete_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile
 discard_app_update_package | desktop | app_update | - | mutation | system
 download_app_update | desktop | app_update | - | mutation | system
@@ -103,6 +104,8 @@ is_portable | desktop,http | - | - | query | read
 is_tray_icon_set | desktop,http | - | - | query | read
 is_widget_icon_set | desktop,http | - | - | query | read
 list_log_files | desktop,http,local | - | - | query | read
+list_remote_access_tokens | desktop | - | - | query | remote_admin
+list_remote_browser_sessions | desktop | - | - | query | remote_admin
 mutate_proxies | desktop,http | - | presentation | mutation | proxy
 open_app_config_dir | desktop | opener | - | mutation | system
 open_app_data_dir | desktop | opener | - | mutation | system
@@ -147,6 +150,8 @@ restart_service | desktop | elevation | presentation | mutation | system
 restart_sidecar | desktop,http | - | elevation,os_integration,presentation | mutation | system
 retry_configuration_effect | desktop,http | - | hotkey,os_integration,presentation | mutation | system
 retry_configuration_runtime | desktop,http | - | elevation,os_integration,presentation | mutation | system
+revoke_remote_access_token | desktop | - | - | mutation | remote_admin
+revoke_remote_browser_session | desktop | - | - | mutation | remote_admin
 rpc_describe | desktop,http,local | - | - | query | read
 save_profile_file | desktop,http | - | elevation,os_integration,presentation | mutation | profile
 save_window_size_state | desktop | window | - | mutation | system

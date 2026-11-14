@@ -863,8 +863,9 @@ pub struct IpcError {
     pub kind: IpcErrorKind,
     /// The error's own message, shown when `kind` cannot be localized.
     pub message: String,
-    /// The original error, copied by the user for diagnosis.
-    pub detail: String,
+    /// The original error, copied by the user for diagnosis when permitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 /// The domain a command failed in. A domain joins once its errors are typed.
@@ -884,4 +885,5 @@ pub enum IpcErrorKind {
     ClashRead(Box<ClashReadError>),
     CoreLogRead(Box<CoreLogReadError>),
     ProfileSyncRead(Box<ProfileSyncReadError>),
+    Public(Box<super::public_errors::PublicFailure>),
 }

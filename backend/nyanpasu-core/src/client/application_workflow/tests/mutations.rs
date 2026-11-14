@@ -21,7 +21,7 @@ use std::{
 use crate::client::test_support::workflow::Installer;
 use camino::Utf8PathBuf;
 use nyanpasu_config::{
-    application::{ClashCore, NyanpasuAppConfig, ReleaseChannel},
+    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
     clash::config::{
         ClashConfig,
         clash_strategy::port::{PortStrategy, PortStrategyKind},
@@ -45,7 +45,7 @@ use super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
         mutation::DEFERRED_RETRY_BUDGET, participant::ApplicationMutationParticipant,
     },
-    RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
+    RecordingNotifications, ScriptedWaitEndpoint, WaitScript, classify, refusals,
 };
 use crate::{
     actor_v2::{CoreClient, service_actor::ServiceClient},
@@ -161,6 +161,7 @@ pub(super) struct Fixture {
     pub(super) shutdown: tokio_util::sync::CancellationToken,
     pub(super) tasks: tokio_util::task::TaskTracker,
     _dir: tempfile::TempDir,
+    revisions: runtime::RuntimeRevisionAllocator,
 }
 
 pub(super) async fn manager<T>(path: Utf8PathBuf, state: T) -> PersistentStateManager<T>
@@ -239,6 +240,23 @@ pub(super) fn adopted_baseline() -> RuntimeApplyReceipt {
 /// The endpoint publishes a running core with a known applied kind on purpose:
 /// the baseline a Cancel restores is verified against what the host says is
 /// running, and an absent fact is a mismatch rather than a benefit of the doubt.
+impl Fixture {
+    fn gate(&self) -> Arc<dyn crate::state::mutation::ports::RuntimeGate> {
+        Arc::new(super::super::check::CandidateCheck::new(
+            super::super::check::Args {
+                application: self.application.snapshot_handle(),
+                clash: self.clash.snapshot_handle(),
+                profiles: self.profiles.snapshot_handle(),
+                builder: self.builder.clone(),
+                ports: self.ports.clone(),
+                revisions: self.revisions.clone(),
+                validator: Arc::new(adapters::CoreCheckValidator::new(&self.core)),
+                workflow: self.client.clone(),
+            },
+        ))
+    }
+}
+
 pub(super) async fn fixture() -> Fixture {
     fixture_with(true).await
 }
@@ -392,8 +410,10 @@ pub(super) async fn fixture_from(
         tokio_util::task::TaskTracker::new(),
     );
     let notifications = Arc::new(RecordingNotifications::default());
+    let revisions = runtime::RuntimeRevisionAllocator::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            revisions: revisions.clone(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -431,6 +451,7 @@ pub(super) async fn fixture_from(
         shutdown,
         tasks,
         _dir: dir,
+        revisions,
     }
 }
 
@@ -460,7 +481,7 @@ pub(super) async fn mutate<T, F>(
 where
     F: nyanpasu_persistence::format::Format + Clone,
     T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
-    super::super::mutation::DomainChange: From<StateChange<T>>,
+    crate::state::mutation::DomainChange: From<StateChange<T>>,
 {
     mutate_settling(
         manager,
@@ -495,7 +516,7 @@ pub(super) async fn mutate_settling<T, F>(
 where
     F: nyanpasu_persistence::format::Format + Clone,
     T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
-    super::super::mutation::DomainChange: From<StateChange<T>>,
+    crate::state::mutation::DomainChange: From<StateChange<T>>,
 {
     let hints = MutationHints::default();
     let (version, impact) = {
@@ -549,7 +570,7 @@ pub(super) async fn mutate_with_hints<T, F>(
 where
     F: nyanpasu_persistence::format::Format + Clone,
     T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
-    super::super::mutation::DomainChange: From<StateChange<T>>,
+    crate::state::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
     let (version, impact) = {
@@ -600,7 +621,7 @@ pub(super) async fn simple_mutate<T, F>(
 where
     F: nyanpasu_persistence::format::Format + Clone,
     T: MutationDomain + Clone + Send + Sync + 'static + Serialize + DeserializeOwned + Default,
-    super::super::mutation::DomainChange: From<StateChange<T>>,
+    crate::state::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
     let result = mutate(
@@ -3643,10 +3664,8 @@ async fn a_preflight_failure_or_changed_revision_never_submits_or_isolates() {
     }
 }
 
-/// V12: a pure UI save never reaches the Runtime. With a Runtime owner that
-/// fails as soon as it is called, the save still commits, runs no operation
-/// and reads nothing from the core; a save that does need the Runtime is
-/// refused by the same owner.
+/// GUI-only saves bypass checking and application. Runtime candidates can still
+/// be checked and committed after the workflow stops; settlement reports closure.
 #[tokio::test]
 async fn a_gui_save_never_reaches_the_runtime() {
     use nyanpasu_config::application::ThemeMode;
@@ -3656,6 +3675,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     mutations.connect(
         Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        f.gate(),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -3673,38 +3693,42 @@ async fn a_gui_save_never_reaches_the_runtime() {
     let mut patch = NyanpasuAppConfig::new_empty_patch();
     patch.theme_mode = Some(ThemeMode::Dark);
     let saved = application.patch(patch).await.unwrap();
-    assert!(saved.version > before.version);
+    assert!(saved.version.as_ref() > before.version.as_ref());
     assert_eq!(saved.state.theme_mode, ThemeMode::Dark);
-    let receipt = saved.receipt.expect("a commit has a receipt");
-    assert_eq!(receipt.operation_id, None);
-    assert_eq!(
-        receipt.runtime,
-        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged
-    );
-    assert!(saved.degradations.is_empty());
+    assert_eq!(saved.operation_id, None);
+    assert!(!saved.reaches_runtime);
     assert_eq!(f.endpoint.status_reads(), status_reads);
 
     let mut patch = NyanpasuAppConfig::new_empty_patch();
     patch.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
-    assert!(application.patch(patch).await.is_err());
-    assert_eq!(application.snapshot().version, saved.version);
+    let runtime_saved = application.patch(patch).await.unwrap();
+    assert!(runtime_saved.reaches_runtime);
+    assert!(runtime_saved.version.as_ref() > saved.version.as_ref());
+    assert!(matches!(
+        f.client
+            .settled(
+                nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                runtime_saved.version
+            )
+            .await
+            .conclusion,
+        super::super::Conclusion::Closed
+    ));
 }
 
-/// V13, through the owner that decides it: a request reaches the runtime when
-/// its diff or its intent does, and one that does keeps every promise it had.
-/// Re-selecting the running core or the current host still owes a Try, a
-/// patch that spans a UI field and a build input commits or fails as one, and
-/// a core the user stopped is never started by either kind of save.
+/// Only changes to runtime inputs are checked. Same-value selections do no
+/// runtime work, and a rejected mixed patch preserves every source field.
 #[tokio::test]
 async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
     use nyanpasu_config::application::ThemeMode;
-    use nyanpasu_runtime_values::runtime::RuntimeCommitStatus;
-    use struct_patch::Patch;
+    use nyanpasu_runtime_values::mutation::ConfigDomain;
+    use struct_patch::Patch as _;
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
         Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        f.gate(),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -3716,33 +3740,44 @@ async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
     .await
     .unwrap();
     let current = application.snapshot().state;
-
-    // Irrelevant: committed on its own, and the core is not asked anything.
     let checked = f.endpoint.checked().len();
     let mut patch = NyanpasuAppConfig::new_empty_patch();
     patch.theme_mode = Some(ThemeMode::Dark);
-    let receipt = application.patch(patch).await.unwrap().receipt.unwrap();
-    assert_eq!(receipt.operation_id, None);
-    assert_eq!(receipt.runtime, RuntimeCommitStatus::Unchanged);
+    let saved = application.patch(patch).await.unwrap();
+    assert!(!saved.reaches_runtime);
+    assert_eq!(saved.operation_id, None);
     assert_eq!(f.endpoint.checked().len(), checked);
 
-    // Relevant, and the same value re-selected for the core and for the host.
+    // Same-value selections have no runtime effect.
+    for patch in [
+        NyanpasuAppConfigPatch {
+            core: Some(current.core),
+            ..Default::default()
+        },
+        NyanpasuAppConfigPatch {
+            enable_service_mode: Some(current.enable_service_mode),
+            ..Default::default()
+        },
+    ] {
+        let saved = application.patch(patch).await.unwrap();
+        assert!(!saved.reaches_runtime);
+        assert_eq!(saved.operation_id, None);
+        assert_eq!(f.endpoint.checked().len(), checked);
+    }
     let mut relevant = NyanpasuAppConfig::new_empty_patch();
     relevant.enable_builtin_enhanced = Some(!current.enable_builtin_enhanced);
-    let mut core = NyanpasuAppConfig::new_empty_patch();
-    core.core = Some(current.core);
-    let mut host = NyanpasuAppConfig::new_empty_patch();
-    host.enable_service_mode = Some(current.enable_service_mode);
-    for (case, patch) in [("relevant", relevant), ("core", core), ("host", host)] {
-        let checked = f.endpoint.checked().len();
-        let receipt = application.patch(patch).await.unwrap().receipt.unwrap();
-        assert!(receipt.operation_id.is_some(), "{case}");
-        assert_eq!(receipt.runtime, RuntimeCommitStatus::Applied, "{case}");
-        assert_eq!(f.endpoint.checked().len(), checked + 1, "{case}");
-    }
+    let saved = application.patch(relevant).await.unwrap();
+    assert!(saved.reaches_runtime);
+    assert!(saved.operation_id.is_some());
+    assert!(matches!(
+        f.client
+            .settled(ConfigDomain::Application, saved.version)
+            .await
+            .conclusion,
+        super::super::Conclusion::Converged
+    ));
+    assert_eq!(f.endpoint.checked().len(), checked + 1);
 
-    // Mixed: the core refuses the build input, so the UI field is not
-    // committed either.
     f.endpoint.set_check_answer(TestCheckAnswer::Reject(
         nyanpasu_core_manager::CoreError::new(
             CoreErrorKind::InvalidConfig,
@@ -3751,34 +3786,31 @@ async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
         ),
     ));
     let before = application.snapshot();
-    let mut mixed = NyanpasuAppConfig::new_empty_patch();
-    mixed.theme_mode = Some(ThemeMode::Light);
-    mixed.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+    let mixed = NyanpasuAppConfigPatch {
+        theme_mode: Some(ThemeMode::Light),
+        enable_builtin_enhanced: Some(!before.state.enable_builtin_enhanced),
+        ..Default::default()
+    };
     assert!(application.patch(mixed).await.is_err());
-    let after = application.snapshot();
-    assert_eq!(after.version, before.version);
-    assert_eq!(after.state.theme_mode, ThemeMode::Dark);
+    assert_eq!(application.snapshot().version, before.version);
+    assert_eq!(application.snapshot().state.theme_mode, ThemeMode::Dark);
     f.endpoint.set_check_answer(TestCheckAnswer::Pass);
-
-    // Stopped by the user: a relevant save is checked and saved inactive, an
-    // irrelevant one is a plain save, and neither starts the core.
     f.client.stop_core().await.unwrap();
     let submitted = f.endpoint.reconciled_bytes().len();
-    let mut relevant = NyanpasuAppConfig::new_empty_patch();
-    relevant.enable_builtin_enhanced = Some(!after.state.enable_builtin_enhanced);
-    let receipt = application.patch(relevant).await.unwrap().receipt.unwrap();
-    assert!(receipt.operation_id.is_some());
-    assert_eq!(receipt.runtime, RuntimeCommitStatus::SavedInactive);
-    let mut irrelevant = NyanpasuAppConfig::new_empty_patch();
-    irrelevant.theme_mode = Some(ThemeMode::System);
-    let receipt = application
-        .patch(irrelevant)
+    let saved = application
+        .patch(NyanpasuAppConfigPatch {
+            enable_builtin_enhanced: Some(!before.state.enable_builtin_enhanced),
+            ..Default::default()
+        })
         .await
-        .unwrap()
-        .receipt
         .unwrap();
-    assert_eq!(receipt.operation_id, None);
-    assert_eq!(receipt.runtime, RuntimeCommitStatus::Unchanged);
+    assert!(matches!(
+        f.client
+            .settled(ConfigDomain::Application, saved.version)
+            .await
+            .conclusion,
+        super::super::Conclusion::Inactive
+    ));
     assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
 }
 
@@ -4048,8 +4080,7 @@ async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
     assert_eq!(ports.confirmed().unwrap().mixed_port, 7897);
 }
 
-// T6 exercises the production domain actor, including its own participant
-// construction, instead of supplying a participant directly from the test.
+// Exercise the production domain actor's independent gate before source persistence.
 #[tokio::test]
 async fn application_actor_rejection_keeps_source_version_and_bytes() {
     use struct_patch::Patch;
@@ -4058,6 +4089,7 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     mutations.connect(
         Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        f.gate(),
     );
     let snapshot = f.application.snapshot_handle();
     let before = snapshot.load();
@@ -4094,6 +4126,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     mutations.connect(
         Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        f.gate(),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -4118,7 +4151,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     );
     f.builder.release.notify_one();
     save.await.unwrap().unwrap();
-    assert!(application.snapshot().version > before.version);
+    assert!(application.snapshot().version.as_ref() > before.version.as_ref());
 }
 
 #[tokio::test]
@@ -4671,6 +4704,7 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
     coordinator.connect(
         Arc::new(f.client.clone()),
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        Arc::new(crate::state::mutation::IsolatedRuntimeGate),
     );
     let (commit, degradations) = coordinator.committed(
         Some(operation_id),
@@ -4792,7 +4826,7 @@ async fn unsupported_engine_is_rejected_before_source_persistence() {
         unavailable.store(true, Ordering::SeqCst);
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.core = Some(core);
+        patch.enable_service_mode = Some(true);
         let config_error = client.patch_app_config(patch).await.unwrap_err();
         let profile_error = client.activate_profile(Some(uid)).await.unwrap_err();
         for (domain, error) in [("config", config_error), ("profiles", profile_error)] {
@@ -4878,4 +4912,167 @@ async fn unsupported_engine_is_rejected_before_source_persistence() {
         tasks.close();
         tasks.wait().await;
     }
+}
+
+// Guards the independent gate and SourceCommitted surviving a preceding participant Cancel.
+#[tokio::test]
+async fn application_commit_precedes_a_held_clash_try_and_applies_after_its_decision() {
+    use super::super::ports::RuntimeBuildPort as _;
+
+    for fail_source in [false, true] {
+        let f = fixture().await;
+        let mutations = crate::state::mutation::MutationCoordinator::pending();
+        mutations.connect(
+            Arc::new(f.client.clone()),
+            Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+            f.gate(),
+        );
+        let application = crate::client::application::ApplicationClient::from_manager(
+            mutations,
+            f.application,
+            ReleaseChannel::Stable,
+            f.shutdown.child_token(),
+            &f.tasks,
+        )
+        .await
+        .unwrap();
+        let path = f.app_path.clone();
+        let previous = application.snapshot();
+        f.builder.park.store(true, Ordering::SeqCst);
+        let operation_id = OperationId::generate();
+        let old = tokio::spawn({
+            let client = f.client.clone();
+            let mut clash = f.clash;
+            async move {
+                let result = mutate(
+                    &mut clash,
+                    &client,
+                    operation_id,
+                    overrides(serde_json::json!({"mode": "global"})),
+                    CommandClass::Save,
+                    plain(),
+                    move || {
+                        Box::pin(async move {
+                            if fail_source {
+                                Err(anyhow::anyhow!("source write failed"))
+                            } else {
+                                Ok(())
+                            }
+                        })
+                    },
+                )
+                .await;
+                (clash, result)
+            }
+        });
+        f.builder.entered.notified().await;
+        f.builder.park.store(false, Ordering::SeqCst);
+        let saved = application
+            .patch(NyanpasuAppConfigPatch {
+                enable_builtin_enhanced: Some(!previous.state.enable_builtin_enhanced),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(saved.version.as_ref() > previous.version.as_ref());
+        assert_eq!(application.snapshot().version, saved.version);
+        assert!(
+            std::fs::read_to_string(path)
+                .unwrap()
+                .contains("enable_builtin_enhanced")
+        );
+        assert!(
+            !old.is_finished(),
+            "source commit must not wait for the held participant"
+        );
+        let mut waiting = Box::pin(f.client.settled(
+            nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+            saved.version,
+        ));
+        assert!(futures_util::FutureExt::now_or_never(waiting.as_mut()).is_none());
+        f.builder.release.notify_one();
+        let (clash, result) = old.await.unwrap();
+        assert_eq!(result.is_err(), fail_source);
+        let status = waiting.await;
+        assert!(matches!(
+            status.conclusion,
+            super::super::Conclusion::Converged
+        ));
+        assert_eq!(status.seen.application, saved.version);
+        let receipt = f.client.0.runtime.last_confirmed_runtime_receipt().unwrap();
+        let profiles = Arc::new(f.profiles.snapshot_handle().load().state.clone());
+        let content = f.builder.capture_content(&profiles).await;
+        let inputs = super::super::inputs::RuntimeInputs {
+            app: saved.state,
+            clash: clash.snapshot_handle().load().state.clone(),
+            profiles,
+            content,
+        };
+        assert_eq!(receipt.target, inputs.target_key());
+        f.shutdown.cancel();
+        f.tasks.close();
+        f.tasks.wait().await;
+    }
+}
+
+// Guards retaining the engine versions read before an apply, rather than re-reading at publication.
+#[tokio::test]
+async fn a_round_does_not_settle_another_domains_later_commit() {
+    use futures_util::FutureExt as _;
+    let mut f = scripted_fixture().await;
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(
+        Arc::new(f.client.clone()),
+        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        f.gate(),
+    );
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        ReleaseChannel::Stable,
+        f.shutdown.child_token(),
+        &f.tasks,
+    )
+    .await
+    .unwrap();
+    let scripted = f.scripted.as_ref().unwrap();
+    let before = f.clash.snapshot_handle().load().version;
+    scripted.queue(WaitScript::Held);
+    let saved = application
+        .patch(NyanpasuAppConfigPatch {
+            enable_builtin_enhanced: Some(!application.snapshot().state.enable_builtin_enhanced),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    scripted.held().await;
+    f.clash
+        .replace_if_version(before, overrides(serde_json::json!({"mode": "direct"})))
+        .await
+        .unwrap();
+    let committed = f.clash.snapshot_handle().load().version;
+    scripted.queue(WaitScript::Held);
+    f.client.source_committed(
+        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+        committed,
+    );
+    let mut waiting = Box::pin(f.client.settled(
+        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+        committed,
+    ));
+    assert!(waiting.as_mut().now_or_never().is_none());
+    scripted.release();
+    scripted.held().await;
+    let status = f.client.0.reconciler.borrow().clone();
+    assert_eq!(
+        status.seen.clash, before,
+        "the first round did not use the later source commit"
+    );
+    assert_eq!(status.seen.application, saved.version);
+    assert!(waiting.as_mut().now_or_never().is_none());
+    scripted.release();
+    assert_eq!(waiting.await.seen.clash, committed);
+    f.shutdown.cancel();
+    f.tasks.close();
+    f.tasks.wait().await;
 }

@@ -14,7 +14,7 @@ impl NyanpasuClient {
         let sources = self.inner.profiles.sources();
         let execution = self.inner.application_workflow.status();
         let source_versions = SourceVersions {
-            application: self.inner.application.snapshot().version,
+            application: *self.inner.application.snapshot().version.as_ref(),
             clash: self.inner.clash_config.snapshot().version,
             session: self.inner.session_state.snapshot().version,
             profiles: self.inner.profiles.snapshot().revision(),

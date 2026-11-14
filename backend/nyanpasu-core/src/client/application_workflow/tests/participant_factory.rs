@@ -7,10 +7,7 @@ use std::{
 };
 
 use camino::Utf8Path;
-use nyanpasu_config::{
-    application::{ClashCore, NyanpasuAppConfig, ReleaseChannel},
-    clash::config::ClashConfig,
-};
+use nyanpasu_config::clash::config::ClashConfig;
 use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_state_engine::{DecisionHandle, StateDecision, StateParticipant, Version};
@@ -20,9 +17,9 @@ use tokio::sync::{mpsc, oneshot};
 use super::mutations::{self, ParkingBuilder};
 use crate::{
     client::{
-        MutationCoordinators, application::ApplicationClient,
-        application_workflow::ApplicationWorkflowClient, clash_config::ClashConfigClient,
-        effects::ports::NoopCommitNotifications, profiles::ProfilesClient, test_support,
+        MutationCoordinators, application_workflow::ApplicationWorkflowClient,
+        clash_config::ClashConfigClient, effects::ports::NoopCommitNotifications,
+        profiles::ProfilesClient, test_support,
     },
     state::{
         config_error::ConfigError,
@@ -120,27 +117,18 @@ async fn participant_factory_receives_the_source_decision_and_intent() {
         observations,
     });
     let coordinators = MutationCoordinators::pending();
-    coordinators
-        .application
-        .connect(factory.clone(), Arc::new(NoopCommitNotifications));
-    coordinators
-        .clash
-        .connect(factory.clone(), Arc::new(NoopCommitNotifications));
-    coordinators
-        .profiles
-        .connect(factory, Arc::new(NoopCommitNotifications));
-    let app_path = mutations::temp_path(&dir, "application.yaml");
+    coordinators.clash.connect(
+        factory.clone(),
+        Arc::new(NoopCommitNotifications),
+        Arc::new(crate::state::mutation::IsolatedRuntimeGate),
+    );
+    coordinators.profiles.connect(
+        factory,
+        Arc::new(NoopCommitNotifications),
+        Arc::new(crate::state::mutation::IsolatedRuntimeGate),
+    );
     let clash_path = mutations::temp_path(&dir, "clash.yaml");
     let profiles_path = mutations::temp_path(&dir, "profiles.yaml");
-    let application = ApplicationClient::new(
-        coordinators.application,
-        ReleaseChannel::Stable,
-        app_path.clone(),
-        f.shutdown.child_token(),
-        &f.tasks,
-    )
-    .await
-    .unwrap();
     let clash = ClashConfigClient::new(
         coordinators.clash,
         clash_path.clone(),
@@ -162,22 +150,6 @@ async fn participant_factory_receives_the_source_decision_and_intent() {
     .unwrap();
 
     tokio::time::timeout(Duration::from_secs(10), async {
-        let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.core = Some(ClashCore::ClashRs);
-        assert_source_attempt(
-            &mut observed,
-            &f.builder,
-            &app_path,
-            MutationHints {
-                requested: RequestedRuntimeFields::runtime(),
-                ..Default::default()
-            },
-            CommandClass::ExplicitSwitch,
-            RuntimeImpact::CoreSwap,
-            async move { application.patch(patch).await.unwrap().receipt.unwrap() },
-        )
-        .await;
-
         let mut patch = ClashConfig::new_empty_patch();
         patch.enable_clash_fields = Some(!clash.snapshot().state.enable_clash_fields);
         assert_source_attempt(
@@ -209,7 +181,7 @@ async fn participant_factory_receives_the_source_decision_and_intent() {
         .await;
     })
     .await
-    .expect("each domain must prepare and settle through its own factory");
+    .expect("participant domains must prepare and settle through their factory");
     assert!(
         observed.try_recv().is_err(),
         "one factory call per source attempt"
@@ -227,24 +199,25 @@ async fn undelivered_mutation_is_rejected_but_lost_verdict_is_failed() {
         coordinator.connect(
             Arc::new(f.client.clone()),
             Arc::new(NoopCommitNotifications),
+            Arc::new(crate::state::mutation::IsolatedRuntimeGate),
         );
-        let before = f.application.snapshot_handle().load();
-        let application = ApplicationClient::from_manager(
+        let dir = tempfile::tempdir().unwrap();
+        let application = ClashConfigClient::new(
             coordinator,
-            f.application,
-            ReleaseChannel::Stable,
+            mutations::temp_path(&dir, "clash.yaml"),
             f.shutdown.child_token(),
             &f.tasks,
         )
         .await
         .unwrap();
+        let before = application.snapshot();
         if !delivered {
             f.client.kill().await;
         }
         f.builder.park.store(true, Ordering::SeqCst);
         let writer = application.clone();
-        let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.enable_clash_fields = Some(!before.state.enable_clash_fields);
         let work = tokio::spawn(async move { writer.patch(patch).await });
         if delivered {
             f.builder.entered.notified().await;
@@ -275,7 +248,7 @@ async fn undelivered_mutation_is_rejected_but_lost_verdict_is_failed() {
             }
             (_, error) => panic!("delivered={delivered}: unexpected source error {error:?}"),
         }
-        assert_eq!(application.snapshot().version, *before.version.as_ref());
+        assert_eq!(application.snapshot().version, before.version);
         f.shutdown.cancel();
         f.tasks.close();
         f.tasks.wait().await;
@@ -293,13 +266,13 @@ struct CapturingSettlementFactory {
     observations: mpsc::UnboundedSender<SettlementObservation>,
 }
 
-impl MutationParticipantFactory<NyanpasuAppConfig> for CapturingSettlementFactory {
+impl MutationParticipantFactory<ClashConfig> for CapturingSettlementFactory {
     fn make(
         &self,
         intent: MutationIntent,
         decision: DecisionHandle,
         source: oneshot::Sender<MutationReceipt>,
-    ) -> StateParticipant<NyanpasuAppConfig> {
+    ) -> StateParticipant<ClashConfig> {
         let (settle, receiver) = oneshot::channel();
         self.observations
             .send(SettlementObservation {
@@ -323,11 +296,12 @@ async fn dropping_the_settlement_receiver_does_not_cancel_owner_work() {
             observations,
         }),
         Arc::new(NoopCommitNotifications),
+        Arc::new(crate::state::mutation::IsolatedRuntimeGate),
     );
-    let application = ApplicationClient::from_manager(
+    let dir = tempfile::tempdir().unwrap();
+    let application = ClashConfigClient::new(
         coordinator,
-        f.application,
-        ReleaseChannel::Stable,
+        mutations::temp_path(&dir, "clash.yaml"),
         f.shutdown.child_token(),
         &f.tasks,
     )
@@ -336,8 +310,8 @@ async fn dropping_the_settlement_receiver_does_not_cancel_owner_work() {
     let before = application.snapshot();
     f.builder.park.store(true, Ordering::SeqCst);
     let writer = application.clone();
-    let mut patch = NyanpasuAppConfig::new_empty_patch();
-    patch.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+    let mut patch = ClashConfig::new_empty_patch();
+    patch.enable_clash_fields = Some(!before.state.enable_clash_fields);
     let work = tokio::spawn(async move { writer.patch(patch).await });
     let observation = observed.recv().await.unwrap();
     f.builder.entered.notified().await;
@@ -345,7 +319,7 @@ async fn dropping_the_settlement_receiver_does_not_cancel_owner_work() {
     drop(observation.receiver);
     f.builder.release.notify_one();
     let receipt = mutations::settled(&f.client, observation.operation_id).await;
-    assert_eq!(receipt.domain, ConfigDomain::Application);
+    assert_eq!(receipt.domain, ConfigDomain::Clash);
     assert_eq!(receipt.conclusion, MutationConclusion::Confirmed);
     assert!(application.snapshot().version > before.version);
     assert!(!f.endpoint.reconciled_bytes().is_empty());

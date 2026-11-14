@@ -51,6 +51,11 @@ impl RuntimePreparation {
         }
     }
 
+    pub(super) fn with_revisions(mut self, revisions: runtime::RuntimeRevisionAllocator) -> Self {
+        self.revisions = revisions;
+        self
+    }
+
     pub async fn prepare(
         &self,
         profiles: Arc<Profiles>,

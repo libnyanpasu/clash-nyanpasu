@@ -35,6 +35,11 @@ pub(super) struct ApplicationWorkflow {
     /// The daemon a confirmed move off service mode still has to release,
     /// and why the last attempt failed. An explicit retry releases it.
     pub pending_release: Option<String>,
+    pub sampled: Option<super::EngineVersions>,
+    pub checked: Option<crate::client::core_lifecycle::ports::PreparedRuntime>,
+    pub applied_selection: Option<super::committed::Selection>,
+    pub service_preferred: bool,
+    pub release_owed: bool,
     /// The attempt running now, or the latest one that did not settle
     /// (T10 §1.11). With the facade's pending action it is all that an
     /// explicit recovery reads.
@@ -87,6 +92,21 @@ impl ApplicationWorkflow {
                 .retry_runtime(operation_id, explicit)
                 .await
                 .map(|_| Output::Unit),
+            Command::PrepareService => {
+                use snafu::IntoError as _;
+                self.lifecycle
+                    .core
+                    .prepare_service_host()
+                    .await
+                    .map_err(|error| {
+                        nyanpasu_runtime_values::runtime_error::MoveHostSnafu {
+                            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Service,
+                        }
+                        .into_error(crate::client::runtime_error::core_failure(error))
+                    })?;
+                self.lifecycle.service_failed = None;
+                Ok(Output::Unit)
+            }
             Command::FollowService => {
                 self.follow_service(operation_id).await;
                 Ok(Output::Unit)

@@ -50,10 +50,7 @@ impl ConfigCaptureSwitches {
             ..Default::default()
         };
         match self.application.patch(patch).await {
-            Ok(snapshot) => {
-                log_degradations(&snapshot.outcome());
-                switched(target)
-            }
+            Ok(_) => switched(target),
             Err(error) => failed(&error),
         }
     }

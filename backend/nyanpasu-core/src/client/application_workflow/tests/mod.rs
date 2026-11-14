@@ -10,6 +10,7 @@ use crate::{
     state::mutation::value::MutationReceipt,
 };
 mod closing;
+mod commit_first;
 mod connection_policy;
 mod mutations;
 mod participant_factory;
@@ -367,6 +368,7 @@ async fn workflow_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            revisions: crate::client::runtime::RuntimeRevisionAllocator::new(),
             notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),

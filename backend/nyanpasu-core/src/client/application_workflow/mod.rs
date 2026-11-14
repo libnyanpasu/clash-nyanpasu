@@ -1,6 +1,10 @@
-//! Application workflow admission: serializes configuration commits, runtime application,
-//! connection interruption, host changes, binary installation, and shutdown.
+//! Runtime application, participant mutations, connection interruption, host changes,
+//! binary installation, and shutdown share one workflow mailbox.
 pub(crate) mod adapters;
+pub(super) mod check;
+mod committed;
+mod status;
+pub(crate) use status::{Conclusion, EngineVersions, ReconcilerStatus};
 mod attempt;
 pub mod inputs;
 pub mod mutation;
@@ -86,6 +90,7 @@ pub(super) enum Command {
     /// The daemon's readiness changed: move the core to the host it now
     /// resolves to, if it sits on the other one.
     FollowService,
+    PrepareService,
 }
 
 /// Settles a command that was refused before it ran. An installation owes
@@ -118,6 +123,11 @@ struct Request {
 
 enum Message {
     Request(Request),
+    Checked(super::core_lifecycle::ports::PreparedRuntime),
+    SourceCommitted {
+        domain: nyanpasu_runtime_values::mutation::ConfigDomain,
+        version: nyanpasu_state_engine::Version,
+    },
     /// A mutation's Try, sent during the source transaction's prepare. A
     /// refusal at entry refuses the whole mutation.
     BeginMutation(Box<MutationRequest>),
@@ -161,6 +171,7 @@ struct ApplicationWorkflowState {
     closing_token: CancellationToken,
     status: watch::Sender<CoreLifecycleStatus>,
     journal: watch::Sender<MutationJournal>,
+    reconciler: watch::Sender<ReconcilerStatus>,
     /// What the journal last announced; see [`PublishedView`].
     published: PublishedView,
 }
@@ -183,6 +194,7 @@ struct PublishedView {
 }
 
 pub(super) struct ApplicationWorkflowArgs {
+    pub revisions: runtime::RuntimeRevisionAllocator,
     pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
     /// Read-only committed state. The workflow reads the three source domains
     /// and writes none of them.
@@ -213,6 +225,7 @@ struct ActorArgs {
     workflow: ApplicationWorkflow,
     status: watch::Sender<CoreLifecycleStatus>,
     journal: watch::Sender<MutationJournal>,
+    reconciler: watch::Sender<ReconcilerStatus>,
     schedule_ticks: bool,
 }
 
@@ -291,7 +304,46 @@ impl ApplicationWorkflowState {
             }
             _ => None,
         };
+        self.workflow.sampled = None;
         let result = self.workflow.execute(response.id, command).await;
+        if let Some(seen) = self.workflow.sampled.take() {
+            let conclusion = if self.workflow.isolated() {
+                Conclusion::Unknown {
+                    cause: Arc::new(RuntimeError::Isolated),
+                }
+            } else if let Some(error) = result.as_ref().err() {
+                Conclusion::NotInEffect {
+                    cause: Arc::new(
+                        nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                            reason: error.to_string(),
+                        }
+                        .build(),
+                    ),
+                }
+            } else if let Some(target) = &self.workflow.deferred {
+                Conclusion::Waiting {
+                    cause: Arc::new(
+                        nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                            reason: target.cause.message.clone(),
+                        }
+                        .build(),
+                    ),
+                }
+            } else if self.workflow.lifecycle.stop_requested() {
+                Conclusion::Inactive
+            } else {
+                Conclusion::Converged
+            };
+            self.reconciler.send_modify(|status| {
+                status.seq = status
+                    .seq
+                    .checked_add(1)
+                    .expect("reconciler sequence must not overflow");
+                status.seen = seen;
+                status.conclusion = conclusion;
+                status.degradations.clear();
+            });
+        }
         if let Some(progress) = progress {
             let error = result.as_ref().err().map(ToString::to_string);
             progress.finished(error.as_deref());
@@ -308,6 +360,8 @@ impl ApplicationWorkflowState {
 
     fn start(&mut self, id: OperationId) {
         self.status.send_modify(|status| status.active = Some(id));
+        self.reconciler
+            .send_modify(|status| status.active = Some(id));
         self.publish_journal(None);
     }
 
@@ -329,6 +383,7 @@ impl ApplicationWorkflowState {
             status.active = None;
             status.uncertain = uncertain;
         });
+        self.reconciler.send_modify(|status| status.active = None);
         self.publish_journal(receipt);
     }
 
@@ -459,6 +514,7 @@ impl Actor for ApplicationWorkflowActor {
             readiness_seen: 0,
             status: args.status,
             journal: args.journal,
+            reconciler: args.reconciler,
             published: PublishedView::default(),
         })
     }
@@ -485,6 +541,10 @@ impl Actor for ApplicationWorkflowActor {
         state.sync_health_check();
         match message {
             Message::ScheduledConvergenceTick(_) => unreachable!(),
+            Message::Checked(prepared) => state.workflow.checked = Some(prepared),
+            Message::SourceCommitted { domain, version } => {
+                state.source_committed(domain, version).await;
+            }
             Message::Request(request) => {
                 state.request(request).await;
                 state.follow_service().await;
@@ -557,6 +617,10 @@ impl Actor for ApplicationWorkflowActor {
         _myself: ActorRef<Message>,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
+        state.reconciler.send_modify(|status| {
+            status.active = None;
+            status.conclusion = Conclusion::Closed;
+        });
         if let Some((_, timer)) = state.convergence_timer.take() {
             timer.abort();
         }
@@ -583,6 +647,7 @@ struct ClientInner {
     runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
     mutations: watch::Receiver<MutationJournal>,
+    reconciler: watch::Receiver<ReconcilerStatus>,
     core: crate::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
 }
@@ -622,6 +687,7 @@ impl ApplicationWorkflowClient {
         let runtime = args.ports.runtime();
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
         let (journal_tx, mutations) = watch::channel(MutationJournal::default());
+        let (reconciler_tx, reconciler) = watch::channel(ReconcilerStatus::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
         let preparation = RuntimePreparation::new(
@@ -630,7 +696,8 @@ impl ApplicationWorkflowClient {
             args.profiles.clone(),
             args.builder,
             args.ports.clone(),
-        );
+        )
+        .with_revisions(args.revisions);
         let workflow = ApplicationWorkflow {
             notifications: args.notifications,
             profiles: args.profiles,
@@ -640,6 +707,11 @@ impl ApplicationWorkflowClient {
             deferred: None,
             pending_product: None,
             pending_release: None,
+            sampled: None,
+            checked: None,
+            applied_selection: None,
+            service_preferred: args.application.load().state.enable_service_mode,
+            release_owed: false,
             live: None,
             startup: None,
             lifecycle: CoreLifecycleWorkflow {
@@ -662,6 +734,7 @@ impl ApplicationWorkflowClient {
                 workflow,
                 status: status_tx,
                 journal: journal_tx,
+                reconciler: reconciler_tx,
                 schedule_ticks,
             },
         )
@@ -697,6 +770,7 @@ impl ApplicationWorkflowClient {
             runtime,
             status,
             mutations,
+            reconciler,
             core,
             service_status,
         })))
@@ -739,6 +813,56 @@ impl ApplicationWorkflowClient {
             }
             .fail(),
         }
+    }
+
+    pub(super) fn checked(&self, prepared: super::core_lifecycle::ports::PreparedRuntime) {
+        let _ = self.0.actor.cast(Message::Checked(prepared));
+    }
+
+    pub(super) fn source_committed(
+        &self,
+        domain: nyanpasu_runtime_values::mutation::ConfigDomain,
+        version: nyanpasu_state_engine::Version,
+    ) {
+        let _ = self
+            .0
+            .actor
+            .cast(Message::SourceCommitted { domain, version });
+    }
+
+    pub(crate) async fn settled(
+        &self,
+        domain: nyanpasu_runtime_values::mutation::ConfigDomain,
+        version: nyanpasu_state_engine::Version,
+    ) -> ReconcilerStatus {
+        let mut status = self.0.reconciler.clone();
+        loop {
+            let current = status.borrow_and_update().clone();
+            if status.has_changed().is_err() {
+                return ReconcilerStatus {
+                    conclusion: Conclusion::Closed,
+                    active: None,
+                    ..current
+                };
+            }
+            if matches!(current.conclusion, Conclusion::Closed)
+                || (current.active.is_none()
+                    && current.seen.of(domain).as_ref() >= version.as_ref())
+            {
+                return current;
+            }
+            if status.changed().await.is_err() {
+                return ReconcilerStatus {
+                    conclusion: Conclusion::Closed,
+                    active: None,
+                    ..current
+                };
+            }
+        }
+    }
+
+    pub(super) async fn prepare_service(&self) -> Result<(), RuntimeError> {
+        self.call(Command::PrepareService).await.map(|_| ())
     }
 
     pub fn status(&self) -> CoreLifecycleStatus {

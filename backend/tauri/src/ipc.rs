@@ -1299,7 +1299,7 @@ mod tests {
             unavailable.store(true, Ordering::SeqCst);
 
             let mut patch = NyanpasuAppConfig::new_empty_patch();
-            patch.core = Some(core);
+            patch.enable_service_mode = Some(true);
             let config_error = client.patch_app_config(patch).await.unwrap_err();
             let profile_error = client
                 .activate_profile(Some(uid.clone()))

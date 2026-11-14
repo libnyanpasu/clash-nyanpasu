@@ -274,6 +274,8 @@ async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
     g.core
         .report_endpoint_down("service endpoint stopped answering");
     g.service_host.delegate.set_failure(Some("apply_failed"));
+    // Neither endpoint nor daemon evidence can prove a safe ownership move.
+    g.daemon.unreadable.store(true, Ordering::SeqCst);
     g.service_host.release.notify_one();
     status
         .wait_for(|s| {

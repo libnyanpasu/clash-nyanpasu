@@ -50,6 +50,7 @@ pub(super) enum Trigger {
     Startup,
     SourceCommitted,
     ServiceReadiness,
+    CoreChanged,
     Start,
     Retry,
     BinaryReplaced { restart: bool },
@@ -71,6 +72,7 @@ impl Trigger {
             Self::Startup => "Startup",
             Self::SourceCommitted => "SourceCommitted",
             Self::ServiceReadiness => "ServiceReadiness",
+            Self::CoreChanged => "CoreChanged",
             Self::Start => "Start",
             Self::Retry => "Retry",
             Self::BinaryReplaced { .. } => "BinaryReplaced",
@@ -105,6 +107,8 @@ pub(super) enum CoreFact {
 }
 pub(super) struct Facts {
     pub trigger: Trigger,
+    /// The degraded service owner still has an armed endpoint recovery.
+    pub recovering: bool,
     pub run: RunIntent,
     pub desired_host: ExecutionHost,
     pub owner: ExecutionHost,
@@ -132,6 +136,9 @@ fn waiting(reason: String) -> Step {
 
 #[must_use]
 pub(super) fn plan(facts: &Facts) -> Step {
+    if facts.recovering {
+        return waiting("the service endpoint is being recovered".to_owned());
+    }
     if facts.ownership
         != (Ownership::Established {
             host: facts.desired_host,
@@ -624,6 +631,7 @@ mod tests {
     fn facts() -> Facts {
         Facts {
             trigger: Trigger::SourceCommitted,
+            recovering: false,
             run: RunIntent::Running,
             desired_host: ExecutionHost::Local,
             owner: ExecutionHost::Local,
@@ -760,6 +768,7 @@ mod tests {
             (Trigger::Startup, false),
             (Trigger::SourceCommitted, false),
             (Trigger::ServiceReadiness, false),
+            (Trigger::CoreChanged, false),
             (Trigger::Start, true),
             (Trigger::Retry, true),
             (Trigger::BinaryReplaced { restart: true }, true),
@@ -800,6 +809,45 @@ mod tests {
                     "Apply"
                 };
                 assert_eq!(step_label(plan(&facts)), expected, "{trigger:?}/{previous}");
+            }
+        }
+    }
+
+    #[test]
+    fn endpoint_recovery_precedes_ownership_until_disarmed() {
+        for trigger in [
+            Trigger::CoreChanged,
+            Trigger::ServiceReadiness,
+            Trigger::Tick,
+            Trigger::Start,
+        ] {
+            for (recovery, armed) in [
+                ("armed", true),
+                ("cap reached", false),
+                ("suppressed", false),
+            ] {
+                let mut facts = facts();
+                facts.trigger = trigger;
+                facts.owner = ExecutionHost::Service;
+                facts.ownership = Ownership::Established {
+                    host: ExecutionHost::Service,
+                };
+                facts.core = CoreFact::Unreadable;
+                facts.service = Some(ServiceEvidence::Absent {
+                    phase: ServicePhase::DaemonStopped,
+                });
+                facts.recovering = armed;
+                match plan(&facts) {
+                    Step::Idle(Conclusion::Waiting { cause }) if armed => {
+                        assert!(
+                            cause
+                                .to_string()
+                                .contains("service endpoint is being recovered")
+                        );
+                    }
+                    Step::Owner(OwnerPlan::HandBackToLocal) if !armed => {}
+                    step => panic!("{trigger:?}/{recovery}: {step:?}"),
+                }
             }
         }
     }

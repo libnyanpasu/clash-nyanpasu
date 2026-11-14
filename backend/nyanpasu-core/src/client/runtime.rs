@@ -235,21 +235,25 @@ impl RuntimeSnapshotStore {
         });
     }
 
-    /// Restores the availability of the unchanged instance without discarding its inspection.
-    pub(in crate::client) fn reconfirm_observed_apply(&self, generation: u64) {
+    /// Refreshes a verified application's process identity and availability, retaining its inspection.
+    pub(in crate::client) fn reconfirm_observed_apply(
+        &self,
+        generation: u64,
+        instance_id: Option<String>,
+    ) {
         self.0.send_if_modified(|state| {
-            let changed = state
-                .confirmed
-                .as_ref()
-                .is_some_and(|c| c.receipt.binding.generation != generation)
-                || state.transition
+            let changed = state.confirmed.as_ref().is_some_and(|c| {
+                c.receipt.binding.generation != generation || c.receipt.instance_id != instance_id
+            }) || state.transition
                 || state
                     .confirmed
                     .as_ref()
                     .is_some_and(|record| !record.available);
             if let Some(confirmed) = &mut state.confirmed {
                 confirmed.available = true;
-                Arc::make_mut(&mut confirmed.receipt).binding.generation = generation;
+                let receipt = Arc::make_mut(&mut confirmed.receipt);
+                receipt.binding.generation = generation;
+                receipt.instance_id = instance_id;
             }
             state.transition = false;
             changed
@@ -676,9 +680,13 @@ pub(crate) mod tests {
         let store = RuntimeSnapshotStore::default();
         store.confirm_applied(Arc::new(receipt(1)));
         store.begin_transition();
-        store.reconfirm_observed_apply(42);
+        store.reconfirm_observed_apply(42, Some("observed-process".into()));
         let confirmed = store.confirmed().unwrap();
         assert_eq!(confirmed.receipt.binding.generation, 42);
+        assert_eq!(
+            confirmed.receipt.instance_id.as_deref(),
+            Some("observed-process")
+        );
         assert!(confirmed.available);
         assert!(store.accepted_binding().is_some());
         assert!(matches!(confirmed.inspection, InspectionState::Unavailable));

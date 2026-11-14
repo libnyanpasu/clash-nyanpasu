@@ -226,15 +226,18 @@ async fn not_submitted_internal_is_refused_without_replay() {
     );
     assert_eq!(client.inner.ports.confirmed(), confirmed_ports);
     assert_eq!(client.promoted_runtime().await.unwrap().revision, previous);
-    let sequence = status.seq;
     assert_eq!(endpoint.delegate.submissions(), 0);
     // An unchanged refused target is not resubmitted by ticks.
     tokio::time::advance(Duration::from_secs(60)).await;
     let workflow = &client.inner.application_workflow;
     workflow.0.actor.cast(super::super::Message::Tick).unwrap();
     super::barrier(workflow).await;
+    workflow.settle_core_changes().await;
     assert_eq!(endpoint.delegate.submissions(), 0);
-    assert_eq!(workflow.0.reconciler.borrow().seq, sequence);
+    let status = workflow.reconciler_status();
+    assert_eq!(status.conclusion.label(), "NotInEffect");
+    assert_eq!(status.recent.back().unwrap().trigger, "CoreChanged");
+    assert!(status.recent.iter().all(|round| round.trigger != "Tick"));
     client.request_shutdown();
     client.wait_shutdown().await;
 }

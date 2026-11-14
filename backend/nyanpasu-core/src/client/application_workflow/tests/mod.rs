@@ -12,6 +12,7 @@ mod applications;
 mod closing;
 mod commit_first;
 mod connection_policy;
+mod core_changes;
 mod mutations;
 mod profile_content;
 mod recovery;

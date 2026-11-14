@@ -287,9 +287,12 @@ impl CoreLifecycleWorkflow {
         self.recovery.attempts
     }
 
+    pub(in crate::client) fn recovery_armed(&self) -> bool {
+        !self.recovery.suppressed && self.recovery.attempts < RECOVERY_BUDGET
+    }
+
     pub fn recovery_due(&self) -> bool {
-        !self.recovery.suppressed
-            && self.recovery.attempts < RECOVERY_BUDGET
+        self.recovery_armed()
             && !self.closing.is_cancelled()
             && self
                 .recovery
@@ -415,12 +418,14 @@ impl CoreLifecycleWorkflow {
         // restores and the only thing that may promote a candidate port
         // binding, and it advances here rather than below: the effective-config
         // inspection is diagnostic and may never arrive (C3).
+        let instance_id = self
+            .core
+            .refresh_status()
+            .await
+            .ok()
+            .and_then(|status| status.snapshot.and_then(|snapshot| snapshot.instance_id));
         let receipt = Arc::new(RuntimeApplyReceipt {
-            instance_id: report
-                .status
-                .snapshot
-                .as_ref()
-                .and_then(|s| s.instance_id.clone()),
+            instance_id,
             revision: snapshot.revision,
             target_core: snapshot.target_core,
             host: report.applied.host,

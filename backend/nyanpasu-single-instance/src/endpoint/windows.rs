@@ -6,7 +6,10 @@ use std::{
 };
 
 use interprocess::{
-    local_socket::{GenericFilePath, ListenerOptions, Name, ToFsName as _},
+    local_socket::{
+        GenericFilePath, ListenerOptions, Name, ToFsName as _, tokio::Stream,
+        traits::StreamCommon as _,
+    },
     os::windows::{local_socket::ListenerOptionsExt as _, security_descriptor::SecurityDescriptor},
 };
 use snafu::{ResultExt as _, ensure};
@@ -14,11 +17,21 @@ use widestring::U16CString;
 
 use super::{
     AccessControlSnafu, BindSnafu, CurrentUserSnafu, EndpointError, EndpointListener,
-    InvalidLocationSnafu, Namespace,
+    InvalidLocationSnafu, Namespace, PeerMismatch, PeerRejection, verify_sid,
 };
 
 pub(super) fn current_user() -> Result<String, EndpointError> {
     current_user_sid().context(CurrentUserSnafu)
+}
+
+pub(super) fn verify_peer(stream: &Stream) -> Result<(), PeerRejection> {
+    let creds = stream.peer_creds().map_err(PeerRejection::Credentials)?;
+    let Some(pid) = creds.pid() else {
+        return Err(PeerRejection::Mismatch(PeerMismatch::MissingIdentity));
+    };
+    let peer_sid = process_user_sid(pid).map_err(PeerRejection::Process)?;
+    let expected_sid = current_user_sid().map_err(PeerRejection::CurrentUser)?;
+    verify_sid(Some(&peer_sid), &expected_sid).map_err(PeerRejection::Mismatch)
 }
 
 pub(super) fn default_path(
@@ -84,6 +97,30 @@ pub(super) fn bind(namespace: Namespace, path: &Path) -> Result<EndpointListener
 }
 
 fn current_user_sid() -> io::Result<String> {
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    // SAFETY: GetCurrentProcess returns a pseudo-handle valid for the current process.
+    let process = unsafe { GetCurrentProcess() };
+    process_handle_user_sid(process)
+}
+
+fn process_user_sid(pid: u32) -> io::Result<String> {
+    use std::os::windows::io::{AsRawHandle as _, FromRawHandle as _, OwnedHandle};
+
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    // SAFETY: OpenProcess takes a numeric PID and returns an owned process handle on
+    // success or null on failure; OwnedHandle closes the handle on drop.
+    let raw_process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if raw_process.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: OpenProcess returned a non-null owned process handle.
+    let process = unsafe { OwnedHandle::from_raw_handle(raw_process) };
+    process_handle_user_sid(process.as_raw_handle())
+}
+
+fn process_handle_user_sid(process: windows_sys::Win32::Foundation::HANDLE) -> io::Result<String> {
     use std::{
         os::windows::io::{AsRawHandle as _, FromRawHandle as _, OwnedHandle},
         ptr,
@@ -96,15 +133,16 @@ fn current_user_sid() -> io::Result<String> {
             Authorization::ConvertSidToStringSidW, GetTokenInformation, TOKEN_QUERY, TOKEN_USER,
             TokenUser,
         },
-        System::Threading::{GetCurrentProcess, OpenProcessToken},
+        System::Threading::OpenProcessToken,
     };
 
-    // SAFETY: every pointer passed below is either valid for the stated
-    // length or an out-parameter the call fills; each handle and buffer the
-    // system allocates is released before returning.
+    // SAFETY: `process` is a valid process handle (or GetCurrentProcess pseudo-handle);
+    // every pointer passed below is either valid for the stated length or an
+    // out-parameter the call fills; each handle and buffer the system allocates
+    // is released before returning.
     unsafe {
         let mut raw_token = ptr::null_mut();
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) == 0 {
+        if OpenProcessToken(process, TOKEN_QUERY, &mut raw_token) == 0 {
             return Err(io::Error::last_os_error());
         }
         let token = OwnedHandle::from_raw_handle(raw_token);

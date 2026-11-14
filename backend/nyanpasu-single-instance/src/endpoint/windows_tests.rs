@@ -172,3 +172,12 @@ async fn windows_pipe_name_competition_is_exclusive() {
         ));
     }
 }
+
+#[tokio::test]
+async fn windows_verify_peer_accepts_same_user_pipe() {
+    let (_directory, endpoint) = location();
+    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+    let (mut client, mut server) = connect(&listener, &endpoint).await;
+    assert!(platform::verify_peer(&server).is_ok());
+    exchange(&mut client, &mut server, 19).await;
+}

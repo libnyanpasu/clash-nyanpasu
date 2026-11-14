@@ -57,33 +57,35 @@ fn accepts<O: RpcOperation>(fixtures: &Value) {
 
 #[test]
 fn current_contract_accepts_the_supported_previous_fixtures() {
-    // This commit is the first baseline; the next contract release adds its own set,
-    // retains this one as previous, and removes the oldest set beyond current + previous.
-    let baseline = include_str!("fixtures/contracts/2026-11-12.json");
-    let fixtures: Value = serde_json::from_str(baseline).unwrap();
-    let names: BTreeSet<_> = fixtures
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let catalog: BTreeSet<_> = COMMAND_CATALOG
-        .iter()
-        .filter(|command| command.targets.contains(&RpcTarget::Local))
-        .map(|command| command.name)
-        .collect();
-    assert_eq!(names, catalog);
-    accepts::<operations::GetProfiles>(&fixtures);
-    accepts::<operations::CreateProfile>(&fixtures);
-    accepts::<operations::DeleteProfile>(&fixtures);
-    accepts::<operations::ReadProfileFile>(&fixtures);
-    accepts::<operations::GetConfigurationStatus>(&fixtures);
-    accepts::<operations::GetCoreStatus>(&fixtures);
-    accepts::<operations::GetStorageItem>(&fixtures);
-    accepts::<operations::SetStorageItem>(&fixtures);
-    accepts::<operations::RemoveStorageItem>(&fixtures);
-    accepts::<operations::ListLogFiles>(&fixtures);
-    accepts::<operations::OpenLogSession>(&fixtures);
-    accepts::<operations::QueryLogs>(&fixtures);
-    accepts::<operations::CloseLogSession>(&fixtures);
+    for baseline in [
+        include_str!("fixtures/contracts/2026-11-12.json"),
+        include_str!("fixtures/contracts/2026-11-14.json"),
+    ] {
+        let fixtures: Value = serde_json::from_str(baseline).unwrap();
+        let names: BTreeSet<_> = fixtures
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let catalog: BTreeSet<_> = COMMAND_CATALOG
+            .iter()
+            .filter(|command| command.targets.contains(&RpcTarget::Local))
+            .map(|command| command.name)
+            .collect();
+        assert_eq!(names, catalog);
+        accepts::<operations::GetProfiles>(&fixtures);
+        accepts::<operations::CreateProfile>(&fixtures);
+        accepts::<operations::DeleteProfile>(&fixtures);
+        accepts::<operations::ReadProfileFile>(&fixtures);
+        accepts::<operations::GetConfigurationStatus>(&fixtures);
+        accepts::<operations::GetCoreStatus>(&fixtures);
+        accepts::<operations::GetStorageItem>(&fixtures);
+        accepts::<operations::SetStorageItem>(&fixtures);
+        accepts::<operations::RemoveStorageItem>(&fixtures);
+        accepts::<operations::ListLogFiles>(&fixtures);
+        accepts::<operations::OpenLogSession>(&fixtures);
+        accepts::<operations::QueryLogs>(&fixtures);
+        accepts::<operations::CloseLogSession>(&fixtures);
+    }
 }

@@ -17,7 +17,7 @@ use crate::client::{
     runtime,
 };
 
-pub(super) struct ApplicationWorkflow {
+pub(super) struct RuntimeReconciler {
     pub notifications: Arc<dyn crate::client::effects::ports::CommitNotifications>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
@@ -34,7 +34,7 @@ pub(super) struct ApplicationWorkflow {
     pub startup: Option<StartupReport>,
 }
 
-impl ApplicationWorkflow {
+impl RuntimeReconciler {
     pub(super) fn maintenance(&self) -> Option<String> {
         let items: Vec<&str> = self
             .pending_product

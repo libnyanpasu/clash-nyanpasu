@@ -5,6 +5,7 @@ mod committed;
 pub mod status;
 pub use plan::Conclusion;
 pub use status::{EngineVersions, ReconcilerStatus};
+mod apply;
 pub mod inputs;
 pub mod mutation;
 mod plan;
@@ -12,7 +13,6 @@ pub mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
 pub mod startup;
-mod tcc;
 #[cfg(test)]
 mod tests;
 mod workflow;
@@ -38,7 +38,7 @@ use preparation::RuntimePreparation;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use workflow::ApplicationWorkflow;
+use workflow::RuntimeReconciler;
 
 use super::{
     core_lifecycle::{
@@ -113,10 +113,10 @@ enum Message {
     #[cfg(test)]
     ReadinessSeen(RpcReplyPort<u64>),
 }
-struct ApplicationWorkflowActor;
-struct ApplicationWorkflowState {
+struct RuntimeReconcilerActor;
+struct RuntimeReconcilerState {
     core_change_pending: Arc<AtomicBool>,
-    workflow: ApplicationWorkflow,
+    workflow: RuntimeReconciler,
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
     schedule_ticks: bool,
     health_check: bool,
@@ -126,7 +126,7 @@ struct ApplicationWorkflowState {
     status: watch::Sender<CoreLifecycleStatus>,
     reconciler: watch::Sender<ReconcilerStatus>,
 }
-pub(super) struct ApplicationWorkflowArgs {
+pub(super) struct RuntimeReconcilerArgs {
     pub revisions: runtime::RuntimeRevisionAllocator,
     pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
     /// Read-only committed state. The workflow reads the three source domains
@@ -156,12 +156,12 @@ pub(super) struct ApplicationWorkflowArgs {
 
 struct ActorArgs {
     core_change_pending: Arc<AtomicBool>,
-    workflow: ApplicationWorkflow,
+    workflow: RuntimeReconciler,
     status: watch::Sender<CoreLifecycleStatus>,
     reconciler: watch::Sender<ReconcilerStatus>,
     schedule_ticks: bool,
 }
-impl ApplicationWorkflowState {
+impl RuntimeReconcilerState {
     fn closing(&self) -> bool {
         self.closing_token.is_cancelled()
     }
@@ -253,16 +253,16 @@ impl ApplicationWorkflowState {
         }
     }
 }
-impl Actor for ApplicationWorkflowActor {
+impl Actor for RuntimeReconcilerActor {
     type Msg = Message;
-    type State = ApplicationWorkflowState;
+    type State = RuntimeReconcilerState;
     type Arguments = ActorArgs;
     async fn pre_start(
         &self,
         myself: ActorRef<Message>,
         args: ActorArgs,
-    ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
-        Ok(ApplicationWorkflowState {
+    ) -> Result<RuntimeReconcilerState, ActorProcessingErr> {
+        Ok(RuntimeReconcilerState {
             core_change_pending: args.core_change_pending,
             closing_token: args.workflow.lifecycle.closing.clone(),
             workflow: args.workflow,
@@ -281,7 +281,7 @@ impl Actor for ApplicationWorkflowActor {
         &self,
         _myself: ActorRef<Message>,
         message: Message,
-        state: &mut ApplicationWorkflowState,
+        state: &mut RuntimeReconcilerState,
     ) -> Result<(), ActorProcessingErr> {
         state.sync_health_check();
         match message {
@@ -362,7 +362,7 @@ impl Actor for ApplicationWorkflowActor {
     async fn post_stop(
         &self,
         _myself: ActorRef<Message>,
-        state: &mut ApplicationWorkflowState,
+        state: &mut RuntimeReconcilerState,
     ) -> Result<(), ActorProcessingErr> {
         state.reconciler.send_modify(|status| {
             status.active = None;
@@ -405,7 +405,7 @@ impl Drop for ClientInner {
 }
 
 #[derive(Clone)]
-pub struct ApplicationWorkflowClient(Arc<ClientInner>);
+pub struct RuntimeReconcilerClient(Arc<ClientInner>);
 
 macro_rules! method {
     ($name:ident, $command:expr, $variant:ident, $output:ty) => {
@@ -418,14 +418,14 @@ macro_rules! method {
     };
 }
 
-impl ApplicationWorkflowClient {
-    pub(super) async fn spawn(args: ApplicationWorkflowArgs) -> std::result::Result<Self, Error> {
+impl RuntimeReconcilerClient {
+    pub(super) async fn spawn(args: RuntimeReconcilerArgs) -> std::result::Result<Self, Error> {
         Self::spawn_with_ticks(args, true).await
     }
 
     // Tests drive the ticks through the mailbox without racing a wall-clock timer.
     async fn spawn_with_ticks(
-        args: ApplicationWorkflowArgs,
+        args: RuntimeReconcilerArgs,
         schedule_ticks: bool,
     ) -> std::result::Result<Self, Error> {
         let runtime = args.ports.runtime();
@@ -440,7 +440,7 @@ impl ApplicationWorkflowClient {
             args.ports.clone(),
         )
         .with_revisions(args.revisions);
-        let workflow = ApplicationWorkflow {
+        let workflow = RuntimeReconciler {
             notifications: args.notifications,
             clash: args.clash,
             preparation,
@@ -472,7 +472,7 @@ impl ApplicationWorkflowClient {
         let core_change_pending = Arc::new(AtomicBool::new(false));
         let (actor, _) = Actor::spawn(
             None,
-            ApplicationWorkflowActor,
+            RuntimeReconcilerActor,
             ActorArgs {
                 core_change_pending: core_change_pending.clone(),
                 workflow,

@@ -14,7 +14,7 @@ use nyanpasu_state_engine::{StateSnapshot, Version};
 use snafu::IntoError as _;
 
 use super::{
-    ApplicationWorkflowClient,
+    RuntimeReconcilerClient,
     ports::{RuntimeBuildPort, RuntimeCheckOutcome, RuntimeCheckRequest, RuntimeValidatorPort},
     preparation::RuntimePreparation,
 };
@@ -34,7 +34,7 @@ pub(in crate::client) struct CandidateCheck {
     clash: StateSnapshot<ClashConfig>,
     preparation: RuntimePreparation,
     validator: Arc<dyn RuntimeValidatorPort>,
-    workflow: ApplicationWorkflowClient,
+    workflow: RuntimeReconcilerClient,
 }
 
 pub(in crate::client) struct Args {
@@ -46,7 +46,7 @@ pub(in crate::client) struct Args {
     pub ports: Arc<SessionPortResolver>,
     pub revisions: RuntimeRevisionAllocator,
     pub validator: Arc<dyn RuntimeValidatorPort>,
-    pub workflow: ApplicationWorkflowClient,
+    pub workflow: RuntimeReconcilerClient,
 }
 
 impl CandidateCheck {

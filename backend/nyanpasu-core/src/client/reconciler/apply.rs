@@ -13,7 +13,7 @@ use snafu::IntoError as _;
 
 use super::{
     mutation::{AppliedCandidate, ApplyOutcome},
-    workflow::ApplicationWorkflow,
+    workflow::RuntimeReconciler,
 };
 use crate::client::{
     core_lifecycle::{
@@ -28,7 +28,7 @@ pub(super) struct PreparedCandidate {
     pub(super) selection: super::committed::Selection,
     pub(super) interruption: Option<super::committed::SelectionChange>,
 }
-impl ApplicationWorkflow {
+impl RuntimeReconciler {
     pub(super) async fn publish_committed_product(
         &mut self,
         product: Arc<crate::client::runtime::RuntimeSnapshot>,

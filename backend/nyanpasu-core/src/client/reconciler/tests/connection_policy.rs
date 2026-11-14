@@ -755,12 +755,7 @@ async fn cancelled_profile_waiter_finishes_work_without_replaying_interruption()
             .degradations()
             .is_empty()
     );
-    f.client
-        .inner
-        .application_workflow
-        .reconcile()
-        .await
-        .unwrap();
+    f.client.inner.reconciler.reconcile().await.unwrap();
     assert_eq!(
         *f.calls.events.lock().unwrap(),
         ["reconcile", "close", "reconcile", "close", "reconcile"]
@@ -802,11 +797,11 @@ async fn shutdown_reports_closed_for_a_committed_profile_waiting_to_apply() {
     f.calls.release.notify_one();
     let outcome = f.client.after_commit(&report).await;
     assert!(matches!(&outcome.degradations()[0].reason,
-        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { cause: Some(cause), .. }
+        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { cause, .. }
         if matches!(cause.as_ref(), nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)));
     assert!(
         matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. }
-        if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired)
+        if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred)
     );
     first.await.unwrap().unwrap();
     shutdown.await;
@@ -874,7 +869,7 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
         let mut host = Box::pin(
             f.client
                 .inner
-                .application_workflow
+                .reconciler
                 .change_host(ExecutionHost::Local),
         );
         assert!(host.as_mut().now_or_never().is_none());
@@ -888,7 +883,7 @@ async fn profile_interruption_serializes_mode_host_and_binary_operations() {
             progress: progress.clone(),
             companion: None,
         };
-        let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
+        let mut install = Box::pin(f.client.inner.reconciler.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());
         // The source is committed while the runtime mailbox is still occupied.
         assert_eq!(f.client.inner.clash_config.snapshot().state.overrides.mode(), next_mode);
@@ -941,7 +936,7 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn build(
         &self,
         revision: crate::client::runtime::RuntimeRevision,
-        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
+        inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
     ) -> Result<
@@ -1289,17 +1284,12 @@ async fn deferred_mode_change_interrupts_connections_once_on_retry() {
             .delegate
             .set_status(previous.state, previous.applied_kind);
         f.calls.fail_close.store(fail_close, Ordering::SeqCst);
-        f.client
-            .inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .unwrap();
+        f.client.inner.reconciler.retry_runtime().await.unwrap();
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         let status = f
             .client
             .inner
-            .application_workflow
+            .reconciler
             .settled(
                 nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
                 f.client.inner.clash_config.snapshot().version,
@@ -1313,12 +1303,7 @@ async fn deferred_mode_change_interrupts_connections_once_on_retry() {
                 nyanpasu_runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
             ));
         }
-        f.client
-            .inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .unwrap();
+        f.client.inner.reconciler.retry_runtime().await.unwrap();
         f.client.reconcile_core().await.unwrap();
         assert_eq!(
             *f.calls.events.lock().unwrap(),
@@ -1351,17 +1336,12 @@ async fn deferred_profile_change_interrupts_connections_once_on_retry() {
             .delegate
             .set_status(previous.state, previous.applied_kind);
         f.calls.fail_close.store(fail_close, Ordering::SeqCst);
-        f.client
-            .inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .unwrap();
+        f.client.inner.reconciler.retry_runtime().await.unwrap();
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         let status = f
             .client
             .inner
-            .application_workflow
+            .reconciler
             .settled(
                 nyanpasu_runtime_values::mutation::ConfigDomain::Profiles,
                 f.client.inner.profiles.snapshot_handle().load().version,
@@ -1375,12 +1355,7 @@ async fn deferred_profile_change_interrupts_connections_once_on_retry() {
                 nyanpasu_runtime_values::runtime::DegradationReason::ProfileInterruptionFailed { .. }
             ));
         }
-        f.client
-            .inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .unwrap();
+        f.client.inner.reconciler.retry_runtime().await.unwrap();
         f.client.reconcile_core().await.unwrap();
         assert_eq!(
             *f.calls.events.lock().unwrap(),

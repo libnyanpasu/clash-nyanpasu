@@ -17,7 +17,7 @@ use nyanpasu_profile_transform::{RuntimeBuildError, RuntimeBuildInput, RuntimeBu
 
 use crate::{
     client::{
-        application_workflow::{
+        reconciler::{
             inputs::{FrozenProfileContent, RuntimeInputs},
             ports::RuntimeBuildPort,
         },

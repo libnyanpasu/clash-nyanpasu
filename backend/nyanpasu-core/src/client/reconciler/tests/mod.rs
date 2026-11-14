@@ -82,7 +82,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
+        inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
     ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
@@ -108,7 +108,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
 async fn workflow_graph(
     dir: &tempfile::TempDir,
 ) -> (
-    ApplicationWorkflowClient,
+    RuntimeReconcilerClient,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
@@ -273,7 +273,7 @@ async fn workflow_graph_with_store(
     dir: &tempfile::TempDir,
     snapshots: runtime::RuntimeSnapshotStore,
 ) -> (
-    ApplicationWorkflowClient,
+    RuntimeReconcilerClient,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
@@ -307,7 +307,7 @@ async fn workflow_graph_with_clients(
     // Cancelling it closes the workflow the way the root shutdown does.
     shutdown: CancellationToken,
 ) -> (
-    ApplicationWorkflowClient,
+    RuntimeReconcilerClient,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
@@ -344,8 +344,8 @@ async fn workflow_graph_with_clients(
         release: Notify::new(),
         fail: AtomicBool::new(false),
     });
-    let client = ApplicationWorkflowClient::spawn_with_ticks(
-        ApplicationWorkflowArgs {
+    let client = RuntimeReconcilerClient::spawn_with_ticks(
+        RuntimeReconcilerArgs {
             revisions: crate::client::runtime::RuntimeRevisionAllocator::new(),
             notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
@@ -560,7 +560,7 @@ async fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
 }
 
 /// Which owner the idle workflow holds proven.
-async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
+async fn ownership(client: &RuntimeReconcilerClient) -> Ownership {
     match client
         .0
         .actor
@@ -574,7 +574,7 @@ async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
 }
 
 /// How many readiness notifications the workflow has handled.
-async fn readiness_seen(client: &ApplicationWorkflowClient) -> u64 {
+async fn readiness_seen(client: &RuntimeReconcilerClient) -> u64 {
     match client
         .0
         .actor
@@ -587,7 +587,7 @@ async fn readiness_seen(client: &ApplicationWorkflowClient) -> u64 {
     }
 }
 
-async fn barrier(client: &ApplicationWorkflowClient) {
+async fn barrier(client: &RuntimeReconcilerClient) {
     assert!(matches!(
         client
             .0
@@ -649,7 +649,7 @@ async fn replacement_decisions_use_applied_identity_and_always_recover() {
             let (artifact, progress) = f.artifact(target);
             f.client
                 .inner
-                .application_workflow
+                .reconciler
                 .replace_binary(artifact)
                 .await
                 .unwrap();
@@ -685,7 +685,7 @@ async fn a_confirmed_core_identity_keeps_an_inactive_update_from_restarting_it()
         let (artifact, progress) = f.artifact(ClashCore::ClashRs);
         f.client
             .inner
-            .application_workflow
+            .reconciler
             .replace_binary(artifact)
             .await
             .unwrap();
@@ -717,7 +717,7 @@ async fn an_unverified_core_identity_keeps_the_conservative_stop() {
         let (artifact, progress) = f.artifact(ClashCore::ClashRs);
         f.client
             .inner
-            .application_workflow
+            .reconciler
             .replace_binary(artifact)
             .await
             .unwrap();
@@ -742,7 +742,7 @@ async fn failed_death_proof_never_installs_even_when_status_says_stopped() {
         assert!(
             f.client
                 .inner
-                .application_workflow
+                .reconciler
                 .replace_binary(artifact)
                 .await
                 .is_err()
@@ -786,14 +786,14 @@ async fn failed_installation_does_not_restart() {
         assert!(
             f.client
                 .inner
-                .application_workflow
+                .reconciler
                 .replace_binary(artifact)
                 .await
                 .is_err()
         );
         assert!(!progress.0.load(Ordering::SeqCst));
         assert_eq!(f.endpoint.submissions(), 2);
-        assert!(!f.client.inner.application_workflow.status().uncertain);
+        assert!(!f.client.inner.reconciler.status().uncertain);
         f.client.reconcile_core().await.unwrap();
     })
     .await;
@@ -808,7 +808,7 @@ async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
     assert_eq!(error.core_kind(), Some(CoreErrorKind::BackendUnavailable));
     assert_eq!(
         f.client.configuration_status().runtime.health,
-        nyanpasu_runtime_values::configuration::ConvergenceHealth::RecoveryRequired
+        nyanpasu_runtime_values::configuration::ConvergenceHealth::WaitingDependency
     );
     assert!(f.client.promoted_runtime().await.is_some());
     let outcome = f
@@ -818,7 +818,7 @@ async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
         .unwrap();
     assert_eq!(
         commit_first::receipt(&outcome).runtime,
-        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired
+        nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred
     );
     assert_eq!(
         serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["ipv6"],
@@ -888,12 +888,7 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
             serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
         assert_eq!(saved["mode"], "global");
         assert_eq!(saved["ipv6"], true);
-        let applied = client
-            .inner
-            .application_workflow
-            .runtime()
-            .promoted
-            .unwrap();
+        let applied = client.inner.reconciler.runtime().promoted.unwrap();
         assert_eq!(applied.config()["mode"].as_str(), Some("global"));
         assert_eq!(applied.config()["ipv6"].as_bool(), Some(true));
         assert_eq!(
@@ -943,7 +938,7 @@ async fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
         assert_eq!(
             client
                 .inner
-                .application_workflow
+                .reconciler
                 .runtime()
                 .promoted
                 .unwrap()
@@ -970,7 +965,7 @@ async fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
         let error = f
             .client
             .inner
-            .application_workflow
+            .reconciler
             .replace_binary(artifact)
             .await
             .unwrap_err();
@@ -985,7 +980,7 @@ async fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
         use nyanpasu_updater::{UpdaterClient, UpdaterState};
         let updater = UpdaterClient::spawn(
             Arc::new(nyanpasu_updater::test_support::ReadyBackend),
-            Arc::new(f.client.inner.application_workflow.clone()),
+            Arc::new(f.client.inner.reconciler.clone()),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
@@ -1034,7 +1029,7 @@ impl UiEventSink for CountingUi {
 /// workflow has sent its last operation's notification, the effects barrier
 /// has queued what it carried, and no pending effect is left to refresh.
 async fn until_notified(client: &NyanpasuClient) {
-    let mut status = client.inner.application_workflow.subscribe_status();
+    let mut status = client.inner.reconciler.subscribe_status();
     tokio::time::timeout(
         std::time::Duration::from_secs(5),
         status.wait_for(|status| status.active.is_none()),
@@ -1086,14 +1081,7 @@ async fn an_override_patch_submits_once_and_notifies_the_ui() {
         assert_eq!(endpoint.submissions(), 1);
         assert!(outcome.degradations().is_empty());
         assert_eq!(
-            client
-                .inner
-                .application_workflow
-                .runtime()
-                .promoted
-                .unwrap()
-                .config()["mode"]
-                .as_str(),
+            client.inner.reconciler.runtime().promoted.unwrap().config()["mode"].as_str(),
             Some("global")
         );
         tokio::time::timeout(
@@ -1164,7 +1152,7 @@ async fn an_explicit_start_notifies_the_ui() {
     args.ui_sink = ui.clone();
     let client = NyanpasuClient::try_new(args).await.unwrap();
     (async {
-        let workflow = &client.inner.application_workflow;
+        let workflow = &client.inner.reconciler;
         assert_eq!(ownership(workflow).await, Ownership::Unproven);
         until_notified(&client).await;
         let mut refreshed = ui.refreshed.subscribe();
@@ -1276,7 +1264,7 @@ async fn a_queued_installation_settles_progress_when_shutdown_or_pending_work_bl
             let (mut queued, _) = f.artifact(ClashCore::ClashRs);
             let terminal = Arc::new(TerminalProgress::default());
             queued.progress = terminal.clone();
-            let client = &f.client.inner.application_workflow;
+            let client = &f.client.inner.reconciler;
             // Polling once sends the request; dropping the call then is the
             // caller giving up on it.
             let mut call = Box::pin(client.call(Command::ReplaceCoreBinary(queued)));

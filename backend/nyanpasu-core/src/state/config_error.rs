@@ -43,7 +43,7 @@ pub enum ConfigError {
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(display("editing hotkeys is not supported"))]
     ValidateHotkeyCapability,
-    #[snafu(context(false), display("the application workflow is not ready"))]
+    #[snafu(context(false), display("the runtime reconciler is not ready"))]
     WorkflowNotReady {
         #[serde(skip)]
         source: NotReady,
@@ -78,22 +78,14 @@ impl ConfigError {
         domain: ConfigDomain,
         error: std::sync::Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
     ) -> Self {
-        use nyanpasu_runtime_values::{mutation::RuntimeAftermath, runtime_error::RuntimeError};
+        use nyanpasu_runtime_values::runtime_error::RuntimeError;
         let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
         let errors = vec![error.clone()];
-        let runtime = RuntimeAftermath::Untouched;
+
         let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. }) {
-            CommitAborted::RuntimeFailed {
-                errors,
-                runtime,
-                source,
-            }
+            CommitAborted::RuntimeFailed { errors, source }
         } else {
-            CommitAborted::RuntimeRefused {
-                errors,
-                runtime,
-                source,
-            }
+            CommitAborted::RuntimeRefused { errors, source }
         };
         Self::Commit { domain, source }
     }
@@ -102,7 +94,6 @@ impl ConfigError {
     /// error. A CAS mismatch from the persistent manager's publication check
     /// is the same conflict as its pre-write `Conflict` result.
     pub(crate) fn commit_failure(domain: ConfigDomain, error: ReplaceIfVersionError) -> Self {
-        let runtime = nyanpasu_runtime_values::mutation::RuntimeAftermath::Untouched;
         let source = match error {
             ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
                 expected,
@@ -116,12 +107,11 @@ impl ConfigError {
                 .build();
             }
             error @ (ReplaceIfVersionError::WriteConfig(_)
-            | ReplaceIfVersionError::LocalWrite(_)) => WriteConfigSnafu { runtime }
-                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
-            error @ ReplaceIfVersionError::ResourceRecovery { .. } => {
-                RecoverAfterWriteFailureSnafu { runtime }
-                    .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
+            | ReplaceIfVersionError::LocalWrite(_)) => {
+                WriteConfigSnafu.into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
             }
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => RecoverAfterWriteFailureSnafu
+                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
         };
         CommitSnafu { domain }.into_error(source)
     }

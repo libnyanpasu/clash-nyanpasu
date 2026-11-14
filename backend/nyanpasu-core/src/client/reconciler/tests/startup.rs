@@ -40,7 +40,7 @@ use tokio::sync::Notify;
 
 use super::{
     super::{
-        ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
+        RuntimeReconcilerArgs, RuntimeReconcilerClient, adapters,
         plan::ServiceEvidence,
         startup::{StartupOutcome, StartupReport},
     },
@@ -331,7 +331,7 @@ impl Default for Setup {
 }
 
 pub(super) struct Graph {
-    pub(super) client: ApplicationWorkflowClient,
+    pub(super) client: RuntimeReconcilerClient,
     pub(super) local: Arc<HostEndpoint>,
     pub(super) service_host: Arc<HostEndpoint>,
     pub(super) daemon: Arc<FakeDaemon>,
@@ -414,8 +414,8 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let tasks = tokio_util::task::TaskTracker::new();
     let revisions = crate::client::runtime::RuntimeRevisionAllocator::new();
     let content_lock = crate::state::mutation::ProfileContentLock::default();
-    let client = ApplicationWorkflowClient::spawn_with_ticks(
-        ApplicationWorkflowArgs {
+    let client = RuntimeReconcilerClient::spawn_with_ticks(
+        RuntimeReconcilerArgs {
             revisions: revisions.clone(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),

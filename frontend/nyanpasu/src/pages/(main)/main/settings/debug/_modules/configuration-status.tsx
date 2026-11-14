@@ -42,7 +42,6 @@ function healthLabel(health: ConvergenceHealth) {
     retry_scheduled: m.configuration_retry_scheduled,
     waiting_dependency: m.configuration_waiting_dependency,
     blocked: m.configuration_blocked,
-    recovery_required: m.configuration_recovery_required,
   }
   return labels[health]()
 }
@@ -295,8 +294,7 @@ export default function ConfigurationStatus() {
                   <code>{operation.operation_id}</code>
 
                   <p className="text-on-surface-variant">
-                    {operation.domain} / {operation.outcome} /{' '}
-                    {operation.conclusion}
+                    {operation.domain} / {operation.outcome}
                   </p>
 
                   {operation.message && <p>{operation.message}</p>}

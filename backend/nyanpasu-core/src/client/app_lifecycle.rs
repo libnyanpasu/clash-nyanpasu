@@ -12,8 +12,7 @@ impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,
     /// once per session; a later call returns the first report. Setup blocks
     /// on it until the workflow answers, with no bound (see `TODO(startup)`
-    /// in `resolve_setup`); `Unsettled` means the workflow refused the
-    /// command or is gone.
+    /// in `resolve_setup`). An unavailable workflow reports recovery required.
     pub async fn startup_reconcile(&self) -> StartupReport {
         self.inner.application_workflow.startup_reconcile().await
     }

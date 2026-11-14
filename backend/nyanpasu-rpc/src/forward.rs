@@ -73,11 +73,11 @@ fn configuration_status(
     client: NyanpasuClient,
     events: EventBus,
 ) -> impl Future<Output = ()> + Send + use<> {
-    let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
+    let (mut reconciler, mut effects, mut sources) = client.subscribe_configuration_changes();
     async move {
         loop {
             let changed = tokio::select! {
-                result = mutations.changed() => result,
+                result = reconciler.changed() => result,
                 result = effects.changed() => result,
                 result = sources.changed() => result,
             };

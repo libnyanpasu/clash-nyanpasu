@@ -4,7 +4,6 @@ mod profile_content;
 pub(crate) use change::DomainChange;
 pub use profile_content::{ProfileContentLock, ProfileContentReader};
 pub(crate) mod impact;
-pub(crate) mod intent;
 pub(crate) mod ports;
 pub(crate) mod runtime_apply;
 

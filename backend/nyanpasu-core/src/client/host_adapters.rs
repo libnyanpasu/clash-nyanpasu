@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
-use super::{application_workflow::ports::RuntimeBuildPort, debug_http::DebugHttpControl};
+use super::{application_workflow::ports::RuntimeBuildPort, http_server::HttpServerControl};
 use nyanpasu_contracts::{
     net::{ChangelogHttp, IconFetcher, NetworkDiagnostics, SelfProxyPortSource},
     profiles::ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
@@ -29,7 +29,7 @@ pub type ChangelogHttpFactory =
     dyn Fn(Arc<dyn SelfProxyPortSource>) -> Arc<dyn ChangelogHttp> + Send + Sync;
 
 /// Starts the host HTTP owner after profiles and before logs, returning its lifecycle control.
-pub type DebugHttpFactory = dyn Fn() -> BoxFuture<'static, Result<Arc<dyn DebugHttpControl>, super::debug_http::Error>>
+pub type HttpServerFactory = dyn Fn() -> BoxFuture<'static, Result<Arc<dyn HttpServerControl>, super::http_server::Error>>
     + Send
     + Sync;
 
@@ -46,5 +46,5 @@ pub struct ClientHostAdapters {
     /// Supplies release-note HTTP access bound to the session proxy source.
     pub changelog_http: Arc<ChangelogHttpFactory>,
     /// Supplies HTTP lifecycle control whose shutdown must drain the owner before returning.
-    pub debug_http: Option<Arc<DebugHttpFactory>>,
+    pub http_server: Option<Arc<HttpServerFactory>>,
 }

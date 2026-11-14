@@ -779,6 +779,7 @@ mod tests {
                 "set_profile_valid_fields",
                 "set_proxy_group_layout",
                 "set_release_channel",
+                "set_remote_access",
                 "set_service_mode",
                 "update_profile",
             ]
@@ -1312,7 +1313,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 159, "{platform} command inventory");
+            assert_eq!(rows.len(), 160, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

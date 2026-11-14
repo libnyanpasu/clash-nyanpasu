@@ -66,7 +66,7 @@ pnpm run prepare:check --force --arch arm64
 pnpm run prepare:release --linux
 pnpm run architecture-ledger --help
 pnpm run generate:topology-map
-pnpm run test:http-ui <running-debug-http-server-url>
+pnpm run test:http-ui <launch-url-of-a-running-http-server>
 ```
 
 `pnpm run` finds the root `package.json` from any subdirectory, but scripts

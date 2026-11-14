@@ -174,6 +174,8 @@ pub enum DegradationReason {
         profile: ProfileId,
         cause: Arc<ProfilesError>,
     },
+    /// The remote-access settings were saved but the HTTP listener could not follow them.
+    HttpServerUnavailable,
 }
 
 /// How closing the source instance's connections failed.

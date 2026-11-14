@@ -95,6 +95,7 @@
     "sign-nightly-updater": "node scripts/src/release/sign-nightly-updater.ts",
     "finalize-linux-release": "node scripts/src/release/finalize-linux-release.ts",
     "test:http-ui": "node scripts/src/testing/test-http-ui.ts",
+    "test:command-schemas": "node scripts/src/testing/validate-command-schemas.ts",
     "storage:preflight": "node scripts/src/artifacts/storage-preflight.ts",
     "recover:central-publication": "node scripts/src/artifacts/recover-central-publication.ts",
     "storage:recover": "node scripts/src/artifacts/recover-storage.ts",

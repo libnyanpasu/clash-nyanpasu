@@ -737,6 +737,9 @@ importers:
       '@types/spdx-expression-parse':
         specifier: 3.0.5
         version: 3.0.5
+      ajv:
+        specifier: 8.17.1
+        version: 8.17.1
 
 packages:
 

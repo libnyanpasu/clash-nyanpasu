@@ -197,6 +197,31 @@ wrapper leaves a known command returning `unsupported`. Coverage tests distingui
 native wrappers, shared handlers and unlinked catalog entries. Regenerate the
 three frontend bindings as well; this seam must leave them unchanged.
 
+To regenerate and verify the canonical Draft 2020-12 command JSON Schemas
+embedded in `nyanpasu-rpc-protocol` (`backend/nyanpasu-rpc-protocol/schemas/command-schemas.v1.json`)
+for every `Http` or `Local` command and the `RpcError` failure envelope:
+
+```sh
+cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu export_rpc_command_schemas -- --ignored
+cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu rpc_command_schemas_are_fresh
+pnpm run test:command-schemas
+```
+
+Do not hand-edit `command-schemas.v1.json`; `export_rpc_command_schemas` derives
+it from `build_specta_builder()`, `COMMAND_CATALOG`, and `#[nyanpasu_macro::rpc]`
+request schemas (`CommandInputSchema`), then formats with Prettier so
+`rpc_command_schemas_are_fresh` stays byte-and-value clean. Offline consumers
+(CLI v0, MCP) read it without linking core, server, RPC, or GUI crates through
+`nyanpasu_rpc_protocol::schemas::CommandSchemaArtifact` (`from_embedded`,
+`commands_for_target`, `resolve_input_schema`, `resolve_output_schema`,
+`resolve_error_envelope_schema`), bundling only each command's transitive
+`#/$defs` closure. Exported schemas describe compiled Specta/Serde structural
+wire metadata (`validation_profile` / `$comment`): validators must run
+validation-only (no type coercion, default insertion, or field stripping), while
+server decoders remain authoritative for `#[serde(deny_unknown_fields)]` flags
+omitted by pinned Specta metadata, custom `Deserialize` rules, JSON numeric
+lexemes (`1` vs `1.0`), and domain or privilege checks.
+
 The capability inventory uses Linux's rows as one `[baseline]`, with per-platform
 differences: `+ row` adds or replaces a command and `- name` removes it. Its
 freshness check compares the complete generated inventory for every platform.

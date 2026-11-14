@@ -16,6 +16,8 @@ mod setup;
 mod specta_export;
 #[cfg(test)]
 mod specta_json_schema;
+#[cfg(test)]
+mod specta_schema_validation_tests;
 mod startup_failure;
 #[cfg(test)]
 mod test_support;

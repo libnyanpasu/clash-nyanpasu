@@ -30,6 +30,7 @@
     "@types/figlet": "1.7.0",
     "@types/node": "24.19.2",
     "@types/semver": "7.7.1",
-    "@types/spdx-expression-parse": "3.0.5"
+    "@types/spdx-expression-parse": "3.0.5",
+    "ajv": "8.17.1"
   }
 }

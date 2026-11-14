@@ -165,6 +165,35 @@ pub(crate) fn serialize_command_schema_artifact(
     Ok(json)
 }
 
+/// Export a standalone resolved Draft 2020-12 schema for a single `DataType` and `Phase`.
+#[cfg(test)]
+pub(crate) fn export_probe_schema(
+    dt: &DataType,
+    types: &Types,
+    phase: Phase,
+) -> Result<Value, String> {
+    let phased_types = PhasesFormat
+        .map_types(types)
+        .map_err(|err| format!("specta_serde::PhasesFormat failed: {err}"))?;
+    let phased_dt = PhasesFormat
+        .map_type(phased_types.as_ref(), dt)
+        .map_err(|err| format!("specta_serde::PhasesFormat map_type failed: {err}"))?;
+    let mut exporter = SchemaExporter::new(phased_types.as_ref())?;
+    let root =
+        exporter.datatype_to_schema("probe", phased_dt.as_ref(), phase, &GenericScope::new())?;
+    let artifact = CommandSchemaArtifact {
+        version: COMMAND_SCHEMA_ARTIFACT_VERSION,
+        schema_dialect: JSON_SCHEMA_2020_12_DIALECT.to_owned(),
+        validation_profile: DEFAULT_VALIDATION_PROFILE.to_owned(),
+        error_envelope: json!({ "type": "object" }),
+        defs: exporter.defs,
+        commands: BTreeMap::new(),
+    };
+    artifact
+        .resolve_root_schema("probe", &root)
+        .map_err(|err| err.to_string())
+}
+
 #[derive(Debug)]
 struct SchemaLanguageError(String);
 

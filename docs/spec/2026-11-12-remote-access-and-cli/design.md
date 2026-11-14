@@ -750,3 +750,14 @@ messages were renamed in one change with every caller, the catalog and the bindi
 The headless server keeps its `--http` flag for now; it adopts the persisted settings
 with the later layers. CLI v1 on protocol DTOs (R8) is deferred beyond the thirteen
 existing typed operations.
+
+Also delivered in the command-schema slice (stack layer 11): canonical Draft
+2020-12 input and success-output schemas for all 120 HTTP/Local commands, plus the
+RPC error envelope, generated from the same command collection and Serde phase
+metadata. The protocol package embeds the artifact and resolves each command's
+reachable definitions offline, without core or GUI dependencies. A freshness
+test and strict Ajv validation of real Rust wire values cover the artifact.
+These are structural v0 schemas; the server remains authoritative for omitted
+Serde attributes, custom decoders, numeric representation and domain/permission
+checks, as documented in the artifact's `validationProfile` and resolved schema
+`$comment`. Production scoped login, CLI and MCP remain subsequent work.

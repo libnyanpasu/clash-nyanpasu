@@ -74,6 +74,7 @@ pnpm run test:scripts
 | `sign-nightly-updater`             | Sign updater artifacts for a nightly build                                                                            |
 | `finalize-linux-release`           | Finalize Linux release package metadata                                                                               |
 | `test:http-ui`                     | Run the browser HTTP UI integration test                                                                              |
+| `test:command-schemas`             | Compile and validate embedded RPC command JSON Schemas with strict Draft 2020-12 Ajv                                  |
 | `lint:frontend-boundaries`         | Check frontend workspace package exports and dependency boundaries                                                    |
 | `storage:preflight`                | Check mirror configuration, archive authentication/database and SFTP connectivity without uploading                   |
 | `recover:central-publication`      | Restore original publication identity and validate retained build bytes                                               |

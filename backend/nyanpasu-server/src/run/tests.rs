@@ -160,7 +160,7 @@ async fn server_builds_one_application_for_all_transports() {
     let (ready, announced) = oneshot::channel();
     let task = tokio::spawn(serve(server, options(&directory), stop.clone(), ready));
     let ready = bounded(announced).await.unwrap();
-    let initial = client.startup_reconcile().await.operation_id;
+    let initial = client.startup_reconcile().await;
     let web = http(&ready).await;
     for (index, value) in ["first", "second"].into_iter().enumerate() {
         let local = LocalClient::connect(&ready.endpoint, WATCHDOG)
@@ -181,7 +181,9 @@ async fn server_builds_one_application_for_all_transports() {
             "one live storage revision sequence"
         );
         local.close().await;
-        assert_eq!(client.startup_reconcile().await.operation_id, initial);
+        let repeated = client.startup_reconcile().await;
+        assert_eq!(repeated.operation_id, initial.operation_id);
+        assert_eq!(repeated.outcome, initial.outcome);
     }
     stop.cancel();
     bounded(task).await.unwrap().unwrap();

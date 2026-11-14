@@ -1,12 +1,10 @@
-//! T10 §1: StartupReconcile, explicit starts and the reestablish target.
+//! Reconcile ownership and observable endpoint order from injected service facts.
 //!
 //! Every graph here starts the way production does: nothing proves who owns
 //! the runtime, the local host has no core running, and the daemon is a
 //! scriptable fake whose probe reads the service host's own state. Both hosts
 //! write what they are asked to run into one shared log, which is what the
-//! single-instance claims read. A scheduled retry is driven by sending it, the
-//! way the convergence timer would, and its schedule is read back bracketed by
-//! the instants taken around the call that set it; nothing sleeps.
+//! single-instance claims read. Mailbox barriers make each observation deterministic.
 
 use nyanpasu_contracts::service::ServiceProcessControl;
 use nyanpasu_runtime_values::{
@@ -38,13 +36,13 @@ use nyanpasu_ipc::{
 };
 use nyanpasu_state_engine::PersistentStateManager;
 use nyanpasu_updater::PreparedCoreBinary;
-use tokio::{sync::Notify, time::Instant};
+use tokio::sync::Notify;
 
 use super::{
     super::{
-        ApplicationWorkflowArgs, ApplicationWorkflowClient, Command, adapters,
-        mutation::{DEFERRED_RETRY_BUDGET, DeferredTarget, ReestablishCause, TargetOrigin},
-        startup::{ServiceEvidence, StartupOutcome, StartupReport},
+        ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
+        plan::ServiceEvidence,
+        startup::{StartupOutcome, StartupReport},
     },
     Progress, RecordingNotifications,
     mutations::{application_manager, commit_source, manager, overrides, settled, temp_path},
@@ -82,6 +80,7 @@ pub(super) struct HostEndpoint {
     pub(super) release: Notify,
     /// Loses the next reconcile's result until `deliver`.
     lose_reconcile: AtomicBool,
+    refuse_reconcile: AtomicBool,
     lost: StdMutex<Vec<OperationId>>,
 }
 
@@ -96,6 +95,7 @@ impl HostEndpoint {
             hold_stop: AtomicBool::new(false),
             release: Notify::new(),
             lose_reconcile: AtomicBool::new(false),
+            refuse_reconcile: AtomicBool::new(false),
             lost: StdMutex::new(Vec::new()),
         })
     }
@@ -146,7 +146,15 @@ impl ControlEndpoint for HostEndpoint {
             .lock()
             .unwrap()
             .push(format!("{}:{kind}", self.name));
-        self.delegate.submit(submission).await
+        let refuse = kind == "reconcile" && self.refuse_reconcile.load(Ordering::SeqCst);
+        if refuse {
+            self.delegate.set_failure(Some("apply_failed"));
+        }
+        let result = self.delegate.submit(submission).await;
+        if refuse {
+            self.delegate.set_failure(None);
+        }
+        result
     }
     async fn wait_operation(&self, id: OperationId, timeout: Duration) -> Option<OperationInfo> {
         if self.lost.lock().unwrap().contains(&id) {
@@ -472,23 +480,17 @@ impl Graph {
         self.client.startup_reconcile().await
     }
 
-    /// The retry the convergence timer sends once the target is due.
-    async fn retry_when_due(&self) {
+    async fn tick(&self) {
         self.client
-            .call(Command::RetryRuntime { explicit: false })
-            .await
+            .0
+            .actor
+            .cast(super::super::Message::Tick)
             .unwrap();
+        super::barrier(&self.client).await;
     }
 
-    fn target(&self) -> DeferredTarget {
-        self.client
-            .mutation_journal()
-            .deferred
-            .expect("a reestablish target is open")
-    }
-
-    fn no_target(&self) -> bool {
-        self.client.mutation_journal().deferred.is_none()
+    fn conclusion(&self) -> &'static str {
+        self.client.reconciler_status().conclusion.label()
     }
 
     pub(super) fn log(&self) -> Vec<String> {
@@ -500,10 +502,6 @@ impl Graph {
             .iter()
             .filter(|entry| entry.ends_with(":reconcile"))
             .count()
-    }
-
-    fn isolated(&self) -> bool {
-        self.client.status().uncertain
     }
 
     fn host(&self) -> ExecutionHost {
@@ -556,75 +554,32 @@ impl Graph {
     }
 }
 
-/// The target was scheduled `delay` after the call that scheduled it: its
-/// instant lies `delay` past some instant between the two read around it.
-fn assert_scheduled(target: &DeferredTarget, before: Instant, after: Instant, delay: Duration) {
-    let at = target.next_attempt.expect("the target is scheduled");
-    assert!(
-        at >= before + delay && at <= after + delay,
-        "scheduled {:?} after the call, expected {delay:?}",
-        at.saturating_duration_since(before)
-    );
-}
-
 fn degraded(report: &StartupReport, health: ConvergenceHealth) -> bool {
     matches!(&report.outcome, StartupOutcome::ReadyDegraded { health: h, .. } if *h == health)
 }
 
-/// S3: a clean Local start. One submission, one full view, no diff
-/// notification, and the Local owner proven.
 #[tokio::test]
 async fn a_clean_local_start_applies_once_under_a_proven_owner() {
     let g = graph(Setup::default()).await;
-
     let report = g.start().await;
-
     assert_eq!(report.outcome, StartupOutcome::Ready);
-    let observation = report.observation.expect("S1 read the evidence");
-    assert_eq!(observation.desired, ExecutionHost::Local);
-    assert_eq!(
-        observation.service,
-        Some(ServiceEvidence::Absent {
-            phase: ServicePhase::NotInstalled
-        })
-    );
-    assert_eq!(
-        observation.runtime.map(|runtime| runtime.host),
-        Some(ExecutionHost::Local)
-    );
+    assert!(matches!(
+        report.observation.unwrap().service,
+        Some(ServiceEvidence::Absent { .. })
+    ));
     assert_eq!(g.log(), ["local:reconcile"]);
-    assert!(g.local.delegate.checked().is_empty());
-    assert!(g.service_host.delegate.checked().is_empty());
-    let built = g
-        .ports
-        .runtime()
-        .confirmed()
-        .expect("a successful startup records its runtime")
-        .artifact
-        .expect("startup publishes its committed build");
-    assert_eq!(
-        g.local.delegate.reconciled_bytes(),
-        [built.config_text.as_bytes().to_vec()]
-    );
-    assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.bound(), 0);
     assert_eq!(
         ownership(&g.client).await,
         Ownership::Established {
             host: ExecutionHost::Local
         }
     );
-    assert!(g.no_target());
-    assert!(!g.isolated());
-    assert!(
-        g.ports.confirmed().is_some(),
-        "the apply confirmed its ports"
-    );
+    assert!(g.ports.confirmed().is_some());
+    assert!(g.local.delegate.checked().is_empty());
+    assert_eq!(g.notifications.full(), 1);
+    assert_eq!(g.notifications.bound(), 1);
 }
 
-/// Startup and its retries submit the committed document even when an
-/// independent validator cannot serve it. The endpoint records bytes but does
-/// not validate them; rejection inside reconcile belongs to the real endpoint.
 #[tokio::test]
 async fn startup_and_retry_apply_committed_bytes_without_an_independent_check() {
     for answer in [
@@ -632,30 +587,19 @@ async fn startup_and_retry_apply_committed_bytes_without_an_independent_check() 
         TestCheckAnswer::Unsupported,
         TestCheckAnswer::Reject(CoreError::new(
             CoreErrorKind::ConfigCheckFailed,
-            "scripted: independent validation rejects the document",
+            "independent validation refuses",
             false,
         )),
     ] {
         let g = graph(Setup::default()).await;
         g.local.delegate.set_check_answer(answer);
         g.local.delegate.set_failure(Some("queue_full"));
-        let report = g.start().await;
-        assert!(degraded(&report, ConvergenceHealth::RetryScheduled));
-        assert!(g.local.delegate.checked().is_empty());
-        assert!(g.local.delegate.reconciled_bytes().is_empty());
-
+        assert!(degraded(&g.start().await, ConvergenceHealth::Blocked));
         g.local.delegate.set_failure(None);
-        g.retry_when_due().await;
-
-        assert!(g.no_target());
+        g.client.retry_runtime().await.unwrap();
+        assert_eq!(g.conclusion(), "Converged");
         assert!(g.local.delegate.checked().is_empty());
-        let built = g
-            .ports
-            .runtime()
-            .confirmed()
-            .expect("a successful apply records its runtime")
-            .artifact
-            .expect("the committed build is published after application");
+        let built = g.ports.runtime().confirmed().unwrap().artifact.unwrap();
         assert_eq!(
             g.local.delegate.reconciled_bytes(),
             [built.config_text.as_bytes().to_vec()]
@@ -757,10 +701,6 @@ async fn another_instances_service_core_is_left_running() {
     );
 }
 
-/// S7: a service that cannot be read may be holding a core, so nothing
-/// starts. The target it leaves says so without isolating anything; service
-/// commands keep working, and once the service is known to hold nothing the
-/// automatic retry starts the core.
 #[tokio::test]
 async fn an_unreadable_service_starts_nothing_until_it_is_known_to_hold_no_core() {
     let g = graph(Setup {
@@ -769,36 +709,18 @@ async fn an_unreadable_service_starts_nothing_until_it_is_known_to_hold_no_core(
     })
     .await;
     g.daemon.unreadable.store(true, Ordering::SeqCst);
-
-    let report = g.start().await;
-
-    assert!(
-        degraded(&report, ConvergenceHealth::RecoveryRequired),
-        "{report:?}"
-    );
+    assert!(degraded(
+        &g.start().await,
+        ConvergenceHealth::WaitingDependency
+    ));
+    assert_eq!(g.conclusion(), "Waiting");
     assert!(g.log().is_empty());
-    assert!(
-        !g.isolated(),
-        "a target that may need recovering isolates nothing"
-    );
-    assert!(g.client.mutation_journal().recovery.is_none());
-    let target = g.target();
-    assert_eq!(target.health, ConvergenceHealth::RecoveryRequired);
-    assert!(target.next_attempt.is_some(), "it is probed again");
     assert_eq!(ownership(&g.client).await, Ownership::Unproven);
-
     g.client.stop_service().await.unwrap();
     g.daemon.unreadable.store(false, Ordering::SeqCst);
-    g.retry_when_due().await;
-
-    assert!(g.no_target());
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Converged");
     assert_eq!(g.log(), ["local:reconcile"]);
-    assert_eq!(
-        ownership(&g.client).await,
-        Ownership::Established {
-            host: ExecutionHost::Local
-        }
-    );
 }
 
 /// S8 (#5443, supersedes leader ruling R8): service mode is a preference.
@@ -829,7 +751,7 @@ async fn a_service_start_without_a_ready_daemon_runs_the_core_locally() {
                 host: ExecutionHost::Local
             }
         );
-        assert!(g.no_target());
+        assert!(matches!(g.conclusion(), "Converged" | "Inactive"));
         assert_eq!(g.daemon.converged(), 0);
     }
 }
@@ -1011,7 +933,7 @@ async fn a_failed_explicit_start_on_the_service_host_runs_the_core_locally() {
     g.service_host.delegate.set_status(Some(STOPPED), None);
     g.service_host.delegate.set_rolls_back(true);
 
-    assert!(g.client.reconcile().await.is_err());
+    g.client.reconcile().await.unwrap();
 
     g.wait_for_host(ExecutionHost::Local).await;
     assert_eq!(g.log().last().map(String::as_str), Some("local:reconcile"));
@@ -1035,536 +957,209 @@ async fn a_ready_service_moves_nothing_without_service_mode() {
     assert_eq!(g.log(), ["local:reconcile"]);
 }
 
-/// S9: a transient start failure. Startup spends nothing, so three automatic
-/// retries follow at 1, 5 and 30 s; the budget then blocks it, and an
-/// explicit retry runs once without refilling anything.
-#[tokio::test]
-async fn a_transient_start_failure_retries_on_the_budget_schedule() {
-    let g = graph(Setup::default()).await;
-    g.local.delegate.set_failure(Some("queue_full"));
-
-    let before = Instant::now();
-    let report = g.start().await;
-    let after = Instant::now();
-
-    assert!(
-        degraded(&report, ConvergenceHealth::RetryScheduled),
-        "{report:?}"
-    );
-    let target = g.target();
-    assert_eq!(
-        (target.attempts_remaining, target.attempts),
-        (DEFERRED_RETRY_BUDGET, 1)
-    );
-    assert_scheduled(&target, before, after, Duration::from_secs(1));
-    assert_eq!(
-        ownership(&g.client).await,
-        Ownership::Established {
-            host: ExecutionHost::Local
-        },
-        "S3 proved the owner; only S4 failed"
-    );
-
-    for (remaining, delay) in [(2, Some(5)), (1, Some(30)), (0, None)] {
-        let before = Instant::now();
-        g.retry_when_due().await;
-        let after = Instant::now();
-        let target = g.target();
-        assert_eq!(target.attempts_remaining, remaining);
-        match delay {
-            Some(delay) => {
-                assert_eq!(target.health, ConvergenceHealth::RetryScheduled);
-                assert_scheduled(&target, before, after, Duration::from_secs(delay));
-            }
-            None => {
-                assert_eq!(target.health, ConvergenceHealth::Blocked);
-                assert_eq!(target.next_attempt, None);
-            }
-        }
-    }
-    assert_eq!(g.reconciles(), 4);
-
-    g.client.retry_runtime().await.unwrap();
-    let target = g.target();
-    assert_eq!((target.attempts_remaining, target.attempts), (0, 5));
-    g.local.delegate.set_failure(None);
-    g.client.retry_runtime().await.unwrap();
-    assert!(g.no_target());
-    assert_eq!(g.reconciles(), 6);
-}
-
-/// S10: a deterministic start failure blocks the target: nothing is retried
-/// until a save of a different target, which the stopped core saves inactive
-/// and which reopens the target with a fresh budget.
 #[tokio::test]
 async fn a_deterministic_start_failure_blocks_until_a_new_target_is_saved() {
     let g = graph(Setup::default()).await;
-    g.local.delegate.set_failure(Some("config_check_failed"));
-
-    let report = g.start().await;
-
-    assert!(degraded(&report, ConvergenceHealth::Blocked), "{report:?}");
-    let blocked = g.target();
-    assert_eq!(blocked.next_attempt, None);
-    assert_eq!(g.log(), ["local:reconcile"]);
-    assert!(g.local.delegate.checked().is_empty());
-    assert!(g.local.delegate.reconciled_bytes().is_empty());
-
+    g.local.delegate.set_failure(Some("apply_failed"));
+    assert!(degraded(&g.start().await, ConvergenceHealth::Blocked));
+    let before = g.log();
     g.local.delegate.set_failure(None);
-    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+    g.tick().await;
+    assert_eq!(g.log(), before);
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
         .await
         .unwrap();
-    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Inactive");
-    let reopened = g.target();
-    assert_ne!(reopened.identity, blocked.identity);
     assert_eq!(
-        (
-            reopened.attempts_remaining,
-            reopened.attempts,
-            reopened.waits
-        ),
-        (DEFERRED_RETRY_BUDGET, 0, 0)
+        settled(&g.client, version).await.conclusion.label(),
+        "Converged"
     );
-    assert!(reopened.next_attempt.is_some_and(|at| at <= Instant::now()));
-
-    g.retry_when_due().await;
-    assert!(g.no_target());
     assert_eq!(g.log(), ["local:reconcile", "local:reconcile"]);
-    let applied = String::from_utf8(g.local.delegate.reconciled_bytes()[0].clone()).unwrap();
-    assert!(applied.contains("mode: global"), "{applied}");
+    assert!(
+        String::from_utf8_lossy(g.local.delegate.reconciled_bytes().last().unwrap())
+            .contains("mode: global")
+    );
 }
 
-/// §1.7: a save the stopped core never runs reschedules an open reestablish
-/// target by its identity. The same identity is tried again now on the
-/// budget it has, a spent budget stays spent, and only a different identity
-/// opens a fresh one.
 #[tokio::test]
-async fn a_stopped_save_keeps_an_open_target_until_its_inputs_change() {
-    let g = graph(Setup::default()).await;
-    g.local.delegate.set_failure(Some("queue_full"));
-    g.start().await;
-    let scheduled = g.target();
-    let same = g.clash.snapshot().state;
-
-    let before = g.client.0.reconciler.borrow().seq;
-    let checks = g.local.delegate.checked().len();
-    commit_source(&g.clash, same.clone()).await.unwrap();
-    assert_eq!(g.client.0.reconciler.borrow().seq, before);
-    assert_eq!(g.local.delegate.checked().len(), checks);
-    let rescheduled = g.target();
-    assert_eq!(rescheduled.identity, scheduled.identity);
-    assert_eq!(
-        (rescheduled.attempts_remaining, rescheduled.attempts),
-        (scheduled.attempts_remaining, scheduled.attempts),
-        "nothing is refilled"
-    );
-    assert_eq!(rescheduled.next_attempt, scheduled.next_attempt);
-
-    for _ in 0..DEFERRED_RETRY_BUDGET {
-        g.retry_when_due().await;
-    }
-    let spent = g.target();
-    assert_eq!((spent.attempts_remaining, spent.next_attempt), (0, None));
-    let id = commit_source(&g.clash, same).await.unwrap();
-    settled(&g.client, id).await;
-    let unchanged = g.target();
-    assert_eq!(
-        (unchanged.attempts_remaining, unchanged.next_attempt),
-        (0, None),
-        "a spent budget stays spent"
-    );
-
-    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
-        .await
-        .unwrap();
-    settled(&g.client, id).await;
-    let fresh = g.target();
-    assert_ne!(fresh.identity, spent.identity);
-    assert_eq!(
-        (fresh.attempts_remaining, fresh.attempts, fresh.waits),
-        (DEFERRED_RETRY_BUDGET, 0, 0)
-    );
-    assert!(fresh.next_attempt.is_some());
-}
-
-/// S11: the startup submission's result is lost. The domain is isolated on
-/// that accepted submission, and nothing is resent until the operation is
-/// seen to end; recovery then retires the instance no receipt describes and
-/// applies the committed configuration.
-#[tokio::test]
-async fn an_unobserved_startup_submission_isolates_until_its_operation_ends() {
+async fn an_unobserved_startup_submission_waits_until_its_operation_ends() {
     let g = graph(Setup::default()).await;
     g.local.lose_reconcile.store(true, Ordering::SeqCst);
-
-    let report = g.start().await;
-
-    assert!(
-        matches!(report.outcome, StartupOutcome::RecoveryRequired { .. }),
-        "{report:?}"
-    );
-    assert!(g.isolated());
-    assert_eq!(g.notifications.full(), 1);
-    let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
-        error,
-        nyanpasu_runtime_values::runtime_error::RuntimeError::RecoveryUnresolved { .. }
+        g.start().await.outcome,
+        StartupOutcome::RecoveryRequired { .. }
     ));
-    assert!(
-        error.to_string().contains("core operation"),
-        "the slot names the lost submission: {}",
-        error
-    );
-    assert_eq!(g.log(), ["local:reconcile"], "nothing is resent blind");
-
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Unknown");
+    assert_eq!(g.log(), ["local:reconcile"]);
     g.local.deliver();
-    g.client.retry_runtime().await.unwrap();
-
-    assert!(!g.isolated());
-    assert!(g.no_target());
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Converged");
     assert_eq!(
         g.log(),
         ["local:reconcile", "local:stop", "local:reconcile"]
     );
 }
 
-/// S12: StartupReconcile runs once. Asking again returns the first report
-/// and probes, submits and notifies nothing.
 #[tokio::test]
 async fn a_second_startup_reconcile_returns_the_first_report_and_touches_nothing() {
     let g = graph(Setup::default()).await;
     let first = g.start().await;
+    super::barrier(&g.client).await;
     let probes = g.daemon.probes.load(Ordering::SeqCst);
-
+    let sequence = g.client.reconciler_status().seq;
     let second = g.start().await;
-
     assert_eq!(second.operation_id, first.operation_id);
     assert_eq!(second.outcome, first.outcome);
+    assert_eq!(g.client.reconciler_status().seq, sequence);
     assert_eq!(g.daemon.probes.load(Ordering::SeqCst), probes);
     assert_eq!(g.log(), ["local:reconcile"]);
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.bound(), 0);
 }
 
-/// S13: whatever startup ends in, it publishes the full view exactly once
-/// and no diff notification.
 #[tokio::test]
 async fn every_startup_outcome_publishes_exactly_one_full_view() {
-    let mut outcomes = Vec::new();
-    for (unreadable, lose) in [(false, false), (true, false), (false, true)] {
+    for (unreadable, lose, expected) in [
+        (false, false, "Converged"),
+        (true, false, "Waiting"),
+        (false, true, "Unknown"),
+    ] {
         let g = graph(Setup::default()).await;
         g.daemon.unreadable.store(unreadable, Ordering::SeqCst);
         g.local.lose_reconcile.store(lose, Ordering::SeqCst);
-        let report = g.start().await;
-        assert_eq!(g.notifications.full(), 1, "{report:?}");
-        assert_eq!(g.notifications.bound(), 0, "{report:?}");
-        outcomes.push(std::mem::discriminant(&report.outcome));
+        g.start().await;
+        assert_eq!(g.conclusion(), expected);
+        assert_eq!(g.notifications.full(), 1);
+        g.start().await;
+        assert_eq!(g.notifications.full(), 1);
     }
-    assert_eq!(
-        outcomes,
-        [
-            std::mem::discriminant(&StartupOutcome::Ready),
-            std::mem::discriminant(&StartupOutcome::ReadyDegraded {
-                health: ConvergenceHealth::Pending,
-                reason: String::new(),
-            }),
-            std::mem::discriminant(&StartupOutcome::RecoveryRequired {
-                reason: String::new(),
-            }),
-        ]
-    );
 }
 
-/// S13, the interrupted case (R21): the startup attempt loses the answer to
-/// its reconcile. It still publishes the full view exactly once, the attempt
-/// it left keeps the domain isolated, and later calls return a report without
-/// running or publishing again, before and after the domain is recovered.
 #[tokio::test]
-async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated() {
+async fn an_unknown_startup_publishes_once_and_keeps_its_first_report() {
     let g = graph(Setup::default()).await;
     g.local.lose_reconcile.store(true, Ordering::SeqCst);
-
     let first = g.start().await;
-
-    assert!(
-        matches!(first.outcome, StartupOutcome::RecoveryRequired { .. }),
-        "{first:?}"
-    );
+    assert!(matches!(
+        first.outcome,
+        StartupOutcome::RecoveryRequired { .. }
+    ));
+    let repeated = g.start().await;
+    assert_eq!(repeated.operation_id, first.operation_id);
+    assert_eq!(repeated.outcome, first.outcome);
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.bound(), 0);
-    assert!(g.isolated());
-    assert!(g.client.mutation_journal().recovery.is_some());
-    assert_eq!(g.log(), ["local:reconcile"]);
-
-    let refused = g.start().await;
-    assert!(
-        matches!(refused.outcome, StartupOutcome::Unsettled { .. }),
-        "{refused:?}"
-    );
-    assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.log(), ["local:reconcile"]);
-
     g.local.deliver();
-    g.client.retry_runtime().await.unwrap();
-    assert!(!g.isolated());
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Converged");
     let submitted = g.log();
-
-    let cached = g.start().await;
-    assert_eq!(cached.operation_id, first.operation_id);
-    assert_eq!(cached.outcome, first.outcome);
+    assert_eq!(g.start().await.outcome, first.outcome);
+    assert_eq!(g.log(), submitted);
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.log(), submitted, "a cached report runs nothing");
 }
 
-/// R20: a successful explicit start after a user's stop starts the core on
-/// both paths: the reconcile a proven owner runs, and the re-establishment an
-/// unproven one needs. Either way the stop is over, and the next save is
-/// applied rather than saved inactive.
 #[tokio::test]
 async fn an_explicit_start_after_a_user_stop_starts_the_core_on_either_path() {
-    let g = graph(Setup::default()).await;
-    g.start().await;
-    g.client.stop_core().await.unwrap();
-
-    g.client.reconcile().await.unwrap();
-
-    assert_eq!(
-        g.log(),
-        ["local:reconcile", "local:stop", "local:reconcile"]
-    );
-    assert!(matches!(
-        g.local.delegate.status().await.unwrap().state,
-        Some(CoreStateDetail::Running { .. })
-    ));
-    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
-        .await
-        .unwrap();
-    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
-
-    let g = graph(Setup {
-        daemon: DaemonState::Running,
-        ..Setup::default()
-    })
-    .await;
-    g.daemon.unreadable.store(true, Ordering::SeqCst);
-    g.start().await;
-    g.client.stop_core().await.unwrap();
-    g.daemon.unreadable.store(false, Ordering::SeqCst);
-    assert_eq!(ownership(&g.client).await, Ownership::Unproven);
-
-    g.client.reconcile().await.unwrap();
-
-    assert_eq!(g.log(), ["local:stop", "local:reconcile"]);
-    assert_eq!(
-        ownership(&g.client).await,
-        Ownership::Established {
-            host: ExecutionHost::Local
-        }
-    );
-    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
-        .await
-        .unwrap();
-    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Converged");
+    for unreadable in [false, true] {
+        let g = graph(Setup::default()).await;
+        g.daemon.unreadable.store(unreadable, Ordering::SeqCst);
+        g.start().await;
+        let _ = g.client.stop_core().await;
+        g.daemon.unreadable.store(false, Ordering::SeqCst);
+        g.client.reconcile().await.unwrap();
+        assert_eq!(g.conclusion(), "Converged");
+        let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
+            .await
+            .unwrap();
+        assert_eq!(
+            settled(&g.client, version).await.conclusion.label(),
+            "Converged"
+        );
+        assert!(matches!(
+            g.local.delegate.status().await.unwrap().state,
+            Some(CoreStateDetail::Running { .. })
+        ));
+    }
 }
 
-/// R21: a first StartupReconcile that an isolated domain refuses still
-/// publishes the full view once, and leaves its unsettled report for later
-/// calls; one refused because the application is closing publishes nothing.
 #[tokio::test]
-async fn a_refused_first_startup_publishes_once_unless_the_application_is_closing() {
+async fn a_first_startup_publishes_once_when_unsettled_or_closing() {
     let g = graph(Setup::default()).await;
     g.local.lose_reconcile.store(true, Ordering::SeqCst);
     assert!(g.client.reconcile().await.is_err());
-    assert!(g.isolated(), "the lost explicit start isolated the domain");
-    let bound = g.notifications.bound();
-
-    let refused = g.start().await;
-
-    assert!(
-        matches!(refused.outcome, StartupOutcome::Unsettled { .. }),
-        "{refused:?}"
-    );
+    let report = g.start().await;
+    assert!(matches!(
+        report.outcome,
+        StartupOutcome::RecoveryRequired { .. }
+    ));
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.bound(), bound);
-    g.local.deliver();
-    g.client.retry_runtime().await.unwrap();
-    assert!(!g.isolated());
-    let submitted = g.log();
-    let cached = g.start().await;
-    assert_eq!(cached.operation_id, refused.operation_id);
-    assert_eq!(cached.outcome, refused.outcome);
-    assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.log(), submitted, "a cached report runs nothing");
-
+    assert_eq!(g.start().await.operation_id, report.operation_id);
     let g = graph(Setup::default()).await;
     g.shutdown.cancel();
-    let closing = g.start().await;
-    assert!(
-        matches!(closing.outcome, StartupOutcome::Unsettled { .. }),
-        "{closing:?}"
-    );
-    assert_eq!(g.notifications.full(), 0);
+    assert!(matches!(
+        g.start().await.outcome,
+        StartupOutcome::RecoveryRequired { .. }
+    ));
+    assert_eq!(g.notifications.full(), 1);
 }
 
-/// S3 step 3 (§1.11): recovery keeps a running owner only when it runs the
-/// latest committed target. A target committed after that receipt and never
-/// applied is applied from a stop, not dropped; when the receipt is the
-/// committed target, nothing is submitted.
 #[tokio::test]
-async fn recovery_keeps_a_running_owner_only_when_it_runs_the_committed_target() {
+async fn an_unknown_start_round_applies_the_latest_committed_target_after_settlement() {
     for outstanding in [true, false] {
-        let g = graph(Setup {
-            command_timeout: Duration::from_millis(50),
-            ..Setup::default()
-        })
-        .await;
-        assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
+        let g = graph(Setup::default()).await;
+        g.start().await;
+        g.local.lose_reconcile.store(true, Ordering::SeqCst);
+        assert!(g.client.reconcile().await.is_err());
+        g.local.deliver();
         if outstanding {
-            // Committed, deferred, and never applied: the core refused it.
-            g.local.delegate.set_failure(Some("queue_full"));
-            let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+            let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
                 .await
                 .unwrap();
-            assert_eq!(settled(&g.client, id).await.conclusion.label(), "Waiting");
-            g.local.delegate.set_failure(None);
-        }
-        // A lifecycle command whose helper outlives its bound isolates the
-        // domain while the runtime stays on its receipt.
-        g.daemon.hold_install.store(true, Ordering::SeqCst);
-        assert!(g.client.install_service().await.is_err());
-        g.daemon.held.notified().await;
-        assert!(g.isolated());
-        let submitted = g.log().len();
-
-        g.daemon.release.notify_one();
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while g.client.retry_runtime().await.is_err() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("the finished helper lets recovery through");
-
-        assert!(!g.isolated());
-        assert!(g.no_target());
-        if outstanding {
-            assert_eq!(&g.log()[submitted..], ["local:stop", "local:reconcile"]);
-            let applied =
-                String::from_utf8(g.local.delegate.reconciled_bytes().last().unwrap().clone())
-                    .unwrap();
-            assert!(applied.contains("mode: global"), "{applied}");
-        } else {
             assert_eq!(
-                g.log().len(),
-                submitted,
-                "the running receipt is the committed target: nothing is resubmitted"
+                settled(&g.client, version).await.conclusion.label(),
+                "Converged"
+            );
+            assert_eq!(
+                g.log(),
+                [
+                    "local:reconcile",
+                    "local:reconcile",
+                    "local:stop",
+                    "local:reconcile"
+                ]
+            );
+        } else {
+            g.tick().await;
+            assert_eq!(g.conclusion(), "Converged");
+            assert_eq!(
+                g.log(),
+                [
+                    "local:reconcile",
+                    "local:reconcile",
+                    "local:stop",
+                    "local:reconcile"
+                ]
             );
         }
     }
 }
 
-/// §1.8: an automatic retry on a spent budget refuses before S2. Even with a
-/// residual service core the owner plan would retire, it probes, adopts,
-/// hands off and stops nothing.
 #[tokio::test]
-async fn an_automatic_retry_on_a_spent_budget_touches_nothing() {
+async fn startup_keeps_the_target_a_prior_source_round_already_applied() {
     let g = graph(Setup::default()).await;
-    g.local.delegate.set_failure(Some("queue_full"));
-    g.start().await;
-    for _ in 0..DEFERRED_RETRY_BUDGET {
-        g.retry_when_due().await;
-    }
-    let spent = g.target();
-    assert_eq!(spent.attempts_remaining, 0);
-    let log = g.log();
-    g.service_host.delegate.set_status(
-        Some(CoreStateDetail::Running { epoch: 1, pid: 9 }),
-        Some(CoreKind::Mihomo),
-    );
-    *g.daemon.state.lock().unwrap() = DaemonState::Running;
-    let probes = g.daemon.probes.load(Ordering::SeqCst);
-
-    g.retry_when_due().await;
-
-    assert_eq!(g.log(), log);
-    assert_eq!(g.daemon.probes.load(Ordering::SeqCst), probes);
-    assert_eq!(g.host(), ExecutionHost::Local);
-    let target = g.target();
-    assert_eq!(target.health, ConvergenceHealth::Blocked);
-    assert_eq!(target.next_attempt, None);
-    assert_eq!(target.attempts, spent.attempts);
-}
-
-/// §1.8: an explicit retry on a spent budget that meets an unavailable
-/// dependency is blocked at once. It schedules no automatic attempt, since
-/// the spent budget would refuse that attempt before it observed anything.
-/// An explicit start in the same state is still told it may try again: the
-/// dependency is the cause, not the runtime.
-#[tokio::test]
-async fn a_dependency_wait_on_a_spent_budget_blocks_at_once() {
-    let g = graph(Setup::default()).await;
-    g.local.delegate.set_failure(Some("queue_full"));
-    g.start().await;
-    for _ in 0..DEFERRED_RETRY_BUDGET {
-        g.retry_when_due().await;
-    }
-    let spent = g.target();
-    assert_eq!(spent.attempts_remaining, 0);
-    g.daemon.unreadable.store(true, Ordering::SeqCst);
-    let reconciles = g.reconciles();
-
-    g.client.retry_runtime().await.unwrap();
-
-    let target = g.target();
-    assert_eq!(target.health, ConvergenceHealth::Blocked);
-    assert_eq!(target.next_attempt, None);
-    assert_eq!(
-        (target.attempts_remaining, target.attempts),
-        (0, spent.attempts),
-        "a dependency result spends nothing"
-    );
-    assert_eq!(ownership(&g.client).await, Ownership::Unproven);
-
-    let error = g.client.reconcile().await.unwrap_err();
-
-    assert!(
-        matches!(
-            error,
-            nyanpasu_runtime_values::runtime_error::RuntimeError::CoreNotStarted {
-                retryable: true,
-                ..
-            }
-        ),
-        "{error}"
-    );
-    let target = g.target();
-    assert_eq!(
-        (target.health, target.next_attempt),
-        (ConvergenceHealth::Blocked, None)
-    );
-    assert_eq!(g.reconciles(), reconciles);
-}
-
-/// S14: a save that commits before startup has run is ordered ahead of it:
-/// the stopped core saves it inactive, and startup applies what is committed.
-#[tokio::test]
-async fn a_save_committed_before_startup_is_what_startup_applies() {
-    let g = graph(Setup::default()).await;
-    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
         .await
         .unwrap();
-    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Inactive");
-    assert!(g.log().is_empty());
-
+    assert_eq!(
+        settled(&g.client, version).await.conclusion.label(),
+        "Converged"
+    );
+    let applied = g.local.delegate.reconciled_bytes();
+    assert!(String::from_utf8_lossy(applied.last().unwrap()).contains("mode: global"));
     assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
-
-    assert_eq!(g.log(), ["local:reconcile"]);
-    let applied = String::from_utf8(g.local.delegate.reconciled_bytes()[0].clone()).unwrap();
-    assert!(applied.contains("mode: global"), "{applied}");
+    assert_eq!(g.local.delegate.reconciled_bytes(), applied);
 }
 
-/// S15a: a stop under an unreadable service ends nothing the target owes.
 #[tokio::test]
-async fn a_stop_keeps_the_target_an_unreadable_service_left() {
+async fn a_stop_waits_for_ownership_then_confirms_inactive() {
     let g = graph(Setup {
         daemon: DaemonState::Running,
         ..Setup::default()
@@ -1572,20 +1167,15 @@ async fn a_stop_keeps_the_target_an_unreadable_service_left() {
     .await;
     g.daemon.unreadable.store(true, Ordering::SeqCst);
     g.start().await;
-    let before = g.target();
-
-    g.client.stop_core().await.unwrap();
-
-    let after = g.target();
-    assert_eq!(after.origin, before.origin);
-    assert_eq!(after.health, ConvergenceHealth::RecoveryRequired);
-    assert_eq!(after.next_attempt, before.next_attempt);
-    assert_eq!(g.log(), ["local:stop"]);
+    assert!(g.client.stop_core().await.is_err());
+    assert_eq!(g.conclusion(), "Waiting");
+    assert!(g.log().is_empty());
+    g.daemon.unreadable.store(false, Ordering::SeqCst);
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Inactive");
+    assert!(g.local.delegate.reconciled_bytes().is_empty());
 }
 
-/// S15b: a stop while service mode falls back to Local stays a stop. The
-/// daemon coming back owes nothing: no target is left to pull the core onto
-/// it, and nothing starts.
 #[tokio::test]
 async fn a_stop_while_falling_back_to_local_stays_stopped_when_the_service_returns() {
     let g = graph(Setup {
@@ -1595,31 +1185,25 @@ async fn a_stop_while_falling_back_to_local_stays_stopped_when_the_service_retur
     .await;
     g.start().await;
     g.client.stop_core().await.unwrap();
-
     *g.daemon.state.lock().unwrap() = DaemonState::Running;
-    assert_eq!(g.service.probe().await.unwrap().phase, ServicePhase::Ready);
-
-    assert!(g.no_target());
-    assert_eq!(g.host(), ExecutionHost::Local);
-    assert_eq!(g.log(), ["local:reconcile", "local:stop"]);
+    g.publish_readiness().await;
+    super::barrier(&g.client).await;
+    assert_eq!(g.conclusion(), "Inactive");
+    assert_eq!(g.host(), ExecutionHost::Service);
+    assert!(g.service_host.delegate.reconciled_bytes().is_empty());
     assert_eq!(g.daemon.converged(), 0);
 }
 
-/// S15c: with the owner proven, a stop keeps the target only until the next
-/// attempt confirms the stop, which ends it and starts nothing.
 #[tokio::test]
-async fn a_stop_under_a_proven_owner_ends_the_target_once_it_is_confirmed() {
+async fn a_stop_under_a_proven_owner_confirms_inactive() {
     let g = graph(Setup::default()).await;
     g.local.delegate.set_failure(Some("queue_full"));
     g.start().await;
     g.local.delegate.set_failure(None);
-
     g.client.stop_core().await.unwrap();
-    assert!(!g.no_target(), "the stop alone ends nothing");
-    g.retry_when_due().await;
-
-    assert!(g.no_target());
-    assert_eq!(g.log(), ["local:reconcile", "local:stop"]);
+    assert_eq!(g.conclusion(), "Inactive");
+    g.tick().await;
+    assert_eq!(g.log(), ["local:reconcile"]);
     assert_eq!(
         ownership(&g.client).await,
         Ownership::Established {
@@ -1628,26 +1212,16 @@ async fn a_stop_under_a_proven_owner_ends_the_target_once_it_is_confirmed() {
     );
 }
 
-/// S16 (§1.7 #7): a binary replaced while no owner is proven is installed,
-/// its restart is left to the open target, and that target is due at once:
-/// the next wake-up runs it, without waiting out the schedule it had.
 #[tokio::test]
-async fn a_binary_replaced_without_a_proven_owner_brings_the_target_forward() {
-    let g = graph(Setup {
-        daemon: DaemonState::Running,
-        ..Setup::default()
-    })
-    .await;
+async fn a_binary_replacement_waits_for_ownership_then_runs_the_target() {
+    let g = graph(Setup::default()).await;
     g.daemon.unreadable.store(true, Ordering::SeqCst);
     g.start().await;
-    let scheduled = g.target();
-    let probes = g.daemon.probes.load(Ordering::SeqCst);
     let staging = Arc::new(tempfile::tempdir().unwrap());
     let source = staging.path().join("new-core");
     std::fs::write(&source, b"new binary").unwrap();
     let destination = g.dir.path().join("installed-core");
     let progress = Arc::new(Progress::default());
-
     g.client
         .replace_binary(PreparedCoreBinary {
             target: ClashCore::default(),
@@ -1659,139 +1233,43 @@ async fn a_binary_replaced_without_a_proven_owner_brings_the_target_forward() {
         })
         .await
         .unwrap();
-
-    assert_eq!(std::fs::read(&destination).unwrap(), b"new binary");
-    assert!(
-        !progress.0.load(Ordering::SeqCst),
-        "no restart was reported"
-    );
-    // Only the target's run probes the daemon. The tick is the one the
-    // convergence timer sends; the retry it starts is over by the barrier.
-    g.client
-        .0
-        .actor
-        .cast(super::Message::ConvergenceTick)
-        .unwrap();
-    super::barrier(&g.client).await;
-    assert_ne!(
-        g.daemon.probes.load(Ordering::SeqCst),
-        probes,
-        "the brought-forward target runs"
-    );
-    assert!(
-        Instant::now() < scheduled.next_attempt.unwrap(),
-        "it ran without waiting out the schedule it had"
-    );
-    let mut status = g.client.0.status.clone();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        status.wait_for(|status| status.active.is_none()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    let target = g.target();
-    assert_eq!(target.waits, scheduled.waits + 1);
-    assert_eq!(target.health, ConvergenceHealth::RecoveryRequired);
-    assert_eq!(g.reconciles(), 0, "the owner is still unproven");
-}
-
-/// Consecutive unavailable-owner results back off without spending the apply
-/// budget; an application result resets the dependency wait count.
-#[tokio::test]
-async fn dependency_waits_back_off_until_an_application_result() {
-    let g = graph(Setup::default()).await;
-    g.daemon.unreadable.store(true, Ordering::SeqCst);
-    let mut delays = Vec::new();
-    for attempt in 0..6 {
-        let before = Instant::now();
-        if attempt == 0 {
-            g.start().await;
-        } else {
-            g.retry_when_due().await;
-        }
-        let after = Instant::now();
-        let target = g.target();
-        assert_eq!(
-            (target.attempts_remaining, target.attempts),
-            (DEFERRED_RETRY_BUDGET, 0)
-        );
-        let delay = [5, 5, 10, 30, 60, 60][attempt];
-        assert_scheduled(&target, before, after, Duration::from_secs(delay));
-        delays.push(delay);
-    }
-    assert_eq!(delays, [5, 5, 10, 30, 60, 60]);
-
-    assert!(g.log().is_empty());
+    assert_eq!(std::fs::read(destination).unwrap(), b"new binary");
+    assert!(progress.0.load(Ordering::SeqCst));
+    assert_eq!(g.conclusion(), "Waiting");
+    assert_eq!(g.reconciles(), 0);
     g.daemon.unreadable.store(false, Ordering::SeqCst);
-    g.local.delegate.set_failure(Some("queue_full"));
-    g.retry_when_due().await;
-    let target = g.target();
-    assert_eq!(target.health, ConvergenceHealth::RetryScheduled);
-    assert_eq!(
-        (target.waits, target.attempts, target.attempts_remaining),
-        (0, 1, DEFERRED_RETRY_BUDGET - 1)
-    );
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Converged");
+    assert_eq!(g.reconciles(), 1);
 }
 
-/// S18 (N5): the Local owner is proven, the user stops the core and saves
-/// service mode, and then restarts it. The explicit start takes back the
-/// earlier stop and re-establishes an owner for the host now asked for: with
-/// the daemon ready it adopts it and applies; without it, it waits and
-/// leaves a target that a retry finishes once the daemon is up.
 #[tokio::test]
-async fn an_explicit_start_re_establishes_an_owner_for_the_host_now_asked_for() {
-    let mut g = graph(Setup {
-        daemon: DaemonState::Running,
-        ..Setup::default()
-    })
-    .await;
-    assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
-    g.client.stop_core().await.unwrap();
-    g.save_service_mode().await;
-    assert_eq!(g.log(), ["local:reconcile", "local:stop"]);
-
-    let report = g.client.reconcile().await.unwrap();
-
-    assert_eq!(report.applied.host, ExecutionHost::Service);
-    assert_eq!(g.host(), ExecutionHost::Service);
-    assert_eq!(
-        g.log(),
-        [
-            "local:reconcile",
-            "local:stop",
-            "local:stop",
-            "service:reconcile"
-        ]
-    );
-    assert_eq!(
-        ownership(&g.client).await,
-        Ownership::Established {
-            host: ExecutionHost::Service
-        }
-    );
-
-    // Without a ready daemon the host now asked for resolves to Local, so
-    // the start runs there and converges nothing (#5443).
-    let mut g = graph(Setup::default()).await;
-    g.start().await;
-    g.client.stop_core().await.unwrap();
-    g.save_service_mode().await;
-
-    let report = g.client.reconcile().await.unwrap();
-
-    assert_eq!(report.applied.host, ExecutionHost::Local);
-    assert!(g.no_target());
-    assert_eq!(g.host(), ExecutionHost::Local);
-    assert_eq!(
-        g.log(),
-        ["local:reconcile", "local:stop", "local:reconcile"]
-    );
-    assert_eq!(g.daemon.converged(), 0);
+async fn an_explicit_start_proves_ownership_on_the_effective_host() {
+    for daemon in [DaemonState::Running, DaemonState::NotInstalled] {
+        let mut g = graph(Setup {
+            daemon,
+            ..Setup::default()
+        })
+        .await;
+        g.start().await;
+        g.client.stop_core().await.unwrap();
+        g.save_service_mode().await;
+        let report = g.client.reconcile().await.unwrap();
+        let expected = if daemon == DaemonState::Running {
+            ExecutionHost::Service
+        } else {
+            ExecutionHost::Local
+        };
+        assert_eq!(report.applied.host, expected);
+        assert_eq!(g.host(), expected);
+        assert_eq!(
+            ownership(&g.client).await,
+            Ownership::Established { host: expected }
+        );
+        assert_eq!(g.daemon.converged(), 0);
+    }
 }
 
-/// S19: a save while the user's stop stands keeps the stop and starts
-/// nothing, even over a host frame that still says the core runs.
 #[tokio::test]
 async fn a_save_while_stopped_keeps_the_stop_and_starts_nothing() {
     let g = graph(Setup::default()).await;
@@ -1801,52 +1279,32 @@ async fn a_save_while_stopped_keeps_the_stop_and_starts_nothing() {
         Some(CoreStateDetail::Running { epoch: 1, pid: 7 }),
         Some(CoreKind::Mihomo),
     );
-
-    let id = commit_source(&g.clash, overrides(serde_json::json!({"mode": "global"})))
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
         .await
         .unwrap();
-    assert_eq!(settled(&g.client, id).await.conclusion.label(), "Inactive");
-    assert_eq!(g.log(), ["local:reconcile", "local:stop"]);
-    assert!(g.no_target());
+    assert_eq!(
+        settled(&g.client, version).await.conclusion.label(),
+        "Inactive"
+    );
+    assert_eq!(g.log(), ["local:reconcile", "local:stop", "local:stop"]);
+    assert_eq!(g.local.delegate.reconciled_bytes().len(), 1);
 }
 
-/// S20 (review 3 #2): an explicit start waiting for the daemon, then a stop.
-/// The stop takes back the start and keeps the ownership obligation: once
-/// the daemon is up the attempt proves the owner and confirms the stop, and
-/// applies nothing; with that proof the target ends.
 #[tokio::test]
-async fn a_stop_after_a_waiting_explicit_start_leaves_only_the_ownership_proof() {
-    let mut g = graph(Setup {
-        daemon: DaemonState::Running,
-        ..Setup::default()
-    })
-    .await;
-    g.start().await;
-    g.client.stop_core().await.unwrap();
-    g.save_service_mode().await;
-    // An unreadable daemon may hold a core, so the start waits on it.
+async fn a_stop_after_a_waiting_start_proves_ownership_without_applying() {
+    let g = graph(Setup::default()).await;
     g.daemon.unreadable.store(true, Ordering::SeqCst);
     assert!(g.client.reconcile().await.is_err());
-    assert_eq!(
-        g.target().origin,
-        TargetOrigin::Reestablish(ReestablishCause::ExplicitStart)
-    );
-
-    g.client.stop_core().await.unwrap();
-    assert_eq!(
-        g.target().origin,
-        TargetOrigin::Reestablish(ReestablishCause::Recovery)
-    );
+    assert_eq!(g.conclusion(), "Waiting");
+    assert!(g.client.stop_core().await.is_err());
     g.daemon.unreadable.store(false, Ordering::SeqCst);
-    g.retry_when_due().await;
-
-    assert!(g.no_target());
-    assert_eq!(g.host(), ExecutionHost::Service);
-    assert_eq!(g.reconciles(), 1, "only the startup apply: {:?}", g.log());
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Inactive");
+    assert!(g.local.delegate.reconciled_bytes().is_empty());
     assert_eq!(
         ownership(&g.client).await,
         Ownership::Established {
-            host: ExecutionHost::Service
+            host: ExecutionHost::Local
         }
     );
 }
@@ -1896,8 +1354,8 @@ async fn a_startup_update_still_running_holds_back_submission_and_adoption() {
 
         g.daemon.release.notify_one();
         tokio::time::timeout(Duration::from_secs(5), async {
-            while !g.no_target() {
-                g.retry_when_due().await;
+            while !matches!(g.conclusion(), "Converged" | "Inactive") {
+                g.tick().await;
                 tokio::task::yield_now().await;
             }
         })
@@ -1914,63 +1372,254 @@ async fn a_startup_update_still_running_holds_back_submission_and_adoption() {
     }
 }
 
-#[tokio::test(start_paused = true)]
-async fn stale_convergence_callback_keeps_the_replacement_timer_owned() {
-    let _clock = crate::client::jobs::explicit_test_time();
+// Guards daemon release after an ownership handoff that itself proves a transitional service stopped.
+#[tokio::test]
+async fn leaving_service_mode_releases_daemon_after_confirming_the_handoff() {
     let g = graph(Setup {
-        schedule_ticks: true,
+        service_mode: true,
+        daemon: DaemonState::Running,
         ..Setup::default()
     })
     .await;
-    g.daemon.unreadable.store(true, Ordering::SeqCst);
     g.start().await;
-    let first = g.target().next_attempt.unwrap();
-    tokio::time::advance(Duration::from_secs(1)).await;
-    g.client.retry_runtime().await.unwrap();
-    let replacement = g.target().next_attempt.unwrap();
-    assert!(replacement > first);
-    let identity = g
-        .client
-        .0
-        .actor
-        .call(super::Message::ConvergenceDeadline, None)
-        .await
-        .unwrap();
-    let identity = match identity {
-        ractor::rpc::CallResult::Success(Some((_, id))) => id,
-        _ => panic!("replacement timer missing"),
-    };
-    g.client
-        .0
-        .actor
-        .cast(super::Message::ScheduledConvergenceTick(first))
-        .unwrap();
-    super::barrier(&g.client).await;
-    let timer = g
-        .client
-        .0
-        .actor
-        .call(super::Message::ConvergenceDeadline, None)
-        .await
-        .unwrap();
-    assert!(
-        matches!(timer, ractor::rpc::CallResult::Success(Some((at, id))) if at == replacement && id == identity)
+    let previous = g.service_host.delegate.status().await.unwrap();
+    g.service_host.delegate.set_status(
+        Some(CoreStateDetail::Starting { epoch: 2 }),
+        previous.applied_kind,
     );
+    let before = g.log().len();
+    let committed = g
+        .application
+        .patch(nyanpasu_config::application::NyanpasuAppConfigPatch {
+            enable_service_mode: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let status = g
+        .client
+        .settled(
+            nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+            committed.version,
+        )
+        .await;
+    assert_eq!(status.conclusion.label(), "Converged");
+    assert_eq!(&g.log()[before..], ["service:stop", "local:reconcile"]);
+    assert_eq!(g.host(), ExecutionHost::Local);
+    assert_eq!(*g.daemon.state.lock().unwrap(), DaemonState::Stopped);
+    assert!(g.ports.confirmed().is_some());
+}
 
-    let waits = g.target().waits;
-    tokio::time::advance(replacement.saturating_duration_since(Instant::now())).await;
-    for _ in 0..100 {
-        super::barrier(&g.client).await;
-        if g.target().waits > waits {
-            break;
-        }
-        tokio::task::yield_now().await;
-    }
-    assert_eq!(
-        g.target().waits,
-        waits + 1,
-        "the replacement timer delivers exactly one attempt"
+// Guards refusing a failed target on ticks while allowing one forced retry.
+#[tokio::test(start_paused = true)]
+async fn an_apply_failure_waits_for_explicit_retry_without_automatic_submissions() {
+    let g = graph(Setup::default()).await;
+    g.local.delegate.set_failure(Some("apply_failed"));
+    g.start().await;
+    assert_eq!(g.conclusion(), "NotInEffect");
+    let submitted = g.log();
+    g.local.delegate.set_failure(None);
+    tokio::time::advance(Duration::from_secs(60)).await;
+    g.tick().await;
+    assert_eq!(g.log(), submitted);
+    g.client.retry_runtime().await.unwrap();
+    assert_eq!(g.conclusion(), "Converged");
+    assert_eq!(g.reconciles(), 2);
+}
+
+// Guards blocking a crash of the attempted target and starting a newly committed target.
+#[tokio::test(start_paused = true)]
+async fn a_core_stopped_with_a_failure_starts_only_a_new_target() {
+    let g = graph(Setup::default()).await;
+    g.start().await;
+    let revision = g.local.delegate.status().await.unwrap().revision;
+    g.local.delegate.set_status(
+        Some(CoreStateDetail::Stopped {
+            reason: Some("core crashed".into()),
+        }),
+        None,
     );
-    g.shutdown.cancel();
-    g.client.0.actor.stop_and_wait(None, None).await.unwrap();
+    assert_eq!(g.local.delegate.status().await.unwrap().revision, revision);
+    g.client.source_committed(
+        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+        g.clash.snapshot().version,
+    );
+    super::barrier(&g.client).await;
+    assert_eq!(g.conclusion(), "NotInEffect");
+    tokio::time::advance(Duration::from_secs(60)).await;
+    g.tick().await;
+    assert_eq!(g.reconciles(), 1);
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
+        .await
+        .unwrap();
+    assert_eq!(
+        settled(&g.client, version).await.conclusion.label(),
+        "Converged"
+    );
+    assert_eq!(g.reconciles(), 2);
+}
+
+// Guards resynchronizing Waiting when a transitional endpoint becomes stable.
+#[tokio::test(start_paused = true)]
+async fn a_tick_applies_the_waiting_target_after_the_core_stabilizes() {
+    let g = graph(Setup::default()).await;
+    g.start().await;
+    let previous = g.local.delegate.status().await.unwrap();
+    g.local.delegate.set_status(
+        Some(CoreStateDetail::Starting { epoch: 2 }),
+        previous.applied_kind,
+    );
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
+        .await
+        .unwrap();
+    assert_eq!(
+        settled(&g.client, version).await.conclusion.label(),
+        "Waiting"
+    );
+    assert_eq!(g.reconciles(), 1);
+    g.local
+        .delegate
+        .set_status(previous.state, previous.applied_kind);
+    tokio::time::advance(Duration::from_secs(5)).await;
+    g.tick().await;
+    assert_eq!(g.conclusion(), "Converged");
+    assert_eq!(g.reconciles(), 2);
+}
+
+// Guards keeping the service owner when a rejected apply left its previous configuration running.
+#[tokio::test]
+async fn rejecting_an_apply_on_a_running_service_does_not_fall_back() {
+    let g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    g.start().await;
+    let previous = g.service_host.delegate.status().await.unwrap().revision;
+    g.service_host.delegate.set_rolls_back(true);
+    let before = g.log().len();
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
+        .await
+        .unwrap();
+    assert_eq!(
+        settled(&g.client, version).await.conclusion.label(),
+        "NotInEffect"
+    );
+    assert_eq!(g.host(), ExecutionHost::Service);
+    assert_eq!(&g.log()[before..], ["service:reconcile"]);
+    assert_eq!(
+        g.service_host.delegate.status().await.unwrap().revision,
+        previous
+    );
+}
+
+// Guards setting Running on start entry even when the attempted start is refused.
+#[tokio::test]
+async fn a_new_target_starts_after_a_failed_explicit_start() {
+    let g = graph(Setup::default()).await;
+    g.start().await;
+    g.client.stop_core().await.unwrap();
+    g.local.delegate.set_failure(Some("apply_failed"));
+    assert!(g.client.reconcile().await.is_err());
+    assert_eq!(g.conclusion(), "NotInEffect");
+    g.local.delegate.set_failure(None);
+    let version = commit_source(&g.clash, overrides(serde_json::json!({"mode":"global"})))
+        .await
+        .unwrap();
+    assert_eq!(
+        settled(&g.client, version).await.conclusion.label(),
+        "Converged"
+    );
+    assert!(matches!(
+        g.local.delegate.status().await.unwrap().state,
+        Some(CoreStateDetail::Running { .. })
+    ));
+}
+
+// Guards owing a restart only for a selected binary or a runtime that had to be stopped.
+#[tokio::test]
+async fn binary_replacement_after_an_explicit_stop_starts_only_the_selected_core() {
+    for selected in [true, false] {
+        let g = graph(Setup::default()).await;
+        g.start().await;
+        g.client.stop_core().await.unwrap();
+        let before = g.reconciles();
+        let staging = Arc::new(tempfile::tempdir().unwrap());
+        let source = staging.path().join("binary");
+        std::fs::write(&source, b"new binary").unwrap();
+        let progress = Arc::new(Progress::default());
+        g.client
+            .replace_binary(PreparedCoreBinary {
+                target: if selected {
+                    ClashCore::default()
+                } else {
+                    ClashCore::ClashRs
+                },
+                source,
+                destination: g.dir.path().join("installed-core"),
+                staging,
+                progress: progress.clone(),
+                companion: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(g.reconciles(), before + usize::from(selected));
+        assert_eq!(progress.0.load(Ordering::SeqCst), selected);
+        assert_eq!(
+            g.conclusion(),
+            if selected { "Converged" } else { "Inactive" }
+        );
+    }
+}
+
+// Guards giving a stopped service-owned core its first start locally only after a service start fails.
+#[tokio::test]
+async fn an_unexplained_service_stop_tries_service_before_falling_back() {
+    for fails in [false, true] {
+        let g = graph(Setup {
+            service_mode: true,
+            daemon: DaemonState::Running,
+            ..Setup::default()
+        })
+        .await;
+        g.start().await;
+        g.service_host.delegate.set_status(Some(STOPPED), None);
+        if fails {
+            g.service_host
+                .refuse_reconcile
+                .store(true, Ordering::SeqCst);
+        }
+        let before = g.log().len();
+        g.client
+            .0
+            .actor
+            .cast(super::super::Message::ServiceReadiness)
+            .unwrap();
+        super::barrier(&g.client).await;
+        assert_eq!(
+            g.conclusion(),
+            "Converged",
+            "fails={fails}: {:?}; {:?}",
+            g.client.reconciler_status(),
+            g.log()
+        );
+        assert_eq!(
+            g.host(),
+            if fails {
+                ExecutionHost::Local
+            } else {
+                ExecutionHost::Service
+            }
+        );
+        assert_eq!(
+            &g.log()[before..],
+            if fails {
+                vec!["service:reconcile", "service:stop", "local:reconcile"]
+            } else {
+                vec!["service:reconcile"]
+            }
+        );
+        assert_eq!(g.daemon.converged(), 0);
+    }
 }

@@ -1,37 +1,15 @@
 //! Conclusions sampled by response waiters without involving the workflow mailbox.
+use std::{collections::VecDeque, sync::Arc};
+
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_runtime_values::{
-    mutation::ConfigDomain, runtime::Degradation, runtime_error::RuntimeError,
-};
+use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime::Degradation};
 use nyanpasu_state_engine::Version;
-use std::sync::Arc;
 
-#[derive(Clone, Debug)]
-pub(crate) enum Conclusion {
-    Converged,
-    Inactive,
-    NotInEffect { cause: Arc<RuntimeError> },
-    Waiting { cause: Arc<RuntimeError> },
-    Unknown { cause: Arc<RuntimeError> },
-    Closed,
-}
+use super::{mutation::RoundRecord, plan::Conclusion};
 
-impl Conclusion {
-    #[cfg(test)]
-    pub(super) fn label(&self) -> &'static str {
-        match self {
-            Self::Converged => "Converged",
-            Self::Inactive => "Inactive",
-            Self::NotInEffect { .. } => "NotInEffect",
-            Self::Waiting { .. } => "Waiting",
-            Self::Unknown { .. } => "Unknown",
-            Self::Closed => "Closed",
-        }
-    }
-}
-
+/// Source-engine versions read together with one round's committed inputs.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct EngineVersions {
+pub struct EngineVersions {
     pub application: Version,
     pub clash: Version,
     pub profiles: Version,
@@ -46,13 +24,16 @@ impl EngineVersions {
     }
 }
 
+/// The current round and the last published conclusion, including bounded history.
 #[derive(Clone, Debug)]
-pub(crate) struct ReconcilerStatus {
+pub struct ReconcilerStatus {
     pub seq: u64,
     pub active: Option<OperationId>,
     pub seen: EngineVersions,
     pub conclusion: Conclusion,
     pub degradations: Vec<Degradation>,
+    pub maintenance: Option<String>,
+    pub recent: VecDeque<RoundRecord>,
 }
 impl Default for ReconcilerStatus {
     fn default() -> Self {
@@ -61,9 +42,16 @@ impl Default for ReconcilerStatus {
             active: None,
             seen: EngineVersions::default(),
             conclusion: Conclusion::Unknown {
-                cause: Arc::new(RuntimeError::Isolated),
+                cause: Arc::new(
+                    nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                        reason: "runtime reconciliation has not started".to_owned(),
+                    }
+                    .build(),
+                ),
             },
             degradations: Vec::new(),
+            maintenance: None,
+            recent: VecDeque::new(),
         }
     }
 }

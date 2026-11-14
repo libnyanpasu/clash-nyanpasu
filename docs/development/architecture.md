@@ -487,6 +487,15 @@ State changes follow this order:
    their snapshots and effects notifications, then notify the runtime workflow. The facade
    waits on the workflow status watch for the committed engine version; an apply
    failure leaves the source committed and is reported as degradation.
+   Every committed-target apply uses `application_workflow::tcc::apply_prepared`,
+   including lifecycle starts, retries, service recovery and binary-replacement
+   restarts. It acquires any connection-interruption source before submission,
+   publishes products only after confirmed success and closes known port transitions,
+   and records the applied selection even when interruption fails. Rollback keeps
+   the previous confirmed ports; an unknown result invalidates them. Receipt
+   matching compares host, core revision, source hash and running epoch; router
+   generations do not identify a core process and are excluded. Shared round
+   maintenance releases an owed daemon after any handler moves ownership locally.
 5. Report post-commit side-effect failures as degraded results instead of silently rolling back persisted state.
 
 Prefer a migratable breaking change that updates callers over preserving an old configuration API.

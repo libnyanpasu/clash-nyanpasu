@@ -118,6 +118,8 @@ pub struct TestControlEndpoint {
     /// answering looks like to a caller that needs a fresh observation.
     status_fails: std::sync::atomic::AtomicBool,
     status_reads: std::sync::atomic::AtomicUsize,
+    instance_id: StdMutex<String>,
+    reconcile_outcome: StdMutex<nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind>,
 }
 
 /// The three things a host can say about a candidate document.
@@ -155,6 +157,10 @@ impl TestControlEndpoint {
             rolls_back: std::sync::atomic::AtomicBool::new(false),
             status_fails: std::sync::atomic::AtomicBool::new(false),
             status_reads: std::sync::atomic::AtomicUsize::new(0),
+            instance_id: StdMutex::new(uuid::Uuid::new_v4().to_string()),
+            reconcile_outcome: StdMutex::new(
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+            ),
         })
     }
 
@@ -177,7 +183,18 @@ impl TestControlEndpoint {
             application_workflow::startup::StartupOutcome::Ready,
             "fixture boot: {report:?}"
         );
+        #[cfg(test)]
+        client
+            .inner
+            .application_workflow
+            .settle_core_changes()
+            .await;
         self.fail.store(failed, std::sync::atomic::Ordering::SeqCst);
+        self.reset_tracking();
+    }
+
+    /// Clears observations after a fixture has established its running or stopped intent.
+    pub(crate) fn reset_tracking(&self) {
         self.submissions
             .store(0, std::sync::atomic::Ordering::SeqCst);
         self.checks.lock().unwrap().clear();
@@ -205,6 +222,10 @@ impl TestControlEndpoint {
             rolls_back: std::sync::atomic::AtomicBool::new(false),
             status_fails: std::sync::atomic::AtomicBool::new(false),
             status_reads: std::sync::atomic::AtomicUsize::new(0),
+            instance_id: StdMutex::new(uuid::Uuid::new_v4().to_string()),
+            reconcile_outcome: StdMutex::new(
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+            ),
         })
     }
 
@@ -292,7 +313,31 @@ impl TestControlEndpoint {
         state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
         applied_kind: Option<nyanpasu_core_manager::CoreKind>,
     ) {
-        *self.status_override.lock().unwrap() = (state, applied_kind);
+        let mut status = self.status_override.lock().unwrap();
+        if matches!(
+            state,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+        ) && !matches!(
+            status.0,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+        ) {
+            *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
+        }
+        *status = (state, applied_kind);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_reconcile_outcome(
+        &self,
+        outcome: nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind,
+    ) {
+        *self.reconcile_outcome.lock().unwrap() = outcome;
+    }
+
+    /// Replaces the running process without changing its revision or connection.
+    #[cfg(test)]
+    pub(crate) fn respawn_process(&self) {
+        *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
     }
 
     /// Scripts whether the next `Recover` submission fails (R6a tests).
@@ -388,7 +433,12 @@ impl TestControlEndpoint {
         self.reconciled.lock().unwrap().push(bytes.clone());
         let mut current = self.revision.lock().unwrap();
         if let Some(expected) = &request.expected_applied {
-            let stale = expected.epoch.get() != current.epoch
+            let stopped = matches!(
+                self.status_override.lock().unwrap().0,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+            );
+            let stale = stopped
+                || expected.epoch.get() != current.epoch
                 || expected.generation != current.generation
                 || expected.effective_hash != current.effective_hash;
             if stale {
@@ -398,23 +448,40 @@ impl TestControlEndpoint {
                     output: None,
                     error: Some(nyanpasu_ipc::api::core::v2::OperationErrorInfo {
                         kind: Some("revision_conflict".into()),
-                        message: format!(
-                            "revision conflict: expected epoch={} generation={} \
+                        message: if stopped {
+                            "revision conflict: actual revision is absent".to_owned()
+                        } else {
+                            format!(
+                                "revision conflict: expected epoch={} generation={} \
                              effective_hash={}, actual epoch={} generation={} \
                              effective_hash={}",
-                            expected.epoch.get(),
-                            expected.generation,
-                            expected.effective_hash,
-                            current.epoch,
-                            current.generation,
-                            current.effective_hash,
-                        ),
+                                expected.epoch.get(),
+                                expected.generation,
+                                expected.effective_hash,
+                                current.epoch,
+                                current.generation,
+                                current.effective_hash,
+                            )
+                        },
                         retryable: true,
                     }),
                 };
             }
         }
         let rolled_back = self.rolls_back.load(std::sync::atomic::Ordering::SeqCst);
+        let outcome = if rolled_back {
+            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
+        } else {
+            *self.reconcile_outcome.lock().unwrap()
+        };
+        if matches!(
+            outcome,
+            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
+                | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Restarted
+                | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Switched
+        ) {
+            *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
+        }
         if !rolled_back {
             current.generation += 1;
             *self.source_hash.lock().unwrap() = nyanpasu_core_manager::payload_digest(bytes);
@@ -433,11 +500,7 @@ impl TestControlEndpoint {
             output: Some(
                 nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(
                     nyanpasu_ipc::api::core::v2::ReconcileOutcomeInfo {
-                        outcome: if rolled_back {
-                            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
-                        } else {
-                            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
-                        },
+                        outcome,
                         revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                             epoch: applied.epoch,
                             generation: applied.generation,
@@ -527,7 +590,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let current = self.revision.lock().unwrap().clone();
         Ok(Some(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
-            instance_id: "test-instance".into(),
+            instance_id: self.instance_id.lock().unwrap().clone(),
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: current.epoch,
                 generation: current.generation,
@@ -555,6 +618,11 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let (state, applied_kind) = self.status_override.lock().unwrap().clone();
         Ok(crate::actor_v2::endpoint::CoreStatusSnapshot {
+            instance_id: matches!(
+                state,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+            )
+            .then(|| self.instance_id.lock().unwrap().clone()),
             controller: None,
             state,
             state_changed_at: 0,
@@ -958,4 +1026,53 @@ pub fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
         profile_files::fixed_profile_file_factory(ports),
         Arc::new(runtime_build),
     )
+}
+
+#[cfg(test)]
+mod revision_precondition_tests {
+    use super::*;
+
+    #[test]
+    fn a_stopped_core_rejects_a_historical_revision_precondition() {
+        use nyanpasu_core_manager::{
+            ConfigInput, CoreCommand, CoreCommandEnvelope, CoreKind, CoreSpec, Epoch,
+            InstanceOptions, OperationId, ReconcileRequest, RevisionId,
+        };
+        let endpoint = TestControlEndpoint::succeeding();
+        endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                reason: Some("crashed".into()),
+            }),
+            None,
+        );
+        let revision = endpoint.revision.lock().unwrap().clone();
+        let result = endpoint.operation(&crate::actor_v2::endpoint::CoreSubmission {
+            expected_owner: None,
+            core_type: None,
+            envelope: CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+                    core: CoreSpec {
+                        kind: CoreKind::Mihomo,
+                        binary_path: "mihomo".into(),
+                        version: None,
+                        features: vec![],
+                    },
+                    config: ConfigInput::Inline {
+                        bytes: b"proxies: []".to_vec(),
+                        expected_digest: None,
+                    },
+                    options: InstanceOptions::default(),
+                    expected_applied: Some(RevisionId {
+                        epoch: Epoch::new(revision.epoch).unwrap(),
+                        generation: revision.generation,
+                        effective_hash: revision.effective_hash,
+                    }),
+                })),
+            },
+        });
+        let error = result.error.unwrap();
+        assert_eq!(error.kind.as_deref(), Some("revision_conflict"));
+        assert!(error.message.contains("actual revision is absent"));
+    }
 }

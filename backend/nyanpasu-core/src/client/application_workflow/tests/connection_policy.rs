@@ -336,14 +336,13 @@ async fn close_failure_is_committed_degraded_and_not_replayed() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close() {
+async fn a_missing_source_is_degraded_while_a_user_stopped_core_saves_inactive() {
     for stopped in [false, true] {
         let f = Fixture::new(false).await;
         *f.endpoint.binding.lock().unwrap() = None;
         if stopped {
-            f.endpoint
-                .delegate
-                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+            f.client.stop_core().await.unwrap();
+            f.calls.events.lock().unwrap().clear();
         }
         (async {
             let outcome = f
@@ -361,11 +360,7 @@ async fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
-                if stopped {
-                    Vec::<&str>::new()
-                } else {
-                    vec!["reconcile"]
-                }
+                if stopped { vec![] } else { vec!["reconcile"] }
             );
         })
         .await;
@@ -656,17 +651,13 @@ async fn rejected_profile_activation_does_not_reconcile_or_interrupt() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
+async fn a_profile_without_a_source_is_degraded_unless_the_user_stopped_the_core() {
     for stopped in [false, true] {
         let f = Fixture::new(false).await;
         *f.endpoint.binding.lock().unwrap() = None;
-        if stopped {
-            f.endpoint
-                .delegate
-                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
-        }
         (async {
             let uid = add_profile(&f).await;
+            if stopped { f.client.stop_core().await.unwrap(); f.calls.events.lock().unwrap().clear(); }
             let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
             if stopped {
                 assert!(outcome.degradations().is_empty());
@@ -678,11 +669,7 @@ async fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interrupti
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
-                if stopped {
-                    Vec::<&str>::new()
-                } else {
-                    vec!["reconcile"]
-                }
+                if stopped { vec![] } else { vec!["reconcile"] }
             );
         })
         .await;
@@ -999,7 +986,6 @@ impl RecordingBuilder {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
-    use crate::client::core_lifecycle::ports::RuntimePreparationPort;
     use nyanpasu_config::clash::config::ClashControlChannel;
     let f = Fixture::new(false).await;
     (async {
@@ -1027,15 +1013,17 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         f.client.patch_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
         let preparation = super::RuntimePreparation::new(
-            f.client.inner.application.snapshot_handle(),
-            f.client.inner.clash_config.snapshot_handle(),
             f.client.inner.profiles.snapshot_handle(),
             f.client.inner.profiles.content_lock(),
             builder.clone(),
             f.client.inner.ports.clone(),
         );
         let prepared = preparation
-            .prepare_committed(committed.snapshot.clone(), original)
+            .prepare(
+                committed.snapshot.clone(),
+                original,
+                f.client.inner.application.snapshot().state,
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -1044,7 +1032,18 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         );
         assert!(prepared.intent.local_ipc.keep_http_controller);
         assert_eq!(prepared.snapshot.revision.get(), 1);
-        let latest = preparation.prepare_latest().await.unwrap();
+        let latest = preparation
+            .prepare_inputs(
+                preparation
+                    .capture_committed_inputs(
+                        f.client.inner.application.snapshot().state,
+                        f.client.get_clash_config().await.unwrap(),
+                    )
+                    .await
+                    .1,
+            )
+            .await
+            .unwrap();
         assert_eq!(
             latest.intent.local_ipc.policy,
             nyanpasu_core_manager::LocalIpcPolicy::Prefer
@@ -1263,4 +1262,131 @@ async fn invalid_subscription_refresh_preserves_files_and_records_rejection() {
         matches!(&status.outcome, nyanpasu_runtime_values::configuration::SourceOutcome::Rejected { message, .. } if message.contains("subscription rejected"))
     );
     assert!(f.calls.events.lock().unwrap().is_empty());
+}
+
+// Guards acquiring the source before a deferred retry and updating selection even when close fails.
+#[tokio::test]
+async fn deferred_mode_change_interrupts_connections_once_on_retry() {
+    for fail_close in [false, true] {
+        let f = Fixture::new(false).await;
+        let previous = f.endpoint.delegate.status().await.unwrap();
+        f.endpoint.delegate.set_status(
+            Some(CoreStateDetail::Starting { epoch: 2 }),
+            previous.applied_kind,
+        );
+        let outcome = f
+            .client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
+        assert_eq!(
+            super::commit_first::receipt(&outcome).runtime,
+            nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred
+        );
+        assert!(f.calls.events.lock().unwrap().is_empty());
+        assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
+        f.endpoint
+            .delegate
+            .set_status(previous.state, previous.applied_kind);
+        f.calls.fail_close.store(fail_close, Ordering::SeqCst);
+        f.client
+            .inner
+            .application_workflow
+            .retry_runtime()
+            .await
+            .unwrap();
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        let status = f
+            .client
+            .inner
+            .application_workflow
+            .settled(
+                nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+                f.client.inner.clash_config.snapshot().version,
+            )
+            .await;
+        assert_eq!(status.conclusion.label(), "Converged");
+        assert_eq!(status.degradations.len(), usize::from(fail_close));
+        if fail_close {
+            assert!(matches!(
+                status.degradations[0].reason,
+                nyanpasu_runtime_values::runtime::DegradationReason::ModeInterruptionFailed { .. }
+            ));
+        }
+        f.client
+            .inner
+            .application_workflow
+            .retry_runtime()
+            .await
+            .unwrap();
+        f.client.reconcile_core().await.unwrap();
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile", "reconcile"]
+        );
+        f.client.request_shutdown();
+        f.client.wait_shutdown().await;
+    }
+}
+
+// Guards the same selection comparison for Profiles regardless of which handler applies it.
+#[tokio::test]
+async fn deferred_profile_change_interrupts_connections_once_on_retry() {
+    for fail_close in [false, true] {
+        let f = Fixture::new(false).await;
+        let uid = add_profile(&f).await;
+        let previous = f.endpoint.delegate.status().await.unwrap();
+        f.endpoint.delegate.set_status(
+            Some(CoreStateDetail::Starting { epoch: 2 }),
+            previous.applied_kind,
+        );
+        let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
+        assert_eq!(
+            super::commit_first::receipt(&outcome).runtime,
+            nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred
+        );
+        assert!(f.calls.events.lock().unwrap().is_empty());
+        assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
+        f.endpoint
+            .delegate
+            .set_status(previous.state, previous.applied_kind);
+        f.calls.fail_close.store(fail_close, Ordering::SeqCst);
+        f.client
+            .inner
+            .application_workflow
+            .retry_runtime()
+            .await
+            .unwrap();
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        let status = f
+            .client
+            .inner
+            .application_workflow
+            .settled(
+                nyanpasu_runtime_values::mutation::ConfigDomain::Profiles,
+                f.client.inner.profiles.snapshot_handle().load().version,
+            )
+            .await;
+        assert_eq!(status.conclusion.label(), "Converged");
+        assert_eq!(status.degradations.len(), usize::from(fail_close));
+        if fail_close {
+            assert!(matches!(
+                status.degradations[0].reason,
+                nyanpasu_runtime_values::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+            ));
+        }
+        f.client
+            .inner
+            .application_workflow
+            .retry_runtime()
+            .await
+            .unwrap();
+        f.client.reconcile_core().await.unwrap();
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile", "reconcile"]
+        );
+        f.client.request_shutdown();
+        f.client.wait_shutdown().await;
+    }
 }

@@ -33,11 +33,8 @@ struct Graph {
 }
 
 async fn graph(dir: &tempfile::TempDir) -> Graph {
-    use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
+    use crate::client::test_support::test_materialization_port;
     use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
-    let (application, _, clash) =
-        test_typed_config_clients(dir, crate::state::mutation::MutationCoordinator::isolated())
-            .await;
     let profiles = crate::client::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
@@ -56,8 +53,6 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
     let endpoint = TestControlEndpoint::succeeding();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
     let preparation = RuntimePreparation::new(
-        application.snapshot_handle(),
-        clash.snapshot_handle(),
         profiles.snapshot_handle(),
         profiles.content_lock(),
         Arc::new(TestRuntimeBuildPort::from_directory(
@@ -82,7 +77,15 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
 async fn the_check_and_the_apply_consume_the_same_bytes() {
     let dir = tempfile::tempdir().unwrap();
     let graph = graph(&dir).await;
-    let prepared = graph.preparation.prepare_latest().await.unwrap();
+    let prepared = graph
+        .preparation
+        .prepare(
+            Arc::new(nyanpasu_config::profile::Profiles::default()),
+            crate::client::test_support::test_clash_config(),
+            nyanpasu_config::application::NyanpasuAppConfig::default(),
+        )
+        .await
+        .unwrap();
     let spec = graph
         .preparation
         .core_spec(&prepared.snapshot.target_core)
@@ -190,7 +193,15 @@ async fn an_unreachable_check_is_unavailable_not_a_rejection() {
             "check service is restarting",
             true,
         )));
-    let prepared = graph.preparation.prepare_latest().await.unwrap();
+    let prepared = graph
+        .preparation
+        .prepare(
+            Arc::new(nyanpasu_config::profile::Profiles::default()),
+            crate::client::test_support::test_clash_config(),
+            nyanpasu_config::application::NyanpasuAppConfig::default(),
+        )
+        .await
+        .unwrap();
     let spec = graph
         .preparation
         .core_spec(&prepared.snapshot.target_core)
@@ -227,7 +238,15 @@ async fn the_cores_own_verdict_is_a_rejection() {
             "unknown field `nonsense`",
             false,
         )));
-    let prepared = graph.preparation.prepare_latest().await.unwrap();
+    let prepared = graph
+        .preparation
+        .prepare(
+            Arc::new(nyanpasu_config::profile::Profiles::default()),
+            crate::client::test_support::test_clash_config(),
+            nyanpasu_config::application::NyanpasuAppConfig::default(),
+        )
+        .await
+        .unwrap();
     let spec = graph
         .preparation
         .core_spec(&prepared.snapshot.target_core)
@@ -267,7 +286,15 @@ async fn the_runtimes_own_check_timeout_is_unavailable_not_a_rejection() {
             "config check failed: config check timed out after 30s",
             false,
         )));
-    let prepared = graph.preparation.prepare_latest().await.unwrap();
+    let prepared = graph
+        .preparation
+        .prepare(
+            Arc::new(nyanpasu_config::profile::Profiles::default()),
+            crate::client::test_support::test_clash_config(),
+            nyanpasu_config::application::NyanpasuAppConfig::default(),
+        )
+        .await
+        .unwrap();
     let spec = graph
         .preparation
         .core_spec(&prepared.snapshot.target_core)

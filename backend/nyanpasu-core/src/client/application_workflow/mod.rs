@@ -1,36 +1,48 @@
-//! Runtime application, connection interruption, host changes,
-//! binary installation, and shutdown share one workflow mailbox.
+//! Runtime application and lifecycle operations share one actor mailbox.
 pub(crate) mod adapters;
 pub(super) mod check;
 mod committed;
-pub(super) mod status;
-pub(crate) use status::{Conclusion, EngineVersions, ReconcilerStatus};
-mod attempt;
+pub mod status;
+pub use plan::Conclusion;
+pub use status::{EngineVersions, ReconcilerStatus};
 pub mod inputs;
 pub mod mutation;
+mod plan;
 pub mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
 pub mod startup;
 mod tcc;
-mod workflow;
-
 #[cfg(test)]
 mod tests;
+mod workflow;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
-use std::sync::Arc;
-
+use mutation::RoundRecord;
+use nyanpasu_contracts::core_install::BinaryInstaller;
 use nyanpasu_core_manager::OperationId;
+#[cfg(test)]
+use nyanpasu_runtime_values::execution_host::ExecutionHost;
+use nyanpasu_runtime_values::{
+    core_status::ServiceHostStatus,
+    runtime_error::{OwnerUnresponsiveSnafu, RuntimeError},
+};
 use nyanpasu_state_engine::StateSnapshot;
 use nyanpasu_updater::PreparedCoreBinary;
+use plan::Trigger;
+use ports::RuntimeBuildPort;
+use preparation::RuntimePreparation;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use workflow::ApplicationWorkflow;
 
 use super::{
     core_lifecycle::{
-        Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
-        ServiceRecovery,
+        CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL, ServiceRecovery,
     },
     runtime,
 };
@@ -41,77 +53,47 @@ use crate::actor_v2::{
     facade::{CoreFacade, ReconcileReport, StopReport},
     service_actor::ServiceClient,
 };
-use mutation::{MutationJournal, RoundRecord};
-use nyanpasu_contracts::core_install::BinaryInstaller;
-#[cfg(test)]
-use nyanpasu_runtime_values::execution_host::ExecutionHost;
-use nyanpasu_runtime_values::{
-    core_status::ServiceHostStatus,
-    runtime_error::{OwnerUnresponsiveSnafu, RuntimeError},
-};
-use ports::RuntimeBuildPort;
-use preparation::RuntimePreparation;
-use workflow::ApplicationWorkflow;
 
-/// How many recent results the status and the journal keep.
 const HISTORY_LEN: usize = 32;
-
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
 }
-
 #[derive(Debug, Clone, Default)]
 pub struct CoreLifecycleStatus {
     pub active: Option<OperationId>,
     pub uncertain: bool,
 }
-
-/// Work serialized by the execution domain.
 pub(super) enum Command {
-    /// Proves who owns the runtime and applies the committed configuration,
-    /// once per session (T10 §1).
-    StartupReconcile,
-    Core(CoreCommand),
-    RetryRuntime {
-        explicit: bool,
-    },
-    /// The daemon's readiness changed: move the core to the host it now
-    /// resolves to, if it sits on the other one.
-    FollowService,
+    Startup,
+    Start,
+    Retry,
+    StopCore,
+    ReplaceCoreBinary(PreparedCoreBinary),
+    InstallService,
+    StartService,
+    StopService,
+    RestartService,
+    UninstallService,
     PrepareService,
     InterruptConnections,
+    #[cfg(test)]
+    ChangeHost(ExecutionHost),
 }
-
-/// Settles a command that was refused before it ran. An installation owes
-/// its progress observer the same terminal answer as its caller.
 fn refuse(command: Command, error: &RuntimeError) {
-    if let Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) = command {
+    if let Command::ReplaceCoreBinary(artifact) = command {
         artifact.progress.finished(Some(&error.to_string()));
     }
 }
-
 struct Response {
     id: OperationId,
-    reply: Option<RpcReplyPort<Result<Output, RuntimeError>>>,
+    reply: RpcReplyPort<Result<Output, RuntimeError>>,
 }
-
-impl Response {
-    /// Work the actor starts itself, which nobody waits for.
-    fn background() -> Self {
-        Self {
-            id: OperationId::generate(),
-            reply: None,
-        }
-    }
-}
-
 struct Request {
     command: Command,
     response: Response,
 }
-
 enum Message {
     Request(Request),
     Checked(super::core_lifecycle::ports::PreparedRuntime),
@@ -119,68 +101,31 @@ enum Message {
         domain: nyanpasu_runtime_values::mutation::ConfigDomain,
         version: nyanpasu_state_engine::Version,
     },
-    RecoveryTick,
-    /// The daemon became ready, a new daemon became ready, or it stopped
-    /// being ready. The handler reads the current status itself.
+    Tick,
     ServiceReadiness,
-    /// The deferred target's next attempt may be due.
-    ConvergenceTick,
-    ScheduledConvergenceTick(tokio::time::Instant),
+    CoreChanged,
+    #[cfg(test)]
+    RecoveryAttempts(RpcReplyPort<u8>),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
     #[cfg(test)]
-    ConvergenceDeadline(RpcReplyPort<Option<(tokio::time::Instant, tokio::task::Id)>>),
-    /// Which owner the workflow holds proven.
-    #[cfg(test)]
     Ownership(RpcReplyPort<Ownership>),
-    /// How many readiness notifications were handled.
     #[cfg(test)]
     ReadinessSeen(RpcReplyPort<u64>),
 }
-
 struct ApplicationWorkflowActor;
-
-type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>;
-
 struct ApplicationWorkflowState {
+    core_change_pending: Arc<AtomicBool>,
     workflow: ApplicationWorkflow,
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
-    /// The one wake-up for the deferred target's next attempt, with the
-    /// instant it was armed for.
-    convergence_timer: Option<(tokio::time::Instant, WakeUp)>,
     schedule_ticks: bool,
-    /// Whether the ServiceActor's health check was last turned on.
     health_check: bool,
-    /// How many readiness notifications were handled, for a test to wait on.
     #[cfg(test)]
     readiness_seen: u64,
-    /// A child of the root shutdown token. Once cancelled, every command is
-    /// refused at entry; the running one finishes first either way.
     closing_token: CancellationToken,
     status: watch::Sender<CoreLifecycleStatus>,
-    journal: watch::Sender<MutationJournal>,
     reconciler: watch::Sender<ReconcilerStatus>,
-    /// What the journal last announced; see [`PublishedView`].
-    published: PublishedView,
 }
-
-/// The parts of this actor that `configuration_status` reads. The journal
-/// sequence advances only when these change, so idle ticks publish nothing.
-#[derive(Default, PartialEq)]
-struct PublishedView {
-    active: Option<OperationId>,
-    uncertain: bool,
-    maintenance: Option<String>,
-    recovery: Option<attempt::RecoveryView>,
-    deferred: Option<(
-        OperationId,
-        nyanpasu_runtime_values::configuration::ConvergenceHealth,
-        u32,
-        u8,
-        String,
-    )>,
-}
-
 pub(super) struct ApplicationWorkflowArgs {
     pub revisions: runtime::RuntimeRevisionAllocator,
     pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
@@ -198,7 +143,7 @@ pub(super) struct ApplicationWorkflowArgs {
     pub ports: Arc<super::SessionPortResolver>,
     pub installer: Arc<dyn BinaryInstaller>,
     /// Who owns the runtime when the workflow starts. Production starts
-    /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
+    /// `Unproven` and lets startup prove it.
     pub ownership: Ownership,
     /// The config dir this instance installs the daemon with, so the workflow
     /// never retires or stops a daemon another instance of the app runs.
@@ -210,171 +155,86 @@ pub(super) struct ApplicationWorkflowArgs {
 }
 
 struct ActorArgs {
+    core_change_pending: Arc<AtomicBool>,
     workflow: ApplicationWorkflow,
     status: watch::Sender<CoreLifecycleStatus>,
-    journal: watch::Sender<MutationJournal>,
     reconciler: watch::Sender<ReconcilerStatus>,
     schedule_ticks: bool,
 }
-
 impl ApplicationWorkflowState {
-    /// Admission is closed once the shutdown token is cancelled. The token is
-    /// read directly, so a command queued behind the running one is refused
-    /// whenever it arrives.
     fn closing(&self) -> bool {
         self.closing_token.is_cancelled()
     }
-
-    /// Automatic work runs only while the domain is open and settled.
-    fn automatic_work_allowed(&self) -> bool {
-        !self.closing() && !self.workflow.isolated()
-    }
-
-    async fn request(&mut self, Request { command, response }: Request) {
-        if self.closing() {
-            self.reject(command, response, RuntimeError::ShuttingDown);
-        } else if self.workflow.isolated()
-            && !matches!(command, Command::RetryRuntime { explicit: true })
-        {
-            let error = RuntimeError::Isolated;
-            // A refused first startup still hands every owner its full
-            // desired value, once (T10 §1.9).
-            if matches!(command, Command::StartupReconcile) {
-                self.workflow.startup_unsettled(response.id, &error);
-            }
-            self.reject(command, response, error);
-        } else {
-            self.run(command, response).await;
-        }
-    }
-
-    /// Runs one admitted command to its end. The mailbox is the only queue:
-    /// the next command starts once this one has settled.
-    async fn run(&mut self, command: Command, response: Response) {
-        self.start(response.id);
-        let progress = match &command {
-            Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) => {
-                Some(artifact.progress.clone())
-            }
-            _ => None,
-        };
-        self.workflow.sampled = None;
-        let trigger = match &command {
-            Command::StartupReconcile if self.workflow.startup.is_none() => Some("Startup"),
-            Command::Core(CoreCommand::Reconcile) => Some("Start"),
-            Command::Core(CoreCommand::ReplaceCoreBinary(_)) => Some("BinaryReplaced"),
-            Command::Core(CoreCommand::RecoverServiceEndpoint) => Some("ServiceRecovery"),
-            Command::RetryRuntime { .. } => Some("RetryRuntime"),
-            Command::FollowService => Some("ServiceReadiness"),
-            _ => None,
-        };
-        let result = self.workflow.execute(response.id, command).await;
-        let seen = self.workflow.sampled.take();
-        if trigger.is_some() || seen.is_some() {
-            let conclusion = if self.workflow.isolated() {
-                Conclusion::Unknown {
-                    cause: Arc::new(RuntimeError::Isolated),
-                }
-            } else if let Some(error) = result.as_ref().err() {
-                Conclusion::NotInEffect {
-                    cause: Arc::new(
-                        nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
-                            reason: error.to_string(),
-                        }
-                        .build(),
-                    ),
-                }
-            } else if let Some(target) = &self.workflow.deferred {
-                Conclusion::Waiting {
-                    cause: Arc::new(
-                        nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
-                            reason: target.cause.message.clone(),
-                        }
-                        .build(),
-                    ),
-                }
-            } else if self.workflow.lifecycle.stop_requested() {
-                Conclusion::Inactive
-            } else {
-                Conclusion::Converged
-            };
-            if let Some(trigger) = trigger {
-                self.publish_journal(Some(RoundRecord::new(response.id, trigger, &conclusion)));
-            }
-            if let Some(seen) = seen {
-                self.reconciler.send_modify(|status| {
-                    status.seq = status
-                        .seq
-                        .checked_add(1)
-                        .expect("reconciler sequence must not overflow");
-                    status.seen = seen;
-                    status.conclusion = conclusion;
-                    status.degradations.clear();
-                });
-            }
-        }
-        if let Some(progress) = progress {
-            let error = result.as_ref().err().map(ToString::to_string);
-            progress.finished(error.as_deref());
-        }
-        self.settle(response, result);
-    }
-
-    /// Refuses a command before it runs. Nothing was tried, so the runtime is
-    /// where it was.
-    fn reject(&mut self, command: Command, response: Response, error: RuntimeError) {
-        refuse(command, &error);
-        self.settle(response, Err(error));
-    }
-
     fn start(&mut self, id: OperationId) {
         self.status.send_modify(|status| status.active = Some(id));
-        self.reconciler
-            .send_modify(|status| status.active = Some(id));
-        self.publish_journal(None);
+        self.reconciler.send_modify(|status| {
+            status.active = Some(id);
+            status.seq = status
+                .seq
+                .checked_add(1)
+                .expect("reconciler sequence must not overflow");
+        });
     }
-
-    /// Publishes that the operation ended, then answers. Published first: a
-    /// caller that observes its own reply must not read itself as running.
-    fn settle(&mut self, response: Response, result: Result<Output, RuntimeError>) {
-        self.record(None);
-        if let Some(reply) = response.reply {
-            let _ = reply.send(result);
-        } else if let Err(error) = result {
-            tracing::warn!(%error, "background core lifecycle operation failed");
-        }
-    }
-
-    /// Records that the operation finished in the status and the journal.
-    fn record(&mut self, round: Option<RoundRecord>) {
-        let uncertain = self.workflow.isolated();
+    fn publish_round(&mut self, id: OperationId, trigger: Trigger, round: startup::Round) {
+        let uncertain = matches!(round.conclusion, Conclusion::Unknown { .. });
         self.status.send_modify(|status| {
             status.active = None;
             status.uncertain = uncertain;
         });
-        self.reconciler.send_modify(|status| status.active = None);
-        self.publish_journal(round);
+        let degradations = std::mem::take(&mut self.workflow.round_degradations);
+        let maintenance = self.workflow.maintenance();
+        self.reconciler.send_modify(|status| {
+            status.seq = status
+                .seq
+                .checked_add(1)
+                .expect("reconciler sequence must not overflow");
+            status.active = None;
+            status.seen = round.seen;
+            status.conclusion = round.conclusion;
+            // A source notification can follow the notification that already applied
+            // its version. Its waiter still needs the degradations of that application.
+            if round.applied.is_some()
+                || !matches!(status.conclusion, Conclusion::Converged)
+                || !degradations.is_empty()
+            {
+                status.degradations = degradations;
+            }
+            status.maintenance = maintenance;
+            if status.recent.len() == HISTORY_LEN {
+                status.recent.pop_front();
+            }
+            status
+                .recent
+                .push_back(RoundRecord::new(id, trigger.label(), &status.conclusion));
+        });
     }
-
-    /// Moves the core to the host the rule resolves to now, if it sits on
-    /// the other one. It runs after every command and every service status
-    /// change, and reads only current facts, so a change it missed is seen
-    /// the next time and a repeated run changes nothing (#5443).
-    async fn follow_service(&mut self) {
-        if !self.automatic_work_allowed() {
+    async fn round(&mut self, trigger: Trigger) {
+        let id = OperationId::generate();
+        self.start(id);
+        let round = self.workflow.reconcile_round(id, trigger).await;
+        self.publish_round(id, trigger, round);
+    }
+    async fn request(&mut self, Request { command, response }: Request) {
+        if matches!(command, Command::Startup)
+            && let Some(report) = &self.workflow.startup
+        {
+            let _ = response
+                .reply
+                .send(Ok(Output::Startup(Box::new(report.clone()))));
             return;
         }
-        self.workflow.note_service_core_stopped().await;
-        if self.workflow.service_host_change_due() {
-            self.run(Command::FollowService, Response::background())
-                .await;
+        let progress = match &command {
+            Command::ReplaceCoreBinary(artifact) => Some(artifact.progress.clone()),
+            _ => None,
+        };
+        self.start(response.id);
+        let (round, trigger, result) = self.workflow.execute(response.id, command).await;
+        self.publish_round(response.id, trigger, round);
+        if let Some(progress) = progress {
+            progress.finished(result.as_ref().err().map(ToString::to_string).as_deref());
         }
+        let _ = response.reply.send(result);
     }
-
-    /// Keeps the ServiceActor's health check on exactly while service mode
-    /// is preferred. Every message checks, so a commit that changed the
-    /// preference is followed by the next one at the latest -- the recovery
-    /// tick bounds that. Tests that drive ticks by hand leave it off.
     fn sync_health_check(&mut self) {
         let wanted = self.schedule_ticks
             && self
@@ -392,175 +252,101 @@ impl ApplicationWorkflowState {
                 .set_service_health_check(wanted);
         }
     }
-
-    /// Arms the one wake-up for the deferred target's next attempt. Only a
-    /// command moves `next_attempt`, and this runs after every message, so
-    /// the wake-up follows each write.
-    fn arm_convergence(&mut self, myself: &ActorRef<Message>) {
-        let due = if self.schedule_ticks && self.automatic_work_allowed() {
-            self.workflow
-                .deferred
-                .as_ref()
-                .and_then(|target| target.next_attempt)
-        } else {
-            None
-        };
-        if self.convergence_timer.as_ref().map(|(at, _)| *at) == due {
-            return;
-        }
-        if let Some((_, timer)) = self.convergence_timer.take() {
-            timer.abort();
-        }
-        self.convergence_timer = due.map(|at| {
-            let wait = at.saturating_duration_since(tokio::time::Instant::now());
-            (
-                at,
-                myself.send_after(wait, move || Message::ScheduledConvergenceTick(at)),
-            )
-        });
-    }
-
-    fn publish_journal(&mut self, round: Option<RoundRecord>) {
-        let workflow = &self.workflow;
-        let view = {
-            let status = self.status.borrow();
-            PublishedView {
-                active: status.active,
-                uncertain: status.uncertain,
-                maintenance: workflow.maintenance(),
-                recovery: workflow.recovery_view(),
-                deferred: workflow.deferred.as_ref().map(|d| {
-                    (
-                        d.operation_id,
-                        d.health,
-                        d.attempts,
-                        d.attempts_remaining,
-                        d.cause.message.clone(),
-                    )
-                }),
-            }
-        };
-        let changed = round.is_some() || view != self.published;
-        self.journal.send_if_modified(|journal| {
-            if changed {
-                journal.event_seq += 1;
-            }
-            if let Some(round) = round {
-                if journal.completed.len() == HISTORY_LEN {
-                    journal.completed.pop_front();
-                }
-                journal.completed.push_back(round);
-            }
-            journal.recovery = workflow.recovery_view();
-            journal.deferred = workflow.deferred.clone();
-            journal.maintenance = workflow.maintenance();
-            changed
-        });
-        self.published = view;
-    }
 }
-
 impl Actor for ApplicationWorkflowActor {
     type Msg = Message;
     type State = ApplicationWorkflowState;
     type Arguments = ActorArgs;
-
     async fn pre_start(
         &self,
         myself: ActorRef<Message>,
         args: ActorArgs,
     ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
         Ok(ApplicationWorkflowState {
+            core_change_pending: args.core_change_pending,
             closing_token: args.workflow.lifecycle.closing.clone(),
             workflow: args.workflow,
             recovery_timer: args
                 .schedule_ticks
-                .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
-            convergence_timer: None,
+                .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::Tick)),
             schedule_ticks: args.schedule_ticks,
             health_check: false,
             #[cfg(test)]
             readiness_seen: 0,
             status: args.status,
-            journal: args.journal,
             reconciler: args.reconciler,
-            published: PublishedView::default(),
         })
     }
-
     async fn handle(
         &self,
-        myself: ActorRef<Message>,
+        _myself: ActorRef<Message>,
         message: Message,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
-        let message = match message {
-            Message::ScheduledConvergenceTick(at) => {
-                if state
-                    .convergence_timer
-                    .as_ref()
-                    .is_none_or(|(due, _)| *due != at)
-                {
-                    return Ok(());
-                }
-                Message::ConvergenceTick
-            }
-            message => message,
-        };
         state.sync_health_check();
         match message {
-            Message::ScheduledConvergenceTick(_) => unreachable!(),
+            Message::Request(request) => state.request(request).await,
+            // Only a cache for the round that the commit notification starts:
+            // nothing is committed yet, so there is nothing to reconcile.
             Message::Checked(prepared) => state.workflow.checked = Some(prepared),
             Message::SourceCommitted { domain, version } => {
-                state.source_committed(domain, version).await;
-            }
-            Message::Request(request) => {
-                state.request(request).await;
-                state.follow_service().await;
-            }
-            Message::RecoveryTick => {
-                if state.automatic_work_allowed() && state.workflow.lifecycle.recovery_due() {
-                    let command = Command::Core(CoreCommand::RecoverServiceEndpoint);
-                    state.run(command, Response::background()).await;
-                }
+                state.round(Trigger::SourceCommitted).await;
+                debug_assert!(
+                    state.reconciler.borrow().seen.of(domain).as_ref() >= version.as_ref(),
+                    "notification follows snapshot publication"
+                );
             }
             Message::ServiceReadiness => {
                 #[cfg(test)]
                 {
                     state.readiness_seen += 1;
                 }
-                state.follow_service().await;
+                state.round(Trigger::ServiceReadiness).await;
             }
-            Message::ConvergenceTick => {
-                // Whichever wake-up this was, it has fired: the target is read
-                // afresh, and the next one is armed from what it says.
-                if let Some((_, timer)) = state.convergence_timer.take() {
-                    timer.abort();
-                }
-                if state.automatic_work_allowed()
-                    && state
-                        .workflow
-                        .deferred
-                        .as_ref()
-                        .and_then(|target| target.next_attempt)
-                        .is_some_and(|at| at <= tokio::time::Instant::now())
-                {
-                    let command = Command::RetryRuntime { explicit: false };
-                    state.run(command, Response::background()).await;
-                }
+            Message::CoreChanged => {
+                state.core_change_pending.store(false, Ordering::Release);
+                state.round(Trigger::CoreChanged).await;
             }
-            #[cfg(test)]
-            Message::ConvergenceDeadline(reply) => {
-                let _ = reply.send(
+            Message::Tick => {
+                let mut pending_round = None;
+                // An unresolved action must not spend or pause endpoint recovery.
+                if state.workflow.lifecycle.core.pending_action().is_some() {
+                    let id = OperationId::generate();
+                    state.start(id);
+                    let round = state.workflow.begin_round().await;
+                    if !round.ready {
+                        state.publish_round(id, Trigger::Tick, round);
+                        return Ok(());
+                    }
+                    pending_round = Some((id, round));
+                }
+                let mut reconnected = false;
+                if !state.closing() && state.workflow.lifecycle.recovery_due() {
+                    let result = state.workflow.lifecycle.recover_service_endpoint().await;
+                    reconnected = matches!(result, Ok(true));
                     state
-                        .convergence_timer
-                        .as_ref()
-                        .map(|(at, timer)| (*at, timer.id())),
+                        .workflow
+                        .lifecycle
+                        .finish_service_recovery(result.as_ref().err());
+                }
+                let resync = matches!(
+                    state.reconciler.borrow().conclusion,
+                    Conclusion::Waiting { .. } | Conclusion::Unknown { .. }
                 );
+                if let Some((id, mut round)) = pending_round {
+                    state.workflow.converge(&mut round, id, Trigger::Tick).await;
+                    state.publish_round(id, Trigger::Tick, round);
+                } else if reconnected || resync {
+                    state.round(Trigger::Tick).await;
+                }
             }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
+            }
+            #[cfg(test)]
+            Message::RecoveryAttempts(reply) => {
+                let _ = reply.send(state.workflow.lifecycle.recovery_attempts());
             }
             #[cfg(test)]
             Message::Ownership(reply) => {
@@ -571,12 +357,8 @@ impl Actor for ApplicationWorkflowActor {
                 let _ = reply.send(state.readiness_seen);
             }
         }
-        state.arm_convergence(&myself);
         Ok(())
     }
-
-    /// Runs only once the handler has returned, so the command that ran last
-    /// has settled before the core stops.
     async fn post_stop(
         &self,
         _myself: ActorRef<Message>,
@@ -586,13 +368,9 @@ impl Actor for ApplicationWorkflowActor {
             status.active = None;
             status.conclusion = Conclusion::Closed;
         });
-        if let Some((_, timer)) = state.convergence_timer.take() {
-            timer.abort();
-        }
         if let Some(timer) = state.recovery_timer.take() {
             timer.abort();
         }
-        // The check exists for this workflow to follow; nothing follows it now.
         if state.health_check {
             state
                 .workflow
@@ -611,10 +389,11 @@ struct ClientInner {
     actor: ActorRef<Message>,
     runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
-    mutations: watch::Receiver<MutationJournal>,
     reconciler: watch::Receiver<ReconcilerStatus>,
     core: crate::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
+    #[cfg(test)]
+    core_observations: watch::Receiver<(usize, CoreStatusProjection)>,
 }
 
 impl Drop for ClientInner {
@@ -640,7 +419,7 @@ macro_rules! method {
 }
 
 impl ApplicationWorkflowClient {
-    pub async fn spawn(args: ApplicationWorkflowArgs) -> std::result::Result<Self, Error> {
+    pub(super) async fn spawn(args: ApplicationWorkflowArgs) -> std::result::Result<Self, Error> {
         Self::spawn_with_ticks(args, true).await
     }
 
@@ -651,13 +430,10 @@ impl ApplicationWorkflowClient {
     ) -> std::result::Result<Self, Error> {
         let runtime = args.ports.runtime();
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
-        let (journal_tx, mutations) = watch::channel(MutationJournal::default());
         let (reconciler_tx, reconciler) = watch::channel(ReconcilerStatus::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
         let preparation = RuntimePreparation::new(
-            args.application.clone(),
-            args.clash.clone(),
             args.profiles.clone(),
             args.content_lock,
             args.builder,
@@ -668,15 +444,15 @@ impl ApplicationWorkflowClient {
             notifications: args.notifications,
             clash: args.clash,
             preparation,
-            deferred: None,
+            attempt: None,
+            run: plan::RunIntent::Running,
             pending_product: None,
             pending_release: None,
-            sampled: None,
+            round_degradations: Vec::new(),
             checked: None,
             applied_selection: None,
             service_preferred: args.application.load().state.enable_service_mode,
             release_owed: false,
-            live: None,
             startup: None,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
@@ -691,37 +467,89 @@ impl ApplicationWorkflowClient {
                 service_failed: None,
             },
         };
+        // This shared flag bounds queued observation triggers; clearing it at handler
+        // entry lets changes during the round request exactly one further round.
+        let core_change_pending = Arc::new(AtomicBool::new(false));
         let (actor, _) = Actor::spawn(
             None,
             ApplicationWorkflowActor,
             ActorArgs {
+                core_change_pending: core_change_pending.clone(),
                 workflow,
                 status: status_tx,
-                journal: journal_tx,
                 reconciler: reconciler_tx,
                 schedule_ticks,
             },
         )
         .await
         .map_err(|source| Error::SpawnActor { source })?;
-        // The daemon's readiness, for the core to follow (#5443). Every
-        // published change is passed on and the handler reads the status
-        // afresh: the watch may coalesce several changes into the last one, so
-        // only the latest value is a fact, and it always arrives. The
-        // ServiceActor publishes on change only, and settles readiness itself.
+        // Core details in a service probe are not readiness changes. Forward
+        // only phase and readiness-generation changes, so probing cannot wake
+        // another round solely because its core details or diagnostic changed.
         let mut readiness = service_status.clone();
+        let observed_readiness = {
+            let status = readiness.borrow_and_update();
+            (status.phase, status.ready_generation)
+        };
         let forward = actor.clone();
         let shutdown = args.shutdown.clone();
         args.tasks.spawn(async move {
+            let mut observed_readiness = observed_readiness;
             loop {
                 tokio::select! {
                     () = shutdown.cancelled() => break,
                     changed = readiness.changed() => if changed.is_err() { break },
                 }
-                readiness.mark_unchanged();
+                let current = {
+                    let status = readiness.borrow_and_update();
+                    (status.phase, status.ready_generation)
+                };
+                if current == observed_readiness {
+                    continue;
+                }
+                observed_readiness = current;
                 if forward.cast(Message::ServiceReadiness).is_err() {
                     break;
                 }
+            }
+        });
+        let mut core_status = core.subscribe();
+        let trigger_key = |status: &CoreStatusProjection| {
+            (
+                status.host,
+                status.generation,
+                status.connectivity.clone(),
+                status.snapshot.as_ref().and_then(|s| s.state.clone()),
+                status.snapshot.as_ref().and_then(|s| s.revision.clone()),
+            )
+        };
+        let mut observed_core = trigger_key(&core_status.borrow_and_update());
+        let forward = actor.clone();
+        let shutdown = args.shutdown.clone();
+        #[cfg(test)]
+        let (observations, core_observations) = watch::channel((0, core_status.borrow().clone()));
+        args.tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = shutdown.cancelled() => break,
+                    changed = core_status.changed() => if changed.is_err() { break },
+                }
+                let status = core_status.borrow_and_update().clone();
+                let current = trigger_key(&status);
+                // Endpoint probes and round observations also publish unchanged status.
+                if current != observed_core {
+                    observed_core = current;
+                    if !core_change_pending.swap(true, Ordering::AcqRel)
+                        && forward.cast(Message::CoreChanged).is_err()
+                    {
+                        break;
+                    }
+                }
+                #[cfg(test)]
+                observations.send_modify(|(count, observed)| {
+                    *count += 1;
+                    *observed = status;
+                });
             }
         });
         nyanpasu_owner_support::shutdown::drain_on_shutdown(
@@ -733,10 +561,11 @@ impl ApplicationWorkflowClient {
             actor,
             runtime,
             status,
-            mutations,
             reconciler,
             core,
             service_status,
+            #[cfg(test)]
+            core_observations,
         })))
     }
 
@@ -755,10 +584,7 @@ impl ApplicationWorkflowClient {
                 |reply| {
                     Message::Request(Request {
                         command,
-                        response: Response {
-                            id,
-                            reply: Some(reply),
-                        },
+                        response: Response { id, reply },
                     })
                 },
                 None,
@@ -848,17 +674,34 @@ impl ApplicationWorkflowClient {
         self.0.status.clone()
     }
 
-    /// Recent reconcile rounds, deferred targets, and execution-domain recovery diagnostics.
-    pub(in crate::client) fn mutation_journal(&self) -> MutationJournal {
-        self.0.mutations.borrow().clone()
+    /// The latest round's conclusion and the committed versions it considered.
+    pub fn reconciler_status(&self) -> ReconcilerStatus {
+        self.0.reconciler.borrow().clone()
     }
-    pub(crate) fn subscribe_mutations(&self) -> watch::Receiver<MutationJournal> {
-        self.0.mutations.clone()
+    pub(crate) fn subscribe_reconciler(&self) -> watch::Receiver<ReconcilerStatus> {
+        self.0.reconciler.clone()
     }
 
-    /// StartupReconcile (T10 §1.2): once per session, and its report on every
-    /// later call. The call waits for the report itself, so `Unsettled` here
-    /// means the workflow refused the command or is gone, never a guess.
+    /// Waits for observed core changes and their mailbox work to settle in tests.
+    #[cfg(test)]
+    pub(in crate::client) async fn settle_core_changes(&self) {
+        let mut observations = self.0.core_observations.clone();
+        loop {
+            let expected = self.0.core.status();
+            observations
+                .wait_for(|(_, status)| *status == expected)
+                .await
+                .unwrap();
+            assert!(matches!(
+                self.0.actor.call(Message::Barrier, None).await.unwrap(),
+                CallResult::Success(())
+            ));
+            if expected == self.0.core.status() {
+                return;
+            }
+        }
+    }
+
     /// Ends the workflow the way a panic does: without its `post_stop`.
     #[cfg(test)]
     pub(crate) async fn kill(&self) {
@@ -867,13 +710,13 @@ impl ApplicationWorkflowClient {
 
     pub async fn startup_reconcile(&self) -> startup::StartupReport {
         let operation_id = OperationId::generate();
-        match self.call_as(operation_id, Command::StartupReconcile).await {
+        match self.call_as(operation_id, Command::Startup).await {
             Ok(Output::Startup(report)) => *report,
             Ok(_) => unreachable!("StartupReconcile answers with its report"),
             Err(error) => startup::StartupReport {
                 operation_id,
                 observation: None,
-                outcome: startup::StartupOutcome::Unsettled {
+                outcome: startup::StartupOutcome::RecoveryRequired {
                     reason: error.to_string(),
                 },
             },
@@ -881,9 +724,7 @@ impl ApplicationWorkflowClient {
     }
 
     pub async fn retry_runtime(&self) -> Result<(), RuntimeError> {
-        self.call(Command::RetryRuntime { explicit: true })
-            .await
-            .map(|_| ())
+        self.call(Command::Retry).await.map(|_| ())
     }
 
     pub(super) fn snapshot_store(&self) -> &runtime::RuntimeSnapshotStore {
@@ -906,48 +747,33 @@ impl ApplicationWorkflowClient {
         self.0.service_status.clone()
     }
 
-    method!(
-        reconcile,
-        Command::Core(CoreCommand::Reconcile),
-        Reconcile,
-        ReconcileReport
-    );
-    method!(
-        stop_core,
-        Command::Core(CoreCommand::StopCore),
-        Stop,
-        StopReport
-    );
+    method!(reconcile, Command::Start, Reconcile, ReconcileReport);
+    method!(stop_core, Command::StopCore, Stop, StopReport);
 
     #[cfg(test)]
     pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, RuntimeError> {
-        match self
-            .call(Command::Core(CoreCommand::ChangeHost(host)))
-            .await?
-        {
+        match self.call(Command::ChangeHost(host)).await? {
             Output::Handoff(result) => Ok(result),
             _ => unreachable!(),
         }
     }
     pub async fn replace_binary(&self, artifact: PreparedCoreBinary) -> Result<(), RuntimeError> {
-        self.unit(Command::Core(CoreCommand::ReplaceCoreBinary(artifact)))
-            .await
+        self.unit(Command::ReplaceCoreBinary(artifact)).await
     }
     pub async fn install_service(&self) -> Result<(), RuntimeError> {
-        self.unit(Command::Core(CoreCommand::InstallService)).await
+        self.unit(Command::InstallService).await
     }
     pub async fn start_service(&self) -> Result<(), RuntimeError> {
-        self.unit(Command::Core(CoreCommand::StartService)).await
+        self.unit(Command::StartService).await
     }
     pub async fn stop_service(&self) -> Result<(), RuntimeError> {
-        self.unit(Command::Core(CoreCommand::StopService)).await
+        self.unit(Command::StopService).await
     }
     pub async fn restart_service(&self) -> Result<(), RuntimeError> {
-        self.unit(Command::Core(CoreCommand::RestartService)).await
+        self.unit(Command::RestartService).await
     }
     pub async fn uninstall_service(&self) -> Result<(), RuntimeError> {
-        self.unit(Command::Core(CoreCommand::UninstallService))
-            .await
+        self.unit(Command::UninstallService).await
     }
     async fn unit(&self, command: Command) -> Result<(), RuntimeError> {
         match self.call(command).await? {

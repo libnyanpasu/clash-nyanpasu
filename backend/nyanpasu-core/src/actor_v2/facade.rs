@@ -446,10 +446,16 @@ impl CoreFacade {
                 false,
             )));
         }
-        let expected_applied = expected
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.revision.clone());
+        let expected_applied = expected.snapshot.as_ref().and_then(|snapshot| {
+            if matches!(
+                snapshot.state,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+            ) {
+                None
+            } else {
+                snapshot.revision.clone()
+            }
+        });
         // `expected_applied` is the optimistic-concurrency guard: apply only if
         // the manager is still on this revision. The wire carries the epoch as a
         // plain `u64`, and `Epoch` rejects zero. Dropping the guard on a zero
@@ -958,6 +964,7 @@ mod tests {
             Arc::new(Self {
                 host,
                 status: CoreStatusSnapshot {
+                    instance_id: None,
                     controller: None,
                     state: Some(CoreStateDetail::Running { pid: 7, epoch: 1 }),
                     state_changed_at: 1,

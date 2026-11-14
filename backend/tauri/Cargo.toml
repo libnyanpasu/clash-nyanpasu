@@ -119,7 +119,7 @@ colored = '3'
 clap = { version = '4.5.4', features = ['derive'] }
 
 # GUI Utilities
-rfd = { version = '0.17', default-features = false, features = [
+rfd = { version = '0.18', default-features = false, features = [
   'gtk3',
   'common-controls-v6',
 ] }  # cross platform dialog

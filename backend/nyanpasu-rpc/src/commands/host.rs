@@ -12,19 +12,19 @@ use crate::{
     registry::RpcState,
 };
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub fn get_core_dir(resolver: RpcState<'_, dyn CoreDirectoryResolver>) -> Result<String> {
     resolver.core_directory()
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub fn is_appimage(environment: RpcState<'_, HostEnvironment>) -> Result<bool> {
     Ok(environment.is_appimage)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_service_install_prompt(
     prompt: RpcState<'_, dyn ServiceInstallPrompt>,
@@ -34,7 +34,7 @@ pub async fn get_service_install_prompt(
 }
 
 // See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
-#[nyanpasu_macro::rpc(optional_capabilities(elevation, os_integration, presentation))]
+#[nyanpasu_macro::rpc(optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn set_service_mode(
     client: RpcState<'_, NyanpasuClient>,
@@ -50,7 +50,7 @@ pub async fn set_service_mode(
 
 /// Remote access widens who can reach the application, so it has its own desktop-only command;
 /// `patch_app_config` rejects the section.
-#[nyanpasu_macro::rpc(capabilities(http_server))]
+#[nyanpasu_macro::rpc(capabilities(http_server), scope = remote_admin)]
 #[specta::specta]
 pub async fn set_remote_access(
     client: RpcState<'_, NyanpasuClient>,
@@ -59,7 +59,7 @@ pub async fn set_remote_access(
     Ok(client.set_remote_access(config).await?)
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(accent_color))]
+#[nyanpasu_macro::rpc(http, capabilities(accent_color), query)]
 #[specta::specta]
 pub fn get_system_accent_color(
     accent: RpcState<'_, dyn AccentColorQuery>,

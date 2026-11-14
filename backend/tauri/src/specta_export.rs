@@ -594,6 +594,48 @@ mod tests {
         }
     }
 
+    /// The macro declaration is the source of truth for query/mutation; the hand-listed Specta
+    /// groups that become TanStack queries and mutations must agree with it for every command.
+    #[test]
+    fn query_mutation_split_agrees_with_the_declared_effect() {
+        use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect};
+
+        let (query_bindings, _) = build_specta_builder();
+        let (_, rest) = query_bindings.split_once("export const queries =").unwrap();
+        let (queries, mutations) = rest.split_once("export const mutations =").unwrap();
+        for command in COMMAND_CATALOG {
+            let mut camel = String::new();
+            let mut upper = false;
+            for character in command.name.chars() {
+                if character == '_' {
+                    upper = true;
+                } else if upper {
+                    camel.extend(character.to_uppercase());
+                    upper = false;
+                } else {
+                    camel.push(character);
+                }
+            }
+            let key = format!("{camel}:");
+            let (declared, other) = match command.effect {
+                CommandEffect::Query => (queries, mutations),
+                CommandEffect::Mutation => (mutations, queries),
+            };
+            assert!(
+                declared.contains(&key),
+                "{} is declared {:?} but is not in the matching Specta group",
+                command.name,
+                command.effect
+            );
+            assert!(
+                !other.contains(&key),
+                "{} is declared {:?} but is also in the other Specta group",
+                command.name,
+                command.effect
+            );
+        }
+    }
+
     #[test]
     fn configuration_status_is_exported_as_a_query() {
         let (query_bindings, _) = build_specta_builder();

@@ -8,7 +8,7 @@ use crate::{error::Result, registry::RpcState};
 
 /// The agent skills a core ships. Their folders are on the host that runs
 /// Nyanpasu, which is also where an agent driving the core has to run.
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_core_agent_skills(
     client: RpcState<'_, NyanpasuClient>,
@@ -17,7 +17,7 @@ pub async fn get_core_agent_skills(
     Ok(client.core_agent_skills(core_type).await)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn fetch_latest_core_versions(
     client: RpcState<'_, NyanpasuClient>,
@@ -25,7 +25,7 @@ pub async fn fetch_latest_core_versions(
     Ok(client.fetch_latest_core_versions().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn inspect_updater(
     client: RpcState<'_, NyanpasuClient>,

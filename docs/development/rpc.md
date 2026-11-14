@@ -150,6 +150,36 @@ port is absent and return `unsupported`. Executable resolution, icon files,
 service-install prompt formatting and accent queries use consumer-owned ports in
 `nyanpasu-rpc::ports`; the shell supplies the AppImage process value explicitly.
 
+### Declare effect and scope
+
+Every `rpc` declaration states what the command does and which scope a principal must hold
+to call it. The declaration is the single source: it generates the `effect` and `scope`
+fields of the committed catalog (`command_catalog.rs`) and the capability inventory, and the
+Specta query/mutation groups that become the frontend bindings are checked against it.
+
+- `query` marks a command that only reads and changes nothing. It defaults to the `read`
+  scope. Declare another scope when the operation needs it: secret-bearing reads use
+  `sensitive_read`, latency measurements use `proxy`, and management queries can use
+  `remote_admin`. Effect and authorization class are independent.
+- Everything else is a mutation and MUST declare `scope = ...`; a mutation without one does
+  not compile. A mutation may hold `read` when it only allocates a resource the caller owns
+  (a log session, a subscription). Operations that read but advance a cursor, allocate a
+  session or otherwise change application state are mutations. Observational queries may
+  refresh read models or measure network latency; their scope still limits who may request them.
+- The scopes are `nyanpasu_config::application::Scope` (re-exported by the protocol), the one
+  definition used by config validation, token storage and command metadata: `read`,
+  `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`.
+- Classify by actual payload and effect. A response with a secret (the Clash secret,
+  subscription URLs, profile or runtime contents, generic storage, clipboard, sync logs that
+  echo request URLs) is `sensitive_read`; if a read-only client needs the useful part, add a
+  separate secret-free query instead of labelling the full response `read`. A shell, OS or
+  elevation facility needs `system`.
+- Scope is independent of target. `scope = system` never makes a command HTTP- or
+  Local-reachable and never lifts a shell, OS or elevation restriction; target and
+  capability admission still apply. `remote_admin` commands are Desktop-only.
+- The catalog tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
+  Desktop-only `remote_admin` set, so changing any of them is a reviewed change.
+
 ### Declare capabilities and preserve transport semantics
 
 The registry first recognizes the command name, then checks the requested target

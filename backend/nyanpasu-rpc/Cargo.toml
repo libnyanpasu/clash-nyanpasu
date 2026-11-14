@@ -42,7 +42,7 @@ test-support = [
 
 [dependencies]
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
-specta-typescript = { version = '0.0.12', features = ['serde'] }
+specta-typescript = { version = '0.0.15', features = ['serde'] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
 nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }

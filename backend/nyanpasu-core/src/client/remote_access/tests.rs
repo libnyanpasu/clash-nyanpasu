@@ -141,6 +141,7 @@ async fn fixture(with_listener: bool) -> Fixture {
             http: with_listener.then(|| listener.clone() as Arc<dyn HttpServerControl>),
             shutdown: shutdown.child_token(),
         },
+        None,
         &tasks,
     )
     .await
@@ -323,6 +324,7 @@ async fn the_first_start_persists_the_port_and_later_starts_reuse_it() {
             http: Some(listener.clone() as Arc<dyn HttpServerControl>),
             shutdown: shutdown.child_token(),
         },
+        None,
         &tasks,
     )
     .await
@@ -372,6 +374,7 @@ async fn invalid_persisted_settings_never_reach_the_listener() {
             http: Some(listener.clone() as Arc<dyn HttpServerControl>),
             shutdown: shutdown.child_token(),
         },
+        None,
         &tasks,
     )
     .await

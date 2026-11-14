@@ -77,6 +77,8 @@ futures = '0.3'
 url = '2'
 sha2 = '0.11'
 hex = '0.4'
+subtle = '2.6'
+zeroize = { version = '1.9', features = ['derive'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
 tracing-attributes = '0.1'
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [

@@ -143,6 +143,7 @@ pub(crate) async fn test_client_from_typed_clients(
         Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         Some(Arc::new(crate::client::test_support::AnyAccelerator)),
         None,
+        None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
     )
@@ -233,6 +234,7 @@ pub async fn test_client_with_profile_ports(
         Arc::new(effects::ports::NoopApplicationEffects),
         Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         Some(Arc::new(crate::client::test_support::AnyAccelerator)),
+        None,
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
@@ -354,6 +356,7 @@ pub async fn test_client_with_materialization(
         Arc::new(effects::ports::NoopApplicationEffects),
         Some(Arc::new(hotkey::ports::MockWindowControl::new())),
         Some(Arc::new(crate::client::test_support::AnyAccelerator)),
+        None,
         None,
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),

@@ -64,7 +64,11 @@ mod traffic;
 pub(crate) mod traffic_frames;
 mod transparent_proxy;
 
-pub use self::remote_access::{Error as RemoteAccessSpawnError, SetRemoteAccessError};
+pub use self::remote_access::{
+    DEFAULT_BROWSER_SESSION_IDLE_MS, DEFAULT_LAUNCH_CODE_TTL_MS, DEFAULT_RESOURCE_SESSION_IDLE_MS,
+    DEFAULT_WALL_EXPIRY_RECHECK_MS, Error as RemoteAccessSpawnError, PeerRateLimitConfig,
+    RemoteAccessAuthPorts, RemoteAuthError, RemoteAuthPolicy, SetRemoteAccessError,
+};
 use self::{
     application::ApplicationClient,
     clash_config::ClashConfigClient,
@@ -152,6 +156,9 @@ pub struct ClientSetupArgs {
     pub accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+    /// Remote-access credential, session, and protected persistence ports; `None` disables
+    /// remote authentication until the host provides concrete OS/file adapters.
+    pub remote_auth: Option<RemoteAccessAuthPorts>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -356,6 +363,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            remote_auth,
             shutdown,
             tasks,
         } = args;
@@ -425,6 +433,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            remote_auth,
             shutdown,
             tasks,
         )
@@ -465,6 +474,7 @@ impl NyanpasuClient {
         window: Option<Arc<dyn hotkey::ports::WindowControl>>,
         accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
         traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+        remote_auth: Option<RemoteAccessAuthPorts>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
@@ -480,6 +490,7 @@ impl NyanpasuClient {
                 http: http_server,
                 shutdown: shutdown.child_token(),
             },
+            remote_auth,
             &tasks,
         )
         .await
@@ -780,6 +791,176 @@ impl NyanpasuClient {
         SetRemoteAccessError,
     > {
         self.inner.remote_access.reconcile().await
+    }
+
+    /// Issue a new named remote-access bearer token (`npk_<id>_<secret>`); returns secret once.
+    pub async fn create_remote_access_token(
+        &self,
+        request: nyanpasu_contracts::auth::CreateAccessTokenRequest,
+    ) -> std::result::Result<nyanpasu_contracts::auth::IssuedAccessToken, RemoteAuthError> {
+        self.inner.remote_access.create_access_token(request).await
+    }
+
+    /// List non-secret metadata summaries for persisted remote-access tokens.
+    pub async fn list_remote_access_tokens(
+        &self,
+    ) -> std::result::Result<Vec<nyanpasu_contracts::auth::AccessTokenSummary>, RemoteAuthError>
+    {
+        self.inner.remote_access.list_access_tokens().await
+    }
+
+    /// Revoke a named remote-access token and invalidate derived sessions and resource leases.
+    pub async fn revoke_remote_access_token(
+        &self,
+        id: nyanpasu_contracts::auth::TokenId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_access.revoke_access_token(id).await
+    }
+
+    /// Authenticate a raw remote bearer token subject to bounded per-peer rate limiting.
+    pub async fn authenticate_remote_token(
+        &self,
+        peer: nyanpasu_contracts::auth::AuthPeer,
+        token: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner
+            .remote_access
+            .authenticate_token(peer, token)
+            .await
+    }
+
+    /// Mint a 60-second single-use browser launch code bound to trusted composition `scopes`.
+    pub async fn issue_remote_launch_code(
+        &self,
+        scopes: nyanpasu_contracts::auth::ScopeSet,
+    ) -> std::result::Result<nyanpasu_contracts::auth::IssuedLaunchCode, RemoteAuthError> {
+        self.inner.remote_access.issue_launch_code(scopes).await
+    }
+
+    /// Atomically exchange a 60-second single-use launch code for a scoped browser session.
+    pub async fn exchange_remote_launch_code(
+        &self,
+        peer: nyanpasu_contracts::auth::AuthPeer,
+        code: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedBrowserSession, RemoteAuthError>
+    {
+        self.inner
+            .remote_access
+            .exchange_launch_code(peer, code)
+            .await
+    }
+
+    /// Authenticate a bearer token and create a bound scoped browser session.
+    pub async fn login_remote_with_token(
+        &self,
+        peer: nyanpasu_contracts::auth::AuthPeer,
+        token: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedBrowserSession, RemoteAuthError>
+    {
+        self.inner.remote_access.login_with_token(peer, token).await
+    }
+
+    /// Verify a browser session cookie and refresh its monotonic idle deadline.
+    pub async fn resolve_remote_browser_session(
+        &self,
+        peer: nyanpasu_contracts::auth::AuthPeer,
+        cookie: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner
+            .remote_access
+            .resolve_browser_session(peer, cookie)
+            .await
+    }
+
+    /// List non-secret summaries for active remote browser sessions.
+    pub async fn list_remote_browser_sessions(
+        &self,
+    ) -> std::result::Result<Vec<nyanpasu_contracts::auth::BrowserSessionSummary>, RemoteAuthError>
+    {
+        self.inner.remote_access.list_browser_sessions().await
+    }
+
+    /// Revoke an active remote browser session and cancel its bound resource leases.
+    pub async fn revoke_remote_browser_session(
+        &self,
+        id: nyanpasu_contracts::auth::SessionId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_access.revoke_browser_session(id).await
+    }
+
+    /// Revalidate a resolved caller against live owner state before admitting a new operation.
+    pub async fn admit_remote_caller(
+        &self,
+        caller: nyanpasu_contracts::auth::AuthenticatedCaller,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner.remote_access.admit_caller(caller).await
+    }
+
+    /// Allocate a principal-bound resource session and cancellation lease (non-authenticating).
+    pub async fn create_remote_resource_session(
+        &self,
+        caller: nyanpasu_contracts::auth::AuthContext,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedResourceSession, RemoteAuthError>
+    {
+        self.inner
+            .remote_access
+            .create_resource_session(caller)
+            .await
+    }
+
+    /// Resolve a resource cookie against its active authenticated caller (grants no scopes).
+    pub async fn resolve_remote_resource_session(
+        &self,
+        caller: nyanpasu_contracts::auth::AuthContext,
+        cookie: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::ResolvedResourceSession, RemoteAuthError>
+    {
+        self.inner
+            .remote_access
+            .resolve_resource_session(caller, cookie)
+            .await
+    }
+
+    /// Explicitly release an active resource session and cancel its lease.
+    pub async fn release_remote_resource_session(
+        &self,
+        id: nyanpasu_contracts::auth::ResourceSessionId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_access.release_resource_session(id).await
+    }
+
+    /// Subscribe to owner revocation/expiry events for transport resource cleanup.
+    pub fn subscribe_remote_auth_revocations(
+        &self,
+    ) -> std::result::Result<
+        tokio::sync::broadcast::Receiver<nyanpasu_contracts::auth::AuthRevocation>,
+        RemoteAuthError,
+    > {
+        self.inner.remote_access.subscribe_revocations()
+    }
+
+    /// Persist TLS certificate and private key material through the protected store contract.
+    pub async fn set_remote_tls_material(
+        &self,
+        blob: nyanpasu_contracts::auth::TlsMaterialBlob,
+    ) -> std::result::Result<nyanpasu_contracts::auth::TlsMaterialSummary, RemoteAuthError> {
+        self.inner.remote_access.set_tls_material(blob).await
+    }
+
+    /// Inspect non-secret metadata for persisted TLS material, if present.
+    pub async fn remote_tls_material_status(
+        &self,
+    ) -> std::result::Result<Option<nyanpasu_contracts::auth::TlsMaterialSummary>, RemoteAuthError>
+    {
+        self.inner.remote_access.tls_material_status().await
+    }
+
+    /// Load sealed TLS certificate/private-key contract for future TLS listener setup.
+    pub async fn load_remote_tls_material(
+        &self,
+    ) -> std::result::Result<Option<nyanpasu_contracts::auth::TlsMaterialBlob>, RemoteAuthError>
+    {
+        self.inner.remote_access.load_tls_material().await
     }
 
     pub async fn release_channel(&self) -> Result<ReleaseChannel> {
@@ -2764,6 +2945,7 @@ pub(crate) mod tests {
             // parse should fail here, exactly as the app would.
             accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
             traffic_store: None,
+            remote_auth: None,
             shutdown,
             tasks,
         })

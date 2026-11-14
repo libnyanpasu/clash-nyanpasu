@@ -1,10 +1,6 @@
 use crate::state::{
     config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
-    mutation::{
-        MutationCoordinator, impact,
-        impact::{MutationHints, RequestedRuntimeFields},
-        intent::CommandClass,
-    },
+    mutation::{DomainChange, MutationCoordinator, impact, ports::RuntimeCandidate},
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::mutation::ConfigDomain;
@@ -22,40 +18,33 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug, Clone)]
 pub struct ClashConfigSnapshot {
     pub state: ClashConfig,
-    pub version: u64,
-    pub(crate) receipt: Option<nyanpasu_runtime_values::runtime::CommitReceipt>,
-    pub(crate) degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
+    /// The engine version published before this owner answered.
+    pub version: nyanpasu_state_engine::Version,
+    /// Whether this commit changed an input consumed by the runtime.
+    pub reaches_runtime: bool,
+    pub(crate) operation_id: Option<OperationId>,
 }
 
 impl ClashConfigSnapshot {
-    pub(crate) fn outcome(self) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
-        let outcome =
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), self.degradations);
-        match self.receipt {
-            Some(receipt) => outcome.with_commit(receipt),
-            None => outcome,
-        }
-    }
-
     pub(crate) fn from_versioned(versioned: &VersionedState<ClashConfig>) -> Self {
         Self {
-            receipt: None,
-            degradations: Vec::new(),
+            reaches_runtime: false,
+            operation_id: None,
             state: versioned.state.clone(),
-            version: *versioned.version.as_ref(),
+            version: versioned.version,
         }
     }
 }
 
 pub struct ClashConfigActorArgs {
-    pub(crate) mutations: MutationCoordinator<ClashConfig>,
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
-    mutations: MutationCoordinator<ClashConfig>,
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
 }
@@ -86,13 +75,8 @@ impl ClashConfigActor {
         patch: ClashConfigPatch,
     ) -> Result<ClashConfigSnapshot, ConfigError> {
         let mut next = state.manager.snapshot_handle().load().state.clone();
-        let hints = MutationHints {
-            requested: RequestedRuntimeFields::of_clash(&patch),
-            ..Default::default()
-        };
-        let class = CommandClass::Save;
         next.apply(patch);
-        Self::commit(state, next, hints, class).await
+        Self::commit(state, next).await
     }
 
     fn snapshot(state: &ClashConfigActorState) -> ClashConfigSnapshot {
@@ -102,41 +86,24 @@ impl ClashConfigActor {
     async fn commit(
         state: &mut ClashConfigActorState,
         next: ClashConfig,
-        hints: MutationHints,
-        class: CommandClass,
     ) -> Result<ClashConfigSnapshot, ConfigError> {
         state.mutations.ensure_ready()?;
-        let (version, impact) = {
-            let current = state.manager.snapshot_handle().load();
-            let impact = impact::runtime_impact(&current.state, &next, &hints, class);
-            (current.version, impact)
-        };
-        // Only a mutation that reaches the runtime takes the Runtime into its
-        // transaction; any other save commits on its own.
-        let (operation, result, settlement) = match impact {
-            Some(impact) => {
-                let operation = OperationId::generate();
-                let (participant, settlement) = state
-                    .mutations
-                    .participant(operation, hints, class, impact)?;
-                let result = state
-                    .manager
-                    .replace_if_version_with_participant(
-                        version,
-                        next,
-                        participant,
-                        || async { Ok(()) },
-                        || async { Ok(()) },
-                    )
-                    .await;
-                (Some(operation), result, settlement.await.ok())
-            }
-            None => (
-                None,
-                state.manager.replace_if_version(version, next).await,
-                None,
-            ),
-        };
+        let current = state.manager.snapshot_handle().load();
+        let version = current.version;
+        let reaches_runtime = impact::reaches_runtime(&current.state, &next, &[]);
+        let operation_id = reaches_runtime.then(OperationId::generate);
+        let gate = state.mutations.runtime();
+        if reaches_runtime {
+            gate.check(RuntimeCandidate {
+                change: DomainChange::Clash {
+                    candidate: std::sync::Arc::new(next.clone()),
+                },
+                staged: Default::default(),
+            })
+            .await
+            .map_err(|error| ConfigError::runtime_check_failure(ConfigDomain::Clash, error))?;
+        }
+        let result = state.manager.replace_if_version(version, next).await;
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 let mut snapshot = Self::snapshot(state);
@@ -144,12 +111,11 @@ impl ClashConfigActor {
                     .mutations
                     .effects()
                     .clash_committed((&snapshot.state).into());
-                let (receipt, degradations) =
-                    state
-                        .mutations
-                        .committed(operation, "clash", snapshot.version, settlement);
-                snapshot.receipt = Some(receipt);
-                snapshot.degradations = degradations;
+                snapshot.reaches_runtime = reaches_runtime;
+                snapshot.operation_id = operation_id;
+                if reaches_runtime {
+                    gate.committed(ConfigDomain::Clash, snapshot.version);
+                }
                 Ok(snapshot)
             }
             Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
@@ -158,11 +124,7 @@ impl ClashConfigActor {
                 actual: *actual_version.as_ref(),
             }
             .fail(),
-            Err(error) => Err(ConfigError::commit_failure(
-                ConfigDomain::Clash,
-                error,
-                settlement.as_ref(),
-            )),
+            Err(error) => Err(ConfigError::commit_failure(ConfigDomain::Clash, error)),
         }
     }
 }
@@ -208,29 +170,16 @@ impl Actor for ClashConfigActor {
             }
             ClashConfigActorMessage::PatchOverrides { patch, reply } => {
                 let mut next = state.manager.snapshot_handle().load().state.clone();
-                let hints = MutationHints {
-                    mode_requested: patch.mode.is_some(),
-                    requested: RequestedRuntimeFields::of_clash_overrides(&patch),
-                    ..Default::default()
-                };
                 next.overrides.apply(patch);
-                let _ = reply.send(Self::commit(state, next, hints, CommandClass::Save).await);
+                let _ = reply.send(Self::commit(state, next).await);
             }
             ClashConfigActorMessage::Replace { state: next, reply } => {
-                let _ = reply.send(
-                    Self::commit(
-                        state,
-                        next,
-                        MutationHints {
-                            requested: RequestedRuntimeFields::whole_document(),
-                            ..Default::default()
-                        },
-                        CommandClass::Save,
-                    )
-                    .await,
-                );
+                let _ = reply.send(Self::commit(state, next).await);
             }
         }
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

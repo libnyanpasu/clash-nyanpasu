@@ -118,8 +118,6 @@ impl CommandRunner for Runner {
 
 struct ServiceEndpoint {
     delegate: Arc<TestControlEndpoint>,
-    runner: Arc<Runner>,
-    stop_daemon_with_core: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -131,13 +129,6 @@ impl ControlEndpoint for ServiceEndpoint {
         self.delegate.check_config(submission).await
     }
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
-        if matches!(
-            submission.envelope.command,
-            nyanpasu_core_manager::CoreCommand::Stop
-        ) && self.stop_daemon_with_core.load(Ordering::SeqCst)
-        {
-            self.runner.stopped.store(true, Ordering::SeqCst);
-        }
         self.delegate.submit(submission).await
     }
     async fn wait_operation(&self, id: OperationId, timeout: Duration) -> Option<OperationInfo> {
@@ -185,8 +176,6 @@ async fn fixture(running: bool) -> Fixture {
     );
     let service_endpoint = Arc::new(ServiceEndpoint {
         delegate: TestControlEndpoint::succeeding(),
-        runner: runner.clone(),
-        stop_daemon_with_core: AtomicBool::new(false),
     });
     let service = ServiceClient::spawn(
         adapters.service,
@@ -254,9 +243,7 @@ async fn mode(
     nyanpasu_runtime_values::runtime::MutationOutcome<()>,
     Box<nyanpasu_core::client::ClientError>,
 > {
-    let mut patch = NyanpasuAppConfig::new_empty_patch();
-    patch.enable_service_mode = Some(enabled);
-    client.patch_app_config(patch).await.map_err(Box::new)
+    client.set_service_mode(enabled).await.map_err(Box::new)
 }
 
 async fn finish(f: Fixture) {
@@ -305,27 +292,39 @@ async fn server_refuses_elevation_on_config_retry_compensation_and_copy_paths_re
 }
 
 #[tokio::test]
-async fn server_refuses_elevation_on_config_retry_compensation_and_copy_paths_compensation() {
+async fn application_write_failure_leaves_service_runtime_untouched() {
+    use nyanpasu_core::{client::ClientError, state::config_error::ConfigError};
+    use nyanpasu_runtime_values::mutation::{CommitAborted, RuntimeAftermath};
+
     let f = fixture(true).await;
     mode(&f.client, true).await.unwrap();
-    f.service
-        .stop_daemon_with_core
-        .store(true, Ordering::SeqCst);
-    f.local
-        .set_check_answer(test_support::TestCheckAnswer::Pass);
-    // Fail persistence after the handoff, forcing restoration of the service baseline.
+    let before = f.client.configuration_status().source_versions.application;
+    let local_submissions = f.local.submissions();
+    let service_submissions = f.service.delegate.submissions();
+    let revision = f.service.status().await.unwrap().revision;
+    // Guards persistence preceding any runtime application or host movement.
     let blocking = f._dir.path().join("application.yaml");
-    if blocking.exists() {
-        std::fs::remove_file(&blocking).unwrap();
-    }
+    std::fs::remove_file(&blocking).unwrap();
     std::fs::create_dir(&blocking).unwrap();
     let result = mode(&f.client, false).await;
-    assert!(
-        format!("{result:?}").contains("authoriz"),
-        "compensation must reach refusal: {result:?}"
+    assert!(matches!(
+        result.as_ref().map_err(|error| error.as_ref()),
+        Err(ClientError::Config(ConfigError::Commit {
+            source: CommitAborted::WriteConfig {
+                runtime: RuntimeAftermath::Untouched,
+                ..
+            },
+            ..
+        }))
+    ));
+    assert_eq!(f.local.submissions(), local_submissions);
+    assert_eq!(f.service.delegate.submissions(), service_submissions);
+    assert_eq!(f.service.status().await.unwrap().revision, revision);
+    assert_eq!(
+        f.client.configuration_status().source_versions.application,
+        before
     );
-    assert!(format!("{result:?}").contains("MoveHostBack"), "{result:?}");
-    assert!(test_support::workflow(&f.client).status().uncertain);
+    assert!(!test_support::workflow(&f.client).status().uncertain);
     assert!(f.client.get_app_config().await.unwrap().enable_service_mode);
     finish(f).await;
 }

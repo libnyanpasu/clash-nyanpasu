@@ -35,7 +35,9 @@ struct Graph {
 async fn graph(dir: &tempfile::TempDir) -> Graph {
     use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
     use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
-    let (application, _, clash) = test_typed_config_clients(dir).await;
+    let (application, _, clash) =
+        test_typed_config_clients(dir, crate::state::mutation::MutationCoordinator::isolated())
+            .await;
     let profiles = crate::client::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
@@ -57,6 +59,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         application.snapshot_handle(),
         clash.snapshot_handle(),
         profiles.snapshot_handle(),
+        profiles.content_lock(),
         Arc::new(TestRuntimeBuildPort::from_directory(
             dir.path().join("profiles"),
             paths,
@@ -105,8 +108,9 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
     .await
     .unwrap();
     let mut facade = CoreFacade::new(graph.core.clone(), service);
+    let expected = facade.refresh_status().await.unwrap();
     facade
-        .reconcile(&prepared.intent, spec, &facade.core_status())
+        .reconcile(&prepared.intent, spec, &expected)
         .await
         .unwrap();
 
@@ -127,8 +131,12 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
 
 #[tokio::test]
 async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
-    use super::startup::{DaemonState, Setup};
     use crate::client::application_workflow::startup::StartupOutcome;
+
+    use super::{
+        mutations::{commit_source, overrides, settled},
+        startup::{DaemonState, Setup},
+    };
 
     let graph = super::startup::graph(Setup {
         service_mode: true,
@@ -138,20 +146,34 @@ async fn a_service_hosted_core_is_checked_through_the_local_endpoint() {
         ..Setup::default()
     })
     .await;
-    let checked_before = graph.local.delegate.checked().len();
-
     let report = graph.start().await;
 
     assert_eq!(report.outcome, StartupOutcome::Ready, "{report:?}");
     assert_eq!(graph.core.status().host, ExecutionHost::Service);
-    let checked = graph.local.delegate.checked();
-    assert_eq!(checked.len(), checked_before + 1);
+    assert!(graph.local.delegate.checked().is_empty());
     assert!(graph.service_host.delegate.checked().is_empty());
-    assert!(checked[checked_before].staged_config.is_none());
+    assert!(graph.local.delegate.reconciled_bytes().is_empty());
+    let applied_before = graph.service_host.delegate.reconciled_bytes().len();
+    assert_eq!(applied_before, 1);
+
+    let id = commit_source(
+        &graph.clash,
+        overrides(serde_json::json!({"mode": "global"})),
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        checked[checked_before].config_bytes,
-        graph.service_host.delegate.reconciled_bytes()[0]
+        settled(&graph.client, id).await.conclusion.label(),
+        "Converged"
     );
+    let checked = graph.local.delegate.checked();
+    assert_eq!(checked.len(), 1);
+    assert!(graph.service_host.delegate.checked().is_empty());
+    assert!(checked[0].staged_config.is_none());
+    assert!(graph.local.delegate.reconciled_bytes().is_empty());
+    let applied = graph.service_host.delegate.reconciled_bytes();
+    assert_eq!(applied.len(), applied_before + 1);
+    assert_eq!(checked[0].config_bytes, applied[applied_before]);
 }
 
 /// A check service that is momentarily unreachable is also not a pass, and it

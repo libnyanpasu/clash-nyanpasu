@@ -136,11 +136,6 @@ impl ScriptedWaitEndpoint {
         entry.1 = script;
     }
 
-    #[cfg(test)]
-    pub(crate) fn submitted(&self) -> usize {
-        self.scripts.lock().unwrap().len()
-    }
-
     /// Every submitted operation, in order.
     #[cfg(test)]
     pub(crate) fn operations(&self) -> Vec<OperationId> {

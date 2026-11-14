@@ -2,11 +2,7 @@ use crate::state::{
     config_error::{
         ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
     },
-    mutation::{
-        MutationCoordinator, impact,
-        impact::{MutationHints, RequestedRuntimeFields},
-        intent::CommandClass,
-    },
+    mutation::{DomainChange, MutationCoordinator, impact, ports::RuntimeCandidate},
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::mutation::ConfigDomain;
@@ -22,33 +18,26 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug, Clone)]
 pub struct ApplicationSnapshot {
     pub state: NyanpasuAppConfig,
-    pub version: u64,
-    pub(crate) receipt: Option<nyanpasu_runtime_values::runtime::CommitReceipt>,
-    pub(crate) degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
+    /// The engine version published before this owner answered.
+    pub version: nyanpasu_state_engine::Version,
+    /// Whether this commit changed an input consumed by the runtime.
+    pub reaches_runtime: bool,
+    pub(crate) operation_id: Option<OperationId>,
 }
 
 impl ApplicationSnapshot {
-    pub(crate) fn outcome(self) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
-        let outcome =
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), self.degradations);
-        match self.receipt {
-            Some(receipt) => outcome.with_commit(receipt),
-            None => outcome,
-        }
-    }
-
     pub(crate) fn from_versioned(versioned: &VersionedState<NyanpasuAppConfig>) -> Self {
         Self {
-            receipt: None,
-            degradations: Vec::new(),
+            reaches_runtime: false,
+            operation_id: None,
             state: versioned.state.clone(),
-            version: *versioned.version.as_ref(),
+            version: versioned.version,
         }
     }
 }
 
 pub struct ApplicationActorArgs {
-    pub(crate) mutations: MutationCoordinator<NyanpasuAppConfig>,
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     /// The channel of the installed build; only a nightly build is held to it.
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
@@ -58,7 +47,7 @@ pub struct ApplicationActorArgs {
 }
 
 pub struct ApplicationActorState {
-    mutations: MutationCoordinator<NyanpasuAppConfig>,
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,
@@ -86,18 +75,9 @@ impl ApplicationActor {
         patch: NyanpasuAppConfigPatch,
     ) -> Result<ApplicationSnapshot, ConfigError> {
         let mut next = state.manager.snapshot_handle().load().state.clone();
-        let hints = MutationHints {
-            requested: RequestedRuntimeFields::of_application(&patch),
-            requested_owners: crate::client::effects::plan::requested_owners(&patch),
-            ..Default::default()
-        };
-        let class = if patch.core.is_some() || patch.enable_service_mode.is_some() {
-            CommandClass::ExplicitSwitch
-        } else {
-            CommandClass::Save
-        };
+        let requested = crate::client::effects::plan::requested_owners(&patch);
         next.apply(patch);
-        Self::commit(state, next, hints, class).await
+        Self::commit(state, next, requested).await
     }
 
     fn snapshot(state: &ApplicationActorState) -> ApplicationSnapshot {
@@ -122,8 +102,7 @@ impl ApplicationActor {
     async fn commit(
         state: &mut ApplicationActorState,
         mut next: NyanpasuAppConfig,
-        hints: MutationHints,
-        class: CommandClass,
+        requested: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
     ) -> Result<ApplicationSnapshot, ConfigError> {
         state.mutations.ensure_ready()?;
         Self::validate_channel(state, &mut next)?;
@@ -148,38 +127,24 @@ impl ApplicationActor {
             .map_err(|reason| ConfigError::InvalidLatencyTimeout {
                 reason: reason.into(),
             })?;
-        let (version, impact) = {
-            let current = state.manager.snapshot_handle().load();
-            let impact = impact::runtime_impact(&current.state, &next, &hints, class);
-            (current.version, impact)
-        };
-        let requested = hints.requested_owners.clone();
-        // Only a mutation that reaches the runtime takes the Runtime into its
-        // transaction; any other save commits on its own.
-        let (operation, result, settlement) = match impact {
-            Some(impact) => {
-                let operation = OperationId::generate();
-                let (participant, settlement) = state
-                    .mutations
-                    .participant(operation, hints, class, impact)?;
-                let result = state
-                    .manager
-                    .replace_if_version_with_participant(
-                        version,
-                        next,
-                        participant,
-                        || async { Ok(()) },
-                        || async { Ok(()) },
-                    )
-                    .await;
-                (Some(operation), result, settlement.await.ok())
-            }
-            None => (
-                None,
-                state.manager.replace_if_version(version, next).await,
-                None,
-            ),
-        };
+        let current = state.manager.snapshot_handle().load();
+        let version = current.version;
+        let reaches_runtime = impact::reaches_runtime(&current.state, &next, &[]);
+        let operation_id = reaches_runtime.then(OperationId::generate);
+        let gate = state.mutations.runtime();
+        if reaches_runtime {
+            gate.check(RuntimeCandidate {
+                change: DomainChange::Application {
+                    candidate: std::sync::Arc::new(next.clone()),
+                },
+                staged: Default::default(),
+            })
+            .await
+            .map_err(|error| {
+                ConfigError::runtime_check_failure(ConfigDomain::Application, error)
+            })?;
+        }
+        let result = state.manager.replace_if_version(version, next).await;
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 let mut snapshot = Self::snapshot(state);
@@ -188,14 +153,11 @@ impl ApplicationActor {
                     .effects()
                     .application_committed((&snapshot.state).into(), requested);
                 state.settings_changes.send_replace(snapshot.state.clone());
-                let (receipt, degradations) = state.mutations.committed(
-                    operation,
-                    "application",
-                    snapshot.version,
-                    settlement,
-                );
-                snapshot.receipt = Some(receipt);
-                snapshot.degradations = degradations;
+                snapshot.reaches_runtime = reaches_runtime;
+                snapshot.operation_id = operation_id;
+                if reaches_runtime {
+                    gate.committed(ConfigDomain::Application, snapshot.version);
+                }
                 Ok(snapshot)
             }
             Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
@@ -207,7 +169,6 @@ impl ApplicationActor {
             Err(error) => Err(ConfigError::commit_failure(
                 ConfigDomain::Application,
                 error,
-                settlement.as_ref(),
             )),
         }
     }
@@ -254,20 +215,12 @@ impl Actor for ApplicationActor {
                 let _ = reply.send(Self::patch(state, patch).await);
             }
             ApplicationActorMessage::Replace { state: next, reply } => {
-                let _ = reply.send(
-                    Self::commit(
-                        state,
-                        next,
-                        MutationHints {
-                            requested: RequestedRuntimeFields::whole_document(),
-                            ..Default::default()
-                        },
-                        CommandClass::Save,
-                    )
-                    .await,
-                );
+                let _ = reply.send(Self::commit(state, next, Default::default()).await);
             }
         }
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

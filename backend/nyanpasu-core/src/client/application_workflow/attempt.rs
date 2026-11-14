@@ -12,18 +12,9 @@
 //! action by that action's own evidence, and continues the attempt by where
 //! it came from.
 
-use std::sync::Arc;
-
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::{DecisionHandle, StateDecision};
 
-use super::{
-    mutation::{AppliedCandidate, DeferredTarget, KnownRuntimeState},
-    workflow::ApplicationWorkflow,
-};
-use crate::{
-    client::runtime::RuntimeSnapshot, state::mutation::runtime_apply::RuntimeApplyReceipt,
-};
+use super::{mutation::DeferredTarget, workflow::ApplicationWorkflow};
 use nyanpasu_runtime_values::runtime_error::{RecoveryUnresolvedSnafu, RuntimeError};
 
 pub(super) use super::tcc::RestorableBaseline;
@@ -35,19 +26,11 @@ pub(super) struct LiveAttempt {
     /// What the attempt found running. `None` means it never read the
     /// runtime, and so cannot have changed it.
     pub baseline: Option<RestorableBaseline>,
-    /// What Confirm owes an applied Try once its source commits, recorded
-    /// before the ACK left.
-    pub verdict: Option<AppliedVerdict>,
     /// Why the attempt did not settle. `None` while it runs.
     pub unresolved: Option<String>,
 }
 
 pub(super) enum AttemptOrigin {
-    /// Takes part in a source transaction that may still be undecided; its
-    /// recovery reads the transaction's authoritative decision.
-    SourceDecision {
-        decision: DecisionHandle,
-    },
     /// Reconciles a target that is already committed. It carries the target's
     /// own identity and accounting, and its recovery infers no source ACK.
     CommittedTarget(Box<DeferredTarget>),
@@ -58,32 +41,7 @@ pub(super) enum AttemptOrigin {
 pub(crate) enum AttemptStage {
     Preparing,
     TryingCritical,
-    AwaitDecision,
-    Confirming,
-    Cancelling,
     Recovering,
-}
-
-/// An applied Try, with what its commit still owes once the source decides:
-/// Confirm and the recovery of an unfinished Confirm read the same record.
-#[derive(Debug, Clone)]
-pub(super) struct AppliedVerdict {
-    pub receipt: Arc<RuntimeApplyReceipt>,
-    /// The derived product, published only once the source has committed.
-    pub product: Arc<RuntimeSnapshot>,
-    /// Committing leaves service mode, so the daemon the runtime moved off
-    /// is released once the move is confirmed.
-    pub releases_service: bool,
-}
-
-impl AppliedVerdict {
-    pub(super) fn new(candidate: &AppliedCandidate, releases_service: bool) -> Self {
-        Self {
-            receipt: candidate.receipt.clone(),
-            product: candidate.product.clone(),
-            releases_service,
-        }
-    }
 }
 
 impl LiveAttempt {
@@ -93,17 +51,8 @@ impl LiveAttempt {
             origin,
             stage,
             baseline: None,
-            verdict: None,
             unresolved: None,
         }
-    }
-
-    pub(super) fn source_decision(operation_id: OperationId, decision: DecisionHandle) -> Self {
-        Self::new(
-            operation_id,
-            AttemptOrigin::SourceDecision { decision },
-            AttemptStage::Preparing,
-        )
     }
 
     pub(super) fn committed_target(operation_id: OperationId, target: DeferredTarget) -> Self {
@@ -140,7 +89,6 @@ impl LiveAttempt {
 /// Where an attempt came from, which is what its recovery continues by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AttemptOriginKind {
-    SourceDecision,
     CommittedTarget,
     Lifecycle,
 }
@@ -148,7 +96,6 @@ enum AttemptOriginKind {
 impl AttemptOrigin {
     fn kind(&self) -> AttemptOriginKind {
         match self {
-            Self::SourceDecision { .. } => AttemptOriginKind::SourceDecision,
             Self::CommittedTarget(_) => AttemptOriginKind::CommittedTarget,
             Self::Lifecycle => AttemptOriginKind::Lifecycle,
         }
@@ -193,12 +140,6 @@ impl ApplicationWorkflow {
     pub(super) fn record_baseline(&mut self, baseline: &RestorableBaseline) {
         if let Some(live) = &mut self.live {
             live.baseline = Some(baseline.clone());
-        }
-    }
-
-    pub(super) fn record_verdict(&mut self, verdict: AppliedVerdict) {
-        if let Some(live) = &mut self.live {
-            live.verdict = Some(verdict);
         }
     }
 
@@ -250,7 +191,6 @@ impl ApplicationWorkflow {
         };
         self.advance(AttemptStage::Recovering);
         let continued = match origin {
-            AttemptOriginKind::SourceDecision => self.recover_source_decision().await,
             AttemptOriginKind::CommittedTarget => self.recover_committed_target().await,
             AttemptOriginKind::Lifecycle => self.recover_by_reestablishing().await,
         };
@@ -271,71 +211,6 @@ impl ApplicationWorkflow {
         self.lifecycle.runtime.accept_transition();
         self.notify_bound(true);
         Ok(())
-    }
-
-    /// A source mutation continues by the decision its transaction reached.
-    async fn recover_source_decision(&mut self) -> Result<(), String> {
-        let live = self
-            .live
-            .as_ref()
-            .expect("a source decision is recovered from its attempt");
-        let AttemptOrigin::SourceDecision { decision } = &live.origin else {
-            unreachable!("dispatched by origin")
-        };
-        let (operation_id, decision) = (live.operation_id, decision.decision());
-        let (baseline, verdict) = (live.baseline.clone(), live.verdict.clone());
-        match decision {
-            // The source's own resources are its to report; the runtime goes
-            // back to the committed configuration either way (U7).
-            StateDecision::Aborted { .. } => match baseline {
-                // The attempt never read the runtime, so it cannot have
-                // changed it.
-                None => Ok(()),
-                Some(baseline) => {
-                    self.restore_recovery_target(baseline.state.clone(), baseline.binding)
-                        .await
-                }
-            },
-            // A refused or unobserved Try aborts its transaction, and every
-            // other accepted one settles with its Confirm. Only Confirm's
-            // release of the daemon can leave an action behind a commit.
-            StateDecision::Committed { .. } => {
-                let mut applied =
-                    verdict.expect("only an applied Try leaves a committed attempt unsettled");
-                self.restore_recovery_target(
-                    KnownRuntimeState::Applied(applied.receipt.clone()),
-                    baseline.and_then(|baseline| baseline.binding),
-                )
-                .await?;
-                // A restore runs the committed document on a new instance,
-                // and the receipt it recorded names that one. The product
-                // has to name it too, or it describes an instance that no
-                // longer exists and never meets that instance's inspection.
-                if let Some(confirmed) = self.lifecycle.runtime.last_confirmed_runtime_receipt() {
-                    let mut product = applied.product.as_ref().clone();
-                    product.applied_binding = Some(confirmed.binding.clone());
-                    applied.product = Arc::new(product);
-                }
-                // Then the rest of what Confirm owed the commit. A failed
-                // publication stays the retryable maintenance item it is
-                // after a Confirm, so a later retry publishes it. Breaking
-                // connections is not replayed: it belongs to the moment of
-                // the switch, and a late one would cut connections opened
-                // since, so it is never retried.
-                let mut degradations = Vec::new();
-                self.finish_applied(&applied, &mut degradations).await;
-                for degradation in degradations {
-                    tracing::warn!(
-                        %operation_id,
-                        reason = ?degradation.reason,
-                        "recovery could not finish what Confirm owed: {}",
-                        degradation.message
-                    );
-                }
-                Ok(())
-            }
-            StateDecision::Undecided => Err("the source decision is unresolved".into()),
-        }
     }
 
     /// A committed target continues from the baseline its attempt found. When

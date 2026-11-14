@@ -1,279 +1,56 @@
-//! Pure impact classification for one configuration mutation.
-//!
-//! One question: does the mutation reach the runtime, so its critical part has
-//! to build, check and try the candidate ([`runtime_impact`])? A source asks it
-//! before it opens its transaction, and only a mutation that does reach the
-//! runtime takes the Runtime owner into it. Which peripheral owners a commit
-//! hands new inputs is the effects owner's diff, not a question asked here.
-//!
-//! Every input is a parameter and every output is data: nothing here reads
-//! state, spawns work, or touches Tauri.
+//! Runtime input projections, target identities, and source-change detection.
 
 use std::collections::HashSet;
 
 use indexmap::IndexSet;
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::NyanpasuAppConfig,
     clash::config::{
-        ClashConfig, ClashConfigPatch, ClashControlChannel,
+        ClashConfig, ClashControlChannel,
         clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
-        overrides::{ClashGuardOverrides, ClashGuardOverridesPatch, TunOverrides},
+        overrides::{ClashGuardOverrides, TunOverrides},
         tun_stack::SelectedTunStack,
     },
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
 };
 
-use crate::state::{mutation::intent::CommandClass, profiles::ProfilesActor};
+use crate::state::profiles::ProfilesActor;
 
-/// Lets a source classify its own candidate, whichever source-config type it
-/// owns.
-pub(crate) trait MutationDomain {
-    /// How far the candidate moves the runtime, read off the two documents.
-    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact;
+/// Runtime projections supplied by each source domain.
+pub(crate) trait RuntimeDomain {
+    fn reaches_runtime(previous: &Self, candidate: &Self, touched: &[ManagedProfilePath]) -> bool;
 }
 
-impl MutationDomain for NyanpasuAppConfig {
-    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
-        classify_application(previous, candidate)
+impl RuntimeDomain for NyanpasuAppConfig {
+    fn reaches_runtime(previous: &Self, candidate: &Self, _: &[ManagedProfilePath]) -> bool {
+        application_runtime_inputs(previous) != application_runtime_inputs(candidate)
     }
 }
-
-impl MutationDomain for ClashConfig {
-    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
-        classify_clash(previous, candidate)
+impl RuntimeDomain for ClashConfig {
+    fn reaches_runtime(previous: &Self, candidate: &Self, _: &[ManagedProfilePath]) -> bool {
+        clash_runtime_inputs(previous) != clash_runtime_inputs(candidate)
     }
 }
-
-impl MutationDomain for Profiles {
-    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact {
-        classify_profiles(previous, candidate, hints)
-    }
-}
-
-/// How much of the running core a candidate forces to change.
-///
-/// The variants are ordered by how much they disturb, so the verdict of a
-/// mutation that spans domains is the `max` of theirs: a host switch restarts
-/// the core with the freshly built config, which subsumes replacing the binary,
-/// which subsumes reconciling it.
-///
-/// A rebuild and a control-channel change share one variant on purpose. Both
-/// come out of the same candidate and go to one reconcile, which picks reload
-/// or restart below the application layer (roadmap §6.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum RuntimeImpact {
-    /// No build input and no control-channel input moved. There is nothing
-    /// critical to try, and the mutation is a plain source-config save.
-    None,
-    /// A runtime build input and/or a control-channel input moved, so the
-    /// generated config the core runs is no longer the committed one.
-    Reconcile,
-    /// The selected core binary changed: the running instance is replaced
-    /// rather than reloaded.
-    CoreSwap,
-    /// The execution host changed: the core moves between the local process and
-    /// the service host.
-    HostSwitch,
-}
-
-/// What the request asked of the current profile selection.
-///
-/// Carried rather than derived: a pure document diff cannot tell "the user did
-/// not touch the selection" from "the user asked for the profile that is
-/// already selected", and the second still owes a one-shot action.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum ActivationIntent {
-    /// The request does not address the current selection.
-    #[default]
-    None,
-    /// `SetCurrent` / `SetCurrentIfNone`: run this profile.
-    // Requested by the profiles actor, which moves onto the participant in T6.
-    #[allow(dead_code)]
-    Activate(ProfileId),
-    /// Clear the current selection.
-    #[allow(dead_code)]
-    Deactivate,
-}
-
-/// Digest of the bytes a request stages for one managed path.
-///
-/// Opaque here: the classification only needs it to travel with the path it
-/// belongs to, and the producer (the profiles domain) owns the algorithm.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContentDigest(String);
-
-impl ContentDigest {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
+impl RuntimeDomain for Profiles {
+    fn reaches_runtime(previous: &Self, candidate: &Self, touched: &[ManagedProfilePath]) -> bool {
+        let before = profiles_target(previous);
+        let after = profiles_target(candidate);
+        selection_changed(previous, candidate)
+            || before.is_none()
+            || before != after
+            || touched.iter().any(|path| {
+                closure_files(candidate, &ProfilesActor::current_closure(candidate)).contains(path)
+            })
     }
 }
 
-/// A staged resource, addressed by the mutation that created it.
-///
-/// A config version cannot address it: two mutations of the same version can
-/// each stage their own bytes for one path, so the handle is bound to the
-/// request's `OperationId` (roadmap §4.1).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StagedResourceToken(String);
-
-impl StagedResourceToken {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Managed content a request replaces.
-///
-/// File bytes live outside the profiles document, so comparing two documents
-/// cannot see that the same path now holds different content. A subscription
-/// refresh that rewrites the selected profile's file is exactly that case.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TouchedContent {
-    /// The managed path whose bytes this request replaces.
-    pub path: ManagedProfilePath,
-    /// Digest of the staged bytes, when the producer computed one.
-    ///
-    /// The classification does not read it: a touched path inside the current
-    /// closure counts as changed either way, which over-counts an identical
-    /// rewrite and never under-counts a real one. It travels with the path so
-    /// the Try can pin the content set it built against.
-    pub content_digest: Option<ContentDigest>,
-    /// The staged bytes themselves, when the request pre-staged them.
-    pub resource: Option<StagedResourceToken>,
-}
-
-/// The runtime-relevant fields one request explicitly named.
-///
-/// "Named" is struct-patch presence and never a value comparison: a `Some`
-/// field of a patch DTO is a field the request addressed, and it stays
-/// evidence of that when the value it carries is the one already committed.
-/// That is the point — resubmitting an outstanding runtime field unchanged
-/// *is* a request for that runtime, and no comparison of the two documents can
-/// see it (R15, §9.2).
-///
-/// The converse matters as much. A request that named no runtime-relevant
-/// field asked the runtime for nothing, even when the document it produces is
-/// byte-identical to the committed one. Reading the answer out of document
-/// equality instead would re-evaluate an outstanding target on an unrelated
-/// save, and would skip a genuine resubmission that happened to move an
-/// unrelated field alongside it. Manual re-evaluation does not spend the
-/// automatic apply budget.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RequestedRuntimeFields {
-    named: bool,
-}
-
-impl RequestedRuntimeFields {
-    /// A request that replaced the whole document rather than patching it.
-    pub fn whole_document() -> Self {
-        Self { named: true }
-    }
-
-    pub fn runtime() -> Self {
-        Self { named: true }
-    }
-
-    /// The runtime-relevant fields an application-config patch carries.
-    pub fn of_application(patch: &NyanpasuAppConfigPatch) -> Self {
-        Self {
-            named: patch.enable_service_mode.is_some()
-                || patch.core.is_some()
-                || patch.enable_builtin_enhanced.is_some(),
-        }
-    }
-
-    /// The runtime-relevant fields a clash-config patch carries. A composite
-    /// field takes a nested patch and is carried once any sub-field is.
-    pub fn of_clash(patch: &ClashConfigPatch) -> Self {
-        use struct_patch::Status as _;
-        Self {
-            named: patch.overrides.is_some()
-                || patch.enable_clash_fields.is_some()
-                || patch.expand_include_all.is_some()
-                || patch.enable_tun_mode.is_some()
-                || !patch.tun.is_empty()
-                || patch.tun_stack.is_some()
-                || !patch.tun_mips.is_empty()
-                || !patch.mixed_port.is_empty()
-                || patch.socks_port.is_some()
-                || patch.http_port.is_some()
-                || patch.redir_port.is_some()
-                || patch.tproxy_port.is_some()
-                || !patch.transparent_proxy.is_empty()
-                || !patch.external_controller.is_empty()
-                || patch.clash_control_channel.is_some()
-                || patch.clash_ipc_disable_http_controller.is_some(),
-        }
-    }
-
-    /// The clash overrides are patched through an entry point of their own, so
-    /// a request that carries one names runtime exactly
-    /// when that patch addresses a field.
-    pub fn of_clash_overrides(patch: &ClashGuardOverridesPatch) -> Self {
-        use struct_patch::Status as _;
-        Self {
-            named: !patch.is_empty(),
-        }
-    }
-
-    /// Whether the request named a runtime-relevant field at all.
-    pub fn names_any(&self) -> bool {
-        self.named
-    }
-}
-
-/// Typed request intent that the committed candidate cannot express.
-///
-/// A pure diff of the source config loses the difference between "the user did
-/// not ask" and "the user asked for the value that is already stored". The
-/// second still carries a command, and dropping it would silently change
-/// behaviour that users depend on (roadmap C7/D6).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct MutationHints {
-    pub requested_owners: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
-    /// The request carried a `mode` field, whether or not the value moved.
-    ///
-    /// This is the repeated-mode command semantics: re-submitting the current
-    /// mode is a request for the one-shot connection interruption, not for a
-    /// rebuild. It therefore feeds the action, never [`RuntimeImpact`].
-    pub mode_requested: bool,
-    /// What the request asked of the current profile selection.
-    pub activation: ActivationIntent,
-    /// Managed content this request replaces.
-    pub touched: Vec<TouchedContent>,
-    /// Private candidate bytes, owned by this attempt until its source settles.
-    pub staged_content: std::collections::BTreeMap<String, String>,
-    /// Which runtime-relevant fields the request explicitly named.
-    pub requested: RequestedRuntimeFields,
-}
-
-impl MutationHints {
-    /// Whether this request explicitly asked the runtime for something.
-    ///
-    /// This is the third re-evaluation trigger of §9.2: while a committed
-    /// document is still not applied, a request that names one of its runtime
-    /// fields again owes it a fresh attempt even though the diff is empty,
-    /// and a request that names none of them must leave that target and its
-    /// convergence budget exactly as it found them (R15).
-    ///
-    /// The profiles selection is read off [`MutationHints::activation`], which
-    /// is the typed form a request expresses it in: "run this profile" names
-    /// the field the build reads whether or not the profile is already the
-    /// current one. Replaced managed bytes are deliberately *not* read here —
-    /// content inside the current closure already moves
-    /// [`classify_profiles`]'s own verdict, and content outside it is not a
-    /// runtime input at all.
-    pub fn names_runtime_field(&self) -> bool {
-        self.requested.names_any() || self.activation != ActivationIntent::None
-    }
+/// Whether committed build inputs or content in the current closure changes.
+pub(crate) fn reaches_runtime<T: RuntimeDomain>(
+    previous: &T,
+    candidate: &T,
+    touched: &[ManagedProfilePath],
+) -> bool {
+    T::reaches_runtime(previous, candidate, touched)
 }
 
 /// Which application-config fields the runtime build and the core lifecycle
@@ -302,54 +79,6 @@ fn application_runtime_inputs(app: &NyanpasuAppConfig) -> ApplicationRuntimeInpu
         core: &app.core,
         enable_builtin_enhanced: app.enable_builtin_enhanced,
     }
-}
-
-/// Whether a mutation reaches the runtime at all, and how far; `None` is a
-/// plain save the runtime takes no part in.
-///
-/// The request counts as much as the diff. An explicit switch, or a request
-/// that named a runtime field, owes the runtime a Try even when the documents
-/// are equal: re-selecting the running core or profile, or resubmitting an
-/// unconverged field, is a request for that runtime (R15), and a repeated mode
-/// switch still owes its connection interruption. A patch that spans runtime
-/// and other fields is one transaction and classifies as a whole.
-pub(crate) fn runtime_impact<T: MutationDomain>(
-    previous: &T,
-    candidate: &T,
-    hints: &MutationHints,
-    class: CommandClass,
-) -> Option<RuntimeImpact> {
-    let classified = T::classify(previous, candidate, hints);
-    let requested = class == CommandClass::ExplicitSwitch || hints.names_runtime_field();
-    (classified != RuntimeImpact::None || requested)
-        .then(|| classified.max(RuntimeImpact::Reconcile))
-}
-
-pub(crate) fn classify_application(
-    previous: &NyanpasuAppConfig,
-    candidate: &NyanpasuAppConfig,
-) -> RuntimeImpact {
-    // Widest verdict first: a host switch restarts the core with the freshly
-    // built config, so it subsumes both of the others.
-    if previous.enable_service_mode != candidate.enable_service_mode {
-        RuntimeImpact::HostSwitch
-    } else if previous.core != candidate.core {
-        RuntimeImpact::CoreSwap
-    } else if previous.enable_builtin_enhanced != candidate.enable_builtin_enhanced {
-        RuntimeImpact::Reconcile
-    } else {
-        RuntimeImpact::None
-    }
-}
-
-/// Whether committing the candidate moves the runtime off the service host,
-/// which is what makes Confirm release the daemon.
-pub(crate) fn leaves_service_mode(
-    previous: &NyanpasuAppConfig,
-    candidate: &NyanpasuAppConfig,
-) -> bool {
-    classify_application(previous, candidate) == RuntimeImpact::HostSwitch
-        && !candidate.enable_service_mode
 }
 
 /// Every clash-config field the runtime build or the control channel reads.
@@ -405,86 +134,6 @@ fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
     }
 }
 
-/// Runtime verdict for a clash-config candidate, overrides included.
-///
-/// One verdict for build inputs and control-channel inputs alike: they are
-/// decided by the same candidate and settled by one reconcile (roadmap §6.2).
-pub(crate) fn classify_clash(previous: &ClashConfig, candidate: &ClashConfig) -> RuntimeImpact {
-    if clash_runtime_inputs(previous) == clash_runtime_inputs(candidate) {
-        RuntimeImpact::None
-    } else {
-        RuntimeImpact::Reconcile
-    }
-}
-
-/// Runtime verdict for a profiles candidate.
-///
-/// Three sources decide it, and all three are needed: the dependency closure of
-/// the current selection, the definitions inside that closure, and the content
-/// the request touched. Comparing `ProfileItem`s alone would miss a file whose
-/// bytes changed under an unchanged path, which is what a subscription refresh
-/// does to the running profile.
-///
-/// Over-counting is deliberate where it is cheap: a touched closure path counts
-/// as changed without consulting its digest, and a definition that only carries
-/// a new materialization timestamp counts as changed too. Missing a real
-/// content change of a current dependency is the failure that is not allowed.
-///
-/// [`MutationHints::activation`] is not read here. Re-selecting the profile that
-/// is already current leaves the built config identical, so it owes a one-shot
-/// action rather than a rebuild, exactly as it does today.
-pub(crate) fn classify_profiles(
-    previous: &Profiles,
-    candidate: &Profiles,
-    hints: &MutationHints,
-) -> RuntimeImpact {
-    let before = ProfilesActor::current_closure(previous);
-    let after = ProfilesActor::current_closure(candidate);
-
-    // `global_transforms` is compared as a list, not through the closure: the
-    // closure is a set, and reordering the global transforms leaves it equal
-    // while changing the order they run in.
-    if selection_changed(previous, candidate)
-        || previous.global_transforms != candidate.global_transforms
-        || previous.valid != candidate.valid
-        || before != after
-    {
-        return RuntimeImpact::Reconcile;
-    }
-
-    for uid in &after {
-        match (definition_of(previous, uid), definition_of(candidate, uid)) {
-            // Dangling in both documents: the executor resolves neither, so
-            // nothing about the build changed.
-            (None, None) => {}
-            (Some(previous), Some(candidate)) => {
-                let (Ok(previous), Ok(candidate)) =
-                    (serde_json::to_vec(previous), serde_json::to_vec(candidate))
-                else {
-                    // Unable to prove them equal, so assume they are not.
-                    return RuntimeImpact::Reconcile;
-                };
-                if previous != candidate {
-                    return RuntimeImpact::Reconcile;
-                }
-            }
-            // The member appeared in or disappeared from the closure.
-            _ => return RuntimeImpact::Reconcile,
-        }
-    }
-
-    let closure_files = closure_files(candidate, &after);
-    if hints
-        .touched
-        .iter()
-        .any(|touched| closure_files.contains(&touched.path))
-    {
-        return RuntimeImpact::Reconcile;
-    }
-
-    RuntimeImpact::None
-}
-
 /// Whether the candidate selects a different current profile, which is what
 /// interrupts connections on a profile change.
 pub(crate) fn selection_changed(previous: &Profiles, candidate: &Profiles) -> bool {
@@ -515,18 +164,7 @@ pub(crate) fn clash_target(candidate: &ClashConfig) -> Option<String> {
 /// document: the current selection, the global transforms, `valid`, and every
 /// closure member with the definition the build would resolve for it.
 ///
-/// [`MutationHints::touched`] is deliberately not part of it. Those hints
-/// describe what *this request* changes, and identity has to be a property of
-/// the desired runtime rather than of the request that asked for it: a deferred
-/// content update hashing `touched = [(path, digest)]` and the later save of the
-/// same committed document — which carries no hints at all — ask the core for
-/// exactly the same thing, and a key that moved between them would lose the
-/// outstanding target and open a fresh convergence budget for it (§9.2,
-/// D11/V22, R16).
-///
-/// This is the structural projection. `RuntimeInputs` combines it with the
-/// captured file contents so content changes remain distinct even when a
-/// producer has not advanced a materialization stamp.
+/// Captured content is combined with this structural projection by the runtime inputs.
 pub(crate) fn profiles_target(candidate: &Profiles) -> Option<String> {
     let closure = ProfilesActor::current_closure(candidate);
     digest(&ProfilesRuntimeInputs {
@@ -588,18 +226,14 @@ mod tests {
         clash::config::{
             ClashConfigPatch,
             clash_strategy::{
-                break_connection::{
-                    BreakConnectionStrategy, BreakConnectionStrategyPatch, ProxyChangeBreakMode,
-                },
+                break_connection::{BreakConnectionStrategyPatch, ProxyChangeBreakMode},
                 port::{
                     ExternalControllerStrategyPatch, PortStrategy, PortStrategyKind,
                     PortStrategyPatch,
                 },
             },
-            overrides::{
-                ClashGuardOverridesPatch, LogLevel, ManageableField, Mode, TunOverridesPatch,
-            },
-            tun_stack::{MipsConfig, MipsConfigPatch, TunCongestionController, TunStack},
+            overrides::{ClashGuardOverridesPatch, LogLevel, ManageableField, Mode},
+            tun_stack::{MipsConfig, TunCongestionController, TunStack},
         },
         profile::{
             ConfigDefinition, ProfileId, ProfileMetadata, ProfileSource, TransformDefinition,
@@ -673,7 +307,7 @@ mod tests {
     struct AppCase {
         field: &'static str,
         mutate: fn(&mut NyanpasuAppConfig),
-        impact: RuntimeImpact,
+        impact: bool,
         owners: &'static [EffectKind],
     }
 
@@ -688,70 +322,70 @@ mod tests {
             AppCase {
                 field: "enable_service_mode",
                 mutate: |app| app.enable_service_mode = true,
-                impact: RuntimeImpact::HostSwitch,
+                impact: true,
                 owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "core",
                 mutate: |app| app.core = ClashCore::ClashRs,
-                impact: RuntimeImpact::CoreSwap,
+                impact: true,
                 // The core determines whether the transparent-proxy item is available.
                 owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "enable_builtin_enhanced",
                 mutate: |app| app.enable_builtin_enhanced = false,
-                impact: RuntimeImpact::Reconcile,
+                impact: true,
                 owners: &[],
             },
             AppCase {
                 field: "core_logs",
                 mutate: |app| app.core_logs.max_size_mib = 128,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::CoreLogStorage],
             },
             // Peripheral owners.
             AppCase {
                 field: "language",
                 mutate: |app| app.language = I18nLanguage::SimplifiedChinese,
-                impact: RuntimeImpact::None,
+                impact: false,
                 // The tray menu is rendered with the process locale.
                 owners: &[EffectKind::Locale, EffectKind::Tray],
             },
             AppCase {
                 field: "app_log_level",
                 mutate: |app| app.app_log_level = LoggingLevel::Debug,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Logger],
             },
             AppCase {
                 field: "max_log_files",
                 mutate: |app| app.max_log_files = 14,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Logger],
             },
             AppCase {
                 field: "max_log_file_size",
                 mutate: |app| app.max_log_file_size = 20,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Logger],
             },
             AppCase {
                 field: "enable_auto_launch",
                 mutate: |app| app.enable_auto_launch = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::AutoLaunch],
             },
             AppCase {
                 field: "enable_system_proxy",
                 mutate: |app| app.enable_system_proxy = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::SystemProxy, EffectKind::Tray],
             },
             AppCase {
                 field: "system_proxy_bypass",
                 mutate: |app| app.system_proxy_bypass = "localhost".to_owned(),
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::SystemProxy],
             },
             AppCase {
@@ -760,25 +394,25 @@ mod tests {
                     app.pac_url =
                         Some(url::Url::parse("http://127.0.0.1:1/p.pac").expect("pac url"))
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::SystemProxy],
             },
             AppCase {
                 field: "enable_proxy_guard",
                 mutate: |app| app.enable_proxy_guard = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::ProxyGuard],
             },
             AppCase {
                 field: "proxy_guard_interval",
                 mutate: |app| app.proxy_guard_interval = 60,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::ProxyGuard],
             },
             AppCase {
                 field: "hotkeys",
                 mutate: |app| app.hotkeys = vec!["open_or_close_dashboard,Ctrl+Q".to_owned()],
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Hotkeys],
             },
             AppCase {
@@ -787,7 +421,7 @@ mod tests {
                     app.network_statistic_widget =
                         NetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small)
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Widget],
             },
             AppCase {
@@ -796,31 +430,31 @@ mod tests {
                     app.network_statistic_widget_logo.source =
                         nyanpasu_config::application::NetworkStatisticWidgetLogoSource::Widget
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::WidgetLogo],
             },
             AppCase {
                 field: "tray_selector_mode",
                 mutate: |app| app.tray_selector_mode = ProxiesSelectorMode::Hidden,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "tray_menu_mode",
                 mutate: |app| app.tray_menu_mode = TrayMenuMode::Webview,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "enable_tray_text",
                 mutate: |app| app.enable_tray_text = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "enable_tray_traffic",
                 mutate: |app| app.enable_tray_traffic = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[EffectKind::Tray],
             },
             // Fields no runtime build and no effect owner reads.
@@ -829,19 +463,19 @@ mod tests {
                 mutate: |app| {
                     app.update_sources = vec![nyanpasu_config::application::UpdateSource::Github]
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "enable_local_ip_probe",
                 mutate: |app| app.enable_local_ip_probe = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "stun_servers",
                 mutate: |app| app.stun_servers.clear(),
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
@@ -850,7 +484,7 @@ mod tests {
                     app.ip_lookup_providers =
                         vec![nyanpasu_config::application::IpLookupProvider::Ipify]
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
@@ -858,85 +492,85 @@ mod tests {
                 mutate: |app| {
                     app.traffic_retention = nyanpasu_config::application::TrafficRetention::Forever
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "release_channel",
                 mutate: |app| app.release_channel = Some(ReleaseChannel::Beta),
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "app_singleton_port",
                 mutate: |app| app.app_singleton_port = 33333,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "theme_mode",
                 mutate: |app| app.theme_mode = ThemeMode::Dark,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "traffic_graph",
                 mutate: |app| app.traffic_graph = false,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "enable_memory_usage",
                 mutate: |app| app.enable_memory_usage = false,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "lighten_animation_effects",
                 mutate: |app| app.lighten_animation_effects = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "enable_silent_start",
                 mutate: |app| app.enable_silent_start = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "default_latency_test",
                 mutate: |app| app.default_latency_test = "http://example.invalid".to_owned(),
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "default_latency_timeout_ms",
                 mutate: |app| app.default_latency_timeout_ms = 10000,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "proxy_layout_column",
                 mutate: |app| app.proxy_layout_column = 3,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "enable_auto_check_update",
                 mutate: |app| app.enable_auto_check_update = false,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "enable_auto_download_update",
                 mutate: |app| app.enable_auto_download_update = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "always_on_top",
                 mutate: |app| app.always_on_top = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
@@ -947,13 +581,13 @@ mod tests {
                         ..WindowCloseSettings::default()
                     }
                 },
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
                 field: "use_legacy_ui",
                 mutate: |app| app.use_legacy_ui = true,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
             AppCase {
@@ -961,7 +595,7 @@ mod tests {
                 // Mutated in place: the color type is re-exported by neither
                 // crate, so a case cannot name it to build one.
                 mutate: |app| app.theme_color.r = 1.0,
-                impact: RuntimeImpact::None,
+                impact: false,
                 owners: &[],
             },
         ];
@@ -969,7 +603,7 @@ mod tests {
         cases.push(AppCase {
             field: "enable_macos_colored_icons",
             mutate: |app| app.enable_macos_colored_icons = true,
-            impact: RuntimeImpact::None,
+            impact: false,
             owners: &[],
         });
         cases
@@ -990,7 +624,7 @@ mod tests {
             );
 
             assert_eq!(
-                classify_application(&previous, &candidate),
+                reaches_runtime(&previous, &candidate, &[]),
                 case.impact,
                 "{} runtime verdict",
                 case.field
@@ -1033,10 +667,7 @@ mod tests {
     #[test]
     fn an_unchanged_application_config_has_no_impact_anywhere() {
         let clash = base_clash();
-        assert_eq!(
-            classify_application(&base_app(), &base_app()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&base_app(), &base_app(), &[])));
         assert!(
             owners(
                 &effect_inputs(&base_app(), &clash),
@@ -1049,7 +680,7 @@ mod tests {
     struct ClashCase {
         field: &'static str,
         candidate: fn() -> ClashConfig,
-        impact: RuntimeImpact,
+        impact: bool,
     }
 
     /// One case per clash-config field, overrides members included. Everything
@@ -1064,7 +695,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "overrides.allow_lan",
@@ -1074,7 +705,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "overrides.mode",
@@ -1084,7 +715,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "overrides.secret",
@@ -1094,7 +725,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "overrides.unified_delay",
@@ -1104,7 +735,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "overrides.tcp_concurrent",
@@ -1114,7 +745,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "overrides.ipv6",
@@ -1124,7 +755,7 @@ mod tests {
                     ..ClashGuardOverridesPatch::default()
                 })
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "enable_tun_mode",
@@ -1132,7 +763,7 @@ mod tests {
                 enable_tun_mode: true,
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "tun",
@@ -1142,7 +773,7 @@ mod tests {
                 },
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "tun_stack",
@@ -1150,7 +781,7 @@ mod tests {
                 tun_stack: TunStack::System,
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         // The options of a stack that is not selected are not built.
         ClashCase {
@@ -1161,7 +792,7 @@ mod tests {
                 },
                 ..base_clash()
             },
-            impact: RuntimeImpact::None,
+            impact: false,
         },
         ClashCase {
             field: "enable_clash_fields",
@@ -1169,7 +800,7 @@ mod tests {
                 enable_clash_fields: !base_clash().enable_clash_fields,
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "expand_include_all",
@@ -1177,7 +808,7 @@ mod tests {
                 expand_include_all: !base_clash().expand_include_all,
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "mixed_port",
@@ -1185,7 +816,7 @@ mod tests {
                 mixed_port: PortStrategy::new_allow_fallback(7999),
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "socks_port",
@@ -1193,7 +824,7 @@ mod tests {
                 socks_port: Some(PortStrategy::new_allow_fallback(1080)),
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "http_port",
@@ -1201,7 +832,7 @@ mod tests {
                 http_port: Some(PortStrategy::new_allow_fallback(1081)),
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "redir_port",
@@ -1209,7 +840,7 @@ mod tests {
                 redir_port: Some(PortStrategy::new_allow_fallback(12345)),
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "tproxy_port",
@@ -1217,7 +848,7 @@ mod tests {
                 tproxy_port: Some(PortStrategy::new_allow_fallback(12346)),
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "transparent_proxy",
@@ -1228,7 +859,7 @@ mod tests {
                 },
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "external_controller",
@@ -1239,7 +870,7 @@ mod tests {
                 },
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "clash_control_channel",
@@ -1247,7 +878,7 @@ mod tests {
                 clash_control_channel: ClashControlChannel::HttpOnly,
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         ClashCase {
             field: "clash_ipc_disable_http_controller",
@@ -1255,7 +886,7 @@ mod tests {
                 clash_ipc_disable_http_controller: true,
                 ..base_clash()
             },
-            impact: RuntimeImpact::Reconcile,
+            impact: true,
         },
         // Read by the dashboard, never by a build stage.
         ClashCase {
@@ -1264,7 +895,7 @@ mod tests {
                 web_ui_list: vec!["http://example.invalid/ui".to_owned()],
                 ..base_clash()
             },
-            impact: RuntimeImpact::None,
+            impact: false,
         },
         // Decides whether connections are cut after an apply, not what is built.
         ClashCase {
@@ -1277,7 +908,7 @@ mod tests {
                 clash.break_connection.on_proxy_change = ProxyChangeBreakMode::Off;
                 clash
             },
-            impact: RuntimeImpact::None,
+            impact: false,
         },
     ];
 
@@ -1293,7 +924,7 @@ mod tests {
                 case.field
             );
             assert_eq!(
-                classify_clash(&previous, &candidate),
+                reaches_runtime(&previous, &candidate, &[]),
                 case.impact,
                 "{} runtime verdict",
                 case.field
@@ -1313,10 +944,7 @@ mod tests {
             },
             ..previous.clone()
         };
-        assert_eq!(
-            classify_clash(&previous, &candidate),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(&previous, &candidate, &[]));
     }
 
     /// Same guard for the clash table, overrides members included: the
@@ -1364,10 +992,7 @@ mod tests {
                 tun: TunOverrides { auto_route },
                 ..previous.clone()
             };
-            assert_eq!(
-                classify_clash(&previous, &candidate),
-                RuntimeImpact::Reconcile
-            );
+            assert!(reaches_runtime(&previous, &candidate, &[]));
             assert_ne!(
                 clash_target(&previous).unwrap(),
                 clash_target(&candidate).unwrap()
@@ -1378,10 +1003,7 @@ mod tests {
 
     #[test]
     fn an_unchanged_clash_config_has_no_runtime_impact() {
-        assert_eq!(
-            classify_clash(&base_clash(), &base_clash()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&base_clash(), &base_clash(), &[])));
     }
 
     #[test]
@@ -1393,10 +1015,7 @@ mod tests {
         });
         let app = base_app();
 
-        assert_eq!(
-            classify_clash(&previous, &candidate),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(&previous, &candidate, &[]));
         assert_eq!(
             owners(
                 &effect_inputs(&app, &previous),
@@ -1415,10 +1034,7 @@ mod tests {
         };
         let app = base_app();
 
-        assert_eq!(
-            classify_clash(&previous, &candidate),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(&previous, &candidate, &[]));
         assert_eq!(
             owners(
                 &effect_inputs(&app, &previous),
@@ -1441,15 +1057,8 @@ mod tests {
         profiles
     }
 
-    fn touching(file: &str) -> MutationHints {
-        MutationHints {
-            touched: vec![TouchedContent {
-                path: ManagedProfilePath::new(file).expect("managed path"),
-                content_digest: Some(ContentDigest::new("sha256:new")),
-                resource: Some(StagedResourceToken::new("staged-1")),
-            }],
-            ..MutationHints::default()
-        }
+    fn touching(file: &str) -> Vec<ManagedProfilePath> {
+        vec![ManagedProfilePath::new(file).unwrap()]
     }
 
     fn replace_overlay_source(profiles: &mut Profiles, uid: &str, file: &str) {
@@ -1474,10 +1083,7 @@ mod tests {
         let mut candidate = profiles();
         replace_overlay_source(&mut candidate, "scoped", "scoped-v2.yaml");
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(&previous, &candidate, &[]));
     }
 
     #[test]
@@ -1499,10 +1105,7 @@ mod tests {
             }),
         };
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&previous, &candidate, &[])));
     }
 
     #[test]
@@ -1510,27 +1113,23 @@ mod tests {
         let profiles = profiles();
 
         // The document is byte-identical: only the file behind `scoped` changed.
-        assert_eq!(
-            classify_profiles(&profiles, &profiles, &touching("scoped.yaml")),
-            RuntimeImpact::Reconcile
-        );
-        assert_eq!(
-            classify_profiles(&profiles, &profiles, &touching("sel.yaml")),
-            RuntimeImpact::Reconcile
-        );
-        assert_eq!(
-            classify_profiles(&profiles, &profiles, &touching("global.yaml")),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(
+            &profiles,
+            &profiles,
+            &touching("scoped.yaml")
+        ));
+        assert!(reaches_runtime(&profiles, &profiles, &touching("sel.yaml")));
+        assert!(reaches_runtime(
+            &profiles,
+            &profiles,
+            &touching("global.yaml")
+        ));
     }
 
     #[test]
     fn touched_content_outside_the_closure_does_not_affect_the_runtime() {
         let profiles = profiles();
-        assert_eq!(
-            classify_profiles(&profiles, &profiles, &touching("spare.yaml")),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&profiles, &profiles, &touching("spare.yaml"))));
     }
 
     #[test]
@@ -1539,10 +1138,7 @@ mod tests {
         let mut candidate = profiles();
         candidate.current = Some(ProfileId("spare".into()));
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(&previous, &candidate, &[]));
     }
 
     /// The closure is a set, so reordering the global transforms leaves it
@@ -1560,10 +1156,7 @@ mod tests {
             ProfilesActor::current_closure(&candidate),
             "the closure must be set-equal for this test to mean anything"
         );
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::Reconcile
-        );
+        assert!(reaches_runtime(&previous, &candidate, &[]));
     }
 
     #[test]
@@ -1572,97 +1165,7 @@ mod tests {
         let mut candidate = profiles();
         candidate.valid.push("new-clash-field".to_owned());
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::Reconcile
-        );
-    }
-
-    /// V13: whether a mutation reaches the runtime reads the request as much as
-    /// the diff, and a patch that spans both kinds of field is one mutation.
-    /// The profiles rows live with the profiles actor, which derives the hints
-    /// and class they are classified with.
-    #[test]
-    fn runtime_impact_reads_the_request_and_the_diff_together() {
-        let (save, switch) = (CommandClass::Save, CommandClass::ExplicitSwitch);
-        let unnamed = MutationHints::default();
-        let named = MutationHints {
-            requested: RequestedRuntimeFields::runtime(),
-            ..MutationHints::default()
-        };
-
-        let app = base_app();
-        let mut theme = app.clone();
-        theme.theme_mode = ThemeMode::Dark;
-        let mut host = app.clone();
-        host.enable_service_mode = true;
-        let mut mixed = theme.clone();
-        mixed.core = ClashCore::ClashRs;
-        for (case, candidate, class, hints, expected) in [
-            (
-                "relevant",
-                &host,
-                save,
-                &unnamed,
-                Some(RuntimeImpact::HostSwitch),
-            ),
-            ("irrelevant", &theme, save, &unnamed, None),
-            (
-                "mixed",
-                &mixed,
-                save,
-                &unnamed,
-                Some(RuntimeImpact::CoreSwap),
-            ),
-            (
-                "same core or host",
-                &app,
-                switch,
-                &unnamed,
-                Some(RuntimeImpact::Reconcile),
-            ),
-            (
-                "same field, named",
-                &app,
-                save,
-                &named,
-                Some(RuntimeImpact::Reconcile),
-            ),
-            ("same document, unnamed", &app, save, &unnamed, None),
-        ] {
-            assert_eq!(
-                runtime_impact(&app, candidate, hints, class),
-                expected,
-                "app: {case}"
-            );
-        }
-
-        let clash = base_clash();
-        let mut web_ui = clash.clone();
-        web_ui.web_ui_list.push("http://127.0.0.1:9090/ui".into());
-        let mode = overrides_patch(ClashGuardOverridesPatch {
-            mode: Some(Mode::Direct),
-            ..ClashGuardOverridesPatch::default()
-        });
-        let mut mixed = mode.clone();
-        mixed.web_ui_list = web_ui.web_ui_list.clone();
-        for (case, candidate, hints, expected) in [
-            ("relevant", &mode, &unnamed, Some(RuntimeImpact::Reconcile)),
-            ("irrelevant", &web_ui, &unnamed, None),
-            ("mixed", &mixed, &unnamed, Some(RuntimeImpact::Reconcile)),
-            (
-                "same field, named",
-                &clash,
-                &named,
-                Some(RuntimeImpact::Reconcile),
-            ),
-        ] {
-            assert_eq!(
-                runtime_impact(&clash, candidate, hints, save),
-                expected,
-                "clash: {case}"
-            );
-        }
+        assert!(reaches_runtime(&previous, &candidate, &[]));
     }
 
     /// Metadata is a plain save: no build stage reads it, not even for the
@@ -1681,10 +1184,7 @@ mod tests {
             custom_name: true,
         };
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&previous, &candidate, &[])));
     }
 
     /// Folders and the display order only arrange the list: moving the running
@@ -1711,10 +1211,7 @@ mod tests {
             "the layout reordered the items"
         );
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&previous, &candidate, &[])));
     }
 
     /// A proxy group arrangement is read by the sidebar and the tray only: it
@@ -1737,19 +1234,13 @@ mod tests {
             },
         );
 
-        assert_eq!(
-            classify_profiles(&previous, &candidate, &MutationHints::default()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&previous, &candidate, &[])));
     }
 
     #[test]
     fn an_unchanged_profiles_document_has_no_runtime_impact() {
         let profiles = profiles();
-        assert_eq!(
-            classify_profiles(&profiles, &profiles, &MutationHints::default()),
-            RuntimeImpact::None
-        );
+        assert!(!(reaches_runtime(&profiles, &profiles, &[])));
     }
 
     /// The two signals the scheduler must not confuse: an owner with no input
@@ -1794,126 +1285,13 @@ mod tests {
         candidate.apply(ClashConfigPatch::default());
         let app = base_app();
 
-        assert_eq!(classify_clash(&previous, &candidate), RuntimeImpact::None);
+        assert!(!(reaches_runtime(&previous, &candidate, &[])));
         assert!(
             owners(
                 &effect_inputs(&app, &previous),
                 &effect_inputs(&app, &candidate)
             )
             .is_empty()
-        );
-    }
-
-    /// A patch names a field by carrying it, whatever value it carries. The
-    /// value is exactly what must not decide: resubmitting the committed
-    /// `core` unchanged is still a request for that runtime (R15).
-    #[test]
-    fn an_application_patch_names_the_fields_it_carries_whatever_their_values() {
-        let base = base_app();
-        let unchanged = RequestedRuntimeFields::of_application(&NyanpasuAppConfigPatch {
-            core: Some(base.core),
-            ..NyanpasuAppConfigPatch::default()
-        });
-        assert!(unchanged.names_any());
-        assert_eq!(unchanged, RequestedRuntimeFields::runtime());
-        assert_eq!(
-            RequestedRuntimeFields::of_application(&NyanpasuAppConfigPatch {
-                enable_service_mode: Some(true),
-                enable_builtin_enhanced: Some(false),
-                ..NyanpasuAppConfigPatch::default()
-            }),
-            RequestedRuntimeFields::runtime()
-        );
-    }
-
-    /// The other direction: a patch that only carries fields no build stage
-    /// reads asked the runtime for nothing, however large it is.
-    #[test]
-    fn a_patch_of_fields_no_build_stage_reads_names_nothing() {
-        assert!(
-            !RequestedRuntimeFields::of_application(&NyanpasuAppConfigPatch {
-                language: Some(I18nLanguage::English),
-                theme_mode: Some(ThemeMode::Dark),
-                enable_system_proxy: Some(true),
-                ..NyanpasuAppConfigPatch::default()
-            })
-            .names_any()
-        );
-        assert!(
-            !RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                web_ui_list: Some(vec!["http://127.0.0.1:9090/ui".into()]),
-                break_connection: BreakConnectionStrategy::default().into_patch(),
-                ..ClashConfigPatch::default()
-            })
-            .names_any()
-        );
-        assert!(!RequestedRuntimeFields::default().names_any());
-        assert!(RequestedRuntimeFields::whole_document().names_any());
-    }
-
-    #[test]
-    fn a_clash_patch_names_its_runtime_fields_including_the_overrides() {
-        for auto_route in [
-            ManageableField::Managed(true),
-            ManageableField::Managed(false),
-            ManageableField::Unmanaged,
-        ] {
-            assert_eq!(
-                RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                    tun: TunOverridesPatch {
-                        auto_route: Some(auto_route),
-                    },
-                    ..ClashConfigPatch::default()
-                }),
-                RequestedRuntimeFields::runtime()
-            );
-        }
-        assert_eq!(
-            RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                enable_tun_mode: Some(true),
-                mixed_port: PortStrategy::default().into_patch(),
-                web_ui_list: Some(Vec::new()),
-                ..ClashConfigPatch::default()
-            }),
-            RequestedRuntimeFields::runtime()
-        );
-        assert_eq!(
-            RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                overrides: Some(base_clash().overrides),
-                ..ClashConfigPatch::default()
-            }),
-            RequestedRuntimeFields::runtime()
-        );
-        // Named whatever the stack, so resubmitting a controller that did not
-        // converge still owes the runtime a try.
-        assert_eq!(
-            RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                tun_mips: MipsConfigPatch {
-                    congestion_controller: Some(Some(TunCongestionController::Bbr)),
-                },
-                ..ClashConfigPatch::default()
-            }),
-            RequestedRuntimeFields::runtime()
-        );
-        assert_eq!(
-            RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                redir_port: Some(Some(PortStrategy::new_allow_fallback(12345))),
-                ..ClashConfigPatch::default()
-            }),
-            RequestedRuntimeFields::runtime()
-        );
-        // The overrides have an entry point of their own, and an empty patch
-        // through it addressed nothing.
-        assert_eq!(
-            RequestedRuntimeFields::of_clash_overrides(&ClashGuardOverridesPatch {
-                mode: Some(Mode::Direct),
-                ..ClashGuardOverridesPatch::default()
-            }),
-            RequestedRuntimeFields::runtime()
-        );
-        assert!(
-            !RequestedRuntimeFields::of_clash_overrides(&ClashGuardOverridesPatch::default())
-                .names_any()
         );
     }
 
@@ -1932,7 +1310,7 @@ mod tests {
                     },
                     ..ClashConfigPatch::default()
                 },
-                RuntimeImpact::Reconcile,
+                true,
             ),
             (
                 "external_controller.port.kind",
@@ -1946,7 +1324,7 @@ mod tests {
                     },
                     ..ClashConfigPatch::default()
                 },
-                RuntimeImpact::Reconcile,
+                true,
             ),
             (
                 "break_connection.on_mode_change",
@@ -1957,65 +1335,18 @@ mod tests {
                     },
                     ..ClashConfigPatch::default()
                 },
-                RuntimeImpact::None,
+                false,
             ),
         ];
         for (field, patch, impact) in cases {
             let previous = base_clash();
             let mut candidate = base_clash();
-            let requested = RequestedRuntimeFields::of_clash(&patch);
             candidate.apply(patch);
-            assert_eq!(classify_clash(&previous, &candidate), impact, "{field}");
             assert_eq!(
-                requested.names_any(),
-                impact != RuntimeImpact::None,
-                "{field} names its runtime field"
+                reaches_runtime(&previous, &candidate, &[]),
+                impact,
+                "{field}"
             );
         }
-    }
-
-    /// The profiles selection has no patch field: a request expresses it as an
-    /// activation, and re-selecting the profile that is already current is the
-    /// resubmission the third trigger exists for.
-    #[test]
-    fn a_re_activation_of_the_current_profile_names_a_runtime_field() {
-        assert!(!MutationHints::default().names_runtime_field());
-        assert!(
-            MutationHints {
-                activation: ActivationIntent::Activate(ProfileId("sel".into())),
-                ..MutationHints::default()
-            }
-            .names_runtime_field()
-        );
-        // Replaced managed bytes are not read here: content inside the current
-        // closure already moves `classify_profiles`, and content outside it is
-        // not a runtime input at all.
-        assert!(
-            !MutationHints {
-                touched: vec![TouchedContent {
-                    path: ManagedProfilePath::new("other.yaml").expect("managed path"),
-                    content_digest: None,
-                    resource: None,
-                }],
-                ..MutationHints::default()
-            }
-            .names_runtime_field()
-        );
-    }
-
-    #[test]
-    fn a_wider_runtime_impact_wins_when_domains_are_combined() {
-        assert_eq!(
-            RuntimeImpact::Reconcile.max(RuntimeImpact::HostSwitch),
-            RuntimeImpact::HostSwitch
-        );
-        assert_eq!(
-            RuntimeImpact::CoreSwap.max(RuntimeImpact::Reconcile),
-            RuntimeImpact::CoreSwap
-        );
-        assert_eq!(
-            RuntimeImpact::None.max(RuntimeImpact::None),
-            RuntimeImpact::None
-        );
     }
 }

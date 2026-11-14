@@ -712,6 +712,17 @@ impl CoreFacade {
         self.service.command_settled().await
     }
 
+    /// Ensures the daemon is installed, running, and through its version gate.
+    /// The runtime's owner is unchanged, including when preparation fails.
+    pub async fn prepare_service_host(&mut self) -> Result<(), CoreError> {
+        let service = self.service.clone();
+        self.service_command(ServiceCommandKind::EnsureReady, async move {
+            service.ensure_ready().await
+        })
+        .await
+        .map(|_| ())
+    }
+
     pub async fn install_service(&mut self) -> Result<(), CoreError> {
         let service = self.service.clone();
         self.service_command(ServiceCommandKind::Install, async move {

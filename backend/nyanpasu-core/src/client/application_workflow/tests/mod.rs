@@ -3,16 +3,16 @@ use crate::{
     client::{
         UiEventSink,
         test_support::workflow::{
-            Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript, aftermath,
+            Fixture, Installer, Progress, ScriptedWaitEndpoint, WaitScript,
             disable_mode_interruption, override_patch, start_replacement,
         },
     },
-    state::mutation::value::MutationReceipt,
 };
 mod closing;
+mod commit_first;
 mod connection_policy;
 mod mutations;
-mod participant_factory;
+mod profile_content;
 mod recovery;
 mod service_recovery;
 mod startup;
@@ -33,27 +33,6 @@ use std::{
 };
 use struct_patch::Patch;
 use tokio::sync::Notify;
-
-/// What the source that hit `error` would classify it as, given the Runtime's
-/// receipt for the operation.
-fn classify(
-    error: nyanpasu_state_engine::ReplaceIfVersionError,
-    receipt: &MutationReceipt,
-) -> nyanpasu_runtime_values::mutation::CommitAborted {
-    crate::state::mutation::classify_commit_aborted(error, Some(receipt))
-}
-
-/// The errors a required participant gave for refusing a candidate.
-fn refusals(
-    aborted: &nyanpasu_runtime_values::mutation::CommitAborted,
-) -> Vec<std::sync::Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
-    match aborted {
-        nyanpasu_runtime_values::mutation::CommitAborted::RuntimeRefused { errors, .. } => {
-            errors.clone()
-        }
-        other => panic!("expected a refusal, got {other:?}"),
-    }
-}
 
 /// A publication that fails the way a full disk does.
 pub(super) fn scripted_publish_failure() -> nyanpasu_runtime_values::publish::PublishRuntimeError {
@@ -166,11 +145,6 @@ async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
     assert!(
         store.read().pending.is_some(),
         "the apply is recorded as awaiting its inspection"
-    );
-    assert_eq!(
-        first.config_digest,
-        nyanpasu_core_manager::payload_digest(first.config_text.as_bytes()),
-        "the receipt carries the bytes the core accepted, and their digest"
     );
 
     client.reconcile().await.unwrap();
@@ -336,7 +310,9 @@ async fn workflow_graph_with_clients(
 ) {
     use crate::client::test_support::{test_materialization_port, test_typed_config_clients};
     use nyanpasu_contracts::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
-    let (application, _, clash) = test_typed_config_clients(dir).await;
+    let (application, _, clash) =
+        test_typed_config_clients(dir, crate::state::mutation::MutationCoordinator::isolated())
+            .await;
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
@@ -352,7 +328,6 @@ async fn workflow_graph_with_clients(
         dir.path(),
         dir.path().join("data"),
     ));
-    let core_for_validator = core.clone();
     // The graph's router already drives the host it was built on, and these
     // tests are not about proving that.
     let ownership = super::super::core_lifecycle::Ownership::Established {
@@ -367,14 +342,15 @@ async fn workflow_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            revisions: crate::client::runtime::RuntimeRevisionAllocator::new(),
             notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
+            content_lock: profiles.content_lock(),
             core,
             service,
             builder: builder.clone(),
-            validator: Arc::new(adapters::CoreCheckValidator::new(&core_for_validator)),
             ports,
             installer: Arc::new(Installer::succeeding()),
             ownership,
@@ -1247,6 +1223,14 @@ async fn a_control_channel_patch_does_not_start_a_stopped_core() {
         );
         let mut patch = ClashConfig::new_empty_patch();
         patch.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        // Also change the HTTP setting so this target differs from the still-running baseline.
+        patch.clash_ipc_disable_http_controller = Some(
+            !f.client
+                .get_clash_config()
+                .await
+                .unwrap()
+                .clash_ipc_disable_http_controller,
+        );
         f.client.patch_clash_config(patch).await.unwrap();
         assert_eq!(f.endpoint.submissions(), 1);
     })

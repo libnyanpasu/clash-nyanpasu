@@ -29,13 +29,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
 use crate::state::mutation::{
-    MutationCoordinator, impact,
-    impact::{
-        ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
-        StagedResourceToken, TouchedContent,
-    },
-    intent::CommandClass,
-    value::MutationReceipt,
+    DomainChange, MutationCoordinator, ProfileContentLock, impact, ports::RuntimeCandidate,
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::profiles::{
@@ -61,6 +55,8 @@ use super::{
 #[allow(dead_code)]
 pub struct CommitReport {
     pub snapshot: Arc<Profiles>,
+    pub(crate) version: Version,
+    pub(crate) reaches_runtime: bool,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub degradations: Vec<ProfileDegradation>,
     pub(crate) receipt: nyanpasu_runtime_values::runtime::CommitReceipt,
@@ -77,7 +73,8 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
-    pub(crate) mutations: MutationCoordinator<Profiles>,
+    pub(crate) mutations: MutationCoordinator,
+    pub(crate) content_lock: ProfileContentLock,
     pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
     pub fetcher: Arc<dyn SubscriptionFetcher>,
@@ -89,7 +86,8 @@ pub struct ProfilesActorArgs {
 }
 
 pub struct ProfilesActorState {
-    mutations: MutationCoordinator<Profiles>,
+    mutations: MutationCoordinator,
+    content_lock: ProfileContentLock,
     manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
@@ -400,6 +398,12 @@ pub(super) enum AffectsRule {
     Always,
 }
 
+#[derive(Default)]
+struct ProfileCandidateContent {
+    touched: Vec<ManagedProfilePath>,
+    staged_content: std::collections::BTreeMap<String, String>,
+}
+
 impl ProfilesActor {
     fn current_state(state: &ProfilesActorState) -> Profiles {
         state.manager.snapshot_handle().load().state.clone()
@@ -450,69 +454,119 @@ impl ProfilesActor {
         Ok(next)
     }
 
-    /// Persist an already validated, revision-bumped candidate exactly as prepared.
+    #[expect(
+        clippy::result_large_err,
+        reason = "profile checks preserve the shared domain error contract"
+    )]
+    async fn check_candidate(
+        state: &ProfilesActorState,
+        before: &Profiles,
+        candidate: &Profiles,
+        hints: &ProfileCandidateContent,
+        subject: &CommitSubject,
+    ) -> Result<bool, ProfilesError> {
+        state.mutations.ensure_ready()?;
+        let reaches = impact::reaches_runtime(before, candidate, &hints.touched);
+        if reaches {
+            state
+                .mutations
+                .runtime()
+                .check(RuntimeCandidate {
+                    change: DomainChange::Profiles {
+                        candidate: Arc::new(candidate.clone()),
+                    },
+                    staged: hints.staged_content.clone(),
+                })
+                .await
+                .map_err(|error| {
+                    use nyanpasu_runtime_values::{
+                        mutation::{CommitAborted, RuntimeAftermath},
+                        runtime_error::RuntimeError,
+                    };
+                    let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
+                    let errors = vec![error.clone()];
+                    let runtime = RuntimeAftermath::Untouched;
+                    let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. })
+                    {
+                        CommitAborted::RuntimeFailed {
+                            errors,
+                            runtime,
+                            source,
+                        }
+                    } else {
+                        CommitAborted::RuntimeRefused {
+                            errors,
+                            runtime,
+                            source,
+                        }
+                    };
+                    ProfilesError::Commit {
+                        uid: subject.0.clone(),
+                        path: subject.1.clone(),
+                        cleanup_failures: Vec::new(),
+                        source,
+                    }
+                })?;
+        }
+        Ok(reaches)
+    }
+
+    fn committed_report(
+        state: &ProfilesActorState,
+        snapshot: Profiles,
+        reaches_runtime: bool,
+        operation: Option<OperationId>,
+        created: Option<ProfileId>,
+    ) -> CommitReport {
+        let version = state.manager.snapshot_handle().load().version;
+        if reaches_runtime {
+            state.mutations.runtime().committed(
+                nyanpasu_runtime_values::mutation::ConfigDomain::Profiles,
+                version,
+            );
+        }
+        CommitReport {
+            snapshot: Arc::new(snapshot),
+            version,
+            reaches_runtime,
+            degradations: Vec::new(),
+            receipt: nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: operation.map(|id| id.to_string()),
+                domain: "profiles".into(),
+                source_version: *version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            runtime_degradations: Vec::new(),
+            created,
+        }
+    }
+
+    /// Persists an already validated, revision-bumped candidate before notifying runtime.
     async fn persist_candidate(
         state: &mut ProfilesActorState,
         expected_version: Version,
         before: &Profiles,
         next: Profiles,
-        hints: MutationHints,
-        class: CommandClass,
+        hints: ProfileCandidateContent,
         subject: CommitSubject,
-    ) -> Result<
-        (
-            Arc<Profiles>,
-            (
-                nyanpasu_runtime_values::runtime::CommitReceipt,
-                Vec<nyanpasu_runtime_values::runtime::Degradation>,
-            ),
-        ),
-        ProfilesError,
-    > {
-        state.mutations.ensure_ready()?;
-        // Only a mutation that reaches the runtime takes the Runtime into its
-        // transaction; any other save commits on its own.
-        let (operation, result, settlement) =
-            match impact::runtime_impact(before, &next, &hints, class) {
-                Some(impact) => {
-                    let operation = OperationId::generate();
-                    let (participant, settlement) = state
-                        .mutations
-                        .participant(operation, hints, class, impact)?;
-                    let result = state
-                        .manager
-                        .replace_if_version_with_participant(
-                            expected_version,
-                            next.clone(),
-                            participant,
-                            || async { Ok(()) },
-                            || async { Ok(()) },
-                        )
-                        .await;
-                    (Some(operation), result, settlement.await.ok())
-                }
-                None => (
-                    None,
-                    state
-                        .manager
-                        .replace_if_version(expected_version, next.clone())
-                        .await,
-                    None,
-                ),
-            };
+    ) -> Result<CommitReport, ProfilesError> {
+        let reaches = Self::check_candidate(state, before, &next, &hints, &subject).await?;
+        let operation = reaches.then(OperationId::generate);
+        let guard = state.content_lock.write().await;
+        let result = state
+            .manager
+            .replace_if_version(expected_version, next.clone())
+            .await;
+        drop(guard);
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 state
                     .mutations
                     .effects()
                     .profiles_committed(Self::changed_files(&subject, before, &next));
-                let completion = state.mutations.committed(
-                    operation,
-                    "profiles",
-                    *state.manager.snapshot_handle().load().version.as_ref(),
-                    settlement,
-                );
-                Ok((Arc::new(next), completion))
+                Ok(Self::committed_report(
+                    state, next, reaches, operation, None,
+                ))
             }
             Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
                 expected: *expected_version.as_ref(),
@@ -520,12 +574,7 @@ impl ProfilesActor {
                 cleanup_failures: Vec::new(),
             }
             .fail(),
-            Err(error) => Err(Self::commit_failure(
-                error,
-                settlement.as_ref(),
-                subject,
-                Vec::new(),
-            )),
+            Err(error) => Err(Self::commit_failure(error, subject, Vec::new())),
         }
     }
 
@@ -534,7 +583,6 @@ impl ProfilesActor {
     /// manager's own `Conflict` result.
     fn commit_failure(
         error: ReplaceIfVersionError,
-        settlement: Option<&MutationReceipt>,
         (uid, path): CommitSubject,
         cleanup_failures: Vec<ProfilesError>,
     ) -> ProfilesError {
@@ -553,9 +601,7 @@ impl ProfilesActor {
                 path,
                 cleanup_failures,
             }
-            .into_error(crate::state::mutation::classify_commit_aborted(
-                error, settlement,
-            )),
+            .into_error(crate::state::mutation::classify_commit_aborted(error)),
         }
     }
 
@@ -890,25 +936,12 @@ impl ProfilesActor {
         let affects = mutate(&mut next)?;
         let candidate = Self::prepare_candidate(next)?;
         let subject = Self::commit_subject(&affects, None, &candidate);
-        let (hints, class) = Self::mutation_hints(&affects, &candidate);
-        let (snapshot, (receipt, runtime_degradations)) = Self::persist_candidate(
-            state,
-            expected_version,
-            &before,
-            candidate,
-            hints,
-            class,
-            subject,
-        )
-        .await?;
-        Self::reconcile_committed(myself, state, &snapshot).await;
-        Ok(CommitReport {
-            snapshot,
-            degradations: Vec::new(),
-            receipt,
-            runtime_degradations,
-            created: None,
-        })
+        let hints = Self::candidate_content(&affects, &candidate);
+        let report =
+            Self::persist_candidate(state, expected_version, &before, candidate, hints, subject)
+                .await?;
+        Self::reconcile_committed(myself, state, &report.snapshot).await;
+        Ok(report)
     }
 
     /// Awaits a blocking task. A panic in it is resumed, never turned into an
@@ -1084,6 +1117,7 @@ impl ProfilesActor {
         cleanup: PreparedCleanup,
         snapshot: &Profiles,
     ) -> Vec<ProfileDegradation> {
+        let _guard = state.content_lock.write().await;
         let retry = cleanup.clone();
         if let Err(error) = Self::materialization_call(
             state,
@@ -1114,38 +1148,18 @@ impl ProfilesActor {
         Vec::new()
     }
 
-    fn mutation_hints(
-        affects: &AffectsRule,
-        candidate: &Profiles,
-    ) -> (MutationHints, CommandClass) {
-        let mut hints = MutationHints::default();
+    fn candidate_content(affects: &AffectsRule, candidate: &Profiles) -> ProfileCandidateContent {
+        let mut hints = ProfileCandidateContent::default();
         if let AffectsRule::Touched(uid) = affects {
             if let Some(source) = candidate
                 .items
                 .get(uid)
                 .and_then(|item| item.definition.source())
             {
-                hints.touched.push(TouchedContent {
-                    path: source.materialized().file.clone(),
-                    content_digest: None,
-                    resource: None,
-                });
+                hints.touched.push(source.materialized().file.clone());
             }
         }
-        let class = if matches!(affects, AffectsRule::CurrentChanged) {
-            hints.activation = candidate
-                .current
-                .clone()
-                .map(ActivationIntent::Activate)
-                .unwrap_or(ActivationIntent::Deactivate);
-            CommandClass::ExplicitSwitch
-        } else {
-            if matches!(affects, AffectsRule::Always | AffectsRule::GlobalChanged) {
-                hints.requested = RequestedRuntimeFields::runtime();
-            }
-            CommandClass::Save
-        };
-        (hints, class)
+        hints
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1164,8 +1178,8 @@ impl ProfilesActor {
         let subject = Self::commit_subject(&affects, created.as_ref(), &candidate);
         let expected_revision = candidate.revision();
         state.mutations.ensure_ready()?;
-        let (mut hints, class) = Self::mutation_hints(&affects, &candidate);
-        let prepared = if let Some((path, resource)) = resource {
+        let mut hints = Self::candidate_content(&affects, &candidate);
+        if let Some((path, resource)) = &resource {
             let content = match &resource {
                 MaterializationResource::File { content } => Some(content.clone()),
                 MaterializationResource::Symlink { .. }
@@ -1174,7 +1188,7 @@ impl ProfilesActor {
                             .items
                             .get(uid)
                             .and_then(|item| item.definition.source())
-                            .is_some_and(|source| source.materialized().file == path)
+                            .is_some_and(|source| source.materialized().file == *path)
                     }) =>
                 {
                     None
@@ -1183,16 +1197,14 @@ impl ProfilesActor {
                     Some(Self::read_external(&state.fs, target).await?)
                 }
             };
-            hints.touched.push(TouchedContent {
-                path: path.clone(),
-                content_digest: content.as_ref().map(|content| {
-                    ContentDigest::new(nyanpasu_core_manager::payload_digest(content.as_bytes()))
-                }),
-                resource: None,
-            });
+            hints.touched.push(path.clone());
             if let Some(content) = content {
                 hints.staged_content.insert(path.to_string(), content);
             }
+        }
+        let reaches = Self::check_candidate(state, &before, &candidate, &hints, &subject).await?;
+        let operation = reaches.then(OperationId::generate);
+        let prepared = if let Some((path, resource)) = resource {
             Some(
                 Self::materialization_call(
                     state,
@@ -1215,6 +1227,7 @@ impl ProfilesActor {
                 Ok(cleanup) => Some(cleanup),
                 Err(error) => {
                     if let Some(prepared) = prepared {
+                        let _guard = state.content_lock.write().await;
                         Self::materialization_call(
                             state,
                             MaterializationOperation::Compensate,
@@ -1228,16 +1241,6 @@ impl ProfilesActor {
         } else {
             None
         };
-        // Only a mutation that reaches the runtime takes the Runtime into its
-        // transaction, under an operation that also addresses what it staged;
-        // any other save commits on its own.
-        let admission = impact::runtime_impact(&before, &candidate, &hints, class)
-            .map(|impact| (OperationId::generate(), impact));
-        if let Some((operation, _)) = admission {
-            for touched in &mut hints.touched {
-                touched.resource = Some(StagedResourceToken::new(operation.to_string()));
-            }
-        }
         let write_port = state.materialization.clone();
         let write_resource = prepared.clone();
         let recover_port = state.materialization.clone();
@@ -1281,42 +1284,21 @@ impl ProfilesActor {
                 Err(error) => error,
             })?
         };
-        let (result, settlement) = match admission {
-            Some((operation, impact)) => {
-                let (participant, settlement) = state
-                    .mutations
-                    .participant(operation, hints, class, impact)?;
-                let result = state
-                    .manager
-                    .replace_if_version_with_participant(
-                        expected_version,
-                        candidate.clone(),
-                        participant,
-                        write,
-                        recover,
-                    )
-                    .await;
-                (result, settlement.await.ok())
-            }
-            None => (
-                state
-                    .manager
-                    .replace_if_version_with_local_write(
-                        expected_version,
-                        candidate.clone(),
-                        write,
-                        recover,
-                    )
-                    .await,
-                None,
-            ),
-        };
+        let guard = state.content_lock.write().await;
+        let result = state
+            .manager
+            .replace_if_version_with_local_write(
+                expected_version,
+                candidate.clone(),
+                write,
+                recover,
+            )
+            .await;
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {}
             result => {
-                // Only a pre-persistence refusal leaves staging to discard here.
-                // Once local_write starts, the source transaction exclusively owns
-                // compensation and publishes its result before releasing admission.
+                // The engine compensates once local_write starts. Pre-write
+                // conflicts leave prepared resources for this owner to discard.
                 let before_write = matches!(
                     &result,
                     Ok(ReplaceIfVersionResult::Conflict { .. })
@@ -1350,9 +1332,7 @@ impl ProfilesActor {
                     }
                 }
                 return Err(match result {
-                    Err(error) => {
-                        Self::commit_failure(error, settlement.as_ref(), subject, failures)
-                    }
+                    Err(error) => Self::commit_failure(error, subject, failures),
                     Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
                         VersionConflictSnafu {
                             expected: *expected_version.as_ref(),
@@ -1365,18 +1345,14 @@ impl ProfilesActor {
                 });
             }
         }
+        drop(guard);
         state
             .mutations
             .effects()
             .profiles_committed(Self::changed_files(&subject, &before, &candidate));
-        let (receipt, runtime_degradations) = state.mutations.committed(
-            admission.map(|(operation, _)| operation),
-            "profiles",
-            *state.manager.snapshot_handle().load().version.as_ref(),
-            settlement,
-        );
-        let snapshot = Arc::new(candidate);
-        Self::reconcile_committed(myself, state, &snapshot).await;
+        let mut report = Self::committed_report(state, candidate, reaches, operation, created);
+        let snapshot = &report.snapshot;
+        Self::reconcile_committed(myself, state, snapshot).await;
         let mut degradations = Vec::new();
         if let Some(prepared) = prepared {
             if let Err(error) =
@@ -1393,15 +1369,10 @@ impl ProfilesActor {
             }
         }
         if let Some(cleanup) = cleanup {
-            degradations.extend(Self::finish_cleanup(state, cleanup, &snapshot).await);
+            degradations.extend(Self::finish_cleanup(state, cleanup, snapshot).await);
         }
-        Ok(CommitReport {
-            snapshot,
-            degradations,
-            receipt,
-            runtime_degradations,
-            created,
-        })
+        report.degradations = degradations;
+        Ok(report)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1432,6 +1403,7 @@ impl ProfilesActor {
     async fn reconcile_materializations(
         state: &ProfilesActorState,
     ) -> Result<MaterializationReconcileReport, ProfilesError> {
+        let _guard = state.content_lock.write().await;
         let snapshot = Self::current_state(state);
         Self::materialization_call(state, MaterializationOperation::Reconcile, move |port| {
             port.reconcile(&snapshot)
@@ -1655,6 +1627,7 @@ impl Actor for ProfilesActor {
         let index = ProfileDependencyIndex::build(&args.manager.snapshot_handle().load().state);
         Ok(ProfilesActorState {
             mutations: args.mutations,
+            content_lock: args.content_lock,
             manager: args.manager,
             index,
             fs: args.fs,
@@ -2606,14 +2579,9 @@ impl Actor for ProfilesActor {
 mod tests {
     use super::*;
 
-    /// V13, profiles: whether an operation reaches the runtime, for the hints
-    /// and class this actor derives from the operation's rule. Selecting the
-    /// current profile again and re-setting the same global transforms still
-    /// ask for the runtime, and so does a definition change of the running
-    /// profile, whatever produced it.
+    /// Runtime checks follow changed build inputs and touched closure files.
     #[test]
-    fn profiles_operations_reach_the_runtime_by_request_and_diff() {
-        use crate::state::mutation::impact::{RuntimeImpact, runtime_impact};
+    fn profiles_operations_reach_the_runtime_by_diff_and_content() {
         use nyanpasu_profile_transform::test_support::{file_config, metadata, overlay};
 
         // current -> `sel` with its scoped transform `scoped`; `global` is a
@@ -2648,8 +2616,8 @@ mod tests {
             change(&mut next);
             next
         };
-        let reconcile = Some(RuntimeImpact::Reconcile);
-        let cases: Vec<(&str, AffectsRule, Profiles, Profiles, Option<RuntimeImpact>)> = vec![
+        let reconcile = true;
+        let cases: Vec<(&str, AffectsRule, Profiles, Profiles, bool)> = vec![
             (
                 "select another profile",
                 AffectsRule::CurrentChanged,
@@ -2662,7 +2630,7 @@ mod tests {
                 AffectsRule::CurrentChanged,
                 base.clone(),
                 base.clone(),
-                reconcile,
+                false,
             ),
             (
                 "change the global transforms",
@@ -2676,7 +2644,7 @@ mod tests {
                 AffectsRule::GlobalChanged,
                 base.clone(),
                 base.clone(),
-                reconcile,
+                false,
             ),
             (
                 "change the valid fields",
@@ -2690,7 +2658,7 @@ mod tests {
                 AffectsRule::Always,
                 base.clone(),
                 base.clone(),
-                reconcile,
+                false,
             ),
             (
                 "save the current profile's file",
@@ -2711,7 +2679,7 @@ mod tests {
                 AffectsRule::Touched(id("spare")),
                 base.clone(),
                 base.clone(),
-                None,
+                false,
             ),
             (
                 "patch the options of the current remote profile",
@@ -2740,7 +2708,7 @@ mod tests {
                     };
                     option.update_interval_minutes = RemoteSyncInterval::DISABLED;
                 }),
-                None,
+                false,
             ),
             (
                 "rename the current profile",
@@ -2749,7 +2717,7 @@ mod tests {
                 with(&base, &|p| {
                     p.items.get_mut(&id("sel")).unwrap().metadata.name = "renamed".into()
                 }),
-                None,
+                false,
             ),
             (
                 "add a profile",
@@ -2758,7 +2726,7 @@ mod tests {
                 with(&base, &|p| {
                     p.append_item(file_config("added", "added.yaml", &[]));
                 }),
-                None,
+                false,
             ),
             (
                 "move the current profile into a new folder",
@@ -2775,7 +2743,7 @@ mod tests {
                     })
                     .unwrap();
                 }),
-                None,
+                false,
             ),
             (
                 "reorder the profiles inside a folder",
@@ -2802,13 +2770,13 @@ mod tests {
                     })
                     .unwrap();
                 }),
-                None,
+                false,
             ),
         ];
         for (case, rule, before, after, expected) in cases {
-            let (hints, class) = ProfilesActor::mutation_hints(&rule, &after);
+            let hints = ProfilesActor::candidate_content(&rule, &after);
             assert_eq!(
-                runtime_impact(&before, &after, &hints, class),
+                impact::reaches_runtime(&before, &after, &hints.touched),
                 expected,
                 "{case}"
             );
@@ -2850,3 +2818,6 @@ mod tests {
         assert_eq!(synced_name(false, &Some("   ".into())), None);
     }
 }
+
+#[cfg(test)]
+mod runtime_gate_tests;

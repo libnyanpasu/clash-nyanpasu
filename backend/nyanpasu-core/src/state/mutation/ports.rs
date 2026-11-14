@@ -1,19 +1,21 @@
-//! The source-owned boundary for constructing a runtime mutation participant.
+//! Source-owned boundaries for independent checks and committed-state notifications.
 
-use nyanpasu_state_engine::{DecisionHandle, StateParticipant};
-use tokio::sync::oneshot;
+/// A candidate is checked without changing the running core or publishing source state.
+pub(crate) struct RuntimeCandidate {
+    pub change: super::DomainChange,
+    pub staged: std::collections::BTreeMap<String, String>,
+}
 
-use super::{intent::MutationIntent, value::MutationReceipt};
-
-/// Builds one participant with the source transaction's authoritative decision and settlement.
-pub(crate) trait MutationParticipantFactory<T>: Send + Sync + 'static
-where
-    T: Clone + Send + Sync + 'static,
-{
-    fn make(
+/// Source-owned boundary for independent checks and committed-state notifications.
+#[async_trait::async_trait]
+pub(crate) trait RuntimeGate: Send + Sync + 'static {
+    async fn check(
         &self,
-        intent: MutationIntent,
-        decision: DecisionHandle,
-        settle: oneshot::Sender<MutationReceipt>,
-    ) -> StateParticipant<T>;
+        candidate: RuntimeCandidate,
+    ) -> Result<(), std::sync::Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>>;
+    fn committed(
+        &self,
+        domain: nyanpasu_runtime_values::mutation::ConfigDomain,
+        version: nyanpasu_state_engine::Version,
+    );
 }

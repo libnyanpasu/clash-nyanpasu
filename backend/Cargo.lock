@@ -6771,6 +6771,7 @@ dependencies = [
  "tokio-util",
  "url",
  "whoami",
+ "zeroize",
 ]
 
 [[package]]

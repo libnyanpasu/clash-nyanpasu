@@ -1,10 +1,28 @@
-//! Transport-neutral caller principals, scopes, and authorization contexts.
+//! Transport-neutral caller principals, scopes, authorization contexts, and auth ports.
+
+pub mod ports;
+pub mod secrets;
+pub mod types;
 
 use std::collections::BTreeSet;
 
 pub use nyanpasu_config::application::Scope;
+pub use ports::{
+    AuthClock, EntropyError, EntropySource, LoadedSecretRecord, SecretCipher, SecretCipherError,
+    SecretStore, SecretStoreError, StorageProtection,
+};
+pub use secrets::{SecretBytes, SecretHash, SecretString};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+pub use types::{
+    AccessTokenStatus, AccessTokenSummary, AuthPeer, AuthRevocation, AuthValidationError,
+    AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest,
+    EstablishedBrowserSession, EstablishedResourceSession, IssuedAccessToken, IssuedLaunchCode,
+    MAX_AUTH_ID_LEN, MAX_RESOURCE_OWNER_ID_LEN, MAX_TOKEN_NAME_LEN, ParsedAccessToken,
+    ResolvedResourceSession, ResourceLease, ResourceOwnerId, ResourceSessionId, SECRET_HEX_LEN,
+    SessionId, TlsMaterialBlob, TlsMaterialSummary, TokenId, TokenName,
+    is_valid_launch_code_syntax, parse_access_token, parse_resource_cookie, parse_session_cookie,
+};
 
 /// Canonical deduplicated set of independent permission scopes held by a caller.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Type)]

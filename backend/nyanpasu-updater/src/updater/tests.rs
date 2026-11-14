@@ -436,3 +436,32 @@ async fn definitive_install_failure_allows_fresh_admission() {
     let retry = client.update(ClashCore::Mihomo).await.unwrap();
     assert_ne!(id, retry);
 }
+
+#[test]
+fn updater_progress_summary_preserves_failed_states_without_raw_error_strings() {
+    use crate::{
+        DownloadProgressState, DownloadStatus, DownloaderState, UpdaterProgressState,
+        UpdaterProgressSummary, UpdaterSummary,
+    };
+
+    let summary = UpdaterSummary {
+        id: 7,
+        state: UpdaterState::Failed("https://user:pass@secret.example/core.zip failed".into()),
+        downloader: DownloadStatus {
+            state: DownloaderState::Failed("/var/secret/tmp/part failed".into()),
+            downloaded: 42,
+            total: 100,
+            speed: 12.5,
+        },
+    };
+    let safe = UpdaterProgressSummary::from(&summary);
+    let debug = format!("{safe:?}");
+    assert!(!debug.contains("secret.example"));
+    assert!(!debug.contains("user:pass"));
+    assert!(!debug.contains("/var/secret"));
+    assert_eq!(safe.id, 7);
+    assert_eq!(safe.state, UpdaterProgressState::Failed);
+    assert_eq!(safe.downloader.state, DownloadProgressState::Failed);
+    assert_eq!(safe.downloader.downloaded, 42);
+    assert_eq!(safe.downloader.total, 100);
+}

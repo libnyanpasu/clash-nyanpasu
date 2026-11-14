@@ -8,7 +8,11 @@
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_metadata::CoreErrorKind;
 use nyanpasu_runtime_values::{
-    check::EvidenceGap, execution_host::ExecutionHost, ports::PortField,
+    app_update::{AppUpdateSnapshot, AppUpdateSummary},
+    check::EvidenceGap,
+    execution_host::ExecutionHost,
+    ports::PortField,
+    runtime::{CommitReceipt, DegradationPhase, InterruptFailure, MutationOutcome},
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -444,4 +448,108 @@ pub enum PublicProfileSyncReadError {
     NotRemote,
     InvalidCursor,
     Unavailable,
+}
+
+/// Safe public degradation detail without raw host diagnostics or internal profile identifiers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct PublicDegradation {
+    pub phase: DegradationPhase,
+    pub reason: PublicDegradationReason,
+    pub retryable: bool,
+}
+
+/// Safe public reason discriminant why a committed mutation degraded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum PublicDegradationReason {
+    RuntimeRecoveryRequired {
+        operation_id: Option<String>,
+        cause: Option<PublicRuntimeError>,
+    },
+    RuntimeDeferred {
+        cause: PublicRuntimeError,
+    },
+    RuntimeProductPublishFailed {
+        cause: PublicRuntimeError,
+    },
+    ServiceStopFailed {
+        cause: PublicRuntimeError,
+    },
+    ModeInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProfileInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProxyInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProxyCacheRefreshFailed,
+    JournalInvalid,
+    JobsJournalUnavailable,
+    MaterializationDeferred,
+    CleanupDeferred,
+    ProfileAutoActivationFailed {
+        cause: PublicProfilesError,
+    },
+    HttpServerUnavailable,
+}
+
+/// Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PublicMutationOutcome<T> {
+    Committed {
+        value: T,
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
+    },
+    CommittedDegraded {
+        value: T,
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
+        degradations: Vec<PublicDegradation>,
+    },
+}
+
+/// Canonical command reply union for committed mutations.
+///
+/// Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+/// callers receive [`PublicMutationOutcome<T>`].
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(untagged)]
+pub enum RpcMutationOutcome<T> {
+    Full(MutationOutcome<T>),
+    Public(PublicMutationOutcome<T>),
+}
+
+impl<T> From<MutationOutcome<T>> for RpcMutationOutcome<T> {
+    fn from(outcome: MutationOutcome<T>) -> Self {
+        Self::Full(outcome)
+    }
+}
+
+/// Receiving-side decoder accepting both full and public mutation outcome replies.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ReceivedMutationOutcome<T> {
+    Full(super::MutationOutcome<T>),
+    Public(PublicMutationOutcome<T>),
+}
+
+/// Canonical command reply union for app-update state-changing commands.
+///
+/// Callers holding `Scope::SensitiveRead` receive [`AppUpdateSnapshot`]; all other
+/// callers receive [`AppUpdateSummary`].
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(untagged)]
+pub enum RpcAppUpdateOutcome {
+    Full(AppUpdateSnapshot),
+    Public(AppUpdateSummary),
+}
+
+impl From<AppUpdateSnapshot> for RpcAppUpdateOutcome {
+    fn from(snapshot: AppUpdateSnapshot) -> Self {
+        Self::Full(snapshot)
+    }
 }

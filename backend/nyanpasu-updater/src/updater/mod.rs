@@ -17,7 +17,9 @@ mod instance;
 mod mirrors;
 pub(crate) mod ports;
 mod shared;
-pub use instance::{HttpUpdaterBackend, UpdaterState, UpdaterSummary};
+pub use instance::{
+    HttpUpdaterBackend, UpdaterProgressState, UpdaterProgressSummary, UpdaterState, UpdaterSummary,
+};
 use ports::{CoreUpdateInstaller, UpdaterBackend, UpdaterProgress};
 
 #[derive(Debug, snafu::Snafu)]

@@ -164,7 +164,7 @@ dunce = '1.0.4'  # for cross platform path normalization
 runas = { workspace = true }
 which = '8'
 open = '5.0.1'
-sysinfo = '0.39'
+sysinfo = '0.40'
 os_pipe = '1.2.1'
 whoami = '2.0.0'
 camino = { version = '1.1.9', features = ['serde1'] }

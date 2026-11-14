@@ -87,9 +87,13 @@ impl HttpModuleSource for HttpSource {
                 .is_some_and(|modified| {
                     modified > SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 30)
                 });
-            let item = if fresh {
-                postcard::from_bytes(&tokio::fs::read(&path).await?)?
-            } else {
+            if fresh {
+                let bytes = tokio::fs::read(&path).await?;
+                if let Ok(item) = postcard::from_bytes(&bytes) {
+                    return Ok(item);
+                }
+            }
+            let item = {
                 let response = client.get(url).send().await?;
                 let mime = response
                     .headers()
@@ -103,13 +107,16 @@ impl HttpModuleSource for HttpSource {
                 }
             };
             if let Err(error) = async {
-                tokio::fs::create_dir_all(directory).await?;
-                tokio::fs::write(path, postcard::to_stdvec(&item)?).await?;
+                let bytes = postcard::to_stdvec(&item)?;
+                let write = tokio::task::spawn_blocking(move || {
+                    nyanpasu_persistence::write::atomic_write(&path, &bytes)
+                });
+                nyanpasu_owner_support::blocking::join(write.await)?;
                 Ok::<_, anyhow::Error>(())
             }
             .await
             {
-                tracing::warn!(%error, "script module cache write failed");
+                tracing::warn!(error = %format_args!("{error:#}"), "script module cache write failed");
             }
             Ok::<_, anyhow::Error>(item)
         });
@@ -124,3 +131,6 @@ impl HttpModuleSource for HttpSource {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -122,7 +122,7 @@ impl ApplicationWorkflow {
             "an unresolved attempt is never replaced"
         );
         self.live = Some(LiveAttempt::lifecycle(operation_id));
-        let result = match self.lifecycle.execute(command, &mut self.preparation).await {
+        let result = match self.lifecycle.execute(command, &self.preparation).await {
             // The restart a binary replacement owed waits for a proven owner:
             // the open reestablish target is what brings it (T10 §1.7 #7).
             Ok(Output::RestartWithheld) => {

@@ -1,4 +1,5 @@
 use crate::{
+    actor_v2::endpoint::{CheckSubmission, CheckSupport},
     client::{
         UiEventSink,
         test_support::workflow::{
@@ -351,7 +352,6 @@ async fn workflow_graph_with_clients(
         dir.path(),
         dir.path().join("data"),
     ));
-    let validator_paths = paths.clone();
     let core_for_validator = core.clone();
     // The graph's router already drives the host it was built on, and these
     // tests are not about proving that.
@@ -374,10 +374,7 @@ async fn workflow_graph_with_clients(
             core,
             service,
             builder: builder.clone(),
-            validator: Arc::new(adapters::CoreCheckValidator::new(
-                core_for_validator,
-                validator_paths,
-            )),
+            validator: Arc::new(adapters::CoreCheckValidator::new(&core_for_validator)),
             ports,
             installer: Arc::new(Installer::succeeding()),
             ownership,
@@ -425,6 +422,9 @@ struct ParkedEndpoint {
 impl crate::actor_v2::endpoint::ControlEndpoint for ParkedEndpoint {
     fn host(&self) -> ExecutionHost {
         self.delegate.host()
+    }
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        self.delegate.check_config(submission).await
     }
     async fn submit(
         &self,

@@ -37,7 +37,10 @@ use super::{
     host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
 };
 use crate::{
-    actor_v2::test_support::{successful_reconcile, test_v2_clients_with_endpoint},
+    actor_v2::{
+        endpoint::{CheckSubmission, CheckSupport},
+        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
+    },
     client::test_support::workflow::{Installer, NoopSystemDnsCache},
     storage::Storage,
     utils::test_support::test_paths,
@@ -127,9 +130,6 @@ pub enum TestCheckAnswer {
     Pass,
     Reject(nyanpasu_core_manager::CoreError),
     Unsupported,
-    /// The host accepts the request and never answers, the shape of a
-    /// wedged binary or a daemon that stopped responding.
-    Hang,
 }
 
 impl TestControlEndpoint {
@@ -465,11 +465,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         self.host
     }
 
-    async fn check_config(
-        &self,
-        submission: crate::actor_v2::endpoint::CheckSubmission,
-    ) -> crate::actor_v2::endpoint::CheckSupport {
-        use crate::actor_v2::endpoint::CheckSupport;
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
         let answer = self.check_answer.lock().unwrap().clone();
         self.checks.lock().unwrap().push(submission);
         match answer {
@@ -478,7 +474,6 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
             TestCheckAnswer::Unsupported => CheckSupport::Unsupported {
                 reason: "scripted: this host exposes no config check".into(),
             },
-            TestCheckAnswer::Hang => std::future::pending().await,
         }
     }
 
@@ -610,6 +605,9 @@ impl HostTransitionEndpoint {
 impl crate::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
     fn host(&self) -> ExecutionHost {
         self.host
+    }
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        self.delegate.check_config(submission).await
     }
     async fn submit(
         &self,

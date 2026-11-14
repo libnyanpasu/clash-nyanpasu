@@ -1,40 +1,14 @@
-use super::super::runtime;
 use async_trait::async_trait;
-use std::time::Duration;
 
-/// Wires the check capability the fixed runtime baseline actually exposes.
+use crate::actor_v2::{CoreClient, endpoint::EndpointHandle};
+
+/// Checks inline documents through the session's local control plane.
 ///
-/// There is one, and it is host-shaped. The in-process control plane has
-/// `CoreControl::check`, an advisory read-only call outside the mutating queue
-/// that takes the document inline. The daemon has the v1 `/core/check`
-/// operation, which takes a path it opens itself -- the v2 command surface has
-/// no check variant at all. So a Service-hosted check needs the candidate
-/// staged as a private file first, and the bytes written there are the ones
-/// the reconcile submits.
-///
-/// Nothing here invents a protocol: when the owning host cannot serve a check,
-/// the answer is `Unavailable` with the reason, never `Passed`.
-///
-/// The runtime reuses `ConfigCheckFailed` for its own check timeout
-/// (`nyanpasu-core-manager/src/kind.rs:96,137-139`: a 30s bound on the `-t`
-/// run, reported with the same wire kind and a message that names the bound).
-/// A wedged or merely slow core binary is not the core rejecting the document,
-/// so that case is separated out here before the kind decides anything.
+/// The local endpoint stays alive while the service owns the running core.
+/// Its read-only check runs outside the mutating queue and is awaited to completion.
 pub(in crate::client) struct CoreCheckValidator {
-    core: crate::actor_v2::CoreClient,
-    paths: runtime::RuntimePaths,
-    budget: Duration,
+    endpoint: EndpointHandle,
 }
-
-/// The app's own bound on one advisory check. §5.5 keeps the cancellable
-/// pre-check budget separate from every other timeout, and this is it, landed
-/// as a private constant with a test injection point.
-///
-/// It sits above the runtime's own 30s bound on the `-t` run so a check the
-/// runtime is still bounding is never cut short here; this budget exists for a
-/// host that stops answering altogether. Abandoning the wait is safe because
-/// the call is advisory and read-only: nothing downstream is waiting on it.
-const CHECK_BUDGET: Duration = Duration::from_secs(45);
 
 /// The phrase the runtime puts in the message when its own check bound
 /// elapses. The kind is `ConfigCheckFailed` either way, so the message is the
@@ -43,29 +17,9 @@ const CHECK_BUDGET: Duration = Duration::from_secs(45);
 const RUNTIME_CHECK_TIMEOUT: &str = "config check timed out after ";
 
 impl CoreCheckValidator {
-    pub(in crate::client) fn new(
-        core: crate::actor_v2::CoreClient,
-        paths: runtime::RuntimePaths,
-    ) -> Self {
+    pub(in crate::client) fn new(core: &CoreClient) -> Self {
         Self {
-            core,
-            paths,
-            budget: CHECK_BUDGET,
-        }
-    }
-
-    /// A shorter budget, so a test can reach the elapse path without waiting
-    /// out the production one.
-    #[cfg(test)]
-    pub(in crate::client) fn with_budget(
-        core: crate::actor_v2::CoreClient,
-        paths: runtime::RuntimePaths,
-        budget: Duration,
-    ) -> Self {
-        Self {
-            core,
-            paths,
-            budget,
+            endpoint: core.initial_endpoint(),
         }
     }
 }
@@ -78,60 +32,18 @@ impl super::ports::RuntimeValidatorPort for CoreCheckValidator {
     ) -> super::ports::RuntimeCheckOutcome {
         use super::ports::RuntimeCheckOutcome;
         use crate::actor_v2::endpoint::{CheckSubmission, CheckSupport};
-        use nyanpasu_runtime_values::{
-            check::RuntimeCheckUnavailable, execution_host::ExecutionHost,
-        };
+        use nyanpasu_runtime_values::check::RuntimeCheckUnavailable;
 
-        let endpoint = match self.core.connected_endpoint().await {
-            Ok(endpoint) => endpoint,
-            Err(error) => {
-                return RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::NoEndpoint {
-                    reason: error.message,
-                });
-            }
-        };
-        let staged = match endpoint.host() {
-            ExecutionHost::Service => {
-                match self
-                    .paths
-                    .create_candidate(request.intent.config_text.as_bytes())
-                    .await
-                {
-                    Ok(candidate) => Some(candidate),
-                    Err(error) => {
-                        return RuntimeCheckOutcome::Unavailable(
-                            RuntimeCheckUnavailable::CandidateUnavailable {
-                                reason: error.to_string(),
-                            },
-                        );
-                    }
-                }
-            }
-            ExecutionHost::Local => None,
-        };
-        let support = tokio::time::timeout(
-            self.budget,
-            endpoint.check_config(CheckSubmission {
+        let support = self
+            .endpoint
+            .check_config(CheckSubmission {
                 core_spec: request.core_spec,
                 core_type: request.intent.core_type.clone(),
                 config_bytes: request.intent.config_text.as_bytes().to_vec(),
                 digest: request.intent.digest.clone(),
-                staged_config: staged.as_ref().map(|file| file.path().to_owned()),
-            }),
-        )
-        .await;
-        if let Some(candidate) = staged
-            && let Err(error) = candidate.cleanup().await
-        {
-            tracing::warn!("failed to remove the checked runtime candidate: {error}");
-        }
-        let Ok(support) = support else {
-            return RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::Backend {
-                kind: None,
-                message: format!("the config check did not answer within {:?}", self.budget),
-                retryable: true,
-            });
-        };
+                staged_config: None,
+            })
+            .await;
         match support {
             CheckSupport::Ran(Ok(())) => RuntimeCheckOutcome::Passed,
             CheckSupport::Ran(Err(error)) => {
@@ -166,9 +78,10 @@ impl super::ports::RuntimeValidatorPort for CoreCheckValidator {
                 }
             }
             CheckSupport::Unsupported { reason } => {
-                RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::HostUnsupported {
-                    host: endpoint.host(),
-                    reason,
+                RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::Backend {
+                    kind: None,
+                    message: reason,
+                    retryable: false,
                 })
             }
         }

@@ -370,7 +370,7 @@ pub(super) async fn fixture_from(
         dir.path().join("data"),
     ));
     let builder = Arc::new(ParkingBuilder {
-        delegate: TestRuntimeBuildPort::from_directory(dir.path().join("profiles"), paths.clone()),
+        delegate: TestRuntimeBuildPort::from_directory(dir.path().join("profiles"), paths),
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
         release: Notify::new(),
@@ -401,7 +401,7 @@ pub(super) async fn fixture_from(
             core: core.clone(),
             service,
             builder: builder.clone(),
-            validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
+            validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
             ports: ports.clone(),
             installer: Arc::new(Installer::succeeding()),
             ownership,
@@ -1977,15 +1977,12 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
     }
 }
 
-// -- R8: the check is advisory, and an absent one is not a verdict ----------
-
-/// A host with no check capability does not refuse the mutation. The check
-/// never enters the mutating queue and is never a precondition for a change, so
-/// the Try is the authority and the receipt records that none ran.
+/// A local endpoint that cannot check leaves the source and runtime untouched.
 #[tokio::test]
-async fn an_absent_check_capability_is_skipped_rather_than_refusing_the_mutation() {
+async fn an_unsupported_local_check_refuses_the_mutation() {
     let mut f = fixture().await;
     f.endpoint.set_check_answer(TestCheckAnswer::Unsupported);
+    let before = f.application.snapshot_handle().load().version;
 
     let (operation_id, result) = simple_mutate(
         &mut f.application,
@@ -1995,22 +1992,16 @@ async fn an_absent_check_capability_is_skipped_rather_than_refusing_the_mutation
     )
     .await;
 
-    assert!(
-        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
-        "{result:?}"
-    );
+    assert!(refused(&result), "{result:?}");
+    assert_eq!(f.application.snapshot_handle().load().version, before);
     let receipt = settled(&f.client, operation_id).await;
-    assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
+    assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
     assert!(
-        matches!(receipt.check, CheckRecord::Skipped(_)),
+        matches!(receipt.check, CheckRecord::Unserviceable(_)),
         "{:?}",
         receipt.check
     );
-    assert_eq!(
-        f.endpoint.reconciled_bytes().len(),
-        1,
-        "the apply is the only authority left, and it ran"
-    );
+    assert!(f.endpoint.reconciled_bytes().is_empty());
 }
 
 /// A host that has the check and could not serve it is the other class. The

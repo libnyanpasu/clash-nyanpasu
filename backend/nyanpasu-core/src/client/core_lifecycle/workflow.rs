@@ -193,7 +193,7 @@ impl CoreLifecycleWorkflow {
     pub async fn execute(
         &mut self,
         command: Command,
-        preparation: &mut dyn RuntimePreparationPort,
+        preparation: &dyn RuntimePreparationPort,
     ) -> Result<Output, RuntimeError> {
         match command {
             Command::RecoverServiceEndpoint => {
@@ -440,7 +440,7 @@ impl CoreLifecycleWorkflow {
 
     async fn recover_service_endpoint(
         &mut self,
-        preparation: &mut dyn RuntimePreparationPort,
+        preparation: &dyn RuntimePreparationPort,
     ) -> Result<(), RuntimeError> {
         if !self.recovery_due() {
             return Ok(());
@@ -464,7 +464,7 @@ impl CoreLifecycleWorkflow {
 
     async fn recovery_attempt(
         &mut self,
-        preparation: &mut dyn RuntimePreparationPort,
+        preparation: &dyn RuntimePreparationPort,
     ) -> Result<(), RuntimeError> {
         if matches!(
             self.core.core_status().connectivity,
@@ -551,7 +551,7 @@ impl CoreLifecycleWorkflow {
 
     async fn reconcile(
         &mut self,
-        preparation: &mut dyn RuntimePreparationPort,
+        preparation: &dyn RuntimePreparationPort,
     ) -> Result<ReconcileReport, RuntimeError> {
         let prepared = preparation.prepare_latest().await?;
         self.apply_runtime(prepared, preparation).await
@@ -741,7 +741,7 @@ impl CoreLifecycleWorkflow {
     async fn replace_binary(
         &mut self,
         artifact: PreparedCoreBinary,
-        preparation: &mut dyn RuntimePreparationPort,
+        preparation: &dyn RuntimePreparationPort,
     ) -> Result<bool, RuntimeError> {
         let desired = self.application.load().state.core;
         let status = self

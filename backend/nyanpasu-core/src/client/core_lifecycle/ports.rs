@@ -11,7 +11,7 @@ use nyanpasu_runtime_values::{
 /// Application-owned runtime preparation; implementations never call the workflow actor.
 #[async_trait]
 pub(in crate::client) trait RuntimePreparationPort: Send + Sync {
-    async fn prepare_latest(&mut self) -> Result<PreparedRuntime, RuntimeError>;
+    async fn prepare_latest(&self) -> Result<PreparedRuntime, RuntimeError>;
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot)
     -> Result<(), PublishRuntimeError>;
     fn core_spec(

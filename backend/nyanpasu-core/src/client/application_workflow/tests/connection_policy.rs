@@ -16,7 +16,9 @@ use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
 use crate::{
-    actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
+    actor_v2::endpoint::{
+        CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
+    },
     client::{
         NyanpasuClient,
         test_support::{
@@ -64,6 +66,9 @@ impl Endpoint {
 impl ControlEndpoint for Endpoint {
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Local
+    }
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        self.delegate.check_config(submission).await
     }
     async fn api_connection(&self) -> Result<Option<CoreApiConnection>, CoreError> {
         self.api_queries.fetch_add(1, Ordering::SeqCst);
@@ -998,7 +1003,7 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         newer.clash_ipc_disable_http_controller = Some(true);
         f.client.patch_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
-        let mut preparation = super::RuntimePreparation::new(
+        let preparation = super::RuntimePreparation::new(
             f.client.inner.application.snapshot_handle(),
             f.client.inner.clash_config.snapshot_handle(),
             f.client.inner.profiles.snapshot_handle(),

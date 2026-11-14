@@ -406,7 +406,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let notifications = Arc::new(RecordingNotifications::default());
     let builder = Arc::new(TestRuntimeBuildPort::from_directory(
         dir.path().join("profiles"),
-        paths.clone(),
+        paths,
     ));
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
@@ -421,7 +421,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             },
             service: service.clone(),
             builder,
-            validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
+            validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
             ports: ports.clone(),
             installer: Arc::new(Installer::succeeding()),
             ownership: Ownership::Unproven,

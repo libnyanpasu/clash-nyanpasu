@@ -7,7 +7,7 @@
 
 use std::{net::IpAddr, time::Duration};
 
-use nyanpasu_rpc_protocol::types::RpcError;
+use nyanpasu_rpc_wire::RpcError;
 use reqwest::{Method, RequestBuilder, Response, StatusCode, Url};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -148,7 +148,7 @@ impl Transport for HttpTransport {
         let request = match stream {
             StreamKind::Event(name) => self
                 .request(Method::GET, EVENTS_PATH)?
-                .query(&[("name", name.as_str())]),
+                .query(&[("name", name)]),
             StreamKind::ConnectionDetails => self.request(Method::GET, CONNECTION_DETAILS_PATH)?,
         }
         .header("accept", "text/event-stream");

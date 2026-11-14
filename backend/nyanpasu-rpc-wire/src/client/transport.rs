@@ -55,7 +55,7 @@ pub(super) async fn negotiate<S: AsyncRead + AsyncWrite + Unpin>(
 }
 
 struct Subscription {
-    event: Option<crate::EventName>,
+    event: Option<&'static str>,
     needs_reset: bool,
     state: watch::Sender<SubscriptionState>,
 }
@@ -235,7 +235,7 @@ impl Transport {
             .subscriptions
             .get_mut(id)
             .ok_or(TransportError::ValidateReply)?;
-        if stream.event.is_none_or(|name| name.as_str() != event) {
+        if stream.event.is_none_or(|name| name != event) {
             return Err(TransportError::ValidateReply);
         }
         Ok(stream)
@@ -305,7 +305,7 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
                 }
                 let frame = match &request.operation {
                     Operation::Call { method, params } => Frame::Request { id, method: method.clone(), params: params.clone() },
-                    Operation::Subscribe { event } => Frame::Subscribe { id, stream: if event.is_some() { "events" } else { "connection-details" }.into(), event: event.map(|name| name.as_str().into()) },
+                    Operation::Subscribe { event } => Frame::Subscribe { id, stream: if event.is_some() { "events" } else { "connection-details" }.into(), event: event.map(Into::into) },
                     Operation::Unsubscribe { subscription } => Frame::Unsubscribe { id, subscription: subscription.clone() },
                 };
                 let until = request.timeout.map(|timeout| Instant::now() + timeout);

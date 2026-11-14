@@ -6,10 +6,10 @@
 
 use std::time::Duration;
 
-use nyanpasu_rpc_protocol::{
+use nyanpasu_rpc_wire::{
+    RpcError,
     client::{LocalCallError, LocalClient, SubscriptionState},
     frame::{Reply, SubscriptionErrorCode},
-    types::RpcError,
 };
 use nyanpasu_single_instance::endpoint::Endpoint;
 use serde_json::{Value, json};
@@ -132,10 +132,7 @@ impl Transport for SocketTransport {
 
 #[cfg(test)]
 mod tests {
-    use nyanpasu_rpc_protocol::{
-        EventName,
-        frame::{self, Feature, Frame, PROTOCOL_VERSION},
-    };
+    use nyanpasu_rpc_wire::frame::{self, Feature, Frame, PROTOCOL_VERSION};
     use tokio::io::{AsyncRead, AsyncWrite, duplex};
 
     use super::*;
@@ -245,7 +242,9 @@ mod tests {
     async fn a_subscription_delivers_its_reset_snapshot() {
         let transport = connected(|_, _| Reply::Result(Value::Null)).await;
         let mut feed = transport
-            .events(StreamKind::Event(EventName::CoreLogsChanged))
+            .events(StreamKind::Event(
+                crate::transport::event::CORE_LOGS_CHANGED,
+            ))
             .await
             .unwrap();
         assert_eq!(feed.next().await.unwrap().unwrap(), json!({"rows": 1}));

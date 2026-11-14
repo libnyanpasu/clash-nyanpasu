@@ -1,9 +1,35 @@
 //! Shared RPC self-description contract (`rpc_describe`).
 
+use nyanpasu_contracts::auth::{Principal, Scope, ScopeSet};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{CommandEffect, Principal, RpcTarget, Scope, ScopeSet};
+/// A command's explicitly enabled transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum RpcTarget {
+    /// The complete desktop command surface.
+    Desktop,
+    /// Browser access, explicitly opted into by the declaration.
+    Http,
+    /// Local socket access, independently opted into by the declaration.
+    Local,
+}
+
+/// What a command does, independent of how a transport dispatches it.
+///
+/// Queries observe application or network state; refreshing a read model or measuring latency
+/// does not change application configuration. Mutations perform application operations, including
+/// allocating caller-owned resources. Scope independently controls who may request either effect.
+/// The declaration is the source of truth; the generated frontend's split is checked against it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandEffect {
+    /// Returns data and changes nothing.
+    Query,
+    /// Everything else.
+    Mutation,
+}
 
 /// Which runtime hosts the RPC endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]

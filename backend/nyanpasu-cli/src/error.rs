@@ -3,7 +3,7 @@
 //! Every failure maps to exactly one documented exit status, so scripts and agents
 //! can branch on the code without parsing messages.
 
-use nyanpasu_rpc_protocol::types::RpcError;
+use nyanpasu_rpc_wire::{RpcError, RpcErrorKind};
 use snafu::Snafu;
 
 /// The process exit statuses documented for `nyanpasu-cli`.
@@ -87,7 +87,7 @@ impl CliError {
             Self::Unauthenticated { .. } => ExitStatus::Unauthenticated,
             Self::Unsupported { .. } => ExitStatus::Unsupported,
             Self::Failed { .. } => ExitStatus::Application,
-            Self::Remote { error } => remote_exit_status(&error.kind),
+            Self::Remote { error } => remote_exit_status(error.error_kind()),
         }
     }
 }
@@ -98,15 +98,13 @@ impl From<std::io::Error> for CliError {
     }
 }
 
-/// Maps an `RpcError.kind` to an exit status. Unknown kinds are application errors.
-fn remote_exit_status(kind: &str) -> ExitStatus {
+/// Maps an `RpcError.kind` to an exit status. Unclassified kinds are application errors.
+fn remote_exit_status(kind: RpcErrorKind) -> ExitStatus {
     match kind {
-        "unauthenticated" | "unauthorized" | "forbidden" | "scope_denied" | "permission_denied" => {
-            ExitStatus::Unauthenticated
-        }
-        "unsupported" | "unknown_method" => ExitStatus::Unsupported,
-        "invalid_params" => ExitStatus::Usage,
-        _ => ExitStatus::Application,
+        RpcErrorKind::Unauthorized | RpcErrorKind::Forbidden => ExitStatus::Unauthenticated,
+        RpcErrorKind::Unsupported | RpcErrorKind::UnknownMethod => ExitStatus::Unsupported,
+        RpcErrorKind::InvalidParams => ExitStatus::Usage,
+        RpcErrorKind::ApplicationError | RpcErrorKind::Other => ExitStatus::Application,
     }
 }
 
@@ -174,9 +172,12 @@ mod tests {
             ("something_new", ExitStatus::Application),
             ("unsupported", ExitStatus::Unsupported),
             ("unknown_method", ExitStatus::Unsupported),
-            ("unauthenticated", ExitStatus::Unauthenticated),
-            ("scope_denied", ExitStatus::Unauthenticated),
+            ("unauthorized", ExitStatus::Unauthenticated),
+            ("forbidden", ExitStatus::Unauthenticated),
             ("invalid_params", ExitStatus::Usage),
+            // Spellings no shell emits are not guessed at.
+            ("unauthenticated", ExitStatus::Application),
+            ("scope_denied", ExitStatus::Application),
         ] {
             assert_eq!(remote(kind).exit_status(), expected, "{kind}");
         }

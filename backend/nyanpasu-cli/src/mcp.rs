@@ -156,24 +156,15 @@ fn raw_permitted(
     scopes: &BTreeSet<Scope>,
     capabilities: &Capabilities,
 ) -> Result<(), CliError> {
-    capabilities.require(method)?;
-    let scope = capabilities
-        .commands
-        .iter()
-        .find(|command| command.name == method)
-        .and_then(|command| command.scope);
-    match scope {
-        Some(scope) if scope != Scope::RemoteAdmin && scopes.contains(&scope) => Ok(()),
-        Some(scope) => Err(CliError::Unauthenticated {
+    let scope = capabilities.require(method)?.scope;
+    if scope != Scope::RemoteAdmin && scopes.contains(&scope) {
+        Ok(())
+    } else {
+        Err(CliError::Unauthenticated {
             message: format!(
                 "`{method}` needs the {scope} scope, which this MCP session does not offer"
             ),
-        }),
-        None => Err(CliError::Unauthenticated {
-            message: format!(
-                "`{method}` has no known scope, so this MCP session does not offer it"
-            ),
-        }),
+        })
     }
 }
 
@@ -351,14 +342,10 @@ mod tests {
     use crate::{describe::fixtures, transport::fakes::FakeTransport};
 
     /// A describe response that allows every curated method, holding `scopes`.
-    fn capabilities(scopes: &[&str]) -> Capabilities {
-        let allowed: Vec<(&str, &str)> = COMMANDS
+    fn capabilities(scopes: &[Scope]) -> Capabilities {
+        let allowed: Vec<(&str, Scope)> = COMMANDS
             .iter()
-            .filter_map(|command| {
-                command
-                    .method()
-                    .map(|method| (method, command.scope.as_str()))
-            })
+            .filter_map(|command| command.method().map(|method| (method, command.scope)))
             .collect();
         fixtures::capabilities(scopes, &allowed)
     }
@@ -370,8 +357,8 @@ mod tests {
             .collect()
     }
 
-    fn all_scopes() -> Vec<&'static str> {
-        Scope::ALL.map(Scope::as_str).to_vec()
+    fn all_scopes() -> Vec<Scope> {
+        Scope::ALL.to_vec()
     }
 
     #[test]
@@ -403,14 +390,14 @@ mod tests {
         assert!(full.contains("profile_use"));
         assert!(!full.contains("core_restart"), "system was not requested");
 
-        let read_only = names(&options, &capabilities(&["read"]));
+        let read_only = names(&options, &capabilities(&[Scope::Read]));
         assert!(
             !read_only.contains("proxy_select"),
             "the principal lacks proxy"
         );
         assert!(read_only.contains("status"));
 
-        let proxy_only = names(&options, &capabilities(&["read", "proxy"]));
+        let proxy_only = names(&options, &capabilities(&[Scope::Read, Scope::Proxy]));
         assert!(proxy_only.contains("proxy_select"));
         assert!(
             !proxy_only.contains("profile_use"),
@@ -425,11 +412,12 @@ mod tests {
 
         let mut capabilities = capabilities(&all_scopes());
         capabilities
+            .response
             .commands
-            .push(crate::describe::DescribedCommand {
+            .push(nyanpasu_rpc_wire::DescribedCommand {
                 name: "set_remote_access".into(),
-                kind: None,
-                scope: Some(Scope::RemoteAdmin),
+                effect: nyanpasu_rpc_wire::CommandEffect::Mutation,
+                scope: Scope::RemoteAdmin,
                 allowed: true,
             });
         let options = McpOptions {
@@ -461,7 +449,8 @@ mod tests {
 
     #[test]
     fn a_method_the_shell_does_not_expose_is_not_offered() {
-        let capabilities = fixtures::capabilities(&["read"], &[("get_core_status", "read")]);
+        let capabilities =
+            fixtures::capabilities(&[Scope::Read], &[("get_core_status", Scope::Read)]);
         assert_eq!(
             names(&McpOptions::default(), &capabilities),
             BTreeSet::from(["status", "conn_list"])
@@ -495,8 +484,11 @@ mod tests {
     #[test]
     fn raw_adds_the_generic_tool_and_bounds_it_by_scope() {
         let capabilities = fixtures::capabilities(
-            &["read", "system"],
-            &[("get_core_status", "read"), ("restart_sidecar", "system")],
+            &[Scope::Read, Scope::System],
+            &[
+                ("get_core_status", Scope::Read),
+                ("restart_sidecar", Scope::System),
+            ],
         );
         let options = McpOptions {
             scopes: vec![],

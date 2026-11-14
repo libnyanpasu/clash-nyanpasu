@@ -15,14 +15,13 @@ path = 'src/lib.rs'
 name = 'nyanpasu-cli'
 path = 'src/main.rs'
 
-# Production dependencies stay on the protocol and transport layer: no core
+# Production dependencies stay on the wire and transport layer: no protocol, core
 # family, implementation, RPC adapter, server or GUI package
 # (`pnpm run lint:backend-boundaries`).
 [dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
-nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
-  'local-client'
-] }
+nyanpasu-rpc-wire = { path = '../nyanpasu-rpc-wire', features = ['local-client'] }
 nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
 clap = { version = '4', features = ['derive', 'env'] }
 clap_complete = '4'
@@ -37,4 +36,6 @@ toml = '1'
 uuid = { version = '1', features = ['v4'] }
 
 [dev-dependencies]
+# Pins the CLI's wire names for shared events against their owner.
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
 tempfile = '3'

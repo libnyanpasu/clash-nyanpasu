@@ -223,7 +223,10 @@ test('protocol frame IO remains opt-in with foundation values', () => {
     'utf8',
   )
   assert.match(manifest, /default = \[\]/)
-  assert.match(manifest, /frame-io = \['dep:tokio'\]/)
+  assert.match(
+    manifest,
+    /frame-io = \['dep:tokio', 'nyanpasu-rpc-wire\/frame-io'\]/,
+  )
   assert.match(manifest, /tokio = \{[^\n]*optional = true/)
   assert.deepStrictEqual(
     dependencyViolations(
@@ -402,17 +405,23 @@ const CLI_FORBIDDEN = [
   'nyanpasu-net',
   'nyanpasu-os',
   'nyanpasu-rpc',
+  'nyanpasu-rpc-protocol',
   'nyanpasu-server',
+  'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
+  'clash-api',
+  'boa_engine',
+  'mlua',
   'tauri',
   'tauri-runtime',
   'nyanpasu-widget',
 ]
 
-test('the CLI stands on the protocol and transport layer only', () => {
+test('the CLI stands on the wire and transport layer only', () => {
   assert.deepStrictEqual(
     dependencyViolations(
       'nyanpasu-cli',
-      'nyanpasu-cli v0.1.0\nnyanpasu-rpc-protocol v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-paths v0.1.0\nnyanpasu-single-instance v0.1.0\nreqwest v0.13\nclap v4.6\nkeyring v4.2\ntokio v1.54\n',
+      'nyanpasu-cli v0.1.0\nnyanpasu-rpc-wire v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-paths v0.1.0\nnyanpasu-single-instance v0.1.0\nreqwest v0.13\nclap v4.6\nkeyring v4.2\ntokio v1.54\n',
     ),
     [],
   )

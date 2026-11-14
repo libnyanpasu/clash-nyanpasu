@@ -118,6 +118,14 @@ impl Fixture {
         fail_reconcile: bool,
         installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
     ) -> Self {
+        Self::with_fetcher(fail_reconcile, installer, None).await
+    }
+
+    async fn with_fetcher(
+        fail_reconcile: bool,
+        installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
+        fetcher: Option<Arc<dyn nyanpasu_contracts::profiles::ports::SubscriptionFetcher>>,
+    ) -> Self {
         let calls = Arc::new(Calls::default());
         let (url, server) = (async {
             let router = Router::new()
@@ -157,12 +165,16 @@ impl Fixture {
             api_queries: AtomicUsize::new(0),
         });
         let dir = tempfile::tempdir().unwrap();
-        let mut args = test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-            crate::client::test_support::profile_test_adapters(&dir),
-        )
-        .await;
+        let mut adapters = crate::client::test_support::profile_test_adapters(&dir);
+        if let Some(fetcher) = fetcher {
+            let factory = adapters.profile_files.clone();
+            adapters.profile_files = Arc::new(move |ports| {
+                let mut files = factory(ports);
+                files.fetcher = fetcher.clone();
+                files
+            });
+        }
+        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone(), adapters).await;
         args.binary_installer = installer;
         let client = NyanpasuClient::try_new(args).await.unwrap();
         endpoint.delegate.prime(&client).await;
@@ -471,9 +483,9 @@ async fn profile_activation_and_deselection_interrupt_only_actual_current_change
                 .degradations()
                 .is_empty()
         );
-        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        assert!(f.calls.events.lock().unwrap().is_empty());
         assert!(f.client.delete_profile(uid.clone()).await.is_err());
-        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        assert!(f.calls.events.lock().unwrap().is_empty());
         f.calls.events.lock().unwrap().clear();
         assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
         assert!(
@@ -540,17 +552,20 @@ async fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_s
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn profile_reconcile_rejects_selection_but_interruption_failure_preserves_commit() {
+async fn profile_apply_failure_and_interruption_failure_preserve_commit() {
     for fail_reconcile in [false, true] {
         let f = Fixture::new(fail_reconcile).await;
         f.calls.fail_close.store(!fail_reconcile, Ordering::SeqCst);
         (async {
             let uid = add_profile(&f).await;
+            let old_revision = f.endpoint.status().await.unwrap().revision;
             let result = f.client.activate_profile(Some(uid.clone())).await;
             if fail_reconcile {
-                assert!(result.is_err());
-                assert!(f.client.get_profiles().await.unwrap().current.is_none());
+                let outcome = result.unwrap();
+                assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
+                assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
                 assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+                assert_eq!(f.endpoint.status().await.unwrap().revision, old_revision);
             } else {
                 assert!(matches!(
                     result.unwrap().degradations()[0].reason,
@@ -603,18 +618,19 @@ async fn profile_mutations_cannot_overtake_pending_interruption() {
         )
         .await
         .unwrap();
+        let report = f.client.inner.profiles.set_current(None).await.unwrap();
         let next = {
             let client = f.client.clone();
-            tokio::spawn(async move { client.activate_profile(None).await })
+            tokio::spawn(async move { client.after_commit(&report).await })
         };
         assert!(!next.is_finished());
 
         // The deselection is already committed; what queues is its apply.
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(next.await.unwrap().unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().degradations().is_empty());
         assert_eq!(
             *f.calls.events.lock().unwrap(),
             ["reconcile", "close", "reconcile", "close"]
@@ -716,107 +732,106 @@ async fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
             .await
             .unwrap();
         assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
-        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
 
         // The source remains available when a selection actually changes.
         f.client.activate_profile(None).await.unwrap();
         assert!(f.endpoint.api_queries.load(Ordering::SeqCst) > 0);
         assert_eq!(
             *f.calls.events.lock().unwrap(),
-            ["reconcile", "reconcile", "reconcile", "close"]
+            ["reconcile", "reconcile", "close"]
         );
     })
     .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interruption() {
+async fn cancelled_profile_waiter_finishes_work_without_replaying_interruption() {
     let f = Fixture::new(false).await;
-    (async {
-        let uid = add_profile(&f).await;
-        f.calls.hold_close.store(true, Ordering::SeqCst);
-        let first = {
-            let client = f.client.clone();
-            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
-        };
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            f.calls.entered.notified(),
-        )
+    let uid = add_profile(&f).await;
+    f.calls.hold_close.store(true, Ordering::SeqCst);
+    let first = {
+        let client = f.client.clone();
+        tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+    };
+    f.calls.entered.notified().await;
+    first.abort();
+    assert!(first.await.unwrap_err().is_cancelled());
+    let report = f.client.inner.profiles.set_current(None).await.unwrap();
+    assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    f.calls.hold_close.store(false, Ordering::SeqCst);
+    f.calls.release.notify_one();
+    assert!(
+        f.client
+            .after_commit(&report)
+            .await
+            .degradations()
+            .is_empty()
+    );
+    f.client
+        .inner
+        .application_workflow
+        .reconcile()
         .await
         .unwrap();
-        let workflow = &f.client.inner.application_workflow;
-        let active = workflow.status().active.unwrap();
-        first.abort();
-        assert!(first.await.unwrap_err().is_cancelled());
-        // Polling once sends the reconcile, so it waits behind the held
-        // interruption.
-        let mut reconcile = Box::pin(workflow.reconcile());
-        assert!(reconcile.as_mut().now_or_never().is_none());
-        let next = {
-            let client = f.client.clone();
-            tokio::spawn(async move { client.activate_profile(None).await })
-        };
-        assert_eq!(workflow.status().active, Some(active));
-        // The same-domain deselection is still waiting in the source actor.
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
-        f.calls.hold_close.store(false, Ordering::SeqCst);
-        f.calls.release.notify_one();
-        reconcile.await.unwrap();
-        assert!(next.await.unwrap().unwrap().degradations().is_empty());
-        assert!(workflow.mutation_journal().completed.iter().any(|receipt| {
-            receipt.operation_id == active
-                && receipt.conclusion
-                    == crate::state::mutation::value::MutationConclusion::Confirmed
-        }));
-        assert_eq!(
-            *f.calls.events.lock().unwrap(),
-            ["reconcile", "close", "reconcile", "reconcile", "close"]
-        );
-    })
-    .await;
+    assert_eq!(
+        *f.calls.events.lock().unwrap(),
+        ["reconcile", "close", "reconcile", "close", "reconcile"]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
+async fn shutdown_rejects_an_uncommitted_profile_change() {
     let f = Fixture::new(false).await;
-    (async {
-        let uid = add_profile(&f).await;
-        f.calls.hold_close.store(true, Ordering::SeqCst);
-        let first = {
-            let client = f.client.clone();
-            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
-        };
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            f.calls.entered.notified(),
+    let uid = add_profile(&f).await;
+    f.client.request_shutdown();
+    assert!(matches!(
+        f.client.inner.profiles.set_current(Some(uid)).await,
+        Err(
+            nyanpasu_runtime_values::profiles::ProfilesError::ShuttingDown
+                | nyanpasu_runtime_values::profiles::ProfilesError::ProfilesActorStopped
         )
-        .await
-        .unwrap();
-        let mut next = Box::pin(f.client.activate_profile(None));
-        assert!(next.as_mut().now_or_never().is_none());
-        f.client.request_shutdown();
-        let mut shutdown = Box::pin(f.client.wait_shutdown());
-        assert!(shutdown.as_mut().now_or_never().is_none());
-        assert!(f.client.get_profiles().await.unwrap().current.is_some());
-        assert!(shutdown.as_mut().now_or_never().is_none());
-        f.calls.hold_close.store(false, Ordering::SeqCst);
-        f.calls.release.notify_one();
-        assert!(next.await.is_err());
-        assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        shutdown.await;
-        assert_eq!(
-            f.calls
-                .events
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|event| **event == "close")
-                .count(),
-            1
-        );
-    })
-    .await;
+    ));
+    assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    f.client.wait_shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_reports_closed_for_a_committed_profile_waiting_to_apply() {
+    let f = Fixture::new(false).await;
+    let uid = add_profile(&f).await;
+    f.calls.hold_close.store(true, Ordering::SeqCst);
+    let first = {
+        let client = f.client.clone();
+        tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+    };
+    f.calls.entered.notified().await;
+    let report = f.client.inner.profiles.set_current(None).await.unwrap();
+    assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    f.client.request_shutdown();
+    let mut shutdown = Box::pin(f.client.wait_shutdown());
+    assert!(shutdown.as_mut().now_or_never().is_none());
+    f.calls.hold_close.store(false, Ordering::SeqCst);
+    f.calls.release.notify_one();
+    let outcome = f.client.after_commit(&report).await;
+    assert!(matches!(&outcome.degradations()[0].reason,
+        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeRecoveryRequired { cause: Some(cause), .. }
+        if matches!(cause.as_ref(), nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)));
+    assert!(
+        matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. }
+        if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::RecoveryRequired)
+    );
+    first.await.unwrap().unwrap();
+    shutdown.await;
+    assert_eq!(
+        *f.calls.events.lock().unwrap(),
+        ["reconcile", "close", "reconcile"]
+    );
+    assert_eq!(
+        f.endpoint.delegate.reconciled_bytes().len(),
+        1,
+        "shutdown must not apply the queued profile change"
+    );
 }
 
 #[derive(Default)]
@@ -1015,6 +1030,7 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
             f.client.inner.application.snapshot_handle(),
             f.client.inner.clash_config.snapshot_handle(),
             f.client.inner.profiles.snapshot_handle(),
+            f.client.inner.profiles.content_lock(),
             builder.clone(),
             f.client.inner.ports.clone(),
         );
@@ -1133,4 +1149,118 @@ async fn repeated_mode_interruption_serializes_runtime_commands() {
     );
     reconcile.await.unwrap();
     assert_eq!(*f.calls.events.lock().unwrap(), ["close", "reconcile"]);
+}
+
+// The endpoint scripts validation verdicts; it does not validate documents or
+// require a prior check before accepting a reconcile.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn invalid_profile_activation_is_refused_before_committing() {
+    let f = Fixture::new(false).await;
+    let uid = add_profile(&f).await;
+    let before = f.client.get_profiles().await.unwrap();
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Reject(
+            CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed,
+                "invalid profile",
+                false,
+            ),
+        ));
+    assert!(matches!(
+        f.client.activate_profile(Some(uid)).await,
+        Err(crate::client::ClientError::Profiles(
+            nyanpasu_runtime_values::profiles::ProfilesError::Commit {
+                source: nyanpasu_runtime_values::mutation::CommitAborted::RuntimeRefused { .. },
+                ..
+            }
+        ))
+    ));
+    let after = f.client.get_profiles().await.unwrap();
+    assert_eq!(after.current, before.current);
+    assert_eq!(after.revision(), before.revision());
+    assert!(f.calls.events.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn invalid_subscription_refresh_preserves_files_and_records_rejection() {
+    use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+    let mut fetcher = MockSubscriptionFetcher::new();
+    let fetched = AtomicUsize::new(0);
+    fetcher.expect_fetch().times(2).returning(move |_, _| {
+        Ok(FetchedSubscription {
+            content: if fetched.fetch_add(1, Ordering::SeqCst) == 0 {
+                "proxies: []\n".into()
+            } else {
+                "proxies: []\nmode: unsupported\n".into()
+            },
+            filename: None,
+            subscription: Default::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        })
+    });
+    let f = Fixture::with_fetcher(
+        false,
+        Arc::new(Installer::succeeding()),
+        Some(Arc::new(fetcher)),
+    )
+    .await;
+    let uid = f
+        .client
+        .import_profile(
+            "https://example.com/profile".parse().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .into_value();
+    let before = f.client.get_profiles().await.unwrap();
+    let document = std::fs::read(f._dir.path().join("profiles.yaml")).unwrap();
+    let bytes = f.client.read_profile_file(uid.clone()).await.unwrap();
+    f.calls.events.lock().unwrap().clear();
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Reject(
+            CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed,
+                "subscription rejected",
+                false,
+            ),
+        ));
+    assert!(matches!(
+        f.client.refresh_profile(uid.clone(), None).await,
+        Err(crate::client::ClientError::Profiles(
+            nyanpasu_runtime_values::profiles::ProfilesError::Commit {
+                source: nyanpasu_runtime_values::mutation::CommitAborted::RuntimeRefused { .. },
+                ..
+            }
+        ))
+    ));
+    assert_eq!(
+        f.client.get_profiles().await.unwrap().revision(),
+        before.revision()
+    );
+    assert_eq!(
+        std::fs::read(f._dir.path().join("profiles.yaml")).unwrap(),
+        document
+    );
+    assert_eq!(
+        f.client.read_profile_file(uid.clone()).await.unwrap(),
+        bytes
+    );
+    let sources = f.client.inner.profiles.sources();
+    let status = sources
+        .entries
+        .iter()
+        .find(|entry| entry.profile == uid)
+        .unwrap();
+    assert!(
+        matches!(&status.outcome, nyanpasu_runtime_values::configuration::SourceOutcome::Rejected { message, .. } if message.contains("subscription rejected"))
+    );
+    assert!(f.calls.events.lock().unwrap().is_empty());
 }

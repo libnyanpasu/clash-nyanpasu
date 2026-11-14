@@ -522,19 +522,16 @@ impl ApplicationWorkflow {
     pub(super) async fn capture_committed(&mut self) -> super::inputs::RuntimeInputs {
         let application = self.lifecycle.application.load();
         let clash = self.clash.load();
-        let profiles = self.profiles.load();
+        let (profiles_version, inputs) = self
+            .preparation
+            .capture_committed_inputs(application.state.clone(), clash.state.clone())
+            .await;
         self.sampled = Some(super::EngineVersions {
             application: application.version,
             clash: clash.version,
-            profiles: profiles.version,
+            profiles: profiles_version,
         });
-        self.preparation
-            .capture_inputs(
-                application.state.clone(),
-                clash.state.clone(),
-                Arc::new(profiles.state.clone()),
-            )
-            .await
+        inputs
     }
 
     /// Puts the runtime on `target` and proves it, for a recovery that knows
@@ -1140,11 +1137,19 @@ impl ApplicationWorkflow {
             DomainChange::Clash { candidate, .. } => candidate.as_ref().clone(),
             _ => self.clash.load().state.clone(),
         };
-        let profiles = match change {
-            DomainChange::Profiles { candidate, .. } => candidate.clone(),
-            _ => Arc::new(self.profiles.load().state.clone()),
+        let mut inputs = match change {
+            DomainChange::Profiles { candidate, .. } => {
+                self.preparation
+                    .capture_inputs(app, clash, candidate.clone())
+                    .await
+            }
+            _ => {
+                self.preparation
+                    .capture_committed_inputs(app, clash)
+                    .await
+                    .1
+            }
         };
-        let mut inputs = self.preparation.capture_inputs(app, clash, profiles).await;
         for (path, content) in &request.hints.staged_content {
             if let Some(captured) = inputs.content.0.get_mut(path) {
                 *captured = Ok(content.clone());

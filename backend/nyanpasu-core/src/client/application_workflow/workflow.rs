@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
+use nyanpasu_config::clash::config::ClashConfig;
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_state_engine::StateSnapshot;
 
@@ -17,12 +17,11 @@ use crate::client::{
 };
 use nyanpasu_runtime_values::runtime_error::RuntimeError;
 
-/// Applies already committed source config to the running core. The two state
-/// handles are read-only and are sampled only once the actor has admitted the
-/// command, so a candidate never fixes a domain it did not wait for.
+/// Applies already committed source config to the running core. Source handles
+/// are read-only; preparation captures committed Profiles and its content under
+/// one guard before building.
 pub(super) struct ApplicationWorkflow {
     pub notifications: Arc<dyn crate::client::effects::ports::CommitNotifications>,
-    pub profiles: StateSnapshot<Profiles>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
     /// The core's own verdict on a candidate document, asked before the Try

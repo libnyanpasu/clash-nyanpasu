@@ -416,6 +416,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
+            content_lock: crate::state::mutation::ProfileContentLock::default(),
             core: match setup.handoff_budget {
                 Some(budget) => core.clone().impatient(budget),
                 None => core.clone(),

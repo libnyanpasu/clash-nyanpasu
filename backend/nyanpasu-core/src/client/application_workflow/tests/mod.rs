@@ -14,6 +14,7 @@ mod commit_first;
 mod connection_policy;
 mod mutations;
 mod participant_factory;
+mod profile_content;
 mod recovery;
 mod service_recovery;
 mod startup;
@@ -375,6 +376,7 @@ async fn workflow_graph_with_clients(
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
+            content_lock: profiles.content_lock(),
             core,
             service,
             builder: builder.clone(),

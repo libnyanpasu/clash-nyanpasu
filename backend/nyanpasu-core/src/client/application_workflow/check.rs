@@ -32,7 +32,6 @@ use crate::{
 pub(in crate::client) struct CandidateCheck {
     application: StateSnapshot<NyanpasuAppConfig>,
     clash: StateSnapshot<ClashConfig>,
-    profiles: StateSnapshot<Profiles>,
     preparation: RuntimePreparation,
     validator: Arc<dyn RuntimeValidatorPort>,
     workflow: ApplicationWorkflowClient,
@@ -42,6 +41,7 @@ pub(in crate::client) struct Args {
     pub application: StateSnapshot<NyanpasuAppConfig>,
     pub clash: StateSnapshot<ClashConfig>,
     pub profiles: StateSnapshot<Profiles>,
+    pub content_lock: crate::state::mutation::ProfileContentLock,
     pub builder: Arc<dyn RuntimeBuildPort>,
     pub ports: Arc<SessionPortResolver>,
     pub revisions: RuntimeRevisionAllocator,
@@ -55,6 +55,7 @@ impl CandidateCheck {
             application,
             clash,
             profiles,
+            content_lock,
             builder,
             ports,
             revisions,
@@ -65,6 +66,7 @@ impl CandidateCheck {
             application.clone(),
             clash.clone(),
             profiles.clone(),
+            content_lock,
             builder,
             ports,
         )
@@ -72,7 +74,6 @@ impl CandidateCheck {
         Self {
             application,
             clash,
-            profiles,
             preparation,
             validator,
             workflow,
@@ -91,11 +92,19 @@ impl RuntimeGate for CandidateCheck {
             DomainChange::Clash { candidate } => candidate.as_ref().clone(),
             _ => self.clash.load().state.clone(),
         };
-        let profiles = match &candidate.change {
-            DomainChange::Profiles { candidate, .. } => candidate.clone(),
-            _ => Arc::new(self.profiles.load().state.clone()),
+        let mut inputs = match &candidate.change {
+            DomainChange::Profiles { candidate, .. } => {
+                self.preparation
+                    .capture_inputs(app, clash, candidate.clone())
+                    .await
+            }
+            _ => {
+                self.preparation
+                    .capture_committed_inputs(app, clash)
+                    .await
+                    .1
+            }
         };
-        let mut inputs = self.preparation.capture_inputs(app, clash, profiles).await;
         for (path, content) in candidate.staged {
             inputs.content.0.insert(path, Ok(content));
         }

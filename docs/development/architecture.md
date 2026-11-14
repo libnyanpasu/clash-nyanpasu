@@ -198,10 +198,12 @@ The delivered Phase D module boundary (tasks §4) classifies
 as application/facade, and `state/` as source ownership. Application may import
 control; control must not import `client`. Source owners must not directly import
 `client::application_workflow` or `ApplicationWorkflowClient`. They consume the
-ports defined in `state/mutation/ports.rs`. Application and Clash use `RuntimeGate` for
-independent candidate checks and post-commit notifications; Profiles retains
-`MutationParticipantFactory<T>`. `client/application_workflow/participant.rs`
-implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
+ports defined in `state/mutation/ports.rs`. All three source owners use `RuntimeGate` for
+independent candidate checks and post-commit notifications. Profiles checks staged
+bytes before preparing resources. A composition-root-injected `ProfileContentLock`
+covers its file promotion, document publication and compensation; build capture
+reads the committed Profiles snapshot and its files under one read guard.
+`client/application_workflow/participant.rs` still implements the participant port. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
 stay under `state/mutation/`; public wire values live in runtime-values. The
 notification contract remains in `client/effects`; `EffectKind` lives in
 `nyanpasu-runtime-values::configuration`. The policy
@@ -478,7 +480,7 @@ State changes follow this order:
 2. Keep schema and patch operations in pure services or domain types.
 3. Generate runtime config from snapshots rather than mutating runtime globals.
 4. Commit state first, then trigger side effects through actor messages. A Required participant (the runtime) is a vote before the commit, not a side effect; this rule covers ordinary side effects.
-   Application and Clash check candidates independently before persistence, publish
+   Application, Clash and Profiles check candidates independently before persistence, publish
    their snapshots and effects notifications, then notify the runtime workflow. The facade
    waits on the workflow status watch for the committed engine version; an apply
    failure leaves the source committed and is reported as degradation.

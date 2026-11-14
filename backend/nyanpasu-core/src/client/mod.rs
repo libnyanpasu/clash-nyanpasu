@@ -375,8 +375,10 @@ impl NyanpasuClient {
         // active binding. The first reconcile resolves and confirms.
         let ports = Arc::new(SessionPortResolver::default());
         let file_ports = (host_adapters.profile_files)(ports.clone());
+        let content_lock = crate::state::mutation::ProfileContentLock::default();
         let profiles = profiles::ProfilesClient::new_with_jobs(
             mutations.profiles.clone(),
+            content_lock,
             paths.profiles_path(),
             jobs.clone(),
             file_ports.fs.clone(),
@@ -544,6 +546,7 @@ impl NyanpasuClient {
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
                 profiles: profiles.snapshot_handle(),
+                content_lock: profiles.content_lock(),
                 core: core_v2.clone(),
                 service,
                 builder: builder.clone(),
@@ -565,6 +568,7 @@ impl NyanpasuClient {
                         application: application.snapshot_handle(),
                         clash: clash_config.snapshot_handle(),
                         profiles: profiles.snapshot_handle(),
+                        content_lock: profiles.content_lock(),
                         builder,
                         ports: ports.clone(),
                         revisions,
@@ -1358,11 +1362,33 @@ impl NyanpasuClient {
         &self,
         report: &CommitReport,
     ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        self.profile_outcome((), report).await
+    }
+
+    async fn profile_outcome<T>(
+        &self,
+        value: T,
+        report: &CommitReport,
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<T> {
+        let settled = if report.reaches_runtime {
+            Some(
+                self.inner
+                    .application_workflow
+                    .settled(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Profiles,
+                        report.version,
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        let runtime = application_workflow::status::outcome(report.receipt.clone(), settled);
         nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-            (),
+            value,
             self.collect_post_commit_degradations(report).await,
         )
-        .with_commit(report.receipt.clone())
+        .append_commit_result(runtime)
     }
 
     /// Public wire for a post-commit auto-activation hard failure. Create/import
@@ -1438,13 +1464,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an add commits the uid it generated");
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                created,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(created, &report).await)
     }
 
     /// Create a profile from a fully-specified request and apply the design §9
@@ -1540,11 +1560,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an import commits the uid it generated");
-        let outcome = nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-            created.clone(),
-            self.collect_post_commit_degradations(&report).await,
-        )
-        .with_commit(report.receipt.clone());
+        let outcome = self.profile_outcome(created.clone(), &report).await;
         if transform.is_some() {
             return Ok(outcome);
         }
@@ -1630,13 +1646,7 @@ impl NyanpasuClient {
             .create_proxy_group_folder(profile, name, members)
             .await?;
         self.inner.proxies.notify_rearranged();
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                folder,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(folder, &report).await)
     }
 
     /// Create a folder around `members`, which leave the folders they were in.
@@ -1646,13 +1656,7 @@ impl NyanpasuClient {
         members: Vec<ProfileId>,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
         let (report, folder) = self.inner.profiles.create_folder(name, members).await?;
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                folder,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(folder, &report).await)
     }
 
     pub async fn refresh_profile(
@@ -3010,7 +3014,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn activation_requires_runtime_success_before_committing_selection() {
+    async fn activation_commits_selection_when_apply_is_deferred() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let client = NyanpasuClient::try_new(
@@ -3034,10 +3038,11 @@ pub(crate) mod tests {
                 .unwrap()
                 .into_value();
             let version = client.get_profiles().await.unwrap().revision();
-            assert!(client.activate_profile(Some(uid)).await.is_err());
+            let outcome = client.activate_profile(Some(uid.clone())).await.unwrap();
+            assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
             let after = client.get_profiles().await.unwrap();
-            assert!(after.current.is_none());
-            assert_eq!(after.revision(), version);
+            assert_eq!(after.current, Some(uid));
+            assert_eq!(after.revision(), version + 1);
         })
         .await;
     }
@@ -3330,8 +3335,8 @@ pub(crate) mod tests {
                 .await
                 .expect("add")
                 .into_value();
-            // A rejected activation keeps the last accepted product.
-            assert!(client.activate_profile(Some(uid)).await.is_err());
+            let outcome = client.activate_profile(Some(uid)).await.unwrap();
+            assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
             let lifecycle = client.inner.application_workflow.runtime();
             assert!(client.promoted_runtime().await.is_some());
             assert_eq!(lifecycle.promoted.unwrap().revision.get(), 1);

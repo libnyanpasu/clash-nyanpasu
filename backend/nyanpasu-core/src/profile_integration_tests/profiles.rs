@@ -1006,6 +1006,7 @@ async fn materialization_preparation_failure_keeps_its_typed_source() {
     let jobs = crate::client::jobs::test_client_with_owner(shutdown.clone(), &tasks).await;
     let result = ProfilesClient::new_with_jobs(
         crate::state::mutation::MutationCoordinator::isolated(),
+        crate::state::mutation::ProfileContentLock::default(),
         paths.profiles_path(),
         jobs,
         service.clone(),

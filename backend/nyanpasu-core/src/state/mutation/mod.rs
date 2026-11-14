@@ -1,7 +1,9 @@
 //! Startup-injected runtime checks, transaction participants, and effect notifications.
 //! Sources use their connected port to check candidates or enlist a participant.
 mod change;
+mod profile_content;
 pub(crate) use change::DomainChange;
+pub use profile_content::ProfileContentLock;
 pub(crate) mod impact;
 pub(crate) mod intent;
 pub(crate) mod ports;

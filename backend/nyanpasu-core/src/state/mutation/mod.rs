@@ -9,15 +9,11 @@ pub(crate) mod runtime_apply;
 
 use std::sync::Arc;
 
-use nyanpasu_state_engine::ReplaceIfVersionError;
-use snafu::{IntoError as _, ensure};
+use snafu::ensure;
 use tokio::sync::watch;
 
 use crate::client::effects::ports::CommitNotifications;
-use nyanpasu_runtime_values::mutation::{
-    CommitAborted, NotReady, NotReadySnafu, RecoverAfterWriteFailureSnafu, RuntimeAftermath,
-    ValidateStateSnafu, WriteConfigSnafu,
-};
+use nyanpasu_runtime_values::mutation::{NotReady, NotReadySnafu};
 
 #[derive(Clone)]
 enum Connection {
@@ -86,21 +82,6 @@ impl MutationCoordinator {
             NotReadySnafu
         );
         Ok(())
-    }
-}
-
-pub(crate) fn classify_commit_aborted(error: ReplaceIfVersionError) -> CommitAborted {
-    let runtime = RuntimeAftermath::Untouched;
-    match &error {
-        ReplaceIfVersionError::WriteConfig(_) | ReplaceIfVersionError::LocalWrite(_) => {
-            WriteConfigSnafu { runtime }
-                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
-        }
-        ReplaceIfVersionError::ResourceRecovery { .. } => RecoverAfterWriteFailureSnafu { runtime }
-            .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
-        ReplaceIfVersionError::State(_) => {
-            ValidateStateSnafu.into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
-        }
     }
 }
 

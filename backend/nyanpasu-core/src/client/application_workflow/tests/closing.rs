@@ -152,8 +152,7 @@ async fn shutdown_finishes_an_admitted_source_and_refuses_a_queued_source() {
     let manager = super::mutations::application_manager(
         super::mutations::temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig::default(),
-    )
-    .await;
+    );
     let application =
         super::mutations::application_owner(manager, gate.clone(), &shutdown, &tasks).await;
     let enabled = !application.snapshot().state.enable_builtin_enhanced;
@@ -206,8 +205,7 @@ async fn shutdown_keeps_a_refused_source_unchanged() {
 
     let dir = tempfile::tempdir().unwrap();
     let path = super::mutations::temp_path(&dir, "application.yaml");
-    let manager =
-        super::mutations::application_manager(path.clone(), NyanpasuAppConfig::default()).await;
+    let manager = super::mutations::application_manager(path.clone(), NyanpasuAppConfig::default());
     let bytes = std::fs::read(&path).ok();
     let gate = Arc::new(HeldCheck {
         entered: tokio::sync::Notify::new(),

@@ -126,9 +126,7 @@ async fn fixture(rejection: Option<Arc<RuntimeError>>) -> Fixture {
     let manager = ClashSetup::builder()
         .config_path(path.clone())
         .assemble()
-        .from_state(ClashConfig::default())
-        .await
-        .unwrap();
+        .from_state(ClashConfig::default());
     std::fs::write(
         &path,
         yaml_serde::to_string(&manager.snapshot_handle().load().state).unwrap(),

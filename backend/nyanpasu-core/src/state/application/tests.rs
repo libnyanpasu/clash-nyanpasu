@@ -125,9 +125,7 @@ async fn fixture(rejection: Option<Arc<RuntimeError>>) -> Fixture {
     let manager = ApplicationSetup::builder()
         .config_path(path.clone())
         .assemble()
-        .from_state(NyanpasuAppConfig::default())
-        .await
-        .unwrap();
+        .from_state(NyanpasuAppConfig::default());
     std::fs::write(
         &path,
         yaml_serde::to_string(&NyanpasuAppConfig::default()).unwrap(),

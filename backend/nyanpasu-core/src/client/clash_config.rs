@@ -26,12 +26,7 @@ pub enum Error {
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<ClashConfig, ClashConfigFormat>>,
-    },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<ClashConfig, ClashConfigFormat>>,
+        source: LoadError,
     },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
@@ -44,7 +39,7 @@ pub struct ClashConfigClient {
 
 struct ClashConfigClientInner {
     actor_ref: ActorRef<ClashConfigActorMessage>,
-    /// Committed state, read straight from the coordinator's store so a reader
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<ClashConfig>,
 }
@@ -67,16 +62,13 @@ impl ClashConfigClient {
                 .await
                 .context(LoadStateSnafu { path: &config_path })?
         } else {
-            setup
-                .from_state(ClashConfig::default())
-                .await
-                .context(InitializeStateSnafu { path: &config_path })?
+            setup.from_state(ClashConfig::default())
         };
 
         Self::from_manager(mutations, manager, shutdown, tasks).await
     }
 
-    /// Takes an initialized store, allowing subscriptions to precede actor startup.
+    /// Takes ownership of an initialized store before spawning its actor.
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,

@@ -2003,9 +2003,7 @@ pub(crate) mod tests {
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()
-        .from_state(NyanpasuAppConfig::default())
-        .await
-        .expect("application manager should initialize");
+        .from_state(NyanpasuAppConfig::default());
         let mutations = crate::state::mutation::MutationCoordinator::pending();
         mutations.connect(
             Arc::new(crate::client::effects::ports::NoopCommitNotifications),

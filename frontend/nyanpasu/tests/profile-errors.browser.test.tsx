@@ -291,3 +291,44 @@ test('invalid params keeps its message instead of localizing the domain payload'
   expect(formatError(invalid)).toBe('Invalid profile parameter')
   expect(formatError(new Error('offline'))).toBe('offline')
 })
+
+test('public IpcError without detail skips copy-details prompt and keeps localized message', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', false)
+  const publicError: IpcError = {
+    kind: {
+      domain: 'public',
+      error: {
+        domain: 'system_proxy',
+        error: { kind: 'write_os_proxy', enable: true, port: 7890 },
+      },
+    },
+    message: 'system proxy operation failed',
+  }
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  onTestFinished(() => {
+    alert.mockRestore()
+    confirm.mockRestore()
+  })
+
+  await message(formatError(publicError), {
+    kind: 'error',
+    error: publicError,
+  })
+
+  expect(alert).toHaveBeenCalledTimes(1)
+  expect(alert).toHaveBeenCalledWith(
+    m.error_public_system_proxy_write_os_proxy(),
+  )
+  expect(confirm).not.toHaveBeenCalled()
+
+  await message(formatError({ ...publicError, detail: null }), {
+    kind: 'error',
+    error: { ...publicError, detail: null },
+  })
+
+  expect(alert).toHaveBeenCalledTimes(2)
+  expect(confirm).not.toHaveBeenCalled()
+})

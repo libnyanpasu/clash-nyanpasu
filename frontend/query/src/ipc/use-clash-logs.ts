@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { rpcDomainError, RpcFailure, unwrapResult } from '@nyanpasu/rpc'
+import {
+  isIpcError,
+  rpcDomainError,
+  RpcFailure,
+  unwrapResult,
+} from '@nyanpasu/rpc'
 import type {
   CoreLogCursor,
   CoreLogError,
@@ -29,6 +34,18 @@ const empty = (): View => ({
 const failure = (error: unknown): CoreLogError => {
   const domain = error instanceof RpcFailure ? rpcDomainError(error) : error
 
+  if (isIpcError(domain)) {
+    if (
+      domain.kind.domain === 'public' &&
+      domain.kind.error.domain === 'core_log_read'
+    ) {
+      return {
+        kind: domain.kind.error.error.kind,
+        message: domain.message,
+      }
+    }
+    return { kind: 'unavailable', message: domain.message }
+  }
   return typeof domain === 'object' && domain !== null && 'kind' in domain
     ? (domain as CoreLogError)
     : { kind: 'unavailable', message: String(error) }

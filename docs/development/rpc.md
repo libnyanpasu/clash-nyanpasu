@@ -162,11 +162,15 @@ linkage, and caller scopes without disclosing other principals or credentials.
 `nyanpasu-single-instance`); HTTP bootstrap assigns a non-secret `Principal::Session`
 (`sess_...`) distinct from `access_token` and the `nyanpasu_http_session` cookie; and
 audit headers log only non-secret public principal identifiers (`desktop:<window>`,
-`local_socket:<user>`, `session:<id>`, `token:<id>`). The following
-response-privacy slice (global principal-aware response/error/degraded
-sanitization covering `MutationOutcome::CommittedDegraded`, `application_error_ref`,
-and remaining non-read error paths) remains a mandatory security gate before
-admitting scoped tokens, anonymous access, or LAN exposure.
+`local_socket:<user>`, `session:<id>`, `token:<id>`). Layer 09 delivers public typed
+application and transport-parse error privacy across non-`SensitiveRead` scopes
+(`PublicFailure`, `CoreLogCommandError`, optional `IpcError::detail`, and
+`ResponseVisibility` projection across RPC, parse/route rejections, `/bridge/icons/*`,
+`/bridge/events`, and `LocalServer`); the remaining privacy gates (degraded
+mutation outcomes `MutationOutcome::CommittedDegraded` and sensitive-read success
+getter classifications/safe updater progress) remain mandatory in the next slice
+before admitting scoped tokens, anonymous access, or LAN exposure (followed by
+JSON Schema generation).
 The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
@@ -336,7 +340,7 @@ local socket/CLI must enter this same kernel at INFO.
 - Shared operations receive explicit dependencies and call `NyanpasuClient`. Assemble `RpcDependencies`, routers, and server adapters in the composition root. The facade must not accept `axum::Router` or expose transport infrastructure; avoid strong reference cycles between the server/router and client.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
-- Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error` and its borrowed helper walk the source chain and preserve domain payloads and core retry metadata. Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
+- Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given `ResponseVisibility::for_auth`) walks the source chain and preserves domain payloads and core retry metadata for `SensitiveRead` (`Full`) callers, while projecting non-`SensitiveRead` (`Public`) callers to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on settings-scoped core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
 - Keep HTTP RPC, SSE, and the development proxy behind the existing per-start access credential and Host/Origin checks. A session cookie identifies an owner; it does not by itself authenticate access. Keep the server disabled by default and bound to loopback. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
 - Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. Register shared events in the transport metadata and publish them through the bus and its delivery adapters; do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.

@@ -142,7 +142,9 @@ export const message = async (
           2,
         )
       : isIpcError(error)
-        ? error.detail
+        ? typeof error.detail === 'string'
+          ? error.detail
+          : undefined
         : undefined
 
   if (isIpcError(domain)) {

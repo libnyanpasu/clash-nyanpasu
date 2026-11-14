@@ -1304,7 +1304,9 @@ fn ipc_domains_and_envelope(present: bool) {
             for kind in kinds {
                 // The same list builds fixtures and covers the application's domain enum.
                 match &kind {
-                    IpcErrorKind::Unknown $(| IpcErrorKind::$variant(_))* => {}
+                    IpcErrorKind::Unknown
+                    | IpcErrorKind::Public(_)
+                    $(| IpcErrorKind::$variant(_))* => {}
                 }
                 receive::<received::IpcErrorKind>(kind);
             }

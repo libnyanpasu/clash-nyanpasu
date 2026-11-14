@@ -177,15 +177,19 @@ fn allowed_content_type(mime: &str) -> Result<&'static str, RpcError> {
 /// Returns application failures, unavailable host files, or disallowed image MIME.
 pub async fn read(
     dependencies: &RpcDependencies,
+    visibility: nyanpasu_rpc_protocol::ResponseVisibility,
     request: IconRequest,
 ) -> Result<IconBody, RpcError> {
     let (mime, bytes, cache_policy) = match request {
         IconRequest::Cached { url } => {
-            let (mime, bytes) = dependencies
-                .client
-                .get_cached_icon(&url)
-                .await
-                .map_err(|error| error::application_error(error::IpcError::from(error)))?;
+            let (mime, bytes) =
+                dependencies
+                    .client
+                    .get_cached_icon(&url)
+                    .await
+                    .map_err(|error| {
+                        error::application_error_for(visibility, error::IpcError::from(error))
+                    })?;
             (mime, bytes.to_vec(), IconCachePolicy::Remote)
         }
         IconRequest::Tray { mode, .. } | IconRequest::Widget { mode, .. } => {

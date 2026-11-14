@@ -25,6 +25,25 @@ import type {
   ProfileFileError,
   ProfilesError,
   ProfileSyncReadError,
+  PublicCommitAborted,
+  PublicConfigError,
+  PublicFailure,
+  PublicHotkeyErrorKind,
+  PublicInstallCoreBinaryKind,
+  PublicOsProxyError,
+  PublicPortResolveKind,
+  PublicProfileContentKind,
+  PublicProfilesError,
+  PublicRemoteAccessErrorKind,
+  PublicRuntimeAftermathKind,
+  PublicRuntimeBuildKind,
+  PublicRuntimeCheckUnavailableKind,
+  PublicRuntimeError,
+  PublicRuntimePipelineKind,
+  PublicStorageError,
+  PublicSubscriptionFetchKind,
+  PublicSystemDnsError,
+  PublicTransparentProxyValidationKind,
   RemoteAccessError,
   RuntimeAftermath,
   RuntimeBuildError,
@@ -45,7 +64,9 @@ export function ipcErrorMessage(
 ): string {
   switch (error.kind.domain) {
     case 'unknown':
-      return error.message
+      return typeof error.detail === 'string'
+        ? error.message
+        : m.error_public_internal_error()
     case 'profiles':
       return profilesErrorMessage(error.kind.error, profileLabel)
     case 'runtime':
@@ -62,6 +83,8 @@ export function ipcErrorMessage(
       return coreLogReadErrorMessage(error.kind.error)
     case 'profile_sync_read':
       return profileSyncReadErrorMessage(error.kind.error)
+    case 'public':
+      return publicFailureMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -345,6 +368,510 @@ function effectsErrorMessage(error: EffectsError): string {
   switch (error.kind) {
     case 'effects_stopped':
       return m.error_effects_stopped()
+  }
+}
+
+function publicFailureMessage(failure: PublicFailure): string {
+  switch (failure.domain) {
+    case 'profiles':
+      return publicProfilesErrorMessage(failure.error)
+    case 'runtime':
+      return publicRuntimeErrorMessage(failure.error)
+    case 'config':
+      return publicConfigErrorMessage(failure.error)
+    case 'storage':
+      return publicStorageErrorMessage(failure.error)
+    case 'system_dns':
+      return publicSystemDnsErrorMessage(failure.error)
+    case 'system_proxy':
+      return publicOsProxyErrorMessage(failure.error)
+    case 'effects':
+      return effectsErrorMessage(failure.error)
+    case 'http_server':
+      return httpServerErrorMessage(failure.error)
+    case 'clash_read':
+      return clashReadErrorMessage(failure.error)
+    case 'core_log_read':
+      return coreLogReadErrorMessage(failure.error)
+    case 'profile_sync_read':
+      return profileSyncReadErrorMessage(failure.error)
+    case 'core':
+      return coreReasonMessage(failure.error.kind)
+  }
+}
+
+function publicProfilesErrorMessage(error: PublicProfilesError): string {
+  switch (error.kind) {
+    case 'profile_not_found':
+      return m.error_profiles_profile_not_found()
+    case 'profile_has_no_file':
+      return m.error_profiles_profile_has_no_file()
+    case 'not_a_remote_profile':
+      return m.error_profiles_not_a_remote_profile()
+    case 'profile_file_not_writable':
+      return m.error_profiles_profile_file_not_writable()
+    case 'profile_in_use':
+      return error.referrer_count === 0
+        ? m.error_profiles_profile_in_use_by_selection()
+        : m.error_profiles_profile_in_use_by_profiles({
+            count: error.referrer_count,
+          })
+    case 'profile_id_collision':
+      return m.error_profiles_profile_id_collision()
+    case 'validation_failed':
+      return m.error_profiles_validation_failed()
+    case 'reorder_list_size_mismatch':
+    case 'reorder_list_duplicate':
+      return m.error_profiles_reorder_invalid()
+    case 'revision_overflow':
+      return m.error_profiles_revision_overflow()
+    case 'invalid_subscription_url':
+      return m.error_profiles_invalid_subscription_url()
+    case 'remote_profile_needs_import':
+      return m.error_profiles_remote_profile_needs_import()
+    case 'refresh_in_progress':
+      return m.error_profiles_refresh_in_progress()
+    case 'fetch_subscription':
+      return publicSubscriptionFetchMessage(error.reason)
+    case 'profile_content_rejected':
+      return publicProfileContentMessage(error.reason)
+    case 'profile_file_not_yaml':
+      return m.error_profiles_profile_file_not_yaml()
+    case 'profile_deleted_during_refresh':
+      return m.error_profiles_profile_deleted_during_refresh()
+    case 'profile_changed_during_refresh':
+      return m.error_profiles_profile_changed_during_refresh()
+    case 'fingerprint_definition':
+      return m.error_profiles_fingerprint_definition()
+    case 'read_profile_file':
+      return error.unsafe_path
+        ? m.error_profiles_storage_unsafe_path()
+        : m.error_profiles_read_profile_file()
+    case 'profile_file_missing':
+      return m.error_profiles_profile_file_missing()
+    case 'read_external_profile':
+      return error.unsafe_path
+        ? m.error_profiles_storage_unsafe_path()
+        : m.error_public_profiles_read_external_profile()
+    case 'materialization':
+      return error.unsafe_path
+        ? m.error_profiles_storage_unsafe_path()
+        : m.error_profiles_storage_failed()
+    case 'version_conflict':
+      return m.error_profiles_version_conflict()
+    case 'commit':
+      return publicCommitAbortedMessage(error.source)
+    case 'workflow_not_ready':
+      return m.error_profiles_workflow_not_ready()
+    case 'service_stopped':
+      return m.error_profiles_service_stopped()
+    case 'shutting_down':
+      return m.error_profiles_shutting_down()
+  }
+}
+
+function publicSubscriptionFetchMessage(
+  reason: PublicSubscriptionFetchKind,
+): string {
+  switch (reason.kind) {
+    case 'subscription_http_status':
+      return m.error_public_profiles_fetch_subscription_status({
+        status: reason.status,
+      })
+    case 'build_http_client':
+    case 'request_subscription':
+    case 'read_subscription_body':
+      return m.error_public_profiles_fetch_subscription_failed()
+  }
+}
+
+function publicProfileContentMessage(reason: PublicProfileContentKind): string {
+  switch (reason) {
+    case 'not_yaml_mapping':
+    case 'reserialize_yaml':
+      return m.error_profiles_content_not_yaml()
+    case 'missing_proxies':
+      return m.error_profiles_content_missing_proxies()
+    case 'empty_script':
+      return m.error_profiles_content_empty_script()
+  }
+}
+
+function publicCommitAbortedMessage(commit: PublicCommitAborted): string {
+  const headline = (() => {
+    switch (commit.kind) {
+      case 'write_config':
+        return m.error_commit_write_config()
+      case 'recover_after_write_failure':
+        return m.error_commit_recover_after_write_failure()
+      case 'validate_state':
+        return m.error_commit_validate_state()
+      case 'runtime_refused':
+      case 'runtime_failed': {
+        const primary = commit.runtime_causes?.[0]
+        const reason = primary
+          ? publicRuntimeErrorMessage(primary)
+          : m.error_runtime_core_reason_internal()
+        return commit.kind === 'runtime_refused'
+          ? m.error_commit_runtime_refused({ reason })
+          : m.error_commit_runtime_failed({ reason })
+      }
+    }
+  })()
+
+  const outcome = publicRuntimeAftermathMessage(commit.runtime ?? null)
+  const recovery = commit.aftermath_cause
+    ? publicRuntimeErrorMessage(commit.aftermath_cause)
+    : undefined
+  return [headline, outcome, recovery].filter(Boolean).join('. ')
+}
+
+function publicRuntimeAftermathMessage(
+  aftermath: PublicRuntimeAftermathKind | null,
+): string | undefined {
+  switch (aftermath) {
+    case null:
+    case 'untouched':
+      return undefined
+    case 'rolled_back':
+      return m.error_commit_runtime_rolled_back()
+    case 'rollback_failed':
+    case 'unknown':
+      return m.error_commit_runtime_unknown()
+  }
+}
+
+function publicRuntimeErrorMessage(error: PublicRuntimeError): string {
+  switch (error.kind) {
+    case 'shutting_down':
+      return m.error_runtime_shutting_down()
+    case 'isolated':
+      return m.error_runtime_isolated()
+    case 'owner_unresponsive':
+      return m.error_runtime_owner_unresponsive()
+    case 'owner_unavailable':
+      return m.error_runtime_owner_unavailable()
+    case 'source_settled':
+      return m.error_runtime_source_settled()
+    case 'apply_runtime':
+      return withCoreReason(m.error_runtime_apply_runtime(), error.core_kind)
+    case 'stop_core':
+      return withCoreReason(m.error_runtime_stop_core(), error.core_kind)
+    case 'recover_runtime':
+      return withCoreReason(m.error_runtime_recover_runtime(), error.core_kind)
+    case 'recover_service_endpoint':
+      return withCoreReason(
+        m.error_runtime_recover_service_endpoint(),
+        error.core_kind,
+      )
+    case 'refresh_status':
+      return withCoreReason(m.error_runtime_refresh_status(), error.core_kind)
+    case 'install_service':
+      return withCoreReason(m.error_runtime_install_service(), error.core_kind)
+    case 'start_service':
+      return withCoreReason(m.error_runtime_start_service(), error.core_kind)
+    case 'stop_service':
+      return withCoreReason(m.error_runtime_stop_service(), error.core_kind)
+    case 'restart_service':
+      return withCoreReason(m.error_runtime_restart_service(), error.core_kind)
+    case 'uninstall_service':
+      return withCoreReason(
+        m.error_runtime_uninstall_service(),
+        error.core_kind,
+      )
+    case 'move_host':
+      return withCoreReason(
+        m.error_runtime_move_host({ host: hostName(error.host) }),
+        error.core_kind,
+      )
+    case 'submission_unobserved':
+      return withCoreReason(
+        m.error_runtime_submission_unobserved(),
+        error.core_kind,
+      )
+    case 'service_hosts_core':
+      return m.error_runtime_service_hosts_core()
+    case 'core_not_started':
+      return m.error_runtime_core_not_started()
+    case 'recovery_unresolved':
+      return m.error_runtime_recovery_unresolved()
+    case 'build_runtime':
+      return publicRuntimeBuildMessage(error.source)
+    case 'publish_runtime':
+      return m.error_public_runtime_publish_runtime()
+    case 'resolve_port':
+      return publicPortResolveMessage(error.source)
+    case 'resolve_core_binary':
+      return m.error_runtime_find_core_binary({ core: error.core })
+    case 'install_core_binary':
+      return publicInstallCoreBinaryMessage(error.source)
+    case 'prepare_service_install_prompt':
+      return m.error_runtime_prepare_service_install_prompt()
+    case 'read_core_version':
+      return m.error_runtime_read_core_version({ core: error.core })
+    case 'unsettled_baseline':
+      return unsettledBaselineMessage(error.gap)
+    case 'core_rejected_config':
+      return withCoreReason(
+        m.error_runtime_core_rejected_config(),
+        error.core_kind,
+      )
+    case 'check_unavailable':
+      return publicCheckUnavailableMessage(error.reason)
+    case 'core_rolled_back':
+      return m.error_runtime_core_rolled_back()
+    case 'handoff_owner_mismatch':
+      return m.error_runtime_handoff_owner_mismatch()
+    case 'handoff_not_restored':
+      return m.error_runtime_handoff_not_restored()
+    case 'restore_failed':
+      return m.error_runtime_restore_failed()
+    case 'committed_after_refusal':
+      return m.error_runtime_committed_after_refusal()
+    case 'no_runtime_config':
+      return m.error_runtime_no_runtime_config()
+    case 'serialize_runtime_config':
+    case 'convert_runtime_config':
+      return m.error_runtime_render_runtime_config()
+    case 'runtime_snapshot_changed':
+      return m.error_runtime_runtime_snapshot_changed()
+    case 'runtime_node_not_found':
+      return m.error_runtime_runtime_node_not_found()
+  }
+}
+
+function publicRuntimeBuildMessage(source: PublicRuntimeBuildKind): string {
+  switch (source.kind) {
+    case 'start_script_runner':
+      return m.error_runtime_build_start_script_runner()
+    case 'validate_profiles':
+      return m.error_runtime_build_validate_profiles()
+    case 'validate_transparent_proxy':
+      return publicTransparentProxyMessage(source.reason)
+    case 'transparent_proxy_requires_service_mode':
+      return m.settings_clash_transparent_proxy_service_mode_required()
+    case 'run_pipeline':
+      return publicRuntimePipelineMessage(source.stage)
+    case 'transforms_failed':
+      return m.error_public_runtime_build_transforms_failed()
+    case 'unsupported_config_values':
+      return m.error_public_runtime_build_unsupported_config_value()
+    case 'serialize_final_config':
+    case 'config_not_mapping':
+      return m.error_runtime_build_runtime()
+  }
+}
+
+function publicRuntimePipelineMessage(
+  stage: PublicRuntimePipelineKind,
+): string {
+  switch (stage) {
+    case 'execute_script':
+      return m.error_public_runtime_build_script_failed()
+    case 'selected_profile_not_found':
+      return m.error_public_runtime_build_selected_profile_not_found()
+    case 'selected_profile_not_config':
+      return m.error_public_runtime_build_selected_profile_not_config()
+    case 'composition_member_invalid':
+      return m.error_public_runtime_build_composition_member_invalid()
+    case 'content_source':
+      return m.error_public_runtime_build_content_source()
+    case 'parse_profile':
+      return m.error_public_runtime_build_parse_profile()
+    case 'snapshot':
+    case 'internal':
+      return m.error_runtime_build_runtime()
+  }
+}
+
+function publicTransparentProxyMessage(
+  reason: PublicTransparentProxyValidationKind,
+): string {
+  switch (reason.kind) {
+    case 'unsupported_target':
+      return m.error_transparent_proxy_unsupported_target()
+    case 'tun_conflict':
+      return m.error_transparent_proxy_tun_conflict()
+    case 'missing_listener':
+      return m.error_transparent_proxy_missing_listener({ mode: reason.mode })
+    case 'zero_port':
+      return m.error_transparent_proxy_zero_port()
+    case 'empty_target':
+      return m.error_transparent_proxy_empty_target()
+    case 'invalid_interface':
+      return m.error_public_transparent_proxy_invalid_interface()
+    case 'duplicate_interface':
+      return m.error_transparent_proxy_duplicate_interface()
+    case 'too_many_interfaces':
+      return m.error_transparent_proxy_too_many_interfaces()
+  }
+}
+
+function publicPortResolveMessage(source: PublicPortResolveKind): string {
+  switch (source.kind) {
+    case 'port_not_available':
+      return m.error_runtime_port_in_use({ port: source.port })
+    case 'no_open_port':
+      return m.error_runtime_no_open_port({
+        field: portFieldName(source.field),
+      })
+    case 'port_conflict':
+      return m.error_runtime_ports_conflict({
+        first: portFieldName(source.first),
+        second: portFieldName(source.second),
+        port: source.port,
+      })
+  }
+}
+
+function publicInstallCoreBinaryMessage(
+  source: PublicInstallCoreBinaryKind,
+): string {
+  switch (source.kind) {
+    case 'authorize_core_copy':
+      return m.error_runtime_install_core_binary_elevation({
+        core: source.core,
+      })
+    case 'start_elevated_copy':
+      return m.error_runtime_install_core_binary_copy({ core: source.core })
+    case 'elevated_copy_failed':
+      return source.exit_code !== null && source.exit_code !== undefined
+        ? m.error_public_runtime_install_core_binary_failed({
+            core: source.core,
+            code: source.exit_code,
+          })
+        : m.error_runtime_install_core_binary_copy({ core: source.core })
+    case 'path_not_utf8':
+      return m.error_public_runtime_path_not_utf8()
+  }
+}
+
+function publicCheckUnavailableMessage(
+  reason: PublicRuntimeCheckUnavailableKind,
+): string {
+  switch (reason.kind) {
+    case 'backend':
+      return withCoreReason(
+        m.error_runtime_check_unavailable(),
+        reason.core_kind,
+      )
+    case 'no_endpoint':
+    case 'host_unsupported':
+    case 'candidate_unavailable':
+      return m.error_runtime_check_unavailable()
+  }
+}
+
+function publicConfigErrorMessage(error: PublicConfigError): string {
+  switch (error.kind) {
+    case 'leave_nightly_channel':
+      return m.error_config_leave_nightly_channel()
+    case 'invalid_update_sources':
+      return m.error_public_config_invalid_update_sources()
+    case 'invalid_core_logs':
+      return m.error_public_config_invalid_core_logs()
+    case 'invalid_public_ip_probe_sources':
+      return m.error_public_config_invalid_public_ip_probe_sources()
+    case 'invalid_latency_timeout':
+      return m.error_public_config_invalid_latency_timeout()
+    case 'invalid_remote_access':
+      return publicRemoteAccessErrorMessage(error.reason)
+    case 'validate_hotkey_capability':
+      return m.error_config_hotkey_capability_unsupported()
+    case 'validate_hotkeys':
+      return publicHotkeyErrorMessage(error.reason)
+    case 'workflow_not_ready':
+      return m.error_config_workflow_not_ready()
+    case 'shutting_down':
+      return m.error_config_shutting_down()
+    case 'owner_stopped':
+      return m.error_config_owner_stopped()
+    case 'session_state_stopped':
+      return m.error_config_session_state_stopped()
+    case 'invalid_transparent_proxy':
+      return publicTransparentProxyMessage(error.reason)
+    case 'transparent_proxy_requires_service_mode':
+      return m.settings_clash_transparent_proxy_service_mode_required()
+    case 'version_conflict':
+      return m.error_config_version_conflict()
+    case 'commit':
+      return publicCommitAbortedMessage(error.source)
+    case 'persist_session_state':
+      return m.error_config_persist_session_state()
+  }
+}
+
+function publicRemoteAccessErrorMessage(
+  reason: PublicRemoteAccessErrorKind,
+): string {
+  switch (reason) {
+    case 'port_zero':
+      return m.error_config_remote_access_port_zero()
+    case 'use_dedicated_command':
+      return m.error_config_remote_access_use_dedicated_command()
+  }
+}
+
+function publicHotkeyErrorMessage(reason: PublicHotkeyErrorKind): string {
+  switch (reason) {
+    case 'malformed_entry':
+      return m.error_public_config_hotkey_malformed_entry()
+    case 'unknown_function':
+      return m.error_public_config_hotkey_unknown_function()
+    case 'empty_key_segment':
+      return m.error_public_config_hotkey_empty_key_segment()
+    case 'unsupported_accelerator':
+      return m.error_public_config_hotkey_unsupported_accelerator()
+    case 'missing_super_key':
+      return m.error_public_config_hotkey_missing_super_key()
+    case 'duplicate_accelerator':
+      return m.error_public_config_hotkey_duplicate_accelerator()
+  }
+}
+
+function publicStorageErrorMessage(error: PublicStorageError): string {
+  switch (error.kind) {
+    case 'open_database':
+    case 'inspect_database':
+    case 'preserve_database':
+      return m.error_storage_open()
+    case 'begin_transaction':
+    case 'open_table':
+    case 'read_item':
+    case 'write_item':
+    case 'remove_item':
+    case 'list_items':
+    case 'commit_transaction':
+      return m.error_storage_access()
+    case 'decode_value':
+    case 'encode_value':
+      return m.error_storage_invalid_value()
+  }
+}
+
+function publicSystemDnsErrorMessage(error: PublicSystemDnsError): string {
+  switch (error.kind) {
+    case 'authorize_dns_flush':
+      return m.error_elevation_authorize()
+    case 'run_flush_command':
+      return m.error_public_system_dns_run_flush_command()
+    case 'flush_rejected':
+      return error.exit_code !== null && error.exit_code !== undefined
+        ? m.error_public_system_dns_flush_rejected_code({
+            code: error.exit_code,
+          })
+        : m.error_public_system_dns_flush_rejected()
+    case 'unsupported':
+      return m.error_system_dns_unsupported()
+  }
+}
+
+function publicOsProxyErrorMessage(error: PublicOsProxyError): string {
+  switch (error.kind) {
+    case 'read_os_proxy':
+      return m.error_system_proxy_read_os_proxy()
+    case 'write_os_proxy':
+      return m.error_public_system_proxy_write_os_proxy()
   }
 }
 

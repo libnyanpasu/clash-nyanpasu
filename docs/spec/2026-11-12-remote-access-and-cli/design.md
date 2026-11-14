@@ -722,14 +722,25 @@ self-inspection exception), the `LocalSocket` allowlist expanded to 14
 operations (adding `rpc_describe`), and TanStack Query `shouldRetryRpcQuery`
 non-retryable failure handling in `@nyanpasu/query`.
 
+Also delivered in the public error-privacy slice (Layer 09): caller-scoped
+`ResponseVisibility` (`Full` only with `Scope::SensitiveRead`; `Public` otherwise)
+across RPC commands, transport/parameter parse errors (`unknown_method_for`,
+`invalid_params_for`), direct HTTP routes (`/bridge/connection-details`,
+`/bridge/icons/*`), HTTP SSE (`/bridge/events`), and `LocalServer` snapshot/stream
+adapters; bounded `PublicFailure` wire types preserving stable domain/variant
+discriminants, HTTP status codes, `CoreErrorKind`, `retryable`, `operation_id`, and
+commit aftermath without `IpcError::detail`, filesystem paths, URLs, credentials, or
+raw underlying diagnostics; `CoreLogCommandError` for `clear_core_logs` (`Settings`);
+and frontend `PublicFailure` localization, `@nyanpasu/rpc` `isIpcError` / `@nyanpasu/query`
+handling, and absence-safe copy-details UI.
+
 Still open, and mandatory security gates before any new principal (scoped tokens,
-anonymous access, or LAN exposure) is admitted: the following response-privacy
-slice implementing global principal-aware sanitization across remaining non-read
-error paths, `MutationOutcome::CommittedDegraded`, and `application_error_ref`
-(plus remaining safe-read classifications); generated JSON Schema in a separate
-slice after response privacy; and role-aware WebUI conditional features (such as
-custom CSS from protected storage and splitting editable profile/config/log routes
-whose full viewers stay on `sensitive_read`). No scoped end-to-end login exists yet.
+anonymous access, or LAN exposure) is admitted: the next slice covering
+`MutationOutcome::CommittedDegraded` projection and remaining sensitive-read success
+classifications/safe updater progress; generated JSON Schema in a separate slice after
+response privacy; and role-aware WebUI conditional features (such as custom CSS from
+protected storage and splitting editable profile/config/log routes whose full viewers stay
+on `sensitive_read`). No scoped end-to-end login exists yet.
 
 Layer 01 corrections to the original sketch: the strategy enum has one variant so
 unimplemented strategies are unrepresentable rather than rejected late; the HTTP status

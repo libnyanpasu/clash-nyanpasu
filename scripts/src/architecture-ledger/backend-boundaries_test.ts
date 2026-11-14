@@ -390,6 +390,62 @@ for (const dependency of [
   })
 }
 
+const CLI_FORBIDDEN = [
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'nyanpasu-rpc',
+  'nyanpasu-server',
+  'tauri',
+  'tauri-runtime',
+  'nyanpasu-widget',
+]
+
+test('the CLI stands on the protocol and transport layer only', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-cli',
+      'nyanpasu-cli v0.1.0\nnyanpasu-rpc-protocol v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-runtime-values v0.1.0\nnyanpasu-paths v0.1.0\nnyanpasu-single-instance v0.1.0\nreqwest v0.13\nclap v4.6\nkeyring v4.2\ntokio v1.54\n',
+    ),
+    [],
+  )
+  for (const dependency of CLI_FORBIDDEN) {
+    for (const prefix of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-cli',
+          `nyanpasu-cli v0.1.0\n${prefix}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-cli must not depend on ${dependency}`],
+      )
+    }
+  }
+})
+
+test('no package depends on the CLI', () => {
+  for (const owner of [
+    'nyanpasu-server',
+    'nyanpasu-rpc',
+    'nyanpasu-rpc-protocol',
+    'nyanpasu-core',
+    'nyanpasu-config',
+    'nyanpasu-os',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, `${owner} v0.1.0\nnyanpasu-cli v0.1.0\n`),
+      [`${owner} must not depend on nyanpasu-cli`],
+      owner,
+    )
+  }
+})
+
 for (const owner of [
   'nyanpasu-config',
   'nyanpasu-contracts',

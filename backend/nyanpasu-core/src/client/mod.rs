@@ -3128,6 +3128,11 @@ pub(crate) mod tests {
                 ExecutionHost::Local,
                 "an absent daemon must not be installed and started by startup"
             );
+            client
+                .inner
+                .application_workflow
+                .settle_core_changes()
+                .await;
             assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,

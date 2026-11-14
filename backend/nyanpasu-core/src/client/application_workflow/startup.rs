@@ -225,11 +225,15 @@ impl ApplicationWorkflow {
             });
             if confirmed.is_some() {
                 let before = self.lifecycle.ports.confirmed();
+                let status = observed
+                    .as_ref()
+                    .expect("a matching receipt requires an observation");
                 self.lifecycle.runtime.reconfirm_observed_apply(
-                    observed
+                    status.generation,
+                    status
+                        .snapshot
                         .as_ref()
-                        .expect("a matching receipt requires an observation")
-                        .generation,
+                        .and_then(|snapshot| snapshot.instance_id.clone()),
                 );
                 if before != self.lifecycle.ports.confirmed() {
                     self.notify_bound(true);
@@ -260,6 +264,15 @@ impl ApplicationWorkflow {
             };
             let facts = Facts {
                 trigger,
+                recovering: owner == ExecutionHost::Service
+                    && matches!(
+                        self.lifecycle.core.core_status().connectivity,
+                        EndpointConnectivity::Degraded {
+                            desired: ExecutionHost::Service,
+                            ..
+                        }
+                    )
+                    && self.lifecycle.recovery_armed(),
                 run: self.run,
                 desired_host: desired,
                 owner,

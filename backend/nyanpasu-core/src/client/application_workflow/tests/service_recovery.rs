@@ -315,6 +315,37 @@ impl RecoveryGraph {
 }
 
 #[tokio::test]
+async fn armed_endpoint_recovery_keeps_the_service_owner_until_the_attempt() {
+    let graph = RecoveryGraph::new(true).await;
+    let generation = graph.client.core_status().generation;
+    let mut status = graph.client.subscribe_reconciler();
+    graph.outage(true).await;
+    status
+        .wait_for(|status| {
+            matches!(&status.conclusion, super::super::Conclusion::Waiting { cause }
+            if cause.to_string().contains("service endpoint is being recovered"))
+        })
+        .await
+        .unwrap();
+    barrier(&graph.client).await;
+
+    assert_eq!(graph.client.core_status().host, ExecutionHost::Service);
+    assert_eq!(graph.client.core_status().generation, generation);
+    assert_eq!(graph.recovery_attempts().await, 0);
+    assert_eq!(graph.starts(), 0);
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+
+    graph.attempt().await;
+    assert_eq!(graph.starts(), 1);
+    assert_eq!(graph.client.core_status().host, ExecutionHost::Service);
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+}
+
+#[tokio::test]
 async fn daemon_crash_reconnects_and_obeys_the_run_intent() {
     for running in [true, false] {
         let graph = RecoveryGraph::new(running).await;
@@ -339,11 +370,25 @@ async fn daemon_crash_reconnects_and_obeys_the_run_intent() {
 async fn transport_outage_reconnects_without_restart_or_reconcile() {
     use nyanpasu_runtime_values::mutation::ConfigDomain;
     let graph = RecoveryGraph::new(true).await;
+    let endpoint = &graph.daemon.endpoint.delegate;
+    graph.client.stop_core().await.unwrap();
+    assert!(endpoint.status().await.unwrap().instance_id.is_none());
     graph.client.reconcile().await.unwrap();
-    let submitted = graph.daemon.endpoint.delegate.submissions();
+    let submitted = endpoint.submissions();
     let generation = graph.client.core_status().generation;
-    let instance_id = graph.client.core_status().snapshot.unwrap().instance_id;
+    let instance_id = endpoint.status().await.unwrap().instance_id;
     assert!(instance_id.is_some());
+    assert_eq!(
+        graph
+            .client
+            .0
+            .runtime
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .instance_id,
+        instance_id,
+        "the confirmed start records the running process before any further submission"
+    );
     graph.outage(false).await;
     graph.attempt().await;
     assert_eq!(graph.starts(), 0);
@@ -392,6 +437,137 @@ async fn transport_outage_reconnects_without_restart_or_reconcile() {
         graph.daemon.endpoint.delegate.submissions(),
         submitted + 1,
         "a later save applies without stopping the unchanged instance"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_outcomes_track_process_lifetimes() {
+    use nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind;
+
+    let graph = RecoveryGraph::new(true).await;
+    let endpoint = &graph.daemon.endpoint.delegate;
+    for outcome in [
+        ReconcileOutcomeKind::Started,
+        ReconcileOutcomeKind::Patched,
+        ReconcileOutcomeKind::Reloaded,
+        ReconcileOutcomeKind::Restarted,
+        ReconcileOutcomeKind::Switched,
+        ReconcileOutcomeKind::Noop,
+    ] {
+        let previous = endpoint.status().await.unwrap().instance_id.unwrap();
+        endpoint.set_reconcile_outcome(outcome);
+        graph.client.reconcile().await.unwrap();
+        let current = endpoint.status().await.unwrap().instance_id.unwrap();
+        match outcome {
+            ReconcileOutcomeKind::Started
+            | ReconcileOutcomeKind::Restarted
+            | ReconcileOutcomeKind::Switched => assert_ne!(current, previous, "{outcome:?}"),
+            _ => assert_eq!(current, previous, "{outcome:?}"),
+        }
+        assert_eq!(
+            graph
+                .client
+                .0
+                .runtime
+                .last_confirmed_runtime_receipt()
+                .unwrap()
+                .instance_id,
+            Some(current),
+            "{outcome:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn manager_respawn_reconfirms_process_identity_before_reconnection() {
+    let graph = RecoveryGraph::new(true).await;
+    let endpoint = &graph.daemon.endpoint.delegate;
+    let generation = graph.client.core_status().generation;
+    let previous = graph
+        .client
+        .0
+        .runtime
+        .last_confirmed_runtime_receipt()
+        .unwrap();
+    endpoint.respawn_process();
+    let observed = graph.core.refresh_status().await.unwrap();
+    let instance_id = observed.snapshot.unwrap().instance_id;
+    assert_ne!(instance_id, previous.instance_id);
+    assert_eq!(observed.generation, generation);
+    graph.client.source_committed(
+        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+        graph.clash.snapshot().version,
+    );
+    barrier(&graph.client).await;
+    assert_eq!(endpoint.submissions(), 0);
+    assert_eq!(
+        graph
+            .client
+            .0
+            .runtime
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .instance_id,
+        instance_id
+    );
+
+    graph.outage(false).await;
+    graph.attempt().await;
+    assert!(graph.client.core_status().generation > generation);
+    assert_eq!(endpoint.submissions(), 0);
+    assert_eq!(
+        graph
+            .client
+            .subscribe_reconciler()
+            .borrow()
+            .conclusion
+            .label(),
+        "Converged"
+    );
+}
+
+#[tokio::test]
+async fn reconnection_to_a_different_process_stops_and_applies_the_committed_target() {
+    let graph = RecoveryGraph::new(true).await;
+    let endpoint = &graph.daemon.endpoint.delegate;
+    let previous = graph
+        .client
+        .0
+        .runtime
+        .last_confirmed_runtime_receipt()
+        .unwrap();
+    let revision = endpoint.status().await.unwrap().revision;
+    graph.outage(false).await;
+    endpoint.respawn_process();
+    let replacement = endpoint.status().await.unwrap();
+    assert_ne!(replacement.instance_id, previous.instance_id);
+    assert_eq!(replacement.revision, revision);
+    graph.attempt().await;
+
+    assert_eq!(
+        endpoint.submissions(),
+        2,
+        "stop the unverified process, then apply"
+    );
+    assert_eq!(endpoint.reconciled_bytes().len(), 1);
+    assert_eq!(
+        graph
+            .client
+            .subscribe_reconciler()
+            .borrow()
+            .conclusion
+            .label(),
+        "Converged"
+    );
+    assert_eq!(
+        graph
+            .client
+            .0
+            .runtime
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .instance_id,
+        endpoint.status().await.unwrap().instance_id
     );
 }
 
@@ -514,19 +690,12 @@ async fn a_local_handoff_is_released_by_a_daemon_the_os_reports_stopped() {
     assert_eq!(graph.starts(), 0);
 }
 
-/// A stop the user asked for is not a snapshot: the projection can still say
-/// Running when the endpoint degrades right after, and recovery must not read
-/// that stale frame as a reason to start a deliberately stopped core.
+/// Endpoint recovery preserves the explicit stop intent and never starts the core.
 #[tokio::test]
 async fn a_deliberately_stopped_core_is_not_restarted_by_recovery() {
     let graph = RecoveryGraph::new(true).await;
     graph.client.stop_core().await.unwrap();
-    graph
-        .daemon
-        .endpoint
-        .delegate
-        .set_status(Some(CoreStateDetail::Running { epoch: 1, pid: 7 }), None);
-    graph.await_running_projection().await;
+    graph.client.settle_core_changes().await;
     graph.outage(true).await;
     graph.attempt().await;
     assert_eq!(graph.starts(), 1, "the daemon itself is still recovered");
@@ -784,4 +953,60 @@ async fn consent_refusal_pauses_automatic_service_recovery() {
         assert!(!graph.client.status().uncertain);
         tokio::time::resume();
     }
+}
+
+async fn outage_with_pending_action() -> RecoveryGraph {
+    // The transport pump observes the outage before the test freezes recovery time.
+    tokio::time::resume();
+    let graph = RecoveryGraph::new(true).await;
+    graph.daemon.endpoint.delegate.set_result_missing(true);
+    assert!(graph.client.reconcile().await.is_err());
+    graph.outage(false).await;
+    graph.client.settle_core_changes().await;
+    tokio::time::pause();
+    assert_eq!(
+        graph.client.reconciler_status().conclusion.label(),
+        "Unknown"
+    );
+    assert_eq!(graph.recovery_attempts().await, 0);
+    graph
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_pending_action_does_not_charge_or_pause_endpoint_recovery() {
+    let graph = outage_with_pending_action().await;
+    for _ in 0..2 {
+        graph.attempt().await;
+        assert_eq!(graph.recovery_attempts().await, 0);
+        let status = graph.client.reconciler_status();
+        assert_eq!(status.conclusion.label(), "Unknown");
+        assert_eq!(status.seen.clash, graph.clash.snapshot().version);
+        assert!(matches!(
+            graph.client.core_status().connectivity,
+            EndpointConnectivity::Degraded { .. }
+        ));
+    }
+    graph.daemon.endpoint.delegate.set_result_missing(false);
+    graph.attempt().await;
+    assert_eq!(graph.recovery_attempts().await, 1);
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_settled_action_is_consumed_before_recovery_on_the_same_tick() {
+    let graph = outage_with_pending_action().await;
+    graph.daemon.endpoint.delegate.set_result_missing(false);
+    graph.attempt().await;
+    assert_eq!(graph.recovery_attempts().await, 1);
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(
+        graph.client.reconciler_status().conclusion.label(),
+        "Converged"
+    );
 }

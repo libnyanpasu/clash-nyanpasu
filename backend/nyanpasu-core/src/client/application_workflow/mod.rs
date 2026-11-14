@@ -16,7 +16,10 @@ mod tcc;
 #[cfg(test)]
 mod tests;
 mod workflow;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use mutation::RoundRecord;
 use nyanpasu_contracts::core_install::BinaryInstaller;
@@ -100,6 +103,7 @@ enum Message {
     },
     Tick,
     ServiceReadiness,
+    CoreChanged,
     #[cfg(test)]
     RecoveryAttempts(RpcReplyPort<u8>),
     #[cfg(test)]
@@ -111,6 +115,7 @@ enum Message {
 }
 struct ApplicationWorkflowActor;
 struct ApplicationWorkflowState {
+    core_change_pending: Arc<AtomicBool>,
     workflow: ApplicationWorkflow,
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
     schedule_ticks: bool,
@@ -150,6 +155,7 @@ pub(super) struct ApplicationWorkflowArgs {
 }
 
 struct ActorArgs {
+    core_change_pending: Arc<AtomicBool>,
     workflow: ApplicationWorkflow,
     status: watch::Sender<CoreLifecycleStatus>,
     reconciler: watch::Sender<ReconcilerStatus>,
@@ -257,6 +263,7 @@ impl Actor for ApplicationWorkflowActor {
         args: ActorArgs,
     ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
         Ok(ApplicationWorkflowState {
+            core_change_pending: args.core_change_pending,
             closing_token: args.workflow.lifecycle.closing.clone(),
             workflow: args.workflow,
             recovery_timer: args
@@ -296,7 +303,23 @@ impl Actor for ApplicationWorkflowActor {
                 }
                 state.round(Trigger::ServiceReadiness).await;
             }
+            Message::CoreChanged => {
+                state.core_change_pending.store(false, Ordering::Release);
+                state.round(Trigger::CoreChanged).await;
+            }
             Message::Tick => {
+                let mut pending_round = None;
+                // An unresolved action must not spend or pause endpoint recovery.
+                if state.workflow.lifecycle.core.pending_action().is_some() {
+                    let id = OperationId::generate();
+                    state.start(id);
+                    let round = state.workflow.begin_round().await;
+                    if !round.ready {
+                        state.publish_round(id, Trigger::Tick, round);
+                        return Ok(());
+                    }
+                    pending_round = Some((id, round));
+                }
                 let mut reconnected = false;
                 if !state.closing() && state.workflow.lifecycle.recovery_due() {
                     let result = state.workflow.lifecycle.recover_service_endpoint().await;
@@ -310,7 +333,10 @@ impl Actor for ApplicationWorkflowActor {
                     state.reconciler.borrow().conclusion,
                     Conclusion::Waiting { .. } | Conclusion::Unknown { .. }
                 );
-                if reconnected || resync {
+                if let Some((id, mut round)) = pending_round {
+                    state.workflow.converge(&mut round, id, Trigger::Tick).await;
+                    state.publish_round(id, Trigger::Tick, round);
+                } else if reconnected || resync {
                     state.round(Trigger::Tick).await;
                 }
             }
@@ -366,6 +392,8 @@ struct ClientInner {
     reconciler: watch::Receiver<ReconcilerStatus>,
     core: crate::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
+    #[cfg(test)]
+    core_observations: watch::Receiver<(usize, CoreStatusProjection)>,
 }
 
 impl Drop for ClientInner {
@@ -439,10 +467,14 @@ impl ApplicationWorkflowClient {
                 service_failed: None,
             },
         };
+        // This shared flag bounds queued observation triggers; clearing it at handler
+        // entry lets changes during the round request exactly one further round.
+        let core_change_pending = Arc::new(AtomicBool::new(false));
         let (actor, _) = Actor::spawn(
             None,
             ApplicationWorkflowActor,
             ActorArgs {
+                core_change_pending: core_change_pending.clone(),
                 workflow,
                 status: status_tx,
                 reconciler: reconciler_tx,
@@ -481,6 +513,45 @@ impl ApplicationWorkflowClient {
                 }
             }
         });
+        let mut core_status = core.subscribe();
+        let trigger_key = |status: &CoreStatusProjection| {
+            (
+                status.host,
+                status.generation,
+                status.connectivity.clone(),
+                status.snapshot.as_ref().and_then(|s| s.state.clone()),
+                status.snapshot.as_ref().and_then(|s| s.revision.clone()),
+            )
+        };
+        let mut observed_core = trigger_key(&core_status.borrow_and_update());
+        let forward = actor.clone();
+        let shutdown = args.shutdown.clone();
+        #[cfg(test)]
+        let (observations, core_observations) = watch::channel((0, core_status.borrow().clone()));
+        args.tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = shutdown.cancelled() => break,
+                    changed = core_status.changed() => if changed.is_err() { break },
+                }
+                let status = core_status.borrow_and_update().clone();
+                let current = trigger_key(&status);
+                // Endpoint probes and round observations also publish unchanged status.
+                if current != observed_core {
+                    observed_core = current;
+                    if !core_change_pending.swap(true, Ordering::AcqRel)
+                        && forward.cast(Message::CoreChanged).is_err()
+                    {
+                        break;
+                    }
+                }
+                #[cfg(test)]
+                observations.send_modify(|(count, observed)| {
+                    *count += 1;
+                    *observed = status;
+                });
+            }
+        });
         nyanpasu_owner_support::shutdown::drain_on_shutdown(
             &args.tasks,
             args.shutdown,
@@ -493,6 +564,8 @@ impl ApplicationWorkflowClient {
             reconciler,
             core,
             service_status,
+            #[cfg(test)]
+            core_observations,
         })))
     }
 
@@ -607,6 +680,26 @@ impl ApplicationWorkflowClient {
     }
     pub(crate) fn subscribe_reconciler(&self) -> watch::Receiver<ReconcilerStatus> {
         self.0.reconciler.clone()
+    }
+
+    /// Waits for observed core changes and their mailbox work to settle in tests.
+    #[cfg(test)]
+    pub(in crate::client) async fn settle_core_changes(&self) {
+        let mut observations = self.0.core_observations.clone();
+        loop {
+            let expected = self.0.core.status();
+            observations
+                .wait_for(|(_, status)| *status == expected)
+                .await
+                .unwrap();
+            assert!(matches!(
+                self.0.actor.call(Message::Barrier, None).await.unwrap(),
+                CallResult::Success(())
+            ));
+            if expected == self.0.core.status() {
+                return;
+            }
+        }
     }
 
     /// Ends the workflow the way a panic does: without its `post_stop`.

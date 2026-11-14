@@ -749,12 +749,20 @@ async fn recent_operations_describe_reconcile_rounds() {
     );
     endpoint.set_rolls_back(false);
     client.inner.application_workflow.reconcile().await.unwrap();
+    client
+        .inner
+        .application_workflow
+        .settle_core_changes()
+        .await;
     let history = client.configuration_status().recent_operations;
-    assert_eq!(history.len(), status.recent_operations.len() + 1);
-    assert_eq!(history[0].domain, "Start");
+    assert_eq!(history.len(), status.recent_operations.len() + 2);
+    assert_eq!(history[0].domain, "CoreChanged");
     assert_eq!(history[0].outcome, "Converged");
     assert!(history[0].conclusion.is_empty());
-    assert_eq!(history[1].operation_id, round.operation_id);
+    assert_eq!(history[1].domain, "Start");
+    assert_eq!(history[1].outcome, "Converged");
+    assert!(history[1].conclusion.is_empty());
+    assert_eq!(history[2].operation_id, round.operation_id);
     client.request_shutdown();
     client.wait_shutdown().await;
 }

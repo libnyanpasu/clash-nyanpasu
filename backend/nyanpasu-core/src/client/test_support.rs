@@ -118,6 +118,8 @@ pub struct TestControlEndpoint {
     /// answering looks like to a caller that needs a fresh observation.
     status_fails: std::sync::atomic::AtomicBool,
     status_reads: std::sync::atomic::AtomicUsize,
+    instance_id: StdMutex<String>,
+    reconcile_outcome: StdMutex<nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind>,
 }
 
 /// The three things a host can say about a candidate document.
@@ -155,6 +157,10 @@ impl TestControlEndpoint {
             rolls_back: std::sync::atomic::AtomicBool::new(false),
             status_fails: std::sync::atomic::AtomicBool::new(false),
             status_reads: std::sync::atomic::AtomicUsize::new(0),
+            instance_id: StdMutex::new(uuid::Uuid::new_v4().to_string()),
+            reconcile_outcome: StdMutex::new(
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+            ),
         })
     }
 
@@ -177,6 +183,12 @@ impl TestControlEndpoint {
             application_workflow::startup::StartupOutcome::Ready,
             "fixture boot: {report:?}"
         );
+        #[cfg(test)]
+        client
+            .inner
+            .application_workflow
+            .settle_core_changes()
+            .await;
         self.fail.store(failed, std::sync::atomic::Ordering::SeqCst);
         self.reset_tracking();
     }
@@ -210,6 +222,10 @@ impl TestControlEndpoint {
             rolls_back: std::sync::atomic::AtomicBool::new(false),
             status_fails: std::sync::atomic::AtomicBool::new(false),
             status_reads: std::sync::atomic::AtomicUsize::new(0),
+            instance_id: StdMutex::new(uuid::Uuid::new_v4().to_string()),
+            reconcile_outcome: StdMutex::new(
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+            ),
         })
     }
 
@@ -297,7 +313,31 @@ impl TestControlEndpoint {
         state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
         applied_kind: Option<nyanpasu_core_manager::CoreKind>,
     ) {
-        *self.status_override.lock().unwrap() = (state, applied_kind);
+        let mut status = self.status_override.lock().unwrap();
+        if matches!(
+            state,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+        ) && !matches!(
+            status.0,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+        ) {
+            *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
+        }
+        *status = (state, applied_kind);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_reconcile_outcome(
+        &self,
+        outcome: nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind,
+    ) {
+        *self.reconcile_outcome.lock().unwrap() = outcome;
+    }
+
+    /// Replaces the running process without changing its revision or connection.
+    #[cfg(test)]
+    pub(crate) fn respawn_process(&self) {
+        *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
     }
 
     /// Scripts whether the next `Recover` submission fails (R6a tests).
@@ -429,6 +469,19 @@ impl TestControlEndpoint {
             }
         }
         let rolled_back = self.rolls_back.load(std::sync::atomic::Ordering::SeqCst);
+        let outcome = if rolled_back {
+            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
+        } else {
+            *self.reconcile_outcome.lock().unwrap()
+        };
+        if matches!(
+            outcome,
+            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
+                | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Restarted
+                | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Switched
+        ) {
+            *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
+        }
         if !rolled_back {
             current.generation += 1;
             *self.source_hash.lock().unwrap() = nyanpasu_core_manager::payload_digest(bytes);
@@ -447,11 +500,7 @@ impl TestControlEndpoint {
             output: Some(
                 nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(
                     nyanpasu_ipc::api::core::v2::ReconcileOutcomeInfo {
-                        outcome: if rolled_back {
-                            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
-                        } else {
-                            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
-                        },
+                        outcome,
                         revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                             epoch: applied.epoch,
                             generation: applied.generation,
@@ -541,7 +590,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let current = self.revision.lock().unwrap().clone();
         Ok(Some(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
-            instance_id: "test-instance".into(),
+            instance_id: self.instance_id.lock().unwrap().clone(),
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: current.epoch,
                 generation: current.generation,
@@ -569,7 +618,11 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let (state, applied_kind) = self.status_override.lock().unwrap().clone();
         Ok(crate::actor_v2::endpoint::CoreStatusSnapshot {
-            instance_id: Some("test-core-instance".into()),
+            instance_id: matches!(
+                state,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+            )
+            .then(|| self.instance_id.lock().unwrap().clone()),
             controller: None,
             state,
             state_changed_at: 0,

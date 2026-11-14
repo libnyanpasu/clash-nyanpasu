@@ -306,6 +306,7 @@ pub(super) async fn fixture_from(
         Some(scripted) => CoreClient::spawn(scripted.clone()).await.unwrap(),
         None => CoreClient::spawn(endpoint.clone()).await.unwrap(),
     };
+    core.refresh_status().await.unwrap();
 
     let clash_path = temp_path(&dir, "clash-config.yaml");
     let app_path = temp_path(&dir, "application.yaml");

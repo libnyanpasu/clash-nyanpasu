@@ -147,8 +147,8 @@ impl ApplicationClient {
         })
     }
 
-    /// The last committed application config. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// The last committed application config. Reads bypass the mailbox, so
+    /// an independent check or a source write cannot delay them.
     pub fn snapshot(&self) -> ApplicationSnapshot {
         ApplicationSnapshot::from_versioned(&self.inner.snapshot.load())
     }
@@ -215,6 +215,62 @@ impl Drop for ApplicationClientInner {
     fn drop(&mut self) {
         self.actor_ref.stop(None);
     }
+}
+
+pub(super) fn outcome(
+    committed: ApplicationSnapshot,
+    settled: Option<super::application_workflow::ReconcilerStatus>,
+) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+    use super::application_workflow::Conclusion;
+    use nyanpasu_runtime_values::runtime::{
+        CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
+        RuntimeCommitStatus,
+    };
+    let mut degradations = Vec::new();
+    let runtime = match settled {
+        None => RuntimeCommitStatus::Unchanged,
+        Some(status) => match status.conclusion {
+            Conclusion::Converged => {
+                degradations = status.degradations;
+                RuntimeCommitStatus::Applied
+            }
+            Conclusion::Inactive => RuntimeCommitStatus::SavedInactive,
+            Conclusion::Waiting { cause } | Conclusion::NotInEffect { cause } => {
+                degradations.push(Degradation {
+                    phase: DegradationPhase::RuntimeApply,
+                    message: cause.to_string(),
+                    retryable: true,
+                    reason: DegradationReason::RuntimeDeferred { cause },
+                });
+                RuntimeCommitStatus::Deferred
+            }
+            conclusion => {
+                let cause = match conclusion {
+                    Conclusion::Unknown { cause } => cause,
+                    Conclusion::Closed => {
+                        Arc::new(nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)
+                    }
+                    _ => unreachable!("the remaining conclusions require recovery"),
+                };
+                degradations.push(Degradation {
+                    phase: DegradationPhase::RuntimeApply,
+                    message: cause.to_string(),
+                    retryable: false,
+                    reason: DegradationReason::RuntimeRecoveryRequired {
+                        operation_id: committed.operation_id.map(|id| id.to_string()),
+                        cause: Some(cause),
+                    },
+                });
+                RuntimeCommitStatus::RecoveryRequired
+            }
+        },
+    };
+    MutationOutcome::from_parts((), degradations).with_commit(CommitReceipt {
+        operation_id: committed.operation_id.map(|id| id.to_string()),
+        domain: "application".into(),
+        source_version: *committed.version.as_ref(),
+        runtime,
+    })
 }
 
 #[cfg(test)]
@@ -515,7 +571,7 @@ mod tests {
             WindowCloseOverride::Hide
         );
         // No runtime transaction was opened for it.
-        assert_eq!(snapshot.receipt.unwrap().operation_id, None);
+        assert_eq!(snapshot.operation_id, None);
     }
 
     #[tokio::test]

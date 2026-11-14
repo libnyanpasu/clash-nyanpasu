@@ -74,6 +74,30 @@ pub enum ConfigError {
 }
 
 impl ConfigError {
+    pub(crate) fn runtime_check_failure(
+        domain: ConfigDomain,
+        error: std::sync::Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
+    ) -> Self {
+        use nyanpasu_runtime_values::{mutation::RuntimeAftermath, runtime_error::RuntimeError};
+        let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
+        let errors = vec![error.clone()];
+        let runtime = RuntimeAftermath::Untouched;
+        let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. }) {
+            CommitAborted::RuntimeFailed {
+                errors,
+                runtime,
+                source,
+            }
+        } else {
+            CommitAborted::RuntimeRefused {
+                errors,
+                runtime,
+                source,
+            }
+        };
+        Self::Commit { domain, source }
+    }
+
     /// The one place a persistence error of a config source becomes a config
     /// error. A CAS mismatch reported by the coordinator is the same conflict
     /// as the manager's own `Conflict` result.

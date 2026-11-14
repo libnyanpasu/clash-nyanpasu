@@ -10,6 +10,8 @@
 //! read directly from its authoritative handle by the workflow's handler, and
 //! the settled receipt goes back to the source on the channel it handed over.
 
+use crate::state::mutation::DomainChange;
+
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_state_engine::{
     Ack, DecisionHandle, StateAckSubscriber, StateChange, StateParticipant, SubscriberName,
@@ -20,10 +22,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-use super::{
-    ApplicationWorkflowClient,
-    mutation::{DomainChange, MutationRequest},
-};
+use super::{ApplicationWorkflowClient, mutation::MutationRequest};
 use crate::{
     client::runtime_error::ack_of,
     state::mutation::{

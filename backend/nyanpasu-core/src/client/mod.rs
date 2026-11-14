@@ -532,18 +532,22 @@ impl NyanpasuClient {
         .context(StartEffectsSnafu)?;
         let notifications: Arc<dyn effects::ports::CommitNotifications> =
             Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
+        let revisions = runtime::RuntimeRevisionAllocator::new();
+        let builder = host_adapters.runtime_build;
+        let validator: Arc<dyn application_workflow::ports::RuntimeValidatorPort> = Arc::new(
+            application_workflow::adapters::CoreCheckValidator::new(&core_v2),
+        );
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
+                revisions: revisions.clone(),
                 notifications: notifications.clone(),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
                 profiles: profiles.snapshot_handle(),
                 core: core_v2.clone(),
                 service,
-                builder: host_adapters.runtime_build,
-                validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
-                    &core_v2,
-                )),
+                builder: builder.clone(),
+                validator: validator.clone(),
                 ports: ports.clone(),
                 installer: binary_installer,
                 ownership: core_lifecycle::Ownership::Unproven,
@@ -555,14 +559,27 @@ impl NyanpasuClient {
         .await
         .context(StartWorkflowSnafu)?;
         if let Some(mutations) = mutations {
+            let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> =
+                Arc::new(application_workflow::check::CandidateCheck::new(
+                    application_workflow::check::Args {
+                        application: application.snapshot_handle(),
+                        clash: clash_config.snapshot_handle(),
+                        profiles: profiles.snapshot_handle(),
+                        builder,
+                        ports: ports.clone(),
+                        revisions,
+                        validator,
+                        workflow: application_workflow.clone(),
+                    },
+                ));
             let factory = Arc::new(application_workflow.clone());
             mutations
                 .application
-                .connect(factory.clone(), notifications.clone());
+                .connect(factory.clone(), notifications.clone(), gate.clone());
             mutations
                 .clash
-                .connect(factory.clone(), notifications.clone());
-            mutations.profiles.connect(factory, notifications);
+                .connect(factory.clone(), notifications.clone(), gate.clone());
+            mutations.profiles.connect(factory, notifications, gate);
         }
         let updater = nyanpasu_updater::UpdaterClient::spawn(
             updater_backend_factory(ports.clone()).map_err(|error| match error {
@@ -1071,7 +1088,49 @@ impl NyanpasuClient {
             return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
         }
         let client = self.inner.application.clone();
-        Ok(client.patch(patch).await?.outcome())
+        let committed = client.patch(patch).await?;
+        let settled = if committed.reaches_runtime {
+            Some(
+                self.inner
+                    .application_workflow
+                    .settled(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                        committed.version,
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        Ok(application::outcome(committed, settled))
+    }
+
+    /// Prepares the daemon before committing service preference; ownership changes after commit.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the facade preserves the shared domain error contract"
+    )]
+    pub async fn set_service_mode(
+        &self,
+        enabled: bool,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        if enabled {
+            self.inner
+                .application_workflow
+                .prepare_service()
+                .await
+                .map_err(|error| {
+                    ConfigError::runtime_check_failure(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                        Arc::new(error),
+                    )
+                })?;
+        }
+        self.patch_app_config(NyanpasuAppConfigPatch {
+            enable_service_mode: Some(enabled),
+            ..Default::default()
+        })
+        .await
     }
 
     pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {

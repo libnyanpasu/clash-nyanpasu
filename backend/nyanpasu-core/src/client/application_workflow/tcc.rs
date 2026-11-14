@@ -24,9 +24,9 @@ use snafu::{IntoError, ResultExt};
 use super::{
     attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
     mutation::{
-        AppliedCandidate, ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, DomainChange,
-        KnownRuntimeState, MutationRequest, MutationStage, RefusalCause, RetryableCause,
-        RuntimePrepareOutcome, TargetOrigin,
+        AppliedCandidate, ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
+        MutationRequest, MutationStage, RefusalCause, RetryableCause, RuntimePrepareOutcome,
+        TargetOrigin,
     },
     policy::{
         BaselineAvailability, CommandPolicy, FailureDisposition, TryCauseKind, TryFailureFacts,
@@ -50,7 +50,7 @@ use crate::{
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
     state::mutation::{
-        impact,
+        DomainChange, impact,
         intent::CoreRunIntent,
         runtime_apply::RuntimeApplyReceipt,
         value::{CheckRecord, MutationConclusion, MutationReceipt},
@@ -100,10 +100,10 @@ pub(super) struct RestorableBaseline {
 
 /// A built candidate and the execution host resolved from its inputs.
 pub(super) struct PreparedCandidate {
-    runtime: PreparedRuntime,
-    spec: CoreSpec,
-    target_host: ExecutionHost,
-    switching_on: bool,
+    pub(super) runtime: PreparedRuntime,
+    pub(super) spec: CoreSpec,
+    pub(super) target_host: ExecutionHost,
+    pub(super) switching_on: bool,
 }
 
 /// How the decision phase ended.
@@ -157,6 +157,7 @@ impl ApplicationWorkflow {
         };
         let impact = request.impact;
         let inputs = self.capture_candidate(&request).await;
+        let selection = super::committed::Selection::of(&inputs);
         let target = inputs
             .target_key()
             .expect("the identity of a runtime candidate serializes");
@@ -236,6 +237,11 @@ impl ApplicationWorkflow {
                 result
             }
         };
+        if conclusion == MutationConclusion::Confirmed
+            && receipt.outcome == crate::state::mutation::value::MutationOutcomeKind::Applied
+        {
+            self.applied_selection = Some(selection);
+        }
         receipt.conclusion = conclusion;
         receipt.detail = detail;
         receipt.cause = cause;
@@ -357,10 +363,14 @@ impl ApplicationWorkflow {
         }
         let identity = target.identity.clone();
         let inputs = self.capture_committed().await;
+        let selection = super::committed::Selection::of(&inputs);
         if inputs.target_key().as_ref() != Some(&identity) {
             // A newer committed source owns convergence now. Never reapply the
-            // old bytes: the target ends with this attempt.
+            // old bytes: the target ends with this attempt. Nothing was applied,
+            // so the versions read here settle no waiter; the notification of
+            // the newer commit does.
             self.live = None;
+            self.sampled = None;
             return;
         }
         let baseline = self.observe_baseline().await;
@@ -421,6 +431,7 @@ impl ApplicationWorkflow {
         let target = self.committed_target();
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
+                self.applied_selection = Some(selection);
                 self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
                 self.notify_bound(true);
@@ -508,12 +519,20 @@ impl ApplicationWorkflow {
 
     /// The latest committed inputs of all three domains: a committed target
     /// is re-read from the committed state, never from a request.
-    pub(super) async fn capture_committed(&self) -> super::inputs::RuntimeInputs {
+    pub(super) async fn capture_committed(&mut self) -> super::inputs::RuntimeInputs {
+        let application = self.lifecycle.application.load();
+        let clash = self.clash.load();
+        let profiles = self.profiles.load();
+        self.sampled = Some(super::EngineVersions {
+            application: application.version,
+            clash: clash.version,
+            profiles: profiles.version,
+        });
         self.preparation
             .capture_inputs(
-                self.lifecycle.application.load().state.clone(),
-                self.clash.load().state.clone(),
-                Arc::new(self.profiles.load().state.clone()),
+                application.state.clone(),
+                clash.state.clone(),
+                Arc::new(profiles.state.clone()),
             )
             .await
     }
@@ -587,7 +606,7 @@ impl ApplicationWorkflow {
     /// Reads what is running before anything is built. This is the checkpoint a
     /// Cancel restores, so it is the *actual* baseline and not the previous
     /// desired value (v2 §5.3).
-    async fn observe_baseline(&mut self) -> RestorableBaseline {
+    pub(super) async fn observe_baseline(&mut self) -> RestorableBaseline {
         // Whatever the host says, verbatim. A read that failed, a host that
         // published nothing and a core mid-transition are three different
         // answers and one fact: none of them settles what the core is doing,
@@ -1318,7 +1337,7 @@ impl ApplicationWorkflow {
     /// still runs and serves this instance. A failure is kept as retryable
     /// maintenance, the way an unpublished product is, until an explicit retry
     /// releases it.
-    async fn release_service(&mut self) -> Option<Arc<RuntimeError>> {
+    pub(super) async fn release_service(&mut self) -> Option<Arc<RuntimeError>> {
         let service = self.lifecycle.core.service_status();
         let running = self.lifecycle.core.core_status().host == ExecutionHost::Local
             && !matches!(
@@ -1376,7 +1395,7 @@ impl ApplicationWorkflow {
     /// running. The same identity keeps the outstanding target's accounting,
     /// and only a different one opens a fresh budget: manual saves and
     /// unavailable dependency checks never refill it (D11, V22).
-    fn install_mutation_target(
+    pub(super) fn install_mutation_target(
         &mut self,
         operation_id: nyanpasu_core_manager::OperationId,
         identity: String,

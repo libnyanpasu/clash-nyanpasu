@@ -1,6 +1,7 @@
-//! Startup-injected connection to the application transaction participant
-//! and the effects owner, and what a source tells its caller once the Runtime
-//! has settled a mutation.
+//! Startup-injected runtime checks, transaction participants, and effect notifications.
+//! Sources use their connected port to check candidates or enlist a participant.
+mod change;
+pub(crate) use change::DomainChange;
 pub(crate) mod impact;
 pub(crate) mod intent;
 pub(crate) mod ports;
@@ -42,6 +43,7 @@ enum Connection<T: Clone + Send + Sync + 'static> {
     Ready {
         factory: Arc<dyn MutationParticipantFactory<T>>,
         effects: Arc<dyn CommitNotifications>,
+        runtime: Arc<dyn ports::RuntimeGate>,
     },
     #[cfg(any(test, feature = "test-support"))]
     Isolated,
@@ -71,9 +73,14 @@ impl<T: Clone + Send + Sync + 'static> MutationCoordinator<T> {
         &self,
         factory: Arc<dyn MutationParticipantFactory<T>>,
         effects: Arc<dyn CommitNotifications>,
+        runtime: Arc<dyn ports::RuntimeGate>,
     ) {
         assert!(matches!(*self.0.borrow(), Connection::Pending));
-        self.0.send_replace(Connection::Ready { factory, effects });
+        self.0.send_replace(Connection::Ready {
+            factory,
+            effects,
+            runtime,
+        });
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -176,6 +183,15 @@ impl<T: Clone + Send + Sync + 'static> MutationCoordinator<T> {
                 Arc::new(crate::client::effects::ports::NoopCommitNotifications)
             }
             Connection::Pending => unreachable!("a source commits only once connected"),
+        }
+    }
+
+    pub(crate) fn runtime(&self) -> Arc<dyn ports::RuntimeGate> {
+        match &*self.0.borrow() {
+            Connection::Ready { runtime, .. } => runtime.clone(),
+            #[cfg(any(test, feature = "test-support"))]
+            Connection::Isolated => Arc::new(IsolatedRuntimeGate),
+            Connection::Pending => unreachable!("a source checks only once connected"),
         }
     }
 
@@ -315,3 +331,20 @@ impl<T: Clone + Send + Sync + 'static> nyanpasu_state_engine::StateAckSubscriber
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) struct IsolatedRuntimeGate;
+
+#[cfg(any(test, feature = "test-support"))]
+#[async_trait::async_trait]
+impl ports::RuntimeGate for IsolatedRuntimeGate {
+    async fn check(&self, _: ports::RuntimeCandidate) -> Result<(), Arc<RuntimeError>> {
+        Ok(())
+    }
+    fn committed(
+        &self,
+        _: nyanpasu_runtime_values::mutation::ConfigDomain,
+        _: nyanpasu_state_engine::Version,
+    ) {
+    }
+}

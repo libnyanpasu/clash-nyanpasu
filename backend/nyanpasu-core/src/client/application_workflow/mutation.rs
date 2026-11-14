@@ -14,89 +14,22 @@
 use nyanpasu_runtime_values::check::EvidenceGap;
 use std::sync::Arc;
 
-use nyanpasu_config::{
-    application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
-};
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::{Ack, DecisionHandle, StateChange};
+use nyanpasu_state_engine::{Ack, DecisionHandle};
 use tokio::sync::oneshot;
 
 use super::policy::TryCauseKind;
 use crate::{
     client::{runtime::RuntimeSnapshot, runtime_error::ack_of},
     state::mutation::{
+        DomainChange,
         impact::{MutationHints, RuntimeImpact},
         intent::CommandClass,
         runtime_apply::RuntimeApplyReceipt,
         value::{MutationOutcomeKind, MutationReceipt},
     },
 };
-use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime_error::RuntimeError};
-
-/// The candidate of one mutation, and the committed value it replaces where
-/// the Runtime reads that.
-///
-/// The candidate comes from the `StateChange` of the transaction the workflow
-/// participates in, never from a read of the domain: at prepare time the store
-/// still holds the previous value, so re-reading it would build the wrong
-/// document. The *other two* domains are read after admission instead (C2).
-#[derive(Debug, Clone)]
-pub enum DomainChange {
-    Application {
-        previous: Option<Arc<NyanpasuAppConfig>>,
-        candidate: Arc<NyanpasuAppConfig>,
-    },
-    Clash {
-        candidate: Arc<ClashConfig>,
-    },
-    Profiles {
-        previous: Option<Arc<Profiles>>,
-        candidate: Arc<Profiles>,
-    },
-}
-
-impl DomainChange {
-    pub fn domain(&self) -> ConfigDomain {
-        match self {
-            Self::Application { .. } => ConfigDomain::Application,
-            Self::Clash { .. } => ConfigDomain::Clash,
-            Self::Profiles { .. } => ConfigDomain::Profiles,
-        }
-    }
-}
-
-// The participant is generic over the state type so it can be handed to the
-// owning `PersistentStateManager` unchanged; these erase that type for the
-// workflow.
-impl From<StateChange<NyanpasuAppConfig>> for DomainChange {
-    fn from(change: StateChange<NyanpasuAppConfig>) -> Self {
-        Self::Application {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
-            candidate: change.current,
-        }
-    }
-}
-
-impl From<StateChange<ClashConfig>> for DomainChange {
-    fn from(change: StateChange<ClashConfig>) -> Self {
-        Self::Clash {
-            candidate: change.current,
-        }
-    }
-}
-
-impl From<StateChange<Profiles>> for DomainChange {
-    fn from(change: StateChange<Profiles>) -> Self {
-        Self::Profiles {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
-            candidate: change.current,
-        }
-    }
-}
+use nyanpasu_runtime_values::runtime_error::RuntimeError;
 
 /// What one mutation asks the workflow to do, delivered once at prepare time.
 pub(crate) struct MutationRequest {

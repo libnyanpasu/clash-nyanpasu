@@ -746,7 +746,7 @@ impl ApplicationWorkflow {
     /// committed target: a target committed after it is still owed, and is
     /// applied from a stop rather than dropped.
     async fn verified_running_receipt(
-        &self,
+        &mut self,
         status: &CoreStatusProjection,
     ) -> Option<ConfirmedRuntime> {
         let recovering = matches!(
@@ -837,6 +837,7 @@ impl ApplicationWorkflow {
             );
         }
         let inputs = self.capture_committed().await;
+        let selection = super::committed::Selection::of(&inputs);
         let Some(identity) = inputs.target_key() else {
             return self.block("the committed configuration has no runtime identity".to_owned());
         };
@@ -905,6 +906,7 @@ impl ApplicationWorkflow {
         }
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
+                self.applied_selection = Some(selection);
                 self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
                 self.committed_target().waits = 0;

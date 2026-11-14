@@ -155,6 +155,14 @@ impl PathResolver {
         self.0.data_dir.join("scripts")
     }
 
+    pub fn remote_access_dir(&self) -> Utf8PathBuf {
+        self.0.data_dir.join("remote-access")
+    }
+
+    pub fn remote_access_secrets_path(&self) -> Utf8PathBuf {
+        self.remote_access_dir().join("auth-secrets.json")
+    }
+
     /// What a core's release archive ships beside the core, such as an agent skill and the
     /// executable it drives, laid out as in the archive. One directory per core, named by
     /// its binary name. It lives in the data dir, not beside the core: agents link the skill,
@@ -368,6 +376,20 @@ mod tests {
         );
         std::fs::write(data.join(&name), "").unwrap();
         assert_eq!(resolver.data_or_sidecar_path("core").unwrap(), data);
+    }
+
+    #[test]
+    fn remote_access_secret_paths_reside_in_private_data_subdir() {
+        let root = tempfile::tempdir().unwrap();
+        let data = utf8(&root.path().join("data"));
+        let config = utf8(&root.path().join("config"));
+        let resolver = PathResolver::with_base_dirs(config, data.clone());
+
+        assert_eq!(resolver.remote_access_dir(), data.join("remote-access"));
+        assert_eq!(
+            resolver.remote_access_secrets_path(),
+            data.join("remote-access").join("auth-secrets.json")
+        );
     }
 
     #[test]

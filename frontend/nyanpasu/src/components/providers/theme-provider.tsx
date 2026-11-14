@@ -27,8 +27,8 @@ import {
 
 const CUSTOM_THEME_KEY = 'custom-theme' as const
 
-const THEME_PALETTE_KEY = 'theme-palette-v1' as const
-const THEME_CSS_VARS_KEY = 'theme-css-vars-v1' as const
+export const THEME_PALETTE_KEY = 'theme-palette-v1' as const
+export const THEME_CSS_VARS_KEY = 'theme-css-vars-v1' as const
 
 const readCachedTheme = () => {
   try {

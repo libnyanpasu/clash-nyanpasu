@@ -1,5 +1,7 @@
 import type { RuntimeInfo } from '@nyanpasu/platform'
 import { Channel } from '@tauri-apps/api/core'
+import { createClosedStreamProbe, type AuthProbe } from './auth-probe'
+import { withClientId } from './client-id'
 
 export type RpcResult<T> =
   { status: 'ok'; data: T } | { status: 'error'; error: unknown }
@@ -19,15 +21,25 @@ export interface ConnectionDetailsTransport<T> {
   listen(callbacks: ConnectionDetailsCallbacks<T>): () => void
 }
 
+export interface ConnectionDetailsTransportOptions {
+  /** Probes credentials when the stream closes for good, to detect `401`. */
+  probeAuth?: AuthProbe
+}
+
 /** Selects the dedicated connection stream from the same runtime facts as RPC. */
 export function createConnectionDetailsTransport<T>(
   runtime: RuntimeInfo,
   rpc: ConnectionDetailsRpc<T>,
+  options: ConnectionDetailsTransportOptions = {},
 ): ConnectionDetailsTransport<T> {
+  const probeClosedStream = createClosedStreamProbe(options.probeAuth)
+
   return {
     listen({ onOpen, onMessage, onError }) {
       if (runtime.platform.surface === 'browser') {
-        const source = new EventSource('/bridge/connection-details')
+        const source = new EventSource(
+          withClientId('/bridge/connection-details'),
+        )
         source.onopen = onOpen
         source.onmessage = (event) => {
           try {
@@ -37,7 +49,10 @@ export function createConnectionDetailsTransport<T>(
             onError(error)
           }
         }
-        source.onerror = onError
+        source.onerror = (event) => {
+          probeClosedStream(source)
+          onError(event)
+        }
         return () => source.close()
       }
 

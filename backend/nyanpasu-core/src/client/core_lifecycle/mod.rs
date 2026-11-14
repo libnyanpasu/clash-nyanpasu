@@ -34,6 +34,7 @@ pub(in crate::client) enum Command {
 
 pub(in crate::client) enum Output {
     Unit,
+    Interruption(Option<crate::actor_v2::api::ApiError>),
     Reconcile(ReconcileReport),
     #[cfg(test)]
     Handoff(HandoffReport),

@@ -5,10 +5,7 @@ use nyanpasu_config::{
     application::{MechanismAction, MechanismActions, NyanpasuAppConfigPatch},
     clash::config::{ClashConfigPatch, TransparentProxyMode},
 };
-use nyanpasu_runtime_values::{
-    network_automation::{MechanismOutcome, MechanismOutcomes},
-    runtime::MutationOutcome,
-};
+use nyanpasu_runtime_values::network_automation::{MechanismOutcome, MechanismOutcomes};
 
 use super::ports::CaptureSwitches;
 use crate::{
@@ -109,10 +106,7 @@ impl ConfigCaptureSwitches {
 
         let application = self.application.snapshot().state;
         let refusal = match self.clash_config.patch_validated(&application, patch).await {
-            Ok(snapshot) => {
-                log_degradations(&snapshot.outcome());
-                None
-            }
+            Ok(_) => None,
             Err(error) => Some(failed(&error)),
         };
         let outcome = |changes: bool, target: bool| match (&refusal, changes) {
@@ -147,17 +141,5 @@ fn switched(enabled: bool) -> MechanismOutcome {
 fn failed(error: &dyn std::error::Error) -> MechanismOutcome {
     MechanismOutcome::Failed {
         message: error.to_string(),
-    }
-}
-
-/// The switch already committed, so a degraded side effect is reported rather
-/// than turned into a failure of the rule.
-fn log_degradations(outcome: &MutationOutcome<()>) {
-    for degradation in outcome.degradations() {
-        tracing::warn!(
-            reason = ?degradation.reason,
-            message = %degradation.message,
-            "a network rule committed with a degraded side effect"
-        );
     }
 }

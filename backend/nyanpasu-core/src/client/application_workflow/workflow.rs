@@ -92,6 +92,25 @@ impl ApplicationWorkflow {
                 .retry_runtime(operation_id, explicit)
                 .await
                 .map(|_| Output::Unit),
+            Command::InterruptConnections => {
+                let failure = if self.clash.load().state.break_connection.on_mode_change {
+                    let context = self
+                        .lifecycle
+                        .prepare_apply(
+                            operation_id,
+                            super::super::core_lifecycle::apply::RuntimeApplyOptions {
+                                interrupt_connections: Some(
+                                    crate::connections::ConnectionScope::All,
+                                ),
+                            },
+                        )
+                        .await;
+                    CoreLifecycleWorkflow::finish_interruption(context, false).await
+                } else {
+                    None
+                };
+                Ok(Output::Interruption(failure))
+            }
             Command::PrepareService => {
                 use snafu::IntoError as _;
                 self.lifecycle

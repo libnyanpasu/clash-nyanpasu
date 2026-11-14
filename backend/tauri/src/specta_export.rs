@@ -499,6 +499,19 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../frontend/query/src/query-bindings.ts"
     );
+    const COMMAND_SCHEMAS_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../nyanpasu-rpc-protocol/schemas/command-schemas.v1.json"
+    );
+
+    fn generate_canonical_command_schemas() -> nyanpasu_rpc_protocol::schemas::CommandSchemaArtifact
+    {
+        let (_, builder) = build_specta_builder();
+        let input_schemas = nyanpasu_rpc::registry::command_input_schemas()
+            .expect("command input schemas must not contain duplicates");
+        crate::specta_json_schema::export_builder_command_schemas(&builder, &input_schemas)
+            .expect("canonical Specta command schema export must succeed")
+    }
 
     fn exported_type<'a>(generated: &'a str, name: &str) -> &'a str {
         // Support both `export type Foo =` and generic `export type Foo<T> =`.
@@ -702,6 +715,93 @@ mod tests {
         assert!(!mutations.contains("getConfigurationStatus"));
     }
 
+    fn run_prettier_write(paths: &[&str]) {
+        let prettier_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../node_modules/.bin")
+            .join(if cfg!(target_os = "windows") {
+                "prettier.cmd"
+            } else {
+                "prettier"
+            });
+        let mut prettier = if cfg!(target_os = "windows") {
+            let mut command = std::process::Command::new("cmd");
+            command.arg("/C").arg(prettier_path);
+            command
+        } else {
+            std::process::Command::new(prettier_path)
+        };
+        let mut args = vec!["--write"];
+        args.extend_from_slice(paths);
+        let status = prettier
+            .args(&args)
+            .status()
+            .expect("failed to spawn workspace Prettier binary");
+        assert!(status.success(), "prettier --write failed on {paths:?}");
+    }
+
+    /// Regenerates `backend/nyanpasu-rpc-protocol/schemas/command-schemas.v1.json`
+    /// from the canonical `build_specta_builder()` collection and `COMMAND_CATALOG`.
+    #[test]
+    #[ignore = "regenerates committed command schema artifact in place"]
+    fn export_rpc_command_schemas() {
+        let artifact = generate_canonical_command_schemas();
+        crate::specta_json_schema::write_command_schema_artifact(
+            &artifact,
+            std::path::Path::new(COMMAND_SCHEMAS_PATH),
+        )
+        .expect("failed to write canonical command schema artifact");
+        run_prettier_write(&[COMMAND_SCHEMAS_PATH]);
+    }
+
+    /// Fails whenever `backend/nyanpasu-rpc-protocol/schemas/command-schemas.v1.json`
+    /// is stale relative to `build_specta_builder()`, `COMMAND_CATALOG`, or
+    /// `command_input_schemas()`.
+    #[test]
+    fn rpc_command_schemas_are_fresh() {
+        use nyanpasu_rpc_protocol::{
+            COMMAND_CATALOG, RpcTarget,
+            schemas::{CommandSchemaArtifact, EMBEDDED_COMMAND_SCHEMAS_JSON},
+        };
+
+        let fresh = generate_canonical_command_schemas();
+        let fresh_value =
+            serde_json::to_value(&fresh).expect("fresh command schemas must serialize to JSON");
+        let committed_value: serde_json::Value =
+            serde_json::from_str(EMBEDDED_COMMAND_SCHEMAS_JSON)
+                .expect("committed command schema artifact must parse as JSON");
+        let committed = CommandSchemaArtifact::from_embedded()
+            .expect("committed command schema artifact must parse offline");
+
+        assert_eq!(
+            fresh, committed,
+            "committed command schemas at {COMMAND_SCHEMAS_PATH} are stale; run \
+             `cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu \
+              export_rpc_command_schemas -- --ignored`"
+        );
+        assert_eq!(
+            fresh_value, committed_value,
+            "committed command schemas JSON content differs from canonical generator; \
+             regenerate with `export_rpc_command_schemas -- --ignored`"
+        );
+        committed
+            .validate_all_references()
+            .expect("committed command schema artifact must have valid closed $ref graph");
+
+        let expected_names: std::collections::BTreeSet<&str> = COMMAND_CATALOG
+            .iter()
+            .filter(|cmd| {
+                cmd.targets.contains(&RpcTarget::Http) || cmd.targets.contains(&RpcTarget::Local)
+            })
+            .map(|cmd| cmd.name)
+            .collect();
+        let actual_names: std::collections::BTreeSet<&str> =
+            committed.commands.keys().map(String::as_str).collect();
+        assert_eq!(
+            actual_names, expected_names,
+            "exported command schemas must match exact Http | Local union in COMMAND_CATALOG"
+        );
+    }
+
     /// Regenerates the committed TS bindings in place (same path and header as
     /// the debug-run export in lib.rs), then asserts every profile domain type
     /// exports as a named TS type. CI enforces freshness via
@@ -725,30 +825,7 @@ mod tests {
         adapt_query_bindings(QUERY_BINDINGS_PATH, &query_bindings)
             .expect("failed to generate query bindings");
 
-        let prettier_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../node_modules/.bin")
-            .join(if cfg!(target_os = "windows") {
-                "prettier.cmd"
-            } else {
-                "prettier"
-            });
-        let mut prettier = if cfg!(target_os = "windows") {
-            let mut command = std::process::Command::new("cmd");
-            command.arg("/C").arg(prettier_path);
-            command
-        } else {
-            std::process::Command::new(prettier_path)
-        };
-        let status = prettier
-            .args([
-                "--write",
-                BINDINGS_PATH,
-                RPC_BINDINGS_PATH,
-                QUERY_BINDINGS_PATH,
-            ])
-            .status()
-            .expect("failed to spawn workspace Prettier binary");
-        assert!(status.success(), "prettier --write failed on bindings.ts");
+        run_prettier_write(&[BINDINGS_PATH, RPC_BINDINGS_PATH, QUERY_BINDINGS_PATH]);
 
         let transport_generated =
             std::fs::read_to_string(BINDINGS_PATH).expect("bindings.ts must exist after export");

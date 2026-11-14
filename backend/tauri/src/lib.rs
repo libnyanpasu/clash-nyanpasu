@@ -14,6 +14,8 @@ mod event_handler;
 mod ipc;
 mod setup;
 mod specta_export;
+#[cfg(test)]
+mod specta_json_schema;
 mod startup_failure;
 #[cfg(test)]
 mod test_support;

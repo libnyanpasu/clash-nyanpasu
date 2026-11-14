@@ -15,7 +15,7 @@
     "koffi": "3.3.8",
     "octokit": "5.0.5",
     "picocolors": "1.1.1",
-    "playwright": "1.65.0",
+    "playwright": "1.65.1",
     "prettier": "3.10.1",
     "semver": "7.8.6",
     "smol-toml": "1.9.1",

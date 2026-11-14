@@ -20,7 +20,10 @@ use nyanpasu_contracts::profiles::{
     },
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
-use nyanpasu_runtime_values::configuration::{SourceOrigin, SourceOutcome};
+use nyanpasu_runtime_values::{
+    configuration::{SourceOrigin, SourceOutcome},
+    mutation::{RecoverAfterWriteFailureSnafu, WriteConfigSnafu},
+};
 use nyanpasu_state_engine::{
     PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
     error::StateChangedError,
@@ -579,30 +582,40 @@ impl ProfilesActor {
     }
 
     /// The one place a persistence error becomes a profiles error. A CAS
-    /// mismatch reported by the coordinator is the same conflict as the
-    /// manager's own `Conflict` result.
+    /// mismatch from the persistent manager's publication check is the same
+    /// conflict as its pre-write `Conflict` result.
     fn commit_failure(
         error: ReplaceIfVersionError,
         (uid, path): CommitSubject,
         cleanup_failures: Vec<ProfilesError>,
     ) -> ProfilesError {
-        match error {
+        let runtime = nyanpasu_runtime_values::mutation::RuntimeAftermath::Untouched;
+        let source = match error {
             ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
                 expected,
                 actual,
-            }) => VersionConflictSnafu {
-                expected: *expected.as_ref(),
-                actual: *actual.as_ref(),
-                cleanup_failures,
+            }) => {
+                return VersionConflictSnafu {
+                    expected: *expected.as_ref(),
+                    actual: *actual.as_ref(),
+                    cleanup_failures,
+                }
+                .build();
             }
-            .build(),
-            error => CommitSnafu {
-                uid,
-                path,
-                cleanup_failures,
+            error @ (ReplaceIfVersionError::WriteConfig(_)
+            | ReplaceIfVersionError::LocalWrite(_)) => WriteConfigSnafu { runtime }
+                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => {
+                RecoverAfterWriteFailureSnafu { runtime }
+                    .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
             }
-            .into_error(crate::state::mutation::classify_commit_aborted(error)),
+        };
+        CommitSnafu {
+            uid,
+            path,
+            cleanup_failures,
         }
+        .into_error(source)
     }
 
     /// The profile a change is about, and its file in `candidate`, so a
@@ -1299,13 +1312,7 @@ impl ProfilesActor {
             result => {
                 // The engine compensates once local_write starts. Pre-write
                 // conflicts leave prepared resources for this owner to discard.
-                let before_write = matches!(
-                    &result,
-                    Ok(ReplaceIfVersionResult::Conflict { .. })
-                        | Err(nyanpasu_state_engine::ReplaceIfVersionError::State(
-                            nyanpasu_state_engine::error::StateChangedError::PrepareAck(_)
-                        ))
-                );
+                let before_write = matches!(&result, Ok(ReplaceIfVersionResult::Conflict { .. }));
                 let mut failures = Vec::new();
                 if before_write {
                     if let Some(prepared) = prepared {
@@ -2578,6 +2585,117 @@ impl Actor for ProfilesActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boxed_commit_cause_preserves_display_and_source_chain() {
+        use std::error::Error as _;
+
+        use nyanpasu_runtime_values::mutation::CommitAborted;
+
+        let yaml = yaml_serde::from_str::<yaml_serde::Value>("[").unwrap_err();
+        let causes = [
+            ReplaceIfVersionError::WriteConfig(std::io::Error::other("disk full").into()),
+            ReplaceIfVersionError::LocalWrite(yaml.into()),
+        ];
+        for cause in causes {
+            let display = cause.to_string();
+            let is_io = matches!(cause, ReplaceIfVersionError::WriteConfig(_));
+            let error = ProfilesActor::commit_failure(cause, (None, None), Vec::new());
+            assert_eq!(error.to_string(), "the profiles change was not committed");
+            let aborted = error
+                .source()
+                .unwrap()
+                .downcast_ref::<CommitAborted>()
+                .unwrap();
+            assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
+            assert_eq!(aborted.to_string(), "failed to write the config");
+            let engine = aborted
+                .source()
+                .unwrap()
+                .downcast_ref::<ReplaceIfVersionError>()
+                .unwrap();
+            assert_eq!(engine.to_string(), display);
+            let original = engine.source().unwrap();
+            if is_io {
+                assert_eq!(
+                    original
+                        .downcast_ref::<std::io::Error>()
+                        .unwrap()
+                        .to_string(),
+                    "disk full"
+                );
+            } else {
+                assert!(original.downcast_ref::<yaml_serde::Error>().is_some());
+            }
+        }
+
+        let error = ProfilesActor::commit_failure(
+            ReplaceIfVersionError::ResourceRecovery {
+                cause: std::io::Error::other("write failed").into(),
+                recovery_error: std::io::Error::other("recovery failed").into(),
+            },
+            (None, None),
+            Vec::new(),
+        );
+        let ProfilesError::Commit {
+            source: recovery, ..
+        } = error
+        else {
+            panic!("expected a commit error");
+        };
+        assert!(matches!(
+            recovery,
+            CommitAborted::RecoverAfterWriteFailure { .. }
+        ));
+        assert_eq!(
+            recovery.to_string(),
+            "failed to write the config and failed to recover afterwards"
+        );
+        let Some(ReplaceIfVersionError::ResourceRecovery {
+            cause,
+            recovery_error,
+        }) = recovery
+            .source()
+            .unwrap()
+            .downcast_ref::<ReplaceIfVersionError>()
+        else {
+            panic!("{recovery:?}");
+        };
+        assert_eq!(
+            cause.downcast_ref::<std::io::Error>().unwrap().to_string(),
+            "write failed"
+        );
+        assert_eq!(
+            recovery_error
+                .downcast_ref::<std::io::Error>()
+                .unwrap()
+                .to_string(),
+            "recovery failed"
+        );
+    }
+
+    #[test]
+    fn publication_conflicts_become_profile_version_conflicts() {
+        let error = ProfilesActor::commit_failure(
+            ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
+                expected: Version::new(3),
+                actual: Version::new(5),
+            }),
+            (None, None),
+            Vec::new(),
+        );
+        let ProfilesError::VersionConflict {
+            expected,
+            actual,
+            cleanup_failures,
+        } = error
+        else {
+            panic!("expected a version conflict: {error:?}");
+        };
+        assert_eq!(expected, 3);
+        assert_eq!(actual, 5);
+        assert!(cleanup_failures.is_empty());
+    }
 
     /// Runtime checks follow changed build inputs and touched closure files.
     #[test]

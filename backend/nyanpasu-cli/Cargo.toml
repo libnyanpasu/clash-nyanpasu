@@ -1,0 +1,40 @@
+[package]
+name = 'nyanpasu-cli'
+version = '0.1.0'
+description = 'Command-line and MCP client of a running Clash Nyanpasu shell'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = 'nyanpasu_cli'
+path = 'src/lib.rs'
+
+[[bin]]
+name = 'nyanpasu-cli'
+path = 'src/main.rs'
+
+# Production dependencies stay on the protocol and transport layer: no core
+# family, implementation, RPC adapter, server or GUI package
+# (`pnpm run lint:backend-boundaries`).
+[dependencies]
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false, features = [
+  'local-client'
+] }
+nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
+clap = { version = '4', features = ['derive', 'env'] }
+clap_complete = '4'
+dirs = '7'
+keyring = '4'
+reqwest = { workspace = true }
+serde = { version = '1', features = ['derive'] }
+serde_json = '1'
+snafu = { workspace = true }
+tokio = { workspace = true }
+toml = '1'
+uuid = { version = '1', features = ['v4'] }
+
+[dev-dependencies]
+tempfile = '3'

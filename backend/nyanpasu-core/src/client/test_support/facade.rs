@@ -84,8 +84,9 @@ pub(crate) async fn test_client_from_typed_clients(
     geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
     os_proxy: Arc<dyn OsProxyPort>,
 ) -> NyanpasuClient {
+    let profiles_mutations = crate::state::mutation::MutationCoordinator::pending();
     let profiles = profiles::ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        profiles_mutations.clone(),
         temp_config_path(dir, "profiles.yaml"),
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
@@ -153,8 +154,9 @@ pub(crate) async fn test_client_from_typed_clients(
     )
     .await
     .unwrap();
+    connect_source(&client, profiles_mutations);
     if let Some(mutations) = clash_mutations {
-        connect_clash(&client, mutations);
+        connect_source(&client, mutations);
     }
     client
 }
@@ -192,8 +194,9 @@ pub async fn test_client_with_profile_ports(
     let paths = test_paths(dir.path(), dir.path().join("data"));
     let ports = Arc::new(SessionPortResolver::default());
     let file_ports = (host_adapters.profile_files)(ports.clone());
+    let profiles_mutations = crate::state::mutation::MutationCoordinator::pending();
     let profiles = profiles::ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        profiles_mutations.clone(),
         temp_config_path(dir, "profiles.yaml"),
         file_ports.fs.clone(),
         file_ports.fetcher,
@@ -252,7 +255,8 @@ pub async fn test_client_with_profile_ports(
     )
     .await
     .unwrap();
-    connect_clash(&client, clash_mutations);
+    connect_source(&client, profiles_mutations);
+    connect_source(&client, clash_mutations);
     client
 }
 
@@ -306,8 +310,9 @@ pub async fn test_client_with_materialization(
     let clash_mutations = crate::state::mutation::MutationCoordinator::pending();
     let (application, session_state, clash_config) =
         test_typed_config_clients(dir, clash_mutations.clone()).await;
+    let profiles_mutations = crate::state::mutation::MutationCoordinator::pending();
     let profiles = profiles::ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        profiles_mutations.clone(),
         temp_config_path(dir, "profiles.yaml"),
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
@@ -375,7 +380,8 @@ pub async fn test_client_with_materialization(
     )
     .await
     .unwrap();
-    connect_clash(&client, clash_mutations);
+    connect_source(&client, profiles_mutations);
+    connect_source(&client, clash_mutations);
     client
 }
 
@@ -401,12 +407,13 @@ impl crate::state::mutation::ports::RuntimeGate for SavedRuntimeGate {
     }
 }
 
-fn connect_clash(
+fn connect_source<T: Clone + Send + Sync + 'static>(
     client: &NyanpasuClient,
-    mutations: crate::state::mutation::MutationCoordinator<
-        nyanpasu_config::clash::config::ClashConfig,
-    >,
-) {
+    mutations: crate::state::mutation::MutationCoordinator<T>,
+) where
+    crate::client::application_workflow::ApplicationWorkflowClient:
+        crate::state::mutation::ports::MutationParticipantFactory<T>,
+{
     mutations.connect(
         Arc::new(client.inner.application_workflow.clone()),
         Arc::new(effects::ports::NoopCommitNotifications),

@@ -202,6 +202,7 @@ pub(super) struct ApplicationWorkflowArgs {
     pub application: StateSnapshot<nyanpasu_config::application::NyanpasuAppConfig>,
     pub clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
     pub profiles: StateSnapshot<nyanpasu_config::profile::Profiles>,
+    pub content_lock: crate::state::mutation::ProfileContentLock,
     pub core: CoreClient,
     pub service: ServiceClient,
     pub builder: Arc<dyn RuntimeBuildPort>,
@@ -695,13 +696,13 @@ impl ApplicationWorkflowClient {
             args.application.clone(),
             args.clash.clone(),
             args.profiles.clone(),
+            args.content_lock,
             args.builder,
             args.ports.clone(),
         )
         .with_revisions(args.revisions);
         let workflow = ApplicationWorkflow {
             notifications: args.notifications,
-            profiles: args.profiles,
             clash: args.clash,
             preparation,
             validator: args.validator,

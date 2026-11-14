@@ -162,6 +162,7 @@ pub(super) struct Fixture {
     pub(super) tasks: tokio_util::task::TaskTracker,
     _dir: tempfile::TempDir,
     revisions: runtime::RuntimeRevisionAllocator,
+    content_lock: crate::state::mutation::ProfileContentLock,
 }
 
 pub(super) async fn manager<T>(path: Utf8PathBuf, state: T) -> PersistentStateManager<T>
@@ -247,6 +248,7 @@ impl Fixture {
                 application: self.application.snapshot_handle(),
                 clash: self.clash.snapshot_handle(),
                 profiles: self.profiles.snapshot_handle(),
+                content_lock: self.content_lock.clone(),
                 builder: self.builder.clone(),
                 ports: self.ports.clone(),
                 revisions: self.revisions.clone(),
@@ -411,6 +413,7 @@ pub(super) async fn fixture_from(
     );
     let notifications = Arc::new(RecordingNotifications::default());
     let revisions = runtime::RuntimeRevisionAllocator::new();
+    let content_lock = crate::state::mutation::ProfileContentLock::default();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             revisions: revisions.clone(),
@@ -418,6 +421,7 @@ pub(super) async fn fixture_from(
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
+            content_lock: content_lock.clone(),
             core: core.clone(),
             service,
             builder: builder.clone(),
@@ -434,6 +438,7 @@ pub(super) async fn fixture_from(
     .await
     .unwrap();
     Fixture {
+        content_lock,
         client,
         endpoint,
         builder,

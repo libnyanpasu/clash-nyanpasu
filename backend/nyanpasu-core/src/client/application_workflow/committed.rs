@@ -51,11 +51,15 @@ impl ApplicationWorkflowState {
     pub(super) async fn source_committed(&mut self, domain: ConfigDomain, version: Version) {
         let app = self.workflow.lifecycle.application.load();
         let clash = self.workflow.clash.load();
-        let profiles = self.workflow.profiles.load();
+        let (profiles_version, inputs) = self
+            .workflow
+            .preparation
+            .capture_committed_inputs(app.state.clone(), clash.state.clone())
+            .await;
         let seen = EngineVersions {
             application: app.version,
             clash: clash.version,
-            profiles: profiles.version,
+            profiles: profiles_version,
         };
         debug_assert!(
             seen.of(domain).as_ref() >= version.as_ref(),
@@ -78,15 +82,6 @@ impl ApplicationWorkflowState {
                 cause: Arc::new(RuntimeError::Isolated),
             }
         } else {
-            let inputs = self
-                .workflow
-                .preparation
-                .capture_inputs(
-                    app.state.clone(),
-                    clash.state.clone(),
-                    Arc::new(profiles.state.clone()),
-                )
-                .await;
             self.workflow
                 .apply_source(id, inputs, &mut degradations)
                 .await

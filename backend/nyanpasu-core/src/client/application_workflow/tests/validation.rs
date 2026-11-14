@@ -59,6 +59,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         application.snapshot_handle(),
         clash.snapshot_handle(),
         profiles.snapshot_handle(),
+        profiles.content_lock(),
         Arc::new(TestRuntimeBuildPort::from_directory(
             dir.path().join("profiles"),
             paths,
@@ -107,8 +108,9 @@ async fn the_check_and_the_apply_consume_the_same_bytes() {
     .await
     .unwrap();
     let mut facade = CoreFacade::new(graph.core.clone(), service);
+    let expected = facade.refresh_status().await.unwrap();
     facade
-        .reconcile(&prepared.intent, spec, &facade.core_status())
+        .reconcile(&prepared.intent, spec, &expected)
         .await
         .unwrap();
 

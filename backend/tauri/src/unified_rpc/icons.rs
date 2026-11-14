@@ -115,7 +115,11 @@ async fn response(
             }
             origin = cors_origin(&request, dev_origin)?;
             let input = icons::parse(request.uri().path(), request.uri().query())?;
-            Ok(unreported(icons::read(&dependencies, input)))
+            Ok(unreported(icons::read(
+                &dependencies,
+                nyanpasu_rpc_protocol::ResponseVisibility::Full,
+                input,
+            )))
         },
     )
     .await;

@@ -3,8 +3,8 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use nyanpasu_rpc_protocol::{
-    AuthContext, COMMAND_CATALOG, CommandKind, CommandMetadata, Principal, RpcDescribeResponse,
-    RpcError, RpcOwner, RpcTarget, ServerInfo, ShellCapability,
+    AuthContext, COMMAND_CATALOG, CommandKind, CommandMetadata, Principal, ResponseVisibility,
+    RpcDescribeResponse, RpcError, RpcOwner, RpcTarget, ServerInfo, ShellCapability,
 };
 use serde_json::Value;
 
@@ -528,10 +528,11 @@ impl UnifiedRpc {
         if auth.is_none() {
             return Err(RpcError::unauthorized("authentication required"));
         }
+        let visibility = ResponseVisibility::for_auth(auth);
         let command = self
             .commands
             .get(method)
-            .ok_or_else(|| RpcError::unknown_method(method))?;
+            .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
         command.neutral_handler(target)?;
         crate::policy::admit_resolved_command(&command.metadata, auth)
     }
@@ -552,10 +553,11 @@ impl UnifiedRpc {
         };
         dispatch_with_audit(invocation, || {
             let caller = caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
+            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             let command = self
                 .commands
                 .get(method)
-                .ok_or_else(|| RpcError::unknown_method(method))?;
+                .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
             let handler = command.neutral_handler(target)?;
             crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
             admit_resource()?;
@@ -586,10 +588,11 @@ impl UnifiedRpc {
             || self.audit_command_name(method),
             None,
             || {
+                let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
                 let command = self
                     .commands
                     .get(method)
-                    .ok_or_else(|| RpcError::unknown_method(method))?;
+                    .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
                 if command.metadata.kind != CommandKind::Native
                     || !command.metadata.targets.contains(&RpcTarget::Desktop)
                     || !command.capabilities_available

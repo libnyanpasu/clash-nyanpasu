@@ -11,8 +11,11 @@ use tower::ServiceExt as _;
 
 use super::{LocalSession, local_session};
 use crate::{
-    icons::{self, tests::fixture},
-    test_support::Fixture,
+    icons::{
+        self,
+        tests::{failing_fixture, fixture},
+    },
+    test_support::{Fixture, with_http_auth},
 };
 
 fn listener(fixture: &Fixture) -> Router {
@@ -163,5 +166,69 @@ async fn icon_cache_policy_does_not_relax_other_routes() {
             "{path}"
         );
     }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn http_icon_route_enforces_visibility_privacy_across_read_and_sensitive_scopes() {
+    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+
+    let fixture = failing_fixture(2).await;
+    let router = fixture.rpc.clone().router();
+    let path = "/bridge/icons/cached?url=https%3A%2F%2Fuser%3Apass%40secret-icon-canary.invalid%2Ficon.png";
+
+    for (scopes, is_full) in [
+        (vec![Scope::Read], false),
+        (vec![Scope::Read, Scope::SensitiveRead], true),
+    ] {
+        let auth = AuthContext::new(
+            Principal::Token {
+                id: "tok_icon_01".to_owned(),
+                name: "icon-token".to_owned(),
+            },
+            scopes.into_iter().collect(),
+        );
+        let response = with_http_auth(router.clone(), auth)
+            .oneshot(
+                Request::get(path)
+                    .header("cookie", COOKIES)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        for (name, value) in icons::SECURITY_HEADERS {
+            assert_eq!(response.headers()[name], value);
+        }
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8_lossy(&body);
+        let wire: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(wire["kind"], "application_error");
+        if is_full {
+            assert!(
+                body_text.contains("secret-icon-canary"),
+                "SensitiveRead icon error must retain canary diagnostic: {body_text}"
+            );
+            assert!(
+                body_text.contains("user:pass"),
+                "SensitiveRead icon error must retain URL credentials in diagnostic: {body_text}"
+            );
+        } else {
+            assert!(
+                !body_text.contains("secret-icon-canary")
+                    && !body_text.contains("user:pass")
+                    && !body_text.contains("upstream connect error"),
+                "Read-only icon error must exclude secret URL and upstream text: {body_text}"
+            );
+            assert!(wire.pointer("/domain_error/detail").is_none());
+            assert_eq!(wire["message"], "internal error");
+            assert_eq!(wire["domain_error"]["kind"]["domain"], "unknown");
+        }
+    }
+
     fixture.shutdown().await;
 }

@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use nyanpasu_rpc_protocol::{RpcError, RpcValue};
+use nyanpasu_rpc_protocol::{ResponseVisibility, RpcError, RpcValue};
 use serde_json::Value;
 use tauri::Manager as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -12,8 +12,13 @@ use nyanpasu_rpc::{
     registry::{RpcCaller, RpcFuture, SetupError, UnifiedRpc},
 };
 
-pub type TauriRpcHandler =
-    fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> Result<RpcFuture, RpcError>;
+pub type TauriRpcHandler = fn(
+    tauri::AppHandle,
+    tauri::Window,
+    tauri::Webview,
+    ResponseVisibility,
+    Value,
+) -> Result<RpcFuture, RpcError>;
 
 pub struct TauriCommandEntry {
     pub name: &'static str,
@@ -80,9 +85,12 @@ impl DesktopRpc {
     ) -> Result<Value, RpcError> {
         let caller = RpcCaller::desktop(window.label());
         if let Some(handler) = self.handlers.get(method) {
+            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             return self
                 .rpc
-                .call_native(method, caller, || handler(app, window, webview, params))
+                .call_native(method, caller, || {
+                    handler(app, window, webview, visibility, params)
+                })
                 .await;
         }
         self.rpc

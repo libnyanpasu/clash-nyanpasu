@@ -328,7 +328,11 @@ impl Source {
 
 #[async_trait::async_trait]
 impl SubscriptionSource for Source {
-    async fn snapshot(&self, event: EventName) -> Result<Value, RpcError> {
+    async fn snapshot(
+        &self,
+        event: EventName,
+        _visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+    ) -> Result<Value, RpcError> {
         self.snapshots.fetch_add(1, Ordering::SeqCst);
         if self.fail.load(Ordering::SeqCst) {
             return Err(RpcError::new("unavailable", "snapshot source unavailable"));
@@ -340,7 +344,10 @@ impl SubscriptionSource for Source {
         }
         Ok(value)
     }
-    async fn details(&self) -> Result<Details, RpcError> {
+    async fn details(
+        &self,
+        _visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+    ) -> Result<Details, RpcError> {
         let receiver = self.details.subscribe();
         self.gate().await;
         Ok(receiver)
@@ -1158,7 +1165,7 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
             .rpc
             .dependencies
             .client
-            .snapshot(event)
+            .snapshot(event, nyanpasu_rpc_protocol::ResponseVisibility::Full)
             .await
             .unwrap();
         let mut peer = Peer::start(
@@ -1270,15 +1277,25 @@ async fn safe_status_snapshots_match_their_queries() {
         ),
     ] {
         assert_eq!(
-            SubscriptionSource::snapshot(client, event).await.unwrap(),
+            SubscriptionSource::snapshot(
+                client,
+                event,
+                nyanpasu_rpc_protocol::ResponseVisibility::Full,
+            )
+            .await
+            .unwrap(),
             fixture.call(query, json!({})).await.1,
             "{event:?}"
         );
     }
     assert_eq!(
-        SubscriptionSource::snapshot(client, EventName::CoreLogsSummaryChanged)
-            .await
-            .unwrap()["status"],
+        SubscriptionSource::snapshot(
+            client,
+            EventName::CoreLogsSummaryChanged,
+            nyanpasu_rpc_protocol::ResponseVisibility::Full,
+        )
+        .await
+        .unwrap()["status"],
         fixture
             .call("get_core_log_status_summary", json!({}))
             .await
@@ -1286,9 +1303,13 @@ async fn safe_status_snapshots_match_their_queries() {
         "CoreLogsSummaryChanged"
     );
     assert_eq!(
-        SubscriptionSource::snapshot(client, EventName::CoreLogsChanged)
-            .await
-            .unwrap()["status"],
+        SubscriptionSource::snapshot(
+            client,
+            EventName::CoreLogsChanged,
+            nyanpasu_rpc_protocol::ResponseVisibility::Full,
+        )
+        .await
+        .unwrap()["status"],
         fixture.call("get_core_log_status", json!({})).await.1,
         "CoreLogsChanged"
     );
@@ -1296,13 +1317,33 @@ async fn safe_status_snapshots_match_their_queries() {
     let client = fixture.rpc.dependencies.client.clone();
     fixture.shutdown().await;
 
-    let summary_error = SubscriptionSource::snapshot(&client, EventName::CoreLogsSummaryChanged)
-        .await
-        .unwrap_err();
+    let summary_error = SubscriptionSource::snapshot(
+        &client,
+        EventName::CoreLogsSummaryChanged,
+        nyanpasu_rpc_protocol::ResponseVisibility::Public,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(summary_error.kind, "application_error");
     assert_eq!(
         summary_error.domain_error.as_ref().unwrap().0["kind"],
-        json!({"domain": "core_log_read", "error": {"kind": "unavailable"}})
+        json!({
+            "domain": "public",
+            "error": {
+                "domain": "core_log_read",
+                "error": { "kind": "unavailable" }
+            }
+        })
+    );
+    assert!(
+        summary_error
+            .domain_error
+            .as_ref()
+            .unwrap()
+            .0
+            .get("detail")
+            .is_none(),
+        "public summary failure must omit detail: {summary_error:?}"
     );
     assert!(
         !serde_json::to_string(&summary_error)
@@ -1311,9 +1352,13 @@ async fn safe_status_snapshots_match_their_queries() {
         "summary failure must hide internal actor error text: {summary_error:?}"
     );
 
-    let full_error = SubscriptionSource::snapshot(&client, EventName::CoreLogsChanged)
-        .await
-        .unwrap_err();
+    let full_error = SubscriptionSource::snapshot(
+        &client,
+        EventName::CoreLogsChanged,
+        nyanpasu_rpc_protocol::ResponseVisibility::Full,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(full_error.kind, "application_error");
     assert_eq!(
         full_error.domain_error.as_ref().unwrap().0["kind"],
@@ -1580,5 +1625,174 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
     assert_eq!(source.snapshots.load(Ordering::SeqCst), 0);
 
     peer2.finish().await;
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn local_server_privacy_sanitizes_errors_and_threads_visibility() {
+    use nyanpasu_rpc_protocol::{ResponseVisibility, Scope};
+
+    struct VisibilitySource {
+        snapshots: Mutex<Vec<ResponseVisibility>>,
+        details_visibilities: Mutex<Vec<ResponseVisibility>>,
+        details: tokio::sync::watch::Sender<Option<Arc<ClashConnectionDetails>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl SubscriptionSource for VisibilitySource {
+        async fn snapshot(
+            &self,
+            _event: EventName,
+            visibility: ResponseVisibility,
+        ) -> Result<Value, RpcError> {
+            self.snapshots.lock().push(visibility);
+            Ok(json!({ "visibility": format!("{visibility:?}") }))
+        }
+
+        async fn details(&self, visibility: ResponseVisibility) -> Result<Details, RpcError> {
+            self.details_visibilities.lock().push(visibility);
+            Ok(self.details.subscribe())
+        }
+    }
+
+    let fixture = Fixture::new(false).await;
+    let (details_tx, _) = tokio::sync::watch::channel(None);
+    let source = Arc::new(VisibilitySource {
+        snapshots: Mutex::new(Vec::new()),
+        details_visibilities: Mutex::new(Vec::new()),
+        details: details_tx,
+    });
+    let directory = tempfile::tempdir().unwrap();
+    let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
+    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+
+    for (scopes, expected_visibility) in [
+        (vec![Scope::Read], ResponseVisibility::Public),
+        (
+            vec![Scope::Read, Scope::SensitiveRead],
+            ResponseVisibility::Full,
+        ),
+    ] {
+        let (stream, accepted) = tokio::join!(endpoint.connect(), listener.accept());
+        let stop = CancellationToken::new();
+        let auth = AuthContext::new(
+            nyanpasu_rpc_protocol::Principal::Token {
+                id: format!("tok_{expected_visibility:?}"),
+                name: "local-vis".to_owned(),
+            },
+            scopes.into_iter().collect(),
+        );
+        let task = tokio::spawn(
+            serve_stream(
+                accepted.unwrap(),
+                RpcOwner::local_connection("test-local-vis", 1),
+                auth,
+                fixture.rpc.clone(),
+                source.clone(),
+                ConnectionLimits::default(),
+                stop.clone(),
+            )
+            .with_current_subscriber(),
+        );
+        let mut peer = Peer {
+            stream: Some(stream.unwrap()),
+            stop,
+            task: Some(task),
+            _directory: None,
+            next: 0,
+            writer: Arc::new(WriterGate::default()),
+        };
+        peer.send(Frame::Hello {
+            versions: vec![1],
+            required_features: vec!["rpc".into()],
+            optional_features: vec!["events".into(), "connection-details".into()],
+        })
+        .await;
+        assert!(matches!(peer.read().await, Frame::Accept { .. }));
+
+        peer.request(
+            "list_log_files",
+            json!({ "source": { "secret_local_param": 1 } }),
+        )
+        .await;
+        let Frame::Response {
+            reply: Reply::Error(param_err),
+            ..
+        } = peer.read().await
+        else {
+            panic!("expected invalid_params response");
+        };
+        assert_eq!(param_err["kind"], "invalid_params");
+        if expected_visibility == ResponseVisibility::Public {
+            assert!(
+                !param_err["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("secret_local_param")
+            );
+        } else {
+            assert!(
+                param_err["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("secret_local_param")
+            );
+        }
+
+        peer.request("secret_local_method_canary", json!({})).await;
+        let Frame::Response {
+            reply: Reply::Error(unknown_err),
+            ..
+        } = peer.read().await
+        else {
+            panic!("expected unknown_method response");
+        };
+        assert_eq!(unknown_err["kind"], "unknown_method");
+        if expected_visibility == ResponseVisibility::Public {
+            assert!(
+                !unknown_err["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("secret_local_method_canary")
+            );
+        } else {
+            assert!(
+                unknown_err["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("secret_local_method_canary")
+            );
+        }
+
+        peer.subscribe("connection-details", None).await;
+        assert!(matches!(peer.read().await, Frame::Subscribed { .. }));
+
+        peer.subscribe("events", Some(EventName::CoreStatusChanged))
+            .await;
+        if expected_visibility == ResponseVisibility::Full {
+            assert!(matches!(peer.read().await, Frame::Subscribed { .. }));
+            let Frame::Reset { snapshot, .. } = peer.read().await else {
+                panic!("expected Reset frame");
+            };
+            assert_eq!(snapshot["visibility"], "Full");
+        } else {
+            assert!(matches!(
+                peer.read().await,
+                Frame::SubscriptionError {
+                    code: SubscriptionErrorCode::Forbidden,
+                    ..
+                }
+            ));
+        }
+
+        peer.finish().await;
+    }
+
+    assert_eq!(*source.snapshots.lock(), vec![ResponseVisibility::Full]);
+    assert_eq!(
+        *source.details_visibilities.lock(),
+        vec![ResponseVisibility::Public, ResponseVisibility::Full]
+    );
+
     fixture.shutdown().await;
 }

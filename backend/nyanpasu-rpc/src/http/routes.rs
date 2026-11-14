@@ -29,7 +29,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     audit::{AuditInvocation, AuditPhase, DeliveryOutcome, RpcTransport, SubscriptionOutcome},
-    error::application_error,
+    error::application_error_for,
     http::HttpSessionRevocation,
     registry::{
         CommandHandlers, RpcCaller, RpcDependencies, RpcFuture, SetupError, UnifiedRpc,
@@ -202,20 +202,21 @@ async fn http_icon(
         "icon_fetch",
         None,
     );
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
     let result = dispatch_with_audit(&audit, || {
         crate::policy::admit_route(Scope::Read, auth.as_ref())?;
         http_owner(&headers)?;
         let path = uri
             .path()
             .strip_prefix("/bridge/icons")
-            .ok_or_else(|| RpcError::invalid_params("invalid icon path"))?;
+            .ok_or_else(|| RpcError::invalid_params_for(visibility, "invalid icon path"))?;
         let request = crate::icons::parse(path, uri.query())?;
-        Ok(unreported(async {
-            let body = crate::icons::read(&rpc.dependencies, request).await?;
+        Ok(unreported(async move {
+            let body = crate::icons::read(&rpc.dependencies, visibility, request).await?;
             let mut response = Response::builder()
                 .header("content-type", body.content_type)
                 .body(Body::from(body.bytes))
-                .map_err(application_error)?;
+                .map_err(|error| application_error_for(visibility, error))?;
             response.extensions_mut().insert(body.cache_policy);
             Ok(response)
         }))
@@ -259,17 +260,25 @@ async fn http_logs_archive(
         "logs_archive",
         None,
     );
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
     let result = dispatch_with_audit(&audit, || {
         crate::policy::admit_route(Scope::SensitiveRead, auth.as_ref())?;
-        Ok(unreported(async {
+        Ok(unreported(async move {
             let paths = rpc.dependencies.paths.clone();
             let archive =
                 crate::commands::archive::logs_archive(paths, rpc.dependencies.client.clone())
                     .await
-                    .map_err(|error| RpcError::new("application_error", error.to_string()))?;
+                    .map_err(|error| match visibility {
+                        nyanpasu_rpc_protocol::ResponseVisibility::Full => {
+                            RpcError::new("application_error", error.to_string())
+                        }
+                        nyanpasu_rpc_protocol::ResponseVisibility::Public => {
+                            RpcError::new("application_error", "internal error")
+                        }
+                    })?;
             let file = tokio::fs::File::open(&archive)
                 .await
-                .map_err(application_error)?;
+                .map_err(|error| application_error_for(visibility, error))?;
             let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
                 use tokio::io::AsyncReadExt;
 
@@ -289,7 +298,7 @@ async fn http_logs_archive(
                     format!("attachment; filename=\"{file_name}\""),
                 )
                 .body(Body::from_stream(body))
-                .map_err(application_error)
+                .map_err(|error| application_error_for(visibility, error))
         }))
     })
     .await
@@ -329,17 +338,21 @@ async fn http_connection_details(
         "connection_details_subscribe",
         None,
     );
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let stream_audit = audit.clone();
     let result = dispatch_with_audit(&audit, || {
         crate::policy::admit_route(Scope::Read, auth.as_ref())?;
-        Ok(unreported(async {
+        Ok(unreported(async move {
             let receiver = rpc
                 .dependencies
                 .client
                 .subscribe_clash_connection_details()
                 .await
-                .map_err(|error| application_error(crate::error::IpcError::from(error)))?;
+                .map_err(|error| {
+                    application_error_for(visibility, crate::error::IpcError::from(error))
+                })?;
             let stream = until_cancelled(Box::pin(connection_detail_events(receiver)), revocation);
-            Ok(Sse::new(AuditedSubscription::new(stream, &audit))
+            Ok(Sse::new(AuditedSubscription::new(stream, &stream_audit))
                 .keep_alive(axum::response::sse::KeepAlive::default())
                 .into_response())
         }))
@@ -408,11 +421,16 @@ async fn http_events(
                 .await;
                 http_rpc_error(RpcError::unauthorized("authentication required")).into_response()
             } else {
-                let _ = dispatch_with_audit(&audit, || {
-                    Err::<RpcFuture, _>(RpcError::invalid_params(error.to_string()))
-                })
-                .await;
-                error.into_response()
+                let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+                let rpc_error = RpcError::invalid_params_for(visibility, error.to_string());
+                let _ =
+                    dispatch_with_audit(&audit, || Err::<RpcFuture, _>(rpc_error.clone())).await;
+                match visibility {
+                    nyanpasu_rpc_protocol::ResponseVisibility::Full => error.into_response(),
+                    nyanpasu_rpc_protocol::ResponseVisibility::Public => {
+                        http_rpc_error(rpc_error).into_response()
+                    }
+                }
             };
             audit.record(AuditPhase::Subscription {
                 outcome: SubscriptionOutcome::Failed,
@@ -423,8 +441,10 @@ async fn http_events(
     let audit_stream = audit.clone();
     let result = dispatch_with_audit(&audit, || {
         let caller = auth.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
+        let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&caller));
         if let Some(name) = request.name.as_deref() {
-            let event = EventName::from_name(name).ok_or_else(|| RpcError::unknown_method(name))?;
+            let event = EventName::from_name(name)
+                .ok_or_else(|| RpcError::unknown_method_for(visibility, name))?;
             crate::policy::admit_event(event, &rpc.provided, RpcTarget::Http, Some(&caller))?;
         }
         Ok(unreported(async move {
@@ -513,7 +533,10 @@ async fn http_call(
             let rpc_error = if auth.is_none() {
                 RpcError::unauthorized("authentication required")
             } else {
-                RpcError::invalid_params(error.to_string())
+                RpcError::invalid_params_for(
+                    nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref()),
+                    error.to_string(),
+                )
             };
             let result = dispatch_with_audit(&audit, || Err::<RpcFuture, _>(rpc_error))
                 .await

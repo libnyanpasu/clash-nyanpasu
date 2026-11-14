@@ -426,6 +426,8 @@ impl Connection {
                     }
                     return;
                 }
+                let visibility =
+                    nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
                 self.pending_resources += 1;
                 let rpc = self.rpc.clone();
                 let source = self.source.clone();
@@ -438,15 +440,22 @@ impl Connection {
                             let failure = &mut failure;
                             Ok(unreported(async move {
                                 let Some(event) = event else {
-                                    return source.details().await.map(Subscription::Details);
-                                };
-                                let snapshot =
-                                    subscriptions::snapshot(source.as_ref(), event, &mut receiver)
+                                    return source
+                                        .details(visibility)
                                         .await
-                                        .map_err(|code| {
-                                            *failure = code;
-                                            subscription_error(code)
-                                        })?;
+                                        .map(Subscription::Details);
+                                };
+                                let snapshot = subscriptions::snapshot(
+                                    source.as_ref(),
+                                    event,
+                                    &mut receiver,
+                                    visibility,
+                                )
+                                .await
+                                .map_err(|code| {
+                                    *failure = code;
+                                    subscription_error(code)
+                                })?;
                                 if frame::encode(&Frame::Reset {
                                     subscription: "s18446744073709551615".into(),
                                     event: event.as_str().into(),
@@ -620,10 +629,13 @@ impl Connection {
                             audits: vec![DeliveryAudit::new(audit)],
                         })
                         .await;
+                        let visibility =
+                            nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
                         let forwarding = subscriptions::forward(
                             subscription,
                             stream,
                             self.source.clone(),
+                            visibility,
                             Output::new(self.events.clone()),
                             stop,
                         );

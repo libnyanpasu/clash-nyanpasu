@@ -21,6 +21,7 @@ async-trait = '0.1.77'
 auto-launch = { workspace = true }
 camino = '1.1.9'
 dunce = '1.0.4'
+getrandom = '0.4'
 hex = '0.4'
 once_cell = '1.19.0'
 reqwest = { workspace = true }
@@ -37,6 +38,7 @@ tokio-util = '0.7'
 tracing = { workspace = true }
 url = '2'
 whoami = '2.0.0'
+zeroize = '1.8'
 
 [target.'cfg(windows)'.dependencies]
 nyanpasu-utils = { path = '../nyanpasu-runtime/crates/nyanpasu-utils', default-features = false, features = [

@@ -7,6 +7,7 @@ pub mod core_version;
 pub mod device_identity;
 pub mod elevation;
 pub mod pac;
+pub mod remote_auth;
 pub mod service;
 pub mod system_dns;
 pub mod system_proxy;

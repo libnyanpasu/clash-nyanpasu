@@ -31,9 +31,9 @@
 
 ## R1a — 构建候选不再需要独占访问
 
-- [ ] `C/runtime.rs`：`RuntimeRevisionAllocator` 改为可克隆的共享原子计数器，`allocate(&self)`；溢出仍然 panic。
-- [ ] `AW/preparation.rs`：`RuntimePreparation` 的 `prepare`、`prepare_inputs`、`prepare_candidate_inputs`、`prepare_inputs_with_policy`、`prepare_committed` 改为 `&self`；`CL/ports.rs` 的 `RuntimePreparationPort::prepare_latest` 改为 `&self`，调用方与测试同步改签名。
-- [ ] 不改行为。
+- [x] `C/runtime.rs`：`RuntimeRevisionAllocator` 改为可克隆的共享原子计数器，`allocate(&self)`；溢出仍然 panic。
+- [x] `AW/preparation.rs`：`RuntimePreparation` 的 `prepare`、`prepare_inputs`、`prepare_candidate_inputs`、`prepare_inputs_with_policy`、`prepare_committed` 改为 `&self`；`CL/ports.rs` 的 `RuntimePreparationPort::prepare_latest` 改为 `&self`，调用方与测试同步改签名。
+- [x] 不改行为。
 
 **验证**
 
@@ -42,11 +42,11 @@
 
 ## R1b — 校验走本地控制面
 
-- [ ] `AW/adapters.rs`：`CoreCheckValidator` 持有本地端点（`CoreClient::initial_endpoint()`），不再调用 `connected_endpoint()`，不再为服务宿主写候选文件；文档内联传入。
-- [ ] 删除应用层 45 秒的等待包装与 `CHECK_BUDGET`、`with_budget`：等待本地校验的真实结果。保留“core-manager 自己的校验超时不是拒绝”的区分。
-- [ ] 删除因此无人使用的项：`RuntimeCheckUnavailable::NoEndpoint`、`HostUnsupported`、`CandidateUnavailable` 的产生点；若 `RuntimePaths::create_candidate` 不再有调用方则删除。线缆枚举本身留到 R5a。
-- [ ] `AW/tcc.rs` 中 `CheckRecord::Skipped` 的分支随产生点消失而删除。
-- [ ] 改写 `AW/tests/validation.rs`：服务托管内核时校验仍在本地端点执行（断言本地端点的 `checked()` 增加、服务端点为 0）；移除“宿主没有校验能力”与“宿主不回答时等待上限到期”两条用例。
+- [x] `AW/adapters.rs`：`CoreCheckValidator` 持有本地端点（`CoreClient::initial_endpoint()`），不再调用 `connected_endpoint()`，不再为服务宿主写候选文件；文档内联传入。
+- [x] 删除应用层 45 秒的等待包装与 `CHECK_BUDGET`、`with_budget`：等待本地校验的真实结果。保留“core-manager 自己的校验超时不是拒绝”的区分。
+- [x] 删除因此无人使用的项：`RuntimeCheckUnavailable::NoEndpoint`、`HostUnsupported`、`CandidateUnavailable` 的产生点；若 `RuntimePaths::create_candidate` 不再有调用方则删除。线缆枚举本身留到 R5a。
+- [x] `AW/tcc.rs` 中 `CheckRecord::Skipped` 的分支随产生点消失而删除。
+- [x] 改写 `AW/tests/validation.rs`：服务托管内核时校验仍在本地端点执行（断言本地端点的 `checked()` 增加、服务端点为 0）；移除“宿主没有校验能力”与“宿主不回答时等待上限到期”两条用例。
 
 **验证**
 
@@ -55,8 +55,8 @@
 
 ## R1c — 脚本模块缓存原子写入
 
-- [ ] `tauri/src/adapters/script_extensions/http.rs` 与 `nyanpasu-server/src/script_extensions.rs`：缓存条目用“写临时文件再原子替换”发布（复用 `nyanpasu-persistence` 的原子写）；从缓存读到的条目不再原样写回。
-- [ ] 读到无法解码的缓存条目时当作未命中，重新获取。
+- [x] `tauri/src/adapters/script_extensions/http.rs` 与 `nyanpasu-server/src/script_extensions.rs`：缓存条目用“写临时文件再原子替换”发布（复用 `nyanpasu-persistence` 的原子写）；从缓存读到的条目不再原样写回。
+- [x] 读到无法解码的缓存条目时当作未命中，重新获取。
 
 **验证**
 
@@ -65,8 +65,8 @@
 
 ## R2a — 把应用与独立校验分开
 
-- [ ] `AW/tcc.rs`：`try_critical` 拆成两步：`check_candidate`（构建、解析二进制、独立校验）与 `apply_prepared`（宿主移动、提交、结果分类）。变更的 Try 依次调用两者；已提交目标的路径（`apply_committed`、`retry_committed_target`）只构建并调用 `apply_prepared`，不再做独立校验。
-- [ ] `CheckRecord::Unserviceable` 对已提交目标的“等待依赖”分支随之删除。
+- [x] `AW/tcc.rs`：`try_critical` 拆成两步：`check_candidate`（构建、解析二进制、独立校验）与 `apply_prepared`（宿主移动、提交、结果分类）。变更的 Try 依次调用两者；已提交目标的路径（`apply_committed`、`retry_committed_target`）只构建并调用 `apply_prepared`，不再做独立校验。
+- [x] `CheckRecord::Unserviceable` 对已提交目标的“等待依赖”分支随之删除。
 
 **验证**
 
@@ -75,16 +75,16 @@
 
 ## R2b — Application 域提交优先
 
-- [ ] `S/mutation/ports.rs`：新增 `RuntimeGate`（`check`、`committed`）与 `RuntimeCandidate`（design 3.2）。`DomainChange` 从 `AW/mutation.rs` 移到 `S/mutation/`。
-- [ ] `S/mutation/mod.rs`：`MutationCoordinator` 的 `Ready` 连接增加 `runtime: Arc<dyn RuntimeGate>` 与取用方法；测试用的隔离连接提供一个放行的替身。旧的 `participant()` 在 R2e 之前保留给尚未切换的域。
-- [ ] `AW/check.rs`（新）：候选校验服务，实现 `RuntimeGate`（design 3.2 的五步）。它不经过 workflow 邮箱。`committed` 向 workflow 投递 `Message::SourceCommitted`。组合根（`C/mod.rs`）构造并注入。
-- [ ] `AW/mod.rs`：新增 `Message::Checked` 与 `Message::SourceCommitted { domain, version }`。后者的处理：读取三域快照与引擎版本；workflow 被隔离或正在关闭时只发布结论；否则以已提交配置为目标做一次应用（R2a 的 `apply_prepared`；允许按接管规则换宿主；不扣自动预算；失败后沿用现有延期目标的调度）。目标身份等于 `Checked` 留下的候选时复用该候选。
-- [ ] `AW/mod.rs`：新增状态 watch `ReconcilerStatus`（本卡需要 `seq`、`active`、`seen`、`conclusion`、`degradations`）。只有读取了已提交快照的处理更新 `seen`，值是它开始时读到的版本。客户端新增 `settled(domain, version)`（design 3.4：读取、等待 `changed()`、处理 watch 关闭）。
-- [ ] 断连：workflow 记住上次生效的 mode 与 `Profiles.current`；新旧两条路径应用成功时都更新它；`SourceCommitted` 的应用按 design 3.7 判断并执行。
-- [ ] daemon 释放：按 design 3.5“维护项”实现 `release_owed`，取代 Confirm 里的释放对 Application 域的作用。
-- [ ] `S/application.rs`：提交序列改为 design 3.3。`ApplicationSnapshot` 携带引擎版本与 `reaches_runtime`，去掉内部组装的 `receipt` 与 `degradations`。
-- [ ] `C/mod.rs`、`C/application.rs`：`patch_app_config` 在提交后按 design 3.4 等待并组装 `MutationOutcome`。新增 `NyanpasuClient::set_service_mode`（design 3.6）与 workflow 命令 `PrepareService`；`nyanpasu-rpc/src/commands/host.rs` 的 `set_service_mode` 改为调用它。
-- [ ] 校验被拒绝映射为 `CommitAborted::RuntimeRefused { runtime: Untouched }`；校验不可用映射为 `RuntimeFailed { runtime: Untouched }`。
+- [x] `S/mutation/ports.rs`：新增 `RuntimeGate`（`check`、`committed`）与 `RuntimeCandidate`（design 3.2）。`DomainChange` 从 `AW/mutation.rs` 移到 `S/mutation/`。
+- [x] `S/mutation/mod.rs`：`MutationCoordinator` 的 `Ready` 连接增加 `runtime: Arc<dyn RuntimeGate>` 与取用方法；测试用的隔离连接提供一个放行的替身。旧的 `participant()` 在 R2e 之前保留给尚未切换的域。
+- [x] `AW/check.rs`（新）：候选校验服务，实现 `RuntimeGate`（design 3.2 的五步）。它不经过 workflow 邮箱。`committed` 向 workflow 投递 `Message::SourceCommitted`。组合根（`C/mod.rs`）构造并注入。
+- [x] `AW/mod.rs`：新增 `Message::Checked` 与 `Message::SourceCommitted { domain, version }`。后者的处理：读取三域快照与引擎版本；workflow 被隔离或正在关闭时只发布结论；否则以已提交配置为目标做一次应用（R2a 的 `apply_prepared`；允许按接管规则换宿主；不扣自动预算；失败后沿用现有延期目标的调度）。目标身份等于 `Checked` 留下的候选时复用该候选。
+- [x] `AW/mod.rs`：新增状态 watch `ReconcilerStatus`（本卡需要 `seq`、`active`、`seen`、`conclusion`、`degradations`）。只有读取了已提交快照的处理更新 `seen`，值是它开始时读到的版本。客户端新增 `settled(domain, version)`（design 3.4：读取、等待 `changed()`、处理 watch 关闭）。
+- [x] 断连：workflow 记住上次生效的 mode 与 `Profiles.current`；新旧两条路径应用成功时都更新它；`SourceCommitted` 的应用按 design 3.7 判断并执行。
+- [x] daemon 释放：按 design 3.5“维护项”实现 `release_owed`，取代 Confirm 里的释放对 Application 域的作用。
+- [x] `S/application.rs`：提交序列改为 design 3.3。`ApplicationSnapshot` 携带引擎版本与 `reaches_runtime`，去掉内部组装的 `receipt` 与 `degradations`。
+- [x] `C/mod.rs`、`C/application.rs`：`patch_app_config` 在提交后按 design 3.4 等待并组装 `MutationOutcome`。新增 `NyanpasuClient::set_service_mode`（design 3.6）与 workflow 命令 `PrepareService`；`nyanpasu-rpc/src/commands/host.rs` 的 `set_service_mode` 改为调用它。
+- [x] 校验被拒绝映射为 `CommitAborted::RuntimeRefused { runtime: Untouched }`；校验不可用映射为 `RuntimeFailed { runtime: Untouched }`。
 
 **测试**（均为新增或改写；每条写明守护的生产行）
 
@@ -109,10 +109,10 @@
 
 ## R2c — Clash 域提交优先
 
-- [ ] `S/clash_config.rs`：`Patch`、`PatchOverrides`、`Replace` 的提交序列改为 design 3.3。
-- [ ] `C/mod.rs`、`C/clash_config.rs`：`patch_clash_config`、`patch_runtime_overrides` 按 design 3.4 组装结果。
-- [ ] `C/mod.rs` 的 `patch_runtime_overrides`：patch 只包含 mode 且等于已提交的 mode 时，不提交，向 workflow 发 `InterruptConnections` 并把关闭失败作为降级项返回（design 3.7）。这是 RPC 与热键共用的入口；`C/hotkey/mod.rs` 不需要自己的分支。
-- [ ] 把 `AW/tests/connection_policy.rs` 中经由 Clash 域的用例改为新路径下的可观察断言（端点事件顺序）。逐条处置按本文件第 2 节的表。
+- [x] `S/clash_config.rs`：`Patch`、`PatchOverrides`、`Replace` 的提交序列改为 design 3.3。
+- [x] `C/mod.rs`、`C/clash_config.rs`：`patch_clash_config`、`patch_runtime_overrides` 按 design 3.4 组装结果。
+- [x] `C/mod.rs` 的 `patch_runtime_overrides`：patch 只包含 mode 且等于已提交的 mode 时，不提交，向 workflow 发 `InterruptConnections` 并把关闭失败作为降级项返回（design 3.7）。这是 RPC 与热键共用的入口；`C/hotkey/mod.rs` 不需要自己的分支。
+- [x] 把 `AW/tests/connection_policy.rs` 中经由 Clash 域的用例改为新路径下的可观察断言（端点事件顺序）。逐条处置按本文件第 2 节的表。
 
 **测试**
 
@@ -127,11 +127,11 @@
 
 ## R2d — Profiles 域提交优先
 
-- [ ] `ProfileContentLock`（design 3.3）：组合根创建，注入 Profiles owner 与构建输入的捕获。捕获在一次读锁内读取已提交的 Profiles 快照与它引用的文件；owner 所有替换或补偿受管文件的路径（含物化恢复）都在写锁内。
-- [ ] `S/profiles/actor.rs`：`persist_candidate` 一族改为 design 3.3 的序列。`commit_with_resources` 一族改为：取得候选字节 → 校验（`RuntimeCandidate::staged`）→ 准备资源与清理 → 持写锁执行本地写与文档写 → 发布 → 完成与延后清理。
-- [ ] 计划内的订阅刷新、外部文件变化同样先校验后提交，并由 owner 自己发出 `committed`；校验拒绝记录到该来源的 `sources` 条目，位置与今天 Try 被拒绝时相同。来源条目里的 `operation_id` 沿用 owner 生成的提交标识。
-- [ ] `C/profiles.rs`、`C/mod.rs`：`after_commit` 一族按 design 3.4 组装结果；`create_profile`、`import_profile` 的自动激活沿用。
-- [ ] 改写 `AW/tests/connection_policy.rs` 中经由 Profiles 域的用例，处置按第 2 节的表。
+- [x] `ProfileContentLock`（design 3.3）：组合根创建，注入 Profiles owner 与构建输入的捕获。捕获在一次读锁内读取已提交的 Profiles 快照与它引用的文件；owner 所有替换或补偿受管文件的路径（含物化恢复）都在写锁内。
+- [x] `S/profiles/actor.rs`：`persist_candidate` 一族改为 design 3.3 的序列。`commit_with_resources` 一族改为：取得候选字节 → 校验（`RuntimeCandidate::staged`）→ 准备资源与清理 → 持写锁执行本地写与文档写 → 发布 → 完成与延后清理。
+- [x] 计划内的订阅刷新、外部文件变化同样先校验后提交，并由 owner 自己发出 `committed`；校验拒绝记录到该来源的 `sources` 条目，位置与今天 Try 被拒绝时相同。来源条目里的 `operation_id` 沿用 owner 生成的提交标识。
+- [x] `C/profiles.rs`、`C/mod.rs`：`after_commit` 一族按 design 3.4 组装结果；`create_profile`、`import_profile` 的自动激活沿用。
+- [x] 改写 `AW/tests/connection_policy.rs` 中经由 Profiles 域的用例，处置按第 2 节的表。
 
 **测试**
 
@@ -148,13 +148,13 @@
 
 ## R2e — 删除参与者路径
 
-- [ ] 删除：`AW/participant.rs`；`AW/policy.rs`；`AW/tcc.rs` 中的 `run_mutation`、`check_candidate`、`await_decision`、`confirm`、`cancel`、`restore`、`compensate_handoff`、`restore_recovery_target`、三种 `EvidenceGap` 拒绝、`switching_on` 分支；`AW/attempt.rs` 中的 `SourceDecision` 来源、`AppliedVerdict` 与 `recover_source_decision`；`AW/mutation.rs` 中的 `MutationRequest`、`RuntimePrepareOutcome::ack`、未被构造的阶段变体；`Message::BeginMutation`。
-- [ ] 删除：`S/mutation/` 的 `MutationParticipantFactory`、`MutationIntent`、`CommandClass`、`MutationHints`、`RequestedRuntimeFields`、`ActivationIntent`、`ContentDigest`、`StagedResourceToken`、`RuntimeImpact`、`MutationReceipt`、`MutationOutcomeKind`、`MutationConclusion`、`CheckRecord`、`Settlement`、`MutationCoordinator::{participant, committed}`、`classify_commit_aborted` 的参与者分支、测试用的 `IsolatedParticipant`。
-- [ ] 同一提交迁移它们的消费者：`MutationJournal.completed` 改为最近轮次的记录，`C/configuration_status.rs` 的 `recent_operations` 从它投影；`C/mod.rs:1862` 一带的 `ParkedPrepare` 测试改为挂住 `RuntimeGate` 的替身；`C/runtime_error.rs` 的 `ack_of`、`refusal_of` 删除。
-- [ ] `S/mutation/impact.rs`：留下三个域的投影、`application_target` 等三个身份函数、`selection_changed`，以及 `reaches_runtime(previous, candidate, touched)`。三个 owner 改用它。
-- [ ] `apply_prepared` 的返回类型收窄为 `Applied | Refused | Waiting | Unknown`，不再带策略与可恢复基线。
-- [ ] 删除 `AW/tests/participant_factory.rs`；`AW/tests/mutations.rs` 中断言回执、决定、Cancel、证据拒绝与命令策略的用例删除，其余改为经由 facade 或 owner 的断言；`AW/tests/closing.rs` 改写三条依赖 Try 阶段的用例，并新增“关闭时已提交、尚未应用”的结果。
-- [ ] 文档：`docs/development/architecture.md` “State and configuration” 第 4 条改为“提交前的校验不改变运行中的任何东西；运行中的内核由对账器收敛到已提交配置”，并改写提到参与者工厂与两种内部回执的段落；`docs/development/backend-packages.md:106` 一带同步；`docs/development/rust.md` 5.2 中引用 `tcc.rs` 的 `explicit: bool` 的例子保留到 R3b。
+- [x] 删除：`AW/participant.rs`；`AW/policy.rs`；`AW/tcc.rs` 中的 `run_mutation`、`check_candidate`、`await_decision`、`confirm`、`cancel`、`restore`、`compensate_handoff`、`restore_recovery_target`、三种 `EvidenceGap` 拒绝、`switching_on` 分支；`AW/attempt.rs` 中的 `SourceDecision` 来源、`AppliedVerdict` 与 `recover_source_decision`；`AW/mutation.rs` 中的 `MutationRequest`、`RuntimePrepareOutcome::ack`、未被构造的阶段变体；`Message::BeginMutation`。
+- [x] 删除：`S/mutation/` 的 `MutationParticipantFactory`、`MutationIntent`、`CommandClass`、`MutationHints`、`RequestedRuntimeFields`、`ActivationIntent`、`ContentDigest`、`StagedResourceToken`、`RuntimeImpact`、`MutationReceipt`、`MutationOutcomeKind`、`MutationConclusion`、`CheckRecord`、`Settlement`、`MutationCoordinator::{participant, committed}`、`classify_commit_aborted` 的参与者分支、测试用的 `IsolatedParticipant`。
+- [x] 同一提交迁移它们的消费者：`MutationJournal.completed` 改为最近轮次的记录，`C/configuration_status.rs` 的 `recent_operations` 从它投影；`C/mod.rs:1862` 一带的 `ParkedPrepare` 测试改为挂住 `RuntimeGate` 的替身；`C/runtime_error.rs` 的 `ack_of`、`refusal_of` 删除。
+- [x] `S/mutation/impact.rs`：留下三个域的投影、`application_target` 等三个身份函数、`selection_changed`，以及 `reaches_runtime(previous, candidate, touched)`。三个 owner 改用它。
+- [x] `apply_prepared` 的返回类型收窄为 `Applied | Refused | Waiting | Unknown`，不再带策略与可恢复基线。
+- [x] 删除 `AW/tests/participant_factory.rs`；`AW/tests/mutations.rs` 中断言回执、决定、Cancel、证据拒绝与命令策略的用例删除，其余改为经由 facade 或 owner 的断言；`AW/tests/closing.rs` 改写三条依赖 Try 阶段的用例，并新增“关闭时已提交、尚未应用”的结果。
+- [x] 文档：`docs/development/architecture.md` “State and configuration” 第 4 条改为“提交前的校验不改变运行中的任何东西；运行中的内核由对账器收敛到已提交配置”，并改写提到参与者工厂与两种内部回执的段落；`docs/development/backend-packages.md:106` 一带同步；`docs/development/rust.md` 5.2 中引用 `tcc.rs` 的 `explicit: bool` 的例子保留到 R3b。
 
 **验证**
 
@@ -165,10 +165,10 @@
 
 ## R3a — 一套应用顺序
 
-- [ ] `apply_prepared` 按 design 3.5“应用与发布”的矩阵实现每一种结果的记录、端口与产物处理，包括 `NotSubmitted` 的两类。
-- [ ] `Start` 命令在所有者已证明时、服务端点恢复后的还原、替换内核二进制后的重启改为“已提交目标的一次应用”：编排上移到 workflow，在该命令已有的那个 `LiveAttempt` 之内调用 `apply_prepared`，不另开尝试、不经过重试入口。它们不再调用 `CL/workflow.rs` 的 `reconcile` 与 `apply_runtime`；这两个函数与 `RuntimePreparationPort::prepare_latest` 删除，仍调用它们的测试（`AW/tests/connection_policy.rs:1018`、`AW/tests/validation.rs` 六处）改用保留的构建入口。
-- [ ] 替换二进制：停止、隔离恢复、安装三步不变；欠下重启时通知进度“正在重启”后应用；所有权未建立时由现有的重建路径处理，`Output::RestartWithheld` 删除。
-- [ ] 回执核对改为 design 3.5“回执核对”的规则（不比较路由代数）。
+- [x] `apply_prepared` 按 design 3.5“应用与发布”的矩阵实现每一种结果的记录、端口与产物处理，包括 `NotSubmitted` 的两类。
+- [x] `Start` 命令在所有者已证明时、服务端点恢复后的还原、替换内核二进制后的重启改为“已提交目标的一次应用”：编排上移到 workflow，在该命令已有的那个 `LiveAttempt` 之内调用 `apply_prepared`，不另开尝试、不经过重试入口。它们不再调用 `CL/workflow.rs` 的 `reconcile` 与 `apply_runtime`；这两个函数与 `RuntimePreparationPort::prepare_latest` 删除，仍调用它们的测试（`AW/tests/connection_policy.rs:1018`、`AW/tests/validation.rs` 六处）改用保留的构建入口。
+- [x] 替换二进制：停止、隔离恢复、安装三步不变；欠下重启时通知进度“正在重启”后应用；所有权未建立时由现有的重建路径处理，`Output::RestartWithheld` 删除。
+- [x] 回执核对改为 design 3.5“回执核对”的规则（不比较路由代数）。
 
 **验证**
 
@@ -180,18 +180,18 @@
 
 ## R3b — 单一对账循环
 
-- [ ] `AW/plan.rs`（新）：`Facts`、`CoreFact`、`Step`、`Conclusion`、`Trigger` 与纯函数 `plan`（design 3.5 的判定表）；现有的 `plan_owner`、`OwnerPlan`、`ServiceEvidence` 移入本文件。
-- [ ] `AW/mod.rs`：`Command` 改为 design 3.5 的命令集；`StartupReconcile`、`FollowService`、`RetryRuntime`、`SourceCommitted`、`ServiceReadiness` 都执行 `reconcile(trigger)`。`Startup` 只运行一次，之后返回第一次的报告；首轮无论结论如何都 `publish_full` 一次。
-- [ ] `AW/startup.rs` 重排为观察与执行：一轮的八步（design 3.5）；`Owner(..)` 与 `Stop { .. }` 的执行沿用现有的 `adopt_ready_service`、`move_execution_host`、`stop_owner`。
-- [ ] 记录按 design 3.5：`Attempt` 取代 `DeferredTarget`；`run` 取代从观察推断的 `StoppedByUser` 与 `CoreIntent::Stopped`、`CoreIntent::Restore`；删除 `LiveAttempt`、`AttemptStage`、`AttemptOrigin`、隔离判定、`recover`、`recover_by_reestablishing`、`retry_committed_target`、`retry_reestablish`、`AttemptCharge`、`DEFERRED_RETRY_BUDGET`、收敛定时器，以及 `C/convergence.rs` 中只为运行时调度服务的部分（`REESTABLISH_WAIT_DELAYS`、`OutcomeClass`、`next_wait`）。Effects 仍在使用的 `RetryBudget` 与 `RETRY_DELAYS` 保留。
-- [ ] 每轮开始先 `consume_settled_action()`；未结清时结论为 `Unknown`。“连续两次未知”按 design 3.5 计数。
-- [ ] `Tick`：按 design 3.5“触发”的两条实现。服务端点恢复的到期条件改为只看端点是否处于 `Degraded { desired: Service }`（`ServiceRecovery` 删除 `intent` 字段，其余不变）；重连成功后跑一轮。上一轮结论为 `Waiting` 或 `Unknown` 时再跑一轮。服务端点恢复的次数上限、抑制与重新武装的既有测试保留。
-- [ ] 回执核对通过的运行实例：重新记为已确认并关闭端口过渡（design 3.5“回执核对”）。
-- [ ] `BinaryReplaced` 欠下重启时把 `run` 设为 Running。
-- [ ] 维护项按 design 3.5。
-- [ ] `C/configuration_status.rs`：从 `ReconcilerStatus` 投影；`MutationJournal` 删除。`subscribe_configuration_changes` 的第一个接收端改为 `ReconcilerStatus` 的 watch，`nyanpasu-rpc` 的转发与本地订阅同步改类型。
-- [ ] `StartupReport` 保留；`StartupOutcome` 由首轮结论映射：`Converged`、`Inactive` → `Ready`；`Waiting`、`NotInEffect` → `ReadyDegraded`；`Unknown` → `RecoveryRequired`。消费者同步：`C/app_lifecycle.rs`、`C/test_support.rs`、`tauri/src/utils/resolve.rs`、`nyanpasu-server/src/run.rs` 与它的重复启动测试。
-- [ ] 文档：`docs/development/rust.md` 5.2 的 `explicit: bool` 例子改为仍然存在的例子或删除。
+- [x] `AW/plan.rs`（新）：`Facts`、`CoreFact`、`Step`、`Conclusion`、`Trigger` 与纯函数 `plan`（design 3.5 的判定表）；现有的 `plan_owner`、`OwnerPlan`、`ServiceEvidence` 移入本文件。
+- [x] `AW/mod.rs`：`Command` 改为 design 3.5 的命令集；`StartupReconcile`、`FollowService`、`RetryRuntime`、`SourceCommitted`、`ServiceReadiness` 都执行 `reconcile(trigger)`。`Startup` 只运行一次，之后返回第一次的报告；首轮无论结论如何都 `publish_full` 一次。
+- [x] `AW/startup.rs` 重排为观察与执行：一轮的八步（design 3.5）；`Owner(..)` 与 `Stop { .. }` 的执行沿用现有的 `adopt_ready_service`、`move_execution_host`、`stop_owner`。
+- [x] 记录按 design 3.5：`Attempt` 取代 `DeferredTarget`；`run` 取代从观察推断的 `StoppedByUser` 与 `CoreIntent::Stopped`、`CoreIntent::Restore`；删除 `LiveAttempt`、`AttemptStage`、`AttemptOrigin`、隔离判定、`recover`、`recover_by_reestablishing`、`retry_committed_target`、`retry_reestablish`、`AttemptCharge`、`DEFERRED_RETRY_BUDGET`、收敛定时器，以及 `C/convergence.rs` 中只为运行时调度服务的部分（`REESTABLISH_WAIT_DELAYS`、`OutcomeClass`、`next_wait`）。Effects 仍在使用的 `RetryBudget` 与 `RETRY_DELAYS` 保留。
+- [x] 每轮开始先 `consume_settled_action()`；未结清时结论为 `Unknown`。“连续两次未知”按 design 3.5 计数。
+- [x] `Tick`：按 design 3.5“触发”的两条实现。服务端点恢复的到期条件改为只看端点是否处于 `Degraded { desired: Service }`（`ServiceRecovery` 删除 `intent` 字段，其余不变）；重连成功后跑一轮。上一轮结论为 `Waiting` 或 `Unknown` 时再跑一轮。服务端点恢复的次数上限、抑制与重新武装的既有测试保留。
+- [x] 回执核对通过的运行实例：重新记为已确认并关闭端口过渡（design 3.5“回执核对”）。
+- [x] `BinaryReplaced` 欠下重启时把 `run` 设为 Running。
+- [x] 维护项按 design 3.5。
+- [x] `C/configuration_status.rs`：从 `ReconcilerStatus` 投影；`MutationJournal` 删除。`subscribe_configuration_changes` 的第一个接收端改为 `ReconcilerStatus` 的 watch，`nyanpasu-rpc` 的转发与本地订阅同步改类型。
+- [x] `StartupReport` 保留；`StartupOutcome` 由首轮结论映射：`Converged`、`Inactive` → `Ready`；`Waiting`、`NotInEffect` → `ReadyDegraded`；`Unknown` → `RecoveryRequired`。消费者同步：`C/app_lifecycle.rs`、`C/test_support.rs`、`tauri/src/utils/resolve.rs`、`nyanpasu-server/src/run.rs` 与它的重复启动测试。
+- [x] 文档：`docs/development/rust.md` 5.2 的 `explicit: bool` 例子改为仍然存在的例子或删除。
 
 **测试**
 
@@ -211,8 +211,8 @@
 
 ## R3c — 内核状态作为触发
 
-- [ ] `AW/mod.rs`：订阅 `CoreObserver` 的 watch，按 `(host, generation, connectivity, state, revision)` 去重后投递 `Message::CoreChanged`；关闭时退出。
-- [ ] 对账器自己引起的状态变化不需要特殊处理：再跑一轮得到 `Idle(Converged)`。
+- [x] `AW/mod.rs`：订阅 `CoreObserver` 的 watch，按 `(host, generation, connectivity, state, revision)` 去重后投递 `Message::CoreChanged`；关闭时退出。
+- [x] 对账器自己引起的状态变化不需要特殊处理：再跑一轮得到 `Idle(Converged)`。
 
 **测试**
 
@@ -222,10 +222,10 @@
 
 ## R4a — 收缩状态引擎
 
-- [ ] 先盘点：列出 `E/` 的每个公开项在 `backend/` 内的生产消费者与测试消费者，写进提交说明。
-- [ ] 删除没有生产消费者的部分：单次参与者、`DecisionHandle` 与 `StateDecision`、`replace_if_version_with_participant`、只为参与者存在的 ACK 策略与回滚通知。保留 `PersistentStateManager` 的加载、`upsert`、`replace_if_version`、`replace_if_version_with_local_write`，快照与版本；“写入返回之前快照已发布”的顺序保持不变并有测试。
-- [ ] 常驻订阅者机制若只剩测试消费者，一并删除，测试随之删除或改为针对保留的接口。`upsert` 返回的 `PrepareReport` 没有消费者时改为 `()`，调用方同步。
-- [ ] 除上一条点名的返回类型外，不改保留接口的签名。
+- [x] 先盘点：列出 `E/` 的每个公开项在 `backend/` 内的生产消费者与测试消费者，写进提交说明。
+- [x] 删除没有生产消费者的部分：单次参与者、`DecisionHandle` 与 `StateDecision`、`replace_if_version_with_participant`、只为参与者存在的 ACK 策略与回滚通知。保留 `PersistentStateManager` 的加载、`upsert`、`replace_if_version`、`replace_if_version_with_local_write`，快照与版本；“写入返回之前快照已发布”的顺序保持不变并有测试。
+- [x] 常驻订阅者机制若只剩测试消费者，一并删除，测试随之删除或改为针对保留的接口。`upsert` 返回的 `PrepareReport` 没有消费者时改为 `()`，调用方同步。
+- [x] 除上一条点名的返回类型外，不改保留接口的签名。
 
 **验证**
 
@@ -234,9 +234,9 @@
 
 ## R5a — 线缆
 
-- [ ] `V/`：删除不再产生的值：`RuntimeAftermath` 的 `RolledBack`、`RollbackFailed`、`Unknown`（只剩一个变体时删除该类型及携带它的字段）；`EvidenceGap`；`RuntimeCheckUnavailable` 中不再产生的变体；`RuntimeError` 中不再构造的变体（`Isolated`、`SourceSettled`、`UnsettledBaseline`、`CommittedAfterRefusal` 等，以编译器与 `rg` 的结果为准）；`RuntimeCommitStatus::RecoveryRequired` 与 `DegradationReason::RuntimeRecoveryRequired`（并入 `Deferred`）；`RuntimeConvergence` 的 `attempts`、`automatic_remaining`；没有生产者的 `DegradationPhase`；`OperationStatus.conclusion`。`ConvergenceHealth` 与 effects 共用，只删除两边都不再产生的值。
-- [ ] `nyanpasu-rpc-protocol` 的接收镜像、`receiving_tests`、契约基线（新增带日期的基线文件，不改旧文件）同步。
-- [ ] 重新导出 bindings；`frontend/nyanpasu/src/utils/ipc-error.ts`、调试页 `configuration-status.tsx` 与六种语言的文案同步，删除不再可达的文案键。
+- [x] `V/`：删除不再产生的值：`RuntimeAftermath` 的 `RolledBack`、`RollbackFailed`、`Unknown`（只剩一个变体时删除该类型及携带它的字段）；`EvidenceGap`；`RuntimeCheckUnavailable` 中不再产生的变体；`RuntimeError` 中不再构造的变体（`Isolated`、`SourceSettled`、`UnsettledBaseline`、`CommittedAfterRefusal` 等，以编译器与 `rg` 的结果为准）；`RuntimeCommitStatus::RecoveryRequired` 与 `DegradationReason::RuntimeRecoveryRequired`（并入 `Deferred`）；`RuntimeConvergence` 的 `attempts`、`automatic_remaining`；没有生产者的 `DegradationPhase`；`OperationStatus.conclusion`。`ConvergenceHealth` 与 effects 共用，只删除两边都不再产生的值。
+- [x] `nyanpasu-rpc-protocol` 的接收镜像、`receiving_tests`、契约基线（新增带日期的基线文件，不改旧文件）同步。
+- [x] 重新导出 bindings；`frontend/nyanpasu/src/utils/ipc-error.ts`、调试页 `configuration-status.tsx` 与六种语言的文案同步，删除不再可达的文案键。
 
 **验证**
 
@@ -245,13 +245,13 @@
 
 ## R5b — 规范文档收尾
 
-- [ ] 通读 `docs/development/architecture.md`、`backend-packages.md`、`rust.md`、`testing.md`，改掉仍描述旧模型的句子。
-- [ ] `AGENTS.md` 不复述被改的规则，确认无需改动。
+- [x] 通读 `docs/development/architecture.md`、`backend-packages.md`、`rust.md`、`testing.md`，改掉仍描述旧模型的句子。
+- [x] `AGENTS.md` 不复述被改的规则，确认无需改动。
 
 ## R5c — 模块改名
 
-- [ ] `client/application_workflow/` → `client/reconciler/`；`ApplicationWorkflowClient` → `RuntimeReconcilerClient`，actor、参数、测试夹具与其他 crate 的引用同步。`core_lifecycle/` 不动。
-- [ ] `scripts/src/architecture-ledger/` 中引用旧路径的策略与夹具、`docs/development/*.md` 同步；`pnpm run test:scripts`、`pnpm run test:architecture-ledger` 通过。
+- [x] `client/application_workflow/` → `client/reconciler/`；`ApplicationWorkflowClient` → `RuntimeReconcilerClient`，actor、参数、测试夹具与其他 crate 的引用同步。`core_lifecycle/` 不动。
+- [x] `scripts/src/architecture-ledger/` 中引用旧路径的策略与夹具、`docs/development/*.md` 同步；`pnpm run test:scripts`、`pnpm run test:architecture-ledger` 通过。
 
 **验证**
 
@@ -282,3 +282,41 @@
 | `shutdown_rejects_a_queued_profile_apply_and_waits_for_close`                         | 拆成两条：关闭时尚未提交的被拒绝；已提交而应用排队的返回“已关闭”              |
 | `profile_interruption_serializes_mode_host_and_binary_operations`                     | 宿主、二进制与运行时动作仍然串行；“Clash 源未变”的断言按提交优先改变          |
 | `committed_runtime_inputs_survive_newer_profile_and_channel_state`                    | 冻结输入的行为不变；改用保留的构建入口（R3a）                                 |
+
+## 3. 实施记录（2026-11-14）
+
+### 与卡面不同之处
+
+| 卡       | 不同之处                                                                        | 原因                                                                                            |
+| -------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| R2b      | `CoreFacade` 新增 `prepare_service_host`                                        | facade 原先只在移交里让 daemon 就绪；`PrepareService` 需要不带移交的入口。全局约束 9 的唯一例外 |
+| R2b–R2d  | 延期后经重试路径成功的应用不断连、不释放 daemon                                 | 两条应用路径并存期间的缺口，R3a 消除                                                            |
+| R3b      | `Checked` 不运行一轮                                                            | 那时没有任何已提交的变化                                                                        |
+| R3b      | `CoreFacade::reconcile` 在观察到已停止时不带前置修订                            | 管理器保留崩溃实例的修订，并拒绝对已停止内核的带条件应用                                        |
+| R3b、R3c | 回执核对增加进程实例标识，状态快照增加 `instance_id`                            | 跨重连时修订号不足以认定同一进程                                                                |
+| R3c      | 判定表增加第 0 行；节拍先结清待决动作再考虑端点恢复；内核状态触发最多一条待处理 | 见 design 3.5                                                                                   |
+| R4a      | 加载错误去掉管理器类型参数与初始化变体，`from_state` 改为同步                   | 它们只为被删除的机制存在；保留等于留兼容层                                                      |
+| R5a      | 对账器的通用原因使用新的 `ConfigurationNotInEffect`，`RecoveryUnresolved` 删除  | 原变体的文案是“无法恢复运行时”                                                                  |
+| R5a      | `CommitAborted::ValidateState` 删除；延期与校验失败的文案改写                   | 该变体已无来源；“稍后应用”对被拒绝的目标不成立，校验失败发生在保存之前                          |
+| R2b      | 删除 server 测试 `…_copy_paths_compensation` 及脚本测试对它的要求               | 提交先于移交，不再有需要提权的补偿路径                                                          |
+
+### 审查结果
+
+每个 PR 完成后由 codex 审查提交范围（另一审查模型在本机不可用），发现折回对应提交。
+
+| 范围 | 轮次与结论                                       |
+| ---- | ------------------------------------------------ |
+| 计划 | 58 → 74 → 98，通过                               |
+| PR-1 | 95，通过                                         |
+| PR-2 | 74 → 88 → 96，通过                               |
+| PR-3 | 72 → 82 → 95，通过                               |
+| PR-4 | 91，通过                                         |
+| PR-5 | 88 → 97；第 2 轮剩余的一处命名遗留已修，未再送审 |
+
+### 验证情况
+
+- 没有真机冒烟。服务模式的移交、daemon 崩溃恢复、提权拒绝只有替身测试。
+- `cfg(unix)` 与 macOS 的代码没有在本机编译，留给 CI。
+- `client::ports::tests::resolves_managed_redir_and_tproxy_ports` 是既有的抖动测试（先挑空闲端口再绑定），并行运行时偶发失败，与本工作无关。
+- 新文案没有在运行中的应用里看过。
+- 栈中每个改动后端的提交都单独通过了 rustfmt、clippy 与 core 测试。

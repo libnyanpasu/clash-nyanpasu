@@ -32,7 +32,6 @@ mod clash_config;
 mod clash_streams;
 pub mod configuration_status;
 pub mod core_lifecycle;
-pub mod debug_http;
 pub mod effects;
 mod error;
 mod event_sink;
@@ -42,12 +41,14 @@ mod geo_mode;
 mod headless_tests;
 pub mod host_adapters;
 pub mod hotkey;
+pub mod http_server;
 pub mod jobs;
 pub mod logs;
 #[cfg(test)]
 mod network_tests;
 pub(crate) mod ports;
 pub mod profiles;
+mod remote_access;
 pub mod runtime;
 pub mod runtime_build;
 pub mod runtime_error;
@@ -63,11 +64,13 @@ mod traffic;
 pub(crate) mod traffic_frames;
 mod transparent_proxy;
 
+pub use self::remote_access::{Error as RemoteAccessSpawnError, SetRemoteAccessError};
 use self::{
     application::ApplicationClient,
     clash_config::ClashConfigClient,
-    debug_http::{DebugHttpControl, DebugHttpControlError, DebugHttpStatus},
     host_adapters::ClientHostAdapters,
+    http_server::{HttpServerControlError, HttpServerStatus},
+    remote_access::{RemoteAccessArgs, RemoteAccessClient},
     session_state::SessionStateClient,
 };
 use crate::{
@@ -84,7 +87,7 @@ use crate::{
 use nyanpasu_config::{
     application::{
         IpLookupProvider, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch,
-        ReleaseChannel,
+        ReleaseChannel, RemoteAccessConfig,
     },
     clash::{
         config::{ClashConfig, ClashConfigPatch},
@@ -169,7 +172,9 @@ pub enum SetupError {
     #[snafu(display("failed to cleanup candidates"))]
     CleanupCandidates { source: runtime::Error },
     #[snafu(display("failed to start http server"))]
-    StartHttpServer { source: debug_http::Error },
+    StartHttpServer { source: http_server::Error },
+    #[snafu(display("failed to start the remote access owner"))]
+    StartRemoteAccess { source: RemoteAccessSpawnError },
     #[snafu(display("failed to start core logs"))]
     StartCoreLogs {
         source: nyanpasu_observers::logs::SpawnError,
@@ -280,7 +285,7 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
-    debug_http: Option<Arc<dyn DebugHttpControl>>,
+    remote_access: RemoteAccessClient,
     bundle_metadata: BundleMetadata,
     core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
@@ -465,21 +470,20 @@ impl NyanpasuClient {
     ) -> std::result::Result<Self, SetupError> {
         let icons =
             crate::service::icon::IconService::new(paths.clone(), host_adapters.icon_fetcher);
-        let debug_http = if let Some(factory) = host_adapters.debug_http {
-            let http = factory().await.context(StartHttpServerSnafu)?;
-            tasks.spawn({
-                let (http, token) = (http.clone(), shutdown.child_token());
-                async move {
-                    token.cancelled().await;
-                    if let Err(error) = http.shutdown().await {
-                        tracing::warn!(%error, "debug HTTP server shutdown failed");
-                    }
-                }
-            });
-            Some(http)
-        } else {
-            None
+        let http_server = match host_adapters.http_server {
+            Some(factory) => Some(factory().await.context(StartHttpServerSnafu)?),
+            None => None,
         };
+        let remote_access = RemoteAccessClient::spawn(
+            RemoteAccessArgs {
+                application: application.clone(),
+                http: http_server,
+                shutdown: shutdown.child_token(),
+            },
+            &tasks,
+        )
+        .await
+        .context(StartRemoteAccessSnafu)?;
         let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
@@ -696,7 +700,7 @@ impl NyanpasuClient {
         };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
-                debug_http,
+                remote_access,
                 bundle_metadata,
                 core_logs,
                 app_logs,
@@ -737,36 +741,45 @@ impl NyanpasuClient {
         })
     }
 
-    pub async fn debug_http_status(
+    pub async fn http_server_status(
         &self,
-    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
-        let http = self
-            .inner
-            .debug_http
-            .as_ref()
-            .ok_or(DebugHttpControlError::ReadStatusUnsupported)?;
-        http.status()
-            .await
-            .map_err(|source| DebugHttpControlError::ReadStatus { source })
+    ) -> std::result::Result<HttpServerStatus, HttpServerControlError> {
+        self.inner.remote_access.status().await
     }
-    pub async fn set_debug_http_enabled(
+
+    /// A URL that logs the caller into the running server, or `None` while it is off.
+    ///
+    /// The URL is a credential. Only a desktop-only command may return it, and nothing may log it.
+    pub async fn http_launch_url(
         &self,
-        enabled: bool,
-    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
-        let http = self
-            .inner
-            .debug_http
-            .as_ref()
-            .ok_or(DebugHttpControlError::ChangeEnabledUnsupported)?;
-        http.set_enabled(enabled)
-            .await
-            .map_err(|source| DebugHttpControlError::ChangeEnabled { source })
+    ) -> std::result::Result<Option<String>, HttpServerControlError> {
+        self.inner.remote_access.launch_url().await
     }
-    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
-        if let Some(http) = &self.inner.debug_http {
-            http.set_enabled(false).await?;
-        }
-        Ok(())
+
+    /// The committed remote-access settings.
+    pub fn remote_access_config(&self) -> RemoteAccessConfig {
+        self.inner.remote_access.config()
+    }
+
+    /// Commits `config`, then makes the listener follow it. See [`RemoteAccessClient::set`].
+    pub async fn set_remote_access(
+        &self,
+        config: RemoteAccessConfig,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner.remote_access.set(config).await
+    }
+
+    /// Makes the listener follow the committed settings, as at startup.
+    pub async fn reconcile_http_server(
+        &self,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner.remote_access.reconcile().await
     }
 
     pub async fn release_channel(&self) -> Result<ReleaseChannel> {
@@ -1060,6 +1073,12 @@ impl NyanpasuClient {
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
             hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_deref())?;
+        }
+        if patch.remote_access.is_some() {
+            return Err(ConfigError::InvalidRemoteAccess {
+                reason: nyanpasu_config::application::RemoteAccessError::UseDedicatedCommand,
+            }
+            .into());
         }
         let mut candidate = self.inner.application.snapshot().state;
         candidate.apply(patch.clone());

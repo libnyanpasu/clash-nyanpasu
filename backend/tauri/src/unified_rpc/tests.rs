@@ -67,10 +67,21 @@ fn app_patch_decode_rejects_dedicated_fields_on_desktop() {
         );
         let before = fixture.call("get_app_config", json!({})).await;
         let status = fixture.call("get_configuration_status", json!({})).await.1;
-        for patch in [
-            json!({"hotkeys": []}),
-            json!({"enable_service_mode": false}),
-            json!({"hotkeys": [], "enable_service_mode": true, "proxy_layout_column": 97}),
+        for (patch, rejected_fields) in [
+            (json!({"hotkeys": []}), vec!["hotkeys"]),
+            (
+                json!({"enable_service_mode": false}),
+                vec!["enable_service_mode"],
+            ),
+            (json!({"remote_access": {}}), vec!["remote_access"]),
+            (
+                json!({"hotkeys": [], "enable_service_mode": true, "proxy_layout_column": 97}),
+                vec!["hotkeys", "enable_service_mode"],
+            ),
+            (
+                json!({"remote_access": {}, "proxy_layout_column": 97}),
+                vec!["remote_access"],
+            ),
         ] {
             let error = native::call_rpc(
                 app.handle().clone(),
@@ -83,9 +94,10 @@ fn app_patch_decode_rejects_dedicated_fields_on_desktop() {
             .unwrap_err();
             assert_eq!(error.kind, "invalid_params");
             assert!(error.domain_error.is_none());
-            assert!(error.message.contains(
-                "use set_hotkeys for hotkeys and set_service_mode for enable_service_mode"
-            ));
+            assert_eq!(
+                error.message,
+                format!("preferences cannot write {rejected_fields:?}")
+            );
             assert_eq!(fixture.call("get_app_config", json!({})).await, before);
             let after = fixture.call("get_configuration_status", json!({})).await.1;
             assert_eq!(after["source_versions"], status["source_versions"]);
@@ -173,7 +185,7 @@ fn browser_debug_page_and_real_rpc() {
     let frontend_events = Arc::new(RecordingSink::default());
     args.logging.frontend = frontend_events.clone();
     let routes = Arc::new(RpcHttpRoutes::default());
-    args.host_adapters.debug_http = Some(nyanpasu_rpc::http::test_support::control_factory(
+    args.host_adapters.http_server = Some(nyanpasu_rpc::http::test_support::control_factory(
         frontend,
         routes.clone(),
     ));
@@ -210,12 +222,16 @@ fn browser_debug_page_and_real_rpc() {
             let token = client.shutdown_child_token();
             tasks.spawn(client.track_until_shutdown(&token, forwarder));
         }
-        let url = client
-            .set_debug_http_enabled(true)
+        client
+            .set_remote_access(nyanpasu_config::application::RemoteAccessConfig {
+                http: nyanpasu_config::application::HttpAccessConfig {
+                    enabled: true,
+                    ..Default::default()
+                },
+            })
             .await
-            .unwrap()
-            .url
             .unwrap();
+        let url = client.http_launch_url().await.unwrap().unwrap();
         let repository = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(60),
@@ -229,7 +245,7 @@ fn browser_debug_page_and_real_rpc() {
                 .output(),
         )
         .await;
-        client.shutdown_debug_http().await.unwrap();
+        client.set_remote_access(Default::default()).await.unwrap();
         tasks.shutdown().await;
         let output = output.unwrap().unwrap();
         assert!(

@@ -6,12 +6,12 @@ export function createQueryBindings(rpc: RpcClient) {
   const commands = rpc
 
   const queries = {
-    getDebugHttpStatus: (
-      ...args: Parameters<typeof commands.getDebugHttpStatus>
+    getHttpServerStatus: (
+      ...args: Parameters<typeof commands.getHttpServerStatus>
     ) =>
       queryOptions({
-        queryKey: ['getDebugHttpStatus', ...args],
-        queryFn: () => commands.getDebugHttpStatus(...args),
+        queryKey: ['getHttpServerStatus', ...args],
+        queryFn: () => commands.getHttpServerStatus(...args),
       }),
     getConfigurationStatus: (
       ...args: Parameters<typeof commands.getConfigurationStatus>
@@ -427,11 +427,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.openNativeFileDialog>) =>
         commands.openNativeFileDialog(...input),
     }),
-    setDebugHttpEnabled: mutationOptions({
-      mutationKey: ['setDebugHttpEnabled'],
-      mutationFn: (input: Parameters<typeof commands.setDebugHttpEnabled>) =>
-        commands.setDebugHttpEnabled(...input),
-    }),
     retryConfigurationRuntime: mutationOptions({
       mutationKey: ['retryConfigurationRuntime'],
       mutationFn: (
@@ -766,6 +761,16 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['setServiceMode'],
       mutationFn: (input: Parameters<typeof commands.setServiceMode>) =>
         commands.setServiceMode(...input),
+    }),
+    setRemoteAccess: mutationOptions({
+      mutationKey: ['setRemoteAccess'],
+      mutationFn: (input: Parameters<typeof commands.setRemoteAccess>) =>
+        commands.setRemoteAccess(...input),
+    }),
+    createHttpLaunchUrl: mutationOptions({
+      mutationKey: ['createHttpLaunchUrl'],
+      mutationFn: (input: Parameters<typeof commands.createHttpLaunchUrl>) =>
+        commands.createHttpLaunchUrl(...input),
     }),
     selectProxy: mutationOptions({
       mutationKey: ['selectProxy'],

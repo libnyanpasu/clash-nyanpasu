@@ -43,7 +43,7 @@ macro_rules! schema_commands {
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
         schema_commands![
-            commands::status::get_debug_http_status,
+            commands::status::get_http_server_status,
             commands::status::get_configuration_status,
             // Read-only commands
             ipc::read_clipboard_text,
@@ -116,7 +116,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::show_native_message_dialog,
             ipc::ask_native_dialog,
             ipc::open_native_file_dialog,
-            ipc::set_debug_http_enabled,
             commands::status::retry_configuration_runtime,
             commands::status::retry_configuration_effect,
             ipc::set_release_channel,
@@ -184,6 +183,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::service::stop_service,
             ipc::service::restart_service,
             commands::host::set_service_mode,
+            commands::host::set_remote_access,
+            commands::status::create_http_launch_url,
             commands::clash::select_proxy,
             commands::clash::clear_proxy_fixed,
             commands::clash::update_proxy_provider,
@@ -671,8 +672,12 @@ mod tests {
         assert!(!queries.contains("unsubscribeClashConnectionDetails:"));
         assert!(mutations.contains("subscribeClashConnectionDetails:"));
         assert!(mutations.contains("unsubscribeClashConnectionDetails:"));
-        assert!(!queries.contains("setDebugHttpEnabled:"));
-        assert!(mutations.contains("setDebugHttpEnabled:"));
+        // The launch URL is a credential: a query would keep it in the client cache.
+        assert!(!queries.contains("createHttpLaunchUrl:"));
+        assert!(mutations.contains("createHttpLaunchUrl:"));
+        assert!(!queries.contains("setRemoteAccess:"));
+        assert!(mutations.contains("setRemoteAccess:"));
+        assert!(queries.contains("getHttpServerStatus:"));
         assert!(queries.contains("getAppUpdateState:"));
         // A probe downloads but writes nothing.
         assert!(queries.contains("probeProfileUrl:"));
@@ -724,7 +729,7 @@ mod tests {
             "DegradationPhase",
             "DegradationReason",
             "NyanpasuAppConfig",
-            "NyanpasuAppConfigPatch",
+            "ApplicationPreferencesPatch",
             "ClashConfig",
             "ClashConfigPatch",
             "ClashGuardOverridesPatch",
@@ -734,6 +739,33 @@ mod tests {
                 generated.contains(&format!("export type {name}"))
                     || generated.contains(&format!("export interface {name}")),
                 "expected named TS export for {name}"
+            );
+        }
+
+        // The general preferences contract advertises only ordinary preferences: the privileged
+        // settings have their own commands and the full internal patch is not exported at all.
+        assert!(!generated.contains("NyanpasuAppConfigPatch"));
+        for declaration in [
+            exported_type(&generated, "ApplicationPreferencesPatch_Serialize"),
+            exported_type(&generated, "ApplicationPreferencesPatch_Deserialize"),
+        ] {
+            for forbidden in ["hotkeys", "enable_service_mode", "remote_access"] {
+                assert!(
+                    !declaration.contains(forbidden),
+                    "preferences advertise {forbidden}:\n{declaration}"
+                );
+            }
+            assert_contains_all(
+                declaration,
+                "ApplicationPreferencesPatch",
+                &[
+                    "proxy_layout_column",
+                    // Ordinary null is a no-op and the field is optional, so both are in the contract.
+                    "theme_color?: string | null",
+                    // The clearable preferences accept an explicit null.
+                    "release_channel?: ReleaseChannel | null",
+                    "pac_url?: string | null",
+                ],
             );
         }
 

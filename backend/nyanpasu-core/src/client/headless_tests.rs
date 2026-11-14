@@ -2,7 +2,7 @@
 
 use std::{error::Error as _, sync::Arc, time::Duration};
 
-use nyanpasu_config::application::{I18nLanguage, NyanpasuAppConfigPatch};
+use nyanpasu_config::application::{I18nLanguage, NyanpasuAppConfigPatch, RemoteAccessConfig};
 use nyanpasu_runtime_values::{
     configuration::{ConvergenceHealth, EffectFailureCode, EffectKind},
     hotkey::HotkeyAction,
@@ -10,8 +10,7 @@ use nyanpasu_runtime_values::{
 use tempfile::TempDir;
 
 use super::{
-    ClientError, ClientSetupArgs, NyanpasuClient,
-    debug_http::{DebugHttpControl, DebugHttpControlError, DebugHttpStatus},
+    ClientError, ClientSetupArgs, NyanpasuClient, SetRemoteAccessError,
     effects::{
         actor::EffectsSnapshot,
         executor::ApplicationEffectExecutor,
@@ -19,6 +18,7 @@ use super::{
         status::{EffectHealth, EffectRevision},
     },
     hotkey::ports::WindowError,
+    http_server::{HttpServerControl, HttpServerControlError, HttpServerStatus},
     system_proxy::{SystemProxyArgs, SystemProxyClient},
     test_support,
     test_support::TestControlEndpoint,
@@ -64,7 +64,7 @@ async fn headless_args(dir: &TempDir) -> ClientSetupArgs {
     ));
     args.window = None;
     args.accelerators = None;
-    args.host_adapters.debug_http = None;
+    args.host_adapters.http_server = None;
     args
 }
 
@@ -112,7 +112,7 @@ async fn headless_client_constructs_without_presentation_capabilities() {
     let args = headless_args(&dir).await;
     assert!(args.window.is_none());
     assert!(args.accelerators.is_none());
-    assert!(args.host_adapters.debug_http.is_none());
+    assert!(args.host_adapters.http_server.is_none());
     let client = NyanpasuClient::try_new(args).await.unwrap();
     assert!(client.get_app_config().await.is_ok());
     shutdown(&client).await;
@@ -214,16 +214,23 @@ async fn missing_window_returns_unsupported() {
     shutdown(&client).await;
 }
 
-struct FailedDebugHttp;
+struct FailedHttpServer;
 
 #[async_trait::async_trait]
-impl DebugHttpControl for FailedDebugHttp {
-    async fn status(&self) -> anyhow::Result<DebugHttpStatus> {
+impl HttpServerControl for FailedHttpServer {
+    async fn status(&self) -> anyhow::Result<HttpServerStatus> {
         Err(std::io::Error::other("status cause").into())
     }
 
-    async fn set_enabled(&self, _: bool) -> anyhow::Result<DebugHttpStatus> {
-        Err(std::io::Error::other("enabled cause").into())
+    async fn configure(
+        &self,
+        _: &nyanpasu_config::application::HttpAccessConfig,
+    ) -> anyhow::Result<HttpServerStatus> {
+        Err(std::io::Error::other("configure cause").into())
+    }
+
+    async fn launch_url(&self) -> anyhow::Result<Option<String>> {
+        Ok(None)
     }
 
     async fn shutdown(&self) -> anyhow::Result<()> {
@@ -232,30 +239,33 @@ impl DebugHttpControl for FailedDebugHttp {
 }
 
 #[tokio::test]
-async fn missing_debug_http_returns_structured_unsupported() {
+async fn missing_http_server_returns_structured_unsupported() {
     let dir = tempfile::tempdir().unwrap();
     let client = headless_client(&dir).await;
-    let read = client.debug_http_status().await.unwrap_err();
-    let change = client.set_debug_http_enabled(true).await.unwrap_err();
-    assert!(matches!(read, DebugHttpControlError::ReadStatusUnsupported));
+    let read = client.http_server_status().await.unwrap_err();
+    let SetRemoteAccessError::Server { source: change } = client
+        .set_remote_access(RemoteAccessConfig::default())
+        .await
+        .unwrap_err()
+    else {
+        panic!("a host without an HTTP server rejects the change");
+    };
     assert!(matches!(
-        change,
-        DebugHttpControlError::ChangeEnabledUnsupported
+        read,
+        HttpServerControlError::ReadStatusUnsupported
     ));
-    assert!(matches!(
-        client.set_debug_http_enabled(false).await.unwrap_err(),
-        DebugHttpControlError::ChangeEnabledUnsupported
-    ));
+    assert!(matches!(change, HttpServerControlError::ChangeUnsupported));
+    assert_eq!(client.remote_access_config(), RemoteAccessConfig::default());
     for (error, kind, message) in [
         (
             read,
             "read_status_unsupported",
-            "reading debug HTTP status is not supported",
+            "reading the HTTP server status is not supported",
         ),
         (
             change,
-            "change_enabled_unsupported",
-            "changing debug HTTP enablement is not supported",
+            "change_unsupported",
+            "changing the HTTP server settings is not supported",
         ),
     ] {
         assert_eq!(
@@ -269,45 +279,37 @@ async fn missing_debug_http_returns_structured_unsupported() {
 
     let dir = tempfile::tempdir().unwrap();
     let mut args = headless_args(&dir).await;
-    args.host_adapters.debug_http = Some(Arc::new(|| {
-        Box::pin(async { Ok(Arc::new(FailedDebugHttp) as Arc<dyn DebugHttpControl>) })
+    args.host_adapters.http_server = Some(Arc::new(|| {
+        Box::pin(async { Ok(Arc::new(FailedHttpServer) as Arc<dyn HttpServerControl>) })
     }));
     let client = NyanpasuClient::try_new(args).await.unwrap();
-    let read = client.debug_http_status().await.unwrap_err();
-    let change = client.set_debug_http_enabled(true).await.unwrap_err();
-    assert!(matches!(read, DebugHttpControlError::ReadStatus { .. }));
+    let read = client.http_server_status().await.unwrap_err();
+    assert!(matches!(read, HttpServerControlError::ReadStatus { .. }));
+    assert_eq!(
+        serde_json::to_value(&read).unwrap(),
+        serde_json::json!({"kind": "read_status"})
+    );
+    assert_eq!(read.to_string(), "could not read the HTTP server status");
+    assert_eq!(read.source().unwrap().to_string(), "status cause");
+    assert!(
+        read.source()
+            .unwrap()
+            .downcast_ref::<std::io::Error>()
+            .is_some()
+    );
+    // The settings commit first, so a listener failure afterwards is a degraded outcome
+    // and not an error that suggests nothing was committed.
+    let outcome = client
+        .set_remote_access(RemoteAccessConfig::default())
+        .await
+        .unwrap();
     assert!(matches!(
-        change,
-        DebugHttpControlError::ChangeEnabled { .. }
+        outcome.degradations(),
+        [degradation] if matches!(
+            degradation.reason,
+            nyanpasu_runtime_values::runtime::DegradationReason::HttpServerUnavailable
+        )
     ));
-    for (error, kind, message, cause) in [
-        (
-            read,
-            "read_status",
-            "could not read debug HTTP status",
-            "status cause",
-        ),
-        (
-            change,
-            "change_enabled",
-            "could not change debug HTTP enablement",
-            "enabled cause",
-        ),
-    ] {
-        assert_eq!(
-            serde_json::to_value(&error).unwrap(),
-            serde_json::json!({"kind": kind})
-        );
-        assert_eq!(error.to_string(), message);
-        assert_eq!(error.source().unwrap().to_string(), cause);
-        assert!(
-            error
-                .source()
-                .unwrap()
-                .downcast_ref::<std::io::Error>()
-                .is_some()
-        );
-    }
     shutdown(&client).await;
 }
 
@@ -429,10 +431,34 @@ async fn headless_shared_effects_still_converge() {
 }
 
 #[tokio::test]
-async fn headless_shutdown_without_debug_owner_completes() {
+async fn headless_shutdown_without_http_owner_completes() {
     let dir = tempfile::tempdir().unwrap();
     let client = headless_client(&dir).await;
-    client.shutdown_debug_http().await.unwrap();
     shutdown(&client).await;
-    client.shutdown_debug_http().await.unwrap();
+}
+
+#[tokio::test]
+async fn the_general_patch_cannot_write_remote_access() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = headless_client(&dir).await;
+    let mut remote_access = RemoteAccessConfig::default();
+    remote_access.http.enabled = true;
+
+    let error = client
+        .patch_app_config(NyanpasuAppConfigPatch {
+            remote_access: Some(remote_access),
+            proxy_layout_column: Some(3),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ClientError::Config(ConfigError::InvalidRemoteAccess {
+            reason: nyanpasu_config::application::RemoteAccessError::UseDedicatedCommand
+        })
+    ));
+    assert_eq!(client.remote_access_config(), RemoteAccessConfig::default());
+    shutdown(&client).await;
 }

@@ -133,7 +133,7 @@ Cargo feature unification. Determinism assumes equal injected network, file and
 clock observations; it does not promise unconditional replay.
 
 Core treats window control, hotkey validation, presentation-effect execution
-and the debug HTTP server as optional. Without one, an operation that needs it
+and the HTTP server as optional. Without one, an operation that needs it
 reports unsupported, an explicit hotkey edit is rejected before it is saved,
 and a desired presentation effect is reported unsupported, never applied.
 Sinks that only observe stay required: `UiEventSink` and `FrontendLogSink`

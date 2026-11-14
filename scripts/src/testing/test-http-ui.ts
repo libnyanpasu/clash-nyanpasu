@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 
 const entry = process.argv[2]
-assert.ok(entry, 'Usage: pnpm run test:http-ui <running debug HTTP server URL>')
+assert.ok(
+  entry,
+  'Usage: pnpm run test:http-ui <launch URL of a running HTTP server>',
+)
 const url = new URL(entry).origin
-assert.ok(url, 'Pass the running debug HTTP server URL')
+assert.ok(url, 'Pass the launch URL of a running HTTP server')
 const browser = await chromium.launch({ headless: true })
 try {
   const context = await browser.newContext()
@@ -32,16 +35,17 @@ try {
     .getByRole('switch')
   await advanced.waitFor({ timeout: 30000 })
   if (!(await advanced.isChecked())) await advanced.click()
-  const toggle = page.getByRole('switch', { name: 'Axum HTTP server' })
+  const card = page.locator('[data-slot="http-server-container"]')
+  const toggle = card.getByRole('switch')
   await toggle.waitFor({ timeout: 30000 })
   assert.equal(await toggle.isDisabled(), true)
   assert.equal(await toggle.isChecked(), true)
-  assert.equal(
-    await page
-      .getByRole('link', { name: entry, exact: true })
-      .getAttribute('href'),
-    entry,
-  )
+  // The page shows where the server listens and never the credential.
+  const listening = await card
+    .locator('[data-slot="http-server-listening"]')
+    .textContent()
+  assert.ok(listening?.includes(`${url}/`), listening ?? 'no listening text')
+  assert.ok(!listening?.includes('access_token'))
   const result = await page.evaluate(async () => {
     const call = async (
       method: string,

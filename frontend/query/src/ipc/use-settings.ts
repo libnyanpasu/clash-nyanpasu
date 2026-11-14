@@ -1,11 +1,11 @@
 import { unwrapResult, type Result } from '@nyanpasu/rpc'
 import type {
+  ApplicationPreferencesPatch_Serialize,
   ClashConfig,
   ClashConfigPatch_Deserialize,
   IpcError,
   MutationOutcome,
   NyanpasuAppConfig_Serialize,
-  NyanpasuAppConfigPatch_Serialize,
 } from '@nyanpasu/rpc/types'
 import {
   useMutation,
@@ -113,9 +113,7 @@ const useTypedConfigField = <
  * service mode use `set_hotkeys` and `set_service_mode`; reads keep the full
  * application config. Keep nested patches optional when they are untouched.
  */
-type AppConfigPatch = Partial<
-  Omit<NyanpasuAppConfigPatch_Serialize, 'hotkeys' | 'enable_service_mode'>
->
+type AppConfigPatch = Partial<ApplicationPreferencesPatch_Serialize>
 
 /**
  * The application config (`NyanpasuAppConfig`).

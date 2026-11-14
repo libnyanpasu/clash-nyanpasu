@@ -4,7 +4,6 @@ import type {
   ConfigError,
   CoreErrorKind,
   CoreFailure,
-  DebugHttpControlError,
   DegradationReason,
   EffectFailureCode,
   EffectsError,
@@ -13,6 +12,7 @@ import type {
   ExecutionHost,
   HotkeyAction,
   HotkeyParseError,
+  HttpServerControlError,
   InstallCoreBinaryError,
   IpcError,
   OsProxyError,
@@ -22,6 +22,7 @@ import type {
   ProfileContentError,
   ProfileFileError,
   ProfilesError,
+  RemoteAccessError,
   RuntimeAftermath,
   RuntimeBuildError,
   RuntimeError,
@@ -50,8 +51,8 @@ export function ipcErrorMessage(
       return configErrorMessage(error.kind.error, profileLabel)
     case 'storage':
       return storageErrorMessage(error.kind.error)
-    case 'debug_http':
-      return debugHttpErrorMessage(error.kind.error)
+    case 'http_server':
+      return httpServerErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -223,6 +224,8 @@ export function configErrorMessage(
       })
     case 'invalid_latency_timeout':
       return m.error_config_invalid_latency_timeout({ reason: error.reason })
+    case 'invalid_remote_access':
+      return remoteAccessErrorMessage(error.reason)
     case 'validate_hotkey_capability':
       return m.error_config_hotkey_capability_unsupported()
     case 'validate_hotkeys':
@@ -346,16 +349,23 @@ function osProxyErrorMessage(error: OsProxyError): string {
   }
 }
 
-function debugHttpErrorMessage(error: DebugHttpControlError): string {
+function remoteAccessErrorMessage(error: RemoteAccessError): string {
+  switch (error.kind) {
+    case 'port_zero':
+      return m.error_config_remote_access_port_zero()
+    case 'use_dedicated_command':
+      return m.error_config_remote_access_use_dedicated_command()
+  }
+}
+
+function httpServerErrorMessage(error: HttpServerControlError): string {
   switch (error.kind) {
     case 'read_status_unsupported':
-      return m.error_debug_http_read_status_unsupported()
-    case 'change_enabled_unsupported':
-      return m.error_debug_http_change_enabled_unsupported()
+      return m.error_http_server_read_status_unsupported()
+    case 'change_unsupported':
+      return m.error_http_server_change_unsupported()
     case 'read_status':
-      return m.error_debug_http_read_status()
-    case 'change_enabled':
-      return m.error_debug_http_change_enabled()
+      return m.error_http_server_read_status()
   }
 }
 
@@ -866,6 +876,8 @@ export function degradationReasonMessage(
       return m.mutation_degradation_reason_materialization_deferred()
     case 'cleanup_deferred':
       return m.mutation_degradation_reason_cleanup_deferred()
+    case 'http_server_unavailable':
+      return m.mutation_degradation_reason_http_server_unavailable()
     case 'profile_auto_activation_failed':
       return m.mutation_degradation_reason_profile_auto_activation_failed({
         reason: profilesErrorMessage(reason.cause, profileLabel),

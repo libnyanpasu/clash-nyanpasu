@@ -148,7 +148,7 @@ APIs for callers that do not exist.
   (`nyanpasu-core/src/client/app_update/`) and
   `explicit: bool` (`nyanpasu-core/src/client/application_workflow/tcc.rs`) for
   the same idea should share one
-  enum. A clear binary setting, such as `set_debug_http_enabled(enabled: bool)` or a
+  enum. A clear binary setting, such as `set_service_mode(enabled: bool)` or a
   serialized `enabled` field, stays a `bool`.
 - Use a newtype when values with the same representation mean different things:
   `ProfileId` and `FolderId`, `EffectRevision`, `Version`. Use a type alias only as a

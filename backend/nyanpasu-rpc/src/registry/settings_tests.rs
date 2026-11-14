@@ -302,7 +302,7 @@ async fn invalid_patch_decode_maps_to_http_400_without_domain_error() {
         error,
         json!({
             "kind": "invalid_params",
-            "message": "patch_app_config cannot write [\"hotkeys\", \"enable_service_mode\"]; use set_hotkeys for hotkeys and set_service_mode for enable_service_mode",
+            "message": "preferences cannot write [\"hotkeys\", \"enable_service_mode\"]",
             "code": null, "retryable": null, "operation_id": null, "domain_error": null
         })
     );
@@ -405,5 +405,69 @@ async fn hotkeys_effect_retry_is_admitted_over_http() {
             .hotkeys,
         before
     );
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn remote_access_is_not_writable_through_the_general_patch() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    let before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+    let version = client.configuration_status().source_versions.application;
+
+    // Any `Some` value counts: an enabled, a default and a same-value section are all refused,
+    // and the allowed field in the mixed patch is not applied either.
+    for section in [
+        json!({"http": {"enabled": true}}),
+        json!({}),
+        serde_json::to_value(&client.get_app_config().await.unwrap().remote_access).unwrap(),
+    ] {
+        let (status, error) = fixture
+            .call(
+                "patch_app_config",
+                json!({"patch": {"remote_access": section, "proxy_layout_column": 9}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+        assert_eq!(error["kind"], "invalid_params");
+        assert!(error["domain_error"].is_null());
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("[\"remote_access\"]")
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        client.configuration_status().source_versions.application,
+        version
+    );
+
+    // An explicit null writes nothing, and a misspelled or unknown key is ignored rather than
+    // reaching the section.
+    let (status, result) = fixture
+        .call(
+            "patch_app_config",
+            json!({"patch": {
+                "remote_access": null, "remoteAccess": {"http": {"enabled": true}},
+                "proxy_layout_column": 5
+            }}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let after = client.get_app_config().await.unwrap();
+    assert!(!after.remote_access.http.enabled);
+    assert_eq!(after.proxy_layout_column, 5);
+
+    // The dedicated command is not an HTTP command.
+    let (status, error) = fixture
+        .call("set_remote_access", json!({"config": {}}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(error["kind"], "unsupported");
     fixture.shutdown().await;
 }

@@ -12,9 +12,9 @@ export function createRpcClient(
 ) {
   const __RPC_INVOKE = transport.commands.invoke.bind(transport.commands)
   const commands = {
-    getDebugHttpStatus: () =>
-      typedError<DebugHttpStatus, IpcError>(
-        __RPC_INVOKE('get_debug_http_status'),
+    getHttpServerStatus: () =>
+      typedError<HttpServerStatus, IpcError>(
+        __RPC_INVOKE('get_http_server_status'),
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
@@ -365,10 +365,6 @@ export function createRpcClient(
       typedError<string | null, IpcError>(
         __RPC_INVOKE('open_native_file_dialog', { title, filters }),
       ),
-    setDebugHttpEnabled: (enabled: boolean) =>
-      typedError<DebugHttpStatus, IpcError>(
-        __RPC_INVOKE('set_debug_http_enabled', { enabled }),
-      ),
     retryConfigurationRuntime: () =>
       typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
     retryConfigurationEffect: (kind: EffectKind) =>
@@ -453,7 +449,7 @@ export function createRpcClient(
     /**  restart the sidecar */
     restartSidecar: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
-    patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
+    patchAppConfig: (patch: ApplicationPreferencesPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_app_config', { patch }),
       ),
@@ -633,6 +629,23 @@ export function createRpcClient(
     setServiceMode: (enabled: boolean) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('set_service_mode', { enabled }),
+      ),
+    /**
+     *  Remote access widens who can reach the application, so it has its own desktop-only command;
+     *  `patch_app_config` rejects the section.
+     */
+    setRemoteAccess: (config: RemoteAccessConfig) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_remote_access', { config }),
+      ),
+    /**
+     *  A URL that logs the caller into the running HTTP server. It is a credential, so it is a
+     *  desktop-only mutation: a query would keep it in a client cache, and no remote transport may
+     *  return it.
+     */
+    createHttpLaunchUrl: () =>
+      typedError<string | null, IpcError>(
+        __RPC_INVOKE('create_http_launch_url'),
       ),
     selectProxy: (group: string, name: string) =>
       typedError<MutationOutcome<null>, IpcError>(
@@ -829,6 +842,132 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only the two clearable preferences,
+ *  `release_channel` and `pac_url`, treat an explicit `null` as "clear the value"
+ *  (a double option), and `window_close` is a nested patch that names only the window kinds it
+ *  changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch =
+  | ApplicationPreferencesPatch_Serialize
+  | ApplicationPreferencesPatch_Deserialize
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only the two clearable preferences,
+ *  `release_channel` and `pac_url`, treat an explicit `null` as "clear the value"
+ *  (a double option), and `window_close` is a nested patch that names only the window kinds it
+ *  changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch_Deserialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Deserialize | null
+  core_logs?: CoreLogSettings | null
+  language?: I18nLanguage_Deserialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_auto_launch?: boolean | null
+  enable_silent_start?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  theme_color?: string | null
+  core?: ClashCore_Deserialize | null
+  default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  window_close?: WindowCloseSettingsPatch_Deserialize
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
+  traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
+  pac_url?: string | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+}
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only the two clearable preferences,
+ *  `release_channel` and `pac_url`, treat an explicit `null` as "clear the value"
+ *  (a double option), and `window_close` is a nested patch that names only the window kinds it
+ *  changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch_Serialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Serialize | null
+  core_logs?: CoreLogSettings | null
+  language?: I18nLanguage_Serialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_auto_launch?: boolean | null
+  enable_silent_start?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  theme_color?: string | null
+  core?: ClashCore_Serialize | null
+  default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  window_close: WindowCloseSettingsPatch_Serialize
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
+  traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
+  pac_url?: string | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+}
 
 export type BrandVersion = {
   brand: string
@@ -1345,6 +1484,7 @@ export type ConfigError =
     }
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
+  | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'validate_hotkey_capability' }
   | { kind: 'workflow_not_ready' }
@@ -1948,18 +2088,6 @@ export type CoreVersionError =
   | { kind: 'core_version_exit'; core: string }
   | { kind: 'core_version_not_reported'; core: string }
 
-/**  Why a debug HTTP query or setting change could not be performed. */
-export type DebugHttpControlError =
-  | { kind: 'read_status_unsupported' }
-  | { kind: 'change_enabled_unsupported' }
-  | { kind: 'read_status' }
-  | { kind: 'change_enabled' }
-
-export type DebugHttpStatus = {
-  enabled: boolean
-  url: string | null
-}
-
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
   phase: DegradationPhase
@@ -2012,6 +2140,8 @@ export type DegradationReason =
       profile: ProfileId
       cause: ProfilesError
     }
+  /**  The remote-access settings were saved but the HTTP listener could not follow them. */
+  | { code: 'http_server_unavailable' }
 
 export type Delay = {
   delay: number
@@ -2433,6 +2563,57 @@ export type HotkeyParseError =
       second: HotkeyAction
     }
 
+/**  HTTP listener settings. */
+export type HttpAccessConfig = {
+  /**  Master switch. Off by default. */
+  enabled?: boolean
+  /**  Kept while the switch is off, so turning it on restores the earlier choice. */
+  strategy?: HttpAccessStrategy
+  /**
+   *  `None` until the first start binds a free port and records it. Later starts
+   *  reuse the recorded port, so URLs stay valid across restarts.
+   */
+  port?: number | null
+  /**  Serve the bundled web UI. When false only the API is served. */
+  serve_webui?: boolean
+}
+
+/**
+ *  How the HTTP listener decides who may call it.
+ *
+ *  Further strategies join this enum in the change that implements their complete
+ *  request, scope and transport checks. Until then a stored value cannot name them.
+ */
+export type HttpAccessStrategy =
+  /**  Loopback only; every request must carry the per-start credential. */
+  'local_authenticated'
+
+/**  Why an HTTP server query or setting change could not be performed. */
+export type HttpServerControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Why the listener is not running although the settings ask for it. */
+export type HttpServerFault =
+  /**  The persisted port is taken. The server never moves to another port by itself. */
+  | 'port_in_use'
+  /**  The listener could not be bound for another reason. */
+  | 'bind_failed'
+
+/**
+ *  The listener's state. It never carries a credential: the credential-bearing launch URL
+ *  is a separate desktop-only query.
+ */
+export type HttpServerStatus = {
+  enabled: boolean
+  /**  The bound origin, for example `http://127.0.0.1:41234/`. */
+  url: string | null
+  /**  The bound port, which the facade records when the settings leave it open. */
+  port: number | null
+  fault: HttpServerFault | null
+}
+
 /**
  *  UI language of the application.
  *
@@ -2562,7 +2743,7 @@ export type IpcErrorKind =
   | { domain: 'system_dns'; error: SystemDnsError }
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
-  | { domain: 'debug_http'; error: DebugHttpControlError }
+  | { domain: 'http_server'; error: HttpServerControlError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -2929,112 +3110,6 @@ export type NewProfileRequest_Serialize = {
 export type NyanpasuAppConfig =
   NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
 
-export type NyanpasuAppConfigPatch =
-  NyanpasuAppConfigPatch_Serialize | NyanpasuAppConfigPatch_Deserialize
-
-export type NyanpasuAppConfigPatch_Deserialize =
-  | ({
-      app_singleton_port?: number | null
-      app_log_level?: LoggingLevel_Deserialize | null
-      core_logs?: CoreLogSettings | null
-      language?: I18nLanguage_Deserialize | null
-      theme_mode?: ThemeMode | null
-      traffic_graph?: boolean | null
-      enable_memory_usage?: boolean | null
-      lighten_animation_effects?: boolean | null
-      enable_service_mode?: boolean | null
-      enable_auto_launch?: boolean | null
-      enable_silent_start?: boolean | null
-      enable_system_proxy?: boolean | null
-      enable_proxy_guard?: boolean | null
-      system_proxy_bypass?: string | null
-      theme_color?: string
-      hotkeys?: string[] | null
-      default_latency_test?: string | null
-      default_latency_timeout_ms?: number | null
-      enable_builtin_enhanced?: boolean | null
-      proxy_layout_column?: number | null
-      max_log_files?: number | null
-      max_log_file_size?: number | null
-      enable_auto_check_update?: boolean | null
-      enable_auto_download_update?: boolean | null
-      release_channel?: ReleaseChannel | null
-      update_sources?: UpdateSource[] | null
-      always_on_top?: boolean | null
-      tray_menu_mode?: TrayMenuMode | null
-      window_close?: WindowCloseSettingsPatch_Deserialize
-      network_statistic_widget?: NetworkStatisticWidgetConfig | null
-      network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
-      traffic_retention?: TrafficRetention | null
-      enable_local_ip_probe?: boolean | null
-      stun_servers?: StunServer[] | null
-      ip_lookup_providers?: IpLookupProvider[] | null
-      pac_url?: string | null
-      enable_tray_text?: boolean | null
-      enable_tray_traffic?: boolean | null
-      use_legacy_ui?: boolean | null
-    } & {
-      proxy_guard_interval?: number | null
-    })
-  | ({
-      proxy_guard_duration?: number | null
-    } & {
-      core?: ClashCore_Deserialize | null
-    })
-  | ({
-      clash_core?: ClashCore_Deserialize | null
-    } & {
-      tray_selector_mode?: ProxiesSelectorMode | null
-    })
-  | {
-      clash_tray_selector?: ProxiesSelectorMode | null
-    }
-
-export type NyanpasuAppConfigPatch_Serialize = {
-  app_singleton_port?: number | null
-  app_log_level?: LoggingLevel_Serialize | null
-  core_logs?: CoreLogSettings | null
-  language?: I18nLanguage_Serialize | null
-  theme_mode?: ThemeMode | null
-  traffic_graph?: boolean | null
-  enable_memory_usage?: boolean | null
-  lighten_animation_effects?: boolean | null
-  enable_service_mode?: boolean | null
-  enable_auto_launch?: boolean | null
-  enable_silent_start?: boolean | null
-  enable_system_proxy?: boolean | null
-  enable_proxy_guard?: boolean | null
-  system_proxy_bypass?: string | null
-  proxy_guard_interval?: number | null
-  theme_color?: string
-  core?: ClashCore_Serialize | null
-  hotkeys?: string[] | null
-  default_latency_test?: string | null
-  default_latency_timeout_ms?: number | null
-  enable_builtin_enhanced?: boolean | null
-  proxy_layout_column?: number | null
-  max_log_files?: number | null
-  max_log_file_size?: number | null
-  enable_auto_check_update?: boolean | null
-  enable_auto_download_update?: boolean | null
-  release_channel?: ReleaseChannel | null
-  update_sources?: UpdateSource[] | null
-  tray_selector_mode?: ProxiesSelectorMode | null
-  always_on_top?: boolean | null
-  tray_menu_mode?: TrayMenuMode | null
-  window_close: WindowCloseSettingsPatch_Serialize
-  network_statistic_widget?: NetworkStatisticWidgetConfig | null
-  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
-  traffic_retention?: TrafficRetention | null
-  enable_local_ip_probe?: boolean | null
-  stun_servers?: StunServer[] | null
-  ip_lookup_providers?: IpLookupProvider[] | null
-  pac_url?: string | null
-  enable_tray_text?: boolean | null
-  enable_tray_traffic?: boolean | null
-  use_legacy_ui?: boolean | null
-}
-
 /**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Deserialize = {
   /**  app listening port for app singleton */
@@ -3122,6 +3197,11 @@ export type NyanpasuAppConfig_Deserialize = {
   network_statistic_widget_logo?: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention?: TrafficRetention
+  /**
+   *  Who may reach the application over HTTP. Written only by the dedicated
+   *  remote-access command; ordinary preference patches reject it.
+   */
+  remote_access?: RemoteAccessConfig
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe?: boolean
   /**
@@ -3244,6 +3324,11 @@ export type NyanpasuAppConfig_Serialize = {
   network_statistic_widget_logo: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention: TrafficRetention
+  /**
+   *  Who may reach the application over HTTP. Written only by the dedicated
+   *  remote-access command; ordinary preference patches reject it.
+   */
+  remote_access: RemoteAccessConfig
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe: boolean
   /**
@@ -4859,6 +4944,21 @@ export type ReleaseChannelInfo = {
   /**  The channel of the installed build; a nightly build cannot leave Nightly. */
   installed: ReleaseChannel
 }
+
+/**  The persisted `remote_access` section. */
+export type RemoteAccessConfig = {
+  http?: HttpAccessConfig
+}
+
+/**  Why a remote-access value cannot be committed. */
+export type RemoteAccessError =
+  /**  Port 0 asks the OS for any port; the persisted port is always a concrete one. */
+  | { kind: 'port_zero' }
+  /**
+   *  The section is changed only by the dedicated remote-access command, never by a
+   *  general application patch.
+   */
+  | { kind: 'use_dedicated_command' }
 
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize

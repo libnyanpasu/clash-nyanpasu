@@ -32,8 +32,8 @@ use struct_patch::Patch as _;
 use tempfile::TempDir;
 
 use super::{
-    ClientSetupArgs, NyanpasuClient, RuntimePaths, application::ApplicationClient,
-    application_workflow, clash_config::ClashConfigClient, effects,
+    ClientSetupArgs, NyanpasuClient, RemoteAccessAuthPorts, RuntimePaths,
+    application::ApplicationClient, application_workflow, clash_config::ClashConfigClient, effects,
     host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
 };
 use crate::{
@@ -748,6 +748,21 @@ pub(crate) fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort>
     Arc::new(materialization)
 }
 
+/// An authentication owner over in-memory storage and a clock that only a test moves.
+pub fn test_remote_auth_ports() -> RemoteAccessAuthPorts {
+    use nyanpasu_contracts::auth::{
+        RemoteAuthPolicy,
+        test_support::{CountingEntropy, ManualAuthClock, MemorySecretStore},
+    };
+
+    RemoteAccessAuthPorts {
+        clock: Arc::new(ManualAuthClock::default()),
+        entropy: Arc::new(CountingEntropy::default()),
+        store: Arc::new(MemorySecretStore::default()),
+        policy: RemoteAuthPolicy::default(),
+    }
+}
+
 pub async fn test_client_args_with_endpoint(
     dir: &TempDir,
     endpoint: crate::actor_v2::endpoint::EndpointHandle,
@@ -775,6 +790,7 @@ pub async fn test_client_args_with_endpoint(
         paths,
         storage: Arc::new(storage),
         runtime_paths,
+        remote_auth: test_remote_auth_ports(),
         ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
         updater_backend_factory: Arc::new(|_| {
             Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))
@@ -899,10 +915,6 @@ impl super::http_server::HttpServerControl for DisabledHttpServer {
     ) -> anyhow::Result<super::http_server::HttpServerStatus> {
         anyhow::ensure!(!config.enabled, "HTTP routes are unavailable");
         self.status().await
-    }
-
-    async fn launch_url(&self) -> anyhow::Result<Option<String>> {
-        Ok(None)
     }
 
     async fn shutdown(&self) -> anyhow::Result<()> {

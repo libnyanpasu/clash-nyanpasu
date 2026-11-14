@@ -201,9 +201,33 @@ pub async fn rpc_for_test_call_with_auth(
     cookie: Option<&str>,
     auth: Option<AuthContext>,
 ) -> (StatusCode, Value) {
+    rpc_for_test_call_full(app, method, params, cookie, None, auth).await
+}
+
+pub async fn rpc_for_test_call_with_client_id(
+    app: &Router,
+    method: &str,
+    params: Value,
+    client_id: Option<&str>,
+    auth: Option<AuthContext>,
+) -> (StatusCode, Value) {
+    rpc_for_test_call_full(app, method, params, None, client_id, auth).await
+}
+
+async fn rpc_for_test_call_full(
+    app: &Router,
+    method: &str,
+    params: Value,
+    cookie: Option<&str>,
+    client_id: Option<&str>,
+    auth: Option<AuthContext>,
+) -> (StatusCode, Value) {
     let mut request = Request::post("/bridge/rpc").header("content-type", "application/json");
     if let Some(cookie) = cookie {
         request = request.header("cookie", cookie);
+    }
+    if let Some(client_id) = client_id {
+        request = request.header("x-nyanpasu-client-id", client_id);
     }
     let mut request = request
         .body(Body::from(

@@ -1,15 +1,17 @@
 //! Icon entry security checks through the listener's authentication middleware.
 
+use std::sync::Arc;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode},
-    middleware,
 };
+use nyanpasu_config::application::HttpAccessConfig;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
 
-use super::{LocalSession, local_session};
+use super::{auth::PrincipalStreams, build_http_app, tests::MemoryAuthenticator};
 use crate::{
     icons::{
         self,
@@ -19,19 +21,21 @@ use crate::{
 };
 
 fn listener(fixture: &Fixture) -> Router {
-    fixture
-        .rpc
-        .clone()
-        .router()
-        .layer(middleware::from_fn_with_state(
-            LocalSession {
-                authority: "127.0.0.1:1234".into(),
-                access_token: "test-access".into(),
-                session_id: "sess_test_icon".into(),
-                shutdown: CancellationToken::new(),
-            },
-            local_session,
-        ))
+    let auth = Arc::new(MemoryAuthenticator::new());
+    auth.register_cookie(TEST_SESSION_COOKIE, "sess_0000000000000001");
+    build_http_app(
+        fixture.rpc.clone().router(),
+        None,
+        "127.0.0.1:1234".into(),
+        HttpAccessConfig {
+            enabled: true,
+            ..Default::default()
+        },
+        auth,
+        PrincipalStreams::default(),
+        CancellationToken::new(),
+    )
+    .unwrap()
 }
 
 async fn get(
@@ -53,8 +57,9 @@ async fn get(
         .unwrap()
 }
 
-const COOKIES: &str =
-    "nyanpasu_http_access=test-access; nyanpasu_http_session=00000000-0000-4000-8000-000000000001";
+const TEST_SESSION_COOKIE: &str =
+    "nps_sess_0000000000000001_0000000000000000000000000000000000000000000000000000000000000001";
+const COOKIES: &str = "nyanpasu_session=nps_sess_0000000000000001_0000000000000000000000000000000000000000000000000000000000000001";
 const CACHED: &str = "/bridge/icons/cached?url=https%3A%2F%2Ficons.example%2Ficon.svg";
 
 #[tokio::test]
@@ -84,16 +89,10 @@ async fn unauthenticated_icon_get_does_not_fetch_remote_content() {
     for (cookie, origin, host, status) in [
         ("", None, "127.0.0.1:1234", StatusCode::UNAUTHORIZED),
         (
-            "nyanpasu_http_session=00000000-0000-4000-8000-000000000001",
+            "nyanpasu_session=invalid_session_cookie",
             None,
             "127.0.0.1:1234",
             StatusCode::UNAUTHORIZED,
-        ),
-        (
-            "nyanpasu_http_access=test-access",
-            None,
-            "127.0.0.1:1234",
-            StatusCode::BAD_REQUEST,
         ),
         (
             COOKIES,
@@ -108,6 +107,19 @@ async fn unauthenticated_icon_get_does_not_fetch_remote_content() {
             status
         );
     }
+    let bad_nonce = app
+        .clone()
+        .oneshot(
+            Request::get(CACHED)
+                .header("host", "127.0.0.1:1234")
+                .header("cookie", COOKIES)
+                .header("x-nyanpasu-client-id", "bad:nonce")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bad_nonce.status(), StatusCode::BAD_REQUEST);
     fixture.shutdown().await;
 }
 

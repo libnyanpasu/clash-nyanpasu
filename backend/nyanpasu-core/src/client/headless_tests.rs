@@ -229,10 +229,6 @@ impl HttpServerControl for FailedHttpServer {
         Err(std::io::Error::other("configure cause").into())
     }
 
-    async fn launch_url(&self) -> anyhow::Result<Option<String>> {
-        Ok(None)
-    }
-
     async fn shutdown(&self) -> anyhow::Result<()> {
         Ok(())
     }

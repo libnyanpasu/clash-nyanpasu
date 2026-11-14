@@ -185,12 +185,19 @@ fn browser_debug_page_and_real_rpc() {
     let frontend_events = Arc::new(RecordingSink::default());
     args.logging.frontend = frontend_events.clone();
     let routes = Arc::new(RpcHttpRoutes::default());
+    let authenticator = Arc::new(nyanpasu_rpc::http::auth::RpcHttpAuthenticator::default());
     args.host_adapters.http_server = Some(nyanpasu_rpc::http::test_support::control_factory(
         frontend,
         routes.clone(),
+        authenticator.clone(),
     ));
     let paths = args.paths.clone();
     let client = tauri::async_runtime::block_on(NyanpasuClient::try_new(args)).unwrap();
+    authenticator
+        .install(Arc::new(
+            nyanpasu_rpc::http::auth::NyanpasuClientHttpAuthenticator::new(&client),
+        ))
+        .unwrap();
     let events = EventBus::new();
     let storage = Storage::try_new(&directory.path().join("web-storage.redb")).unwrap();
     let forwarders = nyanpasu_rpc::forward::forwarders(

@@ -3,8 +3,8 @@
 use nyanpasu_contracts::{system_dns::SystemDnsError, system_proxy::OsProxyError};
 use nyanpasu_core::{
     client::{
-        ClashReadError, ClientError, CoreLogReadError, ProfileSyncReadError, SetRemoteAccessError,
-        http_server::HttpServerControlError,
+        ClashReadError, ClientError, CoreLogReadError, LaunchUrlError, ProfileSyncReadError,
+        RemoteAuthError, SetRemoteAccessError, http_server::HttpServerControlError,
     },
     state::config_error::ConfigError,
     storage::StorageOperationError,
@@ -86,6 +86,15 @@ impl From<SetRemoteAccessError> for IpcErrorKind {
             SetRemoteAccessError::Server { source } => source.into(),
             SetRemoteAccessError::Client { source } => (*source).into(),
             SetRemoteAccessError::OwnerStopped => Self::Unknown,
+        }
+    }
+}
+
+impl From<LaunchUrlError> for IpcErrorKind {
+    fn from(error: LaunchUrlError) -> Self {
+        match error {
+            LaunchUrlError::Server { source } => source.into(),
+            LaunchUrlError::Auth { source } => source.into(),
         }
     }
 }
@@ -175,6 +184,7 @@ unknown_domain!(
     serde_json::Error,
     anyhow::Error,
     nyanpasu_migration::backup::BackupError,
+    RemoteAuthError,
 );
 
 pub type Result<T = ()> = std::result::Result<T, IpcError>;

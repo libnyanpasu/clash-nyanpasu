@@ -2,6 +2,8 @@
 
 pub mod ports;
 pub mod secrets;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub mod types;
 
 use std::collections::BTreeSet;

@@ -44,7 +44,9 @@ use self::{
     auth_store::load_tokens,
 };
 pub use self::{
-    auth_error::RemoteAuthError, auth_store::MAX_SECRET_RECORD_BYTES, error::SetRemoteAccessError,
+    auth_error::RemoteAuthError,
+    auth_store::MAX_SECRET_RECORD_BYTES,
+    error::{LaunchUrlError, SetRemoteAccessError},
 };
 use super::{
     application::ApplicationClient,
@@ -123,17 +125,6 @@ impl RemoteAccessClient {
             .map_err(|source| HttpServerControlError::ReadStatus { source })
     }
 
-    /// A URL that logs the caller into the running server. It is a credential.
-    pub(super) async fn launch_url(&self) -> Result<Option<String>, HttpServerControlError> {
-        let http = self
-            .http
-            .as_ref()
-            .ok_or(HttpServerControlError::ReadStatusUnsupported)?;
-        http.launch_url()
-            .await
-            .map_err(|source| HttpServerControlError::ReadStatus { source })
-    }
-
     async fn call(
         &self,
         make: impl FnOnce(
@@ -158,6 +149,23 @@ pub struct RemoteAccessAuthPorts {
     pub store: Arc<dyn SecretStore>,
     /// Bounds and lifetimes.
     pub policy: RemoteAuthPolicy,
+}
+
+impl RemoteAccessAuthPorts {
+    /// Assembles the authentication infrastructure with the default policy.
+    #[must_use]
+    pub fn new(
+        clock: impl AuthClock + 'static,
+        entropy: impl EntropySource + 'static,
+        store: impl SecretStore + 'static,
+    ) -> Self {
+        Self {
+            clock: Arc::new(clock),
+            entropy: Arc::new(entropy),
+            store: Arc::new(store),
+            policy: RemoteAuthPolicy::default(),
+        }
+    }
 }
 
 /// Typed client of the authentication owner.

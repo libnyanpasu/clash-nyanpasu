@@ -481,7 +481,7 @@ async fn http_events_enforce_target_capability_scope_filtering_and_revocation() 
     let mut req = Request::get("/bridge/events").body(Body::empty()).unwrap();
     req.extensions_mut().insert(read_only);
     req.extensions_mut()
-        .insert(HttpSessionRevocation(revocation.clone()));
+        .insert(HttpSessionRevocation(revocation.clone(), Arc::new(None)));
     let response = router.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -526,9 +526,10 @@ async fn http_events_enforce_target_capability_scope_filtering_and_revocation() 
     named_req
         .extensions_mut()
         .insert(auth_with_scopes([Scope::Read]));
-    named_req
-        .extensions_mut()
-        .insert(HttpSessionRevocation(named_revocation.clone()));
+    named_req.extensions_mut().insert(HttpSessionRevocation(
+        named_revocation.clone(),
+        Arc::new(None),
+    ));
     let named_response = router.clone().oneshot(named_req).await.unwrap();
     assert_eq!(named_response.status(), StatusCode::OK);
     let mut named_body = named_response.into_body().into_data_stream();
@@ -604,15 +605,22 @@ async fn audit_records_public_principal_and_never_logs_secret_token_name_or_http
 async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
     let directory = tempfile::tempdir().unwrap();
     let routes = Arc::new(crate::http::routes::RpcHttpRoutes::default());
+    let authenticator = Arc::new(crate::http::auth::RpcHttpAuthenticator::default());
     let mut args = test_client_args_with_endpoint(
         &directory,
         nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
     )
     .await;
-    args.host_adapters.http_server = Some(control_factory(None, routes.clone()));
+    args.host_adapters.http_server =
+        Some(control_factory(None, routes.clone(), authenticator.clone()));
     let paths = args.paths.clone();
     let client = nyanpasu_core::client::NyanpasuClient::try_new(args)
         .await
+        .unwrap();
+    authenticator
+        .install(Arc::new(
+            crate::http::auth::NyanpasuClientHttpAuthenticator::new(&client),
+        ))
         .unwrap();
     let sink = Arc::new(AuditSink::default());
     let rpc = UnifiedRpc::new(
@@ -650,9 +658,9 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
 
     let launch_url = client.http_launch_url().await.unwrap().unwrap();
     let parsed = url::Url::parse(&launch_url).unwrap();
-    let token = parsed
+    let code = parsed
         .query_pairs()
-        .find_map(|(k, v)| (k == "access_token").then(|| v.into_owned()))
+        .find_map(|(k, v)| (k == "code").then(|| v.into_owned()))
         .unwrap();
 
     let http_client = reqwest::Client::builder()
@@ -681,7 +689,7 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
     let session_cookie = cookies
         .split(';')
         .map(str::trim)
-        .find_map(|part| part.strip_prefix("nyanpasu_http_session="))
+        .find_map(|part| part.strip_prefix("nyanpasu_session="))
         .unwrap()
         .to_owned();
 
@@ -701,7 +709,7 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
     match &described.principal {
         Principal::Session { id } => {
             assert!(id.starts_with("sess_"), "{id}");
-            assert!(!id.contains(&token));
+            assert!(!id.contains(&code));
             assert!(!id.contains(&session_cookie));
         }
         other => panic!("expected Principal::Session, got {other:?}"),
@@ -718,7 +726,7 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
                     .is_some_and(|label| label.starts_with("session:sess_"))
         }));
         let rendered = format!("{:?}", *records);
-        assert!(!rendered.contains(&token));
+        assert!(!rendered.contains(&code));
         assert!(!rendered.contains(&session_cookie));
     }
     client.request_shutdown();
@@ -734,14 +742,31 @@ async fn headless_loopback_middleware_enforces_401_and_assigns_non_secret_sessio
         provided: fixture.rpc.provided.clone(),
         commands: fixture.rpc.commands.clone(),
     };
-    let loopback = LoopbackListener::bind(headless_rpc.router(), None)
+    let authenticator = Arc::new(crate::http::auth::NyanpasuClientHttpAuthenticator::new(
+        &fixture.rpc.dependencies.client,
+    ));
+    let loopback = LoopbackListener::bind(
+        headless_rpc.router(),
+        None,
+        nyanpasu_config::application::HttpAccessConfig {
+            enabled: true,
+            ..Default::default()
+        },
+        authenticator,
+    )
+    .await
+    .unwrap();
+    let launch_url = fixture
+        .rpc
+        .dependencies
+        .client
+        .launch_url_for(loopback.origin())
         .await
         .unwrap();
-    let launch_url = loopback.url().to_owned();
     let parsed = url::Url::parse(&launch_url).unwrap();
-    let token = parsed
+    let code = parsed
         .query_pairs()
-        .find_map(|(k, v)| (k == "access_token").then(|| v.into_owned()))
+        .find_map(|(k, v)| (k == "code").then(|| v.into_owned()))
         .unwrap();
     let rpc_url = format!(
         "http://{}/bridge/rpc",
@@ -786,7 +811,7 @@ async fn headless_loopback_middleware_enforces_401_and_assigns_non_secret_sessio
     let session_cookie = cookies
         .split(';')
         .map(str::trim)
-        .find_map(|part| part.strip_prefix("nyanpasu_http_session="))
+        .find_map(|part| part.strip_prefix("nyanpasu_session="))
         .unwrap()
         .to_owned();
 
@@ -803,7 +828,7 @@ async fn headless_loopback_middleware_enforces_401_and_assigns_non_secret_sessio
     match &described.principal {
         Principal::Session { id } => {
             assert!(id.starts_with("sess_"), "{id}");
-            assert!(!id.contains(&token));
+            assert!(!id.contains(&code));
             assert!(!id.contains(&session_cookie));
         }
         other => panic!("expected Principal::Session, got {other:?}"),
@@ -814,7 +839,7 @@ async fn headless_loopback_middleware_enforces_401_and_assigns_non_secret_sessio
     {
         let records = fixture.sink.records.lock();
         let rendered = format!("{:?}", *records);
-        assert!(!rendered.contains(&token));
+        assert!(!rendered.contains(&code));
         assert!(!rendered.contains(&session_cookie));
     }
     fixture.shutdown().await;

@@ -65,8 +65,8 @@ pub(crate) mod traffic_frames;
 mod transparent_proxy;
 
 pub use self::remote_access::{
-    Error as RemoteAccessSpawnError, MAX_SECRET_RECORD_BYTES, RemoteAccessAuthClient,
-    RemoteAccessAuthPorts, RemoteAuthError, SetRemoteAccessError,
+    Error as RemoteAccessSpawnError, LaunchUrlError, MAX_SECRET_RECORD_BYTES,
+    RemoteAccessAuthClient, RemoteAccessAuthPorts, RemoteAuthError, SetRemoteAccessError,
 };
 use self::{
     application::ApplicationClient,
@@ -135,6 +135,9 @@ pub struct ClientSetupArgs {
     /// for the storage commands.
     pub storage: Arc<dyn StorageSnapshot>,
     pub runtime_paths: RuntimePaths,
+    /// The infrastructure of the remote-access authentication owner: time, randomness and the
+    /// owner-only secret file.
+    pub remote_auth: RemoteAccessAuthPorts,
     pub ui_sink: Arc<dyn UiEventSink>,
     /// Built after the session proxy source and application workflow exist.
     pub updater_backend_factory: Arc<BackendFactory>,
@@ -178,6 +181,8 @@ pub enum SetupError {
     StartHttpServer { source: http_server::Error },
     #[snafu(display("failed to start the remote access owner"))]
     StartRemoteAccess { source: RemoteAccessSpawnError },
+    #[snafu(display("failed to start the remote authentication owner"))]
+    StartRemoteAuth { source: RemoteAuthError },
     #[snafu(display("failed to start core logs"))]
     StartCoreLogs {
         source: nyanpasu_observers::logs::SpawnError,
@@ -209,6 +214,19 @@ pub enum SetupError {
 #[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
+}
+
+/// Weak handle to a [`NyanpasuClient`] that avoids keeping the application alive across
+/// transport adapters stored inside the client graph.
+#[derive(Clone)]
+pub struct WeakNyanpasuClient(std::sync::Weak<NyanpasuClientInner>);
+
+impl WeakNyanpasuClient {
+    /// Upgrades to a strong handle if the application client is still alive.
+    #[must_use]
+    pub fn upgrade(&self) -> Option<NyanpasuClient> {
+        self.0.upgrade().map(|inner| NyanpasuClient { inner })
+    }
 }
 
 struct MutationCoordinators {
@@ -289,6 +307,7 @@ fn url_derived_name(url: &url::Url) -> String {
 
 struct NyanpasuClientInner {
     remote_access: RemoteAccessClient,
+    remote_auth: RemoteAccessAuthClient,
     bundle_metadata: BundleMetadata,
     core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
@@ -343,6 +362,7 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
+            remote_auth,
             ui_sink,
             updater_backend_factory,
             app_update_backend_factory,
@@ -411,6 +431,7 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
+            remote_auth,
             host_adapters,
             ui_sink,
             updater_backend_factory,
@@ -451,6 +472,7 @@ impl NyanpasuClient {
         paths: PathResolver,
         storage: Arc<dyn StorageSnapshot>,
         runtime_paths: RuntimePaths,
+        remote_auth: RemoteAccessAuthPorts,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
         updater_backend_factory: Arc<BackendFactory>,
@@ -487,6 +509,10 @@ impl NyanpasuClient {
         )
         .await
         .context(StartRemoteAccessSnafu)?;
+        let remote_auth =
+            RemoteAccessAuthClient::spawn(remote_auth, shutdown.child_token(), &tasks)
+                .await
+                .context(StartRemoteAuthSnafu)?;
         let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
@@ -704,6 +730,7 @@ impl NyanpasuClient {
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 remote_access,
+                remote_auth,
                 bundle_metadata,
                 core_logs,
                 app_logs,
@@ -744,19 +771,138 @@ impl NyanpasuClient {
         })
     }
 
+    /// Weak handle to this client that avoids prolonging application lifetime.
+    #[must_use]
+    pub fn downgrade(&self) -> WeakNyanpasuClient {
+        WeakNyanpasuClient(Arc::downgrade(&self.inner))
+    }
+
     pub async fn http_server_status(
         &self,
     ) -> std::result::Result<HttpServerStatus, HttpServerControlError> {
         self.inner.remote_access.status().await
     }
 
-    /// A URL that logs the caller into the running server, or `None` while it is off.
+    /// A URL that logs a browser into the running server, or `None` while it is off.
     ///
-    /// The URL is a credential. Only a desktop-only command may return it, and nothing may log it.
-    pub async fn http_launch_url(
+    /// The URL carries a single-use launch code that expires after 60 seconds, so it is a
+    /// credential: only a desktop-only command may return it, and nothing may log it.
+    pub async fn http_launch_url(&self) -> std::result::Result<Option<String>, LaunchUrlError> {
+        let Some(origin) = self.http_server_status().await?.url else {
+            return Ok(None);
+        };
+        Ok(Some(self.launch_url_for(&origin).await?))
+    }
+
+    /// A launch URL for the server listening at `origin`, for hosts that bind it themselves.
+    ///
+    /// The session it opens holds every scope except `remote_admin`, which no browser holds.
+    pub async fn launch_url_for(
         &self,
-    ) -> std::result::Result<Option<String>, HttpServerControlError> {
-        self.inner.remote_access.launch_url().await
+        origin: &str,
+    ) -> std::result::Result<String, RemoteAuthError> {
+        let scopes = nyanpasu_contracts::auth::ScopeSet::full()
+            .iter()
+            .filter(|scope| *scope != nyanpasu_config::application::Scope::RemoteAdmin)
+            .collect();
+        let issued = self.inner.remote_auth.issue_launch_code(scopes).await?;
+        Ok(format!(
+            "{}/?code={}",
+            origin.trim_end_matches('/'),
+            issued.code.expose_secret()
+        ))
+    }
+
+    /// Mints a named access token. The raw secret is in the result and is never stored.
+    pub async fn create_remote_access_token(
+        &self,
+        request: nyanpasu_contracts::auth::CreateAccessTokenRequest,
+    ) -> std::result::Result<nyanpasu_contracts::auth::IssuedAccessToken, RemoteAuthError> {
+        self.inner.remote_auth.create_access_token(request).await
+    }
+
+    /// Every access token's non-secret metadata.
+    pub async fn list_remote_access_tokens(
+        &self,
+    ) -> std::result::Result<Vec<nyanpasu_contracts::auth::AccessTokenSummary>, RemoteAuthError>
+    {
+        self.inner.remote_auth.list_access_tokens().await
+    }
+
+    /// Revokes a token, closes the browser sessions it backs and ends their streams.
+    pub async fn revoke_remote_access_token(
+        &self,
+        id: nyanpasu_contracts::auth::TokenId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_auth.revoke_access_token(id).await
+    }
+
+    /// Verifies a bearer token.
+    pub async fn authenticate_remote_token(
+        &self,
+        token: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner.remote_auth.authenticate_token(token).await
+    }
+
+    /// Spends a single-use launch code for a browser session.
+    pub async fn exchange_launch_code(
+        &self,
+        code: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedBrowserSession, RemoteAuthError>
+    {
+        self.inner.remote_auth.exchange_launch_code(code).await
+    }
+
+    /// Opens a browser session holding a token's scopes; it ends when the token does.
+    pub async fn login_with_remote_token(
+        &self,
+        token: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedBrowserSession, RemoteAuthError>
+    {
+        self.inner.remote_auth.login_with_token(token).await
+    }
+
+    /// Verifies a session cookie and extends its idle deadline.
+    pub async fn resolve_browser_session(
+        &self,
+        cookie: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner.remote_auth.resolve_browser_session(cookie).await
+    }
+
+    /// Every open browser session's non-secret metadata.
+    pub async fn list_remote_browser_sessions(
+        &self,
+    ) -> std::result::Result<Vec<nyanpasu_contracts::auth::BrowserSessionSummary>, RemoteAuthError>
+    {
+        self.inner.remote_auth.list_browser_sessions().await
+    }
+
+    /// Closes a browser session by its public id and ends its streams.
+    pub async fn revoke_remote_browser_session(
+        &self,
+        id: nyanpasu_contracts::auth::SessionId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_auth.revoke_browser_session(id).await
+    }
+
+    /// Closes the session a cookie names.
+    pub async fn logout_browser_session(
+        &self,
+        cookie: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_auth.logout(cookie).await
+    }
+
+    /// Revocations and expiries of tokens and sessions, as they happen.
+    ///
+    /// A receiver that lags has lost events and must revalidate everything it serves.
+    #[must_use]
+    pub fn subscribe_auth_revocations(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<nyanpasu_contracts::auth::AuthRevocation> {
+        self.inner.remote_auth.subscribe_revocations()
     }
 
     /// The committed remote-access settings.
@@ -2745,6 +2891,7 @@ pub(crate) mod tests {
             paths,
             storage: Arc::new(storage),
             runtime_paths,
+            remote_auth: crate::client::test_support::test_remote_auth_ports(),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             updater_backend_factory: Arc::new(|_| {
                 Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))

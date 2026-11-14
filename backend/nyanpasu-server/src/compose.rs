@@ -315,6 +315,14 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
         paths: paths.clone(),
         storage: Arc::new(storage.clone()),
         runtime_paths,
+        remote_auth: nyanpasu_core::client::RemoteAccessAuthPorts::new(
+            nyanpasu_os::remote_auth::OsAuthClock::new(),
+            nyanpasu_os::remote_auth::OsEntropySource,
+            nyanpasu_os::remote_auth::FsSecretStore::new(
+                paths.remote_access_secrets_path().into_std_path_buf(),
+                nyanpasu_core::client::MAX_SECRET_RECORD_BYTES,
+            ),
+        ),
         ui_sink: Arc::new(nyanpasu_rpc::events::BusUiEventSink::new(events.clone())),
         app_update_backend_factory: None,
         app_update_event_sink: None,

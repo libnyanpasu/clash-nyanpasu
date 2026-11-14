@@ -948,6 +948,12 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
         ConfigError::InvalidRemoteAccess { reason } => PublicConfigError::InvalidRemoteAccess {
             reason: match reason {
                 RemoteAccessError::PortZero => PublicRemoteAccessErrorKind::PortZero,
+                RemoteAccessError::LocalOpenScopesEmpty => {
+                    PublicRemoteAccessErrorKind::LocalOpenScopesEmpty
+                }
+                RemoteAccessError::LocalOpenScopeForbidden { .. } => {
+                    PublicRemoteAccessErrorKind::LocalOpenScopeForbidden
+                }
                 RemoteAccessError::UseDedicatedCommand => {
                     PublicRemoteAccessErrorKind::UseDedicatedCommand
                 }

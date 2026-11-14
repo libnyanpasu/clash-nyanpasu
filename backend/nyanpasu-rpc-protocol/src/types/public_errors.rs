@@ -319,6 +319,8 @@ pub enum PublicRuntimeError {
 #[serde(rename_all = "snake_case")]
 pub enum PublicRemoteAccessErrorKind {
     PortZero,
+    LocalOpenScopesEmpty,
+    LocalOpenScopeForbidden,
     UseDedicatedCommand,
 }
 

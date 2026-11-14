@@ -5,6 +5,7 @@
 
 use snafu::Snafu;
 
+use super::auth_error::RemoteAuthError;
 use crate::client::{ClientError, http_server::HttpServerControlError};
 
 #[derive(Debug, Snafu)]
@@ -24,4 +25,15 @@ pub enum SetRemoteAccessError {
     /// The owner stopped, or the shutdown began, before it accepted the change.
     #[snafu(display("the remote access owner is stopped"))]
     OwnerStopped,
+}
+
+/// Why a browser launch URL could not be produced.
+#[derive(Debug, Snafu)]
+pub enum LaunchUrlError {
+    /// The host has no HTTP server, or its status is unreadable.
+    #[snafu(context(false), display("the HTTP server status is unavailable"))]
+    Server { source: HttpServerControlError },
+    /// The launch code could not be minted.
+    #[snafu(context(false), display("the launch code could not be issued"))]
+    Auth { source: RemoteAuthError },
 }

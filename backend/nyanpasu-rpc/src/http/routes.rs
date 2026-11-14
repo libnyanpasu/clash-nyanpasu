@@ -93,23 +93,31 @@ impl<S> Drop for AuditedSubscription<S> {
     }
 }
 
-fn http_owner(headers: &HeaderMap) -> Result<RpcOwner, RpcError> {
-    let cookie = headers
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let session = cookie
-        .split(';')
-        .map(str::trim)
-        .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
-        .and_then(|s| uuid::Uuid::parse_str(s).ok())
-        .ok_or_else(|| RpcError::invalid_params("HTTP session cookie is missing"))?;
-    Ok(RpcOwner::new(format!("http:{session}")))
+fn parse_client_nonce(
+    headers: &HeaderMap,
+    query_client_id: Option<&str>,
+    visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+) -> Result<nyanpasu_rpc_protocol::ClientNonce, RpcError> {
+    if let Some(header) = headers.get("x-nyanpasu-client-id") {
+        let raw = header.to_str().map_err(|_| {
+            RpcError::invalid_params_for(visibility, "x-nyanpasu-client-id must be valid ASCII")
+        })?;
+        return nyanpasu_rpc_protocol::ClientNonce::parse(raw)
+            .map_err(|error| RpcError::invalid_params_for(visibility, error.to_string()));
+    }
+    if let Some(raw) = query_client_id {
+        return nyanpasu_rpc_protocol::ClientNonce::parse(raw)
+            .map_err(|error| RpcError::invalid_params_for(visibility, error.to_string()));
+    }
+    Ok(nyanpasu_rpc_protocol::ClientNonce::default())
 }
 
-fn http_owner_or_anonymous(headers: &HeaderMap) -> RpcOwner {
-    // A session identifies an owner; authentication belongs to the listener.
-    http_owner(headers).unwrap_or_else(|_| RpcOwner::new(format!("http:{}", uuid::Uuid::new_v4())))
+fn http_owner(auth: Option<&AuthContext>, nonce: &nyanpasu_rpc_protocol::ClientNonce) -> RpcOwner {
+    let principal = auth.map_or_else(
+        || "unauthenticated".to_owned(),
+        |auth| auth.principal.audit_label(),
+    );
+    RpcOwner::http(&principal, nonce)
 }
 
 /// Filled once by the composition root after the application facade exists.
@@ -195,17 +203,19 @@ async fn http_icon(
     uri: axum::http::Uri,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let nonce_result = parse_client_nonce(&headers, None, visibility);
+    let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
     let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
-        &http_owner_or_anonymous(&headers),
+        &http_owner(auth.as_ref(), &audit_nonce),
         auth.as_ref().map(|auth| &auth.principal),
         "icon_fetch",
         None,
     );
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
     let result = dispatch_with_audit(&audit, || {
         crate::policy::admit_route(Scope::Read, auth.as_ref())?;
-        http_owner(&headers)?;
+        let _nonce = nonce_result?;
         let path = uri
             .path()
             .strip_prefix("/bridge/icons")
@@ -253,16 +263,19 @@ async fn http_logs_archive(
     headers: HeaderMap,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let nonce_result = parse_client_nonce(&headers, None, visibility);
+    let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
     let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
-        &http_owner_or_anonymous(&headers),
+        &http_owner(auth.as_ref(), &audit_nonce),
         auth.as_ref().map(|auth| &auth.principal),
         "logs_archive",
         None,
     );
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
     let result = dispatch_with_audit(&audit, || {
         crate::policy::admit_route(Scope::SensitiveRead, auth.as_ref())?;
+        let _nonce = nonce_result?;
         Ok(unreported(async move {
             let paths = rpc.dependencies.paths.clone();
             let archive =
@@ -321,6 +334,11 @@ fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
     (http_status(&error), Json(error))
 }
 
+#[derive(Deserialize)]
+struct ConnectionDetailsQuery {
+    client_id: Option<String>,
+}
+
 // Subscribe only while a page consumes full connection details. Dropping the
 // SSE body releases the watch receiver, just like a native channel teardown.
 async fn http_connection_details(
@@ -328,20 +346,53 @@ async fn http_connection_details(
     auth: Option<Extension<AuthContext>>,
     revocation: Option<Extension<HttpSessionRevocation>>,
     headers: HeaderMap,
+    query: Result<Query<ConnectionDetailsQuery>, QueryRejection>,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
     let revocation = revocation.map(|Extension(revocation)| revocation.0);
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let nonce_result = parse_client_nonce(
+        &headers,
+        query
+            .as_ref()
+            .ok()
+            .and_then(|Query(q)| q.client_id.as_deref()),
+        visibility,
+    );
+    let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
     let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
-        &http_owner_or_anonymous(&headers),
+        &http_owner(auth.as_ref(), &audit_nonce),
         auth.as_ref().map(|auth| &auth.principal),
         "connection_details_subscribe",
         None,
     );
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    if let Err(error) = query {
+        let rejection = if auth.is_none() {
+            let _ = dispatch_with_audit(&audit, || {
+                Err::<RpcFuture, _>(RpcError::unauthorized("authentication required"))
+            })
+            .await;
+            http_rpc_error(RpcError::unauthorized("authentication required")).into_response()
+        } else {
+            let rpc_error = RpcError::invalid_params_for(visibility, error.to_string());
+            let _ = dispatch_with_audit(&audit, || Err::<RpcFuture, _>(rpc_error.clone())).await;
+            match visibility {
+                nyanpasu_rpc_protocol::ResponseVisibility::Full => error.into_response(),
+                nyanpasu_rpc_protocol::ResponseVisibility::Public => {
+                    http_rpc_error(rpc_error).into_response()
+                }
+            }
+        };
+        audit.record(AuditPhase::Subscription {
+            outcome: SubscriptionOutcome::Failed,
+        });
+        return response_prepared(&audit, rejection);
+    }
     let stream_audit = audit.clone();
     let result = dispatch_with_audit(&audit, || {
         crate::policy::admit_route(Scope::Read, auth.as_ref())?;
+        let _nonce = nonce_result?;
         Ok(unreported(async move {
             let receiver = rpc
                 .dependencies
@@ -392,6 +443,7 @@ pub(crate) fn connection_detail_events(
 #[derive(Deserialize)]
 struct EventRequest {
     name: Option<String>,
+    client_id: Option<String>,
 }
 
 async fn http_events(
@@ -403,7 +455,17 @@ async fn http_events(
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
     let revocation = revocation.map(|Extension(revocation)| revocation.0);
-    let owner = http_owner_or_anonymous(&headers);
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let nonce_result = parse_client_nonce(
+        &headers,
+        request
+            .as_ref()
+            .ok()
+            .and_then(|Query(q)| q.client_id.as_deref()),
+        visibility,
+    );
+    let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
+    let owner = http_owner(auth.as_ref(), &audit_nonce);
     let audit = rpc.dependencies.audit.invocation(
         RpcTransport::Http,
         &owner,
@@ -421,7 +483,6 @@ async fn http_events(
                 .await;
                 http_rpc_error(RpcError::unauthorized("authentication required")).into_response()
             } else {
-                let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
                 let rpc_error = RpcError::invalid_params_for(visibility, error.to_string());
                 let _ =
                     dispatch_with_audit(&audit, || Err::<RpcFuture, _>(rpc_error.clone())).await;
@@ -441,6 +502,7 @@ async fn http_events(
     let audit_stream = audit.clone();
     let result = dispatch_with_audit(&audit, || {
         let caller = auth.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
+        let _nonce = nonce_result?;
         let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&caller));
         if let Some(name) = request.name.as_deref() {
             let event = EventName::from_name(name)
@@ -519,7 +581,10 @@ async fn http_call(
     request: Result<Json<Request>, JsonRejection>,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
-    let owner = http_owner_or_anonymous(&headers);
+    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let nonce_result = parse_client_nonce(&headers, None, visibility);
+    let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
+    let owner = http_owner(auth.as_ref(), &audit_nonce);
     let request = match request {
         Ok(Json(request)) => request,
         Err(error) => {
@@ -533,10 +598,7 @@ async fn http_call(
             let rpc_error = if auth.is_none() {
                 RpcError::unauthorized("authentication required")
             } else {
-                RpcError::invalid_params_for(
-                    nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref()),
-                    error.to_string(),
-                )
+                RpcError::invalid_params_for(visibility, error.to_string())
             };
             let result = dispatch_with_audit(&audit, || Err::<RpcFuture, _>(rpc_error))
                 .await
@@ -561,7 +623,7 @@ async fn http_call(
             &request.method,
             caller,
             request.params,
-            || Ok(()),
+            || nonce_result.map(|_| ()),
         )
         .await
         .map(Json)

@@ -51,8 +51,5 @@ pub trait HttpServerControl: Send + Sync + 'static {
     /// Makes the listener follow `config`. A bind failure is reported as a status fault, not
     /// as an error: the settings stay committed.
     async fn configure(&self, config: &HttpAccessConfig) -> anyhow::Result<HttpServerStatus>;
-    /// A URL that logs the caller in. It is a credential: callers must not log it, and it is
-    /// never returned over a remote transport.
-    async fn launch_url(&self) -> anyhow::Result<Option<String>>;
     async fn shutdown(&self) -> anyhow::Result<()>;
 }

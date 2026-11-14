@@ -85,10 +85,6 @@ impl HttpServerControl for FakeListener {
         })
     }
 
-    async fn launch_url(&self) -> anyhow::Result<Option<String>> {
-        Ok(None)
-    }
-
     async fn shutdown(&self) -> anyhow::Result<()> {
         *self.shutdowns.lock() += 1;
         Ok(())

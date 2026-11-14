@@ -1,13 +1,19 @@
 //! An authenticated loopback listener owned by a shell's transport supervisor.
 
-use std::{io, net::Ipv4Addr, time::Duration};
+use std::{
+    io,
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 
-use axum::{Router, middleware};
+use axum::{Extension, Router, extract::ConnectInfo};
 use hyper_util::{
     rt::{TokioExecutor, TokioIo},
     server::conn::auto::Builder,
     service::TowerToHyperService,
 };
+use nyanpasu_config::application::HttpAccessConfig;
 use nyanpasu_owner_support::blocking;
 use snafu::{ResultExt as _, Snafu};
 use tokio::{
@@ -16,7 +22,11 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use super::{Frontend, LocalSession, frontend_router, local_session};
+use super::{
+    Frontend,
+    auth::{HttpAuthenticator, PrincipalStreams},
+    build_http_app,
+};
 
 /// Failure to bind, prepare or serve the loopback transport.
 #[derive(Debug, Snafu)]
@@ -35,11 +45,14 @@ pub enum Error {
     },
 }
 
-/// A bound transport using the desktop credential, Host and Origin policy.
+/// A bound transport using the configured remote-access authentication, Host, and Origin policy.
 pub struct LoopbackListener {
     listener: TcpListener,
     app: Router,
-    url: String,
+    authority: String,
+    origin: String,
+    authenticator: Arc<dyn HttpAuthenticator>,
+    streams: PrincipalStreams,
     shutdown: CancellationToken,
 }
 
@@ -48,11 +61,16 @@ impl LoopbackListener {
     ///
     /// # Errors
     /// Returns binding, address or frontend construction failures.
-    pub async fn bind(app: Router, frontend: Option<Frontend>) -> Result<Self, Error> {
+    pub async fn bind(
+        app: Router,
+        frontend: Option<Frontend>,
+        access: HttpAccessConfig,
+        authenticator: Arc<dyn HttpAuthenticator>,
+    ) -> Result<Self, Error> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
             .await
             .context(BindSnafu)?;
-        Self::from_listener(listener, app, frontend)
+        Self::from_listener(listener, app, frontend, access, authenticator)
     }
 
     /// Prepares HTTP over an already acquired loopback socket, retaining ownership on success.
@@ -63,37 +81,44 @@ impl LoopbackListener {
         listener: TcpListener,
         app: Router,
         frontend: Option<Frontend>,
+        access: HttpAccessConfig,
+        authenticator: Arc<dyn HttpAuthenticator>,
     ) -> Result<Self, Error> {
         let authority = listener.local_addr().context(AddressSnafu)?.to_string();
-        let access_token = uuid::Uuid::new_v4().to_string();
-        let url = format!("http://{authority}/?access_token={access_token}");
+        let origin = format!("http://{authority}");
         let shutdown = CancellationToken::new();
-        let app = match frontend {
-            Some(frontend) => app.fallback_service(
-                frontend_router(frontend, shutdown.clone()).context(FrontendSnafu)?,
-            ),
-            None => app,
-        };
-        let app = app.layer(middleware::from_fn_with_state(
-            LocalSession {
-                authority,
-                access_token,
-                session_id: format!("sess_{}", uuid::Uuid::new_v4().simple()),
-                shutdown: shutdown.clone(),
-            },
-            local_session,
-        ));
+        let streams = PrincipalStreams::default();
+        let app = build_http_app(
+            app,
+            frontend,
+            authority.clone(),
+            access,
+            authenticator.clone(),
+            streams.clone(),
+            shutdown.clone(),
+        )
+        .context(FrontendSnafu)?;
         Ok(Self {
             listener,
             app,
-            url,
+            authority,
+            origin,
+            authenticator,
+            streams,
             shutdown,
         })
     }
 
-    /// The per-start bootstrap URL; callers must not write it to shared logs.
-    pub fn url(&self) -> &str {
-        &self.url
+    /// Loopback authority (`127.0.0.1:<port>`).
+    #[must_use]
+    pub fn authority(&self) -> &str {
+        &self.authority
+    }
+
+    /// Bound origin (`http://127.0.0.1:<port>`). Never carries a launch credential.
+    #[must_use]
+    pub fn origin(&self) -> &str {
+        &self.origin
     }
 
     /// Stops accepting and closes streaming bodies before draining network resources.
@@ -105,6 +130,12 @@ impl LoopbackListener {
     /// Returns an ordinary listener IO failure. Task panics retain their payload.
     pub async fn serve(self, stop: CancellationToken) -> Result<(), Error> {
         let _shutdown = self.shutdown.clone().drop_guard();
+        let watcher_streams = self.streams.clone();
+        let watcher_auth = self.authenticator.clone();
+        let watcher_stop = self.shutdown.clone();
+        let watcher = tokio::spawn(async move {
+            watcher_streams.watch(watcher_auth, watcher_stop).await;
+        });
         let mut connections = JoinSet::new();
         let result = loop {
             tokio::select! {
@@ -112,8 +143,13 @@ impl LoopbackListener {
                 () = stop.cancelled() => break Ok(()),
                 Some(joined) = connections.join_next() => observe(blocking::join(joined)),
                 accepted = self.listener.accept() => match accepted.context(AcceptSnafu) {
-                    Ok((stream, _)) => {
-                        connections.spawn(connection(stream, self.app.clone(), self.shutdown.child_token()));
+                    Ok((stream, peer_addr)) => {
+                        connections.spawn(connection(
+                            stream,
+                            peer_addr,
+                            self.app.clone(),
+                            self.shutdown.child_token(),
+                        ));
                     }
                     Err(error) => break Err(error),
                 }
@@ -121,6 +157,7 @@ impl LoopbackListener {
         };
         drop(self.listener);
         self.shutdown.cancel();
+        blocking::join(watcher.await);
         while let Some(joined) = connections.join_next().await {
             observe(blocking::join(joined));
         }
@@ -128,10 +165,16 @@ impl LoopbackListener {
     }
 }
 
-async fn connection(stream: TcpStream, app: Router, stop: CancellationToken) -> Result<(), Error> {
+async fn connection(
+    stream: TcpStream,
+    peer_addr: SocketAddr,
+    app: Router,
+    stop: CancellationToken,
+) -> Result<(), Error> {
     // Use Axum's Hyper adapter, but keep each connection future in our JoinSet.
     // Dropping only axum::serve would detach its internally spawned connections.
     let builder = Builder::new(TokioExecutor::new());
+    let app = app.layer(Extension(ConnectInfo(peer_addr)));
     let connection =
         builder.serve_connection_with_upgrades(TokioIo::new(stream), TowerToHyperService::new(app));
     tokio::pin!(connection);

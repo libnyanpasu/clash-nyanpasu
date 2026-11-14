@@ -4,6 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
+use specta::Type;
 
 use super::{AuthContext, ScopeSet, secrets::SecretString};
 
@@ -83,6 +84,12 @@ impl TryFrom<String> for TokenId {
     }
 }
 
+impl Type for TokenId {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        String::definition(types)
+    }
+}
+
 impl From<TokenId> for String {
     fn from(value: TokenId) -> Self {
         value.0
@@ -136,6 +143,12 @@ impl TryFrom<String> for TokenName {
     }
 }
 
+impl Type for TokenName {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        String::definition(types)
+    }
+}
+
 impl From<TokenName> for String {
     fn from(value: TokenName) -> Self {
         value.0
@@ -176,6 +189,12 @@ impl TryFrom<String> for SessionId {
     }
 }
 
+impl Type for SessionId {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        String::definition(types)
+    }
+}
+
 impl From<SessionId> for String {
     fn from(value: SessionId) -> Self {
         value.0
@@ -183,7 +202,7 @@ impl From<SessionId> for String {
 }
 
 /// Lifecycle state reported for a named access token (non-secret).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessTokenStatus {
     /// Token may authenticate and issue sessions until optional expiry.
@@ -195,7 +214,7 @@ pub enum AccessTokenStatus {
 /// Non-secret metadata for a persisted access token.
 ///
 /// Never contains the raw bearer token or its SHA-256 hash.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct AccessTokenSummary {
     /// Public non-secret token identifier.
     pub id: TokenId,
@@ -271,7 +290,7 @@ impl fmt::Debug for IssuedLaunchCode {
 }
 
 /// Non-secret metadata for an active browser/access session.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct BrowserSessionSummary {
     /// Public non-secret session identifier (never the cookie).
     pub id: SessionId,

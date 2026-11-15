@@ -3,17 +3,20 @@ use nyanpasu_config::redact::redact_config;
 use std::sync::Arc;
 
 use nyanpasu_config::{
+    application::ClashCore,
     profile::ProfileId,
     runtime::{
         executor::{StepLog, StepLogEntry, StepLogLevel},
         snapshot::{
             BuiltinStepKind, Idx, OperatorTag, SnapshotBuildError, SnapshotDiffHunk,
-            StoredConfigSnapshotsGraph, changed_fields_between,
+            StoredConfigSnapshotsGraph, changed_fields_between, persistence::RejectedBuildArchive,
         },
     },
 };
 use serde::Serialize;
 use snafu::{OptionExt, ResultExt, ensure};
+
+use crate::actor_v2::facade::AppliedConfigBinding;
 
 use super::{NyanpasuClient, runtime::RuntimeSnapshot};
 use nyanpasu_runtime_values::runtime_error::{
@@ -134,16 +137,67 @@ impl RuntimeSnapshot {
         snapshot
     }
 
+    fn inspection_view(&self) -> InspectionView<'_> {
+        InspectionView {
+            inspection_id: &self.inspection_id,
+            revision: self.revision.get(),
+            target_core: &self.target_core,
+            graph: &self.inspection.graph,
+            final_id: self.inspection.final_node,
+            step_logs: &self.inspection.step_logs,
+            applied_binding: self.applied_binding.as_ref(),
+            effective: self.effective.as_deref(),
+        }
+    }
+
+    fn final_node(&self) -> (Idx, Option<ProfileId>) {
+        self.inspection_view().final_node()
+    }
+    fn config_json(&self) -> serde_json::Value {
+        self.inspection_view().config_json()
+    }
+    fn inspection_summary(&self) -> RuntimeInspection {
+        self.inspection_view().inspection_summary()
+    }
+    fn inspection_content(
+        &self,
+        snapshot_id: &str,
+        node_id: u32,
+    ) -> Result<RuntimeInspectionContent, RuntimeError> {
+        self.inspection_view()
+            .inspection_content(snapshot_id, node_id)
+    }
+}
+
+struct InspectionView<'a> {
+    inspection_id: &'a str,
+    revision: u64,
+    target_core: &'a ClashCore,
+    graph: &'a StoredConfigSnapshotsGraph,
+    final_id: Idx,
+    step_logs: &'a [StepLog],
+    applied_binding: Option<&'a AppliedConfigBinding>,
+    effective: Option<&'a EffectiveInspection>,
+}
+
+impl<'a> InspectionView<'a> {
+    fn rejected(archive: &'a RejectedBuildArchive) -> Self {
+        Self {
+            inspection_id: &archive.id,
+            revision: archive.revision,
+            target_core: &archive.target_core,
+            graph: &archive.graph,
+            final_id: archive.final_node,
+            step_logs: &archive.step_logs,
+            applied_binding: None,
+            effective: None,
+        }
+    }
+
     /// The node whose config is the built document, with its selected profile.
     fn final_node(&self) -> (Idx, Option<ProfileId>) {
-        let id = self.inspection.final_node;
-        let selected_profile_id = match self
-            .inspection
-            .graph
-            .nodes
-            .get(id as usize)
-            .map(|node| &node.tag)
-        {
+        let id = self.final_id;
+        let selected_profile_id = match self.graph.nodes.get(id as usize).map(|node| &node.tag) {
             Some(
                 OperatorTag::BuiltinStep {
                     selected_profile_id,
@@ -164,13 +218,12 @@ impl RuntimeSnapshot {
     /// semantics instead of acquiring the YAML parser's limits.
     fn config_json(&self) -> serde_json::Value {
         let (final_node, _) = self.final_node();
-        restored(self.inspection.graph.restore(final_node))
+        restored(self.graph.restore(final_node))
     }
 
     fn max_log_level(&self, tag: &OperatorTag) -> Option<StepLogLevel> {
         let key = tag.node_key();
-        self.inspection
-            .step_logs
+        self.step_logs
             .iter()
             .filter(|log| log.key == key)
             .flat_map(|log| &log.entries)
@@ -179,7 +232,7 @@ impl RuntimeSnapshot {
     }
 
     fn inspection_summary(&self) -> RuntimeInspection {
-        let graph = &self.inspection.graph;
+        let graph = self.graph;
         let (final_id, _) = self.final_node();
         let mut nodes: Vec<_> = graph
             .nodes
@@ -201,7 +254,7 @@ impl RuntimeSnapshot {
             })
             .collect();
         // The core's view is projected as the final node's last child.
-        if let Some(effective) = &self.effective {
+        if let Some(effective) = self.effective {
             let id = nodes.len() as u32;
             nodes[effective.parent as usize].next.push(id);
             let max_log_level = self.max_log_level(&effective.tag);
@@ -215,7 +268,7 @@ impl RuntimeSnapshot {
             });
         }
         RuntimeInspection {
-            snapshot_id: self.inspection_id.clone(),
+            snapshot_id: self.inspection_id.to_owned(),
             applied: false,
             effective_pending: self.applied_binding.is_some() && self.effective.is_none(),
             effective_revision: self
@@ -227,7 +280,7 @@ impl RuntimeSnapshot {
                         .as_ref()
                         .map(|binding| binding.revision.clone())
                 }),
-            revision: self.revision.get().to_string(),
+            revision: self.revision.to_string(),
             target_core: self.target_core.to_string(),
             root_id: graph.root_id,
             final_id,
@@ -244,8 +297,8 @@ impl RuntimeSnapshot {
             self.inspection_id == snapshot_id,
             RuntimeSnapshotChangedSnafu
         );
-        let graph = &self.inspection.graph;
-        let (tag, config, parent) = match &self.effective {
+        let graph = self.graph;
+        let (tag, config, parent) = match self.effective {
             Some(effective) if node_id as usize == graph.nodes.len() => (
                 &effective.tag,
                 document_json(&effective.config.config)?,
@@ -278,7 +331,6 @@ impl RuntimeSnapshot {
                 .transpose()?,
             yaml,
             logs: self
-                .inspection
                 .step_logs
                 .iter()
                 .filter(|log| log.key == key)
@@ -306,6 +358,45 @@ impl NyanpasuClient {
         self.recover_effective_snapshot().await;
         let snapshot = self.promoted_runtime().await?;
         Some(self.inspect_snapshot(&snapshot).await)
+    }
+
+    /// Inspect the retained candidate with this session-local snapshot ID.
+    ///
+    /// # Errors
+    /// Returns [`RuntimeError::RuntimeSnapshotChanged`] if the file is unavailable.
+    pub async fn inspect_rejected_runtime(
+        &self,
+        snapshot_id: &str,
+    ) -> Result<RuntimeInspection, RuntimeError> {
+        let store = self.inner.application_workflow.rejected_builds();
+        let id = snapshot_id.to_owned();
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                let archive = store.load(&id)?;
+                Ok(InspectionView::rejected(&archive).inspection_summary())
+            })
+            .await,
+        )
+    }
+
+    /// Inspect one node of a persisted rejected build.
+    ///
+    /// # Errors
+    /// Returns the existing stale-snapshot or missing-node error when unavailable.
+    pub async fn inspect_rejected_node(
+        &self,
+        snapshot_id: &str,
+        node_id: u32,
+    ) -> Result<RuntimeInspectionContent, RuntimeError> {
+        let store = self.inner.application_workflow.rejected_builds();
+        let id = snapshot_id.to_owned();
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                let archive = store.load(&id)?;
+                InspectionView::rejected(&archive).inspection_content(&id, node_id)
+            })
+            .await,
+        )
     }
 
     pub async fn inspect_applied_runtime(&self) -> Option<RuntimeInspection> {
@@ -434,6 +525,89 @@ pub(crate) mod tests {
                 inspection: Arc::new(inspection_data()),
             },
         )
+    }
+
+    #[tokio::test]
+    async fn rejected_inspection_reuses_node_content_and_rejects_replaced_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = crate::client::test_support::facade::test_client(&dir).await;
+        let store = client.inner.application_workflow.rejected_builds();
+        assert!(matches!(
+            client.inspect_rejected_runtime("missing").await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        let mut rejected = snapshot();
+        let mut graph = ConfigSnapshotsBuilder::new_root(
+            Arc::new(
+                serde_json::from_value::<ConfigValue>(serde_json::json!({"mode": "rule"})).unwrap(),
+            ),
+            OperatorTag::BareRoot,
+        );
+        let tag = OperatorTag::BuiltinStep {
+            selected_profile_id: None,
+            step: BuiltinStepKind::Defaults,
+        };
+        graph
+            .push(
+                tag.clone(),
+                Arc::new(
+                    serde_json::from_value::<ConfigValue>(serde_json::json!({"mode": "global"}))
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let (graph, final_node) = graph.build_stored_with_current().unwrap();
+        rejected.inspection = Arc::new(RuntimeInspectionData {
+            graph,
+            final_node,
+            step_logs: vec![StepLog {
+                key: tag.node_key(),
+                entries: vec![StepLogEntry::new(StepLogLevel::Warn, "candidate log")],
+            }],
+        });
+        let id = rejected.inspection_id.clone();
+        let expected = serde_json::to_value(rejected.inspection_summary()).unwrap();
+        let expected_node =
+            serde_json::to_value(rejected.inspection_content(&id, final_node).unwrap()).unwrap();
+        let weak = Arc::new(rejected);
+        let released = Arc::downgrade(&weak);
+        assert_eq!(store.save(weak).await.as_deref(), Some(id.as_str()));
+        assert!(released.upgrade().is_none());
+        let inspection = client.inspect_rejected_runtime(&id).await.unwrap();
+        assert_eq!(serde_json::to_value(&inspection).unwrap(), expected);
+        assert_eq!(inspection.snapshot_id, id);
+        assert!(!inspection.applied);
+        assert_eq!(inspection.final_id, final_node);
+        let node = inspection
+            .nodes
+            .iter()
+            .find(|node| node.id == final_node)
+            .unwrap();
+        assert_eq!(node.max_log_level, Some(StepLogLevel::Warn));
+        assert!(matches!(
+            client.inspect_runtime_node(&id, final_node).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        let content = client.inspect_rejected_node(&id, final_node).await.unwrap();
+        assert_eq!(serde_json::to_value(&content).unwrap(), expected_node);
+        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content.yaml).unwrap();
+        assert_eq!(value["mode"], "global");
+        assert!(!content.diff.unwrap().hunks.is_empty());
+        assert_eq!(content.logs.len(), 1);
+        assert_eq!(content.logs[0].level, StepLogLevel::Warn);
+        assert!(matches!(
+            client.inspect_rejected_node(&id, u32::MAX).await,
+            Err(RuntimeError::RuntimeNodeNotFound { node_id: u32::MAX })
+        ));
+        store.save(Arc::new(snapshot())).await;
+        assert!(matches!(
+            client.inspect_rejected_runtime(&id).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        assert!(matches!(
+            client.inspect_rejected_node(&id, final_node).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
     }
 
     #[test]

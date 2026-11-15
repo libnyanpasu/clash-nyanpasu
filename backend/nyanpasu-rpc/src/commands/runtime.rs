@@ -54,6 +54,15 @@ pub async fn inspect_runtime(
 
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
+pub async fn inspect_rejected_runtime(
+    client: RpcState<'_, NyanpasuClient>,
+    snapshot_id: String,
+) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspection> {
+    Ok(client.inspect_rejected_runtime(&snapshot_id).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[specta::specta]
 pub async fn inspect_applied_runtime(
     client: RpcState<'_, NyanpasuClient>,
 ) -> Result<Option<nyanpasu_core::client::runtime_inspection::RuntimeInspection>> {
@@ -68,6 +77,16 @@ pub async fn inspect_runtime_node(
     node_id: u32,
 ) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
     Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[specta::specta]
+pub async fn inspect_rejected_node(
+    client: RpcState<'_, NyanpasuClient>,
+    snapshot_id: String,
+    node_id: u32,
+) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
+    Ok(client.inspect_rejected_node(&snapshot_id, node_id).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

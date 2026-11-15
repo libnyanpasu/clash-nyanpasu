@@ -145,6 +145,7 @@ pub enum RuntimeError {
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
         message: String,
+        rejected_snapshot_id: Option<String>,
     },
     CheckUnavailable {
         reason: RuntimeCheckUnavailable,

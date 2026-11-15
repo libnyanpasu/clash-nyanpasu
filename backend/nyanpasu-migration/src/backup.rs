@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
+    fn rejected_cache_and_backups_are_excluded_when_data_is_inside_config() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
         let paths = PathResolver::with_base_dirs(
@@ -521,6 +521,10 @@ mod tests {
         write(&paths.app_logs_dir().join("app.log"), "log");
         write(&paths.jobs_path(), "jobs");
 
+        write(
+            &paths.cache_dir().join("rejected-config/rejected-test.bin"),
+            "unredacted candidate",
+        );
         let storage = paths.storage_path();
         let first =
             create_backup(&manual(&paths, StorageSource::File(storage.as_std_path()))).unwrap();

@@ -28,6 +28,7 @@ pub(super) struct ApplicationWorkflow {
     /// The core's own verdict on a candidate document, asked before the Try
     /// submits it. An absent answer is never a passing one.
     pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
+    pub rejected_builds: Arc<dyn super::ports::RejectedBuildStore>,
     pub lifecycle: CoreLifecycleWorkflow,
     /// A committed desired value the core is not running.
     pub deferred: Option<DeferredTarget>,

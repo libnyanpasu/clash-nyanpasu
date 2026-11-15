@@ -138,13 +138,13 @@ pub(super) struct Fixture {
     pub(super) builder: Arc<ParkingBuilder>,
     pub(super) application: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     pub(super) clash: PersistentStateManager<ClashConfig>,
-    profiles: PersistentStateManager<Profiles>,
+    pub(super) profiles: PersistentStateManager<Profiles>,
     pub(super) store: runtime::RuntimeSnapshotStore,
     pub(super) clash_path: Utf8PathBuf,
     app_path: Utf8PathBuf,
     /// Where the build reads managed profile content from, so a test that
     /// drives the profiles domain can put a real document behind a path.
-    profiles_dir: std::path::PathBuf,
+    pub(super) profiles_dir: std::path::PathBuf,
     /// The same client the workflow holds, so a test can read which host owns
     /// the runtime at a point of its choosing.
     core: CoreClient,
@@ -342,6 +342,35 @@ pub(super) async fn fixture_from(
     scripted: bool,
     ownership: Ownership,
 ) -> Fixture {
+    fixture_from_with_store(confirmed_apply, service, scripted, ownership, None).await
+}
+
+pub(super) async fn fixture_with_rejected_store(
+    store: Arc<dyn super::super::ports::RejectedBuildStore>,
+) -> Fixture {
+    let process_control = Arc::new(crate::actor_v2::test_support::IdleServiceAdapter);
+    let service = ServiceClient::spawn(process_control.clone(), process_control, 0)
+        .await
+        .unwrap();
+    fixture_from_with_store(
+        true,
+        service,
+        false,
+        Ownership::Established {
+            host: ExecutionHost::Local,
+        },
+        Some(store),
+    )
+    .await
+}
+
+async fn fixture_from_with_store(
+    confirmed_apply: bool,
+    service: ServiceClient,
+    scripted: bool,
+    ownership: Ownership,
+    rejected_builds: Option<Arc<dyn super::super::ports::RejectedBuildStore>>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     endpoint.set_source_hash(&nyanpasu_core_manager::payload_digest(b"mode: rule\n"));
@@ -394,6 +423,13 @@ pub(super) async fn fixture_from(
     let notifications = Arc::new(RecordingNotifications::default());
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            rejected_builds: rejected_builds.unwrap_or_else(|| {
+                Arc::new(
+                    crate::client::rejected_build_store::FileRejectedBuildStore::new(
+                        &crate::utils::test_support::test_paths(dir.path(), dir.path()),
+                    ),
+                )
+            }),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -1749,17 +1785,20 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
     // V07: the caller is told why.
     // A Try that ran and was refused, not an evidence gap.
     let refused = refusals(&classify(result.unwrap_err(), &receipt));
-    assert!(
-        matches!(
-            refused.as_slice(),
-            [error] if matches!(
-                error.as_ref(),
-                RuntimeError::CoreRejectedConfig { message, .. }
-                    if message.contains("the core will not run this document")
-            )
-        ),
-        "{refused:?}"
-    );
+    assert_eq!(refused.len(), 1);
+    let RuntimeError::CoreRejectedConfig {
+        rejected_snapshot_id,
+        message,
+        ..
+    } = refused[0].as_ref()
+    else {
+        panic!("expected a check rejection, got {:?}", refused[0]);
+    };
+    assert_eq!(message, "scripted: the core will not run this document");
+    let id = rejected_snapshot_id
+        .as_ref()
+        .expect("the rejected candidate was persisted");
+    assert_eq!(&f.client.rejected_builds().load(id).unwrap().id, id);
     assert!(!f.client.status().uncertain);
 }
 

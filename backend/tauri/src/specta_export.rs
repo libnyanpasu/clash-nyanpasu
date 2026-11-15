@@ -57,6 +57,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::runtime::get_runtime_yaml,
             commands::runtime::get_runtime_exists,
             commands::runtime::inspect_runtime,
+            commands::runtime::inspect_rejected_runtime,
+            commands::runtime::inspect_rejected_node,
             commands::runtime::inspect_applied_runtime,
             commands::runtime::inspect_runtime_node,
             commands::runtime::get_postprocessing_output,
@@ -676,6 +678,10 @@ mod tests {
         assert!(queries.contains("getAppUpdateState:"));
         // A probe downloads but writes nothing.
         assert!(queries.contains("probeProfileUrl:"));
+        assert!(queries.contains("inspectRejectedRuntime:"));
+        assert!(!mutations.contains("inspectRejectedRuntime:"));
+        assert!(queries.contains("inspectRejectedNode:"));
+        assert!(!mutations.contains("inspectRejectedNode:"));
         for name in [
             "checkAppUpdate:",
             "downloadAppUpdate:",

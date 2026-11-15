@@ -13,6 +13,7 @@ mod connection_policy;
 mod mutations;
 mod participant_factory;
 mod recovery;
+mod rejected;
 mod service_recovery;
 mod startup;
 mod validation;
@@ -367,6 +368,11 @@ async fn workflow_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            rejected_builds: Arc::new(
+                crate::client::rejected_build_store::FileRejectedBuildStore::new(
+                    &crate::utils::test_support::test_paths(dir.path(), dir.path()),
+                ),
+            ),
             notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),

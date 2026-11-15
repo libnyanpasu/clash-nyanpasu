@@ -56,6 +56,7 @@ pnpm run test:scripts
 | `generate:manifest:latest-version` | Resolve and write the latest core versions to the manifest                                                            |
 | `generate:manifest`                | Generate the core version manifest                                                                                    |
 | `generate:git-info`                | Generate Git summary information for the Tauri build                                                                  |
+| `generate:completions`             | Generate the `nyanpasu-cli` shell completion scripts                                                                  |
 | `generate:data-slots`              | Generate the frontend data-slot registry                                                                              |
 | `generate:topology-map`            | Generate the frontend topology map data                                                                               |
 | `generate:credits`                 | Generate the open source credits the about page lists                                                                 |
@@ -69,7 +70,7 @@ pnpm run test:scripts
 | `prepare:release`                  | Prepare the Tauri configuration for a release build                                                                   |
 | `prepare:preview`                  | Prepare the Tauri configuration for a preview build                                                                   |
 | `prepare:worktree`                 | Initialize submodules from a local checkout and install dependencies from the pnpm store                              |
-| `prepare:check`                    | Check and download required sidecar binaries and resources                                                            |
+| `prepare:check`                    | Check and download sidecars and resources; build `nyanpasu-cli` and its completions                                   |
 | `portable`                         | Create a Windows portable ZIP and upload it to the release                                                            |
 | `sign-nightly-updater`             | Sign updater artifacts for a nightly build                                                                            |
 | `finalize-linux-release`           | Finalize Linux release package metadata                                                                               |

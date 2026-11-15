@@ -411,6 +411,24 @@ fn help_version_and_completion_exit_zero() {
     }
 }
 
+/// The CLI ships inside the app bundle, so it reports the application's version rather than
+/// its own crate version.
+#[test]
+fn the_version_is_the_applications() {
+    let package = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../package.json");
+    let package: Value = serde_json::from_slice(&std::fs::read(package).unwrap()).unwrap();
+    let version = package["version"].as_str().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let output = cli(&directory.path().join("cli.toml"))
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap().trim_end(),
+        format!("nyanpasu-cli {version}")
+    );
+}
+
 #[test]
 fn contexts_survive_between_invocations_and_hold_no_secret_in_the_file() {
     let shell = MockShell::start();

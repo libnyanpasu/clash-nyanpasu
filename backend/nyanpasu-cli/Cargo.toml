@@ -35,6 +35,9 @@ tokio = { workspace = true }
 toml = '1'
 uuid = { version = '1', features = ['v4'] }
 
+[build-dependencies]
+serde_json = '1'
+
 [dev-dependencies]
 # Pins the CLI's wire names for shared events against their owner. `nyanpasu-rpc` with
 # its test support serves a real core to `tests/core_rpc.rs` without entering the

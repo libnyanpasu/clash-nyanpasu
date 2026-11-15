@@ -308,7 +308,7 @@ pub async fn handle_message<T: Transport>(
                 json!({
                     "protocolVersion": version,
                     "capabilities": {"tools": {"listChanged": false}},
-                    "serverInfo": {"name": "nyanpasu-cli", "version": env!("CARGO_PKG_VERSION")},
+                    "serverInfo": {"name": "nyanpasu-cli", "version": env!("NYANPASU_VERSION")},
                 }),
             )
         }

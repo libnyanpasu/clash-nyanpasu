@@ -22,6 +22,7 @@ test('files map to the parts that check them', () => {
     ['backend/nyanpasu-runtime', ['backend']],
     ['backend/enable-loopback', ['backend']],
     ['backend/README.md', ['backend']],
+    ['skills/nyanpasu-cli/SKILL.md', ['backend']],
     ['rust-toolchain.toml', ['backend']],
     ['scripts/src/ci/changed-parts.ts', ['scripts']],
     ['scripts/package.json', ['scripts']],

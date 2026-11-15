@@ -209,11 +209,16 @@ For changes to worktree preparation tooling, verify clone support and write isol
 
 ### Prepared downloads (`prepare:check`)
 
-`pnpm run prepare:check` populates three gitignored locations:
+`pnpm run prepare:check` populates four gitignored locations:
 
-- `backend/tauri/sidecar/` — core binaries, `nyanpasu-service` and version stamps.
+- `backend/tauri/sidecar/` — core binaries, `nyanpasu-service`, version stamps and
+  `nyanpasu-cli`. The CLI is built from this checkout's source (`--cli-profile dev`
+  for a debug build, release by default), so a copied one is stale until
+  `prepare:check` rebuilds it.
 - `backend/tauri/resources/` — `geoip.dat`, `geosite.dat`, `Country.mmdb`,
   `wintun.dll` and the enable-loopback assets.
+- `backend/tauri/completions/` — the CLI's shell completion scripts, which the
+  bundles install.
 - `node_modules/.verge/` — a disposable partial-download cache.
 
 `git worktree add` does not create any of them. Do not download the same ~255MB

@@ -74,8 +74,14 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
     parts: ['frontend'],
   },
   {
-    // Backend submodule gitlinks also change as one path.
-    patterns: ['backend/**', '.cargo/**', 'rust-toolchain.toml', '.gitmodules'],
+    // Backend submodule gitlinks also change as one path; CLI tests embed `skills/`.
+    patterns: [
+      'backend/**',
+      'skills/**',
+      '.cargo/**',
+      'rust-toolchain.toml',
+      '.gitmodules',
+    ],
     parts: ['backend'],
   },
   {

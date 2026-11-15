@@ -4,6 +4,7 @@ import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import AccessTokens from './_modules/access-tokens'
 import BrowserSessions from './_modules/browser-sessions'
+import CommandLineTool from './_modules/command-line-tool'
 import ServerSettings from './_modules/server-settings'
 
 export const Route = createFileRoute(
@@ -33,6 +34,8 @@ function RouteComponent() {
           <AccessTokens />
 
           <BrowserSessions />
+
+          <CommandLineTool />
         </div>
       </RequireCapability>
     </>

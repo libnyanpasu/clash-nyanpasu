@@ -57,8 +57,25 @@ const IMPLEMENTATION = [
 ]
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
-  { package: 'nyanpasu-server', forbids: GUI },
-  { package: 'nyanpasu-rpc', forbids: [...GUI, ...IMPLEMENTATION] },
+  { package: 'nyanpasu-server', forbids: [...GUI, 'nyanpasu-cli'] },
+  {
+    package: 'nyanpasu-rpc',
+    forbids: [...GUI, ...IMPLEMENTATION, 'nyanpasu-cli'],
+  },
+  // The CLI is a client of a running shell: protocol and transport only. Its
+  // production and build closure carries no core family, implementation, RPC
+  // adapter, server or GUI package; `nyanpasu-core` is a dev-dependency of its
+  // integration tests alone, which this gate does not inspect.
+  {
+    package: 'nyanpasu-cli',
+    forbids: [
+      ...GUI,
+      ...CORE_FAMILY,
+      ...IMPLEMENTATION,
+      'nyanpasu-rpc',
+      'nyanpasu-server',
+    ],
+  },
   ...[
     ...FOUNDATION,
     ...CORE_FAMILY,
@@ -66,7 +83,7 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     'nyanpasu-rpc-protocol',
   ].map((name) => ({
     package: name,
-    forbids: ['nyanpasu-rpc'],
+    forbids: ['nyanpasu-rpc', 'nyanpasu-cli'],
   })),
   {
     package: 'nyanpasu-rpc-protocol',

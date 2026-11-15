@@ -12,7 +12,7 @@ use nyanpasu_contracts::auth::{
     AccessTokenStatus, AccessTokenSummary, AuthClock, AuthContext, AuthRevocation,
     AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest, EntropySource,
     EstablishedBrowserSession, IssuedAccessToken, IssuedLaunchCode, Principal, RemoteAuthPolicy,
-    ScopeSet, SecretHash, SecretStore, SecretString, SessionId, TokenId,
+    Scope, ScopeSet, SecretHash, SecretStore, SecretString, SessionId, TokenId,
     is_valid_launch_code_syntax, parse_access_token, parse_session_cookie,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, MessagingErr, RpcReplyPort};
@@ -375,6 +375,13 @@ impl State {
     ) -> Result<IssuedAccessToken, RemoteAuthError> {
         if self.tokens.len() >= self.policy.max_tokens {
             return Err(RemoteAuthError::CapacityExceeded { resource: "tokens" });
+        }
+        // Remote administration is never reachable with a bearer token, so a token holding it
+        // would only look more powerful than it is.
+        if request.scopes.contains(Scope::RemoteAdmin) {
+            return Err(RemoteAuthError::InvalidInput {
+                reason: "a token cannot hold the remote_admin scope",
+            });
         }
         let now = self.clock.now_unix_ms();
         if request.expires_at_ms.is_some_and(|expires| expires <= now) {

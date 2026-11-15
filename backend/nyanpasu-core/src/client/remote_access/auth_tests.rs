@@ -269,6 +269,28 @@ async fn token_creation_rejects_a_past_expiry_and_the_capacity_limit() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_token_cannot_hold_remote_admin() {
+    let harness = Harness::start().await;
+    let request = CreateAccessTokenRequest {
+        name: TokenName::parse("t").unwrap(),
+        scopes: ScopeSet::from([Scope::Read, Scope::RemoteAdmin]),
+        expires_at_ms: None,
+    };
+    assert!(matches!(
+        harness.client.create_access_token(request).await,
+        Err(RemoteAuthError::InvalidInput { .. })
+    ));
+    assert!(
+        harness
+            .client
+            .list_access_tokens()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_token_that_cannot_be_persisted_is_not_created() {
     let harness = Harness::start().await;
     harness.store.fail_saves.store(true, Ordering::SeqCst);

@@ -6,6 +6,7 @@ import AppLogLevelSelector from './_modules/app-log-level-selector'
 import CoreLogLevelSelector from './_modules/core-log-level-selector'
 import CoreLogStorageConfig from './_modules/core-log-storage-config'
 import LogFileConfig from './_modules/log-file-config'
+import RpcAuditRetentionConfig from './_modules/rpc-audit-retention-config'
 import TrafficRetentionSelector from './_modules/traffic-retention-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu/logs/')({
@@ -52,6 +53,18 @@ const TrafficSettings = () => {
   )
 }
 
+const RpcAuditSettings = () => {
+  return (
+    <div data-slot="rpc-audit-settings-container">
+      <SettingsLabel>{m.settings_logs_rpc_audit_label()}</SettingsLabel>
+
+      <SettingsGroup>
+        <RpcAuditRetentionConfig />
+      </SettingsGroup>
+    </div>
+  )
+}
+
 function RouteComponent() {
   return (
     <>
@@ -63,6 +76,8 @@ function RouteComponent() {
         <CoreLogSettings />
 
         <TrafficSettings />
+
+        <RpcAuditSettings />
       </div>
     </>
   )

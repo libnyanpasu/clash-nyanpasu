@@ -41,6 +41,7 @@ import { Route as mainMainSettingsDebugRouteRouteImport } from './pages/(main)/m
 import { Route as mainMainTopologyIndexRouteImport } from './pages/(main)/main/topology/index'
 import { Route as trayMenuTrayMenuProxiesIndexRouteImport } from './pages/(tray-menu)/tray-menu/proxies/index'
 import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
+import { Route as mainMainLogsAuditIndexRouteImport } from './pages/(main)/main/logs/audit/index'
 import { Route as mainMainProfilesTypeIndexRouteImport } from './pages/(main)/main/profiles/$type/index'
 import { Route as mainMainProfilesFolderIndexRouteImport } from './pages/(main)/main/profiles/folder/index'
 import { Route as mainMainProvidersProxiesKeyRouteImport } from './pages/(main)/main/providers/proxies/$key'
@@ -240,6 +241,11 @@ const trayMenuTrayMenuProxiesGroupRouteRoute =
     path: '/group',
     getParentRoute: () => trayMenuTrayMenuProxiesRouteRoute,
   } as any)
+const mainMainLogsAuditIndexRoute = mainMainLogsAuditIndexRouteImport.update({
+  id: '/audit/',
+  path: '/audit/',
+  getParentRoute: () => mainMainLogsRouteRoute,
+} as any)
 const mainMainProfilesTypeIndexRoute =
   mainMainProfilesTypeIndexRouteImport.update({
     id: '/$type/',
@@ -416,6 +422,7 @@ const mainMainSettingsSystemServiceIndexRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof mainRouteRouteWithChildren
   '/editor': typeof editorEditorRouteRouteWithChildren
   '/tray-menu': typeof trayMenuTrayMenuRouteRouteWithChildren
   '/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
@@ -451,6 +458,7 @@ export interface FileRoutesByFullPath {
   '/main/providers/rules/$key': typeof mainMainProvidersRulesKeyRoute
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
+  '/main/logs/audit/': typeof mainMainLogsAuditIndexRoute
   '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
   '/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
@@ -478,6 +486,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof mainRouteRouteWithChildren
   '/editor': typeof editorEditorRouteRouteWithChildren
   '/main': typeof mainMainIndexRoute
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
@@ -500,6 +509,7 @@ export interface FileRoutesByTo {
   '/main/providers/rules/$key': typeof mainMainProvidersRulesKeyRoute
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
+  '/main/logs/audit': typeof mainMainLogsAuditIndexRoute
   '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
   '/main/profiles/folder': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about': typeof mainMainSettingsAboutIndexRoute
@@ -564,6 +574,7 @@ export interface FileRoutesById {
   '/(main)/main/providers/rules/$key': typeof mainMainProvidersRulesKeyRoute
   '/(main)/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/(tray-menu)/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
+  '/(main)/main/logs/audit/': typeof mainMainLogsAuditIndexRoute
   '/(main)/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
   '/(main)/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/(main)/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
@@ -593,6 +604,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/editor'
     | '/tray-menu'
     | '/main/connections'
@@ -628,6 +640,7 @@ export interface FileRouteTypes {
     | '/main/providers/rules/$key'
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
+    | '/main/logs/audit/'
     | '/main/profiles/$type/'
     | '/main/profiles/folder/'
     | '/main/settings/about/'
@@ -655,6 +668,7 @@ export interface FileRouteTypes {
     | '/main/settings/system/service/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/editor'
     | '/main'
     | '/tray-menu'
@@ -677,6 +691,7 @@ export interface FileRouteTypes {
     | '/main/providers/rules/$key'
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
+    | '/main/logs/audit'
     | '/main/profiles/$type'
     | '/main/profiles/folder'
     | '/main/settings/about'
@@ -740,6 +755,7 @@ export interface FileRouteTypes {
     | '/(main)/main/providers/rules/$key'
     | '/(main)/main/proxies/group/$name'
     | '/(tray-menu)/tray-menu/proxies/group/$name'
+    | '/(main)/main/logs/audit/'
     | '/(main)/main/profiles/$type/'
     | '/(main)/main/profiles/folder/'
     | '/(main)/main/settings/about/'
@@ -778,7 +794,7 @@ declare module '@tanstack/react-router' {
     '/(main)': {
       id: '/(main)'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof mainRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -998,6 +1014,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/tray-menu/proxies/group'
       preLoaderRoute: typeof trayMenuTrayMenuProxiesGroupRouteRouteImport
       parentRoute: typeof trayMenuTrayMenuProxiesRouteRoute
+    }
+    '/(main)/main/logs/audit/': {
+      id: '/(main)/main/logs/audit/'
+      path: '/audit'
+      fullPath: '/main/logs/audit/'
+      preLoaderRoute: typeof mainMainLogsAuditIndexRouteImport
+      parentRoute: typeof mainMainLogsRouteRoute
     }
     '/(main)/main/profiles/$type/': {
       id: '/(main)/main/profiles/$type/'
@@ -1235,10 +1258,12 @@ const mainMainDashboardRouteRouteWithChildren =
 
 interface mainMainLogsRouteRouteChildren {
   mainMainLogsIndexRoute: typeof mainMainLogsIndexRoute
+  mainMainLogsAuditIndexRoute: typeof mainMainLogsAuditIndexRoute
 }
 
 const mainMainLogsRouteRouteChildren: mainMainLogsRouteRouteChildren = {
   mainMainLogsIndexRoute: mainMainLogsIndexRoute,
+  mainMainLogsAuditIndexRoute: mainMainLogsAuditIndexRoute,
 }
 
 const mainMainLogsRouteRouteWithChildren =

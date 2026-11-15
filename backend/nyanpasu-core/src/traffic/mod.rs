@@ -4,3 +4,4 @@ mod storage;
 mod tests;
 
 pub use storage::TrafficFileStorage;
+pub(crate) use storage::disposable;

@@ -29,6 +29,8 @@ pub enum ConfigError {
     InvalidUpdateSources { reason: String },
     #[snafu(display("invalid core log settings: {reason}"))]
     InvalidCoreLogs { reason: String },
+    #[snafu(display("invalid RPC audit settings: {reason}"))]
+    InvalidRpcAudit { reason: String },
     #[snafu(display("invalid public IP probe sources: {reason}"))]
     InvalidPublicIpProbeSources { reason: String },
     #[snafu(display("transparent proxy settings are invalid: {source}"))]

@@ -9,6 +9,7 @@ mod core_logs;
 mod i18n;
 mod logging;
 mod public_ip_probe;
+mod rpc_audit;
 mod traffic;
 mod update;
 mod widget;
@@ -18,6 +19,7 @@ pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
 pub use public_ip_probe::*;
+pub use rpc_audit::*;
 pub use traffic::*;
 pub use update::*;
 pub use widget::*;
@@ -95,6 +97,10 @@ pub struct NyanpasuAppConfig {
     /// Core log disk settings, applied as soon as they are committed.
     #[serde(default)]
     pub core_logs: CoreLogSettings,
+
+    /// Retention limits for persisted RPC audit records.
+    #[serde(default)]
+    pub rpc_audit: RpcAuditSettings,
 
     // i18n
     pub language: I18nLanguage,
@@ -287,6 +293,7 @@ impl Default for NyanpasuAppConfig {
             app_singleton_port: 0,
             app_log_level: LoggingLevel::default(),
             core_logs: CoreLogSettings::default(),
+            rpc_audit: RpcAuditSettings::default(),
             language: default_i18n_language(),
             theme_mode: ThemeMode::System,
             traffic_graph: true,

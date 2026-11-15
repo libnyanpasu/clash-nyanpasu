@@ -16,8 +16,9 @@ import {
 } from '@nyanpasu/ui/navigation-sidebar'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SidebarProvider } from '@nyanpasu/ui/slider-sidebar'
+import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { m } from '@/paraglide/messages'
-import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { dataPageLayoutVariants } from '../_modules/data-page'
 import { LogLevel } from './_modules/consts'
 
@@ -69,7 +70,15 @@ const LogLevelButton = ({
 }
 
 function RouteComponent() {
-  return <Outlet />
+  return (
+    // Clips the sliding pages so they cannot spill past the content area.
+    <div
+      className="relative flex min-h-0 flex-1 flex-col overflow-clip"
+      data-slot="logs-content"
+    >
+      <AnimatedOutletPreset className="flex min-h-0 flex-1 flex-col" />
+    </div>
+  )
 }
 
 // The sidebar holds its own open state, so the page above it can re-render

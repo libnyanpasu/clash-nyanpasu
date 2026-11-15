@@ -18,6 +18,20 @@ export function createRpcClient(
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
+    /**  Reads persisted remote audit rows without flushing the diagnostic channel. */
+    queryRpcAudit: (
+      filter: AuditFilter,
+      before: {
+        epoch: number
+        key: number
+        incarnation: number
+        seq: number
+      } | null,
+      limit: number,
+    ) =>
+      typedError<AuditPage, IpcError>(
+        __RPC_INVOKE('query_rpc_audit', { filter, before, limit }),
+      ),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
@@ -830,6 +844,66 @@ export type AppUpdateSnapshot = {
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
 
+/**
+ *  Opaque exclusive position for newest-first paging. Consumers pass it back
+ *  unchanged; only the store adapter converts it to/from a tsdb cursor.
+ */
+export type AuditCursor = {
+  epoch: number
+  key: number
+  incarnation: number
+  seq: number
+}
+
+/**  Exact stored transport/phase/outcome matches; absent fields do not restrict a scan. */
+export type AuditFilter = {
+  /**  The stored transport spelling, or all transports. */
+  transport: string | null
+  /**
+   *  The stored phase spelling, or all phases. Rejections have no outcome,
+   *  so they are selected by phase.
+   */
+  phase: string | null
+  /**  The stored outcome spelling, or all outcomes. */
+  outcome: string | null
+}
+
+/**  Persisted rows in descending event order and the process-run loss count. */
+export type AuditPage = {
+  /**  At most 500 matching records, newest first. */
+  rows: AuditRow[]
+  /**  Pass back as `before` to continue toward older records. */
+  next: AuditCursor | null
+  /**  Rows not saved during this run, including channel overflow and late rows. */
+  dropped: number
+}
+
+/**  An owned terminal HTTP/local audit record, excluding arguments and results. */
+export type AuditRow = {
+  /**  Milliseconds since the Unix epoch, sampled by the sink. */
+  at: number
+  /**  `http` or `local`. */
+  transport: string
+  /**  The fixed method name from the RPC header. */
+  method: string
+  /**  Instance-keyed caller hash; meaningful only within this process run. */
+  owner: string
+  /**  Invocation identity within this process run. */
+  invocation_id: number
+  /**  The local transport's request identity, when supplied. */
+  request_id: number | null
+  /**  `rejected`, `finished` or `subscription`. */
+  phase: string
+  /**  The tracing sink's outcome spelling, absent for rejections. */
+  outcome: string | null
+  /**  Error classification, when supplied by the audit kernel. */
+  kind: string | null
+  /**  Error code, truncated by the sink to at most 128 UTF-8 bytes. */
+  code: string | null
+  /**  Monotonic elapsed time in nanoseconds. */
+  duration_ns: number
+}
+
 export type BrandVersion = {
   brand: string
   version: string
@@ -1338,6 +1412,7 @@ export type ConfigError =
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'invalid_core_logs'; reason: string }
+  | { kind: 'invalid_rpc_audit'; reason: string }
   | { kind: 'invalid_public_ip_probe_sources'; reason: string }
   | {
       kind: 'invalid_transparent_proxy'
@@ -2937,6 +3012,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       app_singleton_port?: number | null
       app_log_level?: LoggingLevel_Deserialize | null
       core_logs?: CoreLogSettings | null
+      rpc_audit?: RpcAuditSettings | null
       language?: I18nLanguage_Deserialize | null
       theme_mode?: ThemeMode | null
       traffic_graph?: boolean | null
@@ -2994,6 +3070,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   app_singleton_port?: number | null
   app_log_level?: LoggingLevel_Serialize | null
   core_logs?: CoreLogSettings | null
+  rpc_audit?: RpcAuditSettings | null
   language?: I18nLanguage_Serialize | null
   theme_mode?: ThemeMode | null
   traffic_graph?: boolean | null
@@ -3046,6 +3123,8 @@ export type NyanpasuAppConfig_Deserialize = {
   app_log_level: LoggingLevel_Deserialize
   /**  Core log disk settings, applied as soon as they are committed. */
   core_logs?: CoreLogSettings
+  /**  Retention limits for persisted RPC audit records. */
+  rpc_audit?: RpcAuditSettings
   language: I18nLanguage_Deserialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -3168,6 +3247,8 @@ export type NyanpasuAppConfig_Serialize = {
   app_log_level: LoggingLevel_Serialize
   /**  Core log disk settings, applied as soon as they are committed. */
   core_logs: CoreLogSettings
+  /**  Retention limits for persisted RPC audit records. */
+  rpc_audit: RpcAuditSettings
   language: I18nLanguage_Serialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -4920,6 +5001,14 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+/**  Retention limits for persisted HTTP and local RPC audit records. */
+export type RpcAuditSettings = {
+  /**  Maximum age in days, from 1 through 90; defaults to 7. */
+  max_age_days?: number
+  /**  Maximum storage size in MiB, from 4 through 256; defaults to 16. */
+  max_size_mib?: number
 }
 
 export type RuleKey = {

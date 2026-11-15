@@ -132,6 +132,11 @@ impl ApplicationActor {
             .map_err(|reason| ConfigError::InvalidCoreLogs {
                 reason: reason.into(),
             })?;
+        next.rpc_audit
+            .validate()
+            .map_err(|reason| ConfigError::InvalidRpcAudit {
+                reason: reason.into(),
+            })?;
         nyanpasu_config::application::validate_update_sources(&next.update_sources).map_err(
             |reason| ConfigError::InvalidUpdateSources {
                 reason: reason.into(),

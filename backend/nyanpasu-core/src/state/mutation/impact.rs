@@ -710,6 +710,12 @@ mod tests {
                 impact: RuntimeImpact::None,
                 owners: &[EffectKind::CoreLogStorage],
             },
+            AppCase {
+                field: "rpc_audit",
+                mutate: |app| app.rpc_audit.max_size_mib = 32,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
             // Peripheral owners.
             AppCase {
                 field: "language",

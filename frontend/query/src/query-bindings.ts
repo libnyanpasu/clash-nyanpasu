@@ -20,6 +20,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getConfigurationStatus', ...args],
         queryFn: () => commands.getConfigurationStatus(...args),
       }),
+    queryRpcAudit: (...args: Parameters<typeof commands.queryRpcAudit>) =>
+      queryOptions({
+        queryKey: ['queryRpcAudit', ...args],
+        queryFn: () => commands.queryRpcAudit(...args),
+      }),
     readClipboardText: (
       ...args: Parameters<typeof commands.readClipboardText>
     ) =>

@@ -376,6 +376,7 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "probe_direct_egress",
         "query_core_logs",
         "query_logs",
+        "query_rpc_audit",
         "query_traffic_active_connection_ids",
         "query_traffic_closed_connections",
         "query_traffic_report",

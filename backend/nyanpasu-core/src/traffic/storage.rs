@@ -118,7 +118,7 @@ impl TrafficStorage<RedbStorage> for TrafficFileStorage {
     }
 }
 
-fn disposable(error: &RecoveryError) -> bool {
+pub(crate) fn disposable(error: &RecoveryError) -> bool {
     if error.kind() == ErrorKind::Corrupted {
         return true;
     }

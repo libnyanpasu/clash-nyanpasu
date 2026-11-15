@@ -46,6 +46,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::status::get_debug_http_status,
             commands::status::get_configuration_status,
             // Read-only commands
+            commands::audit::query_rpc_audit,
             ipc::read_clipboard_text,
             commands::traffic::query_core_logs,
             commands::traffic::get_core_log,
@@ -594,11 +595,13 @@ mod tests {
     }
 
     #[test]
-    fn configuration_status_is_exported_as_a_query() {
+    fn configuration_status_and_rpc_audit_are_exported_as_queries() {
         let (query_bindings, _) = build_specta_builder();
         let (queries, mutations) = query_bindings.split_once("export const mutations").unwrap();
         assert!(queries.contains("getConfigurationStatus"));
         assert!(!mutations.contains("getConfigurationStatus"));
+        assert!(queries.contains("queryRpcAudit"));
+        assert!(!mutations.contains("queryRpcAudit"));
     }
 
     /// Regenerates the committed TS bindings in place (same path and header as

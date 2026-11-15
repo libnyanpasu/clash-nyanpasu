@@ -217,6 +217,8 @@ export function configErrorMessage(
       return m.error_config_invalid_update_sources({ reason: error.reason })
     case 'invalid_core_logs':
       return m.error_config_invalid_core_logs({ reason: error.reason })
+    case 'invalid_rpc_audit':
+      return m.error_config_invalid_rpc_audit({ reason: error.reason })
     case 'invalid_public_ip_probe_sources':
       return m.error_config_invalid_public_ip_probe_sources({
         reason: error.reason,

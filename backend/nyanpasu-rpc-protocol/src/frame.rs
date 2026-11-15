@@ -23,6 +23,11 @@ impl RequestId {
     pub fn new(value: u64) -> Option<Self> {
         NonZeroU64::new(value).map(Self)
     }
+
+    /// The positive integer used on the wire and in diagnostic records.
+    pub fn get(self) -> u64 {
+        self.0.get()
+    }
 }
 
 /// Features known to version 1. Unknown optional hello strings are ignored.

@@ -689,7 +689,7 @@ async fn local_dispatch_records_one_info_audit_event() {
             .0
             .lock()
             .iter()
-            .all(|record| record.level == tracing::Level::INFO)
+            .all(|record| record.level == tracing::Level::TRACE)
     );
     assert!(!format!("{:?}", capture.0.lock()).contains(SECRET));
     assert!(

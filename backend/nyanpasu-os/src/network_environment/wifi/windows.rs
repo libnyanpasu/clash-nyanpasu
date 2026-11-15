@@ -39,6 +39,10 @@ enum Failure {
 }
 
 impl Platform {
+    pub(super) fn new() -> Self {
+        Self
+    }
+
     /// `interface` is the adapter name Windows reports, a braced GUID. The
     /// consent prompt is shown by Windows itself, so `ask` changes nothing.
     pub(super) fn read(&self, interface: &str, _ask: bool) -> WifiName {
